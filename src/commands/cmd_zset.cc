@@ -64,7 +64,7 @@ class CommandZAdd : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     double old_score = member_scores_[0].score;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
@@ -136,7 +136,7 @@ class CommandZCount : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
@@ -205,7 +205,7 @@ class CommandZLexCount : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
     if (!s.ok()) {
@@ -544,7 +544,7 @@ class CommandZRem : public Commander {
       members.emplace_back(args_[i]);
     }
 
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Remove(args_[1], members, &size);
     if (!s.ok()) {
@@ -574,7 +574,7 @@ class CommandZRemRangeByRank : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &cnt);
@@ -603,7 +603,7 @@ class CommandZRemRangeByScore : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &cnt);
@@ -632,7 +632,7 @@ class CommandZRemRangeByLex : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &cnt);
@@ -751,7 +751,7 @@ class CommandZUnionStore : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
@@ -773,7 +773,7 @@ class CommandZInterStore : public CommandZUnionStore {
   CommandZInterStore() : CommandZUnionStore() {}
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {

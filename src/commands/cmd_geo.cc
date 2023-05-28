@@ -106,7 +106,7 @@ class CommandGeoAdd : public CommandGeoBase {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Add(args_[1], &geo_points_, &ret);
     if (!s.ok()) {

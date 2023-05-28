@@ -164,7 +164,7 @@ TEST_F(RedisListTest, Range) {
 
 TEST_F(RedisListTest, Rem) {
   int ret = 0;
-  uint32_t len = 0;
+  uint64_t len = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   Slice del_elem("list-test-key-1");
@@ -243,7 +243,7 @@ TEST_F(RedisListSpecificTest, Rem) {
   // lrem key_ 1 9
   list_->Rem(key_, 1, del_elem, &ret);
   EXPECT_EQ(1, ret);
-  uint32_t len = 0;
+  uint64_t len = 0;
   list_->Size(key_, &len);
   EXPECT_EQ(fields_.size() - 1, len);
   int cnt = 0;
@@ -278,7 +278,7 @@ TEST_F(RedisListTest, Trim) {
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);
   list_->Trim(key_, 1, 2000);
-  uint32_t len = 0;
+  uint64_t len = 0;
   list_->Size(key_, &len);
   EXPECT_EQ(fields_.size() - 1, len);
   for (size_t i = 1; i < fields_.size(); i++) {
@@ -296,7 +296,7 @@ TEST_F(RedisListSpecificTest, Trim) {
   // ltrim key_ 3 -3 then linsert 2 3 and lrem key_ 5 3
   Slice del_elem("3");
   list_->Trim(key_, 3, -3);
-  uint32_t len = 0;
+  uint64_t len = 0;
   list_->Size(key_, &len);
   EXPECT_EQ(fields_.size() - 5, len);
   Slice insert_elem("3");

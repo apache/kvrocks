@@ -222,7 +222,7 @@ rocksdb::Status String::SetNX(const std::string &user_key, const std::string &va
 }
 
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
-  *flag = 0;
+  *flag = false;
   int exists = 0;
   uint64_t expire = 0;
   if (ttl > 0) {
@@ -236,7 +236,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   Exists({user_key}, &exists);
   if (exists != 1) return rocksdb::Status::OK();
 
-  *flag = 1;
+  *flag = true;
   std::string raw_value;
   Metadata metadata(kRedisString, false);
   metadata.expire = expire;
@@ -387,7 +387,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl)
 }
 
 rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {
-  *flag = 0;
+  *flag = false;
 
   uint64_t expire = 0;
   if (ttl > 0) {
@@ -424,7 +424,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
     auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
-  *flag = 1;
+  *flag = true;
   return rocksdb::Status::OK();
 }
 
@@ -435,7 +435,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
                             uint64_t ttl, int *flag) {
-  *flag = 0;
+  *flag = false;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -467,7 +467,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     if (!write_status.ok()) {
       return write_status;
     }
-    *flag = 1;
+    *flag = true;
   }
 
   return rocksdb::Status::OK();
@@ -476,7 +476,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 // Delete a specified user_key if the current value of the user_key matches a specified value.
 // For ret, same as CAS.
 rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *flag) {
-  *flag = 0;
+  *flag = false;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -499,7 +499,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
     if (!delete_status.ok()) {
       return delete_status;
     }
-    *flag = 1;
+    *flag = true;
   }
 
   return rocksdb::Status::OK();

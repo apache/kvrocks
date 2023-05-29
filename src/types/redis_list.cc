@@ -260,8 +260,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before,
-                             uint64_t *new_size) {
+rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *new_size) {
   *new_size = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

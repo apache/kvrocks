@@ -300,8 +300,9 @@ TEST_F(RedisListSpecificTest, Trim) {
   list_->Size(key_, &len);
   EXPECT_EQ(fields_.size() - 5, len);
   Slice insert_elem("3");
-  list_->Insert(key_, Slice("2"), insert_elem, true, &ret);
-  EXPECT_EQ(-1, ret);
+  int insert_ret = 0;
+  list_->Insert(key_, Slice("2"), insert_elem, true, &insert_ret);
+  EXPECT_EQ(-1, insert_ret);
   list_->Rem(key_, 5, del_elem, &ret);
   EXPECT_EQ(4, ret);
   for (size_t i = 3; i < fields_.size() - 2; i++) {

@@ -36,7 +36,7 @@ class List : public Database {
   rocksdb::Status Size(const Slice &user_key, uint64_t *size);
   rocksdb::Status Trim(const Slice &user_key, int start, int stop);
   rocksdb::Status Set(const Slice &user_key, int index, Slice elem);
-  rocksdb::Status Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, uint64_t *new_size);
+  rocksdb::Status Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *new_size);
   rocksdb::Status Pop(const Slice &user_key, bool left, std::string *elem);
   rocksdb::Status PopMulti(const Slice &user_key, bool left, uint32_t count, std::vector<std::string> *elems);
   rocksdb::Status Rem(const Slice &user_key, int count, const Slice &elem, uint64_t *removed_cnt);

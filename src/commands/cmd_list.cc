@@ -349,7 +349,7 @@ class CommandLInsert : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint64_t ret = 0;
+    int ret = 0;
     redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Insert(args_[1], args_[3], args_[4], before_, &ret);
     if (!s.ok() && !s.IsNotFound()) {

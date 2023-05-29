@@ -403,7 +403,7 @@ class CommandMSet : public Commander {
 class CommandSetNX : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    bool ret = 0;
+    bool ret = false;
     redis::String string_db(svr->storage, conn->GetNamespace());
     auto s = string_db.SetNX(args_[1], args_[2], 0, &ret);
     if (!s.ok()) {
@@ -426,7 +426,7 @@ class CommandMSetNX : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    bool ret = 0;
+    bool ret = false;
     std::vector<StringPair> kvs;
     redis::String string_db(svr->storage, conn->GetNamespace());
     for (size_t i = 1; i < args_.size(); i += 2) {

@@ -428,23 +428,14 @@ void Worker::BecomeMonitorConn(redis::Connection *conn) {
   conn->EnableFlag(redis::Connection::kMonitor);
 }
 
-void Worker::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
-  auto now = util::GetTimeStampUS();
-
-  std::string output;
-  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
-  output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
-  for (const auto &token : tokens) {
-    output += " \"" + token + "\"";
-  }
-
+void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &response) {
   std::unique_lock<std::mutex> lock(conns_mu_);
 
   for (const auto &iter : monitor_conns_) {
     if (conn == iter.second) continue;  // skip the monitor command
 
     if (conn->GetNamespace() == iter.second->GetNamespace() || iter.second->GetNamespace() == kDefaultNamespace) {
-      iter.second->Reply(redis::SimpleString(output));
+      iter.second->Reply(response);
     }
   }
 }

@@ -337,9 +337,20 @@ void Server::CleanupExitedSlaves() {
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
+  auto now = util::GetTimeStampUS();
+  std::string output = "+";
+  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
+  output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
+  for (const auto &token : tokens) {
+    output += " \"";
+    output += util::EscapeString(token);
+    output += "\"";
+  }
+  output += CRLF;
+
   for (const auto &worker_thread : worker_threads_) {
     auto worker = worker_thread->GetWorker();
-    worker->FeedMonitorConns(conn, tokens);
+    worker->FeedMonitorConns(conn, output);
   }
 }
 

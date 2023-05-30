@@ -60,7 +60,7 @@ class Worker : EventCallbackBase<Worker> {
   Status EnableWriteEvent(int fd);
   Status Reply(int fd, const std::string &reply);
   void BecomeMonitorConn(redis::Connection *conn);
-  void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
+  void FeedMonitorConns(redis::Connection *conn, const std::string &response);
 
   std::string GetClientsStr();
   void KillClient(redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,

@@ -36,6 +36,6 @@ int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, size_t plen, const char *s, size_t slen, int nocase);
 std::string StringToHex(const std::string &input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
-std::string StringRepr(const std::string &s);
+std::string EscapeString(const std::string &s);
 
 }  // namespace util

@@ -81,3 +81,17 @@ TEST(StringUtil, HasPrefix) {
   ASSERT_TRUE(util::HasPrefix("has_prefix", "has_prefix"));
   ASSERT_FALSE(util::HasPrefix("has", "has_prefix"));
 }
+
+TEST(StringUtil, EscapeString) {
+  std::unordered_map<std::string, std::string> origin_to_escaped = {
+      {"abc", "abc"},
+      {"abc\r\n", "abc\\r\\n"},
+      {"\a\n\1foo\r", "\\a\\n\\x01foo\\r"},
+  };
+
+  for (const auto &item : origin_to_escaped) {
+    const std::string &origin = item.first;
+    const std::string &escaped = item.second;
+    ASSERT_TRUE(util::EscapeString(origin) == escaped);
+  }
+}

@@ -343,7 +343,7 @@ void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::st
   output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
   for (const auto &token : tokens) {
     output += " \"";
-    output += util::StringRepr(token);
+    output += util::EscapeString(token);
     output += "\"";
   }
   output += CRLF;

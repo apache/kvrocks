@@ -314,10 +314,10 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
   return tokens;
 }
 
-/* convert string to an escaped representation where
- * all the non-printable characters (tested with isprint()) are turned into
- * escapes in the form "\n\r\a...." or "\x<hex-number>". */
-std::string StringRepr(const std::string &s) {
+/* escape string where all the non-printable characters
+ * (tested with isprint()) are turned into escapes in
+ * the form "\n\r\a...." or "\x<hex-number>". */
+std::string EscapeString(const std::string &s) {
   std::string str;
   str.reserve(s.size());
 

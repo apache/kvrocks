@@ -40,6 +40,8 @@ std::string Integer(T data) {
   return ":" + std::to_string(data) + CRLF;
 }
 
+std::string Integer(bool data) { return Integer(data ? 1 : 0); }
+
 std::string BulkString(const std::string &data);
 std::string NilString();
 

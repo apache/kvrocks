@@ -435,7 +435,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
                             uint64_t ttl, int *flag) {
-  *flag = false;
+  *flag = 0;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -467,7 +467,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     if (!write_status.ok()) {
       return write_status;
     }
-    *flag = true;
+    *flag = 1;
   }
 
   return rocksdb::Status::OK();
@@ -476,7 +476,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 // Delete a specified user_key if the current value of the user_key matches a specified value.
 // For ret, same as CAS.
 rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *flag) {
-  *flag = false;
+  *flag = 0;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -499,7 +499,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
     if (!delete_status.ok()) {
       return delete_status;
     }
-    *flag = true;
+    *flag = 1;
   }
 
   return rocksdb::Status::OK();

@@ -23,6 +23,8 @@
 #include <gtest/gtest.h>
 
 #include <map>
+#include <string>
+#include <unordered_map>
 
 TEST(StringUtil, ToLower) {
   std::map<std::string, std::string> cases{

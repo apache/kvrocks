@@ -106,7 +106,7 @@ class CommandSIsMember : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(ret ? 1 : 0);
     return Status::OK();
   }
 };
@@ -227,7 +227,7 @@ class CommandSMove : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(ret ? 1 : 0);
     return Status::OK();
   }
 };

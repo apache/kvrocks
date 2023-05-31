@@ -48,13 +48,13 @@ class RedisGeoTest : public TestBase {
 };
 
 TEST_F(RedisGeoTest, Add) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
   geo_->Add(key_, &geo_points, &ret);
-  EXPECT_EQ(static_cast<int>(fields_.size()), ret);
+  EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> geo_hashes;
   geo_->Hash(key_, fields_, &geo_hashes);
   for (size_t i = 0; i < fields_.size(); i++) {
@@ -66,7 +66,7 @@ TEST_F(RedisGeoTest, Add) {
 }
 
 TEST_F(RedisGeoTest, Dist) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -80,7 +80,7 @@ TEST_F(RedisGeoTest, Dist) {
 }
 
 TEST_F(RedisGeoTest, Hash) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -96,7 +96,7 @@ TEST_F(RedisGeoTest, Hash) {
 }
 
 TEST_F(RedisGeoTest, Pos) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -114,7 +114,7 @@ TEST_F(RedisGeoTest, Pos) {
 }
 
 TEST_F(RedisGeoTest, Radius) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
@@ -132,13 +132,13 @@ TEST_F(RedisGeoTest, Radius) {
 }
 
 TEST_F(RedisGeoTest, RadiusByMember) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
   geo_->Add(key_, &geo_points, &ret);
-  EXPECT_EQ(static_cast<int>(fields_.size()), ret);
+  EXPECT_EQ(fields_.size(), ret);
   std::vector<GeoPoint> gps;
   geo_->RadiusByMember(key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());

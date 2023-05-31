@@ -41,7 +41,7 @@ class CommandSortedintAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    uint64_t ret = 0;
     auto s = sortedint_db.Add(args_[1], ids_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -71,7 +71,7 @@ class CommandSortedintRem : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    uint64_t ret = 0;
     auto s = sortedint_db.Remove(args_[1], ids_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -89,7 +89,7 @@ class CommandSortedintCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    uint64_t ret = 0;
     auto s = sortedint_db.Card(args_[1], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

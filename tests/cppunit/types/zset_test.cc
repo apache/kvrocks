@@ -42,7 +42,7 @@ class RedisZSetTest : public TestBase {
 };
 
 TEST_F(RedisZSetTest, Add) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -60,7 +60,7 @@ TEST_F(RedisZSetTest, Add) {
 }
 
 TEST_F(RedisZSetTest, IncrBy) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -77,7 +77,7 @@ TEST_F(RedisZSetTest, IncrBy) {
 }
 
 TEST_F(RedisZSetTest, Remove) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -95,12 +95,12 @@ TEST_F(RedisZSetTest, Remove) {
 }
 
 TEST_F(RedisZSetTest, Range) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  int count = static_cast<int>(mscores.size() - 1);
+  uint64_t count = mscores.size() - 1;
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(fields_.size(), ret);
   RangeRankSpec rank_spec;
@@ -116,12 +116,12 @@ TEST_F(RedisZSetTest, Range) {
 }
 
 TEST_F(RedisZSetTest, RevRange) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
-  int count = static_cast<int>(mscores.size() - 1);
+  uint64_t count = mscores.size() - 1;
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   RangeRankSpec rank_spec;
@@ -138,13 +138,13 @@ TEST_F(RedisZSetTest, RevRange) {
 }
 
 TEST_F(RedisZSetTest, PopMin) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
-  EXPECT_EQ(static_cast<int>(fields_.size()), ret);
+  EXPECT_EQ(fields_.size(), ret);
   zset_->Pop(key_, static_cast<int>(mscores.size() - 1), true, &mscores);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[i].ToString());
@@ -156,14 +156,14 @@ TEST_F(RedisZSetTest, PopMin) {
 }
 
 TEST_F(RedisZSetTest, PopMax) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
-  int count = static_cast<int>(fields_.size());
+  uint64_t count = fields_.size();
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
-  EXPECT_EQ(static_cast<int>(fields_.size()), ret);
+  EXPECT_EQ(fields_.size(), ret);
   zset_->Pop(key_, static_cast<int>(mscores.size() - 1), false, &mscores);
   for (size_t i = 0; i < mscores.size(); i++) {
     EXPECT_EQ(mscores[i].member, fields_[count - i - 1].ToString());
@@ -174,7 +174,7 @@ TEST_F(RedisZSetTest, PopMax) {
 }
 
 TEST_F(RedisZSetTest, RangeByLex) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -230,7 +230,7 @@ TEST_F(RedisZSetTest, RangeByLex) {
 }
 
 TEST_F(RedisZSetTest, RangeByScore) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -278,7 +278,7 @@ TEST_F(RedisZSetTest, RangeByScore) {
 }
 
 TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -299,7 +299,7 @@ TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
 }
 
 TEST_F(RedisZSetTest, RemRangeByScore) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -321,7 +321,7 @@ TEST_F(RedisZSetTest, RemRangeByScore) {
 }
 
 TEST_F(RedisZSetTest, RemoveRangeByRank) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -344,7 +344,7 @@ TEST_F(RedisZSetTest, RemoveRangeByRank) {
 }
 
 TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
@@ -367,7 +367,7 @@ TEST_F(RedisZSetTest, RemoveRevRangeByRank) {
 }
 
 TEST_F(RedisZSetTest, Rank) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});

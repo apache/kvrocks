@@ -46,7 +46,7 @@ class RedisHashTest : public TestBase {
 };
 
 TEST_F(RedisHashTest, GetAndSet) {
-  int ret = 0;
+  uint64_t ret = 0;
   for (size_t i = 0; i < fields_.size(); i++) {
     auto s = hash_->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
@@ -58,18 +58,18 @@ TEST_F(RedisHashTest, GetAndSet) {
     EXPECT_EQ(values_[i], got);
   }
   auto s = hash_->Delete(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, MGetAndMSet) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   auto s = hash_->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
+  EXPECT_TRUE(s.ok() && fvs.size() == ret);
   s = hash_->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(ret, 0);
@@ -87,7 +87,7 @@ TEST_F(RedisHashTest, MGetAndMSet) {
 }
 
 TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> values = {{"field-one", "value-one"}};
   auto s = hash_->MSet(key_, values, true, &ret);
   EXPECT_TRUE(s.ok() && ret == 1);
@@ -110,7 +110,7 @@ TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
 }
 
 TEST_F(RedisHashTest, MSetMultipleFieldsAndNX) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> values = {{"field-one", "value-one"}, {"field-two", "value-two"}};
   auto s = hash_->MSet(key_, values, true, &ret);
   EXPECT_TRUE(s.ok() && ret == 2);
@@ -134,7 +134,7 @@ TEST_F(RedisHashTest, MSetMultipleFieldsAndNX) {
 }
 
 TEST_F(RedisHashTest, HGetAll) {
-  int ret = 0;
+  uint64_t ret = 0;
   for (size_t i = 0; i < fields_.size(); i++) {
     auto s = hash_->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
@@ -143,7 +143,7 @@ TEST_F(RedisHashTest, HGetAll) {
   auto s = hash_->GetAll(key_, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
   s = hash_->Delete(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   hash_->Del(key_);
 }
 
@@ -165,7 +165,7 @@ TEST_F(RedisHashTest, HIncr) {
 }
 
 TEST_F(RedisHashTest, HIncrInvalid) {
-  int ret = 0;
+  uint64_t ret = 0;
   int64_t value = 0;
   Slice field("hash-incrby-invalid-field");
   auto s = hash_->IncrBy(key_, field, 1, &value);
@@ -201,7 +201,7 @@ TEST_F(RedisHashTest, HIncrByFloat) {
 }
 
 TEST_F(RedisHashTest, HRangeByLex) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < 4; i++) {
     fvs.emplace_back("key" + std::to_string(i), "value" + std::to_string(i));
@@ -216,7 +216,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
   for (size_t i = 0; i < 100; i++) {
     std::shuffle(tmp.begin(), tmp.end(), g);
     auto s = hash_->MSet(key_, tmp, false, &ret);
-    EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+    EXPECT_TRUE(s.ok() && tmp.size() == ret);
     s = hash_->MSet(key_, fvs, false, &ret);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(ret, 0);
@@ -237,7 +237,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
   }
 
   auto s = hash_->MSet(key_, tmp, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(tmp.size()) == ret);
+  EXPECT_TRUE(s.ok() && tmp.size() == ret);
   // use offset and count
   std::vector<FieldValue> result;
   RangeLexSpec spec;

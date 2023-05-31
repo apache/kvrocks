@@ -55,7 +55,7 @@ class CommandHSetNX : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     auto s = hash_db.MSet(args_[1], field_values_, true, &ret);
     if (!s.ok()) {
@@ -93,7 +93,7 @@ class CommandHDel : public Commander {
       fields.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     auto s = hash_db.Delete(args_[1], fields, &ret);
     if (!s.ok()) {
@@ -123,7 +123,7 @@ class CommandHExists : public Commander {
 class CommandHLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    uint32_t count = 0;
+    uint64_t count = 0;
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     auto s = hash_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
@@ -229,7 +229,7 @@ class CommandHMSet : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     auto s = hash_db.MSet(args_[1], field_values_, false, &ret);
     if (!s.ok()) {

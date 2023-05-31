@@ -163,9 +163,9 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const std::vector<StreamEntryID> &ids,
-                                      uint64_t *ret) {
-  *ret = 0;
+rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids,
+                                      uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(stream_name, &ns_key);
@@ -202,14 +202,14 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
     std::string value;
     s = storage_->Get(read_options, stream_cf_handle_, entry_key, &value);
     if (s.ok()) {
-      *ret += 1;
+      *deleted_cnt += 1;
       batch->Delete(stream_cf_handle_, entry_key);
 
       if (metadata.max_deleted_entry_id < id) {
         metadata.max_deleted_entry_id = id;
       }
 
-      if (*ret == metadata.size) {
+      if (*deleted_cnt == metadata.size) {
         metadata.first_entry_id.Clear();
         metadata.last_entry_id.Clear();
         metadata.recorded_first_entry_id.Clear();
@@ -240,8 +240,8 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
     }
   }
 
-  if (*ret > 0) {
-    metadata.size -= *ret;
+  if (*deleted_cnt > 0) {
+    metadata.size -= *deleted_cnt;
 
     std::string bytes;
     metadata.Encode(&bytes);
@@ -258,8 +258,8 @@ rocksdb::Status Stream::DeleteEntries(const rocksdb::Slice &stream_name, const s
 // If `StreamLenOptions::to_first` is set to true, the function will count elements
 // between specified ID and the first element in the stream.
 // The entry with the ID `StreamLenOptions::entry_id` has not taken into account (it serves as exclusive boundary).
-rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOptions &options, uint64_t *ret) {
-  *ret = 0;
+rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size) {
+  *size = 0;
   std::string ns_key;
   AppendNamespacePrefix(stream_name, &ns_key);
 
@@ -270,23 +270,23 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOp
   }
 
   if (!options.with_entry_id) {
-    *ret = metadata.size;
+    *size = metadata.size;
     return rocksdb::Status::OK();
   }
 
   if (options.entry_id > metadata.last_entry_id) {
-    *ret = options.to_first ? metadata.size : 0;
+    *size = options.to_first ? metadata.size : 0;
     return rocksdb::Status::OK();
   }
 
   if (options.entry_id < metadata.first_entry_id) {
-    *ret = options.to_first ? 0 : metadata.size;
+    *size = options.to_first ? 0 : metadata.size;
     return rocksdb::Status::OK();
   }
 
   if ((!options.to_first && options.entry_id == metadata.first_entry_id) ||
       (options.to_first && options.entry_id == metadata.last_entry_id)) {
-    *ret = metadata.size - 1;
+    *size = metadata.size - 1;
     return rocksdb::Status::OK();
   }
 
@@ -319,7 +319,7 @@ rocksdb::Status Stream::Len(const rocksdb::Slice &stream_name, const StreamLenOp
   }
 
   for (; iter->Valid(); options.to_first ? iter->Prev() : iter->Next()) {
-    *ret += 1;
+    *size += 1;
   }
 
   return rocksdb::Status::OK();
@@ -507,8 +507,8 @@ rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions
   return range(ns_key, metadata, options, entries);
 }
 
-rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret) {
-  *ret = 0;
+rocksdb::Status Stream::Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *delete_cnt) {
+  *delete_cnt = 0;
 
   if (options.strategy == StreamTrimStrategy::None) {
     return rocksdb::Status::OK();
@@ -529,9 +529,9 @@ rocksdb::Status Stream::Trim(const rocksdb::Slice &stream_name, const StreamTrim
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
-  *ret = trim(ns_key, options, &metadata, batch->GetWriteBatch());
+  *delete_cnt = trim(ns_key, options, &metadata, batch->GetWriteBatch());
 
-  if (*ret > 0) {
+  if (*delete_cnt > 0) {
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);

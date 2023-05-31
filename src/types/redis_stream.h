@@ -39,11 +39,11 @@ class Stream : public SubKeyScanner {
       : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle("stream")) {}
   rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
                       StreamEntryID *id);
-  rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *ret);
-  rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *ret);
+  rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);
+  rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
   rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options, std::vector<StreamEntry> *entries);
-  rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *ret);
+  rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *delete_cnt);
   rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
   rocksdb::Status SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,

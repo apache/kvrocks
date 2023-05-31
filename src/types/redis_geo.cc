@@ -24,7 +24,7 @@
 
 namespace redis {
 
-rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, int *ret) {
+rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, uint64_t *added_cnt) {
   std::vector<MemberScore> member_scores;
   for (const auto &geo_point : *geo_points) {
     /* Turn the coordinates into the score of the element. */
@@ -33,7 +33,7 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
     member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
-  return ZSet::Add(user_key, ZAddFlags::Default(), &member_scores, ret);
+  return ZSet::Add(user_key, ZAddFlags::Default(), &member_scores, added_cnt);
 }
 
 rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist) {
@@ -117,7 +117,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
         double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
-      int ret = 0;
+      uint64_t ret = 0;
       ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
     }
   }
@@ -305,7 +305,7 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, double 
   spec.min = min;
   spec.max = max;
   spec.maxex = true;
-  int size = 0;
+  uint64_t size = 0;
   std::vector<MemberScore> member_scores;
   rocksdb::Status s = ZSet::RangeByScore(user_key, spec, &member_scores, &size);
   if (!s.ok()) return 0;

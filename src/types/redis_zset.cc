@@ -34,8 +34,8 @@ rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
   return Database::GetMetadata(kRedisZSet, ns_key, metadata);
 }
 
-rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, int *ret) {
-  *ret = 0;
+rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt) {
+  *added_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -119,20 +119,20 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
     added++;
   }
   if (added > 0) {
-    *ret = added;
+    *added_cnt = added;
     metadata.size += added;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
   if (flags.HasCH()) {
-    *ret += changed;
+    *added_cnt += changed;
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
-  *ret = 0;
+rocksdb::Status ZSet::Card(const Slice &user_key, uint64_t *size) {
+  *size = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -140,16 +140,16 @@ rocksdb::Status ZSet::Card(const Slice &user_key, int *ret) {
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-  *ret = static_cast<int>(metadata.size);
+  *size = metadata.size;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Count(const Slice &user_key, const RangeScoreSpec &spec, int *ret) {
-  return RangeByScore(user_key, spec, nullptr, ret);
+rocksdb::Status ZSet::Count(const Slice &user_key, const RangeScoreSpec &spec, uint64_t *size) {
+  return RangeByScore(user_key, spec, nullptr, size);
 }
 
 rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double increment, double *score) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<MemberScore> mscores;
   mscores.emplace_back(MemberScore{member.ToString(), increment});
   rocksdb::Status s = Add(user_key, ZAddFlags::Incr(), &mscores, &ret);
@@ -219,12 +219,13 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores, int *ret) {
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,
+                                  uint64_t *removed_cnt) {
   if (mscores) mscores->clear();
 
-  int cnt = 0;
-  if (!ret) ret = &cnt;
-  *ret = 0;
+  uint64_t cnt = 0;
+  if (!removed_cnt) removed_cnt = &cnt;
+  *removed_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -286,7 +287,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
       } else {
         if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
       }
-      *ret += 1;
+      *removed_cnt += 1;
     }
     if (count++ >= stop) break;
   }
@@ -301,12 +302,13 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores, int *ret) {
+rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores,
+                                   uint64_t *removed_cnt) {
   if (mscores) mscores->clear();
 
-  int cnt = 0;
-  if (!ret) ret = &cnt;
-  *ret = 0;
+  uint64_t cnt = 0;
+  if (!removed_cnt) removed_cnt = &cnt;
+  *removed_cnt = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -405,12 +407,12 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
     } else {
       if (mscores) mscores->emplace_back(MemberScore{score_key.ToString(), score});
     }
-    *ret += 1;
+    *removed_cnt += 1;
     if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
-  if (spec.with_deletion && *ret > 0) {
-    metadata.size -= *ret;
+  if (spec.with_deletion && *removed_cnt > 0) {
+    metadata.size -= *removed_cnt;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -419,12 +421,13 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, Members *members, int *ret) {
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, Members *members,
+                                 uint64_t *removed_cnt) {
   if (members) members->clear();
 
-  int cnt = 0;
-  if (!ret) ret = &cnt;
-  *ret = 0;
+  uint64_t cnt = 0;
+  if (!removed_cnt) removed_cnt = &cnt;
+  *removed_cnt = 0;
 
   if (spec.offset > -1 && spec.count == 0) {
     return rocksdb::Status::OK();
@@ -497,12 +500,12 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
     } else {
       if (members) members->emplace_back(member.ToString());
     }
-    *ret += 1;
+    *removed_cnt += 1;
     if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
-  if (spec.with_deletion && *ret > 0) {
-    metadata.size -= *ret;
+  if (spec.with_deletion && *removed_cnt > 0) {
+    metadata.size -= *removed_cnt;
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -530,8 +533,8 @@ rocksdb::Status ZSet::Score(const Slice &user_key, const Slice &member, double *
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &members, int *ret) {
-  *ret = 0;
+rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt) {
+  *removed_cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -558,7 +561,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
     }
   }
   if (removed > 0) {
-    *ret = removed;
+    *removed_cnt = removed;
     metadata.size -= removed;
     std::string bytes;
     metadata.Encode(&bytes);
@@ -567,8 +570,8 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *ret) {
-  *ret = -1;
+rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank) {
+  *member_rank = -1;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -614,7 +617,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
     rank++;
   }
 
-  *ret = rank;
+  *member_rank = rank;
   return rocksdb::Status::OK();
 }
 
@@ -644,13 +647,13 @@ rocksdb::Status ZSet::Overwrite(const Slice &user_key, const MemberScores &mscor
 }
 
 rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
-                                 AggregateMethod aggregate_method, int *size) {
-  if (size) *size = 0;
+                                 AggregateMethod aggregate_method, uint64_t *saved_cnt) {
+  if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
-  int target_size = 0;
+  uint64_t target_size = 0;
   RangeScoreSpec spec;
   auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
   if (!s.ok() || target_mscores.empty()) return s;
@@ -697,7 +700,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
       if (member_counters[iter.first] != keys_weights.size()) continue;
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (size) *size = static_cast<int>(mscores.size());
+    if (saved_cnt) *saved_cnt = mscores.size();
     Overwrite(dst, mscores);
   }
 
@@ -705,12 +708,12 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
 }
 
 rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
-                                 AggregateMethod aggregate_method, int *size) {
-  if (size) *size = 0;
+                                 AggregateMethod aggregate_method, uint64_t *saved_cnt) {
+  if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
   std::vector<MemberScore> target_mscores;
-  int target_size = 0;
+  uint64_t target_size = 0;
   RangeScoreSpec spec;
   for (const auto &key_weight : keys_weights) {
     // get all member
@@ -747,7 +750,7 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
     for (const auto &iter : dst_zset) {
       mscores.emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (size) *size = static_cast<int>(mscores.size());
+    if (saved_cnt) *saved_cnt = mscores.size();
     Overwrite(dst, mscores);
   }
 

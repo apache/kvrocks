@@ -64,7 +64,7 @@ TEST_F(RedisDiskTest, HashDisk) {
   fields_ = {"hashdisk_kkey1", "hashdisk_kkey2", "hashdisk_kkey3", "hashdisk_kkey4", "hashdisk_kkey5"};
   values_.resize(5);
   uint64_t approximate_size = 0;
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
   std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(fields_.size()); i++) {
@@ -87,7 +87,7 @@ TEST_F(RedisDiskTest, SetDisk) {
   key_ = "setdisk_key";
   values_.resize(5);
   uint64_t approximate_size = 0;
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
   std::vector<std::string> values(value_size.size());
   for (int i = 0; i < int(values_.size()); i++) {
@@ -119,7 +119,7 @@ TEST_F(RedisDiskTest, ListDisk) {
     values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8 + 8;
   }
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = list->Push(key_, values_, false, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0;
@@ -133,7 +133,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   std::unique_ptr<redis::ZSet> zset = std::make_unique<redis::ZSet>(storage_, "disk_ns_zet");
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_zet");
   key_ = "zsetdisk_key";
-  int ret = 0;
+  uint64_t ret = 0;
   uint64_t approximate_size = 0;
   std::vector<MemberScore> mscores(5);
   std::vector<int> value_size{1024, 1024, 1024, 1024, 1024};
@@ -172,7 +172,7 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<redis::Sortedint> sortedint = std::make_unique<redis::Sortedint>(storage_, "disk_ns_sortedint");
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_sortedint");
   key_ = "sortedintdisk_key";
-  int ret = 0;
+  uint64_t ret = 0;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
     EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok() && ret == 1);

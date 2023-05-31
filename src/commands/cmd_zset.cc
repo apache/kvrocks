@@ -337,11 +337,9 @@ class CommandZMPop : public Commander {
   int count_ = 1;
 };
 
-
 class CommandZRangeStore : public Commander {
  public:
-  explicit CommandZRangeStore()
-      :range_type_(kZRangeRank) ,direction_(kZRangeDirectionForward) {}
+  explicit CommandZRangeStore() : range_type_(kZRangeRank), direction_(kZRangeDirectionForward) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     dst_ = args[1];
@@ -437,13 +435,12 @@ class CommandZRangeStore : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
     uint64_t ret = 0;
-    s = zset_db.Add(dst_,ZAddFlags(),&member_scores,&ret);
+    s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
     *output = redis::Integer(ret);
     return Status::OK();
-
   }
 
  private:
@@ -456,7 +453,6 @@ class CommandZRangeStore : public Commander {
   RangeLexSpec lex_spec_;
   RangeScoreSpec score_spec_;
 };
-
 
 class CommandZRangeGeneric : public Commander {
  public:

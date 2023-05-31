@@ -34,7 +34,7 @@ class CommandSAdd : public Commander {
       members.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Set set_db(svr->storage, conn->GetNamespace());
     auto s = set_db.Add(args_[1], members, &ret);
     if (!s.ok()) {
@@ -54,7 +54,7 @@ class CommandSRem : public Commander {
       members.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Set set_db(svr->storage, conn->GetNamespace());
     auto s = set_db.Remove(args_[1], members, &ret);
     if (!s.ok()) {
@@ -70,7 +70,7 @@ class CommandSCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Set set_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    uint64_t ret = 0;
     auto s = set_db.Card(args_[1], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -100,13 +100,13 @@ class CommandSIsMember : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Set set_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    bool ret = false;
     auto s = set_db.IsMember(args_[1], args_[2], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(ret ? 1 : 0);
     return Status::OK();
   }
 };
@@ -221,13 +221,13 @@ class CommandSMove : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Set set_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    bool ret = false;
     auto s = set_db.Move(args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(ret ? 1 : 0);
     return Status::OK();
   }
 };
@@ -300,7 +300,7 @@ class CommandSDiffStore : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Set set_db(svr->storage, conn->GetNamespace());
     auto s = set_db.DiffStore(args_[1], keys, &ret);
     if (!s.ok()) {
@@ -320,7 +320,7 @@ class CommandSUnionStore : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Set set_db(svr->storage, conn->GetNamespace());
     auto s = set_db.UnionStore(args_[1], keys, &ret);
     if (!s.ok()) {
@@ -340,7 +340,7 @@ class CommandSInterStore : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::Set set_db(svr->storage, conn->GetNamespace());
     auto s = set_db.InterStore(args_[1], keys, &ret);
     if (!s.ok()) {

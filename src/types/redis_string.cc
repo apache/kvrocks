@@ -112,8 +112,8 @@ rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::str
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status String::Append(const std::string &user_key, const std::string &value, int *ret) {
-  *ret = 0;
+rocksdb::Status String::Append(const std::string &user_key, const std::string &value, uint64_t *new_size) {
+  *new_size = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -126,7 +126,7 @@ rocksdb::Status String::Append(const std::string &user_key, const std::string &v
     metadata.Encode(&raw_value);
   }
   raw_value.append(value);
-  *ret = static_cast<int>(raw_value.size() - Metadata::GetOffsetAfterExpire(raw_value[0]));
+  *new_size = raw_value.size() - Metadata::GetOffsetAfterExpire(raw_value[0]);
   return updateRawValue(ns_key, raw_value);
 }
 
@@ -216,13 +216,13 @@ rocksdb::Status String::SetEX(const std::string &user_key, const std::string &va
   return MSet(pairs, ttl);
 }
 
-rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, int *ret) {
+rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSetNX(pairs, ttl, ret);
+  return MSetNX(pairs, ttl, flag);
 }
 
-rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, int *ret) {
-  *ret = 0;
+rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
+  *flag = false;
   int exists = 0;
   uint64_t expire = 0;
   if (ttl > 0) {
@@ -236,7 +236,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   Exists({user_key}, &exists);
   if (exists != 1) return rocksdb::Status::OK();
 
-  *ret = 1;
+  *flag = true;
   std::string raw_value;
   Metadata metadata(kRedisString, false);
   metadata.expire = expire;
@@ -245,7 +245,8 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, const std::string &value, int *ret) {
+rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, const std::string &value,
+                                 uint64_t *new_size) {
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -257,7 +258,7 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
   if (s.IsNotFound()) {
     // Return 0 directly instead of storing an empty key when set nothing on a non-existing string.
     if (value.empty()) {
-      *ret = 0;
+      *new_size = 0;
       return rocksdb::Status::OK();
     }
 
@@ -281,11 +282,11 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
       raw_value[offset + i] = value[i];
     }
   }
-  *ret = static_cast<int>(raw_value.size() - header_offset);
+  *new_size = raw_value.size() - header_offset;
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, int64_t *ret) {
+rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, int64_t *new_value) {
   std::string ns_key, value;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -316,14 +317,14 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
   n += increment;
-  *ret = n;
+  *new_value = n;
 
   raw_value = raw_value.substr(0, offset);
   raw_value.append(std::to_string(n));
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::IncrByFloat(const std::string &user_key, double increment, double *ret) {
+rocksdb::Status String::IncrByFloat(const std::string &user_key, double increment, double *new_value) {
   std::string ns_key, value;
   AppendNamespacePrefix(user_key, &ns_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -350,7 +351,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   if (std::isinf(n) || std::isnan(n)) {
     return rocksdb::Status::InvalidArgument("increment would produce NaN or Infinity");
   }
-  *ret = n;
+  *new_value = n;
 
   raw_value = raw_value.substr(0, offset);
   raw_value.append(std::to_string(n));
@@ -385,8 +386,8 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl)
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, int *ret) {
-  *ret = 0;
+rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {
+  *flag = false;
 
   uint64_t expire = 0;
   if (ttl > 0) {
@@ -423,7 +424,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
     auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
-  *ret = 1;
+  *flag = true;
   return rocksdb::Status::OK();
 }
 
@@ -433,8 +434,8 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  -1 if the user_key does not exist
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                            uint64_t ttl, int *ret) {
-  *ret = 0;
+                            uint64_t ttl, int *flag) {
+  *flag = 0;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -447,7 +448,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
   }
 
   if (s.IsNotFound()) {
-    *ret = -1;
+    *flag = -1;
     return rocksdb::Status::OK();
   }
 
@@ -466,7 +467,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
     if (!write_status.ok()) {
       return write_status;
     }
-    *ret = 1;
+    *flag = 1;
   }
 
   return rocksdb::Status::OK();
@@ -474,8 +475,8 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
 // Delete a specified user_key if the current value of the user_key matches a specified value.
 // For ret, same as CAS.
-rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *ret) {
-  *ret = 0;
+rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *flag) {
+  *flag = 0;
 
   std::string ns_key, current_value;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -488,7 +489,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   }
 
   if (s.IsNotFound()) {
-    *ret = -1;
+    *flag = -1;
     return rocksdb::Status::OK();
   }
 
@@ -498,7 +499,7 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
     if (!delete_status.ok()) {
       return delete_status;
     }
-    *ret = 1;
+    *flag = 1;
   }
 
   return rocksdb::Status::OK();

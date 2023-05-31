@@ -36,7 +36,7 @@ class CommandPush : public Commander {
       elems.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     rocksdb::Status s;
     redis::List list_db(svr->storage, conn->GetNamespace());
     if (create_if_missing_) {
@@ -320,7 +320,7 @@ class CommandLRem : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Rem(args_[1], count_, args_[3], &ret);
     if (!s.ok() && !s.IsNotFound()) {
@@ -398,7 +398,7 @@ class CommandLLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::List list_db(svr->storage, conn->GetNamespace());
-    uint32_t count = 0;
+    uint64_t count = 0;
     auto s = list_db.Size(args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};

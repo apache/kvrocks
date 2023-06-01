@@ -375,6 +375,50 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		})
 		require.Equal(t, []string{}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{
+			Key:     "zsrc",
+			Start:   2,
+			Stop:    5,
+			ByScore: true,
+		})
+		require.Equal(t, []string{"b", "c"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{
+			Key:     "zsrc",
+			Start:   2,
+			Stop:    3,
+			ByScore: true,
+		})
+		require.Equal(t, []string{"b"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{
+			Key:     "zsrc",
+			Start:   "[c",
+			Stop:    "[f",
+			ByScore: true,
+		})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{
+			Key:   "zsrc",
+			Start: "[c",
+			Stop:  "(f",
+			ByLex: true,
+		})
+		require.Equal(t, []string{"c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{
+			Key:   "zsrc",
+			Start: "-",
+			Stop:  "(f",
+			ByLex: true,
+		})
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 	})
 
 	t.Run(fmt.Sprintf("ZRANGE basics - %s", encoding), func(t *testing.T) {

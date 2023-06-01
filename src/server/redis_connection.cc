@@ -281,7 +281,7 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
   if (perf_context.empty()) return;  // request without db operation
 
-  auto entry = std::unique_ptr<PerfEntry>();
+  auto entry = std::make_unique<PerfEntry>();
   entry->cmd_name = cmd;
   entry->duration = duration;
   entry->iostats_context = std::move(iostats_context);

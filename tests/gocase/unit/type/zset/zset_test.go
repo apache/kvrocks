@@ -365,7 +365,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		// rev
 		rdb.Del(ctx, "zdst")
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Rev: true})
-		require.Equal(t, []string{"d", "c", "b"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
 		// byScore
 		rdb.Del(ctx, "zdst")

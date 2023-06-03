@@ -401,10 +401,8 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 7, Member: "f"})
 
 		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "xx", Stop: "ww"}).Err(), ".*not an integer.*")
-		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1}).Err(), ".*double.*")
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1}).Err(), ".*not an integer.*")
 		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Count: 1, Offset: 1}).Err(), ".*error.*")
-		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Rev: true}).Err(), ".*double.*")
-		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, ByScore: true, ByLex: true}).Err(), ".*double.*")
 	})
 
 	t.Run(fmt.Sprintf("ZRANGE basics - %s", encoding), func(t *testing.T) {

@@ -416,7 +416,6 @@ class CommandZRangeStore : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     std::vector<MemberScore> member_scores;
-    std::vector<std::string> members;
 
     rocksdb::Status s;
     switch (range_type_) {
@@ -428,12 +427,13 @@ class CommandZRangeStore : public Commander {
         s = zset_db.RangeByScore(src_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
-        s = zset_db.RangeByLex(src_, lex_spec_, &members, nullptr);
+        s = zset_db.RangeByLex(src_, lex_spec_, &member_scores, nullptr);
         break;
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
+
     uint64_t ret = 0;
     s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
     if (!s.ok()) {
@@ -547,7 +547,6 @@ class CommandZRangeGeneric : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     std::vector<MemberScore> member_scores;
-    std::vector<std::string> members;
 
     rocksdb::Status s;
     switch (range_type_) {
@@ -559,29 +558,19 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
-        s = zset_db.RangeByLex(key_, lex_spec_, &members, nullptr);
+        s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
         break;
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    switch (range_type_) {
-      case kZRangeLex:
-        output->append(redis::MultiBulkString(members, false));
-        return Status::OK();
-      case kZRangeAuto:
-      case kZRangeRank:
-      case kZRangeScore:
-        output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-        for (const auto &ms : member_scores) {
-          output->append(redis::BulkString(ms.member));
-          if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-        }
-        return Status::OK();
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : member_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
     }
-
-    return {Status::RedisParseErr, "unexpected range type"};
+    return Status::OK();
   }
 
  private:

@@ -421,9 +421,9 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, Members *members,
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
                                  uint64_t *removed_cnt) {
-  if (members) members->clear();
+  if (mscores) mscores->clear();
 
   uint64_t cnt = 0;
   if (!removed_cnt) removed_cnt = &cnt;
@@ -498,10 +498,10 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
       batch->Delete(score_cf_handle_, score_key);
       batch->Delete(iter->key());
     } else {
-      if (members) members->emplace_back(member.ToString());
+      if (mscores) mscores->emplace_back(MemberScore{member.ToString(), DecodeDouble(iter->value().data())});
     }
     *removed_cnt += 1;
-    if (spec.count > 0 && members && members->size() >= static_cast<unsigned>(spec.count)) break;
+    if (spec.count > 0 && mscores && mscores->size() >= static_cast<unsigned>(spec.count)) break;
   }
 
   if (spec.with_deletion && *removed_cnt > 0) {

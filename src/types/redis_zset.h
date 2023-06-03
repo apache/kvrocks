@@ -118,7 +118,8 @@ class ZSet : public SubKeyScanner {
                               uint64_t *removed_cnt);
   rocksdb::Status RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores,
                                uint64_t *removed_cnt);
-  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, Members *members, uint64_t *removed_cnt);
+  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
+                             uint64_t *removed_cnt);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

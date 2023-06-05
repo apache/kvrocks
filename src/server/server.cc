@@ -1754,8 +1754,7 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
   // zero
-  if (key_name.empty())
-  {
+  if (key_name.empty()) {
     return key_name;
   }
   // add 2 once make cursor don't be 0
@@ -1770,8 +1769,7 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   // zero
-  if (cursor.empty())
-  {
+  if (cursor.empty()) {
     return cursor;
   }
   size_t begin = read_index;

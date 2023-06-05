@@ -73,6 +73,11 @@ struct ChannelSubscribeNum {
   size_t subscribe_num;
 };
 
+struct CursorDictElement{
+  uint64_t cursor;
+  std::string key_name;
+};
+
 enum SlowLog {
   kSlowLogMaxArgc = 32,
   kSlowLogMaxString = 128,
@@ -184,6 +189,9 @@ class Server {
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
+
+  std::string GenerateCursorFromKeyName(const std::string& key_name);
+  std::string GetKeyNameFromCursor(const std::string& cursor);
 
   int DecrClientNum();
   int IncrClientNum();
@@ -308,6 +316,12 @@ class Server {
   std::atomic<size_t> watched_key_size_ = 0;
   std::map<std::string, std::set<redis::Connection *>> watched_key_map_;
   std::shared_mutex watched_key_mutex_;
+
+  // SCAN ring buffer
+  std::atomic<uint64_t> next_free_cursor = {1};
+  struct CursorDictElement cursor_dict[32];
+  std::atomic<size_t> write_index = {0};
+  std::atomic<size_t> read_index = {0};
 };
 
 Server *GetServer();

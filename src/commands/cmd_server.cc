@@ -775,13 +775,15 @@ class CommandScan : public CommandScanBase {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Database redis_db(svr->storage, conn->GetNamespace());
+    auto key_name = svr->GetKeyNameFromCursor(cursor_);
+
     std::vector<std::string> keys;
-    std::string end_cursor;
-    auto s = redis_db.Scan(cursor_, limit_, prefix_, &keys, &end_cursor);
+    std::string end_key;
+    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
+    auto end_cursor = svr->GenerateCursorFromKeyName(end_key);
     *output = GenerateOutput(keys, end_cursor);
     return Status::OK();
   }

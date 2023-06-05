@@ -337,6 +337,123 @@ class CommandZMPop : public Commander {
   int count_ = 1;
 };
 
+class CommandZRangeStore : public Commander {
+ public:
+  explicit CommandZRangeStore() : range_type_(kZRangeRank), direction_(kZRangeDirectionForward) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    dst_ = args[1];
+    src_ = args[2];
+
+    int64_t offset = 0;
+    int64_t count = -1;
+    // skip the <CMD> <dst> <src> <min> <max> args and parse remaining optional arguments
+    CommandParser parser(args, 5);
+    while (parser.Good()) {
+      if (parser.EatEqICase("limit")) {
+        auto parse_offset = parser.TakeInt<int64_t>();
+        auto parse_count = parser.TakeInt<int64_t>();
+        if (!parse_offset || !parse_count) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        offset = *parse_offset;
+        count = *parse_count;
+      } else if (parser.EatEqICase("bylex")) {
+        range_type_ = kZRangeLex;
+      } else if (parser.EatEqICase("byscore")) {
+        range_type_ = kZRangeScore;
+      } else if (parser.EatEqICase("rev")) {
+        direction_ = kZRangeDirectionReverse;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    if (count != -1 && range_type_ == kZRangeRank) {
+      return {Status::RedisParseErr,
+              "syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"};
+    }
+
+    // resolve index of <min> <max>
+    int min_idx = 3;
+    int max_idx = 4;
+    if (direction_ == kZRangeDirectionReverse && (range_type_ == kZRangeLex || range_type_ == kZRangeScore)) {
+      min_idx = 4;
+      max_idx = 3;
+    }
+
+    // parse range spec
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        GET_OR_RET(ParseRangeRankSpec(args[min_idx], args[max_idx], &rank_spec_));
+        if (direction_ == kZRangeDirectionReverse) {
+          rank_spec_.reversed = true;
+        }
+        break;
+      case kZRangeLex:
+        GET_OR_RET(ParseRangeLexSpec(args[min_idx], args[max_idx], &lex_spec_));
+        lex_spec_.offset = offset;
+        lex_spec_.count = count;
+        if (direction_ == kZRangeDirectionReverse) {
+          lex_spec_.reversed = true;
+        }
+        break;
+      case kZRangeScore:
+        GET_OR_RET(ParseRangeScoreSpec(args[min_idx], args[max_idx], &score_spec_));
+        score_spec_.offset = offset;
+        score_spec_.count = count;
+        if (direction_ == kZRangeDirectionReverse) {
+          score_spec_.reversed = true;
+        }
+        break;
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+
+    std::vector<MemberScore> member_scores;
+
+    rocksdb::Status s;
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        s = zset_db.RangeByRank(src_, rank_spec_, &member_scores, nullptr);
+        break;
+      case kZRangeScore:
+        s = zset_db.RangeByScore(src_, score_spec_, &member_scores, nullptr);
+        break;
+      case kZRangeLex:
+        s = zset_db.RangeByLex(src_, lex_spec_, &member_scores, nullptr);
+        break;
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    uint64_t ret = 0;
+    s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  std::string src_;
+  std::string dst_;
+  ZRangeType range_type_;
+  ZRangeDirection direction_;
+
+  RangeRankSpec rank_spec_;
+  RangeLexSpec lex_spec_;
+  RangeScoreSpec score_spec_;
+};
+
 class CommandZRangeGeneric : public Commander {
  public:
   explicit CommandZRangeGeneric(ZRangeType range_type = kZRangeAuto, ZRangeDirection direction = kZRangeDirectionAuto)
@@ -430,7 +547,6 @@ class CommandZRangeGeneric : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     std::vector<MemberScore> member_scores;
-    std::vector<std::string> members;
 
     rocksdb::Status s;
     switch (range_type_) {
@@ -442,29 +558,19 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
-        s = zset_db.RangeByLex(key_, lex_spec_, &members, nullptr);
+        s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
         break;
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    switch (range_type_) {
-      case kZRangeLex:
-        output->append(redis::MultiBulkString(members, false));
-        return Status::OK();
-      case kZRangeAuto:
-      case kZRangeRank:
-      case kZRangeScore:
-        output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-        for (const auto &ms : member_scores) {
-          output->append(redis::BulkString(ms.member));
-          if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-        }
-        return Status::OK();
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : member_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
     }
-
-    return {Status::RedisParseErr, "unexpected range type"};
+    return Status::OK();
   }
 
  private:
@@ -817,6 +923,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
+                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),

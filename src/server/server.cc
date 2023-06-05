@@ -1753,6 +1753,11 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
+  // zero
+  if (key_name.empty())
+  {
+    return key_name;
+  }
   // add 2 once make cursor don't be 0
   auto num_cursor = this->next_free_cursor.fetch_add(2, std::memory_order_relaxed);
   auto write_index = this->write_index.fetch_add(1, std::memory_order_relaxed) % 32;
@@ -1764,12 +1769,17 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
+  // zero
+  if (cursor.empty())
+  {
+    return cursor;
+  }
   size_t begin = read_index;
   size_t pos = 0;
   uint64_t cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
   // cursor 0 or not a Integer
   if (cursor_num == 0) {
-    return "0";
+    return std::string();
   }
   for (size_t i = begin; i >= 0; i--) {
     if (this->cursor_dict[i].cursor == cursor_num) {
@@ -1781,5 +1791,5 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
       return this->cursor_dict[i].key_name;
     }
   }
-  return "0";
+  return std::string();
 }

@@ -439,6 +439,10 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{4, "d"},
 		}, rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
 
+		for i := 0; i < 4; i++ {
+			require.Equal(t, []string{""}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: int64(i), Count: 0}).Val())
+		}
+
 		// extend zrange commands
 		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1}).Val())
 		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())

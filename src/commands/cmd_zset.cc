@@ -513,6 +513,8 @@ class CommandZRangeGeneric : public Commander {
       max_idx = 2;
     }
 
+    if (count == 0) zero_count_ = true;
+
     // parse range spec
     switch (range_type_) {
       case kZRangeAuto:
@@ -544,6 +546,11 @@ class CommandZRangeGeneric : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (zero_count_) {
+      *output = "";
+      return Status::OK();
+    }
+
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     std::vector<MemberScore> member_scores;
@@ -578,6 +585,7 @@ class CommandZRangeGeneric : public Commander {
   ZRangeType range_type_;
   ZRangeDirection direction_;
   bool with_scores_ = false;
+  bool zero_count_ = false;
 
   RangeRankSpec rank_spec_;
   RangeLexSpec lex_spec_;

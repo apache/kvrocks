@@ -18,6 +18,8 @@
  *
  */
 
+#include <cstdint>
+
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
@@ -292,6 +294,72 @@ class CommandSInter : public Commander {
   }
 };
 
+/*
+ * description:
+ *    syntax:   `SINTERCARD numkeys key [key ...] [LIMIT limit]`
+ *
+ *    limit:    the valid limit is an non-negative integer.
+ */
+class CommandSInterCard : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_numkey = ParseInt<int>(args[1], 10);
+    if (!parse_numkey) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    if (*parse_numkey <= 0) {
+      return {Status::RedisParseErr, errValueMustBePositive};
+    }
+    numkeys_ = *parse_numkey;
+
+    // command: for example, SINTERCARD 2 key1 key2 LIMIT 1
+    auto arg_sz = args.size();
+    if (arg_sz == numkeys_ + 4 && util::ToLower(args[numkeys_ + 2]) == "limit") {
+      auto parse_limit = ParseInt<int>(args[numkeys_ + 3], 10);
+      if (!parse_limit) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      if (*parse_limit < 0) {
+        return {Status::RedisParseErr, errLimitIsNegative};
+      }
+      limit_ = *parse_limit;
+      return Commander::Parse(args);
+    }
+
+    if (arg_sz != numkeys_ + 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<Slice> keys;
+    for (size_t i = 2; i < numkeys_ + 2; i++) {
+      keys.emplace_back(args_[i]);
+    }
+
+    redis::Set set_db(svr->storage, conn->GetNamespace());
+    uint64_t ret = 0;
+    auto s = set_db.InterCard(keys, limit_, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(ret);
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+
+ private:
+  uint64_t numkeys_ = 0;
+  uint64_t limit_ = 0;
+};
+
 class CommandSDiffStore : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -380,6 +448,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only", CommandSInterCard::Range),
                         MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
                         MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
                         MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),

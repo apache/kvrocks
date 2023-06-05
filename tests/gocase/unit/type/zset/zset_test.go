@@ -337,6 +337,74 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.EqualValues(t, 0, rdb.Exists(ctx, "zseta", "zsetb").Val())
 	})
 
+	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 3, Member: "b"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 4, Member: "c"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 6, Member: "d"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 9, Member: "g"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 7, Member: "f"})
+
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3})
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 2})
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 0})
+		require.Equal(t, []string{"a"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		//add none
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 99, Stop: 99})
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// rev
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Rev: true})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byScore
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 2, Stop: 5, ByScore: true})
+		require.Equal(t, []string{"b", "c"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byScore limit offset count
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "1", Stop: "7", ByScore: true, Offset: 2, Count: 3})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byLex
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[c", Stop: "[f", ByLex: true})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byLex limit offset count
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[a", Stop: "[g", ByLex: true, Offset: 2, Count: 3})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGESTORE error - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 3, Member: "b"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 4, Member: "c"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 6, Member: "d"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 9, Member: "g"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 7, Member: "f"})
+
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "xx", Stop: "ww"}).Err(), ".*not an integer.*")
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1}).Err(), ".*not an integer.*")
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Count: 1, Offset: 1}).Err(), ".*error.*")
+	})
+
 	t.Run(fmt.Sprintf("ZRANGE basics - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
 		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 1, Member: "a"})

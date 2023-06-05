@@ -175,44 +175,48 @@ TEST_F(RedisZSetTest, PopMax) {
 
 TEST_F(RedisZSetTest, RangeByLex) {
   uint64_t ret = 0;
+  uint64_t count = fields_.size();
   std::vector<MemberScore> mscores;
   for (size_t i = 0; i < fields_.size(); i++) {
     mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
-  EXPECT_EQ(fields_.size(), ret);
+  EXPECT_EQ(count, ret);
 
   RangeLexSpec spec;
   spec.min = fields_[0].ToString();
   spec.max = fields_[fields_.size() - 1].ToString();
-  std::vector<std::string> members;
-  zset_->RangeByLex(key_, spec, &members, nullptr);
-  EXPECT_EQ(members.size(), fields_.size());
-  for (size_t i = 0; i < members.size(); i++) {
-    EXPECT_EQ(members[i], fields_[i].ToString());
+  zset_->RangeByLex(key_, spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), fields_.size());
+  for (size_t i = 0; i < mscores.size(); i++) {
+    EXPECT_EQ(mscores[i].member, fields_[i].ToString());
+    EXPECT_EQ(mscores[i].score, scores_[i]);
   }
 
   spec.minex = true;
-  zset_->RangeByLex(key_, spec, &members, nullptr);
-  EXPECT_EQ(members.size(), fields_.size() - 1);
-  for (size_t i = 0; i < members.size(); i++) {
-    EXPECT_EQ(members[i], fields_[i + 1].ToString());
+  zset_->RangeByLex(key_, spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), fields_.size() - 1);
+  for (size_t i = 0; i < mscores.size(); i++) {
+    EXPECT_EQ(mscores[i].member, fields_[i + 1].ToString());
+    EXPECT_EQ(mscores[i].score, scores_[i + 1]);
   }
 
   spec.minex = false;
   spec.maxex = true;
-  zset_->RangeByLex(key_, spec, &members, nullptr);
-  EXPECT_EQ(members.size(), fields_.size() - 1);
-  for (size_t i = 0; i < members.size(); i++) {
-    EXPECT_EQ(members[i], fields_[i].ToString());
+  zset_->RangeByLex(key_, spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), fields_.size() - 1);
+  for (size_t i = 0; i < mscores.size(); i++) {
+    EXPECT_EQ(mscores[i].member, fields_[i].ToString());
+    EXPECT_EQ(mscores[i].score, scores_[i]);
   }
 
   spec.minex = true;
   spec.maxex = true;
-  zset_->RangeByLex(key_, spec, &members, nullptr);
-  EXPECT_EQ(members.size(), fields_.size() - 2);
-  for (size_t i = 0; i < members.size(); i++) {
-    EXPECT_EQ(members[i], fields_[i + 1].ToString());
+  zset_->RangeByLex(key_, spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), fields_.size() - 2);
+  for (size_t i = 0; i < mscores.size(); i++) {
+    EXPECT_EQ(mscores[i].member, fields_[i + 1].ToString());
+    EXPECT_EQ(mscores[i].score, scores_[i + 1]);
   }
   spec.minex = false;
   spec.maxex = false;
@@ -220,10 +224,11 @@ TEST_F(RedisZSetTest, RangeByLex) {
   spec.max = "+";
   spec.max_infinite = true;
   spec.reversed = true;
-  zset_->RangeByLex(key_, spec, &members, nullptr);
-  EXPECT_EQ(members.size(), fields_.size());
-  for (size_t i = 0; i < members.size(); i++) {
-    EXPECT_EQ(members[i], fields_[6 - i].ToString());
+  zset_->RangeByLex(key_, spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), fields_.size());
+  for (size_t i = 0; i < mscores.size(); i++) {
+    EXPECT_EQ(mscores[i].member, fields_[count - i - 1].ToString());
+    EXPECT_EQ(mscores[i].score, scores_[count - i - 1]);
   }
 
   zset_->Del(key_);

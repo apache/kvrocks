@@ -318,10 +318,10 @@ class Server {
   std::shared_mutex watched_key_mutex_;
 
   // SCAN ring buffer
-  std::atomic<uint64_t> next_free_cursor = {1};
-  struct CursorDictElement cursor_dict[32];
-  std::atomic<size_t> write_index = {0};
-  std::atomic<size_t> read_index = {0};
+  std::atomic<uint64_t> next_free_cursor_ = {1};
+  struct CursorDictElement cursor_dict_[32];
+  std::atomic<size_t> write_index_ = {0};
+  std::atomic<size_t> read_index_ = {0};
 };
 
 Server *GetServer();

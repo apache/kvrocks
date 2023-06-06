@@ -1758,11 +1758,11 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
     return key_name;
   }
   // add 2 once make cursor don't be 0
-  auto num_cursor = this->next_free_cursor.fetch_add(2, std::memory_order_relaxed);
-  auto write_index = this->write_index.fetch_add(1, std::memory_order_relaxed) % 32;
+  auto num_cursor = this->next_free_cursor_.fetch_add(2, std::memory_order_relaxed);
+  auto write_index = this->write_index_.fetch_add(1, std::memory_order_relaxed) % 32;
   auto exp_read_index = write_index - 1;
-  this->cursor_dict[write_index] = {num_cursor, key_name};
-  while (!this->read_index.compare_exchange_weak(exp_read_index, write_index, std::memory_order_relaxed)) {
+  this->cursor_dict_[write_index] = {num_cursor, key_name};
+  while (!this->read_index_.compare_exchange_weak(exp_read_index, write_index, std::memory_order_relaxed)) {
   }
   return std::to_string(num_cursor);
 }
@@ -1772,7 +1772,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   if (cursor.empty()) {
     return cursor;
   }
-  size_t begin = read_index;
+  size_t begin = read_index_;
   size_t pos = 0;
   uint64_t cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
   // cursor 0 or not a Integer
@@ -1780,13 +1780,13 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
     return std::string();
   }
   for (size_t i = begin; i >= 0; i--) {
-    if (this->cursor_dict[i].cursor == cursor_num) {
-      return this->cursor_dict[i].key_name;
+    if (this->cursor_dict_[i].cursor == cursor_num) {
+      return this->cursor_dict_[i].key_name;
     }
   }
   for (size_t i = 32; i > begin + 4; i--) {
-    if (this->cursor_dict[i].cursor == cursor_num) {
-      return this->cursor_dict[i].key_name;
+    if (this->cursor_dict_[i].cursor == cursor_num) {
+      return this->cursor_dict_[i].key_name;
     }
   }
   return std::string();

@@ -1774,10 +1774,10 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   }
   size_t begin = read_index_;
   size_t pos = 0;
-  uint64_t cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
+  auto cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
   // cursor 0 or not a Integer
   if (cursor_num == 0) {
-    return std::string();
+    return {};
   }
   for (size_t i = begin; i >= 0; i--) {
     if (this->cursor_dict_[i].cursor == cursor_num) {
@@ -1789,5 +1789,5 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
       return this->cursor_dict_[i].key_name;
     }
   }
-  return std::string();
+  return {};
 }

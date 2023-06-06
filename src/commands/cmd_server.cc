@@ -759,10 +759,10 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  static std::string GenerateOutput(const std::vector<std::string> &keys, std::string end_cursor) {
+  static std::string GenerateOutput(Server *svr, const std::vector<std::string> &keys, std::string end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
-      end_cursor = kCursorPrefix + end_cursor;
+      end_cursor = svr->GenerateCursorFromKeyName(kCursorPrefix + end_cursor);
       list.emplace_back(redis::BulkString(end_cursor));
     } else {
       list.emplace_back(redis::BulkString("0"));
@@ -783,8 +783,7 @@ class CommandScan : public CommandScanBase {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    auto end_cursor = svr->GenerateCursorFromKeyName(end_key);
-    *output = GenerateOutput(keys, end_cursor);
+    *output = GenerateOutput(svr, keys, end_key);
     return Status::OK();
   }
 };

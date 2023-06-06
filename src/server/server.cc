@@ -1754,22 +1754,22 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
   // zero
-  if (key_name.empty()) {
+  if (key_name.empty() || !config_->number_cursor_enabled) {
     return key_name;
   }
   // add 2 once make cursor don't be 0
-  auto num_cursor = this->next_free_cursor_.fetch_add(2, std::memory_order_relaxed);
-  auto write_index = this->write_index_.fetch_add(1, std::memory_order_relaxed) % 32;
+  auto num_cursor = next_free_cursor_.fetch_add(2, std::memory_order_relaxed);
+  auto write_index = write_index_.fetch_add(1, std::memory_order_relaxed) % 32;
   auto exp_read_index = write_index - 1;
-  this->cursor_dict_[write_index] = {num_cursor, key_name};
-  while (!this->read_index_.compare_exchange_weak(exp_read_index, write_index, std::memory_order_relaxed)) {
+  cursor_dict_[write_index] = {num_cursor, key_name};
+  while (!read_index_.compare_exchange_weak(exp_read_index, write_index, std::memory_order_relaxed)) {
   }
   return std::to_string(num_cursor);
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   // zero
-  if (cursor.empty()) {
+  if (cursor.empty() || !config_->number_cursor_enabled) {
     return cursor;
   }
   size_t begin = read_index_;
@@ -1780,13 +1780,13 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
     return {};
   }
   for (size_t i = begin; i >= 0; i--) {
-    if (this->cursor_dict_[i].cursor == cursor_num) {
-      return this->cursor_dict_[i].key_name;
+    if (cursor_dict_[i].cursor == cursor_num) {
+      return cursor_dict_[i].key_name;
     }
   }
   for (size_t i = 32; i > begin + 4; i--) {
-    if (this->cursor_dict_[i].cursor == cursor_num) {
-      return this->cursor_dict_[i].key_name;
+    if (cursor_dict_[i].cursor == cursor_num) {
+      return cursor_dict_[i].key_name;
     }
   }
   return {};

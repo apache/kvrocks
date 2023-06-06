@@ -1757,13 +1757,11 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
   if (key_name.empty() || !config_->number_cursor_enabled) {
     return key_name;
   }
-  // add 2 once make cursor don't be 0
-  auto num_cursor = next_free_cursor_.fetch_add(2, std::memory_order_relaxed);
-  auto write_index = write_index_.fetch_add(1, std::memory_order_relaxed) % 32;
-  auto exp_read_index = write_index - 1;
-  cursor_dict_[write_index] = {num_cursor, key_name};
-  while (!read_index_.compare_exchange_weak(exp_read_index, write_index, std::memory_order_relaxed)) {
-  }
+  std::lock_guard<std::mutex> guard(cursor_index_mu_);
+  auto num_cursor = next_free_cursor_ += 2;
+  size_t index = (cursor_index_ + 1) % 32;
+  cursor_dict_[index] = {num_cursor, key_name};
+  cursor_index_ = index;
   return std::to_string(num_cursor);
 }
 
@@ -1772,21 +1770,22 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   if (cursor.empty() || !config_->number_cursor_enabled) {
     return cursor;
   }
-  size_t begin = read_index_;
+  size_t begin = cursor_index_;
   size_t pos = 0;
   auto cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
   // cursor 0 or not a Integer
   if (cursor_num == 0) {
     return {};
   }
-  for (size_t i = begin; i >= 0; i--) {
-    if (cursor_dict_[i].cursor == cursor_num) {
-      return cursor_dict_[i].key_name;
+  for (auto it = cursor_dict_.begin() + begin; it >= cursor_dict_.begin(); --it) {
+    if (it->cursor == cursor_num) {
+      return it->key_name;
     }
   }
-  for (size_t i = 32; i > begin + 4; i--) {
-    if (cursor_dict_[i].cursor == cursor_num) {
-      return cursor_dict_[i].key_name;
+
+  for (auto it = cursor_dict_.end() - 1; it >= cursor_dict_.begin() + begin; --it) {
+    if (it->cursor == cursor_num) {
+      return it->key_name;
     }
   }
   return {};

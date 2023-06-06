@@ -73,6 +73,8 @@ struct ChannelSubscribeNum {
   size_t subscribe_num;
 };
 
+const int CURSOR_DICT_SIZE = 64;
+
 struct CursorDictElement {
   uint64_t cursor;
   std::string key_name;
@@ -318,8 +320,8 @@ class Server {
   std::shared_mutex watched_key_mutex_;
 
   // SCAN ring buffer
-  std::atomic<uint64_t> next_free_cursor_ = {1};
-  struct CursorDictElement cursor_dict_[32];
-  std::atomic<size_t> write_index_ = {0};
-  std::atomic<size_t> read_index_ = {0};
+  std::mutex cursor_index_mu_;
+  size_t cursor_index_ = {0};
+  uint64_t next_free_cursor_ = {1};
+  std::array<struct CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
 };

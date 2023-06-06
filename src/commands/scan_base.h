@@ -23,6 +23,7 @@
 #include "commander.h"
 #include "error_constants.h"
 #include "parse_util.h"
+#include "server/server.h"
 
 namespace redis {
 

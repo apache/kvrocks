@@ -323,5 +323,3 @@ class Server {
   std::atomic<size_t> write_index_ = {0};
   std::atomic<size_t> read_index_ = {0};
 };
-
-Server *GetServer();

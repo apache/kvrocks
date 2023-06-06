@@ -309,5 +309,3 @@ class Server {
   std::map<std::string, std::set<redis::Connection *>> watched_key_map_;
   std::shared_mutex watched_key_mutex_;
 };
-
-Server *GetServer();

@@ -55,8 +55,6 @@ bool Symbolize(void *pc, char *out, size_t out_size);
 
 Server *srv = nullptr;
 
-Server *GetServer() { return srv; }
-
 extern "C" void SignalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
     LOG(INFO) << "Bye Bye";

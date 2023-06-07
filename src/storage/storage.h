@@ -178,10 +178,10 @@ class Storage {
   std::string GetReplIdFromDbEngine();
 
  private:
-  rocksdb::DB *db_ = nullptr;
+  std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
   time_t backup_creating_time_;
-  rocksdb::BackupEngine *backup_ = nullptr;
+  std::unique_ptr<rocksdb::BackupEngine> backup_ = nullptr;
   rocksdb::Env *env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter_;

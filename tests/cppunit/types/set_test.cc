@@ -107,7 +107,7 @@ TEST_F(RedisSetTest, Move) {
   uint64_t ret = 0;
   bool flag = false;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   Slice dst("set-test-move-key");
   for (auto &field : fields_) {
     s = set_->Move(key_, dst, field, &flag);

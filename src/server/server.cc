@@ -1751,3 +1751,14 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
     watched_key_size_ = watched_key_map_.size();
   }
 }
+
+std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
+  std::list<std::pair<std::string, uint32_t>> result;
+  slave_threads_mu_.lock();
+  for (const auto &slave : slave_threads_) {
+    if (slave->IsStopped()) continue;
+    result.push_back({slave->GetConn()->GetAnnounceIP(), slave->GetConn()->GetListeningPort()});
+  }
+  slave_threads_mu_.unlock();
+  return result;
+}

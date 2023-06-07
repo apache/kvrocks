@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "commands/scan_base.h"
+#include "common/io_util.h"
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
@@ -867,6 +868,17 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
+  bool isTryingToReplicateItself(std::string host, uint32_t port, Server *svr) {
+    if (util::MatchListeningIP(svr->GetConfig()->binds, host) && port == svr->GetConfig()->port) {
+      return true;
+    }
+    for (std::pair<std::string, uint32_t> hostPortPair : svr->GetSlaveHostAndPort()) {
+      if (hostPortPair.first == host && hostPortPair.second == port) {
+        return true;
+      }
+    }
+    return false;
+  }
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     const auto &port = args[2];
@@ -896,6 +908,10 @@ class CommandSlaveOf : public Commander {
     if (!conn->IsAdmin()) {
       *output = redis::Error(errAdministorPermissionRequired);
       return Status::OK();
+    }
+
+    if (isTryingToReplicateItself(host_, port_, svr)) {
+      return {Status::RedisExecErr, "slave can't replicate itself"};
     }
 
     if (host_.empty()) {

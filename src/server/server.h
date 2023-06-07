@@ -22,6 +22,7 @@
 
 #include <inttypes.h>
 
+#include <array>
 #include <list>
 #include <map>
 #include <memory>

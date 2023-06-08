@@ -73,6 +73,8 @@ class CommandZAdd : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
+    svr->WakeupBlockingConns(args_[1], member_scores_.size());
+
     if (flags_.HasIncr()) {
       auto new_score = member_scores_[0].score;
       if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
@@ -273,6 +275,158 @@ class CommandZPopMax : public CommandZPop {
   CommandZPopMax() : CommandZPop(false) {}
 };
 
+class CommandBZPop : public Commander,
+                     private EvbufCallbackBase<CommandBZPop, false>,
+                     private EventCallbackBase<CommandBZPop> {
+ public:
+  explicit CommandBZPop(bool min) : min_(min) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
+
+    if (!parse_result) {
+      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
+    }
+
+    if (*parse_result < 0) {
+      return {Status::RedisParseErr, "timeout should not be negative"};
+    }
+
+    timeout_ = *parse_result;
+
+    keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr_ = svr;
+    conn_ = conn;
+
+    auto bev = conn->GetBufferEvent();
+
+    auto s = TryPopFromZset();
+
+    if(!s.ok() || reply_flag) {
+      return Status::OK();  // error has already output or result has already output
+    }
+
+    //All Empty
+    if (conn->IsInExec()) {
+      *output = redis::MultiLen(-1);
+      return Status::OK();  // No blocking in multi-exec
+    }
+
+    for (const auto &key : keys_) {
+      svr_->BlockOnKey(key, conn_);
+    }
+
+    SetCB(bev);
+
+    if (timeout_) {
+      timer_.reset(NewTimer(bufferevent_get_base(bev)));
+      timeval tm = {timeout_, 0};
+      evtimer_add(timer_.get(), &tm);
+    }
+
+    return {Status::BlockingCmd};
+  }
+
+  rocksdb::Status TryPopFromZset() {
+    redis::ZSet zset_db(svr_->storage, conn_->GetNamespace());
+    rocksdb::Status s;
+    for (auto &user_key : keys_) {
+      std::vector<MemberScore> member_scores;
+      s = zset_db.Pop(user_key, count_, min_, &member_scores);
+      if (!s.ok()) {
+        conn_->Reply(redis::Error("ERR " + s.ToString()));
+        break;
+      }
+      if (member_scores.empty()) {
+        continue;
+      }
+      std::string output;
+      output.append(redis::MultiLen(member_scores.size() * 2));
+      for (const auto &ms : member_scores) {
+        output.append(redis::BulkString(ms.member));
+        output.append(redis::BulkString(util::Float2String(ms.score)));
+      }
+      conn_->Reply(output);
+      reply_flag = true;
+      break;
+    }
+    return s;
+  }
+
+  void OnWrite(bufferevent *bev) {
+    auto s = TryPopFromZset();
+    if (!reply_flag) {
+      // The connection may be waked up but can't pop from list. For example,
+      // connection A is blocking on list and connection B push a new element
+      // then wake up the connection A, but this element may be token by other connection C.
+      // So we need to wait for the wake event again by disabling the WRITE event.
+      bufferevent_disable(bev, EV_WRITE);
+      return;
+    }
+
+    if (timer_) {
+      timer_.reset();
+    }
+
+    unBlockingAll();
+    conn_->SetCB(bev);
+    bufferevent_enable(bev, EV_READ);
+    // We need to manually trigger the read event since we will stop processing commands
+    // in connection after the blocking command, so there may have some commands to be processed.
+    // Related issue: https://github.com/apache/incubator-kvrocks/issues/831
+    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
+  }
+
+  void OnEvent(bufferevent *bev, int16_t events) {
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+      if (timer_ != nullptr) {
+        timer_.reset();
+      }
+      unBlockingAll();
+    }
+    conn_->OnEvent(bev, events);
+  }
+
+  void TimerCB(int, int16_t events) {
+    conn_->Reply(redis::NilString());
+    timer_.reset();
+    unBlockingAll();
+    auto bev = conn_->GetBufferEvent();
+    conn_->SetCB(bev);
+    bufferevent_enable(bev, EV_READ);
+  }
+
+ private:
+  bool min_;
+  int count_ = 1;
+  int timeout_;
+  std::vector<std::string> keys_;
+  Server *svr_ = nullptr;
+  Connection *conn_ = nullptr;
+  UniqueEvent timer_;
+  bool reply_flag = false;
+
+  void unBlockingAll() {
+    for (const auto &key : keys_) {
+      svr_->UnblockOnKey(key, conn_);
+    }
+  }
+};
+
+class CommandBZPopMin : public CommandBZPop {
+ public:
+  CommandBZPopMin() : CommandBZPop(true) {}
+};
+
+class CommandBZPopMax : public CommandBZPop {
+ public:
+  CommandBZPopMax() : CommandBZPop(false) {}
+};
+
 class CommandZMPop : public Commander {
  public:
   CommandZMPop() = default;
@@ -381,6 +535,10 @@ class CommandBZMPop : public Commander,
 
     auto s = TryPopFromZset();
 
+    if(!s.ok() || reply_flag) {
+      return Status::OK();  // error has already output or result has already output
+    }
+
     //All Empty
     if (conn->IsInExec()) {
       *output = redis::MultiLen(-1);
@@ -423,13 +581,15 @@ class CommandBZMPop : public Commander,
         output.append(redis::BulkString(util::Float2String(ms.score)));
       }
       conn_->Reply(output);
+      reply_flag = true;
+      break;
     }
     return s;
   }
 
   void OnWrite(bufferevent *bev) {
     auto s = TryPopFromZset();
-    if (!s.ok()) {
+    if (!s.ok() || !reply_flag) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -484,6 +644,7 @@ class CommandBZMPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
+  bool reply_flag = false;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {
@@ -1090,6 +1251,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBZPopMax>("bzpopmax", -3, "write", 1, -2, 1),
+                        MakeCmdAttr<CommandBZPopMin>("bzpopmin", -3, "write", 1, -2, 1),
                         MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
                         MakeCmdAttr<CommandBZMPop>("bzmpop", -5, "write", CommandBZMPop::Range),
                         MakeCmdAttr<CommandZRangeStore>("zrangestore", -4, "write", 1, 1, 1),

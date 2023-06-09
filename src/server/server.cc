@@ -1757,9 +1757,11 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
   if (key_name.empty() || !config_->number_cursor_enabled) {
     return key_name;
   }
+  // use mutex make next_free_cursor_, cursor_index_ thread safe.
+  // we do not need to ensure read consistency of cursor_dict_ and cursor_index_. 
   std::lock_guard<std::mutex> guard(cursor_index_mu_);
   auto num_cursor = next_free_cursor_ += 2;
-  size_t index = (cursor_index_ + 1) % 32;
+  size_t index = (cursor_index_ + 1) % cursor_dict_.size();
   cursor_dict_[index] = {num_cursor, key_name};
   cursor_index_ = index;
   return std::to_string(num_cursor);
@@ -1772,11 +1774,12 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   }
   size_t begin = cursor_index_;
   size_t pos = 0;
-  auto cursor_num = static_cast<uint64_t>(std::stoi(cursor, &pos));
+  auto s = ParseInt<uint64_t>(cursor, 10);
   // cursor 0 or not a Integer
-  if (cursor_num == 0) {
+  if (!s.IsOK() || *s==0) {
     return {};
   }
+  auto cursor_num = *s;
   for (auto it = cursor_dict_.begin() + begin; it >= cursor_dict_.begin(); --it) {
     if (it->cursor == cursor_num) {
       return it->key_name;

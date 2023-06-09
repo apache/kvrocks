@@ -1752,13 +1752,17 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
   }
 }
 
-std::string Server::GenerateCursorFromKeyName(const std::string &key_name) {
+std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
   // zero
   if (key_name.empty() || !config_->number_cursor_enabled) {
     return key_name;
   }
+  if(!config_->number_cursor_enabled){
+      // add prefix for SCAN
+      return prefix + key_name;
+  }
   // use mutex make next_free_cursor_, cursor_index_ thread safe.
-  // we do not need to ensure read consistency of cursor_dict_ and cursor_index_. 
+  // we do not need to ensure read consistency of cursor_dict_ and cursor_index_.
   std::lock_guard<std::mutex> guard(cursor_index_mu_);
   auto num_cursor = next_free_cursor_ += 2;
   size_t index = (cursor_index_ + 1) % cursor_dict_.size();
@@ -1776,7 +1780,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   size_t pos = 0;
   auto s = ParseInt<uint64_t>(cursor, 10);
   // cursor 0 or not a Integer
-  if (!s.IsOK() || *s==0) {
+  if (!s.IsOK() || *s == 0) {
     return {};
   }
   auto cursor_num = *s;

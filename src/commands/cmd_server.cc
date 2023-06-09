@@ -762,7 +762,7 @@ class CommandScan : public CommandScanBase {
   static std::string GenerateOutput(Server *svr, const std::vector<std::string> &keys, std::string end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
-      end_cursor = svr->GenerateCursorFromKeyName(end_cursor);
+      end_cursor = svr->GenerateCursorFromKeyName(end_cursor, kCursorPrefix);
       list.emplace_back(redis::BulkString(end_cursor));
     } else {
       list.emplace_back(redis::BulkString("0"));

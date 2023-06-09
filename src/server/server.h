@@ -193,7 +193,7 @@ class Server {
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
-  std::string GenerateCursorFromKeyName(const std::string &key_name);
+  std::string GenerateCursorFromKeyName(const std::string &key_name, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor);
 
   int DecrClientNum();

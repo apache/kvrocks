@@ -1753,16 +1753,17 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
-  // zero
-  if (key_name.empty() || !config_->number_cursor_enabled) {
+  // Although the parameter 'key_name' is not expected to be empty, we still added a check for empty to increase the
+  // robustness of the code.
+  if (key_name.empty()) {
     return key_name;
   }
   if (!config_->number_cursor_enabled) {
     // add prefix for SCAN
     return prefix + key_name;
   }
-  // use mutex make next_free_cursor_, cursor_index_ thread safe
-  // we do not need to ensure read consistency of cursor_dict_ and cursor_index_
+  // Use mutex make next_free_cursor_, cursor_index_ thread safe.
+  // We do not need to ensure read consistency of cursor_dict_ and cursor_index_.
   std::lock_guard<std::mutex> guard(cursor_index_mu_);
   auto num_cursor = next_free_cursor_ += 2;
   size_t index = (cursor_index_ + 1) % cursor_dict_.size();
@@ -1772,18 +1773,21 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
-  // zero
+  // When cursor is 0, cursor string is empty
   if (cursor.empty() || !config_->number_cursor_enabled) {
     return cursor;
   }
   size_t begin = cursor_index_;
-  size_t pos = 0;
   auto s = ParseInt<uint64_t>(cursor, 10);
-  // cursor 0 or not a Integer
+  // When Cursor 0 or not a Integer return empty string.
+  // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of
+  // the code.
   if (!s.IsOK() || *s == 0) {
     return {};
   }
   auto cursor_num = *s;
+
+  // Traverse the ring buffer in reverse order from the current index and retrieve the first matching cursor.
   for (auto it = cursor_dict_.begin() + begin; it >= cursor_dict_.begin(); --it) {
     if (it->cursor == cursor_num) {
       return it->key_name;

@@ -868,12 +868,12 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
-  bool isTryingToReplicateItself(std::string host, uint32_t port, Server *svr) {
+  bool static IsTryingToReplicateItself(std::string &host, uint32_t port, Server *svr) {
     if (util::MatchListeningIP(svr->GetConfig()->binds, host) && port == svr->GetConfig()->port) {
       return true;
     }
-    for (std::pair<std::string, uint32_t> hostPortPair : svr->GetSlaveHostAndPort()) {
-      if (hostPortPair.first == host && hostPortPair.second == port) {
+    for (std::pair<std::string, uint32_t> &host_port_pair : svr->GetSlaveHostAndPort()) {
+      if (host_port_pair.first == host && host_port_pair.second == port) {
         return true;
       }
     }
@@ -910,7 +910,7 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    if (isTryingToReplicateItself(host_, port_, svr)) {
+    if (IsTryingToReplicateItself(host_, port_, svr)) {
       return {Status::RedisExecErr, "slave can't replicate itself"};
     }
 

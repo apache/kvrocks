@@ -1757,7 +1757,8 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   slave_threads_mu_.lock();
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
-    result.push_back({slave->GetConn()->GetAnnounceIP(), slave->GetConn()->GetListeningPort()});
+    std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(), slave->GetConn()->GetListeningPort()};
+    result.emplace_back(host_port_pair);
   }
   slave_threads_mu_.unlock();
   return result;

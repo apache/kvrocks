@@ -345,7 +345,8 @@ class CommandBZPop : public Commander,
         continue;
       }
       std::string output;
-      output.append(redis::MultiLen(member_scores.size() * 2));
+      output.append(redis::MultiLen(member_scores.size() * 2 + 1));
+      output.append(redis::BulkString(user_key));
       for (const auto &ms : member_scores) {
         output.append(redis::BulkString(ms.member));
         output.append(redis::BulkString(util::Float2String(ms.score)));
@@ -568,6 +569,7 @@ class CommandBZMPop : public Commander,
       s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores);
       if (!s.ok()) {
         conn_->Reply(redis::Error("ERR " + s.ToString()));
+        break;
       }
       if (member_scores.empty()) {
         continue;

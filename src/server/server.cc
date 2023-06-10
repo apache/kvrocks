@@ -1753,11 +1753,6 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
-  // Although the parameter 'key_name' is not expected to be empty, we still added a check for empty to increase the
-  // robustness of the code.
-  if (key_name.empty()) {
-    return key_name;
-  }
   if (!config_->number_cursor_enabled) {
     // add prefix for SCAN
     return prefix + key_name;

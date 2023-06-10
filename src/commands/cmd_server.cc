@@ -868,7 +868,10 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
-  bool static IsTryingToReplicateItself(std::string &host, uint32_t port, Server *svr) {
+  bool static IsTryingToReplicateItself(std::string host, uint32_t port, Server *svr) {
+    if (host == "localhost") {
+      host = "127.0.0.1";
+    }
     if (util::MatchListeningIP(svr->GetConfig()->binds, host) && port == svr->GetConfig()->port) {
       return true;
     }

@@ -346,7 +346,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   size_t keys_size = keys.size();
 
   if (keys_size == 1 && has_limit) {
-    *cnt = std::min(target_members.size(), limit);
+    *cnt = std::min(static_cast<uint64_t>(target_members.size()), limit);
     return rocksdb::Status::OK();
   }
 

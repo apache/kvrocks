@@ -553,7 +553,7 @@ class CommandZRangeGeneric : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (zero_count_) {
-      *output = "";
+      *output = redis::NilString();
       return Status::OK();
     }
 

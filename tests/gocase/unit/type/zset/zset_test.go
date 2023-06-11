@@ -443,6 +443,15 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			require.Equal(t, []string{""}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: int64(i), Count: 0}).Val())
 		}
 
+		// limit with zero count
+		for i := 0; i < 20; i++ {
+			var args [3]int64
+			for i := 0; i < 3; i++ {
+				args[i] = rand.Int63n(10) - 20
+			}
+			require.Equal(t, []string{""}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: args[0], Stop: args[1], Offset: args[2]}).Val())
+		}
+
 		// extend zrange commands
 		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1}).Val())
 		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
@@ -458,15 +467,6 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{2, "b"},
 			{1, "a"},
 		}, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
-
-		// limit with zero count
-		for i := 0; i < 20; i++ {
-			var args [3]int64
-			for i := 0; i < 3; i++ {
-				args[i] = rand.Int63n(10) - 20
-			}
-			require.Equal(t, []string{""}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: args[0], Stop: args[1], Offset: args[2]}).Val())
-		}
 
 	})
 

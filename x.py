@@ -29,6 +29,7 @@ from typing import List, Any, Optional, TextIO, Tuple
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
 CLANG_TIDY_REQUIRED_VERSION = (12, 0, 0)
+GOLANGCI_LINT_REQUIRED_VERSION = (1, 49, 0)
 
 SEMVER_REGEX = re.compile(
     r"""
@@ -192,15 +193,25 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
-def golangci_lint() -> None:
-    go = find_command('go', msg='go is required for testing')
-    gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
-    bindir = Path(gopath).absolute() / 'bin'
-    binpath = bindir / 'golangci-lint'
-    if not binpath.exists():
-        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh',
-                          verbose=True)
-        run('sh', '-s', '--', '-b', str(bindir), 'v1.49.0', verbose=True, stdin=output)
+def golangci_lint(golangci_lint_path:str) -> None:
+    binpath = ""
+    golangci_command = find_command(golangci_lint_path,msg="golangci-lint is required")
+    version_res = run_pipe(golangci_command, '--version').read().strip()
+    version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
+    
+    check_version(version_str,GOLANGCI_LINT_REQUIRED_VERSION,"golangci-lint")
+    
+    if golangci_command != "":
+        binpath = golangci_command
+    else:
+        go = find_command('go', msg='go is required for testing')
+        gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
+        bindir = Path(gopath).absolute() / 'bin'
+        binpath = bindir / 'golangci-lint'
+        if not binpath.exists():
+            output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh',
+                            verbose=True)
+            run('sh', '-s', '--', '-b', str(bindir), 'v1.49.0', verbose=True, stdin=output)
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     run(str(binpath), 'run', '-v', './...', cwd=str(basedir), verbose=True)
 
@@ -319,7 +330,9 @@ if __name__ == '__main__':
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
     parser_check_golangci_lint.set_defaults(func=golangci_lint)
-
+    parser_check_golangci_lint.add_argument('--golangci-lint-path', default='golangci-lint',
+                                   help="path of golangci-lint used to check source")
+    
     parser_build = subparsers.add_parser(
         'build',
         description="Build executables to BUILD_DIR [default: build]",

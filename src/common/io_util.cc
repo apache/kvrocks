@@ -99,6 +99,33 @@ Status SockSetTcpKeepalive(int fd, int interval) {
   return Status::OK();
 }
 
+// Lookup IP addresses by hostname
+StatusOr<std::vector<std::string>> LookupHostByName(const std::string &host) {
+  addrinfo hints = {}, *servinfo = nullptr;
+
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  if (int rv = getaddrinfo(host.c_str(), nullptr, &hints, &servinfo); rv != 0) {
+    return {Status::NotOK, gai_strerror(rv)};
+  }
+
+  auto exit = MakeScopeExit([servinfo] { freeaddrinfo(servinfo); });
+
+  std::vector<std::string> ips;
+  for (auto p = servinfo; p != nullptr; p = p->ai_next) {
+    char ip[INET6_ADDRSTRLEN] = {};
+    if (p->ai_family == AF_INET) {
+      inet_ntop(p->ai_family, &((struct sockaddr_in *)p->ai_addr)->sin_addr, ip, sizeof(ip));
+    } else {
+      inet_ntop(p->ai_family, &((struct sockaddr_in6 *)p->ai_addr)->sin6_addr, ip, sizeof(ip));
+    }
+    ips.emplace_back(ip);
+  }
+
+  return ips;
+}
+
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout, int timeout) {
   addrinfo hints = {}, *servinfo = nullptr;
 

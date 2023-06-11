@@ -868,20 +868,24 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
-  bool static IsTryingToReplicateItself(std::string host, uint32_t port, Server *svr) {
-    if (host == "localhost") {
-      host = "127.0.0.1";
+  bool IsTryingToReplicateItself(Server *svr, const std::string &host, uint32_t port) {
+    auto ip_addresses = util::LookupHostByName(host);
+    if (!ip_addresses) {
+      return false;
     }
-    if (util::MatchListeningIP(svr->GetConfig()->binds, host) && port == svr->GetConfig()->port) {
-      return true;
-    }
-    for (std::pair<std::string, uint32_t> &host_port_pair : svr->GetSlaveHostAndPort()) {
-      if (host_port_pair.first == host && host_port_pair.second == port) {
+    for (auto &ip : *ip_addresses) {
+      if (util::MatchListeningIP(svr->GetConfig()->binds, ip) && port == svr->GetConfig()->port) {
         return true;
+      }
+      for (std::pair<std::string, uint32_t> &host_port_pair : svr->GetSlaveHostAndPort()) {
+        if (host_port_pair.first == ip && host_port_pair.second == port) {
+          return true;
+        }
       }
     }
     return false;
   }
+
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     const auto &port = args[2];
@@ -913,7 +917,7 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    if (IsTryingToReplicateItself(host_, port_, svr)) {
+    if (IsTryingToReplicateItself(svr, host_, port_)) {
       return {Status::RedisExecErr, "slave can't replicate itself"};
     }
 

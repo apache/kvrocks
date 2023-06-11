@@ -193,15 +193,14 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
-def golangci_lint(golangci_lint_path:str) -> None:
+def golangci_lint(golangci_lint_path: str) -> None:
     binpath = ""
-    golangci_command = find_command(golangci_lint_path,msg="golangci-lint is required")
+    golangci_command = find_command(golangci_lint_path, msg="golangci-lint is required")
     version_res = run_pipe(golangci_command, '--version').read().strip()
     version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
-    
-    check_version(version_str,GOLANGCI_LINT_REQUIRED_VERSION,"golangci-lint")
-    
-    if golangci_command != "":
+
+    if golangci_command:
+        check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
         binpath = golangci_command
     else:
         go = find_command('go', msg='go is required for testing')

@@ -332,7 +332,8 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
  * key3 = {a,c,e}
  * INTER key1 key2 key3 = {c}
  */
-rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members, uint64_t *cnt) {
+rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members, uint64_t limit,
+                           uint64_t *cnt) {
   members->clear();
 
   std::map<std::string, size_t> member_counters;
@@ -340,13 +341,12 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   auto s = Members(keys[0], &target_members);
   if (!s.ok() || target_members.empty()) return s;
 
-  uint64_t limit = cnt ? *cnt : 0;
   bool has_limit = limit != 0;
-  bool limited = false;
+  bool limit_reached = false;
   size_t keys_size = keys.size();
 
   if (keys_size == 1 && has_limit) {
-    if (limit > target_members.size()) *cnt = target_members.size();
+    *cnt = limit > target_members.size() ? target_members.size() : limit;
     return rocksdb::Status::OK();
   }
 
@@ -360,19 +360,21 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
       if (cnt) *cnt = 0;
       return s;
     }
+
     for (const auto &member : target_members) {
       auto iter = member_counters.find(member);
       if (iter == member_counters.end()) continue;
+
       if (++iter->second == keys_size && has_limit) {
         members->emplace_back(member);
         if (--limit == 0) {
-          limited = true;
+          limit_reached = true;
           break;
         }
       }
     }
 
-    if (limited) break;
+    if (limit_reached) break;
   }
 
   if (!has_limit) {
@@ -382,15 +384,14 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
       }
     }
   }
-  if (cnt) *cnt = members->size();
 
+  if (cnt) *cnt = members->size();
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cnt) {
   std::vector<std::string> members;
-  *cnt = limit;
-  rocksdb::Status s = Inter(keys, &members, cnt);
+  rocksdb::Status s = Inter(keys, &members, limit, cnt);
   if (!s.ok()) return s;
   return rocksdb::Status::OK();
 }

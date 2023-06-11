@@ -444,9 +444,10 @@ func TestShouldNotReplicate(t *testing.T) {
 
 	t.Run("Master should not be able to replicate slave", func(t *testing.T) {
 		util.SlaveOf(t, slaveClient, master)
+		util.WaitForSync(t, slaveClient)
 		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
 		err := masterClient.SlaveOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
-		require.Equal(t, "ERR can't replicate your own replicas", err.Error())
+		require.EqualErrorf(t, err, "ERR can't replicate your own replicas", err.Error())
 		require.Equal(t, "master", util.FindInfoEntry(masterClient, "role"))
 	})
 }

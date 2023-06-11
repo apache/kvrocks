@@ -306,7 +306,7 @@ class CommandBZPop : public Commander,
 
     auto s = TryPopFromZset();
 
-    if (!s.ok() || reply_flag) {
+    if (!s.ok() || reply_flag_) {
       return Status::OK();  // error has already output or result has already output
     }
 
@@ -352,7 +352,7 @@ class CommandBZPop : public Commander,
         output.append(redis::BulkString(util::Float2String(ms.score)));
       }
       conn_->Reply(output);
-      reply_flag = true;
+      reply_flag_ = true;
       break;
     }
     return s;
@@ -360,7 +360,7 @@ class CommandBZPop : public Commander,
 
   void OnWrite(bufferevent *bev) {
     auto s = TryPopFromZset();
-    if (!reply_flag) {
+    if (!reply_flag_) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -409,7 +409,7 @@ class CommandBZPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  bool reply_flag = false;
+  bool reply_flag_ = false;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {
@@ -536,7 +536,7 @@ class CommandBZMPop : public Commander,
 
     auto s = TryPopFromZset();
 
-    if (!s.ok() || reply_flag) {
+    if (!s.ok() || reply_flag_) {
       return Status::OK();  // error has already output or result has already output
     }
 
@@ -583,7 +583,7 @@ class CommandBZMPop : public Commander,
         output.append(redis::BulkString(util::Float2String(ms.score)));
       }
       conn_->Reply(output);
-      reply_flag = true;
+      reply_flag_ = true;
       break;
     }
     return s;
@@ -591,7 +591,7 @@ class CommandBZMPop : public Commander,
 
   void OnWrite(bufferevent *bev) {
     auto s = TryPopFromZset();
-    if (!s.ok() || !reply_flag) {
+    if (!s.ok() || !reply_flag_) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -646,7 +646,7 @@ class CommandBZMPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  bool reply_flag = false;
+  bool reply_flag_ = false;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {

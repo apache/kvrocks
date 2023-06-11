@@ -868,7 +868,7 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
-  Status IsTryingToReplicateItself(Server *svr, const std::string &host, uint32_t port) {
+  static Status IsTryingToReplicateItself(Server *svr, const std::string &host, uint32_t port) {
     auto ip_addresses = util::LookupHostByName(host);
     if (!ip_addresses) {
       return {Status::NotOK, "Can not resolve hostname: " + host};

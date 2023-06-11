@@ -442,7 +442,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 		for i := 0; i < 10; i++ {
 			cmd := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: 0, Stop: -1, Offset: int64(i)})
-			require.Equal(t, []interface{}{}, cmd.Val())
+			require.Equal(t, []string{}, cmd.Val())
 		}
 
 		// limit with zero count
@@ -454,7 +454,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			}
 
 			cmd := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: args[0], Stop: args[1], Offset: args[2]})
-			require.Equal(t, []interface{}{}, cmd.Val())
+			require.Equal(t, []string{}, cmd.Val())
 		}
 
 		// extend zrange commands

@@ -306,11 +306,11 @@ class CommandBZPop : public Commander,
 
     auto s = TryPopFromZset();
 
-    if(!s.ok() || reply_flag) {
+    if (!s.ok() || reply_flag) {
       return Status::OK();  // error has already output or result has already output
     }
 
-    //All Empty
+    // All Empty
     if (conn->IsInExec()) {
       *output = redis::MultiLen(-1);
       return Status::OK();  // No blocking in multi-exec
@@ -536,11 +536,11 @@ class CommandBZMPop : public Commander,
 
     auto s = TryPopFromZset();
 
-    if(!s.ok() || reply_flag) {
+    if (!s.ok() || reply_flag) {
       return Status::OK();  // error has already output or result has already output
     }
 
-    //All Empty
+    // All Empty
     if (conn->IsInExec()) {
       *output = redis::MultiLen(-1);
       return Status::OK();  // No blocking in multi-exec
@@ -638,7 +638,7 @@ class CommandBZMPop : public Commander,
   }
 
  private:
-  int timeout_ = 0; //seconds
+  int timeout_ = 0;  // seconds
   int numkeys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;

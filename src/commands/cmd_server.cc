@@ -917,11 +917,6 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    auto s = IsTryingToReplicateItself(svr, host_, port_);
-    if (!s.IsOK()) {
-      return {Status::RedisExecErr, s.Msg()};
-    }
-
     if (host_.empty()) {
       auto s = svr->RemoveMaster();
       if (!s.IsOK()) {
@@ -938,6 +933,10 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
+    auto s = IsTryingToReplicateItself(svr, host_, port_);
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, s.Msg()};
+    }
     s = svr->AddMaster(host_, port_, false);
     if (s.IsOK()) {
       *output = redis::SimpleString("OK");

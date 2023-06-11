@@ -31,7 +31,7 @@
 
 namespace lua {
 
-lua_State *CreateState(bool read_only = false);
+lua_State *CreateState(Server *svr, bool read_only = false);
 void DestroyState(lua_State *lua);
 
 void LoadFuncs(lua_State *lua, bool read_only = false);

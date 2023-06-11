@@ -42,8 +42,8 @@ class Set : public SubKeyScanner {
   rocksdb::Status Take(const Slice &user_key, std::vector<std::string> *members, int count, bool pop);
   rocksdb::Status Diff(const std::vector<Slice> &keys, std::vector<std::string> *members);
   rocksdb::Status Union(const std::vector<Slice> &keys, std::vector<std::string> *members);
-  rocksdb::Status Inter(const std::vector<Slice> &keys, std::vector<std::string> *members, uint64_t limit = 0,
-                        uint64_t *cnt = nullptr);
+  rocksdb::Status Inter(const std::vector<Slice> &keys, std::vector<std::string> *members, uint64_t limit,
+                        uint64_t *cnt);
   rocksdb::Status InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cnt);
   rocksdb::Status Overwrite(Slice user_key, const std::vector<std::string> &members);
   rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt);

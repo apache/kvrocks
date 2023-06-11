@@ -346,7 +346,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   size_t keys_size = keys.size();
 
   if (keys_size == 1 && has_limit) {
-    *cnt = limit > target_members.size() ? target_members.size() : limit;
+    *cnt = std::min(target_members.size(), limit);
     return rocksdb::Status::OK();
   }
 
@@ -357,7 +357,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   for (size_t i = 1; i < keys_size; i++) {
     s = Members(keys[i], &target_members);
     if (!s.ok() || target_members.empty()) {
-      if (cnt) *cnt = 0;
+      *cnt = 0;
       return s;
     }
 
@@ -385,7 +385,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
     }
   }
 
-  if (cnt) *cnt = members->size();
+  *cnt = members->size();
   return rocksdb::Status::OK();
 }
 
@@ -417,7 +417,8 @@ rocksdb::Status Set::UnionStore(const Slice &dst, const std::vector<Slice> &keys
 rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<std::string> members;
-  auto s = Inter(keys, &members);
+  uint64_t cnt = 0;
+  auto s = Inter(keys, &members, 0, &cnt);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
   return Overwrite(dst, members);

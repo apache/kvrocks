@@ -284,7 +284,8 @@ class CommandSInter : public Commander {
 
     std::vector<std::string> members;
     redis::Set set_db(svr->storage, conn->GetNamespace());
-    auto s = set_db.Inter(keys, &members);
+    uint64_t cnt = 0;
+    auto s = set_db.Inter(keys, &members, 0, &cnt);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

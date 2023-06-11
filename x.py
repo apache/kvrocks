@@ -199,9 +199,9 @@ def golangci_lint(golangci_lint_path: str) -> None:
         golangci_command = find_command(golangci_lint_path, msg="golangci-lint is required")
         version_res = run_pipe(golangci_command, '--version').read().strip()
         version_str = re.search(r'version\s+((?:\w|\.)+)', version_res).group(1)
-        if golangci_command:
-            check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
-            binpath = golangci_command
+
+        check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
+        binpath = golangci_command
     else:
         go = find_command('go', msg='go is required for testing')
         gopath = run_pipe(go, 'env', 'GOPATH').read().strip()

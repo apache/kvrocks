@@ -447,7 +447,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		for i := 0; i < 20; i++ {
 			var args [3]int64
 			for i := 0; i < 3; i++ {
-				args[i] = rand.Int63n(10) - 20
+				args[i] = rand.Int63n(20) - 10
 			}
 			require.Equal(t, []string{""}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: args[0], Stop: args[1], Offset: args[2]}).Val())
 		}

@@ -454,6 +454,12 @@ class CommandZRangeStore : public Commander {
   RangeScoreSpec score_spec_;
 };
 
+/*
+ * description:
+ *    syntax:   `ZRANGE key start stop [BYSCORE | BYLEX] [REV] [LIMIT offset count]
+ *              [WITHSCORES]`
+ *
+ */
 class CommandZRangeGeneric : public Commander {
  public:
   explicit CommandZRangeGeneric(ZRangeType range_type = kZRangeAuto, ZRangeDirection direction = kZRangeDirectionAuto)

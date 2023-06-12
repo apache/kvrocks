@@ -188,13 +188,12 @@ TEST_F(RedisSetTest, Inter) {
   set_->Add(k5, {"a"}, &ret);
   EXPECT_EQ(ret, 1);
   std::vector<std::string> members;
-  uint64_t cnt = 0;
-  set_->Inter({k1, k2, k3}, &members, 0, &cnt);
+  set_->Inter({k1, k2, k3}, &members);
   EXPECT_EQ(1, members.size());
   members.clear();
-  set_->Inter({k1, k2, k4}, &members, 0, &cnt);
+  set_->Inter({k1, k2, k4}, &members);
   EXPECT_EQ(0, members.size());
-  set_->Inter({k1, k4, k5}, &members, 0, &cnt);
+  set_->Inter({k1, k4, k5}, &members);
   EXPECT_EQ(0, members.size());
   set_->Del(k1);
   set_->Del(k2);

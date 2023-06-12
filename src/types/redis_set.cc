@@ -332,41 +332,66 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
  * key3 = {a,c,e}
  * INTER key1 key2 key3 = {c}
  */
-rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members, uint64_t limit,
-                           uint64_t *cnt) {
+rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
   members->clear();
 
   std::map<std::string, size_t> member_counters;
   std::vector<std::string> target_members;
   auto s = Members(keys[0], &target_members);
   if (!s.ok() || target_members.empty()) return s;
+  for (const auto &member : target_members) {
+    member_counters[member] = 1;
+  }
+  for (size_t i = 1; i < keys.size(); i++) {
+    s = Members(keys[i], &target_members);
+    if (!s.ok() || target_members.empty()) return s;
+    for (const auto &member : target_members) {
+      if (member_counters.find(member) == member_counters.end()) continue;
+      member_counters[member]++;
+    }
+  }
+  for (const auto &iter : member_counters) {
+    if (iter.second == keys.size()) {  // all the sets contain this member
+      members->emplace_back(iter.first);
+    }
+  }
+  return rocksdb::Status::OK();
+}
 
-  bool has_limit = limit != 0;
-  bool limit_reached = false;
+rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cnt) {
+  *cnt = 0;
+
+  std::map<std::string, size_t> member_counters;
+  std::vector<std::string> target_members;
+
+  auto s = Members(keys[0], &target_members);
+  if (!s.ok() || target_members.empty()) return s;
+  for (const auto &member : target_members) {
+    member_counters[member] = 1;
+  }
+  if (limit == 0) {
+    limit = target_members.size();
+  }
+
   size_t keys_size = keys.size();
-
-  if (keys_size == 1 && has_limit) {
+  if (keys_size == 1) {
     *cnt = std::min(static_cast<uint64_t>(target_members.size()), limit);
     return rocksdb::Status::OK();
   }
 
-  for (const auto &member : target_members) {
-    member_counters[member] = 1;
-  }
-
+  int cardinality = 0;
+  bool limit_reached = false;
   for (size_t i = 1; i < keys_size; i++) {
     s = Members(keys[i], &target_members);
     if (!s.ok() || target_members.empty()) {
-      *cnt = 0;
       return s;
     }
 
     for (const auto &member : target_members) {
       auto iter = member_counters.find(member);
       if (iter == member_counters.end()) continue;
-
-      if (++iter->second == keys_size && has_limit) {
-        members->emplace_back(member);
+      if (++iter->second == keys_size) {
+        cardinality++;
         if (--limit == 0) {
           limit_reached = true;
           break;
@@ -377,22 +402,7 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
     if (limit_reached) break;
   }
 
-  if (!has_limit) {
-    for (const auto &iter : member_counters) {
-      if (iter.second == keys_size) {  // all the sets contain this member
-        members->emplace_back(iter.first);
-      }
-    }
-  }
-
-  *cnt = members->size();
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cnt) {
-  std::vector<std::string> members;
-  rocksdb::Status s = Inter(keys, &members, limit, cnt);
-  if (!s.ok()) return s;
+  *cnt = cardinality;
   return rocksdb::Status::OK();
 }
 
@@ -417,8 +427,7 @@ rocksdb::Status Set::UnionStore(const Slice &dst, const std::vector<Slice> &keys
 rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<std::string> members;
-  uint64_t cnt = 0;
-  auto s = Inter(keys, &members, 0, &cnt);
+  auto s = Inter(keys, &members);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
   return Overwrite(dst, members);

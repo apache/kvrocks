@@ -236,6 +236,9 @@ void Server::Join() {
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
   }
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << "Task runner thread operation failed: " << s.Msg();
+  }
 }
 
 Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reconnect) {

@@ -42,13 +42,7 @@ class TaskRunner {
 
   TaskRunner(const TaskRunner&) = delete;
   TaskRunner& operator=(const TaskRunner&) = delete;
-
-  ~TaskRunner() {
-    if (state_ != Stopped) {
-      Cancel();
-      auto _ = Join();
-    }
-  }
+  ~TaskRunner() = default;
 
   template <typename T>
   void Publish(T&& task) {

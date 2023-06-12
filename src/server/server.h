@@ -244,6 +244,7 @@ class Server {
   void WatchKey(redis::Connection *conn, const std::vector<std::string> &keys);
   static bool IsWatchedKeysModified(redis::Connection *conn);
   void ResetWatchedKeys(redis::Connection *conn);
+  std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;

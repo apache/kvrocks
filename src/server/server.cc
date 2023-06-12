@@ -1754,6 +1754,19 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
   }
 }
 
+std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
+  std::list<std::pair<std::string, uint32_t>> result;
+  slave_threads_mu_.lock();
+  for (const auto &slave : slave_threads_) {
+    if (slave->IsStopped()) continue;
+    std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(),
+                                                  slave->GetConn()->GetListeningPort()};
+    result.emplace_back(host_port_pair);
+  }
+  slave_threads_mu_.unlock();
+  return result;
+}
+
 // The numeric cursor consists of a 32-bit hash, a 16-bit time stamp, and a 16-bit counter, with the highest bit set to
 // 1 to prevent a zero cursor from occurring. The hash is used to prevent users from obtaining cursors that are used by
 // other users. The time_stamp is used to prevent the generation of the same cursor in the extremely short period before

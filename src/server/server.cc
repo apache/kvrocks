@@ -237,7 +237,7 @@ void Server::Join() {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
   }
   if (auto s = task_runner_.Join(); !s) {
-    LOG(WARNING) << "Task runner thread operation failed: " << s.Msg();
+    LOG(WARNING) << s.Msg();
   }
 }
 

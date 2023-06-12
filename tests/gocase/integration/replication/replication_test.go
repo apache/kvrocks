@@ -422,3 +422,32 @@ func TestReplicationAnnounceIP(t *testing.T) {
 		require.Equal(t, "1234", slave0port)
 	})
 }
+
+func TestShouldNotReplicate(t *testing.T) {
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	ctx := context.Background()
+
+	slave := util.StartServer(t, map[string]string{})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	t.Run("Setting server as replica of itself should throw error", func(t *testing.T) {
+		err := slaveClient.SlaveOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
+		require.Equal(t, "ERR can't replicate itself", err.Error())
+		require.Equal(t, "master", util.FindInfoEntry(slaveClient, "role"))
+	})
+
+	t.Run("Master should not be able to replicate slave", func(t *testing.T) {
+		util.SlaveOf(t, slaveClient, master)
+		util.WaitForSync(t, slaveClient)
+		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
+		err := masterClient.SlaveOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
+		require.EqualErrorf(t, err, "ERR can't replicate your own replicas", err.Error())
+		require.Equal(t, "master", util.FindInfoEntry(masterClient, "role"))
+	})
+}

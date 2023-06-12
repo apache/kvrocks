@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "commands/scan_base.h"
+#include "common/io_util.h"
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
@@ -867,6 +868,24 @@ class CommandFlushBackup : public Commander {
 
 class CommandSlaveOf : public Commander {
  public:
+  static Status IsTryingToReplicateItself(Server *svr, const std::string &host, uint32_t port) {
+    auto ip_addresses = util::LookupHostByName(host);
+    if (!ip_addresses) {
+      return {Status::NotOK, "Can not resolve hostname: " + host};
+    }
+    for (auto &ip : *ip_addresses) {
+      if (util::MatchListeningIP(svr->GetConfig()->binds, ip) && port == svr->GetConfig()->port) {
+        return {Status::NotOK, "can't replicate itself"};
+      }
+      for (std::pair<std::string, uint32_t> &host_port_pair : svr->GetSlaveHostAndPort()) {
+        if (host_port_pair.first == ip && host_port_pair.second == port) {
+          return {Status::NotOK, "can't replicate your own replicas"};
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   Status Parse(const std::vector<std::string> &args) override {
     host_ = args[1];
     const auto &port = args[2];
@@ -914,7 +933,11 @@ class CommandSlaveOf : public Commander {
       return Status::OK();
     }
 
-    auto s = svr->AddMaster(host_, port_, false);
+    auto s = IsTryingToReplicateItself(svr, host_, port_);
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, s.Msg()};
+    }
+    s = svr->AddMaster(host_, port_, false);
     if (s.IsOK()) {
       *output = redis::SimpleString("OK");
       LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()

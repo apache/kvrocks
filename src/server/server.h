@@ -229,6 +229,7 @@ class Server {
   void WatchKey(redis::Connection *conn, const std::vector<std::string> &keys);
   static bool IsWatchedKeysModified(redis::Connection *conn);
   void ResetWatchedKeys(redis::Connection *conn);
+  std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
@@ -287,7 +288,10 @@ class Server {
   std::mutex pubsub_channels_mu_;
   std::map<std::string, std::list<ConnContext *>> blocking_keys_;
   std::mutex blocking_keys_mu_;
+
   std::atomic<int> blocked_clients_{0};
+
+  std::mutex blocked_stream_consumers_mu_;
   std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
 
   // threads
@@ -306,5 +310,3 @@ class Server {
   std::map<std::string, std::set<redis::Connection *>> watched_key_map_;
   std::shared_mutex watched_key_mutex_;
 };
-
-Server *GetServer();

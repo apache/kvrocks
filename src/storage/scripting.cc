@@ -51,11 +51,15 @@ enum {
 
 namespace lua {
 
-lua_State *CreateState(bool read_only) {
+lua_State *CreateState(Server *svr, bool read_only) {
   lua_State *lua = lua_open();
   LoadLibraries(lua);
   RemoveUnsupportedFunctions(lua);
   LoadFuncs(lua, read_only);
+
+  lua_pushlightuserdata(lua, svr);
+  lua_setglobal(lua, "__server_ptr");
+
   EnableGlobalsProtection(lua);
   return lua;
 }
@@ -351,7 +355,11 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   std::string cmd_name = util::ToLower(args[0]);
-  Server *srv = GetServer();
+
+  lua_getglobal(lua, "__server_ptr");
+  auto srv = reinterpret_cast<Server *>(lua_touserdata(lua, -1));
+  lua_pop(lua, 1);
+
   Config *config = srv->GetConfig();
 
   redis::Connection *conn = srv->GetCurrentConnection();
@@ -386,7 +394,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = conn->IsProfilingEnabled(cmd_name);
   std::string output;
-  s = cmd->Execute(GetServer(), srv->GetCurrentConnection(), &output);
+  s = cmd->Execute(srv, srv->GetCurrentConnection(), &output);
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) conn->RecordProfilingSampleIfNeed(cmd_name, duration);

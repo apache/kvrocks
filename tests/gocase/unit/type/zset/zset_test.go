@@ -198,9 +198,55 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		util.ErrorRegexp(t, rdb.Do(ctx, "zadd", "myzset", 10, "a", 20, "b", 30, "c", 40).Err(), ".*syntax.*")
 	})
 
+	t.Run("ZADD - invalid score will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zadd", "myzet", "one", "one").Err(), "is not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "zadd", "myzet", "3.3.3", "one").Err(), "is not a valid float")
+	})
+
 	t.Run("ZINCRBY does not work variadic even if shares ZADD implementation", func(t *testing.T) {
 		rdb.Del(ctx, "myzset")
 		util.ErrorRegexp(t, rdb.Do(ctx, "zincrby", "myzset", 10, "a", 20, "b", 30, "c").Err(), ".*ERR.*wrong.*number.*arg.*")
+	})
+
+	t.Run("ZINCRBY - invalid increment will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.NoError(t, rdb.ZIncrBy(ctx, "myzet", 1, "one").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "zincrby", "myzet", "one", "one").Err(), "is not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "zincrby", "myzet", "3.3.3", "one").Err(), "is not a valid float")
+	})
+
+	t.Run("ZLEXCOUNT - invalid range will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "+", "-").Err(), "min > max")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "x", "[y").Err(), "the min is illegal")
+		require.ErrorContains(t, rdb.ZLexCount(ctx, "myzet", "[x", "y").Err(), "the max is illegal")
+	})
+
+	t.Run("ZPOP - the num of arguments is not 2 or 3", func(t *testing.T) {
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zpopmin", "myzet", "1", "1").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "zpopmax", "myzet", "1", "1").Err(), "wrong number of arguments")
+	})
+
+	t.Run("ZUNIONSTORE - invalid numkeys will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "one", "myzet").Err(), "value is not an integer or out of range")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
+	})
+
+	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "weights", "one").Err(), "weight is not a double or out of range")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "weights", "3.3.3").Err(), "weight is not a double or out of range")
+	})
+
+	t.Run("ZUNIONSTORE - invalid aggregate will raise error", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "1", "myzet", "aggregate", "xxx").Err(), "aggregate param error")
 	})
 
 	t.Run(fmt.Sprintf("ZCARD basics - %s", encoding), func(t *testing.T) {
@@ -233,6 +279,130 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.Del(ctx, "ztmp")
 		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
 		require.Equal(t, int64(3), rdb.ZRem(ctx, "ztmp", []string{"a", "b", "c", "d", "e", "f", "g"}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZPOPMIN basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMin(ctx, "ztmp").Val())
+		require.EqualValues(t, 2, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 20, Member: "b"}}, rdb.ZPopMin(ctx, "ztmp").Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}}, rdb.ZPopMin(ctx, "ztmp").Val())
+		require.EqualValues(t, 0, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{}, rdb.ZPopMin(ctx, "ztmp").Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}, {Score: 20, Member: "b"}}, rdb.ZPopMin(ctx, "ztmp", 2).Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}}, rdb.ZPopMin(ctx, "ztmp", 3).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZPOPMAX basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "ztmp")
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}}, rdb.ZPopMax(ctx, "ztmp").Val())
+		require.EqualValues(t, 2, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 20, Member: "b"}}, rdb.ZPopMax(ctx, "ztmp").Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMax(ctx, "ztmp").Val())
+		require.EqualValues(t, 0, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{}, rdb.ZPopMax(ctx, "ztmp").Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}, {Score: 20, Member: "b"}}, rdb.ZPopMax(ctx, "ztmp", 2).Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
+		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMax(ctx, "ztmp", 3).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZMPOP basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		require.Equal(t, redis.Nil, rdb.ZMPop(ctx, "min", 1, "nosuchkey").Err())
+		require.EqualValues(t, 3, rdb.ZAdd(ctx, "zseta", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}).Val())
+		var key, zset = rdb.ZMPop(ctx, "min", 1, "zseta").Val()
+		require.Equal(t, "zseta", key)
+		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, zset)
+		require.Equal(t, []redis.Z{{Score: 20, Member: "b"}, {Score: 30, Member: "c"}}, rdb.ZRangeWithScores(ctx, "zseta", 0, -1).Val())
+		key, zset = rdb.ZMPop(ctx, "max", 10, "zseta").Val()
+		require.Equal(t, "zseta", key)
+		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}, {Score: 20, Member: "b"}}, zset)
+		require.EqualValues(t, 3, rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 40, Member: "d"}, redis.Z{Score: 50, Member: "e"}, redis.Z{Score: 60, Member: "f"}).Val())
+		key, zset = rdb.ZMPop(ctx, "min", 10, "zseta", "zsetb").Val()
+		require.Equal(t, "zsetb", key)
+		require.Equal(t, []redis.Z{{Score: 40, Member: "d"}, {Score: 50, Member: "e"}, {Score: 60, Member: "f"}}, zset)
+		require.Equal(t, redis.Nil, rdb.ZMPop(ctx, "max", 10, "zseta", "zsetb").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "zseta", "zsetb").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 3, Member: "b"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 4, Member: "c"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 6, Member: "d"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 9, Member: "g"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 7, Member: "f"})
+
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3})
+		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 2})
+		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 0})
+		require.Equal(t, []string{"a"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		//add none
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 99, Stop: 99})
+		require.Equal(t, []string{}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// rev
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Rev: true})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byScore
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 2, Stop: 5, ByScore: true})
+		require.Equal(t, []string{"b", "c"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byScore limit offset count
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "1", Stop: "7", ByScore: true, Offset: 2, Count: 3})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byLex
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[c", Stop: "[f", ByLex: true})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+
+		// byLex limit offset count
+		rdb.Del(ctx, "zdst")
+		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[a", Stop: "[g", ByLex: true, Offset: 2, Count: 3})
+		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGESTORE error - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 3, Member: "b"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 4, Member: "c"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 6, Member: "d"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 9, Member: "g"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 7, Member: "f"})
+
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "xx", Stop: "ww"}).Err(), ".*not an integer.*")
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1}).Err(), ".*not an integer.*")
+		util.ErrorRegexp(t, rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 1, Stop: 3, Count: 1, Offset: 1}).Err(), ".*error.*")
 	})
 
 	t.Run(fmt.Sprintf("ZRANGE basics - %s", encoding), func(t *testing.T) {

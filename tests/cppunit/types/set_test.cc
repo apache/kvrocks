@@ -39,22 +39,22 @@ class RedisSetTest : public TestBase {
 };
 
 TEST_F(RedisSetTest, AddAndRemove) {
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Card(key_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Members) {
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   std::vector<std::string> members;
   s = set_->Members(key_, &members);
   EXPECT_TRUE(s.ok() && fields_.size() == members.size());
@@ -63,30 +63,31 @@ TEST_F(RedisSetTest, Members) {
     EXPECT_EQ(fields_[i], members[i]);
   }
   s = set_->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, IsMember) {
-  int ret = 0;
+  uint64_t ret = 0;
+  bool flag = false;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   for (auto &field : fields_) {
-    s = set_->IsMember(key_, field, &ret);
-    EXPECT_TRUE(s.ok() && ret == 1);
+    s = set_->IsMember(key_, field, &flag);
+    EXPECT_TRUE(s.ok() && flag);
   }
-  set_->IsMember(key_, "foo", &ret);
-  EXPECT_TRUE(s.ok() && ret == 0);
+  set_->IsMember(key_, "foo", &flag);
+  EXPECT_TRUE(s.ok() && !flag);
   s = set_->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, MIsMember) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<int> exists;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->MIsMember(key_, fields_, &exists);
   EXPECT_TRUE(s.ok());
   for (size_t i = 0; i < fields_.size(); i++) {
@@ -103,30 +104,31 @@ TEST_F(RedisSetTest, MIsMember) {
 }
 
 TEST_F(RedisSetTest, Move) {
-  int ret = 0;
+  uint64_t ret = 0;
+  bool flag = false;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   Slice dst("set-test-move-key");
   for (auto &field : fields_) {
-    s = set_->Move(key_, dst, field, &ret);
-    EXPECT_TRUE(s.ok() && ret == 1);
+    s = set_->Move(key_, dst, field, &flag);
+    EXPECT_TRUE(s.ok() && flag);
   }
-  s = set_->Move(key_, dst, "set-no-exists-key", &ret);
-  EXPECT_TRUE(s.ok() && ret == 0);
+  s = set_->Move(key_, dst, "set-no-exists-key", &flag);
+  EXPECT_TRUE(s.ok() && !flag);
   s = set_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
   s = set_->Card(dst, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Remove(dst, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   set_->Del(key_);
   set_->Del(dst);
 }
 
 TEST_F(RedisSetTest, TakeWithPop) {
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   std::vector<std::string> members;
   s = set_->Take(key_, &members, 3, true);
   EXPECT_TRUE(s.ok());
@@ -141,7 +143,7 @@ TEST_F(RedisSetTest, TakeWithPop) {
 }
 
 TEST_F(RedisSetTest, Diff) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::string k1 = "key1", k2 = "key2", k3 = "key3";
   rocksdb::Status s = set_->Add(k1, {"a", "b", "c", "d"}, &ret);
   EXPECT_EQ(ret, 4);
@@ -158,7 +160,7 @@ TEST_F(RedisSetTest, Diff) {
 }
 
 TEST_F(RedisSetTest, Union) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::string k1 = "key1", k2 = "key2", k3 = "key3";
   rocksdb::Status s = set_->Add(k1, {"a", "b", "c", "d"}, &ret);
   EXPECT_EQ(ret, 4);
@@ -175,7 +177,7 @@ TEST_F(RedisSetTest, Union) {
 }
 
 TEST_F(RedisSetTest, Inter) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::string k1 = "key1", k2 = "key2", k3 = "key3";
   rocksdb::Status s = set_->Add(k1, {"a", "b", "c", "d"}, &ret);
   EXPECT_EQ(ret, 4);
@@ -192,20 +194,19 @@ TEST_F(RedisSetTest, Inter) {
 }
 
 TEST_F(RedisSetTest, Overwrite) {
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   set_->Overwrite(key_, {"a"});
-  int count = 0;
-  set_->Card(key_, &count);
-  EXPECT_EQ(count, 1);
+  set_->Card(key_, &ret);
+  EXPECT_EQ(ret, 1);
   set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, TakeWithoutPop) {
-  int ret = 0;
+  uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   std::vector<std::string> members;
   s = set_->Take(key_, &members, int(fields_.size() + 1), false);
   EXPECT_TRUE(s.ok());
@@ -214,6 +215,6 @@ TEST_F(RedisSetTest, TakeWithoutPop) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(members.size(), fields_.size() - 1);
   s = set_->Remove(key_, fields_, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fields_.size()) == ret);
+  EXPECT_TRUE(s.ok() && fields_.size() == ret);
   set_->Del(key_);
 }

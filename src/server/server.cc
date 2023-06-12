@@ -20,7 +20,6 @@
 
 #include "server.h"
 
-#include <fcntl.h>
 #include <glog/logging.h>
 #include <rocksdb/convenience.h>
 #include <rocksdb/statistics.h>
@@ -41,14 +40,12 @@
 #include "fmt/format.h"
 #include "lua.h"
 #include "redis_connection.h"
-#include "redis_request.h"
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
 #include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
-#include "tls_util.h"
 #include "version.h"
 #include "worker.h"
 
@@ -94,7 +91,7 @@ Server::Server(engine::Storage *storage, Config *config)
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
-  lua_ = lua::CreateState();
+  lua_ = lua::CreateState(this);
 }
 
 Server::~Server() {
@@ -340,9 +337,20 @@ void Server::CleanupExitedSlaves() {
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
+  auto now = util::GetTimeStampUS();
+  std::string output = "+";
+  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
+  output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
+  for (const auto &token : tokens) {
+    output += " \"";
+    output += util::EscapeString(token);
+    output += "\"";
+  }
+  output += CRLF;
+
   for (const auto &worker_thread : worker_threads_) {
     auto worker = worker_thread->GetWorker();
-    worker->FeedMonitorConns(conn, tokens);
+    worker->FeedMonitorConns(conn, output);
   }
 }
 
@@ -529,7 +537,7 @@ void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
 
 void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
                             redis::Connection *conn) {
-  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  std::lock_guard<std::mutex> guard(blocked_stream_consumers_mu_);
 
   IncrBlockedClientNum();
 
@@ -546,7 +554,7 @@ void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vec
 }
 
 void Server::UnblockOnStreams(const std::vector<std::string> &keys, redis::Connection *conn) {
-  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  std::lock_guard<std::mutex> guard(blocked_stream_consumers_mu_);
 
   DecrBlockedClientNum();
 
@@ -590,7 +598,7 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
 }
 
 void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id) {
-  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  std::lock_guard<std::mutex> guard(blocked_stream_consumers_mu_);
 
   auto iter = blocked_stream_consumers_.find(key);
   if (iter == blocked_stream_consumers_.end() || iter->second.empty()) {
@@ -1531,7 +1539,7 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) const 
 }
 
 void Server::ScriptReset() {
-  auto lua = lua_.exchange(lua::CreateState());
+  auto lua = lua_.exchange(lua::CreateState(this));
   lua::DestroyState(lua);
 }
 
@@ -1742,4 +1750,17 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
     conn->watched_keys_modified = false;
     watched_key_size_ = watched_key_map_.size();
   }
+}
+
+std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
+  std::list<std::pair<std::string, uint32_t>> result;
+  slave_threads_mu_.lock();
+  for (const auto &slave : slave_threads_) {
+    if (slave->IsStopped()) continue;
+    std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(),
+                                                  slave->GetConn()->GetListeningPort()};
+    result.emplace_back(host_port_pair);
+  }
+  slave_threads_mu_.unlock();
+  return result;
 }

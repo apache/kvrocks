@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -63,7 +65,7 @@ class CommandZAdd : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     double old_score = member_scores_[0].score;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Add(args_[1], flags_, &member_scores_, &ret);
@@ -135,7 +137,7 @@ class CommandZCount : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Count(args_[1], spec_, &ret);
     if (!s.ok()) {
@@ -153,7 +155,7 @@ class CommandZCount : public Commander {
 class CommandZCard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int ret = 0;
+    uint64_t ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Card(args_[1], &ret);
     if (!s.ok() && !s.IsNotFound()) {
@@ -291,7 +293,7 @@ class CommandZLexCount : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &size);
     if (!s.ok()) {
@@ -311,7 +313,11 @@ class CommandZPop : public Commander {
   explicit CommandZPop(bool min) : min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 2) {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    if (args.size() == 3) {
       auto parse_result = ParseInt<int>(args[2], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
@@ -352,6 +358,188 @@ class CommandZPopMin : public CommandZPop {
 class CommandZPopMax : public CommandZPop {
  public:
   CommandZPopMax() : CommandZPop(false) {}
+};
+
+class CommandZMPop : public Commander {
+ public:
+  CommandZMPop() = default;
+
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    numkeys_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+    for (int i = 0; i < numkeys_; ++i) {
+      keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("min")) {
+        flag_ = ZSET_MIN;
+      } else if (parser.EatEqICase("max")) {
+        flag_ = ZSET_MAX;
+      } else if (parser.EatEqICase("count")) {
+        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    if (flag_ == ZSET_NONE) {
+      return parser.InvalidSyntax();
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    for (auto &user_key : keys_) {
+      std::vector<MemberScore> member_scores;
+      auto s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      if (member_scores.empty()) {
+        continue;
+      }
+
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(user_key));
+      output->append(redis::MultiLen(member_scores.size() * 2));
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+      return Status::OK();
+    }
+    *output = redis::NilString();
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+
+ private:
+  int numkeys_;
+  std::vector<std::string> keys_;
+  enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
+  int count_ = 1;
+};
+
+class CommandZRangeStore : public Commander {
+ public:
+  explicit CommandZRangeStore() : range_type_(kZRangeRank), direction_(kZRangeDirectionForward) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    dst_ = args[1];
+    src_ = args[2];
+
+    int64_t offset = 0;
+    int64_t count = -1;
+    // skip the <CMD> <dst> <src> <min> <max> args and parse remaining optional arguments
+    CommandParser parser(args, 5);
+    while (parser.Good()) {
+      if (parser.EatEqICase("limit")) {
+        auto parse_offset = parser.TakeInt<int64_t>();
+        auto parse_count = parser.TakeInt<int64_t>();
+        if (!parse_offset || !parse_count) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        offset = *parse_offset;
+        count = *parse_count;
+      } else if (parser.EatEqICase("bylex")) {
+        range_type_ = kZRangeLex;
+      } else if (parser.EatEqICase("byscore")) {
+        range_type_ = kZRangeScore;
+      } else if (parser.EatEqICase("rev")) {
+        direction_ = kZRangeDirectionReverse;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    if (count != -1 && range_type_ == kZRangeRank) {
+      return {Status::RedisParseErr,
+              "syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"};
+    }
+
+    // resolve index of <min> <max>
+    int min_idx = 3;
+    int max_idx = 4;
+    if (direction_ == kZRangeDirectionReverse && (range_type_ == kZRangeLex || range_type_ == kZRangeScore)) {
+      min_idx = 4;
+      max_idx = 3;
+    }
+
+    // parse range spec
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        GET_OR_RET(ParseRangeRankSpec(args[min_idx], args[max_idx], &rank_spec_));
+        if (direction_ == kZRangeDirectionReverse) {
+          rank_spec_.reversed = true;
+        }
+        break;
+      case kZRangeLex:
+        GET_OR_RET(ParseRangeLexSpec(args[min_idx], args[max_idx], &lex_spec_));
+        lex_spec_.offset = offset;
+        lex_spec_.count = count;
+        if (direction_ == kZRangeDirectionReverse) {
+          lex_spec_.reversed = true;
+        }
+        break;
+      case kZRangeScore:
+        GET_OR_RET(ParseRangeScoreSpec(args[min_idx], args[max_idx], &score_spec_));
+        score_spec_.offset = offset;
+        score_spec_.count = count;
+        if (direction_ == kZRangeDirectionReverse) {
+          score_spec_.reversed = true;
+        }
+        break;
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+
+    std::vector<MemberScore> member_scores;
+
+    rocksdb::Status s;
+    switch (range_type_) {
+      case kZRangeAuto:
+      case kZRangeRank:
+        s = zset_db.RangeByRank(src_, rank_spec_, &member_scores, nullptr);
+        break;
+      case kZRangeScore:
+        s = zset_db.RangeByScore(src_, score_spec_, &member_scores, nullptr);
+        break;
+      case kZRangeLex:
+        s = zset_db.RangeByLex(src_, lex_spec_, &member_scores, nullptr);
+        break;
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    uint64_t ret = 0;
+    s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(ret);
+    return Status::OK();
+  }
+
+ private:
+  std::string src_;
+  std::string dst_;
+  ZRangeType range_type_;
+  ZRangeDirection direction_;
+
+  RangeRankSpec rank_spec_;
+  RangeLexSpec lex_spec_;
+  RangeScoreSpec score_spec_;
 };
 
 class CommandZRangeGeneric : public Commander {
@@ -447,7 +635,6 @@ class CommandZRangeGeneric : public Commander {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
     std::vector<MemberScore> member_scores;
-    std::vector<std::string> members;
 
     rocksdb::Status s;
     switch (range_type_) {
@@ -459,29 +646,19 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
-        s = zset_db.RangeByLex(key_, lex_spec_, &members, nullptr);
+        s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
         break;
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    switch (range_type_) {
-      case kZRangeLex:
-        output->append(redis::MultiBulkString(members, false));
-        return Status::OK();
-      case kZRangeAuto:
-      case kZRangeRank:
-      case kZRangeScore:
-        output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-        for (const auto &ms : member_scores) {
-          output->append(redis::BulkString(ms.member));
-          if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
-        }
-        return Status::OK();
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : member_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
     }
-
-    return {Status::RedisParseErr, "unexpected range type"};
+    return Status::OK();
   }
 
  private:
@@ -561,7 +738,7 @@ class CommandZRem : public Commander {
       members.emplace_back(args_[i]);
     }
 
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.Remove(args_[1], members, &size);
     if (!s.ok()) {
@@ -591,7 +768,7 @@ class CommandZRemRangeByRank : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByRank(args_[1], spec_, nullptr, &cnt);
@@ -620,7 +797,7 @@ class CommandZRemRangeByScore : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByScore(args_[1], spec_, nullptr, &cnt);
@@ -649,7 +826,7 @@ class CommandZRemRangeByLex : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
 
-    int cnt = 0;
+    uint64_t cnt = 0;
     spec_.with_deletion = true;
 
     auto s = zset_db.RangeByLex(args_[1], spec_, nullptr, &cnt);
@@ -768,7 +945,7 @@ class CommandZUnionStore : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.UnionStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
@@ -790,7 +967,7 @@ class CommandZInterStore : public CommandZUnionStore {
   CommandZInterStore() : CommandZUnionStore() {}
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int size = 0;
+    uint64_t size = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     auto s = zset_db.InterStore(args_[1], keys_weights_, aggregate_method_, &size);
     if (!s.ok()) {
@@ -835,6 +1012,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
+                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),

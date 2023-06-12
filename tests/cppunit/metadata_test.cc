@@ -84,13 +84,13 @@ class RedisTypeTest : public TestBase {
 };
 
 TEST_F(RedisTypeTest, GetMetadata) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
+  EXPECT_TRUE(s.ok() && fvs.size() == ret);
   HashMetadata metadata;
   std::string ns_key;
   redis_->AppendNamespacePrefix(key_, &ns_key);
@@ -101,13 +101,13 @@ TEST_F(RedisTypeTest, GetMetadata) {
 }
 
 TEST_F(RedisTypeTest, Expire) {
-  int ret = 0;
+  uint64_t ret = 0;
   std::vector<FieldValue> fvs;
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
   rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<int>(fvs.size()) == ret);
+  EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   redis_->Expire(key_, now * 1000 + 2000);

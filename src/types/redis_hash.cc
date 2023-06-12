@@ -36,15 +36,15 @@ rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
   return Database::GetMetadata(kRedisHash, ns_key, metadata);
 }
 
-rocksdb::Status Hash::Size(const Slice &user_key, uint32_t *ret) {
-  *ret = 0;
+rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
+  *size = 0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
-  *ret = metadata.size;
+  *size = metadata.size;
   return rocksdb::Status::OK();
 }
 
@@ -62,7 +62,7 @@ rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string
   return storage_->Get(read_options, sub_key, value);
 }
 
-rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *ret) {
+rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *new_value) {
   bool exists = false;
   int64_t old_value = 0;
 
@@ -97,11 +97,11 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
     return rocksdb::Status::InvalidArgument("increment or decrement would overflow");
   }
 
-  *ret = old_value + increment;
+  *new_value = old_value + increment;
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
-  batch->Put(sub_key, std::to_string(*ret));
+  batch->Put(sub_key, std::to_string(*new_value));
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
@@ -111,7 +111,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *ret) {
+rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *new_value) {
   bool exists = false;
   double old_value = 0;
 
@@ -143,11 +143,11 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
     return rocksdb::Status::InvalidArgument("increment would produce NaN or Infinity");
   }
 
-  *ret = n;
+  *new_value = n;
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
-  batch->Put(sub_key, std::to_string(*ret));
+  batch->Put(sub_key, std::to_string(*new_value));
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
@@ -199,12 +199,12 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Hash::Set(const Slice &user_key, const Slice &field, const Slice &value, int *ret) {
-  return MSet(user_key, {{field.ToString(), value.ToString()}}, false, ret);
+rocksdb::Status Hash::Set(const Slice &user_key, const Slice &field, const Slice &value, uint64_t *added_cnt) {
+  return MSet(user_key, {{field.ToString(), value.ToString()}}, false, added_cnt);
 }
 
-rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, int *ret) {
-  *ret = 0;
+rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fields, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -221,22 +221,23 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
-      *ret += 1;
+      *deleted_cnt += 1;
       batch->Delete(sub_key);
     }
   }
-  if (*ret == 0) {
+  if (*deleted_cnt == 0) {
     return rocksdb::Status::OK();
   }
-  metadata.size -= *ret;
+  metadata.size -= *deleted_cnt;
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx, int *ret) {
-  *ret = 0;
+rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx,
+                           uint64_t *added_cnt) {
+  *added_cnt = 0;
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
@@ -274,7 +275,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   }
 
   if (added > 0) {
-    *ret = added;
+    *added_cnt = added;
     metadata.size += added;
     std::string bytes;
     metadata.Encode(&bytes);

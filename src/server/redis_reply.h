@@ -43,6 +43,8 @@ std::string Integer(T data) {
 std::string BulkString(const std::string &data);
 std::string NilString();
 
+std::string EmptyArray();
+
 template <typename IntegerType>
 std::string MultiLen(IntegerType len) {
   return "*" + std::to_string(len) + CRLF;

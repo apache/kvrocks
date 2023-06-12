@@ -24,6 +24,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_zset.h"
 
@@ -553,7 +554,7 @@ class CommandZRangeGeneric : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (zero_count_) {
-      *output = redis::NilString();
+      *output = redis::EmptyArray();
       return Status::OK();
     }
 

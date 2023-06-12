@@ -358,8 +358,8 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cnt) {
-  *cnt = 0;
+rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cardinality) {
+  *cardinality = 0;
 
   std::map<std::string, size_t> member_counters;
   std::vector<std::string> target_members;
@@ -375,11 +375,10 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
 
   size_t keys_size = keys.size();
   if (keys_size == 1) {
-    *cnt = std::min(static_cast<uint64_t>(target_members.size()), limit);
+    *cardinality = std::min(static_cast<uint64_t>(target_members.size()), limit);
     return rocksdb::Status::OK();
   }
 
-  int cardinality = 0;
   bool limit_reached = false;
   for (size_t i = 1; i < keys_size; i++) {
     s = Members(keys[i], &target_members);
@@ -391,7 +390,7 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
       auto iter = member_counters.find(member);
       if (iter == member_counters.end()) continue;
       if (++iter->second == keys_size) {
-        cardinality++;
+        *cardinality++;
         if (--limit == 0) {
           limit_reached = true;
           break;
@@ -402,7 +401,6 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
     if (limit_reached) break;
   }
 
-  *cnt = cardinality;
   return rocksdb::Status::OK();
 }
 

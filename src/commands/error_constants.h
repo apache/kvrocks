@@ -32,6 +32,7 @@ inline constexpr const char *errNoSuchKey = "no such key";
 inline constexpr const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 inline constexpr const char *errTimeoutIsNegative = "timeout is negative";
+inline constexpr const char *errLimitIsNegative = "LIMIT can't be negative";
 inline constexpr const char *errLimitOptionNotAllowed =
     "syntax error, LIMIT cannot be used without the special ~ option";
 inline constexpr const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";

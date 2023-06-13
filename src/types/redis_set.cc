@@ -390,7 +390,7 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
       auto iter = member_counters.find(member);
       if (iter == member_counters.end()) continue;
       if (++iter->second == keys_size) {
-        *cardinality++;
+        *cardinality += 1;
         if (--limit == 0) {
           limit_reached = true;
           break;

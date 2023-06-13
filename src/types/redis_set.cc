@@ -358,6 +358,52 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cardinality) {
+  *cardinality = 0;
+
+  std::map<std::string, size_t> member_counters;
+  std::vector<std::string> target_members;
+
+  auto s = Members(keys[0], &target_members);
+  if (!s.ok() || target_members.empty()) return s;
+  for (const auto &member : target_members) {
+    member_counters[member] = 1;
+  }
+  if (limit == 0) {
+    limit = target_members.size();
+  }
+
+  size_t keys_size = keys.size();
+  if (keys_size == 1) {
+    *cardinality = std::min(static_cast<uint64_t>(target_members.size()), limit);
+    return rocksdb::Status::OK();
+  }
+
+  bool limit_reached = false;
+  for (size_t i = 1; i < keys_size; i++) {
+    s = Members(keys[i], &target_members);
+    if (!s.ok() || target_members.empty()) {
+      return s;
+    }
+
+    for (const auto &member : target_members) {
+      auto iter = member_counters.find(member);
+      if (iter == member_counters.end()) continue;
+      if (++iter->second == keys_size) {
+        *cardinality += 1;
+        if (--limit == 0) {
+          limit_reached = true;
+          break;
+        }
+      }
+    }
+
+    if (limit_reached) break;
+  }
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Set::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<std::string> members;

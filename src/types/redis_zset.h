@@ -95,30 +95,34 @@ class ZSet : public SubKeyScanner {
   using MembersTy = std::vector<std::string>;
   using MemberScoresTy = std::vector<MemberScore>;
 
-  rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt);
+  rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, MemberScoresTy *mscores, uint64_t *added_cnt);
   rocksdb::Status Card(const Slice &user_key, uint64_t *size);
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
   rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt);
-  rocksdb::Status Pop(const Slice &user_key, int count, bool min, MemberScores *mscores);
+  rocksdb::Status Pop(const Slice &user_key, int count, bool min, MemberScoresTy *mscores);
   rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &member_prefix, std::vector<std::string> *members,
                        std::vector<double> *scores = nullptr);
+  rocksdb::Status Diff(const std::vector<Slice> &keys, MemberScoresTy *mscores);
   rocksdb::Status Overwrite(const Slice &user_key, const MemberScoresTy &mscores);
   rocksdb::Status InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
+  rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members, std::map<std::string, double> *scores);
   rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
   rocksdb::Status Count(const Slice &user_key, const RangeScoreSpec &spec, uint64_t *size);
-  rocksdb::Status RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,
+  rocksdb::Status RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScoresTy *mscores,
                               uint64_t *removed_cnt);
-  rocksdb::Status RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores,
+  rocksdb::Status RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScoresTy *mscores,
                                uint64_t *removed_cnt);
-  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
+  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScoresTy *mscores,
                              uint64_t *removed_cnt);
+
+  rocksdb::Status MemberScores(const Slice &user_key, MemberScoresTy *mscores);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

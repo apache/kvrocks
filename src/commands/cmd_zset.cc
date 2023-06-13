@@ -186,6 +186,7 @@ class CommandZDiff : public Commander {
     // for example: ZDIFF 2 zset1 zset2 WITHSCORES
     if (args.size() == numkeys_ + 3 && util::ToLower(args.back()) == "withscores") {
       with_scores_ = true;
+      return Commander::Parse(args);
     }
 
     if (args.size() != numkeys_ + 2) {
@@ -201,14 +202,19 @@ class CommandZDiff : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    std::vector<std::string> members;
+    std::vector<MemberScore> mscores;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    auto s = zset_db.Diff(key, &members);
+    auto s = zset_db.Diff(keys, &mscores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::MultiBulkString(members, false);
+    output->append(redis::MultiLen(mscores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : mscores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+    }
+
     return Status::OK();
   }
 
@@ -218,8 +224,8 @@ class CommandZDiff : public Commander {
   }
 
  private:
-  uint64_t numkeys_ = 0;
-  bool with_scores_ = false;
+  uint64_t numkeys_{0};
+  bool with_scores_{false};
 };
 
 /*
@@ -229,8 +235,8 @@ class CommandZDiff : public Commander {
 class CommandZDiffStore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_num = ParseInt<int>(args[2], 10);
-    if (!parse_num) {
+    auto parse_numkey = ParseInt<int>(args[2], 10);
+    if (!parse_numkey) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
     if (*parse_numkey <= 0) {
@@ -251,7 +257,7 @@ class CommandZDiffStore : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    int ret = 0;
+    uint64_t ret = 0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     if (auto s = zset_db.DiffStore(args_[1], keys, &ret); !s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -261,10 +267,11 @@ class CommandZDiffStore : public Commander {
     return Status::OK();
   }
 
+  // todo(infdahai): it exists issues.
   static CommandKeyRange Range(const std::vector<std::string> &args) { return {2, -1, 1}; }
 
  private:
-  uint64_t numkeys_ = 0;
+  uint64_t numkeys_{0};
 };
 
 class CommandZIncrBy : public Commander {

@@ -34,7 +34,7 @@ rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
   return Database::GetMetadata(kRedisZSet, ns_key, metadata);
 }
 
-rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt) {
+rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScoresTy *mscores, uint64_t *added_cnt) {
   *added_cnt = 0;
 
   std::string ns_key;
@@ -180,13 +180,13 @@ rocksdb::Status ZSet::MemberScores(const Slice &user_key, MemberScoresTy *mscore
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    InternalKeys ikey(iter->key(), storage_->IsSlotIdEncoded());
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     // mscores->emplace_back();
   }
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscores, bool with_score) {
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscores) {
   mscores->clear();
   std::vector<std::string> source_members;
   // auto s = MembersTy(keys[0],&source_members);
@@ -194,11 +194,10 @@ rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscor
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, int *ret) {
-  *ret = 0;
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
   std::vector<MemberScore> mscores;
-  auto s = Diff(keys, &members);
-  *ret = static_cast<int>(mscores.size());
+  auto s = Diff(keys, &mscores);
+  *saved_cnt = mscores.size();
   return Overwrite(dst, mscores);
 }
 
@@ -263,7 +262,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,
+rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScoresTy *mscores,
                                   uint64_t *removed_cnt) {
   if (mscores) mscores->clear();
 
@@ -346,7 +345,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores,
+rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScoresTy *mscores,
                                    uint64_t *removed_cnt) {
   if (mscores) mscores->clear();
 
@@ -465,7 +464,7 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
+rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScoresTy *mscores,
                                  uint64_t *removed_cnt) {
   if (mscores) mscores->clear();
 

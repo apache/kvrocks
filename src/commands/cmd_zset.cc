@@ -245,39 +245,44 @@ class CommandZPop : public Commander,
       }
       keys_.push_back(args[1]);
       return Commander::Parse(args);
-    } else {
-      auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
-
-      if (!parse_result) {
-        return {Status::RedisParseErr, "timeout is not an integer or out of range"};
-      }
-
-      if (*parse_result < 0) {
-        return {Status::RedisParseErr, "timeout should not be negative"};
-      }
-
-      timeout_ = *parse_result;
-
-      keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
-      return Commander::Parse(args);
     }
+    auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
+
+    if (!parse_result) {
+      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
+    }
+
+    if (*parse_result < 0) {
+      return {Status::RedisParseErr, errTimeoutIsNegative};
+    }
+
+    timeout_ = *parse_result;
+
+    keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
+    return Commander::Parse(args);
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     svr_ = svr;
     conn_ = conn;
 
-    if (!block_) {
-      auto s = TryPopFromZset();
+    auto s = TryPopFromMultiZset();
+    if (!s.ok()) {
+      return Status::OK();  // Error already output
+    }
+
+    if (!block_) {  // ReplyForZPop
+      output->append(redis::MultiLen(member_scores_.size() * 2));
+      for (const auto &ms : member_scores_) {
+        output->append(redis::BulkString(ms.member));
+        output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
       return Status::OK();
     }
 
-    auto bev = conn->GetBufferEvent();
-
-    auto s = TryPopFromZset();
-
-    if (!s.ok() || reply_flag_) {
-      return Status::OK();  // error has already output or result has already output
+    if (!member_scores_.empty()) {
+      ReplyForBZPop();
+      return Status::OK();
     }
 
     // All Empty
@@ -290,6 +295,7 @@ class CommandZPop : public Commander,
       svr_->BlockOnKey(key, conn_);
     }
 
+    auto bev = conn->GetBufferEvent();
     SetCB(bev);
 
     if (timeout_) {
@@ -301,40 +307,39 @@ class CommandZPop : public Commander,
     return {Status::BlockingCmd};
   }
 
-  rocksdb::Status TryPopFromZset() {
+  rocksdb::Status TryPopFromMultiZset() {
     redis::ZSet zset_db(svr_->storage, conn_->GetNamespace());
     rocksdb::Status s;
     for (auto &user_key : keys_) {
-      std::vector<MemberScore> member_scores;
-      s = zset_db.Pop(user_key, count_, min_, &member_scores);
+      s = zset_db.Pop(user_key, count_, min_, &member_scores_);
       if (!s.ok()) {
+        // output here is necessary for block operation to reply error
         conn_->Reply(redis::Error("ERR " + s.ToString()));
         break;
       }
-      if (member_scores.empty() && block_) {
+      if (member_scores_.empty() && block_) {
         continue;
       }
-      std::string output;
-      if (!block_) {
-        output.append(redis::MultiLen(member_scores.size() * 2));
-      } else {
-        output.append(redis::MultiLen(member_scores.size() * 2 + 1));
-        output.append(redis::BulkString(user_key));
-      }
-      for (const auto &ms : member_scores) {
-        output.append(redis::BulkString(ms.member));
-        output.append(redis::BulkString(util::Float2String(ms.score)));
-      }
-      conn_->Reply(output);
-      reply_flag_ = true;
+      user_key_ = user_key;
       break;
     }
     return s;
   }
 
+  void ReplyForBZPop() {
+    std::string output;
+    output.append(redis::MultiLen(member_scores_.size() * 2 + 1));
+    output.append(redis::BulkString(user_key_));
+    for (const auto &ms : member_scores_) {
+      output.append(redis::BulkString(ms.member));
+      output.append(redis::BulkString(util::Float2String(ms.score)));
+    }
+    conn_->Reply(output);
+  }
+
   void OnWrite(bufferevent *bev) {
-    auto s = TryPopFromZset();
-    if (!reply_flag_) {
+    auto s = TryPopFromMultiZset();
+    if (member_scores_.empty()) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -342,6 +347,7 @@ class CommandZPop : public Commander,
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
+    ReplyForBZPop();
 
     if (timer_) {
       timer_.reset();
@@ -384,7 +390,8 @@ class CommandZPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  bool reply_flag_ = false;
+  std::string user_key_;
+  std::vector<MemberScore> member_scores_;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {
@@ -424,7 +431,7 @@ class CommandMPop : public Commander,
     if (block_) {
       timeout_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{0, std::numeric_limits<int>::max()}));
       if (timeout_ < 0) {
-        return {Status::RedisParseErr, "timeout should not be negative"};
+        return {Status::RedisParseErr, errTimeoutIsNegative};
       }
     }
 
@@ -454,17 +461,13 @@ class CommandMPop : public Commander,
     svr_ = svr;
     conn_ = conn;
 
-    if (!block_) {
-      auto s = TryPopFromZset();
-      return Status::OK();
+    auto s = TryPopFromMultiZset();
+    if (!s.ok()) {
+      return Status::OK();  // error has already output
     }
-
-    auto bev = conn->GetBufferEvent();
-
-    auto s = TryPopFromZset();
-
-    if (!s.ok() || reply_flag_) {
-      return Status::OK();  // error has already output or result has already output
+    if (!block_ || !member_scores_.empty()) {
+      ReplyForMPop();
+      return Status::OK();
     }
 
     // All Empty
@@ -477,6 +480,7 @@ class CommandMPop : public Commander,
       svr_->BlockOnKey(key, conn_);
     }
 
+    auto bev = conn->GetBufferEvent();
     SetCB(bev);
 
     if (timeout_) {
@@ -488,40 +492,43 @@ class CommandMPop : public Commander,
     return {Status::BlockingCmd};
   }
 
-  rocksdb::Status TryPopFromZset() {
+  rocksdb::Status TryPopFromMultiZset() {
     redis::ZSet zset_db(svr_->storage, conn_->GetNamespace());
     rocksdb::Status s;
-    std::string output;
     for (auto &user_key : keys_) {
-      std::vector<MemberScore> member_scores;
-      s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores);
+      s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores_);
       if (!s.ok()) {
+        // output here is necessary for block operation to reply error
         conn_->Reply(redis::Error("ERR " + s.ToString()));
         break;
       }
-      if (member_scores.empty()) {
+      if (member_scores_.empty()) {
         continue;
       }
-      output.append(redis::MultiLen(2));
-      output.append(redis::BulkString(user_key));
-      output.append(redis::MultiLen(member_scores.size() * 2));
-      for (const auto &ms : member_scores) {
-        output.append(redis::BulkString(ms.member));
-        output.append(redis::BulkString(util::Float2String(ms.score)));
-      }
-      reply_flag_ = true;
+      user_key_ = user_key;
       break;
     }
-    if (output.empty() && !block_) {
-      output = redis::NilString();
-    }
-    conn_->Reply(output);
     return s;
   }
 
+  void ReplyForMPop() {
+    std::string output;
+    output.append(redis::MultiLen(2));
+    output.append(redis::BulkString(user_key_));
+    output.append(redis::MultiLen(member_scores_.size() * 2));
+    for (const auto &ms : member_scores_) {
+      output.append(redis::BulkString(ms.member));
+      output.append(redis::BulkString(util::Float2String(ms.score)));
+    }
+    if (member_scores_.empty() && !block_) {
+      output = redis::NilString();
+    }
+    conn_->Reply(output);
+  }
+
   void OnWrite(bufferevent *bev) {
-    auto s = TryPopFromZset();
-    if (!s.ok() || !reply_flag_) {
+    auto s = TryPopFromMultiZset();
+    if (member_scores_.empty()) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -529,6 +536,7 @@ class CommandMPop : public Commander,
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
+    ReplyForMPop();
 
     if (timer_) {
       timer_.reset();
@@ -577,7 +585,8 @@ class CommandMPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  bool reply_flag_ = false;
+  std::string user_key_;
+  std::vector<MemberScore> member_scores_;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {

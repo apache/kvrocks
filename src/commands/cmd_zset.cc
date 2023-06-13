@@ -520,8 +520,6 @@ class CommandZRangeGeneric : public Commander {
       max_idx = 2;
     }
 
-    if (count == 0) zero_count_ = true;
-
     // parse range spec
     switch (range_type_) {
       case kZRangeAuto:
@@ -553,13 +551,7 @@ class CommandZRangeGeneric : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (zero_count_) {
-      *output = redis::EmptyArray();
-      return Status::OK();
-    }
-
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-
     std::vector<MemberScore> member_scores;
 
     rocksdb::Status s;
@@ -569,9 +561,17 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByRank(key_, rank_spec_, &member_scores, nullptr);
         break;
       case kZRangeScore:
+        if (score_spec_.count == 0) {
+          *output = redis::EmptyArray();
+          return Status::OK();
+        }
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
+        if (lex_spec_.count == 0) {
+          *output = redis::EmptyArray();
+          return Status::OK();
+        }
         s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
         break;
     }
@@ -592,7 +592,6 @@ class CommandZRangeGeneric : public Commander {
   ZRangeType range_type_;
   ZRangeDirection direction_;
   bool with_scores_ = false;
-  bool zero_count_ = false;
 
   RangeRankSpec rank_spec_;
   RangeLexSpec lex_spec_;

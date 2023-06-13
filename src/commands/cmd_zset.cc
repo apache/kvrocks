@@ -178,11 +178,20 @@ class CommandZDiff : public Commander {
     if (!parse_numkey) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
+    if (*parse_numkey <= 0) {
+      return {Status::RedisParseErr, errValueMustBePositive};
+    }
+
     numkeys_ = *parse_numkey;
     // for example: ZDIFF 2 zset1 zset2 WITHSCORES
     if (args.size() == numkeys_ + 3 && util::ToLower(args.back()) == "withscores") {
       with_scores_ = true;
     }
+
+    if (args.size() != numkeys_ + 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
     return Commander::Parse(args);
   }
 
@@ -204,10 +213,8 @@ class CommandZDiff : public Commander {
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
-    if (bool with_score = util::ToLower(args.back()) == "withscores"; with_score) {
-      return {2, -2, 1};
-    }
-    return {2, -1, 1};
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
   }
 
  private:
@@ -226,11 +233,15 @@ class CommandZDiffStore : public Commander {
     if (!parse_num) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
+    if (*parse_numkey <= 0) {
+      return {Status::RedisParseErr, errValueMustBePositive};
+    }
+
     numkeys_ = *parse_numkey;
+    // for example: ZDIFFSTORE out 2 zset1 zset2
     if (args.size() != numkeys_ + 3) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-
     return Commander::Parse(args);
   }
 
@@ -249,6 +260,8 @@ class CommandZDiffStore : public Commander {
     *output = redis::Integer(ret);
     return Status::OK();
   }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) { return {2, -1, 1}; }
 
  private:
   uint64_t numkeys_ = 0;
@@ -1005,8 +1018,8 @@ class CommandZScan : public CommandSubkeyScanBase {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZDiff>("zdiff", -4, "read-only", CommandZDiff::Range),
-                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -4, "read-only", 3, -1, 1),
+                        MakeCmdAttr<CommandZDiff>("zdiff", -3, "read-only", CommandZDiff::Range),
+                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -4, "write", CommandZDiffStore::Range),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),

@@ -178,19 +178,62 @@ TEST_F(RedisSetTest, Union) {
 
 TEST_F(RedisSetTest, Inter) {
   uint64_t ret = 0;
-  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  std::string k1 = "key1", k2 = "key2", k3 = "key3", k4 = "key4", k5 = "key5";
   rocksdb::Status s = set_->Add(k1, {"a", "b", "c", "d"}, &ret);
   EXPECT_EQ(ret, 4);
   set_->Add(k2, {"c"}, &ret);
   EXPECT_EQ(ret, 1);
   set_->Add(k3, {"a", "c", "e"}, &ret);
   EXPECT_EQ(ret, 3);
+  set_->Add(k5, {"a"}, &ret);
+  EXPECT_EQ(ret, 1);
   std::vector<std::string> members;
   set_->Inter({k1, k2, k3}, &members);
   EXPECT_EQ(1, members.size());
+  members.clear();
+  set_->Inter({k1, k2, k4}, &members);
+  EXPECT_EQ(0, members.size());
+  set_->Inter({k1, k4, k5}, &members);
+  EXPECT_EQ(0, members.size());
   set_->Del(k1);
   set_->Del(k2);
   set_->Del(k3);
+  set_->Del(k4);
+  set_->Del(k5);
+}
+
+TEST_F(RedisSetTest, InterCard) {
+  uint64_t ret = 0;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3", k4 = "key4";
+  rocksdb::Status s = set_->Add(k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set_->Add(k2, {"c", "d", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  set_->Add(k3, {"e", "f"}, &ret);
+  EXPECT_EQ(ret, 2);
+  set_->InterCard({k1, k2}, 0, &ret);
+  EXPECT_EQ(ret, 2);
+  set_->InterCard({k1, k2}, 1, &ret);
+  EXPECT_EQ(ret, 1);
+  set_->InterCard({k1, k2}, 3, &ret);
+  EXPECT_EQ(ret, 2);
+  set_->InterCard({k2, k3}, 1, &ret);
+  EXPECT_EQ(ret, 1);
+  set_->InterCard({k1, k3}, 5, &ret);
+  EXPECT_EQ(ret, 0);
+  set_->InterCard({k1, k4}, 5, &ret);
+  EXPECT_EQ(ret, 0);
+  set_->InterCard({k1}, 0, &ret);
+  EXPECT_EQ(ret, 4);
+  for (uint32_t i = 1; i < 20; i++) {
+    set_->InterCard({k1}, i, &ret);
+    uint64_t val = (i >= 4) ? 4 : i;
+    EXPECT_EQ(ret, val);
+  }
+  set_->Del(k1);
+  set_->Del(k2);
+  set_->Del(k3);
+  set_->Del(k4);
 }
 
 TEST_F(RedisSetTest, Overwrite) {

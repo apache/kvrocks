@@ -232,14 +232,14 @@ void Server::Join() {
     worker->Join();
   }
 
-  if (auto s = task_runner_.Join(); !s) {
-    LOG(WARNING) << s.Msg();
-  }
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
   }
 }
 

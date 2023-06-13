@@ -45,7 +45,8 @@ Status TaskRunner::Join() {
 
   for (auto &thread : threads_) {
     if (auto s = util::ThreadJoin(thread); !s) {
-      return s.Prefixed("Task thread operation failed");
+      LOG(WARNING) << "Failed to join thread: " << s.Msg();
+      continue;
     }
   }
 

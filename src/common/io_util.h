@@ -27,6 +27,7 @@
 namespace util {
 
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
+StatusOr<std::vector<std::string>> LookupHostByName(const std::string &host);
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout = 0, int timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);

@@ -230,14 +230,14 @@ void Server::Join() {
     worker->Join();
   }
 
-  if (auto s = task_runner_.Join(); !s) {
-    LOG(WARNING) << s.Msg();
-  }
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
   }
 }
 
@@ -1750,4 +1750,17 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
     conn->watched_keys_modified = false;
     watched_key_size_ = watched_key_map_.size();
   }
+}
+
+std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
+  std::list<std::pair<std::string, uint32_t>> result;
+  slave_threads_mu_.lock();
+  for (const auto &slave : slave_threads_) {
+    if (slave->IsStopped()) continue;
+    std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(),
+                                                  slave->GetConn()->GetListeningPort()};
+    result.emplace_back(host_port_pair);
+  }
+  slave_threads_mu_.unlock();
+  return result;
 }

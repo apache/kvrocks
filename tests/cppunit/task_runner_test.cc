@@ -103,4 +103,6 @@ TEST(TaskRunner, PublishAfterStart) {
   std::this_thread::sleep_for(0.1s);
 
   ASSERT_EQ(counter, 20);
+  tr.Cancel();
+  _ = tr.Join();
 }

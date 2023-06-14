@@ -200,7 +200,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
         bindir = Path(gopath).absolute() / 'bin'
         binpath = bindir / 'golangci-lint'
-        return bindir.exists(), binpath
+        return bindir, binpath
 
     def get_syspath(sys_path: str) -> Tuple[str, str]:
         golangci_command = find_command(sys_path, msg="golangci-lint is required")

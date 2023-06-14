@@ -562,14 +562,14 @@ class CommandZRangeGeneric : public Commander {
         break;
       case kZRangeScore:
         if (score_spec_.count == 0) {
-          *output = redis::EmptyArray();
+          *output = redis::MultiBulkString({});
           return Status::OK();
         }
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
         if (lex_spec_.count == 0) {
-          *output = redis::EmptyArray();
+          *output = redis::MultiBulkString({});
           return Status::OK();
         }
         s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);

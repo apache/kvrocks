@@ -34,8 +34,6 @@ std::string BulkString(const std::string &data) { return "$" + std::to_string(da
 
 std::string NilString() { return "$-1" CRLF; }
 
-std::string EmptyArray() { return "*0" CRLF; }
-
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (const auto &value : values) {

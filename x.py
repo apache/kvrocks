@@ -200,7 +200,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         gopath = run_pipe(go, 'env', 'GOPATH').read().strip()
         bindir = Path(gopath).absolute() / 'bin'
         binpath = bindir / 'golangci-lint'
-        return bindir, binpath
+        return bindir.exists(), binpath
 
     def get_syspath(sys_path: str) -> Tuple[str, str]:
         golangci_command = find_command(sys_path, msg="golangci-lint is required")
@@ -214,18 +214,18 @@ def golangci_lint(golangci_lint_path: str) -> None:
         version_str = 'v' + '.'.join(map(str, GOLANGCI_LINT_REQUIRED_VERSION))
         run('sh', '-s', '--', '-b', bindir, version_str, verbose=True, stdin=output)
 
-    binpath = ""
     if which(golangci_lint_path) is None:
         bindir, binpath = get_gopath()
+        binpath_str = str(binpath)
         if not binpath.exists():
             download_package(str(bindir))
+
     else:
-        golangci_command, version_str = get_syspath(golangci_lint_path)
+        binpath_str, version_str = get_syspath(golangci_lint_path)
         check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
-        binpath = golangci_command
 
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    run(str(binpath), 'run', '-v', './...', cwd=str(basedir), verbose=True)
+    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True)
 
 
 def write_version(release_version: str) -> str:

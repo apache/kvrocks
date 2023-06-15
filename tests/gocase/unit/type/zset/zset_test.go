@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/incubator-kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -439,6 +440,33 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{4, "d"},
 		}, rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
 
+		for i := 1; i < 10; i++ {
+			cmd := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: 0, Stop: -1, Offset: int64(i)})
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []string{}, cmd.Val())
+		}
+
+		// go-redis removes the limit condition when (offset, count) == (0, 0)
+		// so we use (offset, count) = (0, -1)
+		cmd1 := rdb.Do(ctx, "zrange", "ztmp", 0, -1, "byscore", "limit", 0, 0)
+		require.NoError(t, cmd1.Err())
+		require.Equal(t, []interface{}{}, cmd1.Val())
+
+		// limit with zero count
+		for i := 0; i < 20; i++ {
+			var args [3]int64
+			for j := 0; j < 3; j++ {
+				rand.Seed(time.Now().UnixNano())
+				args[j] = rand.Int63n(20) - 10
+			}
+			if args[2] == 0 {
+				continue
+			}
+			cmd := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: args[0], Stop: args[1], Offset: args[2]})
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []string{}, cmd.Val())
+		}
+
 		// extend zrange commands
 		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1}).Val())
 		require.Equal(t, []string{"d", "c", "b", "a"}, rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
@@ -454,6 +482,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{2, "b"},
 			{1, "a"},
 		}, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "ztmp", Start: 0, Stop: -1, Offset: 0, Count: -1, Rev: true}).Val())
+
 	})
 
 	t.Run(fmt.Sprintf("ZREVRANGE basics - %s", encoding), func(t *testing.T) {

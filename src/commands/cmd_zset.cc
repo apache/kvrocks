@@ -24,6 +24,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_zset.h"
 
@@ -454,6 +455,12 @@ class CommandZRangeStore : public Commander {
   RangeScoreSpec score_spec_;
 };
 
+/*
+ * description:
+ *    syntax:   `ZRANGE key start stop [BYSCORE | BYLEX] [REV] [LIMIT offset count]
+ *              [WITHSCORES]`
+ *
+ */
 class CommandZRangeGeneric : public Commander {
  public:
   explicit CommandZRangeGeneric(ZRangeType range_type = kZRangeAuto, ZRangeDirection direction = kZRangeDirectionAuto)
@@ -545,7 +552,6 @@ class CommandZRangeGeneric : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-
     std::vector<MemberScore> member_scores;
 
     rocksdb::Status s;
@@ -555,9 +561,17 @@ class CommandZRangeGeneric : public Commander {
         s = zset_db.RangeByRank(key_, rank_spec_, &member_scores, nullptr);
         break;
       case kZRangeScore:
+        if (score_spec_.count == 0) {
+          *output = redis::MultiBulkString({});
+          return Status::OK();
+        }
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
+        if (lex_spec_.count == 0) {
+          *output = redis::MultiBulkString({});
+          return Status::OK();
+        }
         s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
         break;
     }

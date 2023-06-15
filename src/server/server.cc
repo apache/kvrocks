@@ -28,6 +28,8 @@
 #include <sys/utsname.h>
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
 #include <iomanip>
 #include <jsoncons/json.hpp>
 #include <memory>
@@ -1752,6 +1754,13 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
   }
 }
 
+static uint64_t GetCursorId(const std::string &key_name, uint64_t counter) {
+  auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
+  auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
+  return static_cast<uint64_t>(hash) | static_cast<uint64_t>(time_stamp) << 32 | static_cast<uint64_t>(counter) << 48 |
+         static_cast<uint64_t>(1) << 63;
+}
+
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
   if (!config_->number_cursor_enabled) {
     // add prefix for SCAN
@@ -1759,12 +1768,12 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
   }
   // Use mutex make next_free_cursor_, cursor_index_ thread safe.
   // We do not need to ensure read consistency of cursor_dict_ and cursor_index_.
-  std::lock_guard<std::mutex> guard(cursor_index_mu_);
-  auto num_cursor = next_free_cursor_ += 2;
-  size_t index = (cursor_index_ + 1) % cursor_dict_.size();
-  cursor_dict_[index] = {num_cursor, key_name};
-  cursor_index_ = index;
-  return std::to_string(num_cursor);
+  auto counter = cursor_counter_.fetch_add(1);
+  cursor_counter_.fetch_and(0x4000 - 1);
+  counter = counter & (0x4000 - 1);
+  auto ret = GetCursorId(key_name, counter);
+  cursor_dict_[counter] = {counter, key_name};
+  return std::to_string(ret);
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
@@ -1772,7 +1781,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   if (cursor.empty() || !config_->number_cursor_enabled) {
     return cursor;
   }
-  size_t begin = cursor_index_;
+  uint16_t begin = cursor_counter_;
   auto s = ParseInt<uint64_t>(cursor, 10);
   // When Cursor 0 or not a Integer return empty string.
   // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of

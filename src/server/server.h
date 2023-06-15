@@ -23,6 +23,9 @@
 #include <inttypes.h>
 
 #include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -74,7 +77,7 @@ struct ChannelSubscribeNum {
   size_t subscribe_num;
 };
 
-const int CURSOR_DICT_SIZE = 64;
+const size_t CURSOR_DICT_SIZE = 1024 * 16;
 
 struct CursorDictElement {
   uint64_t cursor;
@@ -321,8 +324,6 @@ class Server {
   std::shared_mutex watched_key_mutex_;
 
   // SCAN ring buffer
-  std::mutex cursor_index_mu_;
-  size_t cursor_index_ = {0};
-  uint64_t next_free_cursor_ = {1};
+  std::atomic<uint16_t> cursor_counter_ = {1};
   std::array<struct CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
 };

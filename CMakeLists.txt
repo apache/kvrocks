@@ -17,13 +17,13 @@
 
 cmake_minimum_required(VERSION 3.16)
 project(kvrocks
-        DESCRIPTION "NoSQL which based on rocksdb and compatible with the Redis protocol"
+        DESCRIPTION "NoSQL which is based on RocksDB and compatible with the Redis protocol"
         LANGUAGES CXX)
 
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
-option(ENABLE_ASAN "enable address santinizer" OFF)
-option(ENABLE_TSAN "enable thread santinizer" OFF)
-option(ASAN_WITH_LSAN "enable leak santinizer while address santinizer is enabled" ON)
+option(ENABLE_ASAN "enable address sanitizer" OFF)
+option(ENABLE_TSAN "enable thread sanitizer" OFF)
+option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(USE_LUAJIT "use luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
@@ -92,7 +92,7 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# GLIBC < 2.17 should explict specify the real time library when use clock_*
+# GLIBC < 2.17 should explicitly specify the real-time library when using clock_*
 find_library(REALTIME_LIB rt)
 if (REALTIME_LIB)
     list(APPEND EXTERNAL_LIBS PRIVATE rt)

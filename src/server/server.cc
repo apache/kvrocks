@@ -1772,7 +1772,7 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
   cursor_counter_.fetch_and(0x4000 - 1);
   counter = counter & (0x4000 - 1);
   auto ret = GetCursorId(key_name, counter);
-  cursor_dict_[counter] = {counter, key_name};
+  cursor_dict_[counter] = {ret, key_name};
   return std::to_string(ret);
 }
 

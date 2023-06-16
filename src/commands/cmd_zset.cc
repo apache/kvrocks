@@ -319,11 +319,12 @@ class CommandZPop : public Commander,
 
   void SendMembersWithScores(const std::vector<MemberScore> &member_scores, const std::string &userkey) {
     std::string output;
-    if (block_)
+    if (block_) {
       output.append(redis::MultiLen(member_scores.size() * 2 + 1));
-    else
+      output.append(redis::BulkString(userkey));
+    } else {
       output.append(redis::MultiLen(member_scores.size() * 2));
-    if (block_) output.append(redis::BulkString(userkey));
+    }
     for (const auto &ms : member_scores) {
       output.append(redis::BulkString(ms.member));
       output.append(redis::BulkString(util::Float2String(ms.score)));

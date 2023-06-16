@@ -266,22 +266,15 @@ class CommandZPop : public Commander,
     svr_ = svr;
     conn_ = conn;
 
-    auto s = TryPopFromMultiZset();
+    std::string userkey;
+    std::vector<MemberScore> member_scores;
+    auto s = PopFromMultipleZsets(member_scores, userkey);
     if (!s.ok()) {
-      return Status::OK();  // Error already output
+      return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (!block_) {  // ReplyForZPop
-      output->append(redis::MultiLen(member_scores_.size() * 2));
-      for (const auto &ms : member_scores_) {
-        output->append(redis::BulkString(ms.member));
-        output->append(redis::BulkString(util::Float2String(ms.score)));
-      }
-      return Status::OK();
-    }
-
-    if (!member_scores_.empty()) {
-      ReplyForBZPop();
+    if (!block_ || !member_scores.empty()) {
+      SendMembersWithScores(member_scores, userkey);
       return Status::OK();
     }
 
@@ -307,30 +300,31 @@ class CommandZPop : public Commander,
     return {Status::BlockingCmd};
   }
 
-  rocksdb::Status TryPopFromMultiZset() {
+  rocksdb::Status PopFromMultipleZsets(std::vector<MemberScore> &member_scores, std::string &userkey) {
     redis::ZSet zset_db(svr_->storage, conn_->GetNamespace());
     rocksdb::Status s;
     for (auto &user_key : keys_) {
-      s = zset_db.Pop(user_key, count_, min_, &member_scores_);
+      s = zset_db.Pop(user_key, count_, min_, &member_scores);
       if (!s.ok()) {
-        // output here is necessary for block operation to reply error
-        conn_->Reply(redis::Error("ERR " + s.ToString()));
         break;
       }
-      if (member_scores_.empty() && block_) {
+      if (member_scores.empty() && block_) {
         continue;
       }
-      user_key_ = user_key;
+      userkey = user_key;
       break;
     }
     return s;
   }
 
-  void ReplyForBZPop() {
+  void SendMembersWithScores(const std::vector<MemberScore> &member_scores, const std::string &userkey) {
     std::string output;
-    output.append(redis::MultiLen(member_scores_.size() * 2 + 1));
-    output.append(redis::BulkString(user_key_));
-    for (const auto &ms : member_scores_) {
+    if (block_)
+      output.append(redis::MultiLen(member_scores.size() * 2 + 1));
+    else
+      output.append(redis::MultiLen(member_scores.size() * 2));
+    if (block_) output.append(redis::BulkString(userkey));
+    for (const auto &ms : member_scores) {
       output.append(redis::BulkString(ms.member));
       output.append(redis::BulkString(util::Float2String(ms.score)));
     }
@@ -338,8 +332,14 @@ class CommandZPop : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
-    auto s = TryPopFromMultiZset();
-    if (member_scores_.empty()) {
+    std::string userkey;
+    std::vector<MemberScore> member_scores;
+    auto s = PopFromMultipleZsets(member_scores, userkey);
+    if (!s.ok()) {
+      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      return;
+    }
+    if (member_scores.empty()) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -347,7 +347,7 @@ class CommandZPop : public Commander,
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
-    ReplyForBZPop();
+    SendMembersWithScores(member_scores, userkey);
 
     if (timer_) {
       timer_.reset();
@@ -390,8 +390,6 @@ class CommandZPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  std::string user_key_;
-  std::vector<MemberScore> member_scores_;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {
@@ -461,12 +459,14 @@ class CommandMPop : public Commander,
     svr_ = svr;
     conn_ = conn;
 
-    auto s = TryPopFromMultiZset();
+    std::string userkey;
+    std::vector<MemberScore> member_scores;
+    auto s = PopFromMultipleZsets(member_scores, userkey);
     if (!s.ok()) {
-      return Status::OK();  // error has already output
+      return {Status::RedisExecErr, s.ToString()};
     }
-    if (!block_ || !member_scores_.empty()) {
-      ReplyForMPop();
+    if (!block_ || !member_scores.empty()) {
+      SendMembersWithScores(member_scores, userkey);
       return Status::OK();
     }
 
@@ -492,43 +492,47 @@ class CommandMPop : public Commander,
     return {Status::BlockingCmd};
   }
 
-  rocksdb::Status TryPopFromMultiZset() {
+  rocksdb::Status PopFromMultipleZsets(std::vector<MemberScore> &member_scores, std::string &userkey) {
     redis::ZSet zset_db(svr_->storage, conn_->GetNamespace());
     rocksdb::Status s;
     for (auto &user_key : keys_) {
-      s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores_);
+      s = zset_db.Pop(user_key, count_, flag_ == ZSET_MIN, &member_scores);
       if (!s.ok()) {
-        // output here is necessary for block operation to reply error
-        conn_->Reply(redis::Error("ERR " + s.ToString()));
         break;
       }
-      if (member_scores_.empty()) {
+      if (member_scores.empty()) {
         continue;
       }
-      user_key_ = user_key;
+      userkey = user_key;
       break;
     }
     return s;
   }
 
-  void ReplyForMPop() {
+  void SendMembersWithScores(const std::vector<MemberScore> &member_scores, const std::string &userkey) {
     std::string output;
     output.append(redis::MultiLen(2));
-    output.append(redis::BulkString(user_key_));
-    output.append(redis::MultiLen(member_scores_.size() * 2));
-    for (const auto &ms : member_scores_) {
+    output.append(redis::BulkString(userkey));
+    output.append(redis::MultiLen(member_scores.size() * 2));
+    for (const auto &ms : member_scores) {
       output.append(redis::BulkString(ms.member));
       output.append(redis::BulkString(util::Float2String(ms.score)));
     }
-    if (member_scores_.empty() && !block_) {
+    if (member_scores.empty() && !block_) {
       output = redis::NilString();
     }
     conn_->Reply(output);
   }
 
   void OnWrite(bufferevent *bev) {
-    auto s = TryPopFromMultiZset();
-    if (member_scores_.empty()) {
+    std::string userkey;
+    std::vector<MemberScore> member_scores;
+    auto s = PopFromMultipleZsets(member_scores, userkey);
+    if (!s.ok()) {
+      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      return;
+    }
+    if (member_scores.empty()) {
       // The connection may be waked up but can't pop from list. For example,
       // connection A is blocking on list and connection B push a new element
       // then wake up the connection A, but this element may be token by other connection C.
@@ -536,7 +540,7 @@ class CommandMPop : public Commander,
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
-    ReplyForMPop();
+    SendMembersWithScores(member_scores, userkey);
 
     if (timer_) {
       timer_.reset();
@@ -585,8 +589,6 @@ class CommandMPop : public Commander,
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
-  std::string user_key_;
-  std::vector<MemberScore> member_scores_;
 
   void unBlockingAll() {
     for (const auto &key : keys_) {

@@ -428,7 +428,7 @@ void Server::UnsubscribeChannel(const std::string &channel, redis::Connection *c
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      delConnContext(conn_ctx);
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_channels_.erase(iter);
@@ -484,7 +484,7 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      delConnContext(conn_ctx);
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_patterns_.erase(iter);
@@ -519,7 +519,7 @@ void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      delConnContext(conn_ctx);
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         blocking_keys_.erase(iter);
@@ -588,7 +588,7 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     if (!s.IsOK()) {
       LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx.fd << ": " << s.Msg();
     }
-    delConnContext(conn_ctx);
+    conn_ctxs_.erase(conn_ctx);
     iter->second.pop_front();
   }
 }
@@ -613,12 +613,6 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
     } else {
       ++it;
     }
-  }
-}
-
-void Server::delConnContext(ConnContext c) {
-  if (auto iter = conn_ctxs_.find(c); iter != conn_ctxs_.end()) {
-    conn_ctxs_.erase(iter);
   }
 }
 

@@ -1754,9 +1754,14 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
   }
 }
 
-static uint64_t GetCursorId(const std::string &key_name, uint64_t counter) {
+// The numeric cursor consists of a 32-bit hash, a 16-bit time stamp, and a 16-bit counter, with the highest bit set to
+// 1 to prevent a zero cursor from occurring. The hash is used to prevent users from obtaining cursors that are used by
+// other users. The time_stamp is used to prevent the generation of the same cursor in the extremely short period before
+// and after a restart.
+static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
   auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
   auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
+  // set first bit 1, so number cursor not be 0
   return static_cast<uint64_t>(hash) | static_cast<uint64_t>(time_stamp) << 32 | static_cast<uint64_t>(counter) << 48 |
          static_cast<uint64_t>(1) << 63;
 }
@@ -1766,14 +1771,11 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
     // add prefix for SCAN
     return prefix + key_name;
   }
-  // Use mutex make next_free_cursor_, cursor_index_ thread safe.
-  // We do not need to ensure read consistency of cursor_dict_ and cursor_index_.
-  auto counter = cursor_counter_.fetch_add(1);
-  cursor_counter_.fetch_and(0x4000 - 1);
-  counter = counter & (0x4000 - 1);
-  auto ret = GetCursorId(key_name, counter);
-  cursor_dict_[counter] = {ret, key_name};
-  return std::to_string(ret);
+  auto counter = cursor_dict_index_.fetch_add(1);
+  auto number_cursor = GetNumberCursor(key_name, counter);
+  auto index = counter % CURSOR_DICT_SIZE;
+  cursor_dict_[index] = {number_cursor, key_name};
+  return std::to_string(number_cursor);
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
@@ -1781,7 +1783,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   if (cursor.empty() || !config_->number_cursor_enabled) {
     return cursor;
   }
-  uint16_t begin = cursor_counter_;
+
   auto s = ParseInt<uint64_t>(cursor, 10);
   // When Cursor 0 or not a Integer return empty string.
   // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of
@@ -1790,18 +1792,11 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
     return {};
   }
   auto cursor_num = *s;
-
-  // Traverse the ring buffer in reverse order from the current index and retrieve the first matching cursor.
-  for (auto it = cursor_dict_.begin() + begin; it >= cursor_dict_.begin(); --it) {
-    if (it->cursor == cursor_num) {
-      return it->key_name;
-    }
+  auto index = (cursor_num >> 48) % CURSOR_DICT_SIZE;
+  auto item = cursor_dict_[index];
+  if (item.cursor == cursor_num) {
+    return item.key_name;
   }
 
-  for (auto it = cursor_dict_.end() - 1; it >= cursor_dict_.begin() + begin; --it) {
-    if (it->cursor == cursor_num) {
-      return it->key_name;
-    }
-  }
   return {};
 }

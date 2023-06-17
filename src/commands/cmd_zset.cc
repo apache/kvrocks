@@ -848,7 +848,7 @@ class CommandZUnion : public Commander {
             k++;
           }
           option_iterator += numkeys_ + 1;
-        } else if (util::ToLower(args[option_iterator] == "withscores")) {
+        } else if (util::ToLower(args[option_iterator]) == "withscores") {
           with_scores_ = true;
         } else {
           return {Status::RedisParseErr, errInvalidSyntax};
@@ -858,7 +858,20 @@ class CommandZUnion : public Commander {
     }
 
     Status Execute(Server *svr, Connection *conn, std::string *output) override {
-      
+      redis::ZSet zset_db(svr -> storage, conn -> GetNamespace());
+      std::vector<MemberScore> member_scores;
+      uint64_t size = 0;
+      rocksdb::Status s;
+      auto s = zset_db.Union(keys_weights_, aggregate_method_, &size, &member_scores);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+      for (const auto &ms : member_scores) {
+        output->append(redis::BulkString(ms.member));
+        if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      }
+      return Status::OK();
     }
   
   protected:
@@ -866,10 +879,9 @@ class CommandZUnion : public Commander {
     bool with_scores_ = false;
     std::vector<KeyWeight> keys_weights_;
     AggregateMethod aggregate_method_ = kAggregateSum;
-}
+};
 
-// zunionstore destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]
-// zunion numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
+
 class CommandZUnionStore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {

@@ -1768,9 +1768,8 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
 }
 
 // The numeric cursor consists of a 32-bit hash, a 16-bit time stamp, and a 16-bit counter, with the highest bit set to
-// 1 to prevent a zero cursor from occurring. The hash is used to prevent users from obtaining cursors that are used by
-// other users. The time_stamp is used to prevent the generation of the same cursor in the extremely short period before
-// and after a restart.
+// 1 to prevent a zero cursor from occurring. The hash is used to prevent information leakage. The time_stamp is used to
+// prevent the generation of the same cursor in the extremely short period before and after a restart.
 static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
   auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
   auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
@@ -1784,7 +1783,7 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
     // add prefix for SCAN
     return prefix + key_name;
   }
-  auto counter = cursor_dict_index_.fetch_add(1);
+  auto counter = cursor_counter_.fetch_add(1);
   auto number_cursor = GetNumberCursor(key_name, counter);
   auto index = counter % CURSOR_DICT_SIZE;
   cursor_dict_[index] = {number_cursor, key_name};
@@ -1805,6 +1804,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
     return {};
   }
   auto cursor_num = *s;
+  // Because the index information is fully stored in the cursor, we can directly obtain the index from the cursor.
   auto index = (cursor_num >> 48) % CURSOR_DICT_SIZE;
   auto item = cursor_dict_[index];
   if (item.cursor == cursor_num) {

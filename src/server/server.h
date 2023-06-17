@@ -328,6 +328,6 @@ class Server {
   std::shared_mutex watched_key_mutex_;
 
   // SCAN ring buffer
-  std::atomic<uint16_t> cursor_dict_index_ = {0};
+  std::atomic<uint16_t> cursor_counter_ = {0};
   std::array<struct CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
 };

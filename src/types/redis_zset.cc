@@ -717,8 +717,8 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
   return Overwrite(dst, members);
 }
 
-rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights,
-                            AggregateMethod aggregate_method, uint64_t *saved_cnt, std::vector<MemberScore> *members) {
+rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
+                            uint64_t *saved_cnt, std::vector<MemberScore> *members) {
   if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
@@ -755,11 +755,11 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights,
     }
   }
   if (members && !dst_zset.empty()) {
-    members -> reserve(dst_zset.size());
-    for (const auto &iter: dst_zset) {
-      members -> emplace_back(MemberScore{iter.first, iter.second});
+    members->reserve(dst_zset.size());
+    for (const auto &iter : dst_zset) {
+      members->emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = members -> size();
+    if (saved_cnt) *saved_cnt = members->size();
   }
   return rocksdb::Status::OK();
 }

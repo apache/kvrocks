@@ -658,11 +658,11 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     field_key = input.first;
     tokens[input.second] = input.first.substr(ns_str_size);
   }
+
   auto iter = fields_.find(field_key);
 
-  // Check if a configuration key is a valid key
-  if (iter->second == 0x0) {
-    std::cout << fmt::format("## Warning: '{}' is not a valid configuration key! ##", field_key) << std::endl;
+  if (iter == fields_.end()) {
+    std::cout << fmt::format("!!!! Warning: '{}' is not a valid configuration key !!!!", field_key) << std::endl;
   }
 
   if (iter != fields_.end()) {

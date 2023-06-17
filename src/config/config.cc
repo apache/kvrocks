@@ -661,15 +661,13 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
 
   auto iter = fields_.find(field_key);
 
-  if (iter == fields_.end()) {
-    std::cout << fmt::format("!!!! Warning: '{}' is not a valid configuration key !!!!", field_key) << std::endl;
-  }
-
   if (iter != fields_.end()) {
     auto &field = iter->second;
     field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+  } else {
+    std::cout << fmt::format("WARNING: '{}' is not a valid configuration key!", field_key) << std::endl;
   }
   return Status::OK();
 }

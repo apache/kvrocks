@@ -165,7 +165,7 @@ Config::Config() {
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
-      {"number-cursor-enabled", false, new YesNoField(&number_cursor_enabled, true)},
+      {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,

@@ -1779,7 +1779,7 @@ static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
 }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
-  if (!config_->number_cursor_enabled) {
+  if (!config_->redis_cursor_compatible) {
     // add prefix for SCAN
     return prefix + key_name;
   }
@@ -1792,7 +1792,7 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   // When cursor is 0, cursor string is empty
-  if (cursor.empty() || !config_->number_cursor_enabled) {
+  if (cursor.empty() || !config_->redis_cursor_compatible) {
     return cursor;
   }
 

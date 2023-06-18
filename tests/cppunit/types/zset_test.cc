@@ -398,3 +398,27 @@ TEST_F(RedisZSetTest, Rank) {
   }
   zset_->Del(key_);
 }
+
+TEST_F(RedisZSetTest, Diff) {
+  uint64_t ret = 0;
+  std::vector<MemberScore> mscores;
+  for (size_t i = 0; i < fields_.size(); i++) {
+    mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
+  }
+  zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+
+  zset_->Del(key_);
+}
+
+TEST_F(RedisZSetTest, DiffStore) {
+  std::vector<MemberScore> mscores;
+  for (size_t i = 0; i < fields_.size(); i++) {
+    mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
+  }
+
+  zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+
+  zset_->Del(key_);
+}

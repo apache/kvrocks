@@ -158,38 +158,29 @@ rocksdb::Status ZSet::IncrBy(const Slice &user_key, const Slice &member, double 
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::MemberScores(const Slice &user_key, MemberScoresTy *mscores) {
-  mscores->clear();
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
-
-  SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-
-  std::string prefix, next_version_prefix;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
-
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapshot();
-  rocksdb::Slice upper_bound(next_version_prefix);
-  read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
-
-  auto iter = util::UniqueIterator(storage_, read_options);
-  for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    // mscores->emplace_back();
-  }
-  return rocksdb::Status::OK();
-}
-
 rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscores) {
   mscores->clear();
-  std::vector<std::string> source_members;
-  // auto s = MembersTy(keys[0],&source_members);
+  RangeScoreSpec spec;
+  uint64_t removed_cnt{};
+  MemberScoresTy source_mscores;
+  auto s = RangeByScore(keys[0], spec, source_mscores, &removed_cnt);
+  if (!s.ok()) return s;
+
+  std::map<std::string, bool> exclude_mscores;
+  MemberScoresTy target_mscores;
+  for (size_t i = 1; i < keys.size(); i++) {
+    s = RangeByScore(keys[i], &target_mscores);
+    if (!s.ok()) return s;
+    for (const auto &mscore : target_mscores) {
+      exclude_mscores[mscore.member] = true;
+    }
+  }
+
+  for (const auto &mscore : source_mscores) {
+    if (exclude_mscores.find(mscore.member) == exclude_mscores.end()) {
+      mscores->emplace_back(mscore);
+    }
+  }
 
   return rocksdb::Status::OK();
 }
@@ -197,6 +188,7 @@ rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScoresTy *mscor
 rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
   std::vector<MemberScore> mscores;
   auto s = Diff(keys, &mscores);
+  if (!s.ok()) return s;
   *saved_cnt = mscores.size();
   return Overwrite(dst, mscores);
 }

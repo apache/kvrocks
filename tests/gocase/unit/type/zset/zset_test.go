@@ -970,8 +970,6 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{3, "b"},
 			{3, "d"},
 			{5, "c"}}
-		x := rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val()
-		fmt.Println(x)
 		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
 	})
 

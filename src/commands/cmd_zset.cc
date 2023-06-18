@@ -1028,6 +1028,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZUnion>("zunion", -4, "read-only", 1, 1, 1), )
 
 }  // namespace redis

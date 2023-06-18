@@ -52,13 +52,27 @@ func TestScanEmptyKey(t *testing.T) {
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
 }
 
-func TestScan(t *testing.T) {
+func TestScanWhithNumberCursor(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
-
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "yes").Err())
+	ScanTest(t, rdb, ctx)
+}
+
+func TestScanWhithStringCursor(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "no").Err())
+	ScanTest(t, rdb, ctx)
+}
+
+func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 
 	t.Run("SCAN Basic", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())

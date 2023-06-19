@@ -339,5 +339,5 @@ class Server {
 
   // SCAN ring buffer
   std::atomic<uint16_t> cursor_counter_ = {0};
-  std::array<struct CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
+  std::array<CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
 };

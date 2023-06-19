@@ -67,7 +67,7 @@ func createDefaultLexZset(rdb *redis.Client, ctx context.Context) {
 		{0, "omega"}})
 }
 
-func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
+func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string, srv *util.KvrocksServer) {
 	t.Run(fmt.Sprintf("Check encoding - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
 		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"})
@@ -318,6 +318,60 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMax(ctx, "ztmp", 3).Val())
 	})
 
+	t.Run(fmt.Sprintf("BZPOPMIN basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
+		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		resultz := rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 1, Member: "a"}, resultz)
+		resultz = rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 2, Member: "b"}, resultz)
+		resultz = rdb.BZPopMin(ctx, 0, "zsetb", "zseta").Val().Z
+		require.Equal(t, redis.Z{Score: 1, Member: "d"}, resultz)
+		resultz = rdb.BZPopMin(ctx, 0, "zsetb", "zseta").Val().Z
+		require.Equal(t, redis.Z{Score: 2, Member: "e"}, resultz)
+		resultz = rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 3, Member: "c"}, resultz)
+		var err = rdb.BZPopMin(ctx, time.Millisecond*1000, "zseta", "zsetb").Err()
+		require.Equal(t, redis.Nil, err)
+
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		require.NoError(t, rd.WriteArgs("bzpopmin", "zseta", "0"))
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
+		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
+	})
+
+	t.Run(fmt.Sprintf("BZPOPMAX basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
+		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		resultz := rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 3, Member: "c"}, resultz)
+		resultz = rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 2, Member: "b"}, resultz)
+		resultz = rdb.BZPopMax(ctx, 0, "zsetb", "zseta").Val().Z
+		require.Equal(t, redis.Z{Score: 2, Member: "e"}, resultz)
+		resultz = rdb.BZPopMax(ctx, 0, "zsetb", "zseta").Val().Z
+		require.Equal(t, redis.Z{Score: 1, Member: "d"}, resultz)
+		resultz = rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
+		require.Equal(t, redis.Z{Score: 1, Member: "a"}, resultz)
+		var err = rdb.BZPopMin(ctx, time.Millisecond*1000, "zseta", "zsetb").Err()
+		require.Equal(t, redis.Nil, err)
+
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		require.NoError(t, rd.WriteArgs("bzpopmax", "zseta", "0"))
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
+		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
+	})
+
 	t.Run(fmt.Sprintf("ZMPOP basics - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
@@ -336,6 +390,41 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{Score: 40, Member: "d"}, {Score: 50, Member: "e"}, {Score: 60, Member: "f"}}, zset)
 		require.Equal(t, redis.Nil, rdb.ZMPop(ctx, "max", 10, "zseta", "zsetb").Err())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "zseta", "zsetb").Val())
+	})
+
+	t.Run(fmt.Sprintf("BZMPOP basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
+		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
+		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		var key, zset = rdb.BZMPop(ctx, 0, "min", 1, "zseta").Val()
+		require.Equal(t, "zseta", key)
+		require.Equal(t, []redis.Z{{Score: 1, Member: "a"}}, zset)
+		key, zset = rdb.BZMPop(ctx, 0, "max", 2, "zsetb").Val()
+		require.Equal(t, "zsetb", key)
+		require.Equal(t, []redis.Z{{Score: 2, Member: "e"}, {Score: 1, Member: "d"}}, zset)
+		key, zset = rdb.BZMPop(ctx, 0, "min", 3, "zseta").Val()
+		require.Equal(t, "zseta", key)
+		require.Equal(t, []redis.Z{{Score: 2, Member: "b"}, {Score: 3, Member: "c"}}, zset)
+		require.Equal(t, redis.Nil, rdb.BZMPop(ctx, time.Millisecond*1000, "max", 10, "zseta", "zsetb").Err())
+
+		rd := srv.NewClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		ch := make(chan *redis.ZSliceWithKeyCmd)
+		go func() {
+			ch <- rd.BZMPop(ctx, 0, "min", 10, "zseta")
+		}()
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt == 1
+		}, 5*time.Second, 100*time.Millisecond)
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"})
+		r := <-ch
+		key, zset = r.Val()
+		require.Equal(t, "zseta", key)
+		require.Equal(t, []redis.Z{{Score: 1, Member: "a"}, {Score: 2, Member: "b"}}, zset)
 	})
 
 	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {
@@ -1375,7 +1464,7 @@ func TestZset(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	basicTests(t, rdb, ctx, "skiplist")
+	basicTests(t, rdb, ctx, "skiplist", srv)
 
 	t.Run("ZUNIONSTORE regression, should not create NaN in scores", func(t *testing.T) {
 		rdb.ZAdd(ctx, "z", redis.Z{Score: math.Inf(-1), Member: "neginf"})

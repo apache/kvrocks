@@ -864,6 +864,7 @@ class CommandZUnion : public Commander {
         option_iterator += numkeys_ + 1;
       } else if (util::ToLower(args[option_iterator]) == "withscores") {
         with_scores_ = true;
+        option_iterator++;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -874,8 +875,7 @@ class CommandZUnion : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
-    uint64_t size = 0;
-    auto s = zset_db.Union(keys_weights_, aggregate_method_, &size, &member_scores);
+    auto s = zset_db.Union(keys_weights_, aggregate_method_, nullptr, &member_scores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

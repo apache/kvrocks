@@ -52,7 +52,7 @@ func TestScanEmptyKey(t *testing.T) {
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
 }
 
-func TestScanWhithNumberCursor(t *testing.T) {
+func TestScanWithNumberCursor(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
@@ -62,7 +62,7 @@ func TestScanWhithNumberCursor(t *testing.T) {
 	ScanTest(t, rdb, ctx)
 }
 
-func TestScanWhithStringCursor(t *testing.T) {
+func TestScanWithStringCursor(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()

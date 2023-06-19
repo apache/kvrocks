@@ -340,11 +340,11 @@ func TestRedisCli(t *testing.T) {
 		require.Len(t, strings.Split(r, "\n"), 10)
 	})
 
-	t.Run("Bigkeys", func(t *testing.T) {
+	t.Run("Use reids-cli --bigkeys", func(t *testing.T) {
 		runCli(t, srv, nil, "--bigkeys").Success()
 	})
 
-	t.Run("Memkeys", func(t *testing.T) {
+	t.Run("Use reids-cli --memkeys", func(t *testing.T) {
 		runCli(t, srv, nil, "--memkeys").Success()
 	})
 

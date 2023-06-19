@@ -667,6 +667,59 @@ class CommandBZMPop : public Commander,
   }
 };
 
+class CommandZRandMember : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2 || args.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    if (args.size() > 2) {
+      auto parse_result = ParseInt<int>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+
+      count_ = *parse_result;
+
+      if (args.size() == 4) {
+        if (util::ToString(args[3]) != "withscores") {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+        with_scores_ = true;
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    std::vector<MemberScore> mscores;
+    auto s = zset_db.RandWithCount(args_[1], count_, with_scores_, mscores);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (count == 0) {
+      output->append(redis::String(mscores[0].member));
+    } else {
+      std::vector<std::string> list;
+      for (const auto &ms : mscores) {
+        list.emplace_back(redis::BulkString(ms.member));
+        if (with_scores_) list.emplace_back(redis::BulkString(util::Float2String(ms.score)));
+      }
+      *output = redis::Array(list);
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  with_scores_{false};
+  int64_t count_{0};  // count can be negative.
+};
+
 class CommandZRangeStore : public Commander {
  public:
   explicit CommandZRangeStore() : range_type_(kZRangeRank), direction_(kZRangeDirectionForward) {}
@@ -1285,6 +1338,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandZRandMember>("zrandmember", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1), )
 
 }  // namespace redis

@@ -120,6 +120,7 @@ class ZSet : public SubKeyScanner {
                                uint64_t *removed_cnt);
   rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
                              uint64_t *removed_cnt);
+  rocksdb::Status RandWithCount(const Slice &user_key, int64_t count, bool with_score, MemberScores *mscores, );
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

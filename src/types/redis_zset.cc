@@ -219,6 +219,17 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status RandWithCount(const Slice &user_key, int64_t count, bool with_score, MemberScores *mscores) {
+  if (mscores) mscores->clear();
+
+  /*
+  specification:
+      1. count>0 => return distinct elements(min[count,cardinality]).
+      2. count==0 => return a random string
+      3. count<0 => it allows repeated elements.(truly random)
+  */
+}
+
 rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,
                                   uint64_t *removed_cnt) {
   if (mscores) mscores->clear();

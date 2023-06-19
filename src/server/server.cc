@@ -113,10 +113,6 @@ Server::~Server() {
     worker_thread.reset();
   }
 
-  for (const auto &iter : conn_ctxs_) {
-    delete iter.first;
-  }
-
   lua::DestroyState(lua_);
   libevent_global_shutdown();
 }
@@ -365,7 +361,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   std::vector<ConnContext> to_publish_conn_ctxs;
   if (auto iter = pubsub_channels_.find(channel); iter != pubsub_channels_.end()) {
     for (const auto &conn_ctx : iter->second) {
-      to_publish_conn_ctxs.emplace_back(*conn_ctx);
+      to_publish_conn_ctxs.emplace_back(conn_ctx);
     }
   }
 
@@ -375,7 +371,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   for (const auto &iter : pubsub_patterns_) {
     if (util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {
-        to_publish_patterns_conn_ctxs.emplace_back(*conn_ctx);
+        to_publish_patterns_conn_ctxs.emplace_back(conn_ctx);
         patterns.emplace_back(iter.first);
       }
     }
@@ -414,11 +410,11 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
 void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_channels_.find(channel); iter == pubsub_channels_.end()) {
-    pubsub_channels_.emplace(channel, std::list<ConnContext *>{conn_ctx});
+    pubsub_channels_.emplace(channel, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -433,8 +429,8 @@ void Server::UnsubscribeChannel(const std::string &channel, redis::Connection *c
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_channels_.erase(iter);
@@ -470,11 +466,11 @@ void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
 void Server::PSubscribeChannel(const std::string &pattern, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_patterns_.find(pattern); iter == pubsub_patterns_.end()) {
-    pubsub_patterns_.emplace(pattern, std::list<ConnContext *>{conn_ctx});
+    pubsub_patterns_.emplace(pattern, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -489,8 +485,8 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_patterns_.erase(iter);
@@ -503,11 +499,11 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
 void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
-    blocking_keys_.emplace(key, std::list<ConnContext *>{conn_ctx});
+    blocking_keys_.emplace(key, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -524,8 +520,8 @@ void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         blocking_keys_.erase(iter);
@@ -590,11 +586,11 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
 
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    auto s = conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx->fd << ": " << s.Msg();
+      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx.fd << ": " << s.Msg();
     }
-    delConnContext(conn_ctx);
+    conn_ctxs_.erase(conn_ctx);
     iter->second.pop_front();
   }
 }
@@ -619,13 +615,6 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
     } else {
       ++it;
     }
-  }
-}
-
-void Server::delConnContext(ConnContext *c) {
-  if (auto iter = conn_ctxs_.find(c); iter != conn_ctxs_.end()) {
-    delete iter->first;
-    conn_ctxs_.erase(iter);
   }
 }
 

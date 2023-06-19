@@ -60,7 +60,18 @@ struct DBScanInfo {
 struct ConnContext {
   Worker *owner;
   int fd;
+
   ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
+
+  bool operator<(const ConnContext &c) const {
+    if (owner == c.owner) {
+      return fd < c.fd;
+    }
+
+    return owner < c.owner;
+  }
+
+  bool operator==(const ConnContext &c) const { return owner == c.owner && fd == c.fd; }
 };
 
 struct StreamConsumer {
@@ -255,7 +266,6 @@ class Server {
  private:
   void cron();
   void recordInstantaneousMetrics();
-  void delConnContext(ConnContext *c);
   static void updateCachedTime();
   Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
@@ -299,11 +309,11 @@ class Server {
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;
 
-  std::map<ConnContext *, bool> conn_ctxs_;
-  std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
-  std::map<std::string, std::list<ConnContext *>> pubsub_patterns_;
+  std::map<ConnContext, bool> conn_ctxs_;
+  std::map<std::string, std::list<ConnContext>> pubsub_channels_;
+  std::map<std::string, std::list<ConnContext>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;
-  std::map<std::string, std::list<ConnContext *>> blocking_keys_;
+  std::map<std::string, std::list<ConnContext>> blocking_keys_;
   std::mutex blocking_keys_mu_;
 
   std::atomic<int> blocked_clients_{0};

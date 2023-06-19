@@ -1769,7 +1769,7 @@ static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
 
 static size_t GetIndexFromNumberCursor(uint64_t number_cursor) { return (number_cursor >> 48) % CURSOR_DICT_SIZE; }
 
-std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const char *prefix) {
+std::string Server::GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix) {
   if (!config_->redis_cursor_compatible) {
     // add prefix for SCAN
     return prefix + key_name;
@@ -1777,11 +1777,11 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, const
   auto counter = cursor_counter_.fetch_add(1);
   auto number_cursor = GetNumberCursor(key_name, counter);
   auto index = GetIndexFromNumberCursor(number_cursor);
-  cursor_dict_[index] = {number_cursor, key_name};
+  cursor_dict_[index] = {number_cursor, cursor_type, key_name};
   return std::to_string(number_cursor);
 }
 
-std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
+std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type) {
   // When cursor is 0, cursor string is empty
   if (cursor.empty() || !config_->redis_cursor_compatible) {
     return cursor;
@@ -1798,7 +1798,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor) {
   // Because the index information is fully stored in the cursor, we can directly obtain the index from the cursor.
   auto index = GetIndexFromNumberCursor(number_cursor);
   auto item = cursor_dict_[index];
-  if (item.cursor == number_cursor) {
+  if (item.cursor == number_cursor && item.cursor_type == cursor_type) {
     return item.key_name;
   }
 

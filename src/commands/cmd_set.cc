@@ -426,13 +426,13 @@ class CommandSScan : public CommandSubkeyScanBase {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Set set_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> members;
-    auto key_name = svr->GetKeyNameFromCursor(cursor_);
+    auto key_name = svr->GetKeyNameFromCursor(cursor_, CursorType::kTypeSet);
     auto s = set_db.Scan(key_, key_name, limit_, prefix_, &members);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = CommandScanBase::GenerateOutput(svr, members);
+    *output = CommandScanBase::GenerateOutput(svr, members, CursorType::kTypeSet);
     return Status::OK();
   }
 };

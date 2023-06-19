@@ -93,8 +93,16 @@ constexpr const size_t CURSOR_DICT_SIZE = 1024 * 16;
 static_assert((CURSOR_DICT_SIZE & (CURSOR_DICT_SIZE - 1)) == 0, "CURSOR_DICT_SIZE must be 2^n");
 static_assert(CURSOR_DICT_SIZE < (1 << 15), "CURSOR_DICT_SIZE must be less than 2^16");
 
+enum CursorType {
+  kTypeBase,  // cursor for SCAN
+  kTypeHash,  // cursor for HSCAN
+  kTypeSet,   // cursor for SSCAN
+  kTypeZSet,  // cursor for ZSCAN
+};
+
 struct CursorDictElement {
   uint64_t cursor;
+  CursorType cursor_type;
   std::string key_name;
 };
 
@@ -210,8 +218,8 @@ class Server {
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
-  std::string GenerateCursorFromKeyName(const std::string &key_name, const char *prefix = "");
-  std::string GetKeyNameFromCursor(const std::string &cursor);
+  std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
+  std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
 
   int DecrClientNum();
   int IncrClientNum();

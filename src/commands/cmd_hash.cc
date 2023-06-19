@@ -366,13 +366,13 @@ class CommandHScan : public CommandSubkeyScanBase {
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> fields;
     std::vector<std::string> values;
-    auto key_name = svr->GetKeyNameFromCursor(cursor_);
+    auto key_name = svr->GetKeyNameFromCursor(cursor_, CursorType::kTypeHash);
     auto s = hash_db.Scan(key_, key_name, limit_, prefix_, &fields, &values);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = GenerateOutput(svr, fields, values);
+    *output = GenerateOutput(svr, fields, values, CursorType::kTypeHash);
     return Status::OK();
   }
 };

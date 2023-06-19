@@ -754,16 +754,14 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, Aggregat
       }
     }
   }
-  auto compareScore = [](const MemberScore& score1, const MemberScore& score2) {
-        return score1.score < score2.score;
-    };
+  auto compare_score = [](const MemberScore &score1, const MemberScore &score2) { return score1.score < score2.score; };
   if (members && !dst_zset.empty()) {
     members->reserve(dst_zset.size());
     for (const auto &iter : dst_zset) {
       members->emplace_back(MemberScore{iter.first, iter.second});
     }
     if (saved_cnt) *saved_cnt = members->size();
-    std::sort(members->begin(), members->end(), compareScore);
+    std::sort(members->begin(), members->end(), compare_score);
   }
   return rocksdb::Status::OK();
 }

@@ -1756,18 +1756,19 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   return result;
 }
 
-// The numeric cursor consists of a 16-bit counter, a 16-bit time stamp, and a 32-bit hash, with the highest bit set to
-// 1 to prevent a zero cursor from occurring. The hash is used to prevent information leakage. The time_stamp is used to
-// prevent the generation of the same cursor in the extremely short period before and after a restart.
-static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
+// The numeric cursor consists of a 16-bit counter, a 16-bit time stamp, a 29-bit hash,and a 3-bit cursor type. The
+// hash is used to prevent information leakage. The time_stamp is used to prevent the generation of the same cursor in
+// the extremely short period before and after a restart.
+NumberCursor::NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name) {
   auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
   auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
-  // set first bit 1, so number cursor not be 0
-  return static_cast<uint64_t>(counter) | static_cast<uint64_t>(time_stamp) << 16 | static_cast<uint64_t>(hash) << 32 |
-         static_cast<uint64_t>(1) << 63;
+  cursor_ = static_cast<uint64_t>(counter) | static_cast<uint64_t>(time_stamp) << 16 |
+            static_cast<uint64_t>(hash) << 32 | static_cast<uint64_t>(cursor_type) << 61;
 }
 
-static size_t GetIndexFromNumberCursor(uint64_t number_cursor) { return number_cursor % CURSOR_DICT_SIZE; }
+bool NumberCursor::IsMatch(const CursorDictElement &element, CursorType cursor_type) {
+  return cursor_ == element.cursor.cursor_ && cursor_type == GetCursorType();
+}
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix) {
   if (!config_->redis_cursor_compatible) {
@@ -1775,10 +1776,9 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, Curso
     return prefix + key_name;
   }
   auto counter = cursor_counter_.fetch_add(1);
-  auto number_cursor = GetNumberCursor(key_name, counter);
-  auto index = GetIndexFromNumberCursor(number_cursor);
-  cursor_dict_[index] = {number_cursor, cursor_type, key_name};
-  return std::to_string(number_cursor);
+  auto number_cursor = NumberCursor(cursor_type, counter, key_name);
+  cursor_dict_[number_cursor.GetIndex()] = {number_cursor, key_name};
+  return number_cursor.ToString();
 }
 
 std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type) {
@@ -1794,11 +1794,10 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   if (!s.IsOK() || *s == 0) {
     return {};
   }
-  auto number_cursor = *s;
+  auto number_cursor = NumberCursor(*s);
   // Because the index information is fully stored in the cursor, we can directly obtain the index from the cursor.
-  auto index = GetIndexFromNumberCursor(number_cursor);
-  auto item = cursor_dict_[index];
-  if (item.cursor == number_cursor && item.cursor_type == cursor_type) {
+  auto item = cursor_dict_[number_cursor.GetIndex()];
+  if (number_cursor.IsMatch(item, cursor_type)) {
     return item.key_name;
   }
 

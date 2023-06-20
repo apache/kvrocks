@@ -94,15 +94,30 @@ static_assert((CURSOR_DICT_SIZE & (CURSOR_DICT_SIZE - 1)) == 0, "CURSOR_DICT_SIZ
 static_assert(CURSOR_DICT_SIZE <= (1 << 15), "CURSOR_DICT_SIZE must be less than or equal to 2^16");
 
 enum CursorType {
-  kTypeBase,  // cursor for SCAN
-  kTypeHash,  // cursor for HSCAN
-  kTypeSet,   // cursor for SSCAN
-  kTypeZSet,  // cursor for ZSCAN
+  kTypeNone = 0,  // none
+  kTypeBase = 1,  // cursor for SCAN
+  kTypeHash = 2,  // cursor for HSCAN
+  kTypeSet = 3,   // cursor for SSCAN
+  kTypeZSet = 4,  // cursor for ZSCAN
+};
+struct CursorDictElement;
+
+class NumberCursor {
+ public:
+  NumberCursor() = default;
+  explicit NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name);
+  explicit NumberCursor(uint64_t number_cursor) : cursor_(number_cursor) {}
+  size_t GetIndex() { return cursor_ % CURSOR_DICT_SIZE; }
+  bool IsMatch(const CursorDictElement &element, CursorType cursor_type);
+  std::string ToString() { return std::to_string(cursor_); }
+
+ private:
+  CursorType GetCursorType() { return static_cast<CursorType>(cursor_ >> 61); }
+  uint64_t cursor_;
 };
 
 struct CursorDictElement {
-  uint64_t cursor;
-  CursorType cursor_type;
+  NumberCursor cursor;
   std::string key_name;
 };
 

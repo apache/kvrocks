@@ -116,3 +116,15 @@ TEST(CommandParser, ParseMove) {
   ASSERT_FALSE(parse(CommandParser(std::move(d2))));
   ASSERT_FALSE(parse(CommandParser(std::move(d3))));
 }
+
+TEST(CommandParser, ParseFloat) {
+  std::vector<std::string> vec{"not float", "-3.5e-6", "3"};
+
+  CommandParser p(vec);
+
+  ASSERT_FALSE(p.TakeFloat());
+  auto _ = p.TakeStr();
+  ASSERT_EQ(p.TakeFloat().GetValue(), -3.5e-6);
+  ASSERT_EQ(p.TakeFloat().GetValue(), 3);
+  ASSERT_FALSE(p.TakeFloat());
+}

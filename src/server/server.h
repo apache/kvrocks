@@ -88,10 +88,10 @@ struct ChannelSubscribeNum {
   size_t subscribe_num;
 };
 
-// CURSOR_DICT_SIZE must be 2^n where n < 16
+// CURSOR_DICT_SIZE must be 2^n where n <= 16
 constexpr const size_t CURSOR_DICT_SIZE = 1024 * 16;
 static_assert((CURSOR_DICT_SIZE & (CURSOR_DICT_SIZE - 1)) == 0, "CURSOR_DICT_SIZE must be 2^n");
-static_assert(CURSOR_DICT_SIZE < (1 << 15), "CURSOR_DICT_SIZE must be less than 2^16");
+static_assert(CURSOR_DICT_SIZE <= (1 << 15), "CURSOR_DICT_SIZE must be less than or equal to 2^16");
 
 enum CursorType {
   kTypeBase,  // cursor for SCAN

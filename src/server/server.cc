@@ -1756,18 +1756,18 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   return result;
 }
 
-// The numeric cursor consists of a 32-bit hash, a 16-bit time stamp, and a 16-bit counter, with the highest bit set to
+// The numeric cursor consists of a 16-bit counter, a 16-bit time stamp, and a 32-bit hash, with the highest bit set to
 // 1 to prevent a zero cursor from occurring. The hash is used to prevent information leakage. The time_stamp is used to
 // prevent the generation of the same cursor in the extremely short period before and after a restart.
 static uint64_t GetNumberCursor(const std::string &key_name, uint16_t counter) {
   auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
   auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
   // set first bit 1, so number cursor not be 0
-  return static_cast<uint64_t>(hash) | static_cast<uint64_t>(time_stamp) << 32 | static_cast<uint64_t>(counter) << 48 |
+  return static_cast<uint64_t>(counter) | static_cast<uint64_t>(time_stamp) << 16 | static_cast<uint64_t>(hash) << 32 |
          static_cast<uint64_t>(1) << 63;
 }
 
-static size_t GetIndexFromNumberCursor(uint64_t number_cursor) { return (number_cursor >> 48) % CURSOR_DICT_SIZE; }
+static size_t GetIndexFromNumberCursor(uint64_t number_cursor) { return number_cursor % CURSOR_DICT_SIZE; }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix) {
   if (!config_->redis_cursor_compatible) {

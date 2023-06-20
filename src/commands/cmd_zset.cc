@@ -1151,51 +1151,36 @@ class CommandZMScore : public Commander {
 class CommandZUnion : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int>(args[1], 10);
-    if (!parse_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
+    CommandParser parser(args, 1);
+    numkeys_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+    for (size_t i = 0; i < numkeys_; ++i) {
+      keys_weights_.emplace_back(KeyWeight{GET_OR_RET(parser.TakeStr()), 1});
     }
 
-    numkeys_ = *parse_result;
-    if (numkeys_ > args.size() - 2) {
-      return {Status::RedisParseErr, errInvalidSyntax};
-    }
-
-    size_t key_iterator = 0;
-    while (key_iterator < numkeys_) {
-      keys_weights_.emplace_back(KeyWeight{args[key_iterator + 2], 1});
-      key_iterator++;
-    }
-
-    size_t option_iterator = 2 + numkeys_;
-    while (option_iterator < args.size()) {
-      if (util::ToLower(args[option_iterator]) == "aggregate" && option_iterator + 1 < args.size()) {
-        if (util::ToLower(args[option_iterator + 1]) == "sum") {
+    while (parser.Good()) {
+      if (parser.EatEqICase("aggregate")) {
+        std::string aggregate_value = GET_OR_RET(parser.TakeStr());
+        if (util::ToLower(aggregate_value) == "sum") {
           aggregate_method_ = kAggregateSum;
-        } else if (util::ToLower(args[option_iterator + 1]) == "min") {
+        } else if (util::ToLower(aggregate_value) == "min") {
           aggregate_method_ = kAggregateMin;
-        } else if (util::ToLower(args[option_iterator + 1]) == "max") {
+        } else if (util::ToLower(aggregate_value) == "max") {
           aggregate_method_ = kAggregateMax;
         } else {
           return {Status::RedisParseErr, "aggregate param error"};
         }
-        option_iterator += 2;
-      } else if (util::ToLower(args[option_iterator]) == "weights" && option_iterator + numkeys_ < args.size()) {
+      } else if (parser.EatEqICase("weights")) {
         size_t k = 0;
         while (k < numkeys_) {
-          auto weight = ParseFloat(args[option_iterator + k + 1]);
-          if (!weight || std::isnan(*weight)) {
-            return {Status::RedisParseErr, "weight is not a double or out of range"};
+          auto weight = parser.TakeFloat();
+          if (!weight) {
+            return {Status::RedisParseErr, errValueIsNotFloat};
           }
           keys_weights_[k].weight = *weight;
           k++;
         }
-        option_iterator += numkeys_ + 1;
-      } else if (util::ToLower(args[option_iterator]) == "withscores") {
+      } else if (parser.EatEqICase("withscores")) {
         with_scores_ = true;
-        option_iterator++;
-      } else {
-        return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
     return Commander::Parse(args);

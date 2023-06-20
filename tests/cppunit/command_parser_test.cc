@@ -26,9 +26,10 @@ TEST(CommandParser, Parse) {
   // [ HELLO i1 v1 | HI v2 ] [X i2 | Y]
   std::vector<std::string> c1{"hello", "1", "a"}, c2{"hi", "b"}, c3{"hi", "c", "x", "2"}, c4{"hello", "3", "d", "y"},
       c5{"hi", "e", "y"}, c6{"y"}, d1{"hello"}, d2{"hi"}, d3{"hello", "no-int"}, d4{"x", "1", "y"},
-      d5{"hello", "1", "v", "hi", "v"}, d6{"hello", "1"};
+      d5{"hello", "1", "v", "hi", "v"}, d6{"hello", "1"}, d7{"float_test", "1.1", "c"};
 
   std::int64_t i1 = 0, i2 = 0;
+  double f1 = 0;
   std::string v1, v2;
   std::string_view hflag, xflag;
 
@@ -44,6 +45,8 @@ TEST(CommandParser, Parse) {
         i2 = GET_OR_RET(parser.TakeInt());
       } else if (parser.EatEqICaseFlag("y", xflag)) {
         // pass
+      } else if (parser.EatEqICaseFlag("float_test", hflag)) {
+        f1 = GET_OR_RET(parser.TakeFloat());
       } else {
         return parser.InvalidSyntax();
       }
@@ -76,6 +79,8 @@ TEST(CommandParser, Parse) {
   ASSERT_FALSE(parse(CommandParser(d4)));
   ASSERT_FALSE(parse(CommandParser(d5)));
   ASSERT_FALSE(parse(CommandParser(d6)));
+  ASSERT_TRUE(parse(CommandParser(d7)));
+  ASSERT_EQ(f1, 1.1);
 }
 
 TEST(CommandParser, ParseMove) {

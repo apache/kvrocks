@@ -1285,7 +1285,7 @@ class CommandZUnionStore : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[1], 10);
-    return {2, 1 + num_key, 1};
+    return {3, 2 + num_key, 1};
   }
 
  protected:

@@ -26,7 +26,7 @@ TEST(CommandParser, Parse) {
   // [ HELLO i1 v1 | HI v2 ] [X i2 | Y]
   std::vector<std::string> c1{"hello", "1", "a"}, c2{"hi", "b"}, c3{"hi", "c", "x", "2"}, c4{"hello", "3", "d", "y"},
       c5{"hi", "e", "y"}, c6{"y"}, d1{"hello"}, d2{"hi"}, d3{"hello", "no-int"}, d4{"x", "1", "y"},
-      d5{"hello", "1", "v", "hi", "v"}, d6{"hello", "1"}, d7{"float_test", "1.1", "c"};
+      d5{"hello", "1", "v", "hi", "v"}, d6{"hello", "1"}, d7{"float_test", "1.1"};
 
   std::int64_t i1 = 0, i2 = 0;
   double f1 = 0;

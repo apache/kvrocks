@@ -1208,6 +1208,11 @@ class CommandZUnion : public Commander {
     return Status::OK();
   }
 
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+
  protected:
   size_t numkeys_ = 0;
   bool with_scores_ = false;
@@ -1276,6 +1281,11 @@ class CommandZUnionStore : public Commander {
 
     *output = redis::Integer(size);
     return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
   }
 
  protected:
@@ -1352,7 +1362,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandZUnion>("zunion", -4, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
+                        MakeCmdAttr<CommandZUnion>("zunion", -4, "read-only", CommandZUnion::Range), )
 
 }  // namespace redis

@@ -1193,6 +1193,13 @@ class CommandZUnion : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
+    auto compare_score = [](const MemberScore &score1, const MemberScore &score2) {
+      if (score1.score == score2.score) {
+        return score1.member < score2.member;
+      }
+      return score1.score < score2.score;
+    };
+    std::sort(member_scores.begin(), member_scores.end(), compare_score);
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &ms : member_scores) {
       output->append(redis::BulkString(ms.member));

@@ -1148,6 +1148,78 @@ class CommandZMScore : public Commander {
   }
 };
 
+class CommandZUnion : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    numkeys_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+    for (size_t i = 0; i < numkeys_; ++i) {
+      keys_weights_.emplace_back(KeyWeight{GET_OR_RET(parser.TakeStr()), 1});
+    }
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("aggregate")) {
+        std::string aggregate_value = GET_OR_RET(parser.TakeStr());
+        if (util::ToLower(aggregate_value) == "sum") {
+          aggregate_method_ = kAggregateSum;
+        } else if (util::ToLower(aggregate_value) == "min") {
+          aggregate_method_ = kAggregateMin;
+        } else if (util::ToLower(aggregate_value) == "max") {
+          aggregate_method_ = kAggregateMax;
+        } else {
+          return {Status::RedisParseErr, "aggregate param error"};
+        }
+      } else if (parser.EatEqICase("weights")) {
+        size_t k = 0;
+        while (k < numkeys_) {
+          auto weight = parser.TakeFloat();
+          if (!weight) {
+            return {Status::RedisParseErr, errValueIsNotFloat};
+          }
+          keys_weights_[k].weight = *weight;
+          k++;
+        }
+      } else if (parser.EatEqICase("withscores")) {
+        with_scores_ = true;
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    std::vector<MemberScore> member_scores;
+    auto s = zset_db.Union(keys_weights_, aggregate_method_, nullptr, &member_scores);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    auto compare_score = [](const MemberScore &score1, const MemberScore &score2) {
+      if (score1.score == score2.score) {
+        return score1.member < score2.member;
+      }
+      return score1.score < score2.score;
+    };
+    std::sort(member_scores.begin(), member_scores.end(), compare_score);
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : member_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+    }
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+
+ protected:
+  size_t numkeys_ = 0;
+  bool with_scores_ = false;
+  std::vector<KeyWeight> keys_weights_;
+  AggregateMethod aggregate_method_ = kAggregateSum;
+};
+
 class CommandZUnionStore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1209,6 +1281,11 @@ class CommandZUnionStore : public Commander {
 
     *output = redis::Integer(size);
     return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {3, 2 + num_key, 1};
   }
 
  protected:
@@ -1285,6 +1362,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
+                        MakeCmdAttr<CommandZUnion>("zunion", -4, "read-only", CommandZUnion::Range), )
 
 }  // namespace redis

@@ -1045,6 +1045,86 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{1, "a"}, {2, "b"}, {3, "c"}, {3, "d"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
 	})
 
+	t.Run(fmt.Sprintf("ZUNION basics - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+
+		zsetInt := []redis.Z{
+			{1, "a"},
+			{3, "b"},
+			{3, "d"},
+			{5, "c"}}
+		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNION with weights - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+
+		zsetInt := []redis.Z{
+			{2, "a"},
+			{7, "b"},
+			{9, "d"},
+			{12, "c"}}
+		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNION with AGGREGATE MIN - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+
+		zsetInt := []redis.Z{
+			{1, "a"},
+			{1, "b"},
+			{2, "c"},
+			{3, "d"}}
+		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZUNIONSTORE with AGGREGATE MAX - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+
+		zsetInt := []redis.Z{
+			{1, "a"},
+			{2, "b"},
+			{3, "c"},
+			{3, "d"}}
+		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
+	})
+
 	t.Run(fmt.Sprintf("ZINTERSTORE basics - %s", encoding), func(t *testing.T) {
 		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
 		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())

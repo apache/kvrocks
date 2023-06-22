@@ -709,6 +709,16 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
 
 rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
+  *saved_cnt = 0;
+  std::vector<MemberScore> members;
+  auto s = Union(keys_weights, aggregate_method, saved_cnt, &members);
+  if (!s.ok()) return s;
+  *saved_cnt = members.size();
+  return Overwrite(dst, members);
+}
+
+rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
+                            uint64_t *saved_cnt, std::vector<MemberScore> *members) {
   if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
@@ -744,16 +754,13 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
       }
     }
   }
-  if (!dst_zset.empty()) {
-    std::vector<MemberScore> mscores;
-    mscores.reserve(dst_zset.size());
+  if (members && !dst_zset.empty()) {
+    members->reserve(dst_zset.size());
     for (const auto &iter : dst_zset) {
-      mscores.emplace_back(MemberScore{iter.first, iter.second});
+      members->emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = mscores.size();
-    Overwrite(dst, mscores);
+    if (saved_cnt) *saved_cnt = members->size();
   }
-
   return rocksdb::Status::OK();
 }
 

@@ -30,7 +30,7 @@ FROM alpine:3.16
 RUN apk upgrade && apk add libexecinfo
 RUN mkdir /var/run/kvrocks && mkdir /var/lib/kvrocks
 RUN addgroup -S kvrocks && adduser -D -H -S -G kvrocks kvrocks
-RUN chown kvrocks:kvrocks /var/run/kvrocks && chown kvrocks:kvrocks /var/lib/kvrocks
+RUN chown kvrocks:kvrocks /var/run/kvrocks
 
 USER kvrocks
 VOLUME /var/lib/kvrocks

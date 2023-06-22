@@ -62,6 +62,9 @@ Server::Server(engine::Storage *storage, Config *config)
     stats.commands_stats[iter.first].latency = 0;
   }
 
+  // init cursor_dict_
+  cursor_dict_ = std::make_unique<cursor_dict_type>();
+
 #ifdef ENABLE_OPENSSL
   // init ssl context
   if (config->tls_port) {
@@ -1766,8 +1769,8 @@ NumberCursor::NumberCursor(CursorType cursor_type, uint16_t counter, const std::
             static_cast<uint64_t>(hash) << 32 | static_cast<uint64_t>(cursor_type) << 61;
 }
 
-bool NumberCursor::IsMatch(const CursorDictElement &element, CursorType cursor_type) {
-  return cursor_ == element.cursor.cursor_ && cursor_type == GetCursorType();
+bool NumberCursor::IsMatch(const CursorDictElement &element, CursorType cursor_type) const {
+  return cursor_ == element.cursor.cursor_ && cursor_type == getCursorType();
 }
 
 std::string Server::GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix) {
@@ -1777,7 +1780,7 @@ std::string Server::GenerateCursorFromKeyName(const std::string &key_name, Curso
   }
   auto counter = cursor_counter_.fetch_add(1);
   auto number_cursor = NumberCursor(cursor_type, counter, key_name);
-  cursor_dict_[number_cursor.GetIndex()] = {number_cursor, key_name};
+  cursor_dict_->at(number_cursor.GetIndex()) = {number_cursor, key_name};
   return number_cursor.ToString();
 }
 
@@ -1796,7 +1799,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
   auto number_cursor = NumberCursor(*s);
   // Because the index information is fully stored in the cursor, we can directly obtain the index from the cursor.
-  auto item = cursor_dict_[number_cursor.GetIndex()];
+  auto item = cursor_dict_->at(number_cursor.GetIndex());
   if (number_cursor.IsMatch(item, cursor_type)) {
     return item.key_name;
   }

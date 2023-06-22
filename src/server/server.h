@@ -88,12 +88,12 @@ struct ChannelSubscribeNum {
   size_t subscribe_num;
 };
 
-// CURSOR_DICT_SIZE must be 2^n where n <= 16
+// CURSOR_DICT_SIZE must be 2^n where n < 16
 constexpr const size_t CURSOR_DICT_SIZE = 1024 * 16;
 static_assert((CURSOR_DICT_SIZE & (CURSOR_DICT_SIZE - 1)) == 0, "CURSOR_DICT_SIZE must be 2^n");
-static_assert(CURSOR_DICT_SIZE <= (1 << 15), "CURSOR_DICT_SIZE must be less than or equal to 2^16");
+static_assert(CURSOR_DICT_SIZE <= (1 << 15), "CURSOR_DICT_SIZE must be less than or equal to 2^15");
 
-enum CursorType {
+enum class CursorType : uint8_t {
   kTypeNone = 0,  // none
   kTypeBase = 1,  // cursor for SCAN
   kTypeHash = 2,  // cursor for HSCAN
@@ -107,12 +107,12 @@ class NumberCursor {
   NumberCursor() = default;
   explicit NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name);
   explicit NumberCursor(uint64_t number_cursor) : cursor_(number_cursor) {}
-  size_t GetIndex() { return cursor_ % CURSOR_DICT_SIZE; }
-  bool IsMatch(const CursorDictElement &element, CursorType cursor_type);
-  std::string ToString() { return std::to_string(cursor_); }
+  size_t GetIndex() const { return cursor_ % CURSOR_DICT_SIZE; }
+  bool IsMatch(const CursorDictElement &element, CursorType cursor_type) const;
+  std::string ToString() const { return std::to_string(cursor_); }
 
  private:
-  CursorType GetCursorType() { return static_cast<CursorType>(cursor_ >> 61); }
+  CursorType getCursorType() const { return static_cast<CursorType>(cursor_ >> 61); }
   uint64_t cursor_;
 };
 
@@ -362,5 +362,6 @@ class Server {
 
   // SCAN ring buffer
   std::atomic<uint16_t> cursor_counter_ = {0};
-  std::array<CursorDictElement, CURSOR_DICT_SIZE> cursor_dict_;
+  using cursor_dict_type = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
+  std::unique_ptr<cursor_dict_type> cursor_dict_;
 };

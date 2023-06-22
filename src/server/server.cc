@@ -63,7 +63,7 @@ Server::Server(engine::Storage *storage, Config *config)
   }
 
   // init cursor_dict_
-  cursor_dict_ = std::make_unique<cursor_dict_type>();
+  cursor_dict_ = std::make_unique<CursorDictType>();
 
 #ifdef ENABLE_OPENSSL
   // init ssl context

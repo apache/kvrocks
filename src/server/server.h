@@ -362,6 +362,6 @@ class Server {
 
   // SCAN ring buffer
   std::atomic<uint16_t> cursor_counter_ = {0};
-  using cursor_dict_type = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
-  std::unique_ptr<cursor_dict_type> cursor_dict_;
+  using CursorDictType = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
+  std::unique_ptr<CursorDictType> cursor_dict_;
 };

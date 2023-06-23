@@ -229,8 +229,8 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
         run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')
 
     # 2. Create the source tarball
-    folder = f'apache-kvrocks-{version}-incubating-src'
-    tarball = f'apache-kvrocks-{version}-incubating-src.tar.gz'
+    folder = f'apache-kvrocks-{version}-src'
+    tarball = f'apache-kvrocks-{version}-src.tar.gz'
     run(git, 'archive', '--format=tar.gz', f'--output={tarball}', f'--prefix={folder}/', 'HEAD')
 
     # 3. GPG Sign

@@ -38,7 +38,7 @@ COPY --from=build /usr/bin/redis-cli /bin/
 HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 \
     CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
 
-COPY ./LICENSE ./NOTICE ./DISCLAIMER ./licenses /kvrocks/
+COPY ./LICENSE ./NOTICE ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/
 
 EXPOSE 6666:6666

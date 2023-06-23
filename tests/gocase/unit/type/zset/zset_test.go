@@ -1003,6 +1003,33 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, int64(0), rdb.Exists(ctx, "zset").Val())
 	})
 
+	t.Run(fmt.Sprintf("ZINTER/ZINTERCARD against non-existing key - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		require.Equal(t, []string{}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta"}}).Val())
+		require.Equal(t, int64(0), rdb.ZInterCard(ctx, 0, "zseta").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTER/ZINTERCARD with empty set - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta", "zsetb")
+		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
+		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 2, Member: "b"})
+		require.Equal(t, []redis.Z{}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+		require.Equal(t, int64(0), rdb.ZInterCard(ctx, 0, "zseta", "zsetb").Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTER/ZINTERCARD with integer members - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsetd", "zsetf")
+		rdb.ZAdd(ctx, "zsetd", redis.Z{Score: 1, Member: 1})
+		rdb.ZAdd(ctx, "zsetd", redis.Z{Score: 2, Member: 2})
+		rdb.ZAdd(ctx, "zsetd", redis.Z{Score: 3, Member: 3})
+		rdb.ZAdd(ctx, "zsetf", redis.Z{Score: 1, Member: 1})
+		rdb.ZAdd(ctx, "zsetf", redis.Z{Score: 2, Member: 3})
+		rdb.ZAdd(ctx, "zsetf", redis.Z{Score: 3, Member: 4})
+
+		require.Equal(t, []redis.Z{{2, 1}, {5, 3}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zsetd", "zsetf"}}).Val())
+		require.Equal(t, 2, rdb.ZInterCard(ctx, 0, "zsetd", "zsetf").Val())
+	})
+
 	t.Run(fmt.Sprintf("ZUNIONSTORE against non-existing key doesn't set destination - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zseta")
 		require.Equal(t, int64(0), rdb.ZUnionStore(ctx, "dst_key", &redis.ZStore{Keys: []string{"zseta"}}).Val())
@@ -1050,9 +1077,17 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
 	})
 
+	t.Run(fmt.Sprintf("ZINTER basics - %s", encoding), func(t *testing.T) {
+		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+	})
+
 	t.Run(fmt.Sprintf("ZINTERSTORE with weights - %s", encoding), func(t *testing.T) {
 		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}}).Val())
 		require.Equal(t, []redis.Z{{7, "b"}, {12, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTER with weights - %s", encoding), func(t *testing.T) {
+		require.Equal(t, []redis.Z{{7, "b"}, {12, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}}).Val())
 	})
 
 	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MIN - %s", encoding), func(t *testing.T) {
@@ -1060,9 +1095,17 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
 	})
 
+	t.Run(fmt.Sprintf("ZINTER with AGGREGATE MIN - %s", encoding), func(t *testing.T) {
+		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+	})
+
 	t.Run(fmt.Sprintf("ZINTERSTORE with AGGREGATE MAX - %s", encoding), func(t *testing.T) {
 		require.Equal(t, int64(2), rdb.ZInterStore(ctx, "zsetc", &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
 		require.Equal(t, []redis.Z{{2, "b"}, {3, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTER with AGGREGATE MAX - %s", encoding), func(t *testing.T) {
+		require.Equal(t, []redis.Z{{2, "b"}, {3, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
 	})
 
 	for i, cmd := range []func(ctx context.Context, dest string, store *redis.ZStore) *redis.IntCmd{rdb.ZInterStore, rdb.ZUnionStore} {

@@ -707,7 +707,8 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method, MemberScores *mscores){
+rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
+                            MemberScores *mscores) {
   std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
@@ -752,7 +753,7 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
       }
     }
   }
-  if(!mscores->empty()){
+  if (!mscores->empty()) {
     mscores->clear();
   }
   if (!dst_zset.empty()) {
@@ -765,6 +766,52 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint64_t limit, uint64_t *saved_cnt) {
+  if (saved_cnt) *saved_cnt = 0;
+  std::map<std::string, double> dst_zset;
+  std::map<std::string, size_t> member_counters;
+  std::vector<MemberScore> target_mscores;
+  uint64_t target_size = 0;
+  RangeScoreSpec spec;
+  auto s = RangeByScore(keys_weights[0].key, spec, &target_mscores, &target_size);
+  if (!s.ok() || target_mscores.empty()) return s;
+
+  for (const auto &ms : target_mscores) {
+    double score = ms.score * keys_weights[0].weight;
+    if (std::isnan(score)) score = 0;
+    dst_zset[ms.member] = score;
+    member_counters[ms.member] = 1;
+  }
+
+  for (size_t i = 1; i < keys_weights.size(); i++) {
+    s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
+    if (!s.ok() || target_mscores.empty()) return s;
+    bool flag = false;
+    for (const auto &ms : target_mscores) {
+      if (dst_zset.find(ms.member) == dst_zset.end()) continue;
+      member_counters[ms.member]++;
+      if (member_counters[ms.member] == i + 1) {
+        flag = true;
+      }
+    }
+    if (!flag) {
+      *saved_cnt = 0;
+      return rocksdb::Status::OK();
+    }
+  }
+  uint64_t count = 0;
+  if (!dst_zset.empty()) {
+    for (const auto &iter : dst_zset) {
+      if (member_counters[iter.first] != keys_weights.size()) continue;
+      count++;
+      LOG(INFO) << "limit : " << limit << " count : " << count;
+      if (limit > 0 && count == limit) break;
+    }
+  }
+  *saved_cnt = count;
+
+  return rocksdb::Status::OK();
+}
 
 rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {

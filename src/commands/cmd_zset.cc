@@ -1277,10 +1277,10 @@ class CommandZInter : public Commander {
           k++;
         }
         i += numkeys_ + 1;
-      } else if(util::ToLower(args[i]) == "withscores") {
-        with_scores_=true;
+      } else if (util::ToLower(args[i]) == "withscores") {
+        with_scores_ = true;
         i++;
-      }else {
+      } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
     }
@@ -1307,6 +1307,58 @@ class CommandZInter : public Commander {
   std::vector<KeyWeight> keys_weights_;
   AggregateMethod aggregate_method_ = kAggregateSum;
   bool with_scores_ = false;
+};
+
+class CommandZInterCard : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseInt<int>(args[1], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    numkeys_ = *parse_result;
+    if (numkeys_ > args.size() - 2) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    size_t j = 0;
+    while (j < numkeys_) {
+      keys_weights_.emplace_back(KeyWeight{args[j + 2], 1});
+      j++;
+    }
+
+    size_t i = 2 + numkeys_;
+    while (i < args.size()) {
+      if (util::ToLower(args[i]) == "limit" && i + 1 < args.size()) {
+        auto parse_limit = ParseInt<int>(args[i + 1], 10);
+        if (!parse_limit) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        limit_ = *parse_limit;
+        i += 2;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    uint64_t size = 0;
+    auto s = zset_db.InterCard(keys_weights_, limit_, &size);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(size);
+    return Status::OK();
+  }
+
+ protected:
+  size_t numkeys_ = 0;
+  std::vector<KeyWeight> keys_weights_;
+  uint64_t limit_ = 0;
 };
 
 class CommandZScan : public CommandSubkeyScanBase {
@@ -1338,6 +1390,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInter>("zinter", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandZInterCard>("zintercard", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),

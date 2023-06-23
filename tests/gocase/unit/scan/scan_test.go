@@ -58,6 +58,7 @@ func TestScanWithNumberCursor(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "yes").Err())
 	ScanTest(t, rdb, ctx)
 }
 
@@ -67,7 +68,6 @@ func TestScanWithStringCursor(t *testing.T) {
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
-	require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "no").Err())
 	ScanTest(t, rdb, ctx)
 }
 

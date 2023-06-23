@@ -1765,8 +1765,10 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
 NumberCursor::NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name) {
   auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
   auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
+  // make hash top 3-bit zero
+  constexpr uint64_t hash_mask = 0x1FFFFFFFFFFFFFFF;
   cursor_ = static_cast<uint64_t>(counter) | static_cast<uint64_t>(time_stamp) << 16 |
-            static_cast<uint64_t>(hash) << 32 | static_cast<uint64_t>(cursor_type) << 61;
+            (static_cast<uint64_t>(hash) << 32 & hash_mask) | static_cast<uint64_t>(cursor_type) << 61;
 }
 
 bool NumberCursor::IsMatch(const CursorDictElement &element, CursorType cursor_type) const {

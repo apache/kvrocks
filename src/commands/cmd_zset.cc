@@ -1234,6 +1234,81 @@ class CommandZInterStore : public CommandZUnionStore {
   }
 };
 
+class CommandZInter : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseInt<int>(args[1], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    numkeys_ = *parse_result;
+    if (numkeys_ > args.size() - 2) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    size_t j = 0;
+    while (j < numkeys_) {
+      keys_weights_.emplace_back(KeyWeight{args[j + 2], 1});
+      j++;
+    }
+
+    size_t i = 2 + numkeys_;
+    while (i < args.size()) {
+      if (util::ToLower(args[i]) == "aggregate" && i + 1 < args.size()) {
+        if (util::ToLower(args[i + 1]) == "sum") {
+          aggregate_method_ = kAggregateSum;
+        } else if (util::ToLower(args[i + 1]) == "min") {
+          aggregate_method_ = kAggregateMin;
+        } else if (util::ToLower(args[i + 1]) == "max") {
+          aggregate_method_ = kAggregateMax;
+        } else {
+          return {Status::RedisParseErr, "aggregate param error"};
+        }
+        i += 2;
+      } else if (util::ToLower(args[i]) == "weights" && i + numkeys_ < args.size()) {
+        size_t k = 0;
+        while (k < numkeys_) {
+          auto weight = ParseFloat(args[i + k + 1]);
+          if (!weight || std::isnan(*weight)) {
+            return {Status::RedisParseErr, "weight is not a double or out of range"};
+          }
+          keys_weights_[k].weight = *weight;
+          k++;
+        }
+        i += numkeys_ + 1;
+      } else if(util::ToLower(args[i]) == "withscores") {
+        with_scores_=true;
+        i++;
+      }else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(svr->storage, conn->GetNamespace());
+    std::vector<MemberScore> member_scores;
+    auto s = zset_db.Inter(keys_weights_, aggregate_method_, &member_scores);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : member_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+    }
+    return Status::OK();
+  }
+
+ protected:
+  size_t numkeys_ = 0;
+  std::vector<KeyWeight> keys_weights_;
+  AggregateMethod aggregate_method_ = kAggregateSum;
+  bool with_scores_ = false;
+};
+
 class CommandZScan : public CommandSubkeyScanBase {
  public:
   CommandZScan() = default;
@@ -1262,6 +1337,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZInter>("zinter", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),

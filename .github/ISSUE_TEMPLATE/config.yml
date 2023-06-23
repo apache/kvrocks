@@ -19,4 +19,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Ask a question or get support
     url: https://github.com/apache/incubator-kvrocks/discussions/categories/q-a
-    about: Ask a question or request support for using Apache Kvrocks (Incubating)
+    about: Ask a question or request support for using Apache Kvrocks

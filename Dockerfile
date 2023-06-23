@@ -28,11 +28,8 @@ RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON -DCMAKE_BUILD_TYPE=Release -j
 FROM alpine:3.16
 
 RUN apk upgrade && apk add libexecinfo
-RUN mkdir /var/run/kvrocks && mkdir /var/lib/kvrocks
-RUN addgroup -S kvrocks && adduser -D -H -S -G kvrocks kvrocks
-RUN chown kvrocks:kvrocks /var/run/kvrocks
+RUN mkdir /var/run/kvrocks 
 
-USER kvrocks
 VOLUME /var/lib/kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks /bin/

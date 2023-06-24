@@ -340,21 +340,6 @@ func TestRedisCli(t *testing.T) {
 		require.Len(t, strings.Split(r, "\n"), 10)
 	})
 
-	t.Run("Test redis-cursor-compatible mode", func(t *testing.T) {
-		util.Populate(t, rdb, "", 1000, 10)
-		require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "yes").Err())
-
-		t.Run("Use reids-cli --bigkeys", func(t *testing.T) {
-			r := runCli(t, srv, nil, "--bigkeys").Success()
-			require.Contains(t, r, "Sampled 1000 keys in the keyspace")
-		})
-
-		t.Run("Use reids-cli --memkeys", func(t *testing.T) {
-			r := runCli(t, srv, nil, "--memkeys").Success()
-			require.Contains(t, r, "Sampled 1000 keys in the keyspace")
-		})
-	})
-
 	formatArgs := func(args ...string) string {
 		cmd := fmt.Sprintf("*%d\r\n", len(args))
 		for _, arg := range args {
@@ -385,5 +370,22 @@ func TestRedisCli(t *testing.T) {
 		r := runCli(t, srv, f, "--pipe").Success()
 		require.Equal(t, "1000", rdb.Get(ctx, "test-counter").Val())
 		require.Regexp(t, "(?s).*All data transferred.*errors: 0.*replies: 2102.*", r)
+	})
+
+	// We need flush all, put this test at the end
+	t.Run("Test redis-cursor-compatible mode", func(t *testing.T) {
+		rdb.FlushAll(ctx)
+		util.Populate(t, rdb, "", 1000, 10)
+		require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "yes").Err())
+
+		t.Run("Use reids-cli --bigkeys", func(t *testing.T) {
+			r := runCli(t, srv, nil, "--bigkeys").Success()
+			require.Contains(t, r, "Sampled 1000 keys in the keyspace")
+		})
+
+		t.Run("Use reids-cli --memkeys", func(t *testing.T) {
+			r := runCli(t, srv, nil, "--memkeys").Success()
+			require.Contains(t, r, "Sampled 1000 keys in the keyspace")
+		})
 	})
 }

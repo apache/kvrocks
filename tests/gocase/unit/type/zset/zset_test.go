@@ -1026,8 +1026,8 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.ZAdd(ctx, "zsetf", redis.Z{Score: 2, Member: 3})
 		rdb.ZAdd(ctx, "zsetf", redis.Z{Score: 3, Member: 4})
 
-		require.Equal(t, []redis.Z{{2, 1}, {5, 3}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zsetd", "zsetf"}}).Val())
-		require.Equal(t, 2, rdb.ZInterCard(ctx, 0, "zsetd", "zsetf").Val())
+		require.Equal(t, []redis.Z{{2, "1"}, {5, "3"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zsetd", "zsetf"}}).Val())
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 0, "zsetd", "zsetf").Val())
 	})
 
 	t.Run(fmt.Sprintf("ZUNIONSTORE against non-existing key doesn't set destination - %s", encoding), func(t *testing.T) {
@@ -1079,6 +1079,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 	t.Run(fmt.Sprintf("ZINTER basics - %s", encoding), func(t *testing.T) {
 		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZINTERCARD basics - %s", encoding), func(t *testing.T) {
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 0, "zseta", "zsetb").Val())
+		require.Equal(t, int64(1), rdb.ZInterCard(ctx, 1, "zseta", "zsetb").Val())
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 10, "zseta", "zsetb").Val())
 	})
 
 	t.Run(fmt.Sprintf("ZINTERSTORE with weights - %s", encoding), func(t *testing.T) {

@@ -174,7 +174,7 @@ class CommandBPop : public Commander,
       return {Status::RedisParseErr, "timeout should not be negative"};
     }
 
-    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);  // microsecond
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);
 
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
@@ -205,7 +205,7 @@ class CommandBPop : public Commander,
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
       int64_t timeout_second = timeout_ / 1000 / 1000;
       int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
-      timeval tm = {timeout_second, timeout_microsecond};
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -286,7 +286,7 @@ class CommandBPop : public Commander,
 
  private:
   bool left_ = false;
-  int64_t timeout_ = 0;  // microsecond
+  int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;

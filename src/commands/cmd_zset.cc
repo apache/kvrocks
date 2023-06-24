@@ -307,7 +307,7 @@ class CommandBZPop : public Commander,
     if (*parse_result < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
-    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);  // microsecond
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);
 
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
@@ -348,7 +348,7 @@ class CommandBZPop : public Commander,
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
       int64_t timeout_second = timeout_ / 1000 / 1000;
       int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
-      timeval tm = {timeout_second, timeout_microsecond};
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -422,7 +422,7 @@ class CommandBZPop : public Commander,
 
  private:
   bool min_;
-  int64_t timeout_ = 0;  // microsecond
+  int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
@@ -524,7 +524,7 @@ class CommandBZMPop : public Commander,
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
 
-    timeout_ = static_cast<int64_t>(GET_OR_RET(parser.TakeFloat<double>()) * 1000 * 1000);  // microsecond
+    timeout_ = static_cast<int64_t>(GET_OR_RET(parser.TakeFloat<double>()) * 1000 * 1000);
     if (timeout_ < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
@@ -588,7 +588,7 @@ class CommandBZMPop : public Commander,
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
       int64_t timeout_second = timeout_ / 1000 / 1000;
       int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
-      timeval tm = {timeout_second, timeout_microsecond};
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -655,7 +655,7 @@ class CommandBZMPop : public Commander,
   }
 
  private:
-  int64_t timeout_ = 0;  // microsecond
+  int64_t timeout_ = 0;  // microseconds
   int num_keys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;

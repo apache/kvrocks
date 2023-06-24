@@ -300,14 +300,14 @@ class CommandBZPop : public Commander,
   explicit CommandBZPop(bool min) : min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
+    auto parse_result = ParseFloat(args[args.size() - 1]);
     if (!parse_result) {
-      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
+      return {Status::RedisParseErr, errTimeoutIsNotFloat};
     }
     if (*parse_result < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
-    timeout_ = *parse_result;
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);  // microsecond
 
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
@@ -346,7 +346,9 @@ class CommandBZPop : public Commander,
 
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      timeval tm = {timeout_, 0};
+      int64_t timeout_second = timeout_ / 1000 / 1000;
+      int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
+      timeval tm = {timeout_second, timeout_microsecond};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -420,7 +422,7 @@ class CommandBZPop : public Commander,
 
  private:
   bool min_;
-  int timeout_;
+  int64_t timeout_ = 0;  // microsecond
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
@@ -522,7 +524,7 @@ class CommandBZMPop : public Commander,
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
 
-    timeout_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{0, std::numeric_limits<int>::max()}));
+    timeout_ = static_cast<int64_t>(GET_OR_RET(parser.TakeFloat<double>()) * 1000 * 1000);  // microsecond
     if (timeout_ < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
@@ -584,7 +586,9 @@ class CommandBZMPop : public Commander,
 
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      timeval tm = {timeout_, 0};
+      int64_t timeout_second = timeout_ / 1000 / 1000;
+      int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
+      timeval tm = {timeout_second, timeout_microsecond};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -651,7 +655,7 @@ class CommandBZMPop : public Commander,
   }
 
  private:
-  int timeout_ = 0;  // seconds
+  int64_t timeout_ = 0;  // microsecond
   int num_keys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;

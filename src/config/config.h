@@ -144,7 +144,7 @@ struct Config {
   int pipeline_size;
   int sequence_gap;
 
-  bool redis_cursor_compatible = true;
+  bool redis_cursor_compatible = false;
   int log_retention_days;
   // profiling
   int profiling_sample_ratio = 0;

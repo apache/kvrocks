@@ -88,7 +88,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
 
 bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &metadata) {
   // lazy delete to avoid race condition between command Expire and subkey Compaction
-  // Related issue:https://github.com/apache/incubator-kvrocks/issues/1298
+  // Related issue:https://github.com/apache/kvrocks/issues/1298
   //
   // `Util::GetTimeStampMS() - 300000` means extending 5 minutes for expired items,
   // to prevent them from being recycled once they reach the expiration time.

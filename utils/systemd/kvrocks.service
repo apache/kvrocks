@@ -1,6 +1,6 @@
 [Unit]
 Description=kvrocks SSD key-value database
-Documentation=https://github.com/apache/incubator-kvrocks
+Documentation=https://github.com/apache/kvrocks
 Wants=network-online.target
 After=network-online.target
 

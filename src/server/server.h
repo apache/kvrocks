@@ -22,6 +22,10 @@
 
 #include <inttypes.h>
 
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -56,7 +60,18 @@ struct DBScanInfo {
 struct ConnContext {
   Worker *owner;
   int fd;
+
   ConnContext(Worker *w, int fd) : owner(w), fd(fd) {}
+
+  bool operator<(const ConnContext &c) const {
+    if (owner == c.owner) {
+      return fd < c.fd;
+    }
+
+    return owner < c.owner;
+  }
+
+  bool operator==(const ConnContext &c) const { return owner == c.owner && fd == c.fd; }
 };
 
 struct StreamConsumer {
@@ -71,6 +86,39 @@ struct StreamConsumer {
 struct ChannelSubscribeNum {
   std::string channel;
   size_t subscribe_num;
+};
+
+// CURSOR_DICT_SIZE must be 2^n where n <= 16
+constexpr const size_t CURSOR_DICT_SIZE = 1024 * 16;
+static_assert((CURSOR_DICT_SIZE & (CURSOR_DICT_SIZE - 1)) == 0, "CURSOR_DICT_SIZE must be 2^n");
+static_assert(CURSOR_DICT_SIZE <= (1 << 16), "CURSOR_DICT_SIZE must be less than or equal to 2^16");
+
+enum class CursorType : uint8_t {
+  kTypeNone = 0,  // none
+  kTypeBase = 1,  // cursor for SCAN
+  kTypeHash = 2,  // cursor for HSCAN
+  kTypeSet = 3,   // cursor for SSCAN
+  kTypeZSet = 4,  // cursor for ZSCAN
+};
+struct CursorDictElement;
+
+class NumberCursor {
+ public:
+  NumberCursor() = default;
+  explicit NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name);
+  explicit NumberCursor(uint64_t number_cursor) : cursor_(number_cursor) {}
+  size_t GetIndex() const { return cursor_ % CURSOR_DICT_SIZE; }
+  bool IsMatch(const CursorDictElement &element, CursorType cursor_type) const;
+  std::string ToString() const { return std::to_string(cursor_); }
+
+ private:
+  CursorType getCursorType() const { return static_cast<CursorType>(cursor_ >> 61); }
+  uint64_t cursor_;
+};
+
+struct CursorDictElement {
+  NumberCursor cursor;
+  std::string key_name;
 };
 
 enum SlowLog {
@@ -185,6 +233,9 @@ class Server {
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   time_t GetLastScanTime(const std::string &ns);
 
+  std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
+  std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
+
   int DecrClientNum();
   int IncrClientNum();
   int IncrMonitorClientNum();
@@ -238,7 +289,6 @@ class Server {
  private:
   void cron();
   void recordInstantaneousMetrics();
-  void delConnContext(ConnContext *c);
   static void updateCachedTime();
   Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
@@ -282,11 +332,11 @@ class Server {
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;
 
-  std::map<ConnContext *, bool> conn_ctxs_;
-  std::map<std::string, std::list<ConnContext *>> pubsub_channels_;
-  std::map<std::string, std::list<ConnContext *>> pubsub_patterns_;
+  std::map<ConnContext, bool> conn_ctxs_;
+  std::map<std::string, std::list<ConnContext>> pubsub_channels_;
+  std::map<std::string, std::list<ConnContext>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;
-  std::map<std::string, std::list<ConnContext *>> blocking_keys_;
+  std::map<std::string, std::list<ConnContext>> blocking_keys_;
   std::mutex blocking_keys_mu_;
 
   std::atomic<int> blocked_clients_{0};
@@ -309,4 +359,9 @@ class Server {
   std::atomic<size_t> watched_key_size_ = 0;
   std::map<std::string, std::set<redis::Connection *>> watched_key_map_;
   std::shared_mutex watched_key_mutex_;
+
+  // SCAN ring buffer
+  std::atomic<uint16_t> cursor_counter_ = {0};
+  using CursorDictType = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
+  std::unique_ptr<CursorDictType> cursor_dict_;
 };

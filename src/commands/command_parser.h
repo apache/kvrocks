@@ -106,6 +106,19 @@ struct CommandParser {
     return res;
   }
 
+  template <typename T = double>
+  StatusOr<T> TakeFloat() {
+    if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
+
+    auto res = ParseFloat<T>(RawPeek());
+
+    if (res) {
+      RawNext();
+    }
+
+    return res;
+  }
+
   static Status InvalidSyntax() { return {Status::RedisParseErr, "syntax error"}; }
 
  private:

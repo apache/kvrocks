@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
@@ -52,13 +52,26 @@ func TestScanEmptyKey(t *testing.T) {
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
 }
 
-func TestScan(t *testing.T) {
+func TestScanWithNumberCursor(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
-
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.ConfigSet(ctx, "redis-cursor-compatible", "yes").Err())
+	ScanTest(t, rdb, ctx)
+}
+
+func TestScanWithStringCursor(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	ScanTest(t, rdb, ctx)
+}
+
+func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 
 	t.Run("SCAN Basic", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())

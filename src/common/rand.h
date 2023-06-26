@@ -29,7 +29,7 @@
 
 /*
  * Modified by @PragmaTwice to leverage constexprs over defines in
- * https://github.com/apache/incubator-kvrocks/commit/1dcf225acad001175df0ea142b5e498f29d1b18b
+ * https://github.com/apache/kvrocks/commit/1dcf225acad001175df0ea142b5e498f29d1b18b
  */
 
 #pragma once

@@ -23,16 +23,13 @@ RUN apk update && apk add git gcc g++ make cmake ninja autoconf automake libtool
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
+RUN ./x.py build -DENABLE_OPENSSL=ON -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
 FROM alpine:3.16
 
 RUN apk upgrade && apk add libexecinfo
-RUN mkdir /var/run/kvrocks && mkdir /var/lib/kvrocks
-RUN addgroup -S kvrocks && adduser -D -H -S -G kvrocks kvrocks
-RUN chown kvrocks:kvrocks /var/run/kvrocks && chown kvrocks:kvrocks /var/lib/kvrocks
+RUN mkdir /var/run/kvrocks 
 
-USER kvrocks
 VOLUME /var/lib/kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks /bin/
@@ -41,7 +38,7 @@ COPY --from=build /usr/bin/redis-cli /bin/
 HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 \
     CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
 
-COPY ./LICENSE ./NOTICE ./DISCLAIMER ./licenses /kvrocks/
+COPY ./LICENSE ./NOTICE ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/
 
 EXPOSE 6666:6666

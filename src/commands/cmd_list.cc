@@ -204,7 +204,7 @@ class CommandBPop : public Commander,
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
       int64_t timeout_second = timeout_ / 1000 / 1000;
-      int64_t timeout_microsecond = timeout_ - timeout_second * 1000 * 1000;
+      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
       timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }

@@ -1,4 +1,4 @@
-module github.com/apache/incubator-kvrocks/tests/gocase
+module github.com/apache/kvrocks/tests/gocase
 
 go 1.19
 

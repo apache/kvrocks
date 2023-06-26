@@ -1329,14 +1329,16 @@ class CommandZInterCard : public Commander {
     }
 
     size_t i = 2 + numkeys_;
+    bool have_limit = false;
     while (i < args.size()) {
-      if (util::ToLower(args[i]) == "limit" && i + 1 < args.size()) {
+      if (util::ToLower(args[i]) == "limit" && i + 1 < args.size() && !have_limit) {
         auto parse_limit = ParseInt<int>(args[i + 1], 10);
         if (!parse_limit) {
           return {Status::RedisParseErr, errValueNotInteger};
         }
         limit_ = *parse_limit;
         i += 2;
+        have_limit = true;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }

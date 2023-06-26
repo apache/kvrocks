@@ -661,7 +661,6 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
   }
 
   auto iter = fields_.find(field_key);
-
   if (iter != fields_.end()) {
     auto &field = iter->second;
     field->line_number = line_number;

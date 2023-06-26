@@ -667,7 +667,8 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
   } else {
-    std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number) << std::endl;
+    std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number)
+              << std::endl;
   }
   return Status::OK();
 }

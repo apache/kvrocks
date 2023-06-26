@@ -709,6 +709,9 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
 
 rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
                             MemberScores *mscores) {
+  if (!mscores->empty()) {
+    mscores->clear();
+  }
   std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
@@ -753,14 +756,10 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
       }
     }
   }
-  if (!mscores->empty()) {
-    mscores->clear();
-  }
-  if (!dst_zset.empty()) {
-    for (const auto &iter : dst_zset) {
-      if (member_counters[iter.first] != keys_weights.size()) continue;
-      mscores->emplace_back(MemberScore{iter.first, iter.second});
-    }
+
+  for (const auto &iter : dst_zset) {
+    if (member_counters[iter.first] != keys_weights.size()) continue;
+    mscores->emplace_back(MemberScore{iter.first, iter.second});
   }
 
   return rocksdb::Status::OK();
@@ -786,6 +785,7 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
   for (size_t i = 1; i < keys_weights.size(); i++) {
     s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
     if (!s.ok() || target_mscores.empty()) return s;
+    // Judging whether this cycle can find the intersection
     bool flag = false;
     for (const auto &ms : target_mscores) {
       if (dst_zset.find(ms.member) == dst_zset.end()) continue;
@@ -794,22 +794,19 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
         flag = true;
       }
     }
+    // If there is no inter so far, then there is no need to judge later
     if (!flag) {
       *saved_cnt = 0;
       return rocksdb::Status::OK();
     }
   }
   uint64_t count = 0;
-  if (!dst_zset.empty()) {
-    for (const auto &iter : dst_zset) {
-      if (member_counters[iter.first] != keys_weights.size()) continue;
-      count++;
-      LOG(INFO) << "limit : " << limit << " count : " << count;
-      if (limit > 0 && count == limit) break;
-    }
+  for (const auto &iter : dst_zset) {
+    if (member_counters[iter.first] != keys_weights.size()) continue;
+    count++;
+    if (limit > 0 && count == limit) break;
   }
   *saved_cnt = count;
-
   return rocksdb::Status::OK();
 }
 

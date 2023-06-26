@@ -26,15 +26,15 @@ body:
 
         If it is an idea or help wanted, please go to:
         1. [Dev Mail List](mailto:dev@kvrocks.apache.org) ([subscribe](mailto:dev-subscribe@kvrocks.apache.org)): This will be your FASTEST way to get help!
-        2. [Github Discussion](https://github.com/apache/incubator-kvrocks/discussions).
+        2. [Github Discussion](https://github.com/apache/kvrocks/discussions).
   - type: checkboxes
     attributes:
       label: Search before asking
       description: >
-        Please make sure to search in the [issues](https://github.com/apache/incubator-kvrocks/issues) first to see whether the same issue was reported already.
+        Please make sure to search in the [issues](https://github.com/apache/kvrocks/issues) first to see whether the same issue was reported already.
       options:
         - label: >
-            I had searched in the [issues](https://github.com/apache/incubator-kvrocks/issues) and found no similar issues.
+            I had searched in the [issues](https://github.com/apache/kvrocks/issues) and found no similar issues.
           required: true
   - type: textarea
     attributes:

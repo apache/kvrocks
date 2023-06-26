@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
 

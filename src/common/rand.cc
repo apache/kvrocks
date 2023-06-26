@@ -43,7 +43,7 @@
 
 /*
  * Rewritten in C++ with constexprs and templates by @tanruixiang in
- * https://github.com/apache/incubator-kvrocks/commit/900e0f44781d9459649e9864ba09abe6000ce987
+ * https://github.com/apache/kvrocks/commit/900e0f44781d9459649e9864ba09abe6000ce987
  */
 
 #include "rand.h"

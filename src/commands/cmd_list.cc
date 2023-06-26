@@ -261,7 +261,7 @@ class CommandBPop : public Commander,
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
     // in connection after the blocking command, so there may have some commands to be processed.
-    // Related issue: https://github.com/apache/incubator-kvrocks/issues/831
+    // Related issue: https://github.com/apache/kvrocks/issues/831
     bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 

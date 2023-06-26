@@ -397,7 +397,7 @@ class CommandBZPop : public Commander,
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
     // in connection after the blocking command, so there may have some commands to be processed.
-    // Related issue: https://github.com/apache/incubator-kvrocks/issues/831
+    // Related issue: https://github.com/apache/kvrocks/issues/831
     bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 
@@ -626,7 +626,7 @@ class CommandBZMPop : public Commander,
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
     // in connection after the blocking command, so there may have some commands to be processed.
-    // Related issue: https://github.com/apache/incubator-kvrocks/issues/831
+    // Related issue: https://github.com/apache/kvrocks/issues/831
     bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 
@@ -1323,7 +1323,8 @@ class CommandZScan : public CommandSubkeyScanBase {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<std::string> members;
     std::vector<double> scores;
-    auto s = zset_db.Scan(key_, cursor_, limit_, prefix_, &members, &scores);
+    auto key_name = svr->GetKeyNameFromCursor(cursor_, CursorType::kTypeZSet);
+    auto s = zset_db.Scan(key_, key_name, limit_, prefix_, &members, &scores);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -1333,7 +1334,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     for (const auto &score : scores) {
       score_strings.emplace_back(util::Float2String(score));
     }
-    *output = GenerateOutput(members, score_strings);
+    *output = GenerateOutput(svr, members, score_strings, CursorType::kTypeZSet);
     return Status::OK();
   }
 };

@@ -277,9 +277,8 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       keys->emplace_back(user_key);
       cnt++;
     }
-
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
-      if (!keys->empty()) {
+      if (!keys->empty() && cnt >= limit) {
         end_cursor->append(user_key);
       }
       break;

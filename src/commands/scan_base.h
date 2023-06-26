@@ -23,6 +23,7 @@
 #include "commander.h"
 #include "error_constants.h"
 #include "parse_util.h"
+#include "server/server.h"
 
 namespace redis {
 
@@ -63,10 +64,11 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(const std::vector<std::string> &keys) const {
+  std::string GenerateOutput(Server *svr, const std::vector<std::string> &keys, CursorType cursor_type) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit_)) {
-      list.emplace_back(redis::BulkString(keys.back()));
+      auto end_cursor = svr->GenerateCursorFromKeyName(keys.back(), cursor_type);
+      list.emplace_back(redis::BulkString(end_cursor));
     } else {
       list.emplace_back(redis::BulkString("0"));
     }
@@ -109,11 +111,13 @@ class CommandSubkeyScanBase : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(const std::vector<std::string> &fields, const std::vector<std::string> &values) {
+  std::string GenerateOutput(Server *svr, const std::vector<std::string> &fields,
+                             const std::vector<std::string> &values, CursorType cursor_type) {
     std::vector<std::string> list;
     auto items_count = fields.size();
     if (items_count == static_cast<size_t>(limit_)) {
-      list.emplace_back(redis::BulkString(fields.back()));
+      auto end_cursor = svr->GenerateCursorFromKeyName(fields.back(), cursor_type);
+      list.emplace_back(redis::BulkString(end_cursor));
     } else {
       list.emplace_back(redis::BulkString("0"));
     }

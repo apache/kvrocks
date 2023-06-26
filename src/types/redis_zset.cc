@@ -766,7 +766,6 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
 
 rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint64_t limit, uint64_t *saved_cnt) {
   if (saved_cnt) *saved_cnt = 0;
-  std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
   std::vector<MemberScore> target_mscores;
   uint64_t target_size = 0;
@@ -775,9 +774,6 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
   if (!s.ok() || target_mscores.empty()) return s;
 
   for (const auto &ms : target_mscores) {
-    double score = ms.score * keys_weights[0].weight;
-    if (std::isnan(score)) score = 0;
-    dst_zset[ms.member] = score;
     member_counters[ms.member] = 1;
   }
 
@@ -787,9 +783,9 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
     // Judging whether this cycle can find the intersection
     bool have_intersection = false;
     for (const auto &ms : target_mscores) {
-      if (dst_zset.find(ms.member) == dst_zset.end()) continue;
-      member_counters[ms.member]++;
-      if (member_counters[ms.member] == i + 1) {
+      auto iter = member_counters.find(ms.member);
+      if (iter == member_counters.end()) continue;
+      if (++iter->second == i + 1) {
         have_intersection = true;
       }
     }
@@ -800,8 +796,8 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
     }
   }
   uint64_t count = 0;
-  for (const auto &iter : dst_zset) {
-    if (member_counters[iter.first] != keys_weights.size()) continue;
+  for (const auto &iter : member_counters) {
+    if (iter.second != keys_weights.size()) continue;
     count++;
     if (limit > 0 && count == limit) break;
   }

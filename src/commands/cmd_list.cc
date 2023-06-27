@@ -165,16 +165,16 @@ class CommandBPop : public Commander,
   ~CommandBPop() override = default;
 
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
+    auto parse_result = ParseFloat(args[args.size() - 1]);
     if (!parse_result) {
-      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
+      return {Status::RedisParseErr, errTimeoutIsNotFloat};
     }
 
     if (*parse_result < 0) {
       return {Status::RedisParseErr, "timeout should not be negative"};
     }
 
-    timeout_ = *parse_result;
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);
 
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
@@ -203,7 +203,9 @@ class CommandBPop : public Commander,
 
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      timeval tm = {timeout_, 0};
+      int64_t timeout_second = timeout_ / 1000 / 1000;
+      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -284,7 +286,7 @@ class CommandBPop : public Commander,
 
  private:
   bool left_ = false;
-  int timeout_ = 0;  // seconds
+  int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;

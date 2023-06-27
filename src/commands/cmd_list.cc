@@ -551,24 +551,22 @@ class CommandLMove : public Commander {
   bool dst_left_;
 };
 
-REDIS_REGISTER_COMMANDS(
-    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1), MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
-    // impl lmpop in this line
-    MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
-    MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
-    // impl brpoplpush in this line
-    // impl blmpop in this line
-    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1), MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1), MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
-    // impl lpos in this line
-    MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
-    // impl blmove in this line
-    MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1), )
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
+                        MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
+                        MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),  //
+                        MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),    //
+                        MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),     //
+                        MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), )
 
 }  // namespace redis

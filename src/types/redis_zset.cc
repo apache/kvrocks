@@ -780,7 +780,6 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
   for (size_t i = 1; i < keys_weights.size(); i++) {
     s = RangeByScore(keys_weights[i].key, spec, &target_mscores, &target_size);
     if (!s.ok() || target_mscores.empty()) return s;
-    // Judging whether this cycle can find the intersection
     bool have_intersection = false;
     for (const auto &ms : target_mscores) {
       auto iter = member_counters.find(ms.member);
@@ -789,7 +788,6 @@ rocksdb::Status ZSet::InterCard(const std::vector<KeyWeight> &keys_weights, uint
         have_intersection = true;
       }
     }
-    // If there is no inter so far, then there is no need to judge later
     if (!have_intersection) {
       *saved_cnt = 0;
       return rocksdb::Status::OK();

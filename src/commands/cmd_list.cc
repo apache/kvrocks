@@ -555,9 +555,9 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),  //
-                        MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),    //
-                        MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),     //
+                        MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),  //
                         MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),

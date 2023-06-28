@@ -19,6 +19,7 @@
  */
 
 #include "commander.h"
+#include "command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
 #include "types/redis_geo.h"
@@ -52,11 +53,16 @@ class CommandGeoBase : public Commander {
     *longitude = *long_stat;
     *latitude = *lat_stat;
 
-    if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
-      return {Status::RedisParseErr, "invalid longitude,latitude pair " + longitude_para + "," + latitude_para};
-    }
+    auto s = ValdiateLongLat(longitude, latitude);
+    if (!s.OK()) return s;
 
     return Status::OK();
+  }
+
+  static Status ValdiateLongLat(double *longitude, double *latitude) {
+    if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
+      return {Status::RedisParseErr, "invalid longitude,latitude pair"};
+    }
   }
 
   double GetDistanceByUnit(double distance) { return distance / GetUnitConversion(); }
@@ -355,6 +361,77 @@ class CommandGeoRadius : public CommandGeoBase {
   double latitude_ = 0;
 };
 
+class CommandGeoSearch : public CommandGeoBase {
+  public:
+    CommandGeoSearch() : CommandGeoBase() {}
+
+    Status Parse(const std::vector<std::string> &args) override {
+      CommandParser parser(args, 1);
+      key_ = GET_OR_RET(parser.TakeStr());
+      
+      while(parser.Good()) {
+        if (parser.EatEqICase("frommember")) {
+          member_ = GET_OR_RET(parser.TakeStr());
+        } else if (parser.EatEqICase("fromlonlat")) {
+          longitude_ = GET_OR_RET(parser.TakeFloat());
+          latitude_ = GET_OR_RET(parser.TakeFloat());
+          auto s = ValdiateLongLat(&longitude_, &latitude_);
+          if (!s.IsOK()) return s;
+        } else if (parser.EatEqICase("byradius")) {
+          radius_ = GET_OR_RET(parser.TakeFloat());
+          std::string distance_raw = GET_OR_RET(parser.TakeStr());
+          auto s = ParseDistanceUnit(distance_raw);
+          if (!s.IsOK()) return s;
+        } else if (parser.EatEqICase("bybox")) {
+          width_ = GET_OR_RET(parser.TakeFloat());
+          height_ = GET_OR_RET(parser.TakeFloat());
+          std::string distance_raw = GET_OR_RET(parser.TakeStr());
+          auto s = ParseDistanceUnit(distance_raw);
+          if (!s.IsOK()) return s;
+        } else if (parser.EatEqICase("asc") && sort_ == kSortNone) {
+          sort_ = kSortASC;
+        } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
+          sort_ = kSortDESC;
+        } else if (parser.EatEqICase("count")) {
+          count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+        } else if (parser.EatEqICase("withcoord")) {
+          with_coord_ = true;
+        } else if (parser.EatEqICase("withdist")) {
+          with_dist_ = true;
+        } else if (parser.EatEqICase("withhash")) {
+          with_hash_ = true;
+        }
+      }
+
+      if (radius_ != 0 && width_ != 0 && height_ != 0) {
+        return {Status::RedisParseErr, "please use only one of BYRADIUS or BYBOX"};
+      }
+
+      if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
+        return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
+      }
+
+      return Commander::Parse(args);
+    }
+
+  protected:
+    double radius_ = 0;
+    double height_ = 0;
+    double width_ = 0;
+    bool with_coord_ = false;
+    bool with_dist_ = false;
+    bool with_hash_ = false;
+    int count_ = 0;
+    DistanceSort sort_ = kSortNone;
+    std::string store_key_;
+    bool store_distance_ = false;
+  private:
+    double longitude_ = 0;
+    double latitude_ = 0;
+    std::string member_;
+    std::string key_;
+};
+
 class CommandGeoRadiusByMember : public CommandGeoRadius {
  public:
   CommandGeoRadiusByMember() = default;
@@ -406,7 +483,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1,
-                                                                      1), )
+                        MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandGeoSearch>("geocommandsearch", -7, "read-only", 1, 1, 1) )
 
 }  // namespace redis

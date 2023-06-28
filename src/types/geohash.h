@@ -59,6 +59,11 @@ enum GeoDirection {
   GEOHASH_NORT_EAST
 };
 
+enum GeoShapeType {
+  CIRCULAR = 0,
+  RECTANGULAR
+};
+
 struct GeoHashBits {
   uint64_t bits = 0;
   uint8_t step = 0;
@@ -92,6 +97,16 @@ struct GeoHashRadius {
   GeoHashBits hash;
   GeoHashArea area;
   GeoHashNeighbors neighbors;
+};
+
+struct GeoShape {
+  GeoShapeType type;
+  double xy[2];
+  double conversion;
+  double bounds[4];
+  double radius;
+  double height;
+  double width;
 };
 
 inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits && !r.step; }

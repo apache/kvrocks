@@ -415,3 +415,67 @@ Status WriteBatchExtractor::ExtractStreamAddCommand(bool is_slot_id_encoded, con
 
   return Status::OK();
 }
+
+void SlotMigrateWriteBatchHandler::LogData(const rocksdb::Slice &blob) {
+  if (ServerLogData::IsServerLogData(blob.data())) {
+    return;
+  }
+
+  log_data_ = blob.ToString();
+}
+
+rocksdb::Status SlotMigrateWriteBatchHandler::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
+  if (cf_id_map_.find(column_family_id) == cf_id_map_.end()) {
+    return rocksdb::Status::OK();
+  }
+  uint16_t slot_id = 0;
+  ExtractSlotId(key, &slot_id);
+  if (slot_ != slot_id) {
+    return rocksdb::Status::OK();
+  }
+
+  if (!log_data_.empty()) {
+    auto s = migrate_batch_->PutLogData(log_data_);
+    if (!s) {
+      return rocksdb::Status::Aborted(s.Msg());
+    }
+    log_data_.clear();
+  }
+
+  auto s = migrate_batch_->Put(cf_id_map_[column_family_id], key, value);
+  if (!s) {
+    return rocksdb::Status::Aborted(s.Msg());
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status SlotMigrateWriteBatchHandler::DeleteCF(uint32_t column_family_id, const Slice &key) {
+  if (cf_id_map_.find(column_family_id) == cf_id_map_.end()) {
+    return rocksdb::Status::OK();
+  }
+  uint16_t slot_id = 0;
+  ExtractSlotId(key, &slot_id);
+  if (slot_ != slot_id) {
+    return rocksdb::Status::OK();
+  }
+
+  if (!log_data_.empty()) {
+    auto s = migrate_batch_->PutLogData(log_data_);
+    if (!s) {
+      return rocksdb::Status::Aborted(s.Msg());
+    }
+    log_data_.clear();
+  }
+
+  auto s = migrate_batch_->Delete(cf_id_map_[column_family_id], key);
+  if (!s) {
+    return rocksdb::Status::Aborted(s.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status SlotMigrateWriteBatchHandler::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
+                                                            const Slice &end_key) {
+  return rocksdb::Status::OK();
+}

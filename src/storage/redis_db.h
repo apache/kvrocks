@@ -95,6 +95,7 @@ class WriteBatchLogData {
 
   RedisType GetRedisType();
   std::vector<std::string> *GetArguments();
+  void SetArguments(std::vector<std::string> &&args);
   std::string Encode();
   Status Decode(const rocksdb::Slice &blob);
 

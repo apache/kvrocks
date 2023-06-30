@@ -125,6 +125,7 @@ include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
 include(cmake/jsoncons.cmake)
+include(cmake/hiredis.cmake)
 
 if (USE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -154,6 +155,7 @@ list(APPEND EXTERNAL_LIBS tbb)
 list(APPEND EXTERNAL_LIBS jsoncons)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 list(APPEND EXTERNAL_LIBS ${Backtrace_LIBRARY})
+list(APPEND EXTERNAL_LIBS hiredis)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)

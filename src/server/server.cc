@@ -824,6 +824,7 @@ void Server::GetRocksDBInfo(std::string *info) {
   db_job_mu_.lock();
   string_stream << "is_bgsaving:" << (is_bgsave_in_progress_ ? "yes" : "no") << "\r\n";
   string_stream << "is_compacting:" << (db_compacting_ ? "yes" : "no") << "\r\n";
+  string_stream << "slot_disabled_compaction:" << storage->GetDisabledCompactSlot() << "\r\n";
   db_job_mu_.unlock();
 
   *info = string_stream.str();

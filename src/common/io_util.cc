@@ -29,6 +29,8 @@
 #include <poll.h>
 #include <sys/types.h>
 
+#include "hiredis.h"
+
 #ifdef __linux__
 #include <sys/sendfile.h>
 #endif
@@ -403,5 +405,24 @@ Status WriteImpl(int fd, std::string_view data, Args &&...args) {
 Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
+
+Status CreateRedisContextFromConnectedFd(int fd, int timeout, redisContext **redis_context) {
+  *redis_context = redisConnectFd(fd);
+  if (*redis_context == nullptr) {
+    return {Status::NotOK, "init failed"};
+  }
+
+  if ((*redis_context)->err != 0) {
+    auto error_str = std::string((*redis_context)->errstr);
+    redisFree(*redis_context);
+    return {Status::NotOK, error_str};
+  }
+
+  if (redisSetTimeout(*redis_context, timeval{timeout, 0}) != REDIS_OK) {
+    redisFree(*redis_context);
+    return {Status::NotOK, "set timeout failed"};
+  }
+  return Status::OK();
+}
 
 }  // namespace util

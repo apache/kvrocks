@@ -24,6 +24,8 @@
 
 #include "status.h"
 
+struct redisContext;
+
 namespace util {
 
 sockaddr_in NewSockaddrInet(const std::string &host, uint32_t port);
@@ -45,5 +47,7 @@ std::vector<std::string> GetLocalIPAddresses();
 int AeWait(int fd, int mask, int milliseconds);
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);
+
+Status CreateRedisContextFromConnectedFd(int fd, int response_timeout, redisContext **redis_context);
 
 }  // namespace util

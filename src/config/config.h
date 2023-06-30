@@ -143,6 +143,9 @@ struct Config {
   int migrate_speed;
   int pipeline_size;
   int sequence_gap;
+  int migrate_type;
+  int migrate_batch_size_kb;
+  int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
   int log_retention_days;

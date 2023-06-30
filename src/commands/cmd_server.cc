@@ -969,6 +969,29 @@ class CommandStats : public Commander {
   }
 };
 
+class CommandBatchSet : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    slot_ = GET_OR_RET(ParseInt<int64_t>(args[1], 10));
+    write_batch_ = args[2];
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    size_t size = write_batch_.size();
+    auto s = svr->storage->ApplyWriteBatch(std::move(write_batch_));
+    if (!s) {
+      return s;
+    }
+    *output = redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  int64_t slot_ = -1;
+  std::string write_batch_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1000,6 +1023,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0), )
+                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandBatchSet>("batchset", 3, "write", 0, 0, 0), )
 
 }  // namespace redis

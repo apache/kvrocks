@@ -48,6 +48,8 @@ bool SlotImport::Start(int fd, int slot) {
     return false;
   }
 
+  storage_->DisableCompact(slot);
+
   import_status_ = kImportStart;
   import_slot_ = slot;
   import_fd_ = fd;
@@ -68,6 +70,8 @@ bool SlotImport::Success(int slot) {
     return false;
   }
 
+  storage_->ResetDisabledCompactSlot();
+
   import_status_ = kImportSuccess;
   import_fd_ = -1;
 
@@ -80,6 +84,8 @@ bool SlotImport::Fail(int slot) {
     LOG(ERROR) << "[import] Wrong slot, importing slot: " << import_slot_ << ", but got slot: " << slot;
     return false;
   }
+
+  storage_->ResetDisabledCompactSlot();
 
   // Clean imported slot data
   auto s = ClearKeysOfSlot(namespace_, slot);
@@ -115,6 +121,8 @@ void SlotImport::StopForLinkError(int fd) {
                    << ", Err: " << s.ToString();
     }
   }
+
+  storage_->ResetDisabledCompactSlot();
 
   LOG(INFO) << "[import] Stop importing for link error, slot: " << import_slot_;
   import_status_ = kImportFailed;

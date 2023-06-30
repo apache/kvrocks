@@ -43,6 +43,15 @@ bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std
                  << ", namespace: " << ns << ", key: " << user_key << ", err: " << s.ToString();
     return false;
   }
+
+  if (stor_->IsSlotIdEncoded()) {
+    uint16_t slot_id = 0;
+    ExtractSlotId(key, &slot_id);
+    if (stor_->IsCompactDisabled(slot_id)) {
+      return false;
+    }
+  }
+
   DLOG(INFO) << "[compact_filter/metadata] "
              << "namespace: " << ns << ", key: " << user_key
              << ", result: " << (metadata.Expired() ? "deleted" : "reserved");
@@ -132,6 +141,10 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
     LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
                << ", namespace: " << ikey.GetNamespace().ToString() << ", key: " << ikey.GetKey().ToString()
                << ", err: " << s.Msg();
+    return false;
+  }
+
+  if (stor_->IsSlotIdEncoded() && stor_->IsCompactDisabled(ikey.GetSlotId())) {
     return false;
   }
 

@@ -52,3 +52,25 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
   int slot_id_;
   bool to_redis_;
 };
+
+class MigrateBatch;
+
+// extractor for raw key value migrate, must be slot encoded
+class SlotMigrateWriteBatchHandler : public rocksdb::WriteBatch::Handler {
+ public:
+  SlotMigrateWriteBatchHandler(const std::unordered_map<uint32_t, rocksdb::ColumnFamilyHandle *> &cf_id_map,
+                               int16_t slot, MigrateBatch *migrate_batch)
+      : cf_id_map_(cf_id_map), slot_(slot), migrate_batch_(migrate_batch) {}
+  void LogData(const rocksdb::Slice &blob) override;
+  rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override;
+
+  rocksdb::Status DeleteCF(uint32_t column_family_id, const Slice &key) override;
+  rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key, const Slice &end_key) override;
+
+ private:
+  std::string log_data_;
+
+  std::unordered_map<uint32_t, rocksdb::ColumnFamilyHandle *> cf_id_map_;
+  int slot_;
+  MigrateBatch *migrate_batch_;
+};

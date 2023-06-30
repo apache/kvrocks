@@ -617,6 +617,8 @@ RedisType WriteBatchLogData::GetRedisType() { return type_; }
 
 std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
 
+void WriteBatchLogData::SetArguments(std::vector<std::string> &&args) { args_ = std::move(args); }
+
 std::string WriteBatchLogData::Encode() {
   std::string ret = std::to_string(type_);
   for (const auto &arg : args_) {

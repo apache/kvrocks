@@ -36,6 +36,7 @@
 #include <memory>
 #include <random>
 
+#include "cluster/cluster.h"
 #include "compact_filter.h"
 #include "db_util.h"
 #include "event_listener.h"
@@ -1100,5 +1101,21 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
 
   return crc == tmp_crc;
 }
+
+Status Storage::ApplyWriteBatch(std::string &&raw_batch) {
+  auto bat = rocksdb::WriteBatch(std::move(raw_batch));
+  auto s = Write(rocksdb::WriteOptions(), &bat);
+  if (!s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
+}
+
+void Storage::DisableCompact(int slot_id) {
+  assert(Cluster::IsValidSlot(slot_id));
+  disable_compact_slot_ = slot_id;
+}
+
+void Storage::ResetDisabledCompactSlot() { disable_compact_slot_ = -1; }
 
 }  // namespace engine

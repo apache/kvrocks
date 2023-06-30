@@ -62,6 +62,9 @@ ConfigEnum log_levels[] = {{"info", google::INFO},
                            {"fatal", google::FATAL},
                            {nullptr, 0}};
 
+ConfigEnum migrate_types[] = {{"redis_command", static_cast<const int>(MigrateType::kRedisCommand)},
+                              {"raw_key_value", static_cast<const int>(MigrateType::kRawKeyValue)}};
+
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
   return s.substr(8, s.size() - 8);
@@ -161,6 +164,9 @@ Config::Config() {
       {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
       {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
+      {"migrate-type", false, new EnumField(&migrate_type, migrate_types, 0)},
+      {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
+      {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 0, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
@@ -464,6 +470,18 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
+         return Status::OK();
+       }},
+      {"migrate-batch-rate-limit-mb",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         srv->slot_migrator->SetMigrateBatchRateLimit(migrate_batch_rate_limit_mb * MiB);
+         return Status::OK();
+       }},
+      {"migrate-batch-size-kb",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         srv->slot_migrator->SetMigrateBatchSize(migrate_batch_size_kb * KiB);
          return Status::OK();
        }},
       {"log-retention-days",

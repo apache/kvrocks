@@ -177,6 +177,12 @@ class Storage {
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 
+  Status ApplyWriteBatch(std::string &&raw_batch);
+  void DisableCompact(int slot_id);
+  void ResetDisabledCompactSlot();
+  bool IsCompactDisabled(int slot_id) { return disable_compact_slot_ == slot_id; }
+  int GetDisabledCompactSlot() { return disable_compact_slot_; }
+
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
@@ -209,6 +215,8 @@ class Storage {
   std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+
+  std::atomic<int> disable_compact_slot_{-1};
 
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
 };

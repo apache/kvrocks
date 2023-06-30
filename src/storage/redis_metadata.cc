@@ -75,6 +75,8 @@ Slice InternalKey::GetKey() const { return key_; }
 
 Slice InternalKey::GetSubKey() const { return sub_key_; }
 
+uint16_t InternalKey::GetSlotId() const { return slotid_; }
+
 uint64_t InternalKey::GetVersion() const { return version_; }
 
 void InternalKey::Encode(std::string *out) {
@@ -122,6 +124,15 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool s
   }
 
   *key = ns_key.ToString();
+}
+
+// must slot encoded
+void ExtractSlotId(Slice ns_key, uint16_t *slot_id) {
+  uint8_t namespace_size = 0;
+  GetFixed8(&ns_key, &namespace_size);
+  ns_key.remove_prefix(namespace_size);
+
+  GetFixed16(&ns_key, slot_id);
 }
 
 void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded) {

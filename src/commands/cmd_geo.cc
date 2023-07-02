@@ -23,6 +23,7 @@
 #include "error_constants.h"
 #include "server/server.h"
 #include "types/redis_geo.h"
+#include "types/geohash.h"
 
 namespace redis {
 
@@ -371,18 +372,28 @@ class CommandGeoSearch : public CommandGeoBase {
       
       while(parser.Good()) {
         if (parser.EatEqICase("frommember")) {
+          auto s = SetOriginType(kMember);
+          if (!s.IsOK()) return s;
+
           member_ = GET_OR_RET(parser.TakeStr());
         } else if (parser.EatEqICase("fromlonlat")) {
+          auto s = SetOriginType(kLongLat);
+          if (!s.IsOK()) return s;
+
           longitude_ = GET_OR_RET(parser.TakeFloat());
           latitude_ = GET_OR_RET(parser.TakeFloat());
           auto s = ValdiateLongLat(&longitude_, &latitude_);
           if (!s.IsOK()) return s;
         } else if (parser.EatEqICase("byradius")) {
+          auto s = SetShapeType(CIRCULAR);
+          if (!s.IsOK()) return s;
           radius_ = GET_OR_RET(parser.TakeFloat());
           std::string distance_raw = GET_OR_RET(parser.TakeStr());
           auto s = ParseDistanceUnit(distance_raw);
           if (!s.IsOK()) return s;
         } else if (parser.EatEqICase("bybox")) {
+          auto s = SetShapeType(RECTANGULAR);
+          if (!s.IsOK()) return s;
           width_ = GET_OR_RET(parser.TakeFloat());
           height_ = GET_OR_RET(parser.TakeFloat());
           std::string distance_raw = GET_OR_RET(parser.TakeStr());
@@ -403,15 +414,24 @@ class CommandGeoSearch : public CommandGeoBase {
         }
       }
 
-      if (radius_ != 0 && width_ != 0 && height_ != 0) {
-        return {Status::RedisParseErr, "please use only one of BYRADIUS or BYBOX"};
-      }
-
       if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
         return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
       }
 
       return Commander::Parse(args);
+    }
+
+    Status Execute(Server *svr, Connection *conn, std::string *output) override {
+      std::vector<GeoPoint> geo_points;
+      redis::Geo geo_db(svr->storage, conn->GetNamespace());
+
+      // check how can you build a GeoShape right here...
+      auto s = geo_db.Search(member_, geo_shape_, origin_point_type_, member_, count_, sort_, NULL, false, GetUnitConversion(), &geo_points);
+      
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      // storing comes later.
     }
 
   protected:
@@ -423,13 +443,55 @@ class CommandGeoSearch : public CommandGeoBase {
     bool with_hash_ = false;
     int count_ = 0;
     DistanceSort sort_ = kSortNone;
+    GeoShapeType shape_type_ = NONE;
+    OriginPointType origin_point_type_ = kNone;
+    GeoShape geo_shape_;
     std::string store_key_;
     bool store_distance_ = false;
+
   private:
     double longitude_ = 0;
     double latitude_ = 0;
     std::string member_;
     std::string key_;
+
+    Status SetShapeType(GeoShapeType shape_type) {
+      if (shape_type_ != NONE) {
+        return {Status::RedisParseErr, "please use only one of BYBOX or BYRADIUS"};
+      }
+      shape_type_ = shape_type;
+      return Status::OK();
+    }
+
+    Status SetOriginType(OriginPointType origin_point_type) {
+      if (origin_point_type_ != kNone) {
+        return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
+      }
+      origin_point_type_ = origin_point_type;
+      return Status::OK();
+    }
+
+    Status CreateGeoShape() {
+      if (shape_type_ == NONE) {
+        return {Status::RedisParseErr, "please use BYBOX or BYRADIUS"};
+      }
+      geo_shape_.type = shape_type_;  
+      geo_shape_.conversion = GetUnitConversion();
+      
+      if (shape_type_ == CIRCULAR) {
+        geo_shape_.radius = radius_;  
+      } else {
+        geo_shape_.width = width_;
+        geo_shape_.height = height_;
+      }
+
+      if (origin_point_type_ == kLongLat) {
+        geo_shape_.xy[0] = longitude_;
+        geo_shape_.xy[1] = latitude_;
+      }
+
+      return Status::OK();
+    }
 };
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {

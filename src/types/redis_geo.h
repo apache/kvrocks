@@ -43,6 +43,12 @@ enum DistanceSort {
   kSortDESC,
 };
 
+enum OriginPointType {
+  kNone,
+  kLongLat,
+  kMember
+};
+
 // Structures represent points and array of points on the earth.
 struct GeoPoint {
   double longitude;
@@ -68,7 +74,7 @@ class Geo : public ZSet {
   rocksdb::Status RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,
                                  DistanceSort sort, const std::string &store_key, bool store_distance,
                                  double unit_conversion, std::vector<GeoPoint> *geo_points);
-
+  rocksdb::Status Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string member,  int count, DistanceSort sort, const std::string &store_key, bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
   rocksdb::Status Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members,
                        std::map<std::string, GeoPoint> *geo_points);
@@ -76,16 +82,13 @@ class Geo : public ZSet {
 
  private:
   static int decodeGeoHash(double bits, double *xy);
-  int membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, double lon, double lat, double radius,
-                            std::vector<GeoPoint> *geo_points);
-  int membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, double lon,
-                          double lat, double radius);
+  int membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape &geo_shape, std::vector<GeoPoint> *geo_points);
+  int membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, GeoShape &geo_shape);
   static void scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix52Bits *max);
-  int getPointsInRange(const Slice &user_key, double min, double max, double lon, double lat, double radius,
-                       std::vector<GeoPoint> *geo_points);
+  int getPointsInRange(const Slice &user_key, double min, double max, GeoShape &geo_shape, std::vector<GeoPoint> *geo_points);
   static bool appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius,
                                    double score, const std::string &member);
-
+  static bool appendIfWithinShape(std::vector<GeoPoint> *geo_points, GeoShape &geo_shape, double score, const std::string &member);
   static bool sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2);
   static bool sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2);
 };

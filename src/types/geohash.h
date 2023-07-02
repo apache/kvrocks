@@ -60,7 +60,8 @@ enum GeoDirection {
 };
 
 enum GeoShapeType {
-  CIRCULAR = 0,
+  NONE = 0,
+  CIRCULAR,
   RECTANGULAR
 };
 
@@ -138,10 +139,14 @@ class GeoHashHelper {
  public:
   static uint8_t EstimateStepsByRadius(double range_meters, double lat);
   static int BoundingBox(double longitude, double latitude, double radius_meters, double *bounds);
+  static int BoundingBox(GeoShape *geo_shape, double *bounds);
   static GeoHashRadius GetAreasByRadius(double longitude, double latitude, double radius_meters);
   static GeoHashRadius GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters);
+  static GeoHashRadius GetAreasByShapeWGS84(GeoShape *geo_shape);
   static GeoHashFix52Bits Align52Bits(const GeoHashBits &hash);
   static double GetDistance(double lon1d, double lat1d, double lon2d, double lat2d);
   static int GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance);
+  static int GetDistanceIfInBox(double *bounds, double x1, double y1, double x2, double y2, double *distance);
   static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius, double *distance);
+  static int GetDistanceIfInBoxWGS84(double *bounds, double x1, double y1, double x2, double y2, double *distance);
 };

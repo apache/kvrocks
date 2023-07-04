@@ -165,6 +165,7 @@ Config::Config() {
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
+      {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -658,12 +659,16 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     field_key = input.first;
     tokens[input.second] = input.first.substr(ns_str_size);
   }
+
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto &field = iter->second;
     field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+  } else {
+    std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number)
+              << std::endl;
   }
   return Status::OK();
 }

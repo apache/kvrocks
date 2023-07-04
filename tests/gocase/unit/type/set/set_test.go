@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/apache/incubator-kvrocks/tests/gocase/util"
+	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
@@ -229,6 +229,34 @@ func TestSet(t *testing.T) {
 			}
 		})
 
+		t.Run("SINTERCARD with a single set - "+dstype, func(t *testing.T) {
+			cmd1 := rdb.SInter(ctx, "set1")
+			require.NoError(t, cmd1.Err())
+			for j := 1; j < 20; j++ {
+				cmd2 := rdb.SInterCard(ctx, int64(j), "set1")
+				require.NoError(t, cmd2.Err())
+				if j > len(cmd1.Val()) {
+					require.EqualValues(t, cmd2.Val(), len(cmd1.Val()))
+				} else {
+					require.EqualValues(t, cmd2.Val(), j)
+				}
+			}
+		})
+
+		t.Run("SINTERCARD with two sets - "+dstype, func(t *testing.T) {
+			cmd1 := rdb.SInter(ctx, "set1", "set2")
+			require.NoError(t, cmd1.Err())
+			for j := 1; j < 20; j++ {
+				cmd2 := rdb.SInterCard(ctx, int64(j), "set1", "set2")
+				require.NoError(t, cmd2.Err())
+				if j > len(cmd1.Val()) {
+					require.EqualValues(t, cmd2.Val(), len(cmd1.Val()))
+				} else {
+					require.EqualValues(t, cmd2.Val(), j)
+				}
+			}
+		})
+
 		t.Run("SINTERSTORE with two sets - "+dstype, func(t *testing.T) {
 			require.NoError(t, rdb.SInterStore(ctx, "setres", "set1", "set2").Err())
 			cmd := rdb.SMembers(ctx, "setres")
@@ -279,6 +307,20 @@ func TestSet(t *testing.T) {
 				require.EqualValues(t, []string{"195", "199", strconv.Itoa(larger)}, cmd.Val())
 			case string:
 				require.EqualValues(t, []string{"195", "199", larger}, cmd.Val())
+			}
+		})
+
+		t.Run("SINTERCARD with three sets - "+dstype, func(t *testing.T) {
+			cmd1 := rdb.SInter(ctx, "set1", "set2", "set3")
+			require.NoError(t, cmd1.Err())
+			for j := 1; j < 20; j++ {
+				cmd2 := rdb.SInterCard(ctx, int64(j), "set1", "set2", "set3")
+				require.NoError(t, cmd2.Err())
+				if j > len(cmd1.Val()) {
+					require.EqualValues(t, cmd2.Val(), len(cmd1.Val()))
+				} else {
+					require.EqualValues(t, cmd2.Val(), j)
+				}
 			}
 		})
 
@@ -397,6 +439,33 @@ func TestSet(t *testing.T) {
 		require.NoError(t, rdb.SAdd(ctx, "set1", "a", "b", "c").Err())
 		require.NoError(t, rdb.SAdd(ctx, "set2", "b", "c", "d").Err())
 		require.EqualValues(t, []string{}, rdb.SInter(ctx, "set1", "set2", "key3").Val())
+	})
+
+	t.Run("SINTERCARD with wrong args", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "set1", []interface{}{"foo", "2"})
+		CreateSet(t, rdb, ctx, "set2", []interface{}{"a", "b", "2"})
+
+		// numkey should be a positive integer.
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "3.5", "set1").Err(), "is not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "-1", "set1").Err(), "must be positive")
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "0", "set1").Err(), "must be positive")
+
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "1", "set1", "set2").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "1", "set1", "set2", "LIMIT", "2").Err(), "wrong number of arguments")
+
+		// The limit argument should be a positive integer.
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "2", "set1", "set2", "LIMIT", "-1").Err(), "can't be negative")
+		require.ErrorContains(t, rdb.Do(ctx, "sintercard", "2", "set1", "set2", "LIMIT", "1.5").Err(), "is not an integer")
+	})
+
+	t.Run("SINTERCARD should return zero with empty sets", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "set1", "set2", "set3").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set1", "a", "b", "c").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set2", "b", "c", "d").Err())
+		for j := 1; j < 20; j++ {
+			require.EqualValues(t, 0, rdb.SInterCard(ctx, int64(j), "set1", "set2", "key3").Val())
+		}
+		require.EqualValues(t, 0, rdb.SInterCard(ctx, 0, "set3").Val())
 	})
 
 	t.Run("SINTER with same integer elements but different encoding", func(t *testing.T) {

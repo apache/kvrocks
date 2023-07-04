@@ -28,6 +28,8 @@
 #include <sys/utsname.h>
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
 #include <iomanip>
 #include <jsoncons/json.hpp>
 #include <memory>
@@ -59,6 +61,9 @@ Server::Server(engine::Storage *storage, Config *config)
     stats.commands_stats[iter.first].calls = 0;
     stats.commands_stats[iter.first].latency = 0;
   }
+
+  // init cursor_dict_
+  cursor_dict_ = std::make_unique<CursorDictType>();
 
 #ifdef ENABLE_OPENSSL
   // init ssl context
@@ -109,10 +114,6 @@ Server::~Server() {
   // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
   for (auto &worker_thread : worker_threads_) {
     worker_thread.reset();
-  }
-
-  for (const auto &iter : conn_ctxs_) {
-    delete iter.first;
   }
 
   lua::DestroyState(lua_);
@@ -230,14 +231,14 @@ void Server::Join() {
     worker->Join();
   }
 
-  if (auto s = task_runner_.Join(); !s) {
-    LOG(WARNING) << s.Msg();
-  }
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     LOG(WARNING) << "Compaction checker thread operation failed: " << s.Msg();
+  }
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << s.Msg();
   }
 }
 
@@ -363,7 +364,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   std::vector<ConnContext> to_publish_conn_ctxs;
   if (auto iter = pubsub_channels_.find(channel); iter != pubsub_channels_.end()) {
     for (const auto &conn_ctx : iter->second) {
-      to_publish_conn_ctxs.emplace_back(*conn_ctx);
+      to_publish_conn_ctxs.emplace_back(conn_ctx);
     }
   }
 
@@ -373,7 +374,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   for (const auto &iter : pubsub_patterns_) {
     if (util::StringMatch(iter.first, channel, 0)) {
       for (const auto &conn_ctx : iter.second) {
-        to_publish_patterns_conn_ctxs.emplace_back(*conn_ctx);
+        to_publish_patterns_conn_ctxs.emplace_back(conn_ctx);
         patterns.emplace_back(iter.first);
       }
     }
@@ -412,11 +413,11 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
 void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_channels_.find(channel); iter == pubsub_channels_.end()) {
-    pubsub_channels_.emplace(channel, std::list<ConnContext *>{conn_ctx});
+    pubsub_channels_.emplace(channel, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -431,8 +432,8 @@ void Server::UnsubscribeChannel(const std::string &channel, redis::Connection *c
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_channels_.erase(iter);
@@ -468,11 +469,11 @@ void Server::ListChannelSubscribeNum(const std::vector<std::string> &channels,
 void Server::PSubscribeChannel(const std::string &pattern, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = pubsub_patterns_.find(pattern); iter == pubsub_patterns_.end()) {
-    pubsub_patterns_.emplace(pattern, std::list<ConnContext *>{conn_ctx});
+    pubsub_patterns_.emplace(pattern, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -487,8 +488,8 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_patterns_.erase(iter);
@@ -501,11 +502,11 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
 void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
-  auto conn_ctx = new ConnContext(conn->Owner(), conn->GetFD());
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
   conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
-    blocking_keys_.emplace(key, std::list<ConnContext *>{conn_ctx});
+    blocking_keys_.emplace(key, std::list<ConnContext>{conn_ctx});
   } else {
     iter->second.emplace_back(conn_ctx);
   }
@@ -522,8 +523,8 @@ void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
   }
 
   for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx->fd && conn->Owner() == conn_ctx->owner) {
-      delConnContext(conn_ctx);
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         blocking_keys_.erase(iter);
@@ -588,11 +589,11 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
 
   while (n_conns-- && !iter->second.empty()) {
     auto conn_ctx = iter->second.front();
-    auto s = conn_ctx->owner->EnableWriteEvent(conn_ctx->fd);
+    auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx->fd << ": " << s.Msg();
+      LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx.fd << ": " << s.Msg();
     }
-    delConnContext(conn_ctx);
+    conn_ctxs_.erase(conn_ctx);
     iter->second.pop_front();
   }
 }
@@ -617,13 +618,6 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
     } else {
       ++it;
     }
-  }
-}
-
-void Server::delConnContext(ConnContext *c) {
-  if (auto iter = conn_ctxs_.find(c); iter != conn_ctxs_.end()) {
-    delete iter->first;
-    conn_ctxs_.erase(iter);
   }
 }
 
@@ -1763,4 +1757,54 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   }
   slave_threads_mu_.unlock();
   return result;
+}
+
+// The numeric cursor consists of a 16-bit counter, a 16-bit time stamp, a 29-bit hash,and a 3-bit cursor type. The
+// hash is used to prevent information leakage. The time_stamp is used to prevent the generation of the same cursor in
+// the extremely short period before and after a restart.
+NumberCursor::NumberCursor(CursorType cursor_type, uint16_t counter, const std::string &key_name) {
+  auto hash = static_cast<uint32_t>(std::hash<std::string>{}(key_name));
+  auto time_stamp = static_cast<uint16_t>(util::GetTimeStamp());
+  // make hash top 3-bit zero
+  constexpr uint64_t hash_mask = 0x1FFFFFFFFFFFFFFF;
+  cursor_ = static_cast<uint64_t>(counter) | static_cast<uint64_t>(time_stamp) << 16 |
+            (static_cast<uint64_t>(hash) << 32 & hash_mask) | static_cast<uint64_t>(cursor_type) << 61;
+}
+
+bool NumberCursor::IsMatch(const CursorDictElement &element, CursorType cursor_type) const {
+  return cursor_ == element.cursor.cursor_ && cursor_type == getCursorType();
+}
+
+std::string Server::GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix) {
+  if (!config_->redis_cursor_compatible) {
+    // add prefix for SCAN
+    return prefix + key_name;
+  }
+  auto counter = cursor_counter_.fetch_add(1);
+  auto number_cursor = NumberCursor(cursor_type, counter, key_name);
+  cursor_dict_->at(number_cursor.GetIndex()) = {number_cursor, key_name};
+  return number_cursor.ToString();
+}
+
+std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type) {
+  // When cursor is 0, cursor string is empty
+  if (cursor.empty() || !config_->redis_cursor_compatible) {
+    return cursor;
+  }
+
+  auto s = ParseInt<uint64_t>(cursor, 10);
+  // When Cursor 0 or not a Integer return empty string.
+  // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of
+  // the code.
+  if (!s.IsOK() || *s == 0) {
+    return {};
+  }
+  auto number_cursor = NumberCursor(*s);
+  // Because the index information is fully stored in the cursor, we can directly obtain the index from the cursor.
+  auto item = cursor_dict_->at(number_cursor.GetIndex());
+  if (number_cursor.IsMatch(item, cursor_type)) {
+    return item.key_name;
+  }
+
+  return {};
 }

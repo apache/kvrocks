@@ -153,5 +153,8 @@ func TestDisk(t *testing.T) {
 		size, err := rdb.MemoryUsage(ctx, key).Result()
 		require.NoError(t, err)
 		require.Greater(t, size, int64(0))
+
+		_, err = rdb.MemoryUsage(ctx, "nonexistentkey").Result()
+		require.ErrorIs(t, err, redis.Nil)
 	})
 }

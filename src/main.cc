@@ -144,7 +144,7 @@ static void PrintUsage(const char *program) {
   std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
             << "Usage:" << std::endl
             << std::left << new_opt << "-c, --config <filename>"
-            << "set config file to <filename>, or `-' for stdin" << std::endl
+            << "set config file to <filename>, or `-` for stdin" << std::endl
             << new_opt << "-v, --version"
             << "print version information" << std::endl
             << new_opt << "-h, --help"

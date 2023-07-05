@@ -1692,8 +1692,8 @@ void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, con
     } else if (attr.key_range.first_key == -2) {
       std::vector<redis::CommandKeyRange> vec_range = attr.key_range_vec_gen(args);
 
-      if (vec_range.front().first_key > 0) {
-        for (const auto &range : vec_range) {
+      for (const auto &range : vec_range) {
+        if (range.first_key > 0) {
           updateWatchedKeysFromRange(args, range);
         }
       }

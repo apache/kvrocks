@@ -140,10 +140,10 @@ func TestDisk(t *testing.T) {
 	})
 
 	t.Run("Disk usage nonexistent key ", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "Disk", "usage", "nonexistentkey").Err(), "Not found")
+		require.ErrorIs(t, rdb.Do(ctx, "Disk", "usage", "nonexistentkey").Err(), redis.Nil)
 	})
 
-	t.Run("Memory usage existing key - check that Kvrocks support it", func(t *testing.T) {
+	t.Run("Memory usage - check that Kvrocks support it", func(t *testing.T) {
 		key := "arbitrary-key"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 
@@ -153,5 +153,8 @@ func TestDisk(t *testing.T) {
 		size, err := rdb.MemoryUsage(ctx, key).Result()
 		require.NoError(t, err)
 		require.Greater(t, size, int64(0))
+
+		_, err = rdb.MemoryUsage(ctx, "nonexistentkey").Result()
+		require.ErrorIs(t, err, redis.Nil)
 	})
 }

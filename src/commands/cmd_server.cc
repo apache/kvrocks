@@ -291,7 +291,14 @@ class CommandDisk : public Commander {
 
     uint64_t result = 0;
     s = disk_db.GetKeySize(args_[2], type, &result);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!s.ok()) {
+      // Redis returns the Nil string when the key does not exist
+      if (s.IsNotFound()) {
+        *output = redis::NilString();
+        return Status::OK();
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
 
     *output = redis::Integer(result);
     return Status::OK();

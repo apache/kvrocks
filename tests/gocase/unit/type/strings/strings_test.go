@@ -241,6 +241,14 @@ func TestString(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "getex").Err(), ".*wrong number of arguments*.")
 	})
 
+	t.Run("GETEX against wrong type", func(t *testing.T) {
+		rdb.Del(ctx, "foo")
+		rdb.LPush(ctx, "foo", "bar")
+		util.ErrorRegexp(t, rdb.Do(ctx, "getex", "foo").Err(), ".*WRONGTYPE.*")
+		require.EqualValues(t, 1, rdb.Exists(ctx, "foo").Val())
+		require.Equal(t, "list", rdb.Type(ctx, "foo").Val())
+	})
+
 	t.Run("GETDEL command", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())

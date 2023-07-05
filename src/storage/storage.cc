@@ -235,6 +235,7 @@ Status Storage::Open(bool read_only) {
   db_closing_ = false;
 
   bool cache_index_and_filter_blocks = config_->rocks_db.cache_index_and_filter_blocks;
+  size_t block_cache_size = config_->rocks_db.block_cache_size * MiB;
   size_t metadata_block_cache_size = config_->rocks_db.metadata_block_cache_size * MiB;
   size_t subkey_block_cache_size = config_->rocks_db.subkey_block_cache_size * MiB;
 
@@ -244,7 +245,9 @@ Status Storage::Open(bool read_only) {
   }
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  if (config_->rocks_db.share_metadata_and_subkey_block_cache) {
+  if (config_->rocks_db.set_block_cache_size) {
+    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+  } else if (config_->rocks_db.share_metadata_and_subkey_block_cache) {
     size_t shared_block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
     shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
   }

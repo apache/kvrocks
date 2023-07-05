@@ -664,8 +664,16 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
   if (iter != fields_.end()) {
     auto &field = iter->second;
     field->line_number = line_number;
+    if (field_key == "tls-port" && !close_notls_port && input.second == fillds_["port"]) {
+      close_notls_port = true;
+    }
     auto s = field->Set(input.second);
-    if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+    if (!s.IsOK()) {
+      if (field_key == "port" && input.second == "0") {
+        close_notls_port = true;
+      } else
+        return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+    }
   } else {
     std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number)
               << std::endl;

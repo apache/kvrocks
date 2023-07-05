@@ -75,6 +75,8 @@ Server::Server(engine::Storage *storage, Config *config)
   }
 #endif
 
+  // todo(infdahai): close notls_port if close_notls_port == true.
+
   // Init cluster
   cluster = std::make_unique<Cluster>(this, config_->binds, config_->port);
 

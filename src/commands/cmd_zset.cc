@@ -470,11 +470,11 @@ class CommandZMPop : public Commander {
     }
 
     while (parser.Good()) {
-      if (parser.EatEqICase("min")) {
+      if (flag_ == ZSET_NONE && parser.EatEqICase("min")) {
         flag_ = ZSET_MIN;
-      } else if (parser.EatEqICase("max")) {
+      } else if (flag_ == ZSET_NONE && parser.EatEqICase("max")) {
         flag_ = ZSET_MAX;
-      } else if (parser.EatEqICase("count")) {
+      } else if (count_ == 0 && parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
@@ -483,6 +483,7 @@ class CommandZMPop : public Commander {
     if (flag_ == ZSET_NONE) {
       return parser.InvalidSyntax();
     }
+    if (count_ == 0) count_ = 1;
     return Commander::Parse(args);
   }
 
@@ -514,7 +515,7 @@ class CommandZMPop : public Commander {
   int numkeys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
-  int count_ = 1;
+  int count_ = 0;
 };
 
 class CommandBZMPop : public Commander,
@@ -535,11 +536,11 @@ class CommandBZMPop : public Commander,
     }
 
     while (parser.Good()) {
-      if (parser.EatEqICase("min")) {
+      if (flag_ == ZSET_NONE && parser.EatEqICase("min")) {
         flag_ = ZSET_MIN;
-      } else if (parser.EatEqICase("max")) {
+      } else if (flag_ == ZSET_NONE && parser.EatEqICase("max")) {
         flag_ = ZSET_MAX;
-      } else if (parser.EatEqICase("count")) {
+      } else if (count_ == 0 && parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
@@ -549,6 +550,7 @@ class CommandBZMPop : public Commander,
     if (flag_ == ZSET_NONE) {
       return parser.InvalidSyntax();
     }
+    if (count_ == 0) count_ = 1;
 
     return Commander::Parse(args);
   }
@@ -659,7 +661,7 @@ class CommandBZMPop : public Commander,
   int num_keys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
-  int count_ = 1;
+  int count_ = 0;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;

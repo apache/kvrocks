@@ -163,7 +163,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, value);
-  if (!s.ok() && s.IsNotFound()) return s;
+  if (!s.ok()) return s;
 
   std::string raw_data;
   Metadata metadata(kRedisString, false);

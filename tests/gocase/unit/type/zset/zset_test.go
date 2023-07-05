@@ -392,6 +392,19 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.EqualValues(t, 0, rdb.Exists(ctx, "zseta", "zsetb").Val())
 	})
 
+	t.Run(fmt.Sprintf("ZMPOP error - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 1, "zseta").Err(), ".*wrong number of arguments.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", "wrong_numkeys", "zseta", "zsetb").Err(), ".*not started as an integer.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 2, "zseta", "min").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 2, "zseta", "zsetb", "min", "min").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 1, "zseta", "min", "max").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 1, "zseta", "min", "count", "wrong_count").Err(), ".*not started as an integer.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zmpop", 1, "zseta", "min", "count", 1, "count", 10).Err(), ".*syntax error.*")
+	})
+
 	t.Run(fmt.Sprintf("BZMPOP basics - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
@@ -425,6 +438,20 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		key, zset = r.Val()
 		require.Equal(t, "zseta", key)
 		require.Equal(t, []redis.Z{{Score: 1, Member: "a"}, {Score: 2, Member: "b"}}, zset)
+	})
+
+	t.Run(fmt.Sprintf("BZMPOP error - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta").Err(), ".*wrong number of arguments.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", "wrong_timeout", 1, "zseta", "min").Err(), ".*not started as a number.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, "wrong_numkeys", "zseta", "min").Err(), ".*not started as an integer.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 2, "zseta", "min").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta", "min", "max").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 2, "zseta", "zsetb", "min", "min").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta", "min", "count", "wrong_count").Err(), ".*not started as an integer.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta", "min", "count", 1, "count", 10).Err(), ".*syntax error.*")
 	})
 
 	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {

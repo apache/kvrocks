@@ -248,9 +248,7 @@ Status Storage::Open(bool read_only) {
   }
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  if (config_->rocks_db.share_metadata_and_subkey_block_cache) {
-    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
-  }
+  shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
   metadata_table_opts.block_cache =

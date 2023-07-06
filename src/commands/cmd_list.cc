@@ -458,8 +458,12 @@ class CommandLSet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::List list_db(svr->storage, conn->GetNamespace());
     auto s = list_db.Set(args_[1], index_, args_[3]);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, errNoSuchKey};
     }
 
     *output = redis::SimpleString("OK");

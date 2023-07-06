@@ -247,12 +247,10 @@ Status Storage::Open(bool read_only) {
     return s.Prefixed("failed to create column families");
   }
 
-  std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+  std::shared_ptr<rocksdb::Cache> shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
-  metadata_table_opts.block_cache =
-      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
+  metadata_table_opts.block_cache = shared_block_cache;
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
@@ -269,8 +267,7 @@ Status Storage::Open(bool read_only) {
   SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
-  subkey_table_opts.block_cache =
-      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
+  subkey_table_opts.block_cache = shared_block_cache;
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;

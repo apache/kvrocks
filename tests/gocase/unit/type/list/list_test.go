@@ -791,7 +791,7 @@ func TestList(t *testing.T) {
 	}
 
 	t.Run("LSET against non existing key", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb.LSet(ctx, "nosuchkey", 10, "foo").Err(), "ERR.*NotFound.*")
+		util.ErrorRegexp(t, rdb.LSet(ctx, "nosuchkey", 10, "foo").Err(), ".*no such key.*")
 	})
 
 	t.Run("LSET against non list value", func(t *testing.T) {

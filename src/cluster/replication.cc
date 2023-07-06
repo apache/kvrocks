@@ -116,7 +116,7 @@ void FeedSlaveThread::loop() {
     auto batch = iter_->GetBatch();
     if (batch.sequence != curr_seq) {
       LOG(ERROR) << "Fatal error encountered, WAL iterator is discrete, some seq might be lost"
-                 << ", sequence " << curr_seq << " expectd, but got " << batch.sequence;
+                 << ", sequence " << curr_seq << " expected, but got " << batch.sequence;
       Stop();
       return;
     }

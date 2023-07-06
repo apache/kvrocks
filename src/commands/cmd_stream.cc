@@ -742,8 +742,6 @@ class CommandXRead : public Commander,
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok()) {
         conn_->Reply(redis::MultiLen(-1));
-        LOG(ERROR) << "ERR executing XRANGE for stream " << streams_[i] << " from " << ids_[i].ToString() << " to "
-                   << options.end.ToString() << " with count " << count_ << ": " << s.ToString();
       }
 
       if (result.size() > 0) {

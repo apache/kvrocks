@@ -231,6 +231,11 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "foo").Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.Equal(t, "bar", rdb.GetEx(ctx, "foo", 0).Val())
+
+		// Make sure the expiration time is not erased.
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 10*time.Second).Err())
+		require.Equal(t, "bar", rdb.Do(ctx, "getex", "foo").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
 	})
 
 	t.Run("GETEX syntax errors", func(t *testing.T) {

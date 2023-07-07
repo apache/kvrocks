@@ -97,7 +97,7 @@ class CommandScript : public Commander {
 
       *output = redis::BulkString(sha);
     } else {
-      return {Status::NotOK, "Unknown SCRIPT subcommand or wrong # of args"};
+      return {Status::NotOK, "Unknown SCRIPT subcommand or wrong number of arguments"};
     }
     return Status::OK();
   }

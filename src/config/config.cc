@@ -658,6 +658,7 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     // namespace should keep key case-sensitive
     field_key = input.first;
     tokens[input.second] = input.first.substr(ns_str_size);
+    return Status::OK();
   }
 
   auto iter = fields_.find(field_key);

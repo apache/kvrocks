@@ -1187,6 +1187,8 @@ class CommandZUnion : public Commander {
         }
       } else if (parser.EatEqICase("withscores")) {
         with_scores_ = true;
+      } else {
+        return parser.InvalidSyntax();
       }
     }
     return Commander::Parse(args);

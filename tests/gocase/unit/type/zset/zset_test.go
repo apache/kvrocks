@@ -1072,6 +1072,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{1, "a"}, {2, "b"}, {3, "c"}, {3, "d"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
 	})
 
+	t.Run(fmt.Sprintf("ZUNION error - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "zunion", 1, "zseta", "wrong_arg").Err(), ".*syntax error.*")
+	})
+
 	t.Run(fmt.Sprintf("ZUNION basics - %s", encoding), func(t *testing.T) {
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},

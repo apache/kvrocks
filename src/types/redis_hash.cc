@@ -386,5 +386,46 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
                            std::vector<std::string> *values) {
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
+rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, uint64_t count, bool uniq,
+                                HashFetchType type) {
+  field_values->clear();
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  std::string prefix_key, next_version_prefix_key;
+  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
+  rocksdb::ReadOptions read_options;
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  storage_->SetReadOptions(read_options);
+
+  // case1:count is negative, randomly select elements in the amount of count
+  if (!uniq) {
+  }
+  /*case2:The count was positive，The number of requested elements is greater than the number of
+    elements inside the hash: simply return the whole hash*/
+  else if (metadata.size <= count) {
+    auto iter = util::UniqueIterator(storage_, read_options);
+    for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+      if (type == HashFetchType::kOnlyKey) {
+        InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+        field_values->emplace_back(ikey.GetSubKey().ToString(), "");
+      } else {
+        InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+        field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
+      }
+    }
+  }
+  /* case3:The number of elements inside the hash is not greater than the number of
+    elements inside the hash*/
+  else {
+  }
+  return rocksdb::Status::OK();
+}
 }  // namespace redis

@@ -376,6 +376,52 @@ class CommandHScan : public CommandSubkeyScanBase {
     return Status::OK();
   }
 };
+class CommandHRandField : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() >= 3) {
+      auto parse_result = ParseInt<int64_t>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      if (*parse_result >= 0) {
+        count_ = *parse_result;
+      } else {
+        count_ = -*parse_result;
+        uniq_ = false;
+      }
+      //如果有withvalue这个参数，就一定有前面的count
+      if (args.size() > 4 || (args.size() == 4 && strcasecmp(args[3].c_str(), "withvalues"))) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      } else if (args.size() == 4) {
+        withvalues_ = true;
+      }
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Hash hash_db(svr->storage, conn->GetNamespace());
+    std::vector<FieldValue> field_values;
+    auto s = hash_db.RandField(args_[1], &field_values, count_, uniq_,
+                               withvalues_ ? HashFetchType::kAll : HashFetchType::kOnlyKey);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    std::vector<std::string> values;
+    values.reserve(field_values.size());
+    for (const auto &p : field_values) {
+      values.emplace_back(p.field);
+      if (withvalues_) values.emplace_back(p.value);
+    }
+    *output = MultiBulkString(values, false);
+    return Status::OK();
+  }
+
+ private:
+  bool withvalues_ = false;
+  bool uniq_ = true;
+  uint64_t count_ = 1;
+};
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
@@ -392,6 +438,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1
                         MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

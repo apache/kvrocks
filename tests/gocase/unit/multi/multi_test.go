@@ -284,6 +284,22 @@ func TestMulti(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
 	})
 
+	t.Run("DISCARD without MULTI is not allowed", func(t *testing.T) {
+		require.EqualError(t, rdb.Do(ctx, "DISCARD").Err(), "ERR DISCARD without MULTI")
+	})
+
+	t.Run("DISCARD without MULTI should not reset watch", func(t *testing.T) {
+		rdb2 := srv.NewClient()
+		defer func() { require.NoError(t, rdb2.Close()) }()
+
+		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())
+		require.NoError(t, rdb2.Do(ctx, "SET", "x", "xxx").Err())
+		require.EqualError(t, rdb.Do(ctx, "DISCARD").Err(), "ERR DISCARD without MULTI")
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
+
 	t.Run("DISCARD should clear the WATCH dirty flag on the client", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "x", 30, 0).Err())
 		require.NoError(t, rdb.Do(ctx, "WATCH", "x").Err())

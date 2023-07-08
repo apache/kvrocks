@@ -45,14 +45,14 @@ class CommandMulti : public Commander {
 class CommandDiscard : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
-
     if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       *output = redis::Error("ERR DISCARD without MULTI");
       return Status::OK();
     }
 
+    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
     conn->ResetMultiExec();
+
     *output = redis::SimpleString("OK");
 
     return Status::OK();

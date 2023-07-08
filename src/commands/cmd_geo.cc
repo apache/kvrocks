@@ -18,12 +18,12 @@
  *
  */
 
-#include "commander.h"
 #include "command_parser.h"
+#include "commander.h"
 #include "error_constants.h"
 #include "server/server.h"
-#include "types/redis_geo.h"
 #include "types/geohash.h"
+#include "types/redis_geo.h"
 
 namespace redis {
 
@@ -64,6 +64,7 @@ class CommandGeoBase : public Commander {
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
       return {Status::RedisParseErr, "invalid longitude,latitude pair"};
     }
+    return Status::OK();
   }
 
   double GetDistanceByUnit(double distance) { return distance / GetUnitConversion(); }
@@ -363,135 +364,167 @@ class CommandGeoRadius : public CommandGeoBase {
 };
 
 class CommandGeoSearch : public CommandGeoBase {
-  public:
-    CommandGeoSearch() : CommandGeoBase() {}
+ public:
+  CommandGeoSearch() : CommandGeoBase() {}
 
-    Status Parse(const std::vector<std::string> &args) override {
-      CommandParser parser(args, 1);
-      key_ = GET_OR_RET(parser.TakeStr());
-      
-      while(parser.Good()) {
-        if (parser.EatEqICase("frommember")) {
-          auto s = SetOriginType(kMember);
-          if (!s.IsOK()) return s;
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    key_ = GET_OR_RET(parser.TakeStr());
 
-          member_ = GET_OR_RET(parser.TakeStr());
-        } else if (parser.EatEqICase("fromlonlat")) {
-          auto s = SetOriginType(kLongLat);
-          if (!s.IsOK()) return s;
+    while (parser.Good()) {
+      if (parser.EatEqICase("frommember")) {
+        auto s = setOriginType(kMember);
+        if (!s.IsOK()) return s;
 
-          longitude_ = GET_OR_RET(parser.TakeFloat());
-          latitude_ = GET_OR_RET(parser.TakeFloat());
-          auto s = ValdiateLongLat(&longitude_, &latitude_);
-          if (!s.IsOK()) return s;
-        } else if (parser.EatEqICase("byradius")) {
-          auto s = SetShapeType(CIRCULAR);
-          if (!s.IsOK()) return s;
-          radius_ = GET_OR_RET(parser.TakeFloat());
-          std::string distance_raw = GET_OR_RET(parser.TakeStr());
-          auto s = ParseDistanceUnit(distance_raw);
-          if (!s.IsOK()) return s;
-        } else if (parser.EatEqICase("bybox")) {
-          auto s = SetShapeType(RECTANGULAR);
-          if (!s.IsOK()) return s;
-          width_ = GET_OR_RET(parser.TakeFloat());
-          height_ = GET_OR_RET(parser.TakeFloat());
-          std::string distance_raw = GET_OR_RET(parser.TakeStr());
-          auto s = ParseDistanceUnit(distance_raw);
-          if (!s.IsOK()) return s;
-        } else if (parser.EatEqICase("asc") && sort_ == kSortNone) {
-          sort_ = kSortASC;
-        } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
-          sort_ = kSortDESC;
-        } else if (parser.EatEqICase("count")) {
-          count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
-        } else if (parser.EatEqICase("withcoord")) {
-          with_coord_ = true;
-        } else if (parser.EatEqICase("withdist")) {
-          with_dist_ = true;
-        } else if (parser.EatEqICase("withhash")) {
-          with_hash_ = true;
-        }
+        member_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICase("fromlonlat")) {
+        auto s = setOriginType(kLongLat);
+        if (!s.IsOK()) return s;
+
+        longitude_ = GET_OR_RET(parser.TakeFloat());
+        latitude_ = GET_OR_RET(parser.TakeFloat());
+        s = ValdiateLongLat(&longitude_, &latitude_);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("byradius")) {
+        auto s = setShapeType(CIRCULAR);
+        if (!s.IsOK()) return s;
+        radius_ = GET_OR_RET(parser.TakeFloat());
+        std::string distance_raw = GET_OR_RET(parser.TakeStr());
+        s = ParseDistanceUnit(distance_raw);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("bybox")) {
+        auto s = setShapeType(RECTANGULAR);
+        if (!s.IsOK()) return s;
+        width_ = GET_OR_RET(parser.TakeFloat());
+        height_ = GET_OR_RET(parser.TakeFloat());
+        std::string distance_raw = GET_OR_RET(parser.TakeStr());
+        s = ParseDistanceUnit(distance_raw);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("asc") && sort_ == kSortNone) {
+        sort_ = kSortASC;
+      } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
+        sort_ = kSortDESC;
+      } else if (parser.EatEqICase("count")) {
+        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+      } else if (parser.EatEqICase("withcoord")) {
+        with_coord_ = true;
+      } else if (parser.EatEqICase("withdist")) {
+        with_dist_ = true;
+      } else if (parser.EatEqICase("withhash")) {
+        with_hash_ = true;
       }
-
-      if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
-        return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
-      }
-
-      return Commander::Parse(args);
     }
 
-    Status Execute(Server *svr, Connection *conn, std::string *output) override {
-      std::vector<GeoPoint> geo_points;
-      redis::Geo geo_db(svr->storage, conn->GetNamespace());
-
-      // check how can you build a GeoShape right here...
-      auto s = geo_db.Search(member_, geo_shape_, origin_point_type_, member_, count_, sort_, NULL, false, GetUnitConversion(), &geo_points);
-      
-      if (!s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
-      // storing comes later.
+    if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
+      return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
     }
 
-  protected:
-    double radius_ = 0;
-    double height_ = 0;
-    double width_ = 0;
-    bool with_coord_ = false;
-    bool with_dist_ = false;
-    bool with_hash_ = false;
-    int count_ = 0;
-    DistanceSort sort_ = kSortNone;
-    GeoShapeType shape_type_ = NONE;
-    OriginPointType origin_point_type_ = kNone;
-    GeoShape geo_shape_;
-    std::string store_key_;
-    bool store_distance_ = false;
-
-  private:
-    double longitude_ = 0;
-    double latitude_ = 0;
-    std::string member_;
-    std::string key_;
-
-    Status SetShapeType(GeoShapeType shape_type) {
-      if (shape_type_ != NONE) {
-        return {Status::RedisParseErr, "please use only one of BYBOX or BYRADIUS"};
-      }
-      shape_type_ = shape_type;
-      return Status::OK();
+    auto s = createGeoShape();
+    if (!s.IsOK()) {
+      return s;
     }
+    return Commander::Parse(args);
+  }
 
-    Status SetOriginType(OriginPointType origin_point_type) {
-      if (origin_point_type_ != kNone) {
-        return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
-      }
-      origin_point_type_ = origin_point_type;
-      return Status::OK();
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<GeoPoint> geo_points;
+    redis::Geo geo_db(svr->storage, conn->GetNamespace());
+
+    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, nullptr, false,
+                           GetUnitConversion(), &geo_points);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
     }
+    *output = GenerateOutput(geo_points);
+    // storing comes later.
+    return Status::OK();
+  }
 
-    Status CreateGeoShape() {
-      if (shape_type_ == NONE) {
-        return {Status::RedisParseErr, "please use BYBOX or BYRADIUS"};
-      }
-      geo_shape_.type = shape_type_;  
-      geo_shape_.conversion = GetUnitConversion();
-      
-      if (shape_type_ == CIRCULAR) {
-        geo_shape_.radius = radius_;  
+  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
+    int result_length = static_cast<int>(geo_points.size());
+    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
+    std::vector<std::string> list;
+    for (int i = 0; i < returned_items_count; i++) {
+      auto geo_point = geo_points[i];
+      if (!with_coord_ && !with_hash_ && !with_dist_) {
+        list.emplace_back(redis::BulkString(geo_point.member));
       } else {
-        geo_shape_.width = width_;
-        geo_shape_.height = height_;
+        std::vector<std::string> one;
+        one.emplace_back(redis::BulkString(geo_point.member));
+        if (with_dist_) {
+          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+        }
+        if (with_hash_) {
+          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+        }
+        if (with_coord_) {
+          one.emplace_back(redis::MultiBulkString(
+              {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+        }
+        list.emplace_back(redis::Array(one));
       }
-
-      if (origin_point_type_ == kLongLat) {
-        geo_shape_.xy[0] = longitude_;
-        geo_shape_.xy[1] = latitude_;
-      }
-
-      return Status::OK();
     }
+    return redis::Array(list);
+  }
+
+ protected:
+  double radius_ = 0;
+  double height_ = 0;
+  double width_ = 0;
+  bool with_coord_ = false;
+  bool with_dist_ = false;
+  bool with_hash_ = false;
+  int count_ = 0;
+  DistanceSort sort_ = kSortNone;
+  GeoShapeType shape_type_ = NONE;
+  OriginPointType origin_point_type_ = kNone;
+  GeoShape geo_shape_;
+  std::string store_key_;
+  bool store_distance_ = false;
+
+ private:
+  double longitude_ = 0;
+  double latitude_ = 0;
+  std::string member_;
+  std::string key_;
+
+  Status setShapeType(GeoShapeType shape_type) {
+    if (shape_type_ != NONE) {
+      return {Status::RedisParseErr, "please use only one of BYBOX or BYRADIUS"};
+    }
+    shape_type_ = shape_type;
+    return Status::OK();
+  }
+
+  Status setOriginType(OriginPointType origin_point_type) {
+    if (origin_point_type_ != kNone) {
+      return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
+    }
+    origin_point_type_ = origin_point_type;
+    return Status::OK();
+  }
+
+  Status createGeoShape() {
+    if (shape_type_ == NONE) {
+      return {Status::RedisParseErr, "please use BYBOX or BYRADIUS"};
+    }
+    geo_shape_.type = shape_type_;
+    geo_shape_.conversion = GetUnitConversion();
+
+    if (shape_type_ == CIRCULAR) {
+      geo_shape_.radius = radius_;
+    } else {
+      geo_shape_.width = width_;
+      geo_shape_.height = height_;
+    }
+
+    if (origin_point_type_ == kLongLat) {
+      geo_shape_.xy[0] = longitude_;
+      geo_shape_.xy[1] = latitude_;
+    }
+    return Status::OK();
+  }
 };
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {
@@ -546,6 +579,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoSearch>("geocommandsearch", -7, "read-only", 1, 1, 1) )
+                        MakeCmdAttr<CommandGeoSearch>("geosearch", -7, "read-only", 1, 1, 1))
 
 }  // namespace redis

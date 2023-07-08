@@ -86,11 +86,11 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   GeoShape geo_shape;
+  geo_shape.type = CIRCULAR;
   geo_shape.xy[0] = longitude;
   geo_shape.xy[1] = latitude;
   geo_shape.radius = radius_meters;
   geo_shape.conversion = 1;
-
 
   /* Get all neighbor geohash boxes for our radius search */
   GeoHashRadius georadius = GeoHashHelper::GetAreasByShapeWGS84(&geo_shape);
@@ -143,7 +143,9 @@ rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, 
                 store_distance, unit_conversion, geo_points);
 }
 
-rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string member, int count, DistanceSort sort, const std::string &store_key, bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
+                            int count, DistanceSort sort, const std::string *store_key, bool store_distance,
+                            double unit_conversion, std::vector<GeoPoint> *geo_points) {
   if (point_type == kMember) {
     GeoPoint geo_point;
     auto s = Get(user_key, member, &geo_point);
@@ -166,7 +168,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
   membersOfAllNeighbors(user_key, georadius, geo_shape, geo_points);
 
   // if no matching results, give empty reply
-  if (geo_points->empty() && store_key.empty()) {
+  if (geo_points->empty()) {
     return rocksdb::Status::OK();
   }
   // process [optional] sorting
@@ -177,7 +179,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
   }
 
   // storing
-  if (!store_key.empty()) {
+  if (store_key != nullptr) {
     auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
@@ -192,9 +194,10 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
       uint64_t ret = 0;
-      ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
+      ZSet::Add(*store_key, ZAddFlags::Default(), &member_scores, &ret);
     }
   }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Geo::Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point) {
@@ -269,7 +272,8 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 }
 
 /* Search all eight neighbors + self geohash box */
-int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape &geo_shape,std::vector<GeoPoint> *geo_points) {
+int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape &geo_shape,
+                               std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
   unsigned int last_processed = 0;
   int count = 0;
@@ -308,7 +312,8 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape 
 /* Obtain all members between the min/max of this geohash bounding box.
  * Populate a GeoArray of GeoPoints by calling getPointsInRange().
  * Return the number of points added to the array. */
-int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points, GeoShape &geo_shape) {
+int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points,
+                             GeoShape &geo_shape) {
   GeoHashFix52Bits min = 0, max = 0;
 
   scoresOfGeoHashBox(hash, &min, &max);
@@ -356,7 +361,8 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
  * using multiple queries to the sorted set, that we later need to sort
  * via qsort. Similarly we need to be able to reject points outside the search
  * radius area ASAP in order to allocate and process more points than needed. */
-int Geo::getPointsInRange(const Slice &user_key, double min, double max, GeoShape &geo_shape, std::vector<GeoPoint> *geo_points) {
+int Geo::getPointsInRange(const Slice &user_key, double min, double max, GeoShape &geo_shape,
+                          std::vector<GeoPoint> *geo_points) {
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
   RangeScoreSpec spec;
@@ -402,13 +408,20 @@ bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, do
   return true;
 }
 
-bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, GeoShape &geo_shape, double score, const std::string &member) {
+bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, GeoShape &geo_shape, double score,
+                              const std::string &member) {
   double distance = NAN, xy[2];
   if (!decodeGeoHash(score, xy)) return false;
   if (geo_shape.type == CIRCULAR) {
-    if (!GeoHashHelper::GetDistanceIfInRadiusWGS84(geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1], geo_shape.radius, &distance)) {return false;}
+    if (!GeoHashHelper::GetDistanceIfInRadiusWGS84(geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1],
+                                                   geo_shape.radius * geo_shape.conversion, &distance)) {
+      return false;
+    }
   } else if (geo_shape.type == RECTANGULAR) {
-    if (!GeoHashHelper::GetDistanceIfInBoxWGS84(geo_shape.bounds, geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1], &distance)) {return false;}
+    if (!GeoHashHelper::GetDistanceIfInBoxWGS84(geo_shape.bounds, geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1],
+                                                &distance)) {
+      return false;
+    }
   }
 
   /* Append the new element. */

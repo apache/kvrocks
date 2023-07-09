@@ -19,11 +19,11 @@
  */
 
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
 #include "types/redis_list.h"
-
 namespace redis {
 
 class CommandPush : public Commander {
@@ -555,6 +555,101 @@ class CommandLMove : public Commander {
   bool dst_left_;
 };
 
+class CommandLPOS : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    target_ = args[2];
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("RANK")) {
+        rank_ = GET_OR_RET(parser.TakeInt());
+        if (rank_ == 0) {
+          return {Status::RedisExecErr, "RANK can't be zero"};
+        }
+      } else if (parser.EatEqICase("COUNT")) {
+        count_ = GET_OR_RET(parser.TakeInt());
+        if (count_ < 0) {
+          return {Status::RedisExecErr, "COUNT can't be negative"};
+        }
+      } else if (parser.EatEqICase("MAXLEN")) {
+        max_len_ = GET_OR_RET(parser.TakeInt());
+        if (max_len_ < 0) {
+          return {Status::RedisExecErr, "MAXLEN can't be negative"};
+        }
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::List list_db(svr->storage, conn->GetNamespace());
+    // get length of the list
+    uint64_t nums = 0;
+    auto s = list_db.Size(args_[1], &nums);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    // rank_ can be positive ot negative. if it's zero,
+    // it means the user doesn't specify it.
+    if (rank_ == 0) rank_ = 1;
+    // it means the user doesn't specify it.
+    if (count_ == -1) count_ = 1;
+    // it means the user doesn't specify it.
+    if (max_len_ == -1) max_len_ = 0;
+
+    // max_len_ == 0 or count_ == 0
+    // means unlimited length.
+
+    // find element
+    std::vector<std::string> indexes;
+    std::string elem = "";
+    auto counter = 0;
+    auto comparsions = 0;
+    if (rank_ > 0) {
+      for (uint64_t i = 0; i < nums; i++) {
+        comparsions++;
+        auto s = list_db.Index(args_[1], i, &elem);
+        if (!s.ok() && !s.IsNotFound()) {
+          return {Status::RedisExecErr, s.ToString()};
+        }
+        if (elem == target_) {
+          counter++;
+          if (counter >= rank_) {
+            indexes.push_back(std::to_string(i));
+            if (indexes.size() >= (u_long)count_ && count_ != 0) break;
+          }
+        }
+        if (comparsions >= max_len_ && max_len_ != 0) break;
+      }
+    } else {
+      for (uint64_t i = nums - 1; i >= 0; i--) {
+        comparsions++;
+        auto s = list_db.Index(args_[1], i, &elem);
+        if (!s.ok() && !s.IsNotFound()) {
+          return {Status::RedisExecErr, s.ToString()};
+        }
+        if (elem == target_) {
+          counter++;
+          if (counter >= rank_) {
+            indexes.push_back(std::to_string(i));
+            if (indexes.size() >= (u_long)count_ && count_ != 0) break;
+          }
+        }
+        if (comparsions >= max_len_ && max_len_ != 0) break;
+      }
+    }
+
+    *output = MultiBulkString(indexes, false);
+    return Status::OK();
+  }
+
+ private:
+  int rank_ = 0, max_len_ = -1, count_ = -1;
+  std::string target_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
@@ -571,6 +666,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLPOS>("lpos", -3, "read-only", 1, 1, 1), )
 
 }  // namespace redis

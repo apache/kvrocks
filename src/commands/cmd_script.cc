@@ -38,7 +38,7 @@ class CommandEvalImpl : public Commander {
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
     if (numkeys > int64_t(args_.size() - 3)) {
       return {Status::NotOK, "Number of keys can't be greater than number of args"};
-    } else if (numkeys < -1) {
+    } else if (numkeys < 0) {
       return {Status::NotOK, "Number of keys can't be negative"};
     }
 

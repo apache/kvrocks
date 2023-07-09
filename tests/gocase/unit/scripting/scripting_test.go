@@ -37,6 +37,10 @@ func TestScripting(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("EVAL - numkeys can't be negative", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "EVAL", `return redis.call('PING');`, "-1").Err(), ".*can't be negative.*")
+	})
+
 	t.Run("EVAL - Does Lua interpreter replies to our requests?", func(t *testing.T) {
 		r := rdb.Eval(ctx, `return 'hello'`, []string{})
 		require.NoError(t, r.Err())

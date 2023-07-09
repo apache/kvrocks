@@ -412,6 +412,8 @@ class CommandGeoSearch : public CommandGeoBase {
         with_dist_ = true;
       } else if (parser.EatEqICase("withhash")) {
         with_hash_ = true;
+      } else {
+        return {Status::RedisParseErr, "Invalid argument given"};
       }
     }
 
@@ -430,7 +432,7 @@ class CommandGeoSearch : public CommandGeoBase {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
 
-    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, nullptr, false,
+    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_, false,
                            GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
@@ -441,53 +443,21 @@ class CommandGeoSearch : public CommandGeoBase {
     return Status::OK();
   }
 
-  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
-    int result_length = static_cast<int>(geo_points.size());
-    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
-    std::vector<std::string> list;
-    for (int i = 0; i < returned_items_count; i++) {
-      auto geo_point = geo_points[i];
-      if (!with_coord_ && !with_hash_ && !with_dist_) {
-        list.emplace_back(redis::BulkString(geo_point.member));
-      } else {
-        std::vector<std::string> one;
-        one.emplace_back(redis::BulkString(geo_point.member));
-        if (with_dist_) {
-          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
-        }
-        if (with_hash_) {
-          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
-        }
-        if (with_coord_) {
-          one.emplace_back(redis::MultiBulkString(
-              {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
-        }
-        list.emplace_back(redis::Array(one));
-      }
-    }
-    return redis::Array(list);
-  }
-
  protected:
   double radius_ = 0;
   double height_ = 0;
   double width_ = 0;
-  bool with_coord_ = false;
-  bool with_dist_ = false;
-  bool with_hash_ = false;
   int count_ = 0;
+  double longitude_ = 0;
+  double latitude_ = 0;
+  std::string member_;
+  std::string key_;
   DistanceSort sort_ = kSortNone;
   GeoShapeType shape_type_ = NONE;
   OriginPointType origin_point_type_ = kNone;
   GeoShape geo_shape_;
   std::string store_key_;
   bool store_distance_ = false;
-
- private:
-  double longitude_ = 0;
-  double latitude_ = 0;
-  std::string member_;
-  std::string key_;
 
   Status setShapeType(GeoShapeType shape_type) {
     if (shape_type_ != NONE) {
@@ -525,6 +495,117 @@ class CommandGeoSearch : public CommandGeoBase {
     }
     return Status::OK();
   }
+
+  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
+    int result_length = static_cast<int>(geo_points.size());
+    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
+    std::vector<std::string> list;
+    for (int i = 0; i < returned_items_count; i++) {
+      auto geo_point = geo_points[i];
+      if (!with_coord_ && !with_hash_ && !with_dist_) {
+        list.emplace_back(redis::BulkString(geo_point.member));
+      } else {
+        std::vector<std::string> one;
+        one.emplace_back(redis::BulkString(geo_point.member));
+        if (with_dist_) {
+          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+        }
+        if (with_hash_) {
+          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+        }
+        if (with_coord_) {
+          one.emplace_back(redis::MultiBulkString(
+              {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+        }
+        list.emplace_back(redis::Array(one));
+      }
+    }
+    return redis::Array(list);
+  }
+
+ private:
+  bool with_coord_ = false;
+  bool with_dist_ = false;
+  bool with_hash_ = false;
+};
+
+class CommandGeoSearchStore : public CommandGeoSearch {
+ public:
+  CommandGeoSearchStore() : CommandGeoSearch() {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    store_key_ = GET_OR_RET(parser.TakeStr());
+    key_ = GET_OR_RET(parser.TakeStr());
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("frommember")) {
+        auto s = setOriginType(kMember);
+        if (!s.IsOK()) return s;
+        member_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICase("fromlonlat")) {
+        auto s = setOriginType(kLongLat);
+        if (!s.IsOK()) return s;
+
+        longitude_ = GET_OR_RET(parser.TakeFloat());
+        latitude_ = GET_OR_RET(parser.TakeFloat());
+        s = ValdiateLongLat(&longitude_, &latitude_);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("byradius")) {
+        auto s = setShapeType(CIRCULAR);
+        if (!s.IsOK()) return s;
+        radius_ = GET_OR_RET(parser.TakeFloat());
+        std::string distance_raw = GET_OR_RET(parser.TakeStr());
+        s = ParseDistanceUnit(distance_raw);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("bybox")) {
+        auto s = setShapeType(RECTANGULAR);
+        if (!s.IsOK()) return s;
+        width_ = GET_OR_RET(parser.TakeFloat());
+        height_ = GET_OR_RET(parser.TakeFloat());
+        std::string distance_raw = GET_OR_RET(parser.TakeStr());
+        s = ParseDistanceUnit(distance_raw);
+        if (!s.IsOK()) return s;
+      } else if (parser.EatEqICase("asc") && sort_ == kSortNone) {
+        sort_ = kSortASC;
+      } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
+        sort_ = kSortDESC;
+      } else if (parser.EatEqICase("count")) {
+        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+      } else if (parser.EatEqICase("storedist")) {
+        store_distance_ = true;
+      } else {
+        return {Status::RedisParseErr, "Invalid argument given"};
+      }
+    }
+
+    if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
+      return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
+    }
+
+    auto s = createGeoShape();
+    if (!s.IsOK()) {
+      return s;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::vector<GeoPoint> geo_points;
+    redis::Geo geo_db(svr->storage, conn->GetNamespace());
+
+    auto s = geo_db.Search(args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
+                           store_distance_, GetUnitConversion(), &geo_points);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(geo_points.size());
+    return Status::OK();
+  }
+
+ private:
+  bool store_distance_ = false;
 };
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {
@@ -579,6 +660,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoSearch>("geosearch", -7, "read-only", 1, 1, 1))
+                        MakeCmdAttr<CommandGeoSearch>("geosearch", -7, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandGeoSearchStore>("geosearchstore", -8, "write", 1, 1, 1))
 
 }  // namespace redis

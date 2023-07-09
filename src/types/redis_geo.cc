@@ -144,7 +144,7 @@ rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, 
 }
 
 rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
-                            int count, DistanceSort sort, const std::string *store_key, bool store_distance,
+                            int count, DistanceSort sort, const std::string &store_key, bool store_distance,
                             double unit_conversion, std::vector<GeoPoint> *geo_points) {
   if (point_type == kMember) {
     GeoPoint geo_point;
@@ -171,6 +171,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
   if (geo_points->empty()) {
     return rocksdb::Status::OK();
   }
+
   // process [optional] sorting
   if (sort == kSortASC) {
     std::sort(geo_points->begin(), geo_points->end(), sortGeoPointASC);
@@ -179,7 +180,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
   }
 
   // storing
-  if (store_key != nullptr) {
+  if (!store_key.empty()) {
     auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
@@ -194,7 +195,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
       uint64_t ret = 0;
-      ZSet::Add(*store_key, ZAddFlags::Default(), &member_scores, &ret);
+      ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
     }
   }
   return rocksdb::Status::OK();

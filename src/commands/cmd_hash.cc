@@ -390,7 +390,6 @@ class CommandHRandField : public Commander {
         count_ = -*parse_result;
         uniq_ = false;
       }
-      //如果有withvalue这个参数，就一定有前面的count
       if (args.size() > 4 || (args.size() == 4 && strcasecmp(args[3].c_str(), "withvalues"))) {
         return {Status::RedisParseErr, errInvalidSyntax};
       } else if (args.size() == 4) {
@@ -402,18 +401,19 @@ class CommandHRandField : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     std::vector<FieldValue> field_values;
+
     auto s = hash_db.RandField(args_[1], &field_values, count_, uniq_,
                                withvalues_ ? HashFetchType::kAll : HashFetchType::kOnlyKey);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    std::vector<std::string> values;
-    values.reserve(field_values.size());
+    std::vector<std::string> result_entries;
+    result_entries.reserve(field_values.size());
     for (const auto &p : field_values) {
-      values.emplace_back(p.field);
-      if (withvalues_) values.emplace_back(p.value);
+      result_entries.emplace_back(p.field);
+      if (withvalues_) result_entries.emplace_back(p.value);
     }
-    *output = MultiBulkString(values, false);
+    *output = s.IsNotFound() ? redis::NilString() : redis::MultiBulkString(result_entries, false);
     return Status::OK();
   }
 

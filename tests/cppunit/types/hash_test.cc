@@ -331,3 +331,24 @@ TEST_F(RedisHashTest, HRangeByLexNonExistingKey) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(result.size(), 0);
 }
+
+TEST_F(RedisHashTest, HRandField) {
+  uint64_t ret = 0;
+  for (size_t i = 0; i < fields_.size(); i++) {
+    auto s = hash_->Set(key_, fields_[i], values_[i], &ret);
+    EXPECT_TRUE(s.ok() && ret == 1);
+  }
+  std::vector<FieldValue> fvs;
+  // Case 1: Negative count, randomly select elements
+  auto s = hash_->RandField(key_, &fvs, fields_.size() + 10, false);
+  EXPECT_TRUE(s.ok() && fvs.size() == fields_.size() + 10);
+
+  // Case 2: Requested count is greater than or equal to the number of elements inside the hash
+  s = hash_->RandField(key_, &fvs, fields_.size() + 1, true);
+  EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
+
+  // Case 3: Requested count is less than the number of elements inside the hash
+  s = hash_->RandField(key_, &fvs, fields_.size() - 1, true);
+  EXPECT_TRUE(s.ok() && fvs.size() == fields_.size() - 1);
+  hash_->Del(key_);
+}

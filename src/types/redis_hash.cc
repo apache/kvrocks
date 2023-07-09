@@ -25,11 +25,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <random>
 #include <utility>
 
 #include "db_util.h"
 #include "parse_util.h"
-
+#include "time_util.h"
 namespace redis {
 
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
@@ -393,7 +394,7 @@ rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (!s.ok()) return s;
   std::string prefix_key, next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
@@ -405,26 +406,58 @@ rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *
   read_options.iterate_upper_bound = &upper_bound;
   storage_->SetReadOptions(read_options);
 
-  // case1:count is negative, randomly select elements in the amount of count
-  if (!uniq) {
+  uint64_t size = metadata.size;
+  std::vector<std::string> fields;
+  std::vector<std::string> values;
+  auto iter = util::UniqueIterator(storage_, read_options);
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    fields.emplace_back(ikey.GetSubKey().ToString());
+    if (type == HashFetchType::kAll) {
+      values.emplace_back(iter->value().ToString());
+    }
   }
-  /*case2:The count was positive，The number of requested elements is greater than the number of
-    elements inside the hash: simply return the whole hash*/
-  else if (metadata.size <= count) {
-    auto iter = util::UniqueIterator(storage_, read_options);
-    for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
-      if (type == HashFetchType::kOnlyKey) {
-        InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-        field_values->emplace_back(ikey.GetSubKey().ToString(), "");
+
+  // Case 1: Negative count, randomly select elements
+  if (!uniq) {
+    field_values->reserve(count);
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = (std::rand() % size);
+      if (type == HashFetchType::kAll) {
+        field_values->emplace_back(fields[index], values[index]);
       } else {
-        InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-        field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
+        field_values->emplace_back(fields[index], "");
       }
     }
   }
-  /* case3:The number of elements inside the hash is not greater than the number of
-    elements inside the hash*/
+
+  // Case 2: Requested count is greater than or equal to the number of elements inside the hash
+  else if (size <= count) {
+    field_values->reserve(size);
+    for (uint64_t i = 0; i < size; i++) {
+      if (type == HashFetchType::kAll) {
+        field_values->emplace_back(fields[i], values[i]);
+      } else {
+        field_values->emplace_back(fields[i], "");
+      }
+    }
+  }
+  // Case 3: Requested count is less than the number of elements inside the hash
   else {
+    field_values->reserve(count);
+    std::vector<uint64_t> indices(size);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(indices.begin(), indices.end(), gen);  // use Fisher-Yates shuffle algorithm to randomize the order
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = indices[i];
+      if (type == HashFetchType::kAll) {
+        field_values->emplace_back(fields[index], values[index]);
+      } else {
+        field_values->emplace_back(fields[index], "");
+      }
+    }
   }
   return rocksdb::Status::OK();
 }

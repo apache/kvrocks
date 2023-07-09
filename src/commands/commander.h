@@ -113,6 +113,8 @@ struct CommandKeyRange {
 
 using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
 
+using CommandKeyRangeVecGen = std::function<std::vector<CommandKeyRange>(const std::vector<std::string> &)>;
+
 struct CommandAttributes {
   std::string name;
 
@@ -128,6 +130,9 @@ struct CommandAttributes {
 
   // if key_range.first_key == -1, key_range_gen is used instead
   CommandKeyRangeGen key_range_gen;
+
+  // if key_range.first_key == -2, key_range_vec_gen is used instead
+  CommandKeyRangeVecGen key_range_vec_gen;
 
   CommanderFactory factory;
 
@@ -186,6 +191,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          ParseCommandFlags(description, name),
                          {first_key, last_key, key_step},
                          {},
+                         {},
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   if ((first_key > 0 && key_step <= 0) || (first_key > 0 && last_key >= 0 && last_key < first_key)) {
@@ -198,13 +204,23 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
 
 template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, const CommandKeyRangeGen &gen) {
-  CommandAttributes attr{name,
-                         arity,
-                         description,
-                         ParseCommandFlags(description, name),
-                         {-1, 0, 0},
-                         gen,
-                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+  CommandAttributes attr{
+      name,        arity,
+      description, ParseCommandFlags(description, name),
+      {-1, 0, 0},  gen,
+      {},          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+
+  return attr;
+}
+
+template <typename T>
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description,
+                 const CommandKeyRangeVecGen &vec_gen) {
+  CommandAttributes attr{
+      name,        arity,
+      description, ParseCommandFlags(description, name),
+      {-2, 0, 0},  {},
+      vec_gen,     []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   return attr;
 }

@@ -108,3 +108,31 @@ func TestSetConfigBackupDir(t *testing.T) {
 	require.True(t, hasCompactionFiles(newBackupDir))
 	require.True(t, hasCompactionFiles(originBackupDir))
 }
+
+func TestSetConfigCompression(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
+
+	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+	r := rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
+	rList := r.Val().([]interface{})
+	require.EqualValues(t, rList[1], "no")
+
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "lz4").Err())
+	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+	r = rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
+	rList = r.Val().([]interface{})
+	require.EqualValues(t, rList[1], "lz4")
+
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "zstd").Err())
+	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+	r = rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
+	rList = r.Val().([]interface{})
+	require.EqualValues(t, rList[1], "zstd")
+}

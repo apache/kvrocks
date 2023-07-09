@@ -601,6 +601,11 @@ void Config::initFieldCallback() {
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
+      {"rocksdb.compression",
+       [](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
+       }},
 #ifdef ENABLE_OPENSSL
       {"tls-cert-file", set_tls_option},
       {"tls-key-file", set_tls_option},

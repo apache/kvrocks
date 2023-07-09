@@ -183,6 +183,29 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 }
 
 Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std::string &value) {
+  if ("compression" == key) {
+    std::unordered_map<std::string, std::string> compression_map = {{"no", "kNoCompression"},
+                                                                    {"snappy", "kSnappyCompression"},
+                                                                    {"lz4", "kLZ4Compression"},
+                                                                    {"zstd", "kZSTD"},
+                                                                    {"zlib", "kZlibCompression"}};
+    if (compression_map.find(value) == compression_map.end()) {
+      return {Status::NotOK, "Invalid compression type"};
+    }
+
+    std::string compression_levels = "kNoCompression:kNoCompression";
+    for (size_t i = 2; i < db_->GetOptions().compression_per_level.size(); i++) {
+      compression_levels += ":";
+      compression_levels += compression_map[value];
+    }
+
+    for (auto &cf_handle : cf_handles_) {
+      auto s = db_->SetOptions(cf_handle, {{"compression_per_level", compression_levels}});
+      if (!s.ok()) return {Status::NotOK, s.ToString()};
+    }
+    return Status::OK();
+  }
+
   for (auto &cf_handle : cf_handles_) {
     auto s = db_->SetOptions(cf_handle, {{key, value}});
     if (!s.ok()) return {Status::NotOK, s.ToString()};

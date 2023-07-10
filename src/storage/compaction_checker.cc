@@ -126,8 +126,10 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     if (total_keys != 0 && delete_ratio > best_delete_ratio) {
       best_delete_ratio = delete_ratio;
       best_filename = iter.first;
-      best_start_key = std::move(start_key);
-      best_stop_key = std::move(stop_key);
+      best_start_key = start_key;
+      start_key.clear();
+      best_stop_key = stop_key;
+      stop_key.clear();
     }
   }
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {

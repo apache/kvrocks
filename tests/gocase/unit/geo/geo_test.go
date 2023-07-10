@@ -134,6 +134,11 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})
 
+	t.Run("GEOHASH against non existing key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.EqualValues(t, []interface{}{nil, nil, nil}, rdb.Do(ctx, "GEOHASH", "points", "a", "b", "c").Val())
+	})
+
 	t.Run("GEOHASH is able to return geohash strings", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "test", Longitude: -5.6, Latitude: 42.6}).Err())

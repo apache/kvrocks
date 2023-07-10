@@ -163,8 +163,12 @@ class CommandGeoHash : public Commander {
     std::vector<std::string> hashes;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Hash(args_[1], members_, &hashes);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      hashes.resize(members_.size(), "");
     }
 
     *output = redis::MultiBulkString(hashes);

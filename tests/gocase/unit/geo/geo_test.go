@@ -145,6 +145,11 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []string([]string{"ezs42e44yx0"}), rdb.GeoHash(ctx, "points", "test").Val())
 	})
 
+	t.Run("GEOPOS against non existing key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.EqualValues(t, []interface{}{nil, nil, nil}, rdb.Do(ctx, "GEOPOS", "points", "a", "b", "c").Val())
+	})
+
 	t.Run("GEOPOS simple", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "a", Longitude: 10, Latitude: 20}, &redis.GeoLocation{Name: "b", Longitude: 30, Latitude: 40}).Err())

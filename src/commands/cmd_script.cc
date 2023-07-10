@@ -79,7 +79,7 @@ class CommandScript : public Commander {
         return s;
       }
       *output = redis::SimpleString("OK");
-    } else if (args_.size() >= 2 && subcommand_ == "exists") {
+    } else if (args_.size() >= 3 && subcommand_ == "exists") {
       *output = redis::MultiLen(args_.size() - 2);
       for (size_t j = 2; j < args_.size(); j++) {
         if (svr->ScriptExists(args_[j]).IsOK()) {

@@ -380,16 +380,13 @@ class CommandHRandField : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() >= 3) {
+      noParameters_ = false;
       auto parse_result = ParseInt<int64_t>(args[2], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
       }
-      if (*parse_result >= 0) {
-        count_ = *parse_result;
-      } else {
-        count_ = -*parse_result;
-        uniq_ = false;
-      }
+      l_ = *parse_result;
+
       if (args.size() > 4 || (args.size() == 4 && strcasecmp(args[3].c_str(), "withvalues"))) {
         return {Status::RedisParseErr, errInvalidSyntax};
       } else if (args.size() == 4) {
@@ -402,25 +399,30 @@ class CommandHRandField : public Commander {
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     std::vector<FieldValue> field_values;
 
-    auto s = hash_db.RandField(args_[1], &field_values, count_, uniq_,
+    auto s = hash_db.RandField(args_[1], &field_values, l_, noParameters_,
                                withvalues_ ? HashFetchType::kAll : HashFetchType::kOnlyKey);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> result_entries;
     result_entries.reserve(field_values.size());
     for (const auto &p : field_values) {
       result_entries.emplace_back(p.field);
       if (withvalues_) result_entries.emplace_back(p.value);
     }
-    *output = s.IsNotFound() ? redis::NilString() : redis::MultiBulkString(result_entries, false);
+
+    if (noParameters_)
+      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+    else
+      *output = redis::MultiBulkString(result_entries, false);
     return Status::OK();
   }
 
  private:
   bool withvalues_ = false;
-  bool uniq_ = true;
-  uint64_t count_ = 1;
+  int64_t l_ = 0;
+  bool noParameters_ = true;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),

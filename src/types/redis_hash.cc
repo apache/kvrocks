@@ -30,7 +30,7 @@
 
 #include "db_util.h"
 #include "parse_util.h"
-#include "time_util.h"
+
 namespace redis {
 
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
@@ -387,75 +387,58 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
                            std::vector<std::string> *values) {
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
-rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, uint64_t count, bool uniq,
-                                HashFetchType type) {
-  field_values->clear();
+
+rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, int64_t l,
+                                bool noparmeter, HashFetchType type) {
+  uint64_t count = (l >= 0) ? static_cast<uint64_t>(l) : static_cast<uint64_t>(-l);
+  bool unique = (l >= 0);
+
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
   HashMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
-  std::string prefix_key, next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Slice upper_bound(next_version_prefix_key);
-  read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
 
   uint64_t size = metadata.size;
-  std::vector<std::string> fields;
-  std::vector<std::string> values;
-  auto iter = util::UniqueIterator(storage_, read_options);
-  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    fields.emplace_back(ikey.GetSubKey().ToString());
+  std::vector<FieldValue> samples;
+  // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
+
+  GetAll(user_key, &samples, type);
+
+  auto processField = [field_values, &samples, type](uint64_t index) {
     if (type == HashFetchType::kAll) {
-      values.emplace_back(iter->value().ToString());
+      field_values->emplace_back(samples[index].field, samples[index].value);
+    } else {
+      field_values->emplace_back(samples[index].field, "");
     }
-  }
+  };
 
-  // Case 1: Negative count, randomly select elements
-  if (!uniq) {
-    field_values->reserve(count);
-    for (uint64_t i = 0; i < count; i++) {
-      uint64_t index = (std::rand() % size);
-      if (type == HashFetchType::kAll) {
-        field_values->emplace_back(fields[index], values[index]);
-      } else {
-        field_values->emplace_back(fields[index], "");
-      }
-    }
-  }
-
-  // Case 2: Requested count is greater than or equal to the number of elements inside the hash
-  else if (size <= count) {
-    field_values->reserve(size);
-    for (uint64_t i = 0; i < size; i++) {
-      if (type == HashFetchType::kAll) {
-        field_values->emplace_back(fields[i], values[i]);
-      } else {
-        field_values->emplace_back(fields[i], "");
-      }
-    }
-  }
-  // Case 3: Requested count is less than the number of elements inside the hash
-  else {
-    field_values->reserve(count);
-    std::vector<uint64_t> indices(size);
-    std::iota(indices.begin(), indices.end(), 0);
+  if (!unique) {
+    // Case 1: Negative count, randomly select elements
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::shuffle(indices.begin(), indices.end(), gen);  // use Fisher-Yates shuffle algorithm to randomize the order
+    std::uniform_int_distribution<uint64_t> dis(0, size - 1);
     for (uint64_t i = 0; i < count; i++) {
-      uint64_t index = indices[i];
-      if (type == HashFetchType::kAll) {
-        field_values->emplace_back(fields[index], values[index]);
-      } else {
-        field_values->emplace_back(fields[index], "");
+      uint64_t index = dis(gen);
+      processField(index);
+    }
+  } else if (size <= count) {
+    // Case 2: Requested count is greater than or equal to the number of elements inside the hash
+    for (uint64_t i = 0; i < size; i++) {
+      processField(i);
+    }
+  } else {
+    // Case 3: Requested count is less than the number of elements inside the hash
+    if (noparmeter || count != 0) {
+      count = count > 0 ? count : 1;
+      std::vector<uint64_t> indices(size);
+      std::iota(indices.begin(), indices.end(), 0);
+      std::shuffle(indices.begin(), indices.end(),
+                   std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
+      indices.resize(count);
+      for (uint64_t i = 0; i < count; i++) {
+        uint64_t index = indices[i];
+        processField(index);
       }
     }
   }

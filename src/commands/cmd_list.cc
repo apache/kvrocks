@@ -24,6 +24,7 @@
 #include "event_util.h"
 #include "server/server.h"
 #include "types/redis_list.h"
+
 namespace redis {
 
 class CommandPush : public Commander {
@@ -555,7 +556,7 @@ class CommandLMove : public Commander {
   bool dst_left_;
 };
 
-class CommandLPOS : public Commander {
+class CommandLPos : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     target_ = args[2];
@@ -585,68 +586,17 @@ class CommandLPOS : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::List list_db(svr->storage, conn->GetNamespace());
-    // get length of the list
-    uint64_t nums = 0;
-    auto s = list_db.Size(args_[1], &nums);
+    std::vector<std::string> indexes;
+    auto s = list_db.LPos(args_[1], target_, rank_, count_, max_len_, &indexes);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    // rank_ can be positive ot negative. if it's zero,
-    // it means the user doesn't specify it.
-    if (rank_ == 0) rank_ = 1;
-    // it means the user doesn't specify it.
-    if (count_ == -1) count_ = 1;
-    // it means the user doesn't specify it.
-    if (max_len_ == -1) max_len_ = 0;
-
-    // max_len_ == 0 or count_ == 0
-    // means unlimited length.
-
-    // find element
-    std::vector<std::string> indexes;
-    std::string elem = "";
-    auto counter = 0;
-    auto comparsions = 0;
-    if (rank_ > 0) {
-      for (uint64_t i = 0; i < nums; i++) {
-        comparsions++;
-        auto s = list_db.Index(args_[1], i, &elem);
-        if (!s.ok() && !s.IsNotFound()) {
-          return {Status::RedisExecErr, s.ToString()};
-        }
-        if (elem == target_) {
-          counter++;
-          if (counter >= rank_) {
-            indexes.push_back(std::to_string(i));
-            if (indexes.size() >= (u_long)count_ && count_ != 0) break;
-          }
-        }
-        if (comparsions >= max_len_ && max_len_ != 0) break;
-      }
-    } else {
-      for (uint64_t i = nums - 1; i >= 0; i--) {
-        comparsions++;
-        auto s = list_db.Index(args_[1], i, &elem);
-        if (!s.ok() && !s.IsNotFound()) {
-          return {Status::RedisExecErr, s.ToString()};
-        }
-        if (elem == target_) {
-          counter++;
-          if (counter >= rank_) {
-            indexes.push_back(std::to_string(i));
-            if (indexes.size() >= (u_long)count_ && count_ != 0) break;
-          }
-        }
-        if (comparsions >= max_len_ && max_len_ != 0) break;
-      }
-    }
-
     *output = MultiBulkString(indexes, false);
     return Status::OK();
   }
 
  private:
-  int rank_ = 0, max_len_ = -1, count_ = -1;
+  int rank_ = 1, max_len_ = 0, count_ = 1;
   std::string target_;
 };
 
@@ -667,6 +617,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLPOS>("lpos", -3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandLPos>("lpos", -3, "read-only", 1, 1, 1), )
 
 }  // namespace redis

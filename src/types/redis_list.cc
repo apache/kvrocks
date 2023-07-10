@@ -644,4 +644,60 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   batch->Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+
+// like lpos mylist c, the user_key will be mylist.
+rocksdb::Status List::LPos(const Slice &user_key, std::string target_, int rank_, int count_, int max_len_,
+                           std::vector<std::string> *indexes) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  ListMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  indexes->clear();
+  uint64_t nums = 0;
+  s = Size(user_key, &nums);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+  // max_len_ == 0 or count_ == 0
+  // means unlimited length.
+
+  // find element
+  std::string elem = "";
+  int counter = 0;
+  int comparsions = 0;
+  if (rank_ > 0) {
+    for (uint64_t i = 0; i < nums; i++) {
+      comparsions++;
+      auto s = Index(user_key, i, &elem);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (elem == target_) {
+        counter++;
+        if (counter >= rank_) {
+          indexes->push_back(std::to_string(i));
+          if (indexes->size() >= (u_long)count_ && count_ != 0) break;
+        }
+      }
+      if (comparsions >= max_len_ && max_len_ != 0) break;
+    }
+  } else {
+    for (int i = nums - 1; i >= 0; i--) {
+      comparsions++;
+      auto s = Index(user_key, i, &elem);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (elem == target_) {
+        counter++;
+        if (counter >= rank_) {
+          indexes->push_back(std::to_string(i));
+          if (indexes->size() >= (u_long)count_ && count_ != 0) break;
+        }
+      }
+      if (comparsions >= max_len_ && max_len_ != 0) break;
+    }
+  }
+}
 }  // namespace redis

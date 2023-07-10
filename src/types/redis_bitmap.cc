@@ -109,10 +109,9 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   fragment.reserve(kBitmapSegmentBytes * 2);
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {

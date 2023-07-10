@@ -267,6 +267,8 @@ class CommandInfo : public Commander {
     std::string section = "all";
     if (args_.size() == 2) {
       section = util::ToLower(args_[1]);
+    } else if (args_.size() > 2) {
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
     std::string info;
     svr->GetInfo(conn->GetNamespace(), section, &info);

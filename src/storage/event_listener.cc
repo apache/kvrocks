@@ -40,25 +40,6 @@ std::string StallConditionType2String(const rocksdb::WriteStallCondition type) {
   return "unknown";
 }
 
-std::string CompressType2String(const rocksdb::CompressionType type) {
-  std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
-      {rocksdb::kNoCompression, "no"},
-      {rocksdb::kSnappyCompression, "snappy"},
-      {rocksdb::kZlibCompression, "zlib"},
-      {rocksdb::kBZip2Compression, "zip2"},
-      {rocksdb::kLZ4Compression, "lz4"},
-      {rocksdb::kLZ4HCCompression, "lz4hc"},
-      {rocksdb::kXpressCompression, "xpress"},
-      {rocksdb::kZSTD, "zstd"},
-      {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
-      {rocksdb::kDisableCompressionOption, "disable"}};
-  auto iter = compression_type_string_map.find(type);
-  if (iter == compression_type_string_map.end()) {
-    return "unknown";
-  }
-  return iter->second;
-}
-
 bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
   // EDQUOT: Disk quota exceeded (POSIX.1-2001)
   std::string exceeded_quota_str = "Disk quota exceeded";
@@ -70,7 +51,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
             << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
-            << ", output compression type: " << CompressType2String(ci.compression)
+            << ", output compression type: " << storage_->CompressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
             << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes

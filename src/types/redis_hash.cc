@@ -395,51 +395,49 @@ rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
-  HashMetadata metadata(false);
+  HashMetadata metadata(/*generate_version=*/false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
   uint64_t size = metadata.size;
   std::vector<FieldValue> samples;
   // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
-
+  if (count == 0 && !noparmeter) return rocksdb::Status::OK();
   GetAll(user_key, &samples, type);
 
-  auto processField = [field_values, &samples, type](uint64_t index) {
+  auto appendFieldWithIndex = [field_values, &samples, type](uint64_t index) {
     if (type == HashFetchType::kAll) {
       field_values->emplace_back(samples[index].field, samples[index].value);
     } else {
       field_values->emplace_back(samples[index].field, "");
     }
   };
-
-  if (!unique) {
-    // Case 1: Negative count, randomly select elements
+  count = count > 0 ? count : 1;
+  field_values->reserve(std::min(size, count));
+  if (!unique || count == 1) {
+    // Case 1: Negative count, randomly select elements or without parameter
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<uint64_t> dis(0, size - 1);
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = dis(gen);
-      processField(index);
+      appendFieldWithIndex(index);
     }
   } else if (size <= count) {
     // Case 2: Requested count is greater than or equal to the number of elements inside the hash
     for (uint64_t i = 0; i < size; i++) {
-      processField(i);
+      appendFieldWithIndex(i);
     }
   } else {
     // Case 3: Requested count is less than the number of elements inside the hash
-    if (noparmeter || count != 0) {
-      count = count > 0 ? count : 1;
-      std::vector<uint64_t> indices(size);
-      std::iota(indices.begin(), indices.end(), 0);
-      std::shuffle(indices.begin(), indices.end(),
-                   std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
-      indices.resize(count);
-      for (uint64_t i = 0; i < count; i++) {
-        uint64_t index = indices[i];
-        processField(index);
-      }
+    std::vector<uint64_t> indices(size);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(),
+                 std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
+    indices.resize(count);
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = indices[i];
+      appendFieldWithIndex(index);
     }
   }
   return rocksdb::Status::OK();

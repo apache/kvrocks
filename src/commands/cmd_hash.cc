@@ -387,7 +387,7 @@ class CommandHRandField : public Commander {
       }
       l_ = *parse_result;
 
-      if (args.size() > 4 || (args.size() == 4 && strcasecmp(args[3].c_str(), "withvalues"))) {
+      if (args.size() > 4 || (args.size() == 4 &&  !util::EqualICase(args[3], "withvalues"))) {
         return {Status::RedisParseErr, errInvalidSyntax};
       } else if (args.size() == 4) {
         withvalues_ = true;

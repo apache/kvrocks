@@ -307,9 +307,8 @@ Status SlotMigrator::sendSnapshot() {
 
   LOG(INFO) << "[migrate] Start migrating snapshot of slot " << slot;
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
-  storage_->SetReadOptions(read_options);
   rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(engine::kMetadataColumnFamilyName);
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
@@ -660,9 +659,8 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
   cmd = type_to_cmd[metadata.Type()];
 
   std::vector<std::string> user_cmd = {cmd, key.ToString()};
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
-  storage_->SetReadOptions(read_options);
   // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
 
@@ -762,9 +760,8 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
 }
 
 Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
-  storage_->SetReadOptions(read_options);
   // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
   auto iter = util::UniqueIterator(
       storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kStreamColumnFamilyName)));

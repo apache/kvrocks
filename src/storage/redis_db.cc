@@ -181,9 +181,8 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
 
   uint64_t ttl_sum = 0;
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   while (true) {
@@ -235,9 +234,8 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   std::string ns_prefix, ns_cursor, ns, user_key, value, index_key;
 
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   AppendNamespacePrefix(cursor, &ns_cursor);
@@ -358,9 +356,8 @@ rocksdb::Status Database::FlushDB() {
 
 rocksdb::Status Database::FlushAll() {
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
@@ -472,9 +469,8 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(const std::string &prefix, cons
   end->clear();
 
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
   auto iter = util::UniqueIterator(storage_, read_options, cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
@@ -526,9 +522,8 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
 rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
                                           int count) {
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
   bool end = false;
@@ -574,9 +569,8 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   if (!s.ok()) return s;
 
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
-  storage_->SetReadOptions(read_options);
   auto iter = util::UniqueIterator(storage_, read_options);
   std::string match_prefix_key;
   if (!subkey_prefix.empty()) {

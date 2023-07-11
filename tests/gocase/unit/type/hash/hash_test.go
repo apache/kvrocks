@@ -783,6 +783,53 @@ func TestHash(t *testing.T) {
 
 			require.Equal(t, []interface{}{"field1", "some-value", "field2", ""}, rdb.Do(ctx, "HrangeByLex", testKey, "[a", "[z").Val())
 		})
+
+		t.Run("HRandField count is positive", func(t *testing.T) {
+			testKey := "test-hash-1"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
+			result1, err1 := rdb.HRandField(ctx, testKey, 5).Result()
+			require.NoError(t, err1)
+			require.Len(t, result1, 3)
+			require.Equal(t, []string{"key1", "key2", "key3"}, result1)
+			result3, err3 := rdb.HRandField(ctx, testKey, 2).Result()
+			require.NoError(t, err3)
+			require.Len(t, result3, 2)
+			result4, err4 := rdb.HRandField(ctx, testKey, 0).Result()
+			require.NoError(t, err4)
+			require.Len(t, result4, 0)
+			result5, err5 := rdb.HRandField(ctx, "nonexistent-key", 1).Result()
+			require.NoError(t, err5)
+			require.Len(t, result5, 0)
+			var rv [][]interface{}
+			resultWithValues, err := rdb.HRandFieldWithValues(ctx, testKey, 5).Result()
+			require.NoError(t, err)
+			require.Len(t, resultWithValues, 3)
+			for _, kv := range resultWithValues {
+				keys := []interface{}{kv.Key, kv.Value}
+				rv = append(rv, keys)
+			}
+			require.Equal(t, [][]interface{}{
+				{"key1", "value1"},
+				{"key2", "value2"},
+				{"key3", "value3"},
+			}, rv)
+			// TODO: Add test to verify randomness of the selected random fields
+		})
+
+		t.Run("HRandField count is negative", func(t *testing.T) {
+			testKey := "test-hash-1"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
+			result, err := rdb.HRandField(ctx, testKey, -4).Result()
+			require.NoError(t, err)
+			require.Len(t, result, 4)
+			resultWithValues, err := rdb.HRandFieldWithValues(ctx, testKey, -12).Result()
+			require.NoError(t, err)
+			require.Len(t, resultWithValues, 12)
+			// TODO: Add test to verify randomness of the selected random fields
+		})
+
 	}
 }
 

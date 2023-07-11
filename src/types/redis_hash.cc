@@ -388,10 +388,10 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, int64_t l,
+rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, int64_t command_count,
                                 bool noparmeter, HashFetchType type) {
-  uint64_t count = (l >= 0) ? static_cast<uint64_t>(l) : static_cast<uint64_t>(-l);
-  bool unique = (l >= 0);
+  uint64_t count = (command_count >= 0) ? static_cast<uint64_t>(command_count) : static_cast<uint64_t>(-command_count);
+  bool unique = (command_count >= 0);
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);

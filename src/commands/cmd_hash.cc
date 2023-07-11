@@ -385,7 +385,7 @@ class CommandHRandField : public Commander {
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
       }
-      l_ = *parse_result;
+      command_count_ = *parse_result;
 
       if (args.size() > 4 || (args.size() == 4 &&  !util::EqualICase(args[3], "withvalues"))) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -399,7 +399,7 @@ class CommandHRandField : public Commander {
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     std::vector<FieldValue> field_values;
 
-    auto s = hash_db.RandField(args_[1], &field_values, l_, noParameters_,
+    auto s = hash_db.RandField(args_[1], &field_values, command_count_, noParameters_,
                                withvalues_ ? HashFetchType::kAll : HashFetchType::kOnlyKey);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -421,7 +421,7 @@ class CommandHRandField : public Commander {
 
  private:
   bool withvalues_ = false;
-  int64_t l_ = 0;
+  int64_t command_count_ = 0;
   bool noParameters_ = true;
 };
 

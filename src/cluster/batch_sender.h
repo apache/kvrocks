@@ -26,13 +26,13 @@
 
 struct redisContext;
 
-class MigrateBatch {
+class BatchSender {
  public:
-  MigrateBatch() = default;
-  MigrateBatch(int16_t slot, redisContext *dst_redis_context, uint32_t max_bytes)
+  BatchSender() = default;
+  BatchSender(int16_t slot, redisContext *dst_redis_context, uint32_t max_bytes)
       : slot_(slot), dst_redis_context_(dst_redis_context), max_bytes_(max_bytes) {}
 
-  ~MigrateBatch() = default;
+  ~BatchSender() = default;
 
   Status Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key, const rocksdb::Slice &value);
   Status Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key);

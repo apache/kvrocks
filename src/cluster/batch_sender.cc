@@ -18,12 +18,11 @@
  *
  */
 
-#include "migrate_batch.h"
-
+#include "batch_sender.h"
 #include "hiredis.h"
 #include "scope_exit.h"
 
-Status MigrateBatch::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key, const rocksdb::Slice &value) {
+Status BatchSender::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key, const rocksdb::Slice &value) {
   if (pending_entries_ == 0 && !prefix_logdata_.empty()) {
     // add prefix_logdata_ when the entry is first putted
     auto s = PutLogData(prefix_logdata_);
@@ -41,7 +40,7 @@ Status MigrateBatch::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &
   return Status::OK();
 }
 
-Status MigrateBatch::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key) {
+Status BatchSender::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key) {
   auto s = write_batch_.Delete(cf, key);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("delete key from migrate batch failed, {}", s.ToString())};
@@ -51,7 +50,7 @@ Status MigrateBatch::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slic
   return Status::OK();
 }
 
-Status MigrateBatch::PutLogData(const rocksdb::Slice &blob) {
+Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
   auto s = write_batch_.PutLogData(blob);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("put log data to migrate batch failed, {}", s.ToString())};
@@ -61,9 +60,9 @@ Status MigrateBatch::PutLogData(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
-void MigrateBatch::SetPrefixLogData(const std::string &prefix_logdata) { prefix_logdata_ = prefix_logdata; }
+void BatchSender::SetPrefixLogData(const std::string &prefix_logdata) { prefix_logdata_ = prefix_logdata; }
 
-Status MigrateBatch::Send() {
+Status BatchSender::Send() {
   if (pending_entries_ == 0) {
     return Status::OK();
   }
@@ -80,7 +79,7 @@ Status MigrateBatch::Send() {
   return Status::OK();
 }
 
-Status MigrateBatch::sendBatchSetCmd(int16_t slot, redisContext *redis_context,
+Status BatchSender::sendBatchSetCmd(int16_t slot, redisContext *redis_context,
                                      const rocksdb::WriteBatch &write_batch) {
   if (redis_context == nullptr) {
     return {Status::NotOK, "redis context is null"};

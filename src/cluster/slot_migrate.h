@@ -35,9 +35,9 @@
 #include <utility>
 #include <vector>
 
+#include "batch_sender.h"
 #include "config.h"
 #include "encoding.h"
-#include "migrate_batch.h"
 #include "parse_util.h"
 #include "redis_slot.h"
 #include "server/server.h"
@@ -148,13 +148,13 @@ class SlotMigrator : public redis::Database {
 
   // migration of RawKV
   Status getClockSkew(int64_t *diff_us);
-  Status sendMigrateBatch(MigrateBatch *batch);
+  Status sendMigrateBatch(BatchSender *batch);
   Status sendSnapshotByRawKV();
   Status syncWALByRawKV();
   bool catchedUpIncrementalWAL();
-  Status migrateIncrementalDataByRawKV(uint64_t end_seq, MigrateBatch *migrate_batch);
+  Status migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender);
   Status extractSlotDataFromWAL(int16_t slot, const std::unique_ptr<rocksdb::WriteBatch> &write_batch,
-                                MigrateBatch *migrate_batch);
+                                BatchSender *batch_sender);
 
   void resumeSyncCtx(const Status &migrate_result);
 

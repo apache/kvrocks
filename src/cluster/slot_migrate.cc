@@ -1206,7 +1206,7 @@ Status SlotMigrator::getClockSkew(int64_t *diff_us) {
   return Status::OK();
 }
 
-Status SlotMigrator::sendMigrateBatch(MigrateBatch *batch) {
+Status SlotMigrator::sendMigrateBatch(BatchSender *batch) {
   // user may dynamically resize the batch, apply it when send data
   batch->SetMaxBytes(migrate_batch_size_);
   // rate limit
@@ -1230,7 +1230,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
   assert(dst_redis_context_ != nullptr);
 
-  MigrateBatch migrate_batch(migrating_slot_.load(), dst_redis_context_, migrate_batch_size_.load());
+  BatchSender batch_sender(migrating_slot_.load(), dst_redis_context_, migrate_batch_size_.load());
 
   uint64_t start_send_snapshot_time = util::GetTimeStampMS();
 
@@ -1247,18 +1247,18 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     for (const auto &item : items) {
       if (item.cf == storage_->GetCFHandle(engine::kMetadataColumnFamilyName)) {
-        migrate_batch.SetPrefixLogData(migrate_iterator.GetLogData());
+        batch_sender.SetPrefixLogData(migrate_iterator.GetLogData());
       }
-      s = migrate_batch.Put(item.cf, item.key, item.value);
+      s = batch_sender.Put(item.cf, item.key, item.value);
       if (!s) return s;
     }
-    if (migrate_batch.IsFull()) {
-      s = sendMigrateBatch(&migrate_batch);
+    if (batch_sender.IsFull()) {
+      s = sendMigrateBatch(&batch_sender);
       if (!s) return s;
     }
   }
 
-  s = sendMigrateBatch(&migrate_batch);
+  s = sendMigrateBatch(&batch_sender);
 
   if (!s) return s;
 
@@ -1266,19 +1266,19 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   auto elapsed_time = util::GetTimeStampMS() - start_send_snapshot_time;
   if (elapsed_time != 0) {
     rate =
-        ((static_cast<double>(migrate_batch.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
+        ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
   }
   LOG(INFO) << fmt::format(
       "[migrate] Succeed to migrate snapshot, slot: {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, batches: "
       "{}, entries: {}",
-      migrating_slot_.load(), elapsed_time, migrate_batch.GetSentBytes(), rate, migrate_batch.GetSentBatchesNum(),
-      migrate_batch.GetEntriesNum());
+      migrating_slot_.load(), elapsed_time, batch_sender.GetSentBytes(), rate, batch_sender.GetSentBatchesNum(),
+      batch_sender.GetEntriesNum());
   return Status::OK();
 }
 
 Status SlotMigrator::syncWALByRawKV() {
   int epoch = 1;
-  MigrateBatch migrate_batch(migrating_slot_, dst_redis_context_, migrate_batch_size_);
+  BatchSender batch_sender(migrating_slot_, dst_redis_context_, migrate_batch_size_);
   uint64_t start_sync_wal_time = util::GetTimeStampMS();
   LOG(INFO) << "[migrate] Syncing WAL of slot " << migrating_slot_ << " by raw key value";
   uint64_t wal_incremental_seq = 0;
@@ -1287,7 +1287,7 @@ Status SlotMigrator::syncWALByRawKV() {
       break;
     }
     wal_incremental_seq = storage_->GetDB()->GetLatestSequenceNumber();
-    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &migrate_batch);
+    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &batch_sender);
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate incremental data failed, {}", s.Msg())};
     }
@@ -1301,7 +1301,7 @@ Status SlotMigrator::syncWALByRawKV() {
 
   wal_incremental_seq = storage_->GetDB()->GetLatestSequenceNumber();
   if (wal_incremental_seq > wal_begin_seq_) {
-    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &migrate_batch);
+    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &batch_sender);
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate last incremental data failed, {}", s.Msg())};
     }
@@ -1313,13 +1313,13 @@ Status SlotMigrator::syncWALByRawKV() {
   auto elapsed_time = util::GetTimeStampMS() - start_sync_wal_time;
   if (elapsed_time != 0) {
     rate =
-        ((static_cast<double>(migrate_batch.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
+        ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
   }
   LOG(INFO) << fmt::format(
       "[migrate] Succeed to migrate incremental data, slot: {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, "
       "batches: {}, entries: {}",
-      migrating_slot_.load(), elapsed_time, migrate_batch.GetSentBytes(), rate, migrate_batch.GetSentBatchesNum(),
-      migrate_batch.GetEntriesNum());
+      migrating_slot_.load(), elapsed_time, batch_sender.GetSentBytes(), rate, batch_sender.GetSentBatchesNum(),
+      batch_sender.GetEntriesNum());
   return Status::OK();
 }
 
@@ -1333,7 +1333,7 @@ bool SlotMigrator::catchedUpIncrementalWAL() {
   return false;
 }
 
-Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, MigrateBatch *migrate_batch) {
+Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender) {
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;
   uint64_t next_seq = wal_begin_seq_ + 1;
   auto s = storage_->GetWALIter(next_seq, &iter);
@@ -1355,10 +1355,10 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, MigrateBatc
       return {Status::NotOK, "WAL write batch empty"};
     }
 
-    s = extractSlotDataFromWAL(migrating_slot_, batch.writeBatchPtr, migrate_batch);
+    s = extractSlotDataFromWAL(migrating_slot_, batch.writeBatchPtr, batch_sender);
     if (!s) return s;
-    if (migrate_batch->IsFull()) {
-      s = sendMigrateBatch(migrate_batch);
+    if (batch_sender->IsFull()) {
+      s = sendMigrateBatch(batch_sender);
       if (!s) return s;
     }
 
@@ -1369,11 +1369,11 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, MigrateBatc
     iter->Next();
   }
   // send the remaining data
-  return sendMigrateBatch(migrate_batch);
+  return sendMigrateBatch(batch_sender);
 }
 
 Status SlotMigrator::extractSlotDataFromWAL(int16_t slot, const std::unique_ptr<rocksdb::WriteBatch> &write_batch,
-                                            MigrateBatch *migrate_batch) {
+                                            BatchSender *batch_sender) {
   std::unordered_map<uint32_t, rocksdb::ColumnFamilyHandle *> cf_id_map = {
       {static_cast<uint32_t>(kColumnFamilyIDMetadata), storage_->GetCFHandle(engine::kMetadataColumnFamilyName)},
       {static_cast<uint32_t>(kColumnFamilyIDDefault), storage_->GetCFHandle(engine::kSubkeyColumnFamilyName)},
@@ -1381,7 +1381,7 @@ Status SlotMigrator::extractSlotDataFromWAL(int16_t slot, const std::unique_ptr<
       {static_cast<uint32_t>(kColumnFamilyIDStream), storage_->GetCFHandle(engine::kStreamColumnFamilyName)},
   };
 
-  SlotMigrateWriteBatchHandler write_batch_handler(cf_id_map, slot, migrate_batch);
+  SlotMigrateWriteBatchHandler write_batch_handler(cf_id_map, slot, batch_sender);
   auto s = write_batch->Iterate(&write_batch_handler);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("encountered error while parsing WAL, {}", s.ToString())};

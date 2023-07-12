@@ -79,12 +79,6 @@ rocksdb::Status Geo::Pos(const Slice &user_key, const std::vector<Slice> &member
 rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double latitude, double radius_meters, int count,
                             DistanceSort sort, const std::string &store_key, bool store_distance,
                             double unit_conversion, std::vector<GeoPoint> *geo_points) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
-  ZSetMetadata metadata(false);
-  rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-
   GeoShape geo_shape;
   geo_shape.type = CIRCULAR;
   geo_shape.xy[0] = longitude;
@@ -92,44 +86,9 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   geo_shape.radius = radius_meters;
   geo_shape.conversion = 1;
 
-  /* Get all neighbor geohash boxes for our radius search */
-  GeoHashRadius georadius = GeoHashHelper::GetAreasByShapeWGS84(&geo_shape);
-
-  /* Search the zset for all matching points */
-  membersOfAllNeighbors(user_key, georadius, geo_shape, geo_points);
-
-  /* If no matching results, the user gets an empty reply. */
-  if (geo_points->empty() && store_key.empty()) {
-    return rocksdb::Status::OK();
-  }
-
-  /* Process [optional] requested sorting */
-  if (sort == kSortASC) {
-    std::sort(geo_points->begin(), geo_points->end(), sortGeoPointASC);
-  } else if (sort == kSortDESC) {
-    std::sort(geo_points->begin(), geo_points->end(), sortGeoPointDESC);
-  }
-
-  if (!store_key.empty()) {
-    auto result_length = static_cast<int64_t>(geo_points->size());
-    int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
-    if (returned_items_count == 0) {
-      ZSet::Del(user_key);
-    } else {
-      std::vector<MemberScore> member_scores;
-      for (const auto &geo_point : *geo_points) {
-        if (returned_items_count-- <= 0) {
-          break;
-        }
-        double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
-        member_scores.emplace_back(MemberScore{geo_point.member, score});
-      }
-      uint64_t ret = 0;
-      ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
-    }
-  }
-
-  return rocksdb::Status::OK();
+  std::string dummy_member;
+  return Search(user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance, unit_conversion,
+                geo_points);
 }
 
 rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,

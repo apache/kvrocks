@@ -438,7 +438,7 @@ class CommandGeoSearch : public CommandGeoBase {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = GenerateOutput(geo_points);
+    *output = generateOutput(geo_points);
     // storing comes later.
     return Status::OK();
   }
@@ -496,7 +496,7 @@ class CommandGeoSearch : public CommandGeoBase {
     return Status::OK();
   }
 
-  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
+  std::string generateOutput(const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
@@ -531,8 +531,6 @@ class CommandGeoSearch : public CommandGeoBase {
 
 class CommandGeoSearchStore : public CommandGeoSearch {
  public:
-  CommandGeoSearchStore() : CommandGeoSearch() {}
-
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
     store_key_ = GET_OR_RET(parser.TakeStr());

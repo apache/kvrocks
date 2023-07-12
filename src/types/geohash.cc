@@ -329,31 +329,7 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
 /* Return the bounding box of the search area centered at latitude,longitude
  * having a radius of radius_meter. bounds[0] - bounds[2] is the minimum
  * and maxium longitude, while bounds[1] - bounds[3] is the minimum and
- * maximum latitude.
- *
- * This function does not behave correctly with very large radius values, for
- * instance for the coordinates 81.634948934258375 30.561509253718668 and a
- * radius of 7083 kilometers, it reports as bounding boxes:
- *
- * min_lon 7.680495, min_lat -33.119473, max_lon 155.589402, max_lat 94.242491
- *
- * However, for instance, a min_lon of 7.680495 is not correct, because the
- * point -1.27579540014266968 61.33421815228281559 is at less than 7000
- * kilometers away.
- *
- * Since this function is currently only used as an optimization, the
- * optimization is not used for very big radiuses, however the function
- * should be fixed. */
-int GeoHashHelper::BoundingBox(double longitude, double latitude, double radius_meters, double *bounds) {
-  if (!bounds) return 0;
-
-  bounds[0] = longitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
-  bounds[2] = longitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
-  bounds[1] = latitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
-  bounds[3] = latitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
-  return 1;
-}
-
+ * maximum latitude. */
 int GeoHashHelper::BoundingBox(GeoShape *geo_shape, double *bounds) {
   if (!bounds) return 0;
   double longitude = geo_shape->xy[0];
@@ -371,90 +347,6 @@ int GeoHashHelper::BoundingBox(GeoShape *geo_shape, double *bounds) {
   bounds[1] = latitude - lat_delta;
   bounds[3] = latitude + lat_delta;
   return 1;
-}
-
-/* Return a set of areas (center + 8) that are able to cover a range query
- * for the specified position and radius. */
-GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude, double radius_meters) {
-  GeoHashRange long_range, lat_range;
-  GeoHashRadius radius;
-  GeoHashBits hash;
-  GeoHashNeighbors neighbors;
-  GeoHashArea area;
-  double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
-  double bounds[4];
-
-  BoundingBox(longitude, latitude, radius_meters, bounds);
-  min_lon = bounds[0];
-  min_lat = bounds[1];
-  max_lon = bounds[2];
-  max_lat = bounds[3];
-
-  int steps = EstimateStepsByRadius(radius_meters, latitude);
-
-  GeohashGetCoordRange(&long_range, &lat_range);
-  GeohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
-  GeohashNeighbors(&hash, &neighbors);
-  GeohashDecode(long_range, lat_range, hash, &area);
-
-  /* Check if the step is enough at the limits of the covered area.
-   * Sometimes when the search area is near an edge of the
-   * area, the estimated step is not small enough, since one of the
-   * north / south / west / east square is too near to the search area
-   * to cover everything. */
-  int decrease_step = 0;
-  {
-    GeoHashArea north, south, east, west;
-
-    GeohashDecode(long_range, lat_range, neighbors.north, &north);
-    GeohashDecode(long_range, lat_range, neighbors.south, &south);
-    GeohashDecode(long_range, lat_range, neighbors.east, &east);
-    GeohashDecode(long_range, lat_range, neighbors.west, &west);
-
-    if (GetDistance(longitude, latitude, longitude, north.latitude.max) < radius_meters) decrease_step = 1;
-    if (GetDistance(longitude, latitude, longitude, south.latitude.min) < radius_meters) decrease_step = 1;
-    if (GetDistance(longitude, latitude, east.longitude.max, latitude) < radius_meters) decrease_step = 1;
-    if (GetDistance(longitude, latitude, west.longitude.min, latitude) < radius_meters) decrease_step = 1;
-  }
-
-  if (steps > 1 && decrease_step) {
-    steps--;
-    GeohashEncode(&long_range, &lat_range, longitude, latitude, steps, &hash);
-    GeohashNeighbors(&hash, &neighbors);
-    GeohashDecode(long_range, lat_range, hash, &area);
-  }
-
-  /* Exclude the search areas that are useless. */
-  if (steps >= 2) {
-    if (area.latitude.min < min_lat) {
-      GZERO(neighbors.south);
-      GZERO(neighbors.south_west);
-      GZERO(neighbors.south_east);
-    }
-    if (area.latitude.max > max_lat) {
-      GZERO(neighbors.north);
-      GZERO(neighbors.north_east);
-      GZERO(neighbors.north_west);
-    }
-    if (area.longitude.min < min_lon) {
-      GZERO(neighbors.west);
-      GZERO(neighbors.south_west);
-      GZERO(neighbors.north_west);
-    }
-    if (area.longitude.max > max_lon) {
-      GZERO(neighbors.east);
-      GZERO(neighbors.south_east);
-      GZERO(neighbors.north_east);
-    }
-  }
-  radius.hash = hash;
-  radius.neighbors = neighbors;
-  radius.area = area;
-  return radius;
-}
-
-GeoHashRadius GeoHashHelper::GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters) {
-  return GetAreasByRadius(longitude, latitude, radius_meters);
 }
 
 GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape *geo_shape) {

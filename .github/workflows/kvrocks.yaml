@@ -291,8 +291,8 @@ jobs:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
 
-  build-and-test-on-container:
-    name: Build and test on container
+  build-and-test-in-container:
+    name: Build and test in container
     needs: [precondition, check-and-lint]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
@@ -302,7 +302,6 @@ jobs:
           - name: CentOS 7
             image: centos:7
             compiler: gcc
-
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -362,7 +361,7 @@ jobs:
     needs:
       - precondition
       - build-and-test
-      - build-and-test-on-container
+      - build-and-test-in-container
       - check-docker
     steps:
       - name: Merge requirement checking
@@ -370,6 +369,7 @@ jobs:
         run: |
           if [[ ! ( \
                    "${{ needs.build-and-test.result }}" == "success" \
+                && "${{ needs.build-and-test-in-container.result }}" == "success" \
                 && "${{ needs.check-docker.result }}" == "success" \
                ) ]]; then
             echo "Required jobs haven't been completed successfully."

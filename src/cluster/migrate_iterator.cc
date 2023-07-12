@@ -27,8 +27,10 @@ MigrateIterator::MigrateIterator(engine::Storage *storage, const rocksdb::ReadOp
     : metadata_cf_(storage->GetCFHandle(engine::kMetadataColumnFamilyName)),
       subkey_cf_(storage->GetCFHandle(engine::kSubkeyColumnFamilyName)),
       zset_score_cf_(storage->GetCFHandle(engine::kZSetScoreColumnFamilyName)),
+      stream_cf_(storage->GetCFHandle(engine::kStreamColumnFamilyName)),
       metadata_iter_(util::UniqueIterator(storage, read_options, metadata_cf_)),
       subdata_iter_(util::UniqueIterator(storage, read_options, subkey_cf_)),
+      stream_iter_(util::UniqueIterator(storage, read_options, stream_cf_)),
       valid_(false),
       metadata_(RedisType::kRedisNone, false) {}
 
@@ -39,6 +41,7 @@ void MigrateIterator::Seek(const rocksdb::Slice &target) {
   log_data_.clear();
   metadata_iter_->Reset();
   subdata_iter_->Reset();
+  stream_iter_->Reset();
   metakey_prefix_.clear();
 
   metadata_iter_->Seek(target);
@@ -57,14 +60,20 @@ void MigrateIterator::Next() {
   if (subdata_iter_->Valid()) {
     subdata_iter_->Next();
     valid_ = subdata_iter_->Valid() && subdata_iter_->key().starts_with(subkey_prefix_);
-    if (valid_) {
-      findSubData();
-    } else {
+    if (!valid_) {
       subdata_iter_->Reset();
+    }
+  } else if (stream_iter_->Valid()) {
+    stream_iter_->Next();
+    valid_ = stream_iter_->Valid() && stream_iter_->key().starts_with(subkey_prefix_);
+    if (!valid_) {
+      stream_iter_->Reset();
     }
   }
 
-  if (!valid_ && metadata_iter_->Valid()) {
+  if (valid_) {
+    findSubData();
+  } else if (metadata_iter_->Valid()) {
     metadata_iter_->Next();
     valid_ = metadata_iter_->Valid() && metadata_iter_->key().starts_with(metakey_prefix_);
     if (valid_) {
@@ -99,7 +108,11 @@ void MigrateIterator::findMetaData() {
 
   items_.push_back(MigrateItem{metadata_cf_, metadata_iter_->key().ToString(), metadata_iter_->value().ToString()});
 
-  subdata_iter_->Reset();
+  if (redis_type == RedisType::kRedisStream) {
+    stream_iter_->Reset();
+  } else {
+    subdata_iter_->Reset();
+  }
 
   if (redis_type != RedisType::kRedisNone && redis_type != RedisType::kRedisString && metadata.size > 0) {
     initSubData();
@@ -109,27 +122,38 @@ void MigrateIterator::findMetaData() {
 void MigrateIterator::initSubData() {
   std::string prefix_subkey;
   InternalKey(metadata_iter_->key(), "", metadata_.version, true /* slot_id_encoded */).Encode(&prefix_subkey);
-  subdata_iter_->Seek(prefix_subkey);
   subkey_prefix_ = prefix_subkey;
-  if (subdata_iter_->Valid() && subdata_iter_->key().starts_with(subkey_prefix_)) {
-    findSubData();
+  if (metadata_.Type() == RedisType::kRedisStream) {
+    stream_iter_->Seek(subkey_prefix_);
+    if (stream_iter_->Valid() && stream_iter_->key().starts_with(subkey_prefix_)) {
+      findSubData();
+    }
+  } else {
+    subdata_iter_->Seek(subkey_prefix_);
+    if (subdata_iter_->Valid() && subdata_iter_->key().starts_with(subkey_prefix_)) {
+      findSubData();
+    }
   }
 }
 
 void MigrateIterator::findSubData() {
-  assert(subdata_iter_->Valid());
+  assert(subdata_iter_->Valid() || stream_iter_->Valid());
 
-  items_.push_back(MigrateItem{subkey_cf_, subdata_iter_->key().ToString(), subdata_iter_->value().ToString()});
-  if (metadata_.Type() == RedisType::kRedisZSet) {
-    InternalKey inkey(subdata_iter_->key(), true /* slot_id_encoded */);
-    std::string score_member, new_score_key;
-    score_member.append(subdata_iter_->value().ToString());
-    score_member.append(inkey.GetSubKey().ToString());
-    std::string ns, user_key;
+  if (subdata_iter_->Valid()) {
+    items_.push_back(MigrateItem{subkey_cf_, subdata_iter_->key().ToString(), subdata_iter_->value().ToString()});
+    if (metadata_.Type() == RedisType::kRedisZSet) {
+      InternalKey inkey(subdata_iter_->key(), true /* slot_id_encoded */);
+      std::string score_member, new_score_key;
+      score_member.append(subdata_iter_->value().ToString());
+      score_member.append(inkey.GetSubKey().ToString());
+      std::string ns, user_key;
 
-    ExtractNamespaceKey(metadata_iter_->key(), &ns, &user_key, true /* slot_id_encoded */);
-    InternalKey(metadata_iter_->key(), score_member, metadata_.version, true /* cluster_enabled */)
-        .Encode(&new_score_key);
-    items_.push_back(MigrateItem{zset_score_cf_, new_score_key, std::string()});
+      ExtractNamespaceKey(metadata_iter_->key(), &ns, &user_key, true /* slot_id_encoded */);
+      InternalKey(metadata_iter_->key(), score_member, metadata_.version, true /* cluster_enabled */)
+          .Encode(&new_score_key);
+      items_.push_back(MigrateItem{zset_score_cf_, new_score_key, std::string()});
+    }
+  } else if (stream_iter_->Valid()) {
+    items_.push_back(MigrateItem{stream_cf_, stream_iter_->key().ToString(), stream_iter_->value().ToString()});
   }
 }

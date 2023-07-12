@@ -46,9 +46,11 @@ class MigrateIterator {
   rocksdb::ColumnFamilyHandle *metadata_cf_;
   rocksdb::ColumnFamilyHandle *subkey_cf_;
   rocksdb::ColumnFamilyHandle *zset_score_cf_;
-  // TODO: support stream cf
+  rocksdb::ColumnFamilyHandle *stream_cf_;
+
   std::unique_ptr<rocksdb::Iterator> metadata_iter_;
   std::unique_ptr<rocksdb::Iterator> subdata_iter_;
+  std::unique_ptr<rocksdb::Iterator> stream_iter_;
 
   bool valid_;
   Metadata metadata_;

@@ -1377,11 +1377,11 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, MigrateBatc
 
 Status SlotMigrator::extractSlotDataFromWAL(int16_t slot, const std::unique_ptr<rocksdb::WriteBatch> &write_batch,
                                             MigrateBatch *migrate_batch) {
-  // todo: stream, put it in SlotMigrateWriteBatchHandler
   std::unordered_map<uint32_t, rocksdb::ColumnFamilyHandle *> cf_id_map = {
       {static_cast<uint32_t>(kColumnFamilyIDMetadata), storage_->GetCFHandle(engine::kMetadataColumnFamilyName)},
       {static_cast<uint32_t>(kColumnFamilyIDDefault), storage_->GetCFHandle(engine::kSubkeyColumnFamilyName)},
       {static_cast<uint32_t>(kColumnFamilyIDZSetScore), storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName)},
+      {static_cast<uint32_t>(kColumnFamilyIDStream), storage_->GetCFHandle(engine::kStreamColumnFamilyName)},
   };
 
   SlotMigrateWriteBatchHandler write_batch_handler(cf_id_map, slot, migrate_batch);

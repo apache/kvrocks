@@ -178,7 +178,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   keys.reserve(fields.size());
   std::vector<std::string> sub_keys;
   sub_keys.resize(fields.size());
-  for (size_t i = 0; i < keys.size(); i++) {
+  for (size_t i = 0; i < fields.size(); i++) {
     auto &field = fields[i];
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&(sub_keys[i]));
     keys.emplace_back(sub_keys[i]);

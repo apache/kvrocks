@@ -85,7 +85,7 @@ func TestIncr(t *testing.T) {
 	})
 
 	t.Run("DECRBY negation overflow", func(t *testing.T) {
-		require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "foo", "0").Err())
 		util.ErrorRegexp(t, rdb.Do(ctx, "DECRBY", "foo", "-9223372036854775808").Err(), ".*decrement would overflow.*")
 	})
 

@@ -56,6 +56,23 @@ const int64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
+const static std::map<std::string, std::string> compression_sort_long_string_map = {{"no", "kNoCompression"},
+                                                                                    {"snappy", "kSnappyCompression"},
+                                                                                    {"lz4", "kLZ4Compression"},
+                                                                                    {"zstd", "kZSTD"},
+                                                                                    {"zlib", "kZlibCompression"}};
+const static std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
+    {rocksdb::kNoCompression, "no"},
+    {rocksdb::kSnappyCompression, "snappy"},
+    {rocksdb::kZlibCompression, "zlib"},
+    {rocksdb::kBZip2Compression, "zip2"},
+    {rocksdb::kLZ4Compression, "lz4"},
+    {rocksdb::kLZ4HCCompression, "lz4hc"},
+    {rocksdb::kXpressCompression, "xpress"},
+    {rocksdb::kZSTD, "zstd"},
+    {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
+    {rocksdb::kDisableCompressionOption, "disable"}};
+
 Storage::Storage(Config *config)
     : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
   Metadata::InitVersionCounter();
@@ -183,17 +200,6 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 }
 
 std::string Storage::CompressType2String(const rocksdb::CompressionType &type) {
-  std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
-      {rocksdb::kNoCompression, "no"},
-      {rocksdb::kSnappyCompression, "snappy"},
-      {rocksdb::kZlibCompression, "zlib"},
-      {rocksdb::kBZip2Compression, "zip2"},
-      {rocksdb::kLZ4Compression, "lz4"},
-      {rocksdb::kLZ4HCCompression, "lz4hc"},
-      {rocksdb::kXpressCompression, "xpress"},
-      {rocksdb::kZSTD, "zstd"},
-      {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
-      {rocksdb::kDisableCompressionOption, "disable"}};
   auto iter = compression_type_string_map.find(type);
   if (iter == compression_type_string_map.end()) {
     return "unknown";
@@ -202,13 +208,8 @@ std::string Storage::CompressType2String(const rocksdb::CompressionType &type) {
 }
 
 std::string Storage::CompressString2CompressionString(const std::string &type) {
-  std::unordered_map<std::string, std::string> compression_map = {{"no", "kNoCompression"},
-                                                                  {"snappy", "kSnappyCompression"},
-                                                                  {"lz4", "kLZ4Compression"},
-                                                                  {"zstd", "kZSTD"},
-                                                                  {"zlib", "kZlibCompression"}};
-  auto iter = compression_map.find(type);
-  if (iter == compression_map.end()) {
+  auto iter = compression_sort_long_string_map.find(type);
+  if (iter == compression_sort_long_string_map.end()) {
     return "unknown";
   }
   return iter->second;
@@ -220,6 +221,7 @@ Status Storage::SetCompressionOption(const std::string &key, const std::string &
     return {Status::NotOK, "Invalid compression type"};
   }
   std::string compression_levels = "kNoCompression:kNoCompression";
+  // only compress levels >= 2
   for (size_t i = 2; i < db_->GetOptions().compression_per_level.size(); i++) {
     compression_levels += ":";
     compression_levels += compression_string;
@@ -233,10 +235,6 @@ Status Storage::SetCompressionOption(const std::string &key, const std::string &
 }
 
 Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std::string &value) {
-  if ("compression" == key) {
-    return SetCompressionOption(key, value);
-  }
-
   for (auto &cf_handle : cf_handles_) {
     auto s = db_->SetOptions(cf_handle, {{key, value}});
     if (!s.ok()) return {Status::NotOK, s.ToString()};

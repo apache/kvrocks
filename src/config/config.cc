@@ -604,7 +604,7 @@ void Config::initFieldCallback() {
       {"rocksdb.compression",
        [](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
+         return srv->storage->SetCompressionOption(TrimRocksDbPrefix(k), v);
        }},
 #ifdef ENABLE_OPENSSL
       {"tls-cert-file", set_tls_option},

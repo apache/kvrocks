@@ -135,4 +135,6 @@ func TestSetConfigCompression(t *testing.T) {
 	r = rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
 	rList = r.Val().([]interface{})
 	require.EqualValues(t, rList[1], "zstd")
+
+	require.ErrorContains(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "undefine").Err(), "invalid enum option")
 }

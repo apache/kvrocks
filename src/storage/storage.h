@@ -177,8 +177,8 @@ class Storage {
   Status ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
-  std::string CompressType2String(const rocksdb::CompressionType &type);
-  std::string CompressString2CompressionString(const std::string &type);
+  static std::string CompressType2String(const rocksdb::CompressionType &type);
+  static std::string CompressString2CompressionString(const std::string &type);
 
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;

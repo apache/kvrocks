@@ -39,7 +39,6 @@ namespace engine {
 class Storage;
 }
 
-extern ConfigEnum compression_types[];
 constexpr const uint32_t PORT_LIMIT = 65535;
 
 enum SupervisedMode { kSupervisedNone = 0, kSupervisedAutoDetect, kSupervisedSystemd, kSupervisedUpStart };

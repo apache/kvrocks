@@ -1265,8 +1265,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   double rate = 0;
   auto elapsed_time = util::GetTimeStampMS() - start_send_snapshot_time;
   if (elapsed_time != 0) {
-    rate =
-        ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
+    rate = ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
   }
   LOG(INFO) << fmt::format(
       "[migrate] Succeed to migrate snapshot, slot: {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, batches: "
@@ -1312,8 +1311,7 @@ Status SlotMigrator::syncWALByRawKV() {
   double rate = 0;
   auto elapsed_time = util::GetTimeStampMS() - start_sync_wal_time;
   if (elapsed_time != 0) {
-    rate =
-        ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
+    rate = ((static_cast<double>(batch_sender.GetSentBytes()) / 1024.0) / (static_cast<double>(elapsed_time) / 1000.0));
   }
   LOG(INFO) << fmt::format(
       "[migrate] Succeed to migrate incremental data, slot: {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, "

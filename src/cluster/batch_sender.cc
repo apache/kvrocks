@@ -19,6 +19,7 @@
  */
 
 #include "batch_sender.h"
+
 #include "hiredis.h"
 #include "scope_exit.h"
 
@@ -79,8 +80,7 @@ Status BatchSender::Send() {
   return Status::OK();
 }
 
-Status BatchSender::sendBatchSetCmd(int16_t slot, redisContext *redis_context,
-                                     const rocksdb::WriteBatch &write_batch) {
+Status BatchSender::sendBatchSetCmd(int16_t slot, redisContext *redis_context, const rocksdb::WriteBatch &write_batch) {
   if (redis_context == nullptr) {
     return {Status::NotOK, "redis context is null"};
   }

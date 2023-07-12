@@ -171,17 +171,17 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   }
 
   LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
   read_options.snapshot = ss.GetSnapShot();
   std::vector<rocksdb::Slice> keys;
 
   keys.reserve(fields.size());
   std::vector<std::string> sub_keys;
   sub_keys.resize(fields.size());
-  int i = 0;
-  for (const auto &field : fields) {
+  for (size_t i = 0; i < keys.size(); i++) {
+    auto &field = fields[i];
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&(sub_keys[i]));
-    keys.emplace_back(sub_keys[i++]);
+    keys.emplace_back(sub_keys[i]);
   }
 
   std::vector<rocksdb::PinnableSlice> values_vector;

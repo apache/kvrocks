@@ -76,7 +76,7 @@ class CommandGetEx : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(svr->storage, conn->GetNamespace());
-    auto s = string_db.GetEx(args_[1], &value, ttl_);
+    auto s = string_db.GetEx(args_[1], &value, ttl_, persist_);
 
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according

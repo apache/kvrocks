@@ -87,9 +87,12 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
 }
 
-void Storage::SetReadOptions(rocksdb::ReadOptions &read_options) {
+rocksdb::ReadOptions Storage::DefaultScanOptions() const {
+  rocksdb::ReadOptions read_options;
   read_options.fill_cache = false;
   read_options.async_io = config_->rocks_db.read_options.async_io;
+
+  return read_options;
 }
 
 rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
@@ -236,23 +239,22 @@ Status Storage::Open(bool read_only) {
   db_closing_ = false;
 
   bool cache_index_and_filter_blocks = config_->rocks_db.cache_index_and_filter_blocks;
+  size_t block_cache_size = config_->rocks_db.block_cache_size * MiB;
   size_t metadata_block_cache_size = config_->rocks_db.metadata_block_cache_size * MiB;
   size_t subkey_block_cache_size = config_->rocks_db.subkey_block_cache_size * MiB;
+  if (block_cache_size == 0) {
+    block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
+  }
 
   rocksdb::Options options = InitRocksDBOptions();
   if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
     return s.Prefixed("failed to create column families");
   }
 
-  std::shared_ptr<rocksdb::Cache> shared_block_cache;
-  if (config_->rocks_db.share_metadata_and_subkey_block_cache) {
-    size_t shared_block_cache_size = metadata_block_cache_size + subkey_block_cache_size;
-    shared_block_cache = rocksdb::NewLRUCache(shared_block_cache_size, -1, false, 0.75);
-  }
+  std::shared_ptr<rocksdb::Cache> shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
-  metadata_table_opts.block_cache =
-      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(metadata_block_cache_size, -1, false, 0.75);
+  metadata_table_opts.block_cache = shared_block_cache;
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
@@ -269,8 +271,7 @@ Status Storage::Open(bool read_only) {
   SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
-  subkey_table_opts.block_cache =
-      shared_block_cache ? shared_block_cache : rocksdb::NewLRUCache(subkey_block_cache_size, -1, false, 0.75);
+  subkey_table_opts.block_cache = shared_block_cache;
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;

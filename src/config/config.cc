@@ -192,6 +192,7 @@ Config::Config() {
       {"rocksdb.enable_pipelined_write", true, new YesNoField(&rocks_db.enable_pipelined_write, false)},
       {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, false)},
+      {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
@@ -676,13 +677,18 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     // namespace should keep key case-sensitive
     field_key = input.first;
     tokens[input.second] = input.first.substr(ns_str_size);
+    return Status::OK();
   }
+
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto &field = iter->second;
     field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+  } else {
+    std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number)
+              << std::endl;
   }
   return Status::OK();
 }

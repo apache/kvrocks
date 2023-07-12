@@ -267,6 +267,8 @@ class CommandInfo : public Commander {
     std::string section = "all";
     if (args_.size() == 2) {
       section = util::ToLower(args_[1]);
+    } else if (args_.size() > 2) {
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
     std::string info;
     svr->GetInfo(conn->GetNamespace(), section, &info);
@@ -291,7 +293,14 @@ class CommandDisk : public Commander {
 
     uint64_t result = 0;
     s = disk_db.GetKeySize(args_[2], type, &result);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!s.ok()) {
+      // Redis returns the Nil string when the key does not exist
+      if (s.IsNotFound()) {
+        *output = redis::NilString();
+        return Status::OK();
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
 
     *output = redis::Integer(result);
     return Status::OK();

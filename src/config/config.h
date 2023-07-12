@@ -159,6 +159,7 @@ struct Config {
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;
+    int block_cache_size;
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;

@@ -300,14 +300,14 @@ class CommandBZPop : public Commander,
   explicit CommandBZPop(bool min) : min_(min) {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int>(args[args.size() - 1], 10);
+    auto parse_result = ParseFloat(args[args.size() - 1]);
     if (!parse_result) {
-      return {Status::RedisParseErr, "timeout is not an integer or out of range"};
+      return {Status::RedisParseErr, errTimeoutIsNotFloat};
     }
     if (*parse_result < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
-    timeout_ = *parse_result;
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);
 
     keys_ = std::vector<std::string>(args.begin() + 1, args.end() - 1);
     return Commander::Parse(args);
@@ -346,7 +346,9 @@ class CommandBZPop : public Commander,
 
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      timeval tm = {timeout_, 0};
+      int64_t timeout_second = timeout_ / 1000 / 1000;
+      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -420,7 +422,7 @@ class CommandBZPop : public Commander,
 
  private:
   bool min_;
-  int timeout_;
+  int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
@@ -468,11 +470,11 @@ class CommandZMPop : public Commander {
     }
 
     while (parser.Good()) {
-      if (parser.EatEqICase("min")) {
+      if (flag_ == ZSET_NONE && parser.EatEqICase("min")) {
         flag_ = ZSET_MIN;
-      } else if (parser.EatEqICase("max")) {
+      } else if (flag_ == ZSET_NONE && parser.EatEqICase("max")) {
         flag_ = ZSET_MAX;
-      } else if (parser.EatEqICase("count")) {
+      } else if (count_ == 0 && parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
@@ -481,6 +483,7 @@ class CommandZMPop : public Commander {
     if (flag_ == ZSET_NONE) {
       return parser.InvalidSyntax();
     }
+    if (count_ == 0) count_ = 1;
     return Commander::Parse(args);
   }
 
@@ -512,7 +515,7 @@ class CommandZMPop : public Commander {
   int numkeys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
-  int count_ = 1;
+  int count_ = 0;
 };
 
 class CommandBZMPop : public Commander,
@@ -522,7 +525,7 @@ class CommandBZMPop : public Commander,
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
 
-    timeout_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{0, std::numeric_limits<int>::max()}));
+    timeout_ = static_cast<int64_t>(GET_OR_RET(parser.TakeFloat<double>()) * 1000 * 1000);
     if (timeout_ < 0) {
       return {Status::RedisParseErr, errTimeoutIsNegative};
     }
@@ -533,11 +536,11 @@ class CommandBZMPop : public Commander,
     }
 
     while (parser.Good()) {
-      if (parser.EatEqICase("min")) {
+      if (flag_ == ZSET_NONE && parser.EatEqICase("min")) {
         flag_ = ZSET_MIN;
-      } else if (parser.EatEqICase("max")) {
+      } else if (flag_ == ZSET_NONE && parser.EatEqICase("max")) {
         flag_ = ZSET_MAX;
-      } else if (parser.EatEqICase("count")) {
+      } else if (count_ == 0 && parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
       } else {
         return parser.InvalidSyntax();
@@ -547,6 +550,7 @@ class CommandBZMPop : public Commander,
     if (flag_ == ZSET_NONE) {
       return parser.InvalidSyntax();
     }
+    if (count_ == 0) count_ = 1;
 
     return Commander::Parse(args);
   }
@@ -584,7 +588,9 @@ class CommandBZMPop : public Commander,
 
     if (timeout_) {
       timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      timeval tm = {timeout_, 0};
+      int64_t timeout_second = timeout_ / 1000 / 1000;
+      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
+      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
       evtimer_add(timer_.get(), &tm);
     }
 
@@ -651,11 +657,11 @@ class CommandBZMPop : public Commander,
   }
 
  private:
-  int timeout_ = 0;  // seconds
+  int64_t timeout_ = 0;  // microseconds
   int num_keys_;
   std::vector<std::string> keys_;
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
-  int count_ = 1;
+  int count_ = 0;
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
@@ -1181,6 +1187,8 @@ class CommandZUnion : public Commander {
         }
       } else if (parser.EatEqICase("withscores")) {
         with_scores_ = true;
+      } else {
+        return parser.InvalidSyntax();
       }
     }
     return Commander::Parse(args);

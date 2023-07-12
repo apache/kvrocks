@@ -90,11 +90,10 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   std::string next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = latest_snapshot_->GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
 
   std::string output;
   auto iter = util::UniqueIterator(storage_, read_options);

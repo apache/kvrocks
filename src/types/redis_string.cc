@@ -152,7 +152,7 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
   return getValue(ns_key, value);
 }
 
-rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, uint64_t ttl) {
+rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist) {
   uint64_t expire = 0;
   if (ttl > 0) {
     uint64_t now = util::GetTimeStampMS();
@@ -163,11 +163,16 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, value);
-  if (!s.ok() && s.IsNotFound()) return s;
+  if (!s.ok()) return s;
 
   std::string raw_data;
   Metadata metadata(kRedisString, false);
-  metadata.expire = expire;
+  if (ttl > 0 || persist) {
+    metadata.expire = expire;
+  } else {
+    // If there is no ttl or persist is false, then skip the following updates.
+    return rocksdb::Status::OK();
+  }
   metadata.Encode(&raw_data);
   raw_data.append(value->data(), value->size());
   auto batch = storage_->GetWriteBatchBase();

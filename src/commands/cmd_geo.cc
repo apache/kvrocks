@@ -163,8 +163,12 @@ class CommandGeoHash : public Commander {
     std::vector<std::string> hashes;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Hash(args_[1], members_, &hashes);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      hashes.resize(members_.size(), "");
     }
 
     *output = redis::MultiBulkString(hashes);
@@ -188,11 +192,18 @@ class CommandGeoPos : public Commander {
     std::map<std::string, GeoPoint> geo_points;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
     auto s = geo_db.Pos(args_[1], members_, &geo_points);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     std::vector<std::string> list;
+
+    if (s.IsNotFound()) {
+      list.resize(members_.size(), "");
+      *output = redis::MultiBulkString(list);
+      return Status::OK();
+    }
+
     for (const auto &member : members_) {
       auto iter = geo_points.find(member.ToString());
       if (iter == geo_points.end()) {

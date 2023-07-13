@@ -64,6 +64,14 @@ constexpr const char *kPropagateScriptCommand = "script";
 
 constexpr const char *kLuaFunctionPrefix = "lua_f_";
 
+struct CompressionOption {
+  rocksdb::CompressionType type;
+  const char *name;
+  const char *val;
+};
+
+const std::vector<CompressionOption> *GetCompressionOptions();
+
 class Storage {
  public:
   explicit Storage(Config *config);
@@ -79,7 +87,6 @@ class Storage {
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
-  Status SetCompressionOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
   Status CreateBackup();
   void DestroyBackup();
@@ -177,8 +184,6 @@ class Storage {
   Status ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
-  static std::string CompressType2String(const rocksdb::CompressionType &type);
-  static std::string CompressString2CompressionString(const std::string &type);
 
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;

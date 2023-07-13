@@ -109,7 +109,7 @@ func TestSetConfigBackupDir(t *testing.T) {
 	require.True(t, hasCompactionFiles(originBackupDir))
 }
 
-func TestSetConfigCompression(t *testing.T) {
+func TestConfigSetCompression(t *testing.T) {
 	configs := map[string]string{}
 	srv := util.StartServer(t, configs)
 	defer srv.Close()
@@ -119,22 +119,13 @@ func TestSetConfigCompression(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
 
-	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
-	r := rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
-	rList := r.Val().([]interface{})
-	require.EqualValues(t, rList[1], "no")
-
-	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "lz4").Err())
-	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
-	r = rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
-	rList = r.Val().([]interface{})
-	require.EqualValues(t, rList[1], "lz4")
-
-	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "zstd").Err())
-	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
-	r = rdb.Do(ctx, "CONFIG", "GET", "rocksdb.compression")
-	rList = r.Val().([]interface{})
-	require.EqualValues(t, rList[1], "zstd")
-
-	require.ErrorContains(t, rdb.Do(ctx, "CONFIG", "SET", "rocksdb.compression", "undefine").Err(), "invalid enum option")
+	configKey := "rocksdb.compression"
+	supportedCompressions := []string{"no", "snappy", "zlib", "lz4", "zstd"}
+	for _, compression := range supportedCompressions {
+		require.NoError(t, rdb.ConfigSet(ctx, configKey, compression).Err())
+		vals, err := rdb.ConfigGet(ctx, configKey).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, compression, vals[configKey])
+	}
+	require.ErrorContains(t, rdb.ConfigSet(ctx, configKey, "unsupported").Err(), "invalid enum option")
 }

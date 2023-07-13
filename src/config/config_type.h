@@ -53,8 +53,8 @@ struct ConfigEnum {
 
 enum ConfigType { SingleConfig, MultiConfig };
 
-int ConfigEnumGetValue(ConfigEnum *ce, const char *name);
-const char *ConfigEnumGetName(ConfigEnum *ce, int val);
+int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const char *name);
+const char *ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val);
 
 class ConfigField {
  public:
@@ -186,7 +186,9 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, ConfigEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
+  EnumField(int *receiver, const std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(enums) {
+    *receiver_ = e;
+  }
   ~EnumField() override = default;
   std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }
   Status ToNumber(int64_t *n) override {
@@ -204,5 +206,5 @@ class EnumField : public ConfigField {
 
  private:
   int *receiver_;
-  ConfigEnum *enums_ = nullptr;
+  std::vector<ConfigEnum> enums_;
 };

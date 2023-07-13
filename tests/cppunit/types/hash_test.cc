@@ -341,27 +341,22 @@ TEST_F(RedisHashTest, HRandField) {
   std::vector<FieldValue> fvs;
   // Case 1: Negative count, randomly select elements
   fvs.clear();
-  auto s = hash_->RandField(key_, &fvs, -(fields_.size() + 10), false);
+  auto s = hash_->RandField(key_, -(fields_.size() + 10), &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size() + 10);
 
   // Case 2: Requested count is greater than or equal to the number of elements inside the hash
   fvs.clear();
-  s = hash_->RandField(key_, &fvs, fields_.size() + 1, false);
+  s = hash_->RandField(key_, fields_.size() + 1, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
 
   // Case 3: Requested count is less than the number of elements inside the hash
   fvs.clear();
-  s = hash_->RandField(key_, &fvs, fields_.size() - 1, false);
+  s = hash_->RandField(key_, fields_.size() - 1, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size() - 1);
-
-  // hrandfield key
-  fvs.clear();
-  s = hash_->RandField(key_, &fvs, 0, true);
-  EXPECT_TRUE(s.ok() && fvs.size() == 1);
 
   // hrandfield key 0
   fvs.clear();
-  s = hash_->RandField(key_, &fvs, 0, false);
+  s = hash_->RandField(key_, 0, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == 0);
 
   hash_->Del(key_);

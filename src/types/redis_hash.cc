@@ -388,8 +388,8 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
 }
 
-rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *field_values, int64_t command_count,
-                                bool noparmeter, HashFetchType type) {
+rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
+                                HashFetchType type) {
   uint64_t count = (command_count >= 0) ? static_cast<uint64_t>(command_count) : static_cast<uint64_t>(-command_count);
   bool unique = (command_count >= 0);
 
@@ -402,9 +402,9 @@ rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *
   uint64_t size = metadata.size;
   std::vector<FieldValue> samples;
   // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
-  if (count == 0 && !noparmeter) return rocksdb::Status::OK();
-  GetAll(user_key, &samples, type);
-
+  if (count == 0) return rocksdb::Status::OK();
+  s = GetAll(user_key, &samples, type);
+  if (!s.ok()) return s;
   auto appendFieldWithIndex = [field_values, &samples, type](uint64_t index) {
     if (type == HashFetchType::kAll) {
       field_values->emplace_back(samples[index].field, samples[index].value);
@@ -412,7 +412,6 @@ rocksdb::Status Hash::RandField(const Slice &user_key, std::vector<FieldValue> *
       field_values->emplace_back(samples[index].field, "");
     }
   };
-  count = count > 0 ? count : 1;
   field_values->reserve(std::min(size, count));
   if (!unique || count == 1) {
     // Case 1: Negative count, randomly select elements or without parameter

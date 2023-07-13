@@ -84,6 +84,11 @@ func TestIncr(t *testing.T) {
 		require.EqualValues(t, -1, rdb.DecrBy(ctx, "novar", 17179869185).Val())
 	})
 
+	t.Run("DECRBY negation overflow", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "SET", "foo", "0").Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "DECRBY", "foo", "-9223372036854775808").Err(), ".*decrement would overflow.*")
+	})
+
 	t.Run("INCRBYFLOAT against non existing key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "novar").Err())
 		require.EqualValues(t, 1, rdb.IncrByFloat(ctx, "novar", 1.0).Val())

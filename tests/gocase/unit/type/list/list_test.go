@@ -885,4 +885,60 @@ func TestList(t *testing.T) {
 			})
 		}
 	}
+
+	t.Run("Test BLMOVE on different keys", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "list1{t}").Err())
+		require.NoError(t, rdb.Del(ctx, "list2{t}").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "1").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "2").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "3").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "4").Err())
+		require.NoError(t, rdb.RPush(ctx, "list1{t}", "5").Err())
+		require.NoError(t, rdb.BLMove(ctx, "list1{t}", "list2{t}", "RIGHT", "LEFT", time.Millisecond*1000).Err())
+		require.NoError(t, rdb.BLMove(ctx, "list1{t}", "list2{t}", "LEFT", "RIGHT", time.Millisecond*1000).Err())
+		require.EqualValues(t, 3, rdb.LLen(ctx, "list1{t}").Val())
+		require.EqualValues(t, 2, rdb.LLen(ctx, "list2{t}").Val())
+		require.Equal(t, []string{"2", "3", "4"}, rdb.LRange(ctx, "list1{t}", 0, -1).Val())
+		require.Equal(t, []string{"5", "1"}, rdb.LRange(ctx, "list2{t}", 0, -1).Val())
+	})
+
+	for _, from := range []string{"LEFT", "RIGHT"} {
+		for _, to := range []string{"LEFT", "RIGHT"} {
+			t.Run(fmt.Sprintf("BLMOVE %s %s on the list node", from, to), func(t *testing.T) {
+				rd := srv.NewTCPClient()
+				defer func() { require.NoError(t, rd.Close()) }()
+				require.NoError(t, rdb.Del(ctx, "target_key{t}").Err())
+				require.NoError(t, rdb.RPush(ctx, "target_key{t}", 1).Err())
+				createList("list{t}", []string{"a", "b", "c", "d"})
+				require.NoError(t, rd.WriteArgs("blmove", "list{t}", "target_key{t}", from, to, "1"))
+				r, err1 := rd.ReadLine()
+				require.Equal(t, "$1", r)
+				require.NoError(t, err1)
+				elem, err2 := rd.ReadLine()
+				require.NoError(t, err2)
+				if from == "RIGHT" {
+					require.Equal(t, elem, "d")
+					require.Equal(t, []string{"a", "b", "c"}, rdb.LRange(ctx, "list{t}", 0, -1).Val())
+				} else {
+					require.Equal(t, elem, "a")
+					require.Equal(t, []string{"b", "c", "d"}, rdb.LRange(ctx, "list{t}", 0, -1).Val())
+				}
+				if to == "RIGHT" {
+					require.Equal(t, elem, rdb.RPop(ctx, "target_key{t}").Val())
+				} else {
+					require.Equal(t, elem, rdb.LPop(ctx, "target_key{t}").Val())
+				}
+			})
+		}
+	}
+
+	t.Run("Test BLMOVE block behaviour", func(t *testing.T) {
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		require.NoError(t, rdb.Del(ctx, "blist", "target").Err())
+		require.NoError(t, rd.WriteArgs("blmove", "blist", "target", "left", "right", "0"))
+		require.EqualValues(t, 2, rdb.LPush(ctx, "blist", "foo", "bar").Val())
+		rd.MustRead(t, "$3")
+		require.Equal(t, "bar", rdb.LRange(ctx, "target", 0, -1).Val()[0])
+	})
 }

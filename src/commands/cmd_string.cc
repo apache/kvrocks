@@ -530,6 +530,12 @@ class CommandDecrBy : public Commander {
     }
 
     increment_ = *parse_result;
+
+    // Negating LLONG_MIN will cause an overflow.
+    if (increment_ == LLONG_MIN) {
+      return {Status::RedisParseErr, "decrement would overflow"};
+    }
+
     return Commander::Parse(args);
   }
 

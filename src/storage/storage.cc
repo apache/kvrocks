@@ -94,6 +94,13 @@ rocksdb::ReadOptions Storage::DefaultScanOptions() const {
   return read_options;
 }
 
+rocksdb::ReadOptions Storage::DefaultMultiGetOptions() const {
+  rocksdb::ReadOptions read_options;
+  read_options.async_io = config_->rocks_db.read_options.async_io;
+
+  return read_options;
+}
+
 rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
   rocksdb::BlockBasedTableOptions table_options;
   table_options.format_version = 5;

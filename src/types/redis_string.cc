@@ -36,7 +36,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
                                                   std::vector<std::string> *raw_values) {
   raw_values->clear();
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   raw_values->resize(keys.size());

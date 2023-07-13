@@ -51,18 +51,22 @@ Users are encouraged to add themselves to the Users page. Either leave a comment
 ### Prerequisite
 
 ```shell
-# CentOS / RedHat
-sudo yum install -y epel-release
-sudo yum install -y git gcc gcc-c++ make cmake autoconf automake libtool libstdc++-static python3 which openssl-devel
-
 # Ubuntu / Debian
 sudo apt update
-sudo apt install -y git gcc g++ make cmake autoconf automake libtool python3 libssl-dev
+sudo apt install -y git build-essential cmake libtool python3 libssl-dev
+
+# CentOS / RedHat
+sudo yum install -y centos-release-scl-rh
+sudo yum install -y git devtoolset-11 autoconf automake libtool libstdc++-static python3 openssl-devel
+# download and install cmake via https://cmake.org/download
+wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh -O cmake.sh
+bash cmake.sh --skip-license --prefix=/usr
+# enable gcc and make in devtoolset-11
+source /opt/rh/devtoolset-11/enable
 
 # macOS
-brew install autoconf automake libtool cmake openssl
-
-# Please force linking the openssl if still can't find after installing openssl
+brew install git cmake autoconf automake libtool openssl
+# please link openssl by force if it still cannot be found after installing
 brew link --force openssl
 ```
 

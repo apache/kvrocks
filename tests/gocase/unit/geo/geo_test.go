@@ -261,6 +261,7 @@ func TestGeo(t *testing.T) {
 
 	t.Run("GEORANGE STORE option: plain usage", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.NoError(t, rdb.Del(ctx, "points2").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "Palermo", Longitude: 13.361389, Latitude: 38.115556}, &redis.GeoLocation{Name: "Catania", Longitude: 15.087269, Latitude: 37.502669}).Err())
 		rdb.GeoRadiusStore(ctx, "points", 13.361389, 38.115556, &redis.GeoRadiusQuery{Radius: 500, Unit: "km", Store: "points2"})
 		require.EqualValues(t, rdb.ZRange(ctx, "points", 0, -1).Val(), rdb.ZRange(ctx, "points2", 0, -1).Val())

@@ -594,7 +594,7 @@ class CommandBLMove : public Commander,
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    if(!elem.empty()) {
+    if (!elem.empty()) {
       *output = redis::BulkString(elem);
       return Status::OK();
     }
@@ -679,9 +679,7 @@ class CommandBLMove : public Commander,
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
 
-  void unblockOnSrc() {
-    svr_->UnblockOnKey(args_[1], conn_);
-  }
+  void unblockOnSrc() { svr_->UnblockOnKey(args_[1], conn_); }
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),

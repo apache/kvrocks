@@ -1079,6 +1079,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 	})
 
 	t.Run(fmt.Sprintf("ZUNION basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		require.NoError(t, rdb.Do(ctx, "zunion", 1, "zseta").Err())
+
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},
 			{Score: 2, Member: "b"},

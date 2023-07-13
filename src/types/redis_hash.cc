@@ -405,7 +405,7 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
   if (count == 0) return rocksdb::Status::OK();
   s = GetAll(user_key, &samples, type);
   if (!s.ok()) return s;
-  auto appendFieldWithIndex = [field_values, &samples, type](uint64_t index) {
+  auto append_field_with_index = [field_values, &samples, type](uint64_t index) {
     if (type == HashFetchType::kAll) {
       field_values->emplace_back(samples[index].field, samples[index].value);
     } else {
@@ -420,12 +420,12 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
     std::uniform_int_distribution<uint64_t> dis(0, size - 1);
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = dis(gen);
-      appendFieldWithIndex(index);
+      append_field_with_index(index);
     }
   } else if (size <= count) {
     // Case 2: Requested count is greater than or equal to the number of elements inside the hash
     for (uint64_t i = 0; i < size; i++) {
-      appendFieldWithIndex(i);
+      append_field_with_index(i);
     }
   } else {
     // Case 3: Requested count is less than the number of elements inside the hash
@@ -436,7 +436,7 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
     indices.resize(count);
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = indices[i];
-      appendFieldWithIndex(index);
+      append_field_with_index(index);
     }
   }
   return rocksdb::Status::OK();

@@ -380,7 +380,7 @@ class CommandHRandField : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() >= 3) {
-      noParameters_ = false;
+      no_parameters_ = false;
       auto parse_result = ParseInt<int64_t>(args[2], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
@@ -412,7 +412,7 @@ class CommandHRandField : public Commander {
       if (withvalues_) result_entries.emplace_back(p.value);
     }
 
-    if (noParameters_)
+    if (no_parameters_)
       *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
     else
       *output = redis::MultiBulkString(result_entries, false);
@@ -422,7 +422,7 @@ class CommandHRandField : public Commander {
  private:
   bool withvalues_ = false;
   int64_t command_count_ = 1;
-  bool noParameters_ = true;
+  bool no_parameters_ = true;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),

@@ -338,6 +338,7 @@ TEST_F(RedisHashTest, HRandField) {
     auto s = hash_->Set(key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
+  int64_t size = static_cast<int64_t>(fields_.size());
   std::vector<FieldValue> fvs;
   // Case 1: Negative count, randomly select elements
   fvs.clear();
@@ -346,12 +347,12 @@ TEST_F(RedisHashTest, HRandField) {
 
   // Case 2: Requested count is greater than or equal to the number of elements inside the hash
   fvs.clear();
-  s = hash_->RandField(key_, fields_.size() + 1, &fvs);
+  s = hash_->RandField(key_, size + 1, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
 
   // Case 3: Requested count is less than the number of elements inside the hash
   fvs.clear();
-  s = hash_->RandField(key_, fields_.size() - 1, &fvs);
+  s = hash_->RandField(key_, size - 1, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size() - 1);
 
   // hrandfield key 0

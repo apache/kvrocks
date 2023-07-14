@@ -66,11 +66,11 @@ constexpr const char *kLuaFunctionPrefix = "lua_f_";
 
 struct CompressionOption {
   rocksdb::CompressionType type;
-  const char *name;
-  const char *val;
+  const std::string name;
+  const std::string val;
 };
 
-const std::vector<CompressionOption> *GetCompressionOptions();
+const std::vector<CompressionOption> GetCompressionOptions();
 
 class Storage {
  public:

@@ -64,18 +64,18 @@ std::string TrimRocksDbPrefix(std::string s) {
   return s.substr(8, s.size() - 8);
 }
 
-int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const char *name) {
+int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const std::string &name) {
   for (const auto &e : enums) {
-    if (strcasecmp(e.name, name) == 0) return e.val;
+    if (strcasecmp(e.name.c_str(), name.c_str()) == 0) return e.val;
   }
   return INT_MIN;
 }
 
-const char *ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val) {
+std::string ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val) {
   for (const auto &e : enums) {
     if (e.val == val) return e.name;
   }
-  return nullptr;
+  return {};
 }
 
 Config::Config() {
@@ -89,7 +89,7 @@ Config::Config() {
   };
 
   std::vector<ConfigEnum> compression_types;
-  for (const auto &e : *engine::GetCompressionOptions()) {
+  for (const auto &e : engine::GetCompressionOptions()) {
     compression_types.push_back({e.name, e.type});
   }
   FieldWrapper fields[] = {
@@ -331,8 +331,8 @@ void Config::initFieldCallback() {
   auto set_compression_type_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();
 
-    std::string compression_option = "";
-    for (auto &option : *engine::GetCompressionOptions()) {
+    std::string compression_option;
+    for (auto &option : engine::GetCompressionOptions()) {
       if (option.name == v) {
         compression_option = option.val;
         break;

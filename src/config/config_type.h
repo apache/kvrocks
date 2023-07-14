@@ -47,14 +47,14 @@ using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
 struct ConfigEnum {
-  const char *name;
+  const std::string name;
   const int val;
 };
 
 enum ConfigType { SingleConfig, MultiConfig };
 
-int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const char *name);
-const char *ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val);
+int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const std::string &name);
+std::string ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val);
 
 class ConfigField {
  public:
@@ -186,9 +186,8 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(std::move(enums)){
+  EnumField(int *receiver, std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(std::move(enums)) {
     *receiver_ = e;
-
   }
   ~EnumField() override = default;
   std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }
@@ -197,7 +196,7 @@ class EnumField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    int e = ConfigEnumGetValue(enums_, v.c_str());
+    int e = ConfigEnumGetValue(enums_, v);
     if (e == INT_MIN) {
       return {Status::NotOK, "invalid enum option"};
     }

@@ -623,7 +623,7 @@ class CommandBLMove : public Commander,
     redis::List list_db(svr_->storage, conn_->GetNamespace());
     std::string elem;
     auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       conn_->Reply(redis::Error("ERR " + s.ToString()));
       return;
     }

@@ -70,7 +70,7 @@ struct CompressionOption {
   const std::string val;
 };
 
-const std::vector<CompressionOption> GetCompressionOptions();
+std::vector<CompressionOption> GetCompressionOptions();
 
 class Storage {
  public:

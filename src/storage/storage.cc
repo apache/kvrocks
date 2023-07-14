@@ -64,7 +64,7 @@ const static std::vector<CompressionOption> compressionOptions = {
 
 using rocksdb::Slice;
 
-const std::vector<CompressionOption> GetCompressionOptions() { return compressionOptions; }
+std::vector<CompressionOption> GetCompressionOptions() { return compressionOptions; }
 
 Storage::Storage(Config *config)
     : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {

@@ -186,8 +186,9 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, const std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(enums) {
+  EnumField(int *receiver, std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(std::move(enums)){
     *receiver_ = e;
+
   }
   ~EnumField() override = default;
   std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }

@@ -293,7 +293,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-and-lint]
+    needs: [precondition]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -302,6 +302,9 @@ jobs:
           - name: CentOS 7
             image: centos:7
             compiler: gcc
+          - name: openSUSE Leap 15
+            image: opensuse/leap:15
+            compiler: auto
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -311,7 +314,16 @@ jobs:
         run: |
           yum install -y centos-release-scl-rh
           yum install -y devtoolset-11 python3 autoconf automake wget git
-          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      
+      - name: Setup openSUSE
+        if: ${{ startsWith(matrix.image, 'opensuse') }}
+        run: |
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake
+          update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
+          update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
+      
+      - name: Retrieve NPROC
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
         id: cache-redis
@@ -329,19 +341,25 @@ jobs:
           pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Install cmake
+        if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: 'tests/gocase/go.mod'
+      # - uses: actions/setup-go@v3
+      #   with:
+      #     go-version-file: 'tests/gocase/go.mod'
 
       - name: Build Kvrocks
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           source /opt/rh/devtoolset-11/enable
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
+      
+      - name: Build Kvrocks
+        if: ${{ !startsWith(matrix.image, 'centos') }}
+        run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
 
       - name: Run Unit Test

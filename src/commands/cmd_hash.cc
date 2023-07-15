@@ -376,6 +376,7 @@ class CommandHScan : public CommandSubkeyScanBase {
     return Status::OK();
   }
 };
+
 class CommandHRandField : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -395,6 +396,7 @@ class CommandHRandField : public Commander {
     }
     return Commander::Parse(args);
   }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Hash hash_db(svr->storage, conn->GetNamespace());
     std::vector<FieldValue> field_values;
@@ -409,7 +411,7 @@ class CommandHRandField : public Commander {
     result_entries.reserve(field_values.size());
     for (const auto &p : field_values) {
       result_entries.emplace_back(p.field);
-      if (withvalues_) result_entries.emplace_back(p.value);
+      if (withvalues_) result_entries.emplace_back(std::move(p.value));
     }
 
     if (no_parameters_)

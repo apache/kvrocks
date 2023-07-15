@@ -433,7 +433,6 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(),
                  std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
-    indices.resize(count);
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = indices[i];
       append_field_with_index(index);
@@ -441,4 +440,5 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
   }
   return rocksdb::Status::OK();
 }
+
 }  // namespace redis

@@ -377,6 +377,56 @@ class CommandHScan : public CommandSubkeyScanBase {
   }
 };
 
+class CommandHRandField : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() >= 3) {
+      no_parameters_ = false;
+      auto parse_result = ParseInt<int64_t>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      command_count_ = *parse_result;
+
+      if (args.size() > 4 || (args.size() == 4 && !util::EqualICase(args[3], "withvalues"))) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      } else if (args.size() == 4) {
+        withvalues_ = true;
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Hash hash_db(svr->storage, conn->GetNamespace());
+    std::vector<FieldValue> field_values;
+
+    auto s = hash_db.RandField(args_[1], command_count_, &field_values,
+                               withvalues_ ? HashFetchType::kAll : HashFetchType::kOnlyKey);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> result_entries;
+    result_entries.reserve(field_values.size());
+    for (const auto &p : field_values) {
+      result_entries.emplace_back(p.field);
+      if (withvalues_) result_entries.emplace_back(p.value);
+    }
+
+    if (no_parameters_)
+      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+    else
+      *output = redis::MultiBulkString(result_entries, false);
+    return Status::OK();
+  }
+
+ private:
+  bool withvalues_ = false;
+  int64_t command_count_ = 1;
+  bool no_parameters_ = true;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
@@ -392,6 +442,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1
                         MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

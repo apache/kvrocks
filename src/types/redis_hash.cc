@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <random>
 #include <utility>
 
 #include "db_util.h"
@@ -382,6 +383,59 @@ rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uin
                            const std::string &field_prefix, std::vector<std::string> *fields,
                            std::vector<std::string> *values) {
   return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
+}
+
+rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
+                                HashFetchType type) {
+  uint64_t count = (command_count >= 0) ? static_cast<uint64_t>(command_count) : static_cast<uint64_t>(-command_count);
+  bool unique = (command_count >= 0);
+
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+  HashMetadata metadata(/*generate_version=*/false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  uint64_t size = metadata.size;
+  std::vector<FieldValue> samples;
+  // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
+  if (count == 0) return rocksdb::Status::OK();
+  s = GetAll(user_key, &samples, type);
+  if (!s.ok()) return s;
+  auto append_field_with_index = [field_values, &samples, type](uint64_t index) {
+    if (type == HashFetchType::kAll) {
+      field_values->emplace_back(samples[index].field, samples[index].value);
+    } else {
+      field_values->emplace_back(samples[index].field, "");
+    }
+  };
+  field_values->reserve(std::min(size, count));
+  if (!unique || count == 1) {
+    // Case 1: Negative count, randomly select elements or without parameter
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint64_t> dis(0, size - 1);
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = dis(gen);
+      append_field_with_index(index);
+    }
+  } else if (size <= count) {
+    // Case 2: Requested count is greater than or equal to the number of elements inside the hash
+    for (uint64_t i = 0; i < size; i++) {
+      append_field_with_index(i);
+    }
+  } else {
+    // Case 3: Requested count is less than the number of elements inside the hash
+    std::vector<uint64_t> indices(size);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(),
+                 std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = indices[i];
+      append_field_with_index(index);
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

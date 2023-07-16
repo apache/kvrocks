@@ -186,14 +186,13 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
   std::string prefix_key;
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
 
@@ -295,14 +294,13 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
   std::string next_version_prefix_key;
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
   std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.entry_id);
@@ -360,14 +358,13 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
   std::string prefix_key;
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
   iter->Seek(start_key);
@@ -563,14 +560,13 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
   std::string prefix_key;
   InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
   std::string start_key = internalKeyFromEntryID(ns_key, *metadata, metadata->first_entry_id);

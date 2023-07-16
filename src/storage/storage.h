@@ -64,13 +64,26 @@ constexpr const char *kPropagateScriptCommand = "script";
 
 constexpr const char *kLuaFunctionPrefix = "lua_f_";
 
+struct CompressionOption {
+  rocksdb::CompressionType type;
+  const std::string name;
+  const std::string val;
+};
+
+inline const std::vector<CompressionOption> CompressionOptions = {
+    {rocksdb::kNoCompression, "no", "kNoCompression"},
+    {rocksdb::kSnappyCompression, "snappy", "kSnappyCompression"},
+    {rocksdb::kZlibCompression, "zlib", "kZlibCompression"},
+    {rocksdb::kLZ4Compression, "lz4", "kLZ4Compression"},
+    {rocksdb::kZSTD, "zstd", "kZSTD"},
+};
+
 class Storage {
  public:
   explicit Storage(Config *config);
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
-  void SetReadOptions(rocksdb::ReadOptions &read_options);
   Status Open(bool read_only = false);
   void CloseDB();
   void EmptyDB();
@@ -99,6 +112,8 @@ class Storage {
 
   rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
+  rocksdb::ReadOptions DefaultScanOptions() const;
+  rocksdb::ReadOptions DefaultMultiGetOptions() const;
   rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                          const rocksdb::Slice &key);
   rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);

@@ -454,6 +454,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta", "min", "count", 1, "count", 10).Err(), ".*syntax error.*")
 	})
 
+	t.Run(fmt.Sprintf("ZRANGESTORE arity check - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrangestore", "zdst", "zsrc").Err(), ".*wrong number of arguments.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0).Err(), ".*wrong number of arguments.*")
+	})
+
 	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zsrc")
 		rdb.Del(ctx, "zdst")
@@ -1079,6 +1087,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 	})
 
 	t.Run(fmt.Sprintf("ZUNION basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		require.NoError(t, rdb.Do(ctx, "zunion", 1, "zseta").Err())
+
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},
 			{Score: 2, Member: "b"},
@@ -1312,19 +1323,19 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 		for i := 0; i < 100; i++ {
 			min, max := rand.Float64(), rand.Float64()
 			min, max = math.Min(min, max), math.Max(min, max)
-			low := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("%f", min)}).Val()
-			ok := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%f", min), Max: fmt.Sprintf("%f", max)}).Val()
-			high := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%f", max), Max: "+inf"}).Val()
-			lowEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("(%f", min)}).Val()
-			okEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%f", min), Max: fmt.Sprintf("(%f", max)}).Val()
-			highEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%f", max), Max: "+inf"}).Val()
+			low := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("%v", min)}).Val()
+			ok := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%v", min), Max: fmt.Sprintf("%v", max)}).Val()
+			high := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("%v", max), Max: "+inf"}).Val()
+			lowEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: "-inf", Max: fmt.Sprintf("(%v", min)}).Val()
+			okEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%v", min), Max: fmt.Sprintf("(%v", max)}).Val()
+			highEx := rdb.ZRangeByScore(ctx, "zset", &redis.ZRangeBy{Min: fmt.Sprintf("(%v", max), Max: "+inf"}).Val()
 
-			require.Len(t, low, int(rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("%f", min)).Val()))
-			require.Len(t, ok, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Val()))
-			require.Len(t, high, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("%f", max), "+inf").Val()))
-			require.Len(t, lowEx, int(rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("(%f", min)).Val()))
-			require.Len(t, okEx, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("(%f", min), fmt.Sprintf("(%f", max)).Val()))
-			require.Len(t, highEx, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("(%f", max), "+inf").Val()))
+			require.Len(t, low, int(rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("%v", min)).Val()))
+			require.Len(t, ok, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("%v", min), fmt.Sprintf("%v", max)).Val()))
+			require.Len(t, high, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("%v", max), "+inf").Val()))
+			require.Len(t, lowEx, int(rdb.ZCount(ctx, "zset", "-inf", fmt.Sprintf("(%v", min)).Val()))
+			require.Len(t, okEx, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("(%v", min), fmt.Sprintf("(%v", max)).Val()))
+			require.Len(t, highEx, int(rdb.ZCount(ctx, "zset", fmt.Sprintf("(%v", max), "+inf").Val()))
 
 			for _, x := range low {
 				require.LessOrEqual(t, rdb.ZScore(ctx, "zset", x).Val(), min)

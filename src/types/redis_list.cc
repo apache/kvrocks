@@ -186,14 +186,13 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
 
   bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
@@ -277,12 +276,11 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
@@ -387,12 +385,11 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
   InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
 
-  rocksdb::ReadOptions read_options;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
-  storage_->SetReadOptions(read_options);
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {

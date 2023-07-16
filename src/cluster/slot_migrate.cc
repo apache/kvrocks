@@ -147,6 +147,7 @@ SlotMigrator::~SlotMigrator() {
       LOG(WARNING) << "Slot migrating thread operation failed: " << s.Msg();
     }
   }
+  redisFree(dst_redis_context_);
 }
 
 Status SlotMigrator::CreateMigrationThread() {
@@ -1176,11 +1177,7 @@ Status SlotMigrator::getClockSkew(int64_t *diff_us) {
   auto *reply = static_cast<redisReply *>(redisCommand(dst_redis_context_, "TIME"));
   uint64_t receive_timestamp = util::GetTimeStampUS();
 
-  auto exit = MakeScopeExit([reply] {
-    if (reply != nullptr) {
-      freeReplyObject(reply);
-    }
-  });
+  auto exit = MakeScopeExit([reply] { freeReplyObject(reply); });
 
   if (dst_redis_context_->err != 0) {
     return {Status::NotOK, std::string(dst_redis_context_->errstr)};

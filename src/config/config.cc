@@ -62,8 +62,8 @@ ConfigEnum log_levels[] = {{"info", google::INFO},
                            {"fatal", google::FATAL},
                            {nullptr, 0}};
 
-ConfigEnum migrate_types[] = {{"redis_command", static_cast<const int>(MigrateType::kRedisCommand)},
-                              {"raw_key_value", static_cast<const int>(MigrateType::kRawKeyValue)}};
+ConfigEnum migrate_types[] = {{"redis-command", static_cast<const int>(MigrateType::kRedisCommand)},
+                              {"raw-key-value", static_cast<const int>(MigrateType::kRawKeyValue)}};
 
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;

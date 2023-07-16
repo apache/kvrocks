@@ -628,7 +628,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", migrateType).Err())
 		// Slowdown the migration speed to prevent running before next increment commands
-		if migrateType == "redis_command" {
+		if migrateType == "redis-command" {
 			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "256").Err())
 		} else {
 			// Create enough data
@@ -637,7 +637,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		}
 
 		defer func() {
-			if migrateType == "redis_command" {
+			if migrateType == "redis-command" {
 				require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "4096").Err())
 			} else {
 				require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "16").Err())
@@ -784,7 +784,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", migrateType).Err())
 
 		valuePrefix := "value"
-		if migrateType == "redis_command" {
+		if migrateType == "redis-command" {
 			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "64").Err())
 		} else {
 			// Create enough data
@@ -914,7 +914,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, 0, rdb0.Exists(ctx, util.SlotTable[slotWithDeletedKey]).Val())
 	}
 
-	migrateTypes := []string{"redis_command", "raw_key_value"}
+	migrateTypes := []string{"redis-command", "raw-key-value"}
 
 	for _, migrateType := range migrateTypes {
 		t.Run(fmt.Sprintf("MIGRATE - Migrate all types of existing data using %s", migrateType), func(t *testing.T) {
@@ -980,7 +980,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 
 	t.Run("MIGRATE - Slow migrate speed", func(t *testing.T) {
 		slot += 1
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", "redis_command").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", "redis-command").Err())
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "16").Err())
 		require.Equal(t, map[string]string{"migrate-speed": "16"}, rdb0.ConfigGet(ctx, "migrate-speed").Val())
 		require.NoError(t, rdb0.Del(ctx, util.SlotTable[slot]).Err())

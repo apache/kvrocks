@@ -411,7 +411,7 @@ class CommandHRandField : public Commander {
     result_entries.reserve(field_values.size());
     for (const auto &p : field_values) {
       result_entries.emplace_back(p.field);
-      if (withvalues_) result_entries.emplace_back(std::move(p.value));
+      if (withvalues_) result_entries.emplace_back(p.value);
     }
 
     if (no_parameters_)

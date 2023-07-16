@@ -186,7 +186,7 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, std::vector<ConfigEnum> &enums, int e) : receiver_(receiver), enums_(std::move(enums)) {
+  EnumField(int *receiver, std::vector<ConfigEnum> enums, int e) : receiver_(receiver), enums_(std::move(enums)) {
     *receiver_ = e;
   }
   ~EnumField() override = default;

@@ -70,7 +70,13 @@ struct CompressionOption {
   const std::string val;
 };
 
-std::vector<CompressionOption> GetCompressionOptions();
+inline const std::vector<CompressionOption> CompressionOptions = {
+    {rocksdb::kNoCompression, "no", "kNoCompression"},
+    {rocksdb::kSnappyCompression, "snappy", "kSnappyCompression"},
+    {rocksdb::kZlibCompression, "zlib", "kZlibCompression"},
+    {rocksdb::kLZ4Compression, "lz4", "kLZ4Compression"},
+    {rocksdb::kZSTD, "zstd", "kZSTD"},
+};
 
 class Storage {
  public:

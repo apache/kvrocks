@@ -41,7 +41,7 @@ std::string StallConditionType2String(const rocksdb::WriteStallCondition type) {
 }
 
 std::string CompressType2String(const rocksdb::CompressionType type) {
-  for (const auto &option : engine::GetCompressionOptions()) {
+  for (const auto &option : engine::CompressionOptions) {
     if (option.type == type) {
       return option.name;
     }

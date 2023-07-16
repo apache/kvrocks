@@ -64,20 +64,6 @@ std::string TrimRocksDbPrefix(std::string s) {
   return s.substr(8, s.size() - 8);
 }
 
-int ConfigEnumGetValue(const std::vector<ConfigEnum> &enums, const std::string &name) {
-  for (const auto &e : enums) {
-    if (strcasecmp(e.name.c_str(), name.c_str()) == 0) return e.val;
-  }
-  return INT_MIN;
-}
-
-std::string ConfigEnumGetName(const std::vector<ConfigEnum> &enums, int val) {
-  for (const auto &e : enums) {
-    if (e.val == val) return e.name;
-  }
-  return {};
-}
-
 Config::Config() {
   struct FieldWrapper {
     std::string name;
@@ -89,7 +75,7 @@ Config::Config() {
   };
 
   std::vector<ConfigEnum> compression_types;
-  for (const auto &e : engine::GetCompressionOptions()) {
+  for (const auto &e : engine::CompressionOptions) {
     compression_types.push_back({e.name, e.type});
   }
   FieldWrapper fields[] = {
@@ -332,7 +318,7 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();
 
     std::string compression_option;
-    for (auto &option : engine::GetCompressionOptions()) {
+    for (auto &option : engine::CompressionOptions) {
       if (option.name == v) {
         compression_option = option.val;
         break;

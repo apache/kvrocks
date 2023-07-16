@@ -54,17 +54,7 @@ constexpr const char *kReplicationIdKey = "replication_id_";
 
 const int64_t kIORateLimitMaxMb = 1024000;
 
-const static std::vector<CompressionOption> compressionOptions = {
-    {rocksdb::kNoCompression, "no", "kNoCompression"},
-    {rocksdb::kSnappyCompression, "snappy", "kSnappyCompression"},
-    {rocksdb::kZlibCompression, "zlib", "kZlibCompression"},
-    {rocksdb::kLZ4Compression, "lz4", "kLZ4Compression"},
-    {rocksdb::kZSTD, "zstd", "kZSTD"},
-};
-
 using rocksdb::Slice;
-
-std::vector<CompressionOption> GetCompressionOptions() { return compressionOptions; }
 
 Storage::Storage(Config *config)
     : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {

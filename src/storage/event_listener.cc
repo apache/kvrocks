@@ -41,22 +41,12 @@ std::string StallConditionType2String(const rocksdb::WriteStallCondition type) {
 }
 
 std::string CompressType2String(const rocksdb::CompressionType type) {
-  std::map<rocksdb::CompressionType, std::string> compression_type_string_map = {
-      {rocksdb::kNoCompression, "no"},
-      {rocksdb::kSnappyCompression, "snappy"},
-      {rocksdb::kZlibCompression, "zlib"},
-      {rocksdb::kBZip2Compression, "zip2"},
-      {rocksdb::kLZ4Compression, "lz4"},
-      {rocksdb::kLZ4HCCompression, "lz4hc"},
-      {rocksdb::kXpressCompression, "xpress"},
-      {rocksdb::kZSTD, "zstd"},
-      {rocksdb::kZSTDNotFinalCompression, "zstd_not_final"},
-      {rocksdb::kDisableCompressionOption, "disable"}};
-  auto iter = compression_type_string_map.find(type);
-  if (iter == compression_type_string_map.end()) {
-    return "unknown";
+  for (const auto &option : engine::CompressionOptions) {
+    if (option.type == type) {
+      return option.name;
+    }
   }
-  return iter->second;
+  return "unknown";
 }
 
 bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {

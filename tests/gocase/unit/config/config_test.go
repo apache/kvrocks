@@ -108,3 +108,24 @@ func TestSetConfigBackupDir(t *testing.T) {
 	require.True(t, hasCompactionFiles(newBackupDir))
 	require.True(t, hasCompactionFiles(originBackupDir))
 }
+
+func TestConfigSetCompression(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
+
+	configKey := "rocksdb.compression"
+	supportedCompressions := []string{"no", "snappy", "zlib", "lz4", "zstd"}
+	for _, compression := range supportedCompressions {
+		require.NoError(t, rdb.ConfigSet(ctx, configKey, compression).Err())
+		vals, err := rdb.ConfigGet(ctx, configKey).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, compression, vals[configKey])
+	}
+	require.ErrorContains(t, rdb.ConfigSet(ctx, configKey, "unsupported").Err(), "invalid enum option")
+}

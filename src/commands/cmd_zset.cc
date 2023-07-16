@@ -1355,7 +1355,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBZPopMin>("bzpopmin", -3, "write", 1, -2, 1),
                         MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
                         MakeCmdAttr<CommandBZMPop>("bzmpop", -5, "write", CommandBZMPop::Range),
-                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),
@@ -1372,6 +1372,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
-                        MakeCmdAttr<CommandZUnion>("zunion", -4, "read-only", CommandZUnion::Range), )
+                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range), )
 
 }  // namespace redis

@@ -454,6 +454,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		util.ErrorRegexp(t, rdb.Do(ctx, "bzmpop", 0.1, 1, "zseta", "min", "count", 1, "count", 10).Err(), ".*syntax error.*")
 	})
 
+	t.Run(fmt.Sprintf("ZRANGESTORE arity check - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrangestore", "zdst", "zsrc").Err(), ".*wrong number of arguments.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0).Err(), ".*wrong number of arguments.*")
+	})
+
 	t.Run(fmt.Sprintf("ZRANGESTORE basics - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zsrc")
 		rdb.Del(ctx, "zdst")
@@ -1079,6 +1087,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 	})
 
 	t.Run(fmt.Sprintf("ZUNION basics - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		require.NoError(t, rdb.Do(ctx, "zunion", 1, "zseta").Err())
+
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},
 			{Score: 2, Member: "b"},

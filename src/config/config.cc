@@ -75,6 +75,7 @@ Config::Config() {
   };
 
   std::vector<ConfigEnum> compression_types;
+  compression_types.reserve(engine::CompressionOptions.size());
   for (const auto &e : engine::CompressionOptions) {
     compression_types.push_back({e.name, e.type});
   }

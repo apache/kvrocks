@@ -741,7 +741,8 @@ class CommandXRead : public Commander,
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok() && !s.IsNotFound()) {
-        return {Status::RedisExecErr, s.ToString()};
+        conn_->Reply(redis::Error("ERR " + s.ToString()));
+        return;
       }
 
       if (result.size() > 0) {

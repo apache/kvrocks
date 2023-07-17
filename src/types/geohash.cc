@@ -330,8 +330,8 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
  * having a radius of radius_meter. bounds[0] - bounds[2] is the minimum
  * and maxium longitude, while bounds[1] - bounds[3] is the minimum and
  * maximum latitude. */
-int GeoHashHelper::BoundingBox(GeoShape *geo_shape, double *bounds) {
-  if (!bounds) return 0;
+int GeoHashHelper::BoundingBox(GeoShape *geo_shape) {
+  if (!geo_shape->bounds) return 0;
   double longitude = geo_shape->xy[0];
   double latitude = geo_shape->xy[1];
   double height = geo_shape->conversion * (geo_shape->type == CIRCULAR ? geo_shape->radius : geo_shape->height / 2);
@@ -342,14 +342,14 @@ int GeoHashHelper::BoundingBox(GeoShape *geo_shape, double *bounds) {
   const double long_delta_bottom = RadDeg(width / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude - lat_delta)));
 
   bool is_in_southern_hemisphere = latitude < 0;
-  bounds[0] = is_in_southern_hemisphere ? longitude - long_delta_bottom : longitude - long_delta_top;
-  bounds[2] = is_in_southern_hemisphere ? longitude + long_delta_bottom : longitude + long_delta_top;
-  bounds[1] = latitude - lat_delta;
-  bounds[3] = latitude + lat_delta;
+  geo_shape->bounds[0] = is_in_southern_hemisphere ? longitude - long_delta_bottom : longitude - long_delta_top;
+  geo_shape->bounds[2] = is_in_southern_hemisphere ? longitude + long_delta_bottom : longitude + long_delta_top;
+  geo_shape->bounds[1] = latitude - lat_delta;
+  geo_shape->bounds[3] = latitude + lat_delta;
   return 1;
 }
 
-GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape *geo_shape) {
+GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape &geo_shape) {
   GeoHashRange long_range, lat_range;
   GeoHashRadius radius;
   GeoHashBits hash;
@@ -357,19 +357,19 @@ GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape *geo_shape) {
   GeoHashArea area;
   double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
 
-  BoundingBox(geo_shape, geo_shape->bounds);
-  min_lon = geo_shape->bounds[0];
-  min_lat = geo_shape->bounds[1];
-  max_lon = geo_shape->bounds[2];
-  max_lat = geo_shape->bounds[3];
+  BoundingBox(&geo_shape);
+  min_lon = geo_shape.bounds[0];
+  min_lat = geo_shape.bounds[1];
+  max_lon = geo_shape.bounds[2];
+  max_lat = geo_shape.bounds[3];
 
-  double longitude = geo_shape->xy[0];
-  double latitude = geo_shape->xy[1];
+  double longitude = geo_shape.xy[0];
+  double latitude = geo_shape.xy[1];
 
   double radius_meters =
-      geo_shape->conversion * (geo_shape->type == CIRCULAR
-                                   ? geo_shape->radius
-                                   : sqrt(pow((geo_shape->width / 2), 2) + pow((geo_shape->height / 2), 2)));
+      geo_shape.conversion * (geo_shape.type == CIRCULAR
+                                   ? geo_shape.radius
+                                   : sqrt(pow((geo_shape.width / 2), 2) + pow((geo_shape.height / 2), 2)));
 
   int steps = EstimateStepsByRadius(radius_meters, latitude);
 
@@ -458,7 +458,7 @@ int GeoHashHelper::GetDistanceIfInRadius(double x1, double y1, double x2, double
   return 1;
 }
 
-int GeoHashHelper::GetDistanceIfInBox(double *bounds, double x1, double y1, double x2, double y2, double *distance) {
+int GeoHashHelper::GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2, double *distance) {
   if (x2 < bounds[0] || x2 > bounds[2] || y2 < bounds[1] || y2 > bounds[3]) return 0;
   *distance = GetDistance(x1, y1, x2, y2);
   return 1;
@@ -469,7 +469,7 @@ int GeoHashHelper::GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, d
   return GetDistanceIfInRadius(x1, y1, x2, y2, radius, distance);
 }
 
-int GeoHashHelper::GetDistanceIfInBoxWGS84(double *bounds, double x1, double y1, double x2, double y2,
+int GeoHashHelper::GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2,
                                            double *distance) {
   return GetDistanceIfInBox(bounds, x1, y1, x2, y2, distance);
 }

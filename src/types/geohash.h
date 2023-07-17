@@ -134,12 +134,12 @@ void GeohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors);
 class GeoHashHelper {
  public:
   static uint8_t EstimateStepsByRadius(double range_meters, double lat);
-  static int BoundingBox(GeoShape *geo_shape, double *bounds);
-  static GeoHashRadius GetAreasByShapeWGS84(GeoShape *geo_shape);
+  static int BoundingBox(GeoShape *geo_shape);
+  static GeoHashRadius GetAreasByShapeWGS84(GeoShape &geo_shape);
   static GeoHashFix52Bits Align52Bits(const GeoHashBits &hash);
   static double GetDistance(double lon1d, double lat1d, double lon2d, double lat2d);
   static int GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance);
-  static int GetDistanceIfInBox(double *bounds, double x1, double y1, double x2, double y2, double *distance);
+  static int GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2, double *distance);
   static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius, double *distance);
-  static int GetDistanceIfInBoxWGS84(double *bounds, double x1, double y1, double x2, double y2, double *distance);
+  static int GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2, double *distance);
 };

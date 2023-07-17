@@ -121,7 +121,7 @@ rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPoi
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   // Get neighbor geohash boxes for radius search
-  GeoHashRadius georadius = GeoHashHelper::GetAreasByShapeWGS84(&geo_shape);
+  GeoHashRadius georadius = GeoHashHelper::GetAreasByShapeWGS84(geo_shape);
 
   // Get zset for all matching points
   membersOfAllNeighbors(user_key, georadius, geo_shape, geo_points);
@@ -232,7 +232,7 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 }
 
 /* Search all eight neighbors + self geohash box */
-int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape &geo_shape,
+int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, const GeoShape &geo_shape,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
   unsigned int last_processed = 0;
@@ -273,7 +273,7 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, GeoShape 
  * Populate a GeoArray of GeoPoints by calling getPointsInRange().
  * Return the number of points added to the array. */
 int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points,
-                             GeoShape &geo_shape) {
+                             const GeoShape &geo_shape) {
   GeoHashFix52Bits min = 0, max = 0;
 
   scoresOfGeoHashBox(hash, &min, &max);
@@ -321,7 +321,7 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
  * using multiple queries to the sorted set, that we later need to sort
  * via qsort. Similarly we need to be able to reject points outside the search
  * radius area ASAP in order to allocate and process more points than needed. */
-int Geo::getPointsInRange(const Slice &user_key, double min, double max, GeoShape &geo_shape,
+int Geo::getPointsInRange(const Slice &user_key, double min, double max, const GeoShape &geo_shape,
                           std::vector<GeoPoint> *geo_points) {
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
@@ -368,7 +368,7 @@ bool Geo::appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, do
   return true;
 }
 
-bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, GeoShape &geo_shape, double score,
+bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, const GeoShape &geo_shape, double score,
                               const std::string &member) {
   double distance = NAN, xy[2];
   if (!decodeGeoHash(score, xy)) return false;

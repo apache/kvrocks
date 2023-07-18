@@ -234,8 +234,6 @@ class CommandBPop : public Commander,
       }
     } else if (!s.IsNotFound()) {
       conn_->Reply(redis::Error("ERR " + s.ToString()));
-      LOG(ERROR) << "Failed to execute redis command: " << conn_->current_cmd->GetAttributes()->name
-                 << ", err: " << s.ToString();
     }
 
     return s;

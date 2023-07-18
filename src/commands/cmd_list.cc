@@ -508,7 +508,7 @@ class CommandRPopLPUSH : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::List list_db(svr->storage, conn->GetNamespace());
     std::string elem;
-    auto s = list_db.RPopLPush(args_[1], args_[2], &elem);
+    auto s = list_db.LMove(args_[1], args_[2], false, true, &elem);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

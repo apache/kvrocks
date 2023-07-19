@@ -433,24 +433,6 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status List::RPopLPush(const Slice &src, const Slice &dst, std::string *elem) {
-  RedisType type = kRedisNone;
-  rocksdb::Status s = Type(dst, &type);
-  if (!s.ok()) return s;
-  if (type != kRedisNone && type != kRedisList) {
-    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
-  }
-
-  s = Pop(src, false, elem);
-  if (!s.ok()) return s;
-
-  uint64_t ret = 0;
-  std::vector<Slice> elems;
-  elems.emplace_back(*elem);
-  s = Push(dst, elems, true, &ret);
-  return s;
-}
-
 rocksdb::Status List::LMove(const rocksdb::Slice &src, const rocksdb::Slice &dst, bool src_left, bool dst_left,
                             std::string *elem) {
   if (src == dst) {

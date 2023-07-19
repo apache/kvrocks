@@ -41,7 +41,6 @@ class List : public Database {
   rocksdb::Status PopMulti(const Slice &user_key, bool left, uint32_t count, std::vector<std::string> *elems);
   rocksdb::Status Rem(const Slice &user_key, int count, const Slice &elem, uint64_t *removed_cnt);
   rocksdb::Status Index(const Slice &user_key, int index, std::string *elem);
-  rocksdb::Status RPopLPush(const Slice &src, const Slice &dst, std::string *elem);
   rocksdb::Status LMove(const Slice &src, const Slice &dst, bool src_left, bool dst_left, std::string *elem);
   rocksdb::Status Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);
   rocksdb::Status PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);

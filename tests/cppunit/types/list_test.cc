@@ -314,25 +314,6 @@ TEST_F(RedisListSpecificTest, Trim) {
   list_->Del(key_);
 }
 
-TEST_F(RedisListTest, RPopLPush) {
-  uint64_t ret = 0;
-  list_->Push(key_, fields_, true, &ret);
-  EXPECT_EQ(fields_.size(), ret);
-  Slice dst("test-list-rpoplpush-key");
-  for (auto &field : fields_) {
-    std::string elem;
-    list_->RPopLPush(key_, dst, &elem);
-    EXPECT_EQ(field.ToString(), elem);
-  }
-  for (auto &field : fields_) {
-    std::string elem;
-    list_->Pop(dst, false, &elem);
-    EXPECT_EQ(elem, field.ToString());
-  }
-  list_->Del(key_);
-  list_->Del(dst);
-}
-
 TEST_F(RedisListLMoveTest, LMoveSrcNotExist) {
   std::string elem;
   auto s = list_->LMove(key_, dst_key_, true, true, &elem);

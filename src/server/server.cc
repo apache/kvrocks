@@ -881,7 +881,7 @@ void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss << "\r\n";
-  string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
+  string_stream << "used_memory_rss_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
   string_stream << "used_memory_startup:" << memory_startup_use_.load(std::memory_order_relaxed) << "\r\n";

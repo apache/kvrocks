@@ -57,12 +57,13 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     batch->Put(sub_key, Slice());
     *added_cnt += 1;
   }
-  if (*added_cnt > 0) {
-    metadata.size += *added_cnt;
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch->Put(metadata_cf_handle_, ns_key, bytes);
-  }
+
+  if (*added_cnt == 0) return rocksdb::Status::OK();
+
+  metadata.size += *added_cnt;
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

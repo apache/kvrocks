@@ -19,7 +19,7 @@ include_guard()
 
 if (NOT DISABLE_CACHE_OBLIVIOUS)
   set(DISABLE_CACHE_OBLIVIOUS "")
-else
+else()
   set(DISABLE_CACHE_OBLIVIOUS "--disable-cache-oblivious")
 endif()
 

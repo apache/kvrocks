@@ -17,6 +17,12 @@
 
 include_guard()
 
+if (NOT DISABLE_CACHE_OBLIVIOUS)
+  set(DISABLE_CACHE_OBLIVIOUS "")
+else
+  set(DISABLE_CACHE_OBLIVIOUS "--disable-cache-oblivious")
+endif()
+
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(jemalloc
@@ -31,7 +37,7 @@ if(NOT jemalloc_POPULATED)
   execute_process(COMMAND autoconf
     WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
   )
-  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C --enable-autogen --disable-libdl --disable-cache-oblivious --with-jemalloc-prefix=""
+  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C --enable-autogen --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
   add_custom_target(make_jemalloc 

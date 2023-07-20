@@ -302,6 +302,9 @@ jobs:
           - name: CentOS 7
             image: centos:7
             compiler: gcc
+          - name: ArchLinux base
+            image: archlinux:base
+            compiler: gcc
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -311,6 +314,11 @@ jobs:
         run: |
           yum install -y centos-release-scl-rh
           yum install -y devtoolset-11 python3 autoconf automake wget git
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      - name: Setup ArchLinux
+        if: ${{ startsWith(matrix.image, 'archlinux') }}
+        run: |
+          yes|pacman -Sy autoconf automake python3 git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

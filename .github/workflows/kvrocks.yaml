@@ -346,11 +346,14 @@ jobs:
         with:
           go-version-file: 'tests/gocase/go.mod'
 
-      - name: Build Kvrocks
+      - name: Build Kvrocks for CentOS
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           source /opt/rh/devtoolset-11/enable
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
+      - name: Build Kvrocks for ArchLinux
+        if: ${{ startsWith(matrix.image, 'archlinux') }}
+        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
 
       - name: Run Unit Test
         run: |

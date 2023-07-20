@@ -49,7 +49,7 @@ struct CommandParser {
   }
 
   template <typename Container>
-  explicit CommandParser(Container&& con, size_t skip_num = 0)  // NOLINT(bugprone-forwarding-reference-overload)
+  explicit CommandParser(Container&& con, size_t skip_num = 0)
       : CommandParser(MoveIterator(std::begin(con)), MoveIterator(std::end(con))) {
     std::advance(begin_, skip_num);
   }

@@ -22,9 +22,13 @@
 
 namespace redis {
 
-rocksdb::Status RedisJson::JsonDel(const std::string &user_key, const JsonPath &path) { return rocksdb::Status::OK(); }
+rocksdb::Status RedisJson::JsonDel(const std::string &user_key, const JsonPath &path) {
+  // NYI Yet
+  return rocksdb::Status::OK();
+}
 rocksdb::Status RedisJson::JsonGet(const std::string &user_key, const std::vector<JsonPath> &path,
                                    std::string *values) {
+  // NYI Yet
   return rocksdb::Status::OK();
 }
 
@@ -80,10 +84,7 @@ rocksdb::Status RedisJson::JsonSet(const std::string &user_key, const JsonPath &
     path.EvalReplaceExpression(
         origin_json_value.GetValue(),
         [&input_json](const std::string_view &path, JsonType &value) { value = input_json.GetValue(); });
-    s = this->Set(user_key, ToString(input_json.GetValue()));
-    if (!s.ok()) {
-      return s;
-    }
+    return this->Set(user_key, ToString(input_json.GetValue()));
   }
   // TODO(mwish): add non-exist path is not implemented now.
   return rocksdb::Status::IOError("ERR not implemented");

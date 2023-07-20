@@ -353,7 +353,8 @@ jobs:
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
       - name: Build Kvrocks for ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
-        run: ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
 
       - name: Run Unit Test
         run: |

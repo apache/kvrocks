@@ -368,8 +368,8 @@ GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape &geo_shape) {
 
   double radius_meters =
       geo_shape.conversion * (geo_shape.type == CIRCULAR
-                                   ? geo_shape.radius
-                                   : sqrt(pow((geo_shape.width / 2), 2) + pow((geo_shape.height / 2), 2)));
+                                  ? geo_shape.radius
+                                  : sqrt(pow((geo_shape.width / 2), 2) + pow((geo_shape.height / 2), 2)));
 
   int steps = EstimateStepsByRadius(radius_meters, latitude);
 
@@ -458,7 +458,8 @@ int GeoHashHelper::GetDistanceIfInRadius(double x1, double y1, double x2, double
   return 1;
 }
 
-int GeoHashHelper::GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2, double *distance) {
+int GeoHashHelper::GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2,
+                                      double *distance) {
   if (x2 < bounds[0] || x2 > bounds[2] || y2 < bounds[1] || y2 > bounds[3]) return 0;
   *distance = GetDistance(x1, y1, x2, y2);
   return 1;

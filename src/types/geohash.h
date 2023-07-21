@@ -141,5 +141,6 @@ class GeoHashHelper {
   static int GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance);
   static int GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2, double *distance);
   static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius, double *distance);
-  static int GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2, double *distance);
+  static int GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2,
+                                     double *distance);
 };

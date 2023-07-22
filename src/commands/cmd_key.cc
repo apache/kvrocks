@@ -61,7 +61,7 @@ class CommandObject : public Commander {
         output->append(redis::BulkString(info));
       }
     } else {
-      *output = redis::Error("object subcommand must be dump");
+      return {Status::RedisExecErr, "object subcommand must be dump"};
     }
     return Status::OK();
   }

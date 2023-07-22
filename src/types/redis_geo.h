@@ -71,8 +71,11 @@ class Geo : public ZSet {
                                  DistanceSort sort, const std::string &store_key, bool store_distance,
                                  double unit_conversion, std::vector<GeoPoint> *geo_points);
   rocksdb::Status Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
-                         int count, DistanceSort sort, const std::string &store_key, bool store_distance,
-                         double unit_conversion, std::vector<GeoPoint> *geo_points);
+                         int count, DistanceSort sort, bool store_distance, double unit_conversion,
+                         std::vector<GeoPoint> *geo_points);
+  rocksdb::Status SearchStore(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
+                              std::string &member, int count, DistanceSort sort, const std::string &store_key,
+                              bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
   rocksdb::Status Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members,
                        std::map<std::string, GeoPoint> *geo_points);

@@ -87,8 +87,8 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   geo_shape.conversion = 1;
 
   std::string dummy_member;
-  return Search(user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance, unit_conversion,
-                geo_points);
+  return SearchStore(user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance,
+                     unit_conversion, geo_points);
 }
 
 rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,
@@ -103,8 +103,15 @@ rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, 
 }
 
 rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
-                            int count, DistanceSort sort, const std::string &store_key, bool store_distance,
-                            double unit_conversion, std::vector<GeoPoint> *geo_points) {
+                            int count, DistanceSort sort, bool store_distance, double unit_conversion,
+                            std::vector<GeoPoint> *geo_points) {
+  return SearchStore(user_key, geo_shape, point_type, member, count, sort, "", store_distance, unit_conversion,
+                     geo_points);
+}
+
+rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
+                                 std::string &member, int count, DistanceSort sort, const std::string &store_key,
+                                 bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
   if (point_type == kMember) {
     GeoPoint geo_point;
     auto s = Get(user_key, member, &geo_point);

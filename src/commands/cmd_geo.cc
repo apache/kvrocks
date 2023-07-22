@@ -54,15 +54,16 @@ class CommandGeoBase : public Commander {
     *longitude = *long_stat;
     *latitude = *lat_stat;
 
-    auto s = ValdiateLongLat(longitude, latitude);
+    auto s = ValidateLongLat(longitude, latitude);
     if (!s.OK()) return s;
 
     return Status::OK();
   }
 
-  static Status ValdiateLongLat(double *longitude, double *latitude) {
+  static Status ValidateLongLat(double *longitude, double *latitude) {
     if (*longitude < GEO_LONG_MIN || *longitude > GEO_LONG_MAX || *latitude < GEO_LAT_MIN || *latitude > GEO_LAT_MAX) {
-      return {Status::RedisParseErr, "invalid longitude,latitude pair"};
+      return {Status::RedisParseErr,
+              "invalid longitude,latitude pair " + std::to_string(*longitude) + "," + std::to_string(*latitude)};
     }
     return Status::OK();
   }
@@ -383,7 +384,7 @@ class CommandGeoSearch : public CommandGeoBase {
 
         longitude_ = GET_OR_RET(parser.TakeFloat());
         latitude_ = GET_OR_RET(parser.TakeFloat());
-        s = ValdiateLongLat(&longitude_, &latitude_);
+        s = ValidateLongLat(&longitude_, &latitude_);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("byradius")) {
         auto s = setShapeType(CIRCULAR);
@@ -432,14 +433,14 @@ class CommandGeoSearch : public CommandGeoBase {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
 
-    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_, false,
-                           GetUnitConversion(), &geo_points);
+    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, false, GetUnitConversion(),
+                           &geo_points);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
     *output = generateOutput(geo_points);
-    // storing comes later.
+
     return Status::OK();
   }
 
@@ -456,8 +457,6 @@ class CommandGeoSearch : public CommandGeoBase {
   GeoShapeType shape_type_ = NONE;
   OriginPointType origin_point_type_ = kNone;
   GeoShape geo_shape_;
-  std::string store_key_;
-  bool store_distance_ = false;
 
   Status setShapeType(GeoShapeType shape_type) {
     if (shape_type_ != NONE) {
@@ -499,11 +498,12 @@ class CommandGeoSearch : public CommandGeoBase {
   std::string generateOutput(const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
-    std::vector<std::string> list;
+    std::vector<std::string> output;
+    output.reserve(returned_items_count);
     for (int i = 0; i < returned_items_count; i++) {
       auto geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
-        list.emplace_back(redis::BulkString(geo_point.member));
+        output[i] = redis::BulkString(geo_point.member);
       } else {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
@@ -517,10 +517,10 @@ class CommandGeoSearch : public CommandGeoBase {
           one.emplace_back(redis::MultiBulkString(
               {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
         }
-        list.emplace_back(redis::Array(one));
+        output[i] = redis::Array(one);
       }
     }
-    return redis::Array(list);
+    return redis::Array(output);
   }
 
  private:
@@ -547,7 +547,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
 
         longitude_ = GET_OR_RET(parser.TakeFloat());
         latitude_ = GET_OR_RET(parser.TakeFloat());
-        s = ValdiateLongLat(&longitude_, &latitude_);
+        s = ValidateLongLat(&longitude_, &latitude_);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("byradius")) {
         auto s = setShapeType(CIRCULAR);
@@ -592,8 +592,8 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(svr->storage, conn->GetNamespace());
 
-    auto s = geo_db.Search(args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
-                           store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.SearchStore(args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
+                                store_distance_, GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -604,6 +604,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
 
  private:
   bool store_distance_ = false;
+  std::string store_key_;
 };
 
 class CommandGeoRadiusByMember : public CommandGeoRadius {

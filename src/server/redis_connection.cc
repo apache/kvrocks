@@ -80,7 +80,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
-    Reply(redis::Error(s.Msg()));
+    Reply(redis::Error("ERR " + s.Msg()));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -371,7 +371,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->IsNoMulti()) {
-      std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
+      std::string no_multi_err = "ERR Can't execute " + attributes->name + " in MULTI";
       Reply(redis::Error(no_multi_err));
       multi_error_ = true;
       continue;
@@ -381,7 +381,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-        Reply(redis::Error(s.Msg()));
+        Reply(redis::Error("ERR " + s.Msg()));
         continue;
       }
     }

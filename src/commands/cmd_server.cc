@@ -69,11 +69,9 @@ class CommandAuth : public Commander {
         *output = redis::SimpleString("OK");
         break;
       case AuthResult::INVALID_PASSWORD:
-        *output = redis::Error("ERR invalid password");
-        break;
+        return {Status::RedisExecErr, "invalid password"};
       case AuthResult::NO_REQUIRE_PASS:
-        *output = redis::Error("ERR Client sent AUTH, but no password is set");
-        break;
+        return {Status::RedisExecErr, "Client sent AUTH, but no password is set"};
     }
     return Status::OK();
   }
@@ -83,8 +81,7 @@ class CommandNamespace : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
@@ -111,20 +108,20 @@ class CommandNamespace : public Commander {
       }
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->SetNamespace(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = config->AddNamespace(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = config->DelNamespace(args_[2]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "Deleted namespace: " << args_[2] << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else {
-      *output = redis::Error("NAMESPACE subcommand must be one of GET, SET, DEL, ADD");
+      return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD"};
     }
     return Status::OK();
   }
@@ -140,8 +137,7 @@ class CommandKeys : public Commander {
       redis.Keys(std::string(), &keys);
     } else {
       if (prefix[prefix.size() - 1] != '*') {
-        *output = redis::Error("ERR only keys prefix match was supported");
-        return Status::OK();
+        return {Status::RedisExecErr, "only keys prefix match was supported"};
       }
 
       redis.Keys(prefix.substr(0, prefix.size() - 1), &keys);
@@ -176,8 +172,7 @@ class CommandFlushAll : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     if (svr->GetConfig()->cluster_enabled) {
@@ -225,16 +220,14 @@ class CommandConfig : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
     std::string sub_command = util::ToLower(args_[1]);
     if ((sub_command == "rewrite" && args_.size() != 2) || (sub_command == "get" && args_.size() != 3) ||
         (sub_command == "set" && args_.size() != 4)) {
-      *output = redis::Error(errWrongNumOfArguments);
-      return Status::OK();
+      return {Status::RedisExecErr, errWrongNumOfArguments};
     }
 
     if (args_.size() == 2 && sub_command == "rewrite") {
@@ -250,12 +243,12 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->Set(svr, args_[2], args_[3]);
       if (!s.IsOK()) {
-        *output = redis::Error("CONFIG SET '" + args_[2] + "' error: " + s.Msg());
+        return {Status::RedisExecErr, "CONFIG SET '" + args_[2] + "' error: " + s.Msg()};
       } else {
         *output = redis::SimpleString("OK");
       }
     } else {
-      *output = redis::Error("CONFIG subcommand must be one of GET, SET, REWRITE");
+      return {Status::RedisExecErr, "CONFIG subcommand must be one of GET, SET, REWRITE"};
     }
     return Status::OK();
   }
@@ -330,10 +323,10 @@ class CommandDBSize : public Commander {
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
       } else {
-        *output = redis::Error(s.Msg());
+        return {Status::RedisExecErr, s.Msg()};
       }
     } else {
-      *output = redis::Error("DBSIZE subcommand only supports scan");
+      return {Status::RedisExecErr, "DBSIZE subcommand only supports scan"};
     }
     return Status::OK();
   }
@@ -520,7 +513,7 @@ class CommandClient : public Commander {
         *output = redis::Integer(killed);
       } else {
         if (killed == 0)
-          *output = redis::Error("No such client");
+          return {Status::RedisExecErr, "No such client"};
         else
           *output = redis::SimpleString("OK");
       }
@@ -553,8 +546,7 @@ class CommandShutdown : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     if (!srv->IsStopped()) {
@@ -612,8 +604,7 @@ class CommandCommand : public Commander {
       std::string sub_command = util::ToLower(args_[1]);
       if ((sub_command == "count" && args_.size() != 2) || (sub_command == "getkeys" && args_.size() < 3) ||
           (sub_command == "info" && args_.size() < 3)) {
-        *output = redis::Error(errWrongNumOfArguments);
-        return Status::OK();
+        return {Status::RedisExecErr, errWrongNumOfArguments};
       }
 
       if (sub_command == "count") {
@@ -626,8 +617,7 @@ class CommandCommand : public Commander {
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {
-          *output = redis::Error("Invalid arguments specified for command");
-          return Status::OK();
+          return {Status::RedisExecErr, "Invalid arguments specified for command"};
         }
 
         std::vector<std::string> keys;
@@ -637,7 +627,7 @@ class CommandCommand : public Commander {
         }
         *output = redis::MultiBulkString(keys);
       } else {
-        *output = redis::Error("Command subcommand must be one of COUNT, GETKEYS, INFO");
+        return {Status::RedisExecErr, "Command subcommand must be one of COUNT, GETKEYS, INFO"};
       }
     }
     return Status::OK();
@@ -720,8 +710,7 @@ class CommandHello final : public Commander {
         conn->SetName(name);
         next_arg += 1;
       } else {
-        *output = redis::Error("Syntax error in HELLO option " + opt);
-        return Status::OK();
+        return {Status::RedisExecErr, "Syntax error in HELLO option " + opt};
       }
     }
 
@@ -846,8 +835,7 @@ class CommandBGSave : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     Status s = svr->AsyncBgSaveDB();
@@ -863,8 +851,7 @@ class CommandFlushBackup : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     Status s = svr->AsyncPurgeOldBackups(0, 0);
@@ -923,8 +910,7 @@ class CommandSlaveOf : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      *output = redis::Error(errAdministorPermissionRequired);
-      return Status::OK();
+      return {Status::RedisExecErr, errAdministorPermissionRequired};
     }
 
     if (host_.empty()) {

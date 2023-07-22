@@ -302,6 +302,9 @@ jobs:
           - name: CentOS 7
             image: centos:7
             compiler: gcc
+          - name: ArchLinux base
+            image: archlinux:base
+            compiler: gcc
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -310,7 +313,16 @@ jobs:
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           yum install -y centos-release-scl-rh
-          yum install -y devtoolset-11 python3 autoconf automake wget git
+          yum install -y devtoolset-11 python3 autoconf automake wget git gcc gcc-c++
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+          mv /usr/bin/gcc /usr/bin/gcc-4.8.5
+          ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
+          mv /usr/bin/g++ /usr/bin/g++-4.8.5
+          ln -s /opt/rh/devtoolset-11/root/bin/g++ /usr/bin/g++
+      - name: Setup ArchLinux
+        if: ${{ startsWith(matrix.image, 'archlinux') }}
+        run: |
+          yes|pacman -Sy autoconf automake python3 git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -339,9 +351,7 @@ jobs:
           go-version-file: 'tests/gocase/go.mod'
 
       - name: Build Kvrocks
-        if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          source /opt/rh/devtoolset-11/enable
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
 
       - name: Run Unit Test

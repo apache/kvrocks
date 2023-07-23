@@ -80,7 +80,7 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
                             DistanceSort sort, const std::string &store_key, bool store_distance,
                             double unit_conversion, std::vector<GeoPoint> *geo_points) {
   GeoShape geo_shape;
-  geo_shape.type = CIRCULAR;
+  geo_shape.type = kGeoShapeTypeCircular;
   geo_shape.xy[0] = longitude;
   geo_shape.xy[1] = latitude;
   geo_shape.radius = radius_meters;
@@ -379,12 +379,12 @@ bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, const GeoShape 
                               const std::string &member) {
   double distance = NAN, xy[2];
   if (!decodeGeoHash(score, xy)) return false;
-  if (geo_shape.type == CIRCULAR) {
+  if (geo_shape.type == kGeoShapeTypeCircular) {
     if (!GeoHashHelper::GetDistanceIfInRadiusWGS84(geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1],
                                                    geo_shape.radius * geo_shape.conversion, &distance)) {
       return false;
     }
-  } else if (geo_shape.type == RECTANGULAR) {
+  } else if (geo_shape.type == kGeoShapeTypeRectangular) {
     if (!GeoHashHelper::GetDistanceIfInBoxWGS84(geo_shape.bounds, geo_shape.xy[0], geo_shape.xy[1], xy[0], xy[1],
                                                 &distance)) {
       return false;

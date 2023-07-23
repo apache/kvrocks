@@ -334,8 +334,10 @@ int GeoHashHelper::BoundingBox(GeoShape *geo_shape) {
   if (!geo_shape->bounds) return 0;
   double longitude = geo_shape->xy[0];
   double latitude = geo_shape->xy[1];
-  double height = geo_shape->conversion * (geo_shape->type == CIRCULAR ? geo_shape->radius : geo_shape->height / 2);
-  double width = geo_shape->conversion * (geo_shape->type == CIRCULAR ? geo_shape->radius : geo_shape->width / 2);
+  double height =
+      geo_shape->conversion * (geo_shape->type == kGeoShapeTypeCircular ? geo_shape->radius : geo_shape->height / 2);
+  double width =
+      geo_shape->conversion * (geo_shape->type == kGeoShapeTypeCircular ? geo_shape->radius : geo_shape->width / 2);
 
   const double lat_delta = RadDeg(height / EARTH_RADIUS_IN_METERS);
   const double long_delta_top = RadDeg(width / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude + lat_delta)));
@@ -367,7 +369,7 @@ GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape &geo_shape) {
   double latitude = geo_shape.xy[1];
 
   double radius_meters =
-      geo_shape.conversion * (geo_shape.type == CIRCULAR
+      geo_shape.conversion * (geo_shape.type == kGeoShapeTypeCircular
                                   ? geo_shape.radius
                                   : sqrt(pow((geo_shape.width / 2), 2) + pow((geo_shape.height / 2), 2)));
 

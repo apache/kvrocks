@@ -59,7 +59,7 @@ enum GeoDirection {
   GEOHASH_NORT_EAST
 };
 
-enum GeoShapeType { NONE = 0, CIRCULAR, RECTANGULAR };
+enum GeoShapeType { kGeoShapeTypeNone = 0, kGeoShapeTypeCircular, kGeoShapeTypeRectangular };
 
 struct GeoHashBits {
   uint64_t bits = 0;

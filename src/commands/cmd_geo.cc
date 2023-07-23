@@ -387,14 +387,14 @@ class CommandGeoSearch : public CommandGeoBase {
         s = ValidateLongLat(&longitude_, &latitude_);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("byradius")) {
-        auto s = setShapeType(CIRCULAR);
+        auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
         radius_ = GET_OR_RET(parser.TakeFloat());
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("bybox")) {
-        auto s = setShapeType(RECTANGULAR);
+        auto s = setShapeType(kGeoShapeTypeRectangular);
         if (!s.IsOK()) return s;
         width_ = GET_OR_RET(parser.TakeFloat());
         height_ = GET_OR_RET(parser.TakeFloat());
@@ -454,12 +454,12 @@ class CommandGeoSearch : public CommandGeoBase {
   std::string member_;
   std::string key_;
   DistanceSort sort_ = kSortNone;
-  GeoShapeType shape_type_ = NONE;
+  GeoShapeType shape_type_ = kGeoShapeTypeNone;
   OriginPointType origin_point_type_ = kNone;
   GeoShape geo_shape_;
 
   Status setShapeType(GeoShapeType shape_type) {
-    if (shape_type_ != NONE) {
+    if (shape_type_ != kGeoShapeTypeNone) {
       return {Status::RedisParseErr, "please use only one of BYBOX or BYRADIUS"};
     }
     shape_type_ = shape_type;
@@ -475,13 +475,13 @@ class CommandGeoSearch : public CommandGeoBase {
   }
 
   Status createGeoShape() {
-    if (shape_type_ == NONE) {
+    if (shape_type_ == kGeoShapeTypeNone) {
       return {Status::RedisParseErr, "please use BYBOX or BYRADIUS"};
     }
     geo_shape_.type = shape_type_;
     geo_shape_.conversion = GetUnitConversion();
 
-    if (shape_type_ == CIRCULAR) {
+    if (shape_type_ == kGeoShapeTypeCircular) {
       geo_shape_.radius = radius_;
     } else {
       geo_shape_.width = width_;
@@ -503,7 +503,7 @@ class CommandGeoSearch : public CommandGeoBase {
     for (int i = 0; i < returned_items_count; i++) {
       auto geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
-        output[i] = redis::BulkString(geo_point.member);
+        output.emplace_back(redis::BulkString(geo_point.member));
       } else {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
@@ -517,7 +517,7 @@ class CommandGeoSearch : public CommandGeoBase {
           one.emplace_back(redis::MultiBulkString(
               {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
         }
-        output[i] = redis::Array(one);
+        output.emplace_back(redis::Array(one));
       }
     }
     return redis::Array(output);
@@ -550,14 +550,14 @@ class CommandGeoSearchStore : public CommandGeoSearch {
         s = ValidateLongLat(&longitude_, &latitude_);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("byradius")) {
-        auto s = setShapeType(CIRCULAR);
+        auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
         radius_ = GET_OR_RET(parser.TakeFloat());
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("bybox")) {
-        auto s = setShapeType(RECTANGULAR);
+        auto s = setShapeType(kGeoShapeTypeRectangular);
         if (!s.IsOK()) return s;
         width_ = GET_OR_RET(parser.TakeFloat());
         height_ = GET_OR_RET(parser.TakeFloat());

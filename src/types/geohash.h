@@ -59,6 +59,8 @@ enum GeoDirection {
   GEOHASH_NORT_EAST
 };
 
+enum GeoShapeType { kGeoShapeTypeNone = 0, kGeoShapeTypeCircular, kGeoShapeTypeRectangular };
+
 struct GeoHashBits {
   uint64_t bits = 0;
   uint8_t step = 0;
@@ -94,6 +96,16 @@ struct GeoHashRadius {
   GeoHashNeighbors neighbors;
 };
 
+struct GeoShape {
+  GeoShapeType type;
+  double xy[2];
+  double conversion;
+  double bounds[4];
+  double radius;
+  double height;
+  double width;
+};
+
 inline constexpr bool HASHISZERO(const GeoHashBits &r) { return !r.bits && !r.step; }
 inline constexpr bool RANGEISZERO(const GeoHashRange &r) { return !bool(r.max) && !bool(r.min); }
 inline constexpr bool RANGEPISZERO(const GeoHashRange *r) { return !r || RANGEISZERO(*r); }
@@ -122,11 +134,13 @@ void GeohashNeighbors(const GeoHashBits *hash, GeoHashNeighbors *neighbors);
 class GeoHashHelper {
  public:
   static uint8_t EstimateStepsByRadius(double range_meters, double lat);
-  static int BoundingBox(double longitude, double latitude, double radius_meters, double *bounds);
-  static GeoHashRadius GetAreasByRadius(double longitude, double latitude, double radius_meters);
-  static GeoHashRadius GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters);
+  static int BoundingBox(GeoShape *geo_shape);
+  static GeoHashRadius GetAreasByShapeWGS84(GeoShape &geo_shape);
   static GeoHashFix52Bits Align52Bits(const GeoHashBits &hash);
   static double GetDistance(double lon1d, double lat1d, double lon2d, double lat2d);
   static int GetDistanceIfInRadius(double x1, double y1, double x2, double y2, double radius, double *distance);
+  static int GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2, double *distance);
   static int GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius, double *distance);
+  static int GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2,
+                                     double *distance);
 };

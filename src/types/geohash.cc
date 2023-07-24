@@ -329,47 +329,49 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
 /* Return the bounding box of the search area centered at latitude,longitude
  * having a radius of radius_meter. bounds[0] - bounds[2] is the minimum
  * and maxium longitude, while bounds[1] - bounds[3] is the minimum and
- * maximum latitude.
- *
- * This function does not behave correctly with very large radius values, for
- * instance for the coordinates 81.634948934258375 30.561509253718668 and a
- * radius of 7083 kilometers, it reports as bounding boxes:
- *
- * min_lon 7.680495, min_lat -33.119473, max_lon 155.589402, max_lat 94.242491
- *
- * However, for instance, a min_lon of 7.680495 is not correct, because the
- * point -1.27579540014266968 61.33421815228281559 is at less than 7000
- * kilometers away.
- *
- * Since this function is currently only used as an optimization, the
- * optimization is not used for very big radiuses, however the function
- * should be fixed. */
-int GeoHashHelper::BoundingBox(double longitude, double latitude, double radius_meters, double *bounds) {
-  if (!bounds) return 0;
+ * maximum latitude. */
+int GeoHashHelper::BoundingBox(GeoShape *geo_shape) {
+  if (!geo_shape->bounds) return 0;
+  double longitude = geo_shape->xy[0];
+  double latitude = geo_shape->xy[1];
+  double height =
+      geo_shape->conversion * (geo_shape->type == kGeoShapeTypeCircular ? geo_shape->radius : geo_shape->height / 2);
+  double width =
+      geo_shape->conversion * (geo_shape->type == kGeoShapeTypeCircular ? geo_shape->radius : geo_shape->width / 2);
 
-  bounds[0] = longitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
-  bounds[2] = longitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude)));
-  bounds[1] = latitude - RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
-  bounds[3] = latitude + RadDeg(radius_meters / EARTH_RADIUS_IN_METERS);
+  const double lat_delta = RadDeg(height / EARTH_RADIUS_IN_METERS);
+  const double long_delta_top = RadDeg(width / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude + lat_delta)));
+  const double long_delta_bottom = RadDeg(width / EARTH_RADIUS_IN_METERS / cos(DegRad(latitude - lat_delta)));
+
+  bool is_in_southern_hemisphere = latitude < 0;
+  geo_shape->bounds[0] = is_in_southern_hemisphere ? longitude - long_delta_bottom : longitude - long_delta_top;
+  geo_shape->bounds[2] = is_in_southern_hemisphere ? longitude + long_delta_bottom : longitude + long_delta_top;
+  geo_shape->bounds[1] = latitude - lat_delta;
+  geo_shape->bounds[3] = latitude + lat_delta;
   return 1;
 }
 
-/* Return a set of areas (center + 8) that are able to cover a range query
- * for the specified position and radius. */
-GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude, double radius_meters) {
+GeoHashRadius GeoHashHelper::GetAreasByShapeWGS84(GeoShape &geo_shape) {
   GeoHashRange long_range, lat_range;
   GeoHashRadius radius;
   GeoHashBits hash;
   GeoHashNeighbors neighbors;
   GeoHashArea area;
   double min_lon = NAN, max_lon = NAN, min_lat = NAN, max_lat = NAN;
-  double bounds[4];
 
-  BoundingBox(longitude, latitude, radius_meters, bounds);
-  min_lon = bounds[0];
-  min_lat = bounds[1];
-  max_lon = bounds[2];
-  max_lat = bounds[3];
+  BoundingBox(&geo_shape);
+  min_lon = geo_shape.bounds[0];
+  min_lat = geo_shape.bounds[1];
+  max_lon = geo_shape.bounds[2];
+  max_lat = geo_shape.bounds[3];
+
+  double longitude = geo_shape.xy[0];
+  double latitude = geo_shape.xy[1];
+
+  double radius_meters =
+      geo_shape.conversion * (geo_shape.type == kGeoShapeTypeCircular
+                                  ? geo_shape.radius
+                                  : sqrt(pow((geo_shape.width / 2), 2) + pow((geo_shape.height / 2), 2)));
 
   int steps = EstimateStepsByRadius(radius_meters, latitude);
 
@@ -434,10 +436,6 @@ GeoHashRadius GeoHashHelper::GetAreasByRadius(double longitude, double latitude,
   return radius;
 }
 
-GeoHashRadius GeoHashHelper::GetAreasByRadiusWGS84(double longitude, double latitude, double radius_meters) {
-  return GetAreasByRadius(longitude, latitude, radius_meters);
-}
-
 GeoHashFix52Bits GeoHashHelper::Align52Bits(const GeoHashBits &hash) {
   uint64_t bits = hash.bits;
   bits <<= (52 - hash.step * 2);
@@ -462,7 +460,19 @@ int GeoHashHelper::GetDistanceIfInRadius(double x1, double y1, double x2, double
   return 1;
 }
 
+int GeoHashHelper::GetDistanceIfInBox(const double *bounds, double x1, double y1, double x2, double y2,
+                                      double *distance) {
+  if (x2 < bounds[0] || x2 > bounds[2] || y2 < bounds[1] || y2 > bounds[3]) return 0;
+  *distance = GetDistance(x1, y1, x2, y2);
+  return 1;
+}
+
 int GeoHashHelper::GetDistanceIfInRadiusWGS84(double x1, double y1, double x2, double y2, double radius,
                                               double *distance) {
   return GetDistanceIfInRadius(x1, y1, x2, y2, radius, distance);
+}
+
+int GeoHashHelper::GetDistanceIfInBoxWGS84(const double *bounds, double x1, double y1, double x2, double y2,
+                                           double *distance) {
+  return GetDistanceIfInBox(bounds, x1, y1, x2, y2, distance);
 }

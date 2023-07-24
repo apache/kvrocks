@@ -54,10 +54,7 @@ class CommandGeoBase : public Commander {
     *longitude = *long_stat;
     *latitude = *lat_stat;
 
-    auto s = ValidateLongLat(longitude, latitude);
-    if (!s.OK()) return s;
-
-    return Status::OK();
+    return ValidateLongLat(longitude, latitude);
   }
 
   static Status ValidateLongLat(double *longitude, double *latitude) {

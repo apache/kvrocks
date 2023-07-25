@@ -566,8 +566,10 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank) {
+rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank,
+                           double *member_score) {
   *member_rank = -1;
+  *member_score = 0.0;
 
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
@@ -613,6 +615,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   }
 
   *member_rank = rank;
+  *member_score = target_score;
   return rocksdb::Status::OK();
 }
 

@@ -98,7 +98,8 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt);
   rocksdb::Status Card(const Slice &user_key, uint64_t *size);
   rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
-  rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank);
+  rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank,
+                       double *member_score);
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt);
   rocksdb::Status Pop(const Slice &user_key, int count, bool min, MemberScores *mscores);
   rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);

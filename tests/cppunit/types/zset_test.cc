@@ -382,19 +382,25 @@ TEST_F(RedisZSetTest, Rank) {
 
   for (size_t i = 0; i < fields_.size(); i++) {
     int rank = 0;
-    zset_->Rank(key_, fields_[i], false, &rank);
+    double score = 0.0;
+    zset_->Rank(key_, fields_[i], false, &rank, &score);
     EXPECT_EQ(i, rank);
+    EXPECT_EQ(scores_[i], score);
   }
   for (size_t i = 0; i < fields_.size(); i++) {
     int rank = 0;
-    zset_->Rank(key_, fields_[i], true, &rank);
+    double score = 0.0;
+    zset_->Rank(key_, fields_[i], true, &rank, &score);
     EXPECT_EQ(i, static_cast<int>(fields_.size() - rank - 1));
+    EXPECT_EQ(scores_[i], score);
   }
   std::vector<std::string> no_exist_members = {"a", "b"};
   for (const auto &member : no_exist_members) {
     int rank = 0;
-    zset_->Rank(key_, member, true, &rank);
+    double score = 0.0;
+    zset_->Rank(key_, member, true, &rank, &score);
     EXPECT_EQ(-1, rank);
+    EXPECT_EQ(0.0, score);
   }
   zset_->Del(key_);
 }

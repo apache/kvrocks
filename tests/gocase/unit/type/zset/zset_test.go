@@ -477,7 +477,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 2})
-		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
 		rdb.Del(ctx, "zdst")
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 0})
@@ -512,6 +512,31 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.Del(ctx, "zdst")
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[a", Stop: "[g", ByLex: true, Offset: 2, Count: 3})
 		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGESTORE will overwrite dst - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		// non-existing src key delete the dst key
+		rdb.ZAdd(ctx, "zdst", redis.Z{Score: 1, Member: "dst_a"})
+		require.Equal(t, int64(0), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zdst").Val())
+
+		// non-existing src key delete the dst key (different type)
+		require.Equal(t, "OK", rdb.Set(ctx, "zdst", 100, 0).Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zdst").Val())
+
+		// overwrite the dst key with the result zset instead of adding
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "src_a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 2, Member: "src_b"})
+		rdb.ZAdd(ctx, "zdst", redis.Z{Score: 3, Member: "dst_c"})
+		require.Equal(t, int64(2), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, []redis.Z{
+			{1, "src_a"},
+			{2, "src_b"},
+		}, rdb.ZRangeWithScores(ctx, "zdst", 0, -1).Val())
 	})
 
 	t.Run(fmt.Sprintf("ZRANGESTORE error - %s", encoding), func(t *testing.T) {

@@ -121,7 +121,7 @@ Config::Config() {
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
-      {"log-level", true, new EnumField(&log_level, log_levels, google::INFO)},
+      {"log-level", false, new EnumField(&log_level, log_levels, google::INFO)},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
@@ -476,6 +476,12 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
          if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
+         return Status::OK();
+       }},
+      {"log-level",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         FLAGS_minloglevel = log_level;
          return Status::OK();
        }},
       {"log-retention-days",

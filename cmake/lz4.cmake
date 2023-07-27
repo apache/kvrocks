@@ -32,10 +32,17 @@ if(NOT lz4_POPULATED)
     set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
   
-  add_custom_target(make_lz4 COMMAND $(MAKE) CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
-    WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
-    BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
-  )
+  if(CMAKE_GENERATOR STREQUAL "Ninja")
+    add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
+      WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
+      BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
+    )
+  else()
+    add_custom_target(make_lz4 COMMAND $(MAKE) CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
+      WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
+      BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
+    )
+  endif()
 endif()
 
 add_library(lz4 INTERFACE)

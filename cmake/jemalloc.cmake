@@ -40,11 +40,19 @@ if(NOT jemalloc_POPULATED)
   execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C --enable-autogen --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  add_custom_target(make_jemalloc 
-    COMMAND $(MAKE)
-    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
-    BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
-  )
+  if(CMAKE_GENERATOR STREQUAL "Ninja")
+    add_custom_target(make_jemalloc 
+      COMMAND make
+      WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
+      BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
+    )
+  else()
+    add_custom_target(make_jemalloc 
+      COMMAND $(MAKE)
+      WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
+      BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
+    )
+  endif()
 endif()
 
 find_package(Threads REQUIRED)

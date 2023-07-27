@@ -56,11 +56,19 @@ if (NOT lua_POPULATED)
     set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif ()
 
-  add_custom_target(make_luajit COMMAND $(MAKE) libluajit.a
-    "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
-    WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
-    BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
-  )
+  if(CMAKE_GENERATOR STREQUAL "Ninja")
+    add_custom_target(make_luajit COMMAND make libluajit.a
+      "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+      WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
+      BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
+    )
+  else()
+    add_custom_target(make_luajit COMMAND $(MAKE) libluajit.a
+      "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+      WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
+      BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
+    )
+  endif()
 
   file(GLOB LUA_PUBLIC_HEADERS "${luajit_SOURCE_DIR}/src/*.hpp" "${luajit_SOURCE_DIR}/src/*.h")
   file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${luajit_BINARY_DIR}/include)

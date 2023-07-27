@@ -770,8 +770,8 @@ class CommandZRangeStore : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    uint64_t ret = 0;
-    s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
+    uint64_t ret = member_scores.size();
+    s = zset_db.Overwrite(dst_, member_scores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

@@ -22,7 +22,6 @@ linters:
   enable:
     - asciicheck
     - bodyclose
-    - deadcode
     - durationcheck
     - errcheck
     - exportloopref
@@ -35,8 +34,6 @@ linters:
     - predeclared
     - rowserrcheck
     - staticcheck
-    - structcheck
     - stylecheck
     - typecheck
     - unused
-    - varcheck

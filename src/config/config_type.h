@@ -124,7 +124,7 @@ class IntegerField : public ConfigField {
   }
   Status Set(const std::string &v) override {
     auto s = ParseInt<IntegerType>(v, {min_, max_});
-    if (!s.IsOK()) return s;
+    if (!s.IsOK()) return std::move(s);
     *receiver_ = s.GetValue();
     return Status::OK();
   }
@@ -146,7 +146,7 @@ class OctalField : public ConfigField {
   }
   Status Set(const std::string &v) override {
     auto s = ParseInt<int>(v, {min_, max_}, 8);
-    if (!s.IsOK()) return s;
+    if (!s.IsOK()) return std::move(s);
     *receiver_ = *s;
     return Status::OK();
   }

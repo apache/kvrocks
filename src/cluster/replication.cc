@@ -68,7 +68,7 @@ Status FeedSlaveThread::Start() {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
   }
 
-  return s;
+  return std::move(s);
 }
 
 void FeedSlaveThread::Stop() {

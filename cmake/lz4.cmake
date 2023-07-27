@@ -33,16 +33,14 @@ if(NOT lz4_POPULATED)
   endif()
   
   if(CMAKE_GENERATOR STREQUAL "Ninja")
-    add_custom_target(make_lz4 COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
-      WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
-      BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
-    )
+    set(MAKE_COMMAND make)
   else()
-    add_custom_target(make_lz4 COMMAND $(MAKE) CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
-      WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
-      BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
-    )
+    set(MAKE_COMMAND $(MAKE))
   endif()
+  add_custom_target(make_lz4 COMMAND ${MAKE_COMMAND} CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} liblz4.a
+    WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
+    BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
+  )
 endif()
 
 add_library(lz4 INTERFACE)

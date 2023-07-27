@@ -33,16 +33,14 @@ if(NOT zstd_POPULATED)
   endif()
 
   if(CMAKE_GENERATOR STREQUAL "Ninja")
-    add_custom_target(make_zstd COMMAND make CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
-      WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
-      BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
-    )
+    set(MAKE_COMMAND make)
   else()
-    add_custom_target(make_zstd COMMAND $(MAKE) CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
-      WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
-      BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
-    )
+    set(MAKE_COMMAND $(MAKE))
   endif()
+  add_custom_target(make_zstd COMMAND ${MAKE_COMMAND} CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
+    WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
+    BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
+  )
 endif()
 
 add_library(zstd INTERFACE)

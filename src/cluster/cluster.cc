@@ -534,8 +534,8 @@ std::map<std::string, std::string> Cluster::getClusterNodeSlots() {
     }
   }
 
-  for (const auto &iter : slots_infos) {
-    if (slots_infos[iter.first].size() > 0) slots_infos[iter.first].pop_back();  // Remove last space
+  for (auto &[_, info] : slots_infos) {
+    if (info.size() > 0) info.pop_back();  // Remove last space
   }
   return slots_infos;
 }

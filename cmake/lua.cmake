@@ -34,16 +34,10 @@ if(NOT lua_POPULATED)
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
 
-  if(CMAKE_GENERATOR STREQUAL "Ninja")
-    set(MAKE_COMMAND make)
-  else()
-    set(MAKE_COMMAND $(MAKE))
-  endif()
   add_custom_target(make_lua COMMAND ${MAKE_COMMAND} "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" liblua.a
     WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
     BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
   )
-  
   file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h" "${lua_SOURCE_DIR}/src/*.hpp")
   file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_BINARY_DIR}/include)
 endif()

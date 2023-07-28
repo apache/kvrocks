@@ -40,12 +40,6 @@ if(NOT jemalloc_POPULATED)
   execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C --enable-autogen --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  
-  if(CMAKE_GENERATOR STREQUAL "Ninja")
-    set(MAKE_COMMAND make)
-  else()
-    set(MAKE_COMMAND $(MAKE))
-  endif()
   add_custom_target(make_jemalloc 
     COMMAND ${MAKE_COMMAND}
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}

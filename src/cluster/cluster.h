@@ -95,7 +95,7 @@ class Cluster {
  private:
   std::string genNodesDescription();
   std::string genNodesInfo();
-  std::map<std::string, std::string> getClusterNodeSlots();
+  const std::map<std::string, std::string> getClusterNodeSlots();
   SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);

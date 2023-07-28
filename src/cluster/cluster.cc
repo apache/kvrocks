@@ -507,7 +507,7 @@ std::string Cluster::genNodesDescription() {
   return nodes_desc;
 }
 
-std::map<std::string, std::string> Cluster::getClusterNodeSlots() {
+const std::map<std::string, std::string> Cluster::getClusterNodeSlots() {
   int start = -1;
   // node id => slots info string
   std::map<std::string, std::string> slots_infos;

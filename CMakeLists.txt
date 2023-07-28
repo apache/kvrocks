@@ -56,6 +56,12 @@ else()
         so you can try switching to GCC>=7 or Clang>=5 if you encounter problems")
 endif()
 
+if(CMAKE_GENERATOR STREQUAL "Ninja")
+    set(MAKE_COMMAND make)
+else()
+    set(MAKE_COMMAND $(MAKE))
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

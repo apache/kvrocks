@@ -472,7 +472,7 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
 }
 
 std::string Cluster::genNodesDescription() {
-  updateSlotsInfo();
+  auto slots_infos = getClusterNodeSlots();
 
   auto now = util::GetTimeStampMS();
   std::string nodes_desc;
@@ -495,8 +495,11 @@ std::string Cluster::genNodesDescription() {
     // Ping sent, pong received, config epoch, link status
     node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
 
-    if (n->role == kClusterMaster && n->slots_info.size() > 0) {
-      node_str.append(" " + n->slots_info);
+    if (n->role == kClusterMaster) {
+      auto iter = slots_infos.find(n->id);
+      if (iter != slots_infos.end() && iter->second.size() > 0) {
+        node_str.append(" " + iter->second);
+      }
     }
 
     nodes_desc.append(node_str + "\n");
@@ -504,13 +507,10 @@ std::string Cluster::genNodesDescription() {
   return nodes_desc;
 }
 
-void Cluster::updateSlotsInfo() {
+std::map<std::string, std::string> Cluster::getClusterNodeSlots() {
   int start = -1;
-  // reset the previous slots info
-  for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> &n = item.second;
-    n->slots_info.clear();
-  }
+  // node id => slots info string
+  std::map<std::string, std::string> slots_infos;
 
   std::shared_ptr<ClusterNode> n = nullptr;
   for (int i = 0; i <= kClusterSlots; i++) {
@@ -524,9 +524,9 @@ void Cluster::updateSlotsInfo() {
     // Generate slots info when occur different node with start or end of slot
     if (i == kClusterSlots || n != slots_nodes_[i]) {
       if (start == i - 1) {
-        n->slots_info += fmt::format("{} ", start);
+        slots_infos[n->id] += fmt::format("{} ", start);
       } else {
-        n->slots_info += fmt::format("{}-{} ", start, i - 1);
+        slots_infos[n->id] += fmt::format("{}-{} ", start, i - 1);
       }
       if (i == kClusterSlots) break;
       n = slots_nodes_[i];
@@ -534,14 +534,14 @@ void Cluster::updateSlotsInfo() {
     }
   }
 
-  for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> n = item.second;
-    if (n->slots_info.size() > 0) n->slots_info.pop_back();  // Remove last space
+  for (const auto &iter : slots_infos) {
+    if (slots_infos[iter.first].size() > 0) slots_infos[iter.first].pop_back();  // Remove last space
   }
+  return slots_infos;
 }
 
 std::string Cluster::genNodesInfo() {
-  updateSlotsInfo();
+  auto slots_infos = getClusterNodeSlots();
 
   std::string nodes_info;
   for (const auto &item : nodes_) {
@@ -561,8 +561,11 @@ std::string Cluster::genNodesInfo() {
     }
 
     // Slots
-    if (n->role == kClusterMaster && n->slots_info.size() > 0) {
-      node_str.append(" " + n->slots_info);
+    if (n->role == kClusterMaster) {
+      auto iter = slots_infos.find(n->id);
+      if (iter != slots_infos.end() && iter->second.size() > 0) {
+        node_str.append(" " + iter->second);
+      }
     }
     nodes_info.append(node_str + "\n");
   }

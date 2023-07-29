@@ -70,7 +70,11 @@ jobs:
           build-args: |
             MORE_BUILD_ARGS=-j${{ env.NPROC }}
 
-      - name: Test Image
-        uses: docker://apache/kvrocks:nightly
-        with:
-          args: -v
+  test-nightly-docker-image:
+    needs: [publish-nightly-docker-image]
+    name: Test nightly Docker image
+    runs-on: ubuntu-20.04
+    container:
+      image: apache/kvrocks:nightly
+    steps:
+      - run: kvrocks -v

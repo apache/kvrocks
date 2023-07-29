@@ -45,7 +45,6 @@ class ClusterNode {
   int port;
   int role;
   std::string master_id;
-  std::string slots_info;
   std::bitset<kClusterSlots> slots;
   std::vector<std::string> replicas;
   int importing_slot = -1;
@@ -96,7 +95,7 @@ class Cluster {
  private:
   std::string genNodesDescription();
   std::string genNodesInfo();
-  void updateSlotsInfo();
+  std::map<std::string, std::string> getClusterNodeSlots() const;
   SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);

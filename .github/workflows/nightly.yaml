@@ -69,3 +69,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             MORE_BUILD_ARGS=-j${{ env.NPROC }}
+
+      - name: Test Image
+        uses: docker://apache/kvrocks:${{ steps.meta.outputs.tags[1] }}
+        with:
+          args: -v

@@ -290,6 +290,11 @@ jobs:
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
+          push: false
+          tags: kvrocks:ci
+          outputs: type=docker
+      - name: Test built image
+        run: docker run --rm kvrocks:ci -v
 
   build-and-test-in-container:
     name: Build and test in container

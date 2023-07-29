@@ -69,12 +69,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             MORE_BUILD_ARGS=-j${{ env.NPROC }}
-
-  test-nightly-docker-image:
-    needs: [publish-nightly-docker-image]
-    name: Test nightly Docker image
-    runs-on: ubuntu-20.04
-    container:
-      image: apache/kvrocks:nightly
-    steps:
-      - run: kvrocks -v

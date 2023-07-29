@@ -674,20 +674,42 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 10, Member: "x"})
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 20, Member: "y"})
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 30, Member: "z"})
+
 		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "y").Val())
 		require.Equal(t, int64(2), rdb.ZRank(ctx, "zranktmp", "z").Val())
-		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "foo").Val())
+		require.Equal(t, redis.Nil, rdb.ZRank(ctx, "zranktmp", "foo").Err())
 		require.Equal(t, int64(2), rdb.ZRevRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRevRank(ctx, "zranktmp", "y").Val())
 		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
-		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "foo").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
+
+		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrank", "zranktmp", "y", "withscore").Val())
+		require.Equal(t, []interface{}{int64(2), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, []interface{}{int64(2), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrevrank", "zranktmp", "y", "withscore").Val())
+		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
 	})
 
-	t.Run(fmt.Sprintf("ZRANK - after deletion -%s", encoding), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZRANK/ZREVRANK - after deletion -%s", encoding), func(t *testing.T) {
 		rdb.ZRem(ctx, "zranktmp", "y")
+
 		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRank(ctx, "zranktmp", "foo").Err())
+		require.Equal(t, int64(1), rdb.ZRevRank(ctx, "zranktmp", "x").Val())
+		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
+
+		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, []interface{}{int64(1), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
 	})
 
 	t.Run(fmt.Sprintf("ZINCRBY - can create a new sorted set - %s", encoding), func(t *testing.T) {

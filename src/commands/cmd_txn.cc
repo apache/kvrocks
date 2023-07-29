@@ -98,6 +98,12 @@ class CommandWatch : public Commander {
       return {Status::RedisExecErr, "WATCH inside MULTI is not allowed"};
     }
 
+    // If a conn is already marked as watched_keys_modified, we can skip the watch.
+    if (svr->IsWatchedKeysModified(conn)) {
+      *output = redis::SimpleString("OK");
+      return Status::OK();
+    }
+
     svr->WatchKey(conn, std::vector<std::string>(args_.begin() + 1, args_.end()));
     *output = redis::SimpleString("OK");
     return Status::OK();

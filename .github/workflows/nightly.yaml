@@ -19,7 +19,7 @@ name: Nightly
 
 on:
   push:
-    branches: [unstable]
+    branches: [unstable, PragmaTwice/test-docker-image]
   pull_request:
     paths: ['.github/workflows/nightly.yaml']
 

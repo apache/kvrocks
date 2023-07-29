@@ -71,6 +71,6 @@ jobs:
             MORE_BUILD_ARGS=-j${{ env.NPROC }}
 
       - name: Test Image
-        uses: docker://apache/kvrocks:${{ steps.meta.outputs.tags[1] }}
+        uses: docker://apache/kvrocks:nightly
         with:
           args: -v

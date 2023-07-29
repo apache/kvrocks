@@ -19,59 +19,59 @@ name: Nightly
 
 on:
   push:
-    branches: [unstable, PragmaTwice/test-docker-image]
+    branches: [unstable]
   pull_request:
     paths: ['.github/workflows/nightly.yaml']
 
 jobs:
-#   publish-nightly-docker-image:
-#     name: Publish nightly Docker image
-#     runs-on: ubuntu-20.04
-#     steps:
+  publish-nightly-docker-image:
+    name: Publish nightly Docker image
+    runs-on: ubuntu-20.04
+    steps:
 
-#       - uses: actions/checkout@v3
-#       - name: Login Docker Hub
-#         if: (github.event_name != 'pull_request')
-#         uses: docker/login-action@v1
-#         with:
-#           username: ${{ secrets.DOCKER_USERNAME }}
-#           password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: actions/checkout@v3
+      - name: Login Docker Hub
+        if: (github.event_name != 'pull_request')
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-#       - name: Set up QEMU
-#         uses: docker/setup-qemu-action@v1
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
 
-#       - name: Set up Docker Buildx
-#         id: buildx
-#         uses: docker/setup-buildx-action@v1
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
 
-#       - name: Available platforms
-#         run: echo ${{ steps.buildx.outputs.platforms }}
+      - name: Available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
       
-#       - name: Get core numbers
-#         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      - name: Get core numbers
+        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
-#       - name: Docker meta
-#         id: meta
-#         uses: docker/metadata-action@v4
-#         with:
-#           images: apache/kvrocks
-#           flavor: latest=false
-#           tags: |
-#             type=sha,prefix=nightly-{{date 'YYYYMMDD'}}-,format=short
-#             type=raw,value=nightly
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: apache/kvrocks
+          flavor: latest=false
+          tags: |
+            type=sha,prefix=nightly-{{date 'YYYYMMDD'}}-,format=short
+            type=raw,value=nightly
 
-#       - uses: docker/build-push-action@v3
-#         with:
-#           context: .
-#           platforms: linux/amd64, linux/arm64
-#           push: ${{ github.event_name != 'pull_request' }}
-#           tags: ${{ steps.meta.outputs.tags }}
-#           labels: ${{ steps.meta.outputs.labels }}
-#           build-args: |
-#             MORE_BUILD_ARGS=-j${{ env.NPROC }}
+      - uses: docker/build-push-action@v3
+        with:
+          context: .
+          platforms: linux/amd64, linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            MORE_BUILD_ARGS=-j${{ env.NPROC }}
 
   test-nightly-docker-image:
-#     needs: [publish-nightly-docker-image]
+    needs: [publish-nightly-docker-image]
     name: Test nightly Docker image
     runs-on: ubuntu-20.04
     container:

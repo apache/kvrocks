@@ -169,7 +169,7 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 ## Tools
 
 * To manage Kvrocks clusters for failover, scaling up/down and more, use [kvrocks_controller](https://github.com/RocksLabs/kvrocks_controller)
-* To export the Kvrocks monitor metrics, use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
+* To export the Kvrocks monitor metrics, use [kvrocks_exporter](https://github.com/RocksLabs/kvrocks_exporter)
 * To migrate from Redis to Kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) developed by Vipshop
 * To migrate from Kvrocks to Redis, use `kvrocks2redis` in the build directory
 

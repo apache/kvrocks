@@ -141,7 +141,7 @@ func TestGeo(t *testing.T) {
 
 	t.Run("GEOSEARCH against non existing src key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
-		require.EqualValues(t, []interface{}([]interface {}{}), rdb.Do(ctx, "GEOSEARCH", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
+		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEOSEARCH", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
 	})
 
 	t.Run("GEOSEARCH simple", func(t *testing.T) {

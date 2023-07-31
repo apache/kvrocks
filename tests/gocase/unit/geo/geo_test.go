@@ -139,6 +139,11 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []interface{}{nil, nil, nil}, rdb.Do(ctx, "GEOHASH", "points", "a", "b", "c").Val())
 	})
 
+	t.Run("GEOSEARCH against non existing src key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.EqualValues(t, []interface{}([]interface {}{}), rdb.Do(ctx, "GEOSEARCH", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
+	})
+
 	t.Run("GEOSEARCH simple", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points",
@@ -189,6 +194,11 @@ func TestGeo(t *testing.T) {
 			&redis.GeoLocation{Name: "Philadelphia", Longitude: -75.16521960, Latitude: 39.95258288}).Err())
 		require.EqualValues(t, []string([]string{"Baltimore", "Washington"}),
 			rdb.GeoSearch(ctx, "points", &redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Member: "Washington", Sort: "DESC"}).Val())
+	})
+
+	t.Run("GEOSEARCHSTORE against non existing src key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
 	})
 
 	t.Run("GEOSEARCHSTORE with BYRADIUS", func(t *testing.T) {

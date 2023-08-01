@@ -31,8 +31,8 @@ github:
     - redis-cluster
   enabled_merge_buttons:
     squash:  true
-    merge:   true
-    rebase:  false
+    merge:   false
+    rebase:  true
   protected_branches:
     unstable:
       required_pull_request_reviews:

@@ -111,7 +111,7 @@ jobs:
           - name: Darwin Clang without luaJIT
             os: macos-11
             compiler: auto
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
@@ -160,11 +160,11 @@ jobs:
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
             os: ubuntu-20.04
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
             compiler: gcc
           - name: Ubuntu Clang without luaJIT
             os: ubuntu-20.04
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
             compiler: clang
           - name: Ubuntu GCC with new encoding
             os: ubuntu-20.04

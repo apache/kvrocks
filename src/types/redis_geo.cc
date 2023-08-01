@@ -115,7 +115,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
   if (point_type == kMember) {
     GeoPoint geo_point;
     auto s = Get(user_key, member, &geo_point);
-    if (!s.ok()) return s;
+    if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
     geo_shape.xy[0] = geo_point.longitude;
     geo_shape.xy[1] = geo_point.latitude;

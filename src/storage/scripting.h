@@ -53,6 +53,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
                           const std::vector<std::string> &argv, bool evalsha, std::string *output,
                           bool read_only = false);
 
+bool ScriptExists(lua_State *lua, const std::string &sha);
+
 const char *RedisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBulk(lua_State *lua, const char *reply);

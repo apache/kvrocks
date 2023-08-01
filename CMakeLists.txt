@@ -25,11 +25,11 @@ option(ENABLE_ASAN "enable address sanitizer" OFF)
 option(ENABLE_TSAN "enable thread sanitizer" OFF)
 option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
-option(USE_LUAJIT "use luaJIT instead of lua" ON)
+option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_UNWIND "enable libunwind in glog" ON)
-option(PORTABLE "build a portable binary (disable arch-specific optimizations)" 0)
+set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" OFF)
 

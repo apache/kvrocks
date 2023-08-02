@@ -130,8 +130,8 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
 
   bufferevent *bev = nullptr;
+  ssl_st *ssl = nullptr;
 #ifdef ENABLE_OPENSSL
-  SSL *ssl = nullptr;
   if (uint32_t(local_port) == worker->svr->GetConfig()->tls_port) {
     ssl = SSL_new(worker->svr->ssl_ctx.get());
     if (!ssl) {
@@ -169,7 +169,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   s = worker->AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = redis::Error("ERR " + s.Msg());
-    s = util::SockSend(fd, err_msg);
+    s = util::SockSend(fd, err_msg, ssl);
     if (!s.IsOK()) {
       LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
     }
@@ -319,7 +319,7 @@ Status Worker::AddConnection(redis::Connection *c) {
     return {Status::NotOK, "max number of clients reached"};
   }
 
-  conns_.insert(std::pair<int, redis::Connection *>(c->GetFD(), c));
+  conns_.emplace(c->GetFD(), c);
   uint64_t id = svr->GetClientID();
   c->SetID(id);
 

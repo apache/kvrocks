@@ -22,7 +22,13 @@
 
 #include <netinet/in.h>
 
+#include "event2/util.h"
 #include "status.h"
+
+// forward declarations
+struct ssl_st;
+struct bufferevent;
+struct evbuffer;
 
 namespace util {
 
@@ -45,5 +51,12 @@ std::vector<std::string> GetLocalIPAddresses();
 int AeWait(int fd, int mask, int milliseconds);
 Status Write(int fd, const std::string &data);
 Status Pwrite(int fd, const std::string &data, off_t offset);
+
+Status SockSend(int fd, const std::string &data, ssl_st *ssl);
+Status SockSend(int fd, const std::string &data, bufferevent *bev);
+
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout = 0, int timeout = 0);
+
+StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl);
 
 }  // namespace util

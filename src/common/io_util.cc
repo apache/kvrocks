@@ -26,11 +26,21 @@
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <openssl/bio.h>
 #include <poll.h>
 #include <sys/types.h>
 
+#include "fmt/ostream.h"
+#include "server/tls_util.h"
+
 #ifdef __linux__
 #include <sys/sendfile.h>
+#endif
+
+#ifdef ENABLE_OPENSSL
+#include <openssl/ssl.h>
+
+#include "event2/bufferevent_ssl.h"
 #endif
 
 #include "event_util.h"
@@ -387,8 +397,8 @@ std::vector<std::string> GetLocalIPAddresses() {
   return ip_addresses;
 }
 
-template <auto syscall, typename... Args>
-Status WriteImpl(int fd, std::string_view data, Args &&...args) {
+template <auto syscall, typename FD, typename... Args>
+Status WriteImpl(FD fd, std::string_view data, Args &&...args) {
   ssize_t n = 0;
   while (n < static_cast<ssize_t>(data.size())) {
     ssize_t nwritten = syscall(fd, data.data() + n, data.size() - n, std::forward<Args>(args)...);
@@ -403,5 +413,82 @@ Status WriteImpl(int fd, std::string_view data, Args &&...args) {
 Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
+
+Status SockSend(int fd, const std::string &data, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    return WriteImpl<SSL_write>(ssl, data);
+  } else {
+    return SockSend(fd, data);
+  }
+#else
+  return SockSend(fd, data);
+#endif
+}
+
+Status SockSend(int fd, const std::string &data, bufferevent *bev) {
+#ifdef ENABLE_OPENSSL
+  return SockSend(fd, data, bufferevent_openssl_get_ssl(bev));
+#else
+  return SockSend(fd, data);
+#endif
+}
+
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout, int timeout) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    auto fd = GET_OR_RET(SockConnect(host, port, conn_timeout, timeout));
+    SSL_set_fd(ssl, fd);
+
+    auto bio = BIO_new_socket(fd, BIO_NOCLOSE);
+    SSL_set_bio(ssl, bio, bio);
+
+    if (int err = SSL_connect(ssl); err != 1) {
+      BIO_free(bio);
+      return {Status::NotOK, fmt::format("socket failed to do SSL handshake: {}", fmt::streamed(SSLError(err)))};
+    }
+
+    return fd;
+  } else {
+    return SockConnect(host, port, conn_timeout, timeout);
+  }
+#else
+  return SockConnect(host, port, conn_timeout, timeout);
+#endif
+}
+
+StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    constexpr int BUFFER_SIZE = 4096;
+    char tmp[BUFFER_SIZE];
+
+    if (howmuch <= 0 || howmuch > BUFFER_SIZE) {
+      howmuch = BUFFER_SIZE;
+    }
+    if (howmuch = SSL_read(ssl, tmp, howmuch); howmuch <= 0) {
+      return {Status::NotOK, fmt::format("failed to read from SSL connection: {}", fmt::streamed(SSLError(howmuch)))};
+    }
+
+    if (int ret = evbuffer_add(buf, tmp, howmuch); ret == -1) {
+      return {Status::NotOK, fmt::format("failed to add buffer: {}", strerror(errno))};
+    }
+
+    return howmuch;
+  } else {
+    if (int ret = evbuffer_read(buf, fd, howmuch); ret != -1) {
+      return ret;
+    } else {
+      return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
+    }
+  }
+#else
+  if (int ret = evbuffer_read(buf, fd, howmuch); ret != -1) {
+    return ret;
+  } else {
+    return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
+  }
+#endif
+}
 
 }  // namespace util

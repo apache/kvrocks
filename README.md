@@ -90,7 +90,7 @@ $ ./x.py build -DENABLE_OPENSSL=ON
 To build with lua instead of luaJIT, run:
 
 ```shell
-$ ./x.py build -DUSE_LUAJIT=OFF
+$ ./x.py build -DENABLE_LUAJIT=OFF
 ```
 
 ### Running Kvrocks

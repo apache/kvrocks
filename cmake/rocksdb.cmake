@@ -23,10 +23,6 @@ if (DISABLE_JEMALLOC)
   set(COMPILE_WITH_JEMALLOC OFF)
 endif()
 
-if (NOT PORTABLE)
-  set(PORTABLE 0)
-endif()
-
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(rocksdb

@@ -203,7 +203,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
 // NOTE: fd should be blocking here
 Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 
-// Implements SockSendFileCore to transfer data between file descriptors and
+// Implements SockSendFileImpl to transfer data between file descriptors and
 // avoid transferring data to and from user space.
 //
 // The function prototype is just like sendfile(2) on Linux. in_fd is a file
@@ -213,7 +213,7 @@ Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 //
 // The return value is the number of bytes written to out_fd, if the transfer
 // was successful. On error, -1 is returned, and errno is set appropriately.
-ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
+ssize_t SendFileImpl(int out_fd, int in_fd, off_t offset, size_t count) {
 #if defined(__linux__)
   return sendfile(out_fd, in_fd, &offset, count);
 
@@ -224,18 +224,19 @@ ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
   else
     return (ssize_t)len;
 
-#endif
+#else
   errno = ENOSYS;
   return -1;
+
+#endif
 }
 
-// Send file by sendfile actually according to different operation systems,
-// please note that, the out socket fd should be in blocking mode.
-Status SockSendFile(int out_fd, int in_fd, size_t size) {
+template <auto F, typename FD, typename... Args>
+Status SockSendFileImpl(FD out_fd, int in_fd, size_t size, Args... args) {
   off_t offset = 0;
   while (size != 0) {
     size_t n = size <= 16 * 1024 ? size : 16 * 1024;
-    ssize_t nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
+    ssize_t nwritten = F(out_fd, in_fd, offset, n, args...);
     if (nwritten == -1) {
       if (errno == EINTR)
         continue;
@@ -246,6 +247,30 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
     offset += nwritten;
   }
   return Status::OK();
+}
+
+// Send file by sendfile actually according to different operation systems,
+// please note that, the out socket fd should be in blocking mode.
+Status SockSendFile(int out_fd, int in_fd, size_t size) { return SockSendFileImpl<SendFileImpl>(out_fd, in_fd, size); }
+
+Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    return SockSendFileImpl<SSL_sendfile>(ssl, in_fd, size, 0);
+  } else {
+    return SockSendFile(out_fd, in_fd, size);
+  }
+#else
+  return SockSendFile(out_fd, in_fd, size);
+#endif
+}
+
+Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev) {
+#ifdef ENABLE_OPENSSL
+  return SockSendFile(out_fd, in_fd, size, bufferevent_openssl_get_ssl(bev));
+#else
+  return SockSendFile(out_fd, in_fd, size);
+#endif
 }
 
 Status SockSetBlocking(int fd, int blocking) {

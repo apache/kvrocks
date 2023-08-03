@@ -55,8 +55,10 @@ Status Pwrite(int fd, const std::string &data, off_t offset);
 Status SockSend(int fd, const std::string &data, ssl_st *ssl);
 Status SockSend(int fd, const std::string &data, bufferevent *bev);
 
-StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout = 0, int timeout = 0);
+Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl);
+Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev);
 
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout = 0, int timeout = 0);
 StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl);
 
 }  // namespace util

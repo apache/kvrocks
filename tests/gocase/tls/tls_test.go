@@ -165,6 +165,7 @@ func TestTLSReplica(t *testing.T) {
 	defer func() { require.NoError(t, rc.Close()) }()
 
 	t.Run("TLS: Replication (incremental)", func(t *testing.T) {
+		time.Sleep(500 * time.Millisecond)
 		require.Equal(t, rc.Get(ctx, "a").Val(), "")
 		require.Equal(t, rc.Get(ctx, "b").Val(), "")
 		require.NoError(t, sc.Set(ctx, "a", "1", 0).Err())

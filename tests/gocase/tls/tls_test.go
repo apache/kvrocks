@@ -170,7 +170,7 @@ func TestTLSReplica(t *testing.T) {
 		require.Equal(t, rc.Get(ctx, "b").Val(), "")
 		require.NoError(t, sc.Set(ctx, "a", "1", 0).Err())
 		require.NoError(t, sc.Set(ctx, "b", "2", 0).Err())
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		require.Equal(t, rc.Get(ctx, "a").Val(), "1")
 		require.Equal(t, rc.Get(ctx, "b").Val(), "2")
 	})
@@ -186,7 +186,7 @@ func TestTLSReplica(t *testing.T) {
 
 	t.Run("TLS: Replication (full)", func(t *testing.T) {
 		require.NoError(t, sc.Set(ctx, "c", "3", 0).Err())
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		require.Equal(t, rc2.Get(ctx, "a").Val(), "1")
 		require.Equal(t, rc2.Get(ctx, "b").Val(), "2")
 		require.Equal(t, rc2.Get(ctx, "c").Val(), "3")

@@ -275,12 +275,9 @@ Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl) {
 #ifdef ENABLE_OPENSSL
   if (ssl) {
     return SockSendFileImpl<SendFileSSLImpl>(ssl, in_fd, size);
-  } else {
-    return SockSendFile(out_fd, in_fd, size);
   }
-#else
-  return SockSendFile(out_fd, in_fd, size);
 #endif
+  return SockSendFile(out_fd, in_fd, size);
 }
 
 Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev) {
@@ -460,12 +457,9 @@ Status SockSend(int fd, const std::string &data, ssl_st *ssl) {
 #ifdef ENABLE_OPENSSL
   if (ssl) {
     return WriteImpl<SSL_write>(ssl, data);
-  } else {
-    return SockSend(fd, data);
   }
-#else
-  return SockSend(fd, data);
 #endif
+  return SockSend(fd, data);
 }
 
 Status SockSend(int fd, const std::string &data, bufferevent *bev) {
@@ -491,12 +485,9 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, i
     }
 
     return fd;
-  } else {
-    return SockConnect(host, port, conn_timeout, timeout);
   }
-#else
-  return SockConnect(host, port, conn_timeout, timeout);
 #endif
+  return SockConnect(host, port, conn_timeout, timeout);
 }
 
 StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl) {
@@ -517,20 +508,13 @@ StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_s
     }
 
     return howmuch;
-  } else {
-    if (int ret = evbuffer_read(buf, fd, howmuch); ret > 0) {
-      return ret;
-    } else {
-      return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
-    }
   }
-#else
+#endif
   if (int ret = evbuffer_read(buf, fd, howmuch); ret > 0) {
     return ret;
   } else {
     return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
   }
-#endif
 }
 
 }  // namespace util

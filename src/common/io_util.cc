@@ -26,7 +26,6 @@
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
-#include <openssl/bio.h>
 #include <poll.h>
 #include <sys/types.h>
 

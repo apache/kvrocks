@@ -475,14 +475,14 @@ StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_s
 
     return howmuch;
   } else {
-    if (int ret = evbuffer_read(buf, fd, howmuch); ret != -1) {
+    if (int ret = evbuffer_read(buf, fd, howmuch); ret <= 0) {
       return ret;
     } else {
       return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
     }
   }
 #else
-  if (int ret = evbuffer_read(buf, fd, howmuch); ret != -1) {
+  if (int ret = evbuffer_read(buf, fd, howmuch); ret <= 0) {
     return ret;
   } else {
     return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};

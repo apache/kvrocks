@@ -213,12 +213,12 @@ rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) 
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, 0, true);
+  return MSet(pairs, /*ttl=*/0, /*lock=*/true);
 }
 
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, ttl, true);
+  return MSet(pairs, /*ttl=*/ttl, /*lock=*/true);
 }
 
 rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
@@ -384,7 +384,10 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
     batch->PutLogData(log_data.Encode());
     AppendNamespacePrefix(pair.key, &ns_key);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
-    if (lock) LockGuard guard(storage_->GetLockManager(), ns_key);
+    std::optional<LockGuard> guard;
+    if (lock) {
+      guard(storage_->GetLockManager(), ns_key);
+    }
     auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }

@@ -22,7 +22,6 @@
 
 #include <netinet/in.h>
 
-#include "event2/util.h"
 #include "status.h"
 
 // forward declarations
@@ -59,6 +58,6 @@ Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl);
 Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev);
 
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout = 0, int timeout = 0);
-StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl);
+StatusOr<int> EvbufferRead(evbuffer *buf, int fd, int howmuch, ssl_st *ssl);
 
 }  // namespace util

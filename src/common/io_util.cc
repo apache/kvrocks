@@ -231,11 +231,29 @@ ssize_t SendFileImpl(int out_fd, int in_fd, off_t offset, size_t count) {
 #endif
 }
 
+#ifdef ENABLE_OPENSSL
+ssize_t SendFileSSLImpl(ssl_st *ssl, int in_fd, off_t offset, size_t count) {
+  constexpr size_t BUFFER_SIZE = 16 * 1024;
+  char buf[BUFFER_SIZE];
+  if (off_t ret = lseek(in_fd, offset, SEEK_SET); ret == -1) {
+    return -1;
+  }
+  count = count <= BUFFER_SIZE ? count : BUFFER_SIZE;
+  if (ssize_t ret = read(in_fd, buf, count); ret == -1) {
+    return -1;
+  } else {
+    count = ret;
+  }
+  return SSL_write(ssl, buf, (int)count);
+}
+#endif
+
 template <auto F, typename FD, typename... Args>
 Status SockSendFileImpl(FD out_fd, int in_fd, size_t size, Args... args) {
+  constexpr size_t BUFFER_SIZE = 16 * 1024;
   off_t offset = 0;
   while (size != 0) {
-    size_t n = size <= 16 * 1024 ? size : 16 * 1024;
+    size_t n = size <= BUFFER_SIZE ? size : BUFFER_SIZE;
     ssize_t nwritten = F(out_fd, in_fd, offset, n, args...);
     if (nwritten == -1) {
       if (errno == EINTR)
@@ -256,7 +274,7 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) { return SockSendFileImp
 Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl) {
 #ifdef ENABLE_OPENSSL
   if (ssl) {
-    return SockSendFileImpl<SSL_sendfile>(ssl, in_fd, size, 0);
+    return SockSendFileImpl<SendFileSSLImpl>(ssl, in_fd, size);
   } else {
     return SockSendFile(out_fd, in_fd, size);
   }

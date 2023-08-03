@@ -41,6 +41,7 @@ enum RedisType {
   kRedisBitmap,
   kRedisSortedint,
   kRedisStream,
+  kRedisBloomFilter,
 };
 
 enum RedisCommand {
@@ -143,6 +144,7 @@ class Metadata {
   virtual void Encode(std::string *dst);
   virtual rocksdb::Status Decode(const std::string &bytes);
   bool operator==(const Metadata &that) const;
+  virtual ~Metadata() = default;
 
  private:
   static uint64_t generateVersion();
@@ -193,6 +195,36 @@ class StreamMetadata : public Metadata {
   uint64_t entries_added = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
+
+  void Encode(std::string *dst) override;
+  rocksdb::Status Decode(const std::string &bytes) override;
+};
+
+class SBChainMetadata : public Metadata {
+ public:
+  uint16_t n_filters;
+  uint16_t options;
+  uint16_t growth;
+
+  explicit SBChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
+
+  void Encode(std::string *dst) override;
+  rocksdb::Status Decode(const std::string &bytes) override;
+};
+
+class BFMetadata : public Metadata {
+ public:
+  uint32_t hashes;
+  uint8_t n2;
+  uint64_t entries;
+
+  double error;
+  double bpe;
+
+  uint64_t bf_bits;
+  uint64_t bf_bytes;
+
+  explicit BFMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;

@@ -373,22 +373,20 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl)
   // Data race, key string maybe overwrite by other key while didn't lock the key here,
   // to improve the set performance
   std::string ns_key;
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisString);
+  batch->PutLogData(log_data.Encode());
   for (const auto &pair : pairs) {
     std::string bytes;
     Metadata metadata(kRedisString, false);
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisString);
-    batch->PutLogData(log_data.Encode());
     AppendNamespacePrefix(pair.key, &ns_key);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
     LockGuard guard(storage_->GetLockManager(), ns_key);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-    if (!s.ok()) return s;
   }
-  return rocksdb::Status::OK();
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {

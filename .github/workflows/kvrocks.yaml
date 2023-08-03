@@ -328,10 +328,19 @@ jobs:
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
-          yes|pacman -Sy autoconf automake python3 git wget which cmake make gcc
+          pacman -Syu --noconfirm
+          pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/local/bin/redis-cli
+          key: ${{ matrix.image }}-redis-cli
       - name: Install redis
+        if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
           tar -xzvf redis-6.2.7.tar.gz

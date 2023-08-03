@@ -22,7 +22,9 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -134,5 +136,41 @@ func TestTLS(t *testing.T) {
 
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-protocols", "").Err())
 		require.NoError(t, rdb.ConfigSet(ctx, "tls-ciphers", "DEFAULT").Err())
+	})
+}
+
+func TestTLSReplica(t *testing.T) {
+	if !util.TLSEnable() {
+		t.Skip("TLS tests run only if tls enabled.")
+	}
+
+	ctx := context.Background()
+
+	srv := util.StartTLSServer(t, map[string]string{"tls-replication": "yes"})
+	defer srv.Close()
+
+	defaultTLSConfig, err := util.DefaultTLSConfig()
+	require.NoError(t, err)
+
+	sc := srv.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig, Addr: srv.TLSAddr()})
+	defer func() { require.NoError(t, sc.Close()) }()
+
+	replica := util.StartTLSServer(t, map[string]string{
+		"tls-replication": "yes",
+		"slaveof":         fmt.Sprintf("%s %d", srv.Host(), srv.TLSPort()),
+	})
+	defer replica.Close()
+
+	rc := replica.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig, Addr: replica.TLSAddr()})
+	defer func() { require.NoError(t, rc.Close()) }()
+
+	t.Run("TLS: Simple test for replication", func(t *testing.T) {
+		require.Equal(t, rc.Get(ctx, "a").Val(), "")
+		require.Equal(t, rc.Get(ctx, "b").Val(), "")
+		require.NoError(t, sc.Set(ctx, "a", "1", 0).Err())
+		require.NoError(t, sc.Set(ctx, "b", "2", 0).Err())
+		time.Sleep(100 * time.Millisecond)
+		require.Equal(t, rc.Get(ctx, "a").Val(), "1")
+		require.Equal(t, rc.Get(ctx, "b").Val(), "2")
 	})
 }

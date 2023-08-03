@@ -386,7 +386,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
     batch->Put(metadata_cf_handle_, ns_key, bytes);
     std::optional<LockGuard> guard;
     if (lock) {
-      guard(storage_->GetLockManager(), ns_key);
+      guard.emplace(storage_->GetLockManager(), ns_key);
     }
     auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;

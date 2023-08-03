@@ -120,10 +120,6 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     if D:
         cmake_options += [f"-D{o}" for o in D]
 
-    portable_flag_enabled = any("DPORTABLE" in o for o in cmake_options)
-    if not portable_flag_enabled:
-        cmake_options.append("-DPORTABLE=0")
-
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
 
     if skip_build:

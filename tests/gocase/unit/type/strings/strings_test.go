@@ -324,6 +324,21 @@ func TestString(t *testing.T) {
 		require.Equal(t, "yyy", rdb.Get(ctx, "y2").Val())
 	})
 
+	t.Run("MSETNX with already existent key - same key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", "v0", 0).Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "MSETNX", "x", "v1", "x", "v2").Val())
+		require.EqualValues(t, 1, rdb.Exists(ctx, "x").Val())
+		require.Equal(t, "v0", rdb.Get(ctx, "x").Val())
+	})
+
+	t.Run("MSETNX with not existing keys - same key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "MSETNX", "x", "v1", "x", "v2").Val())
+		require.EqualValues(t, 1, rdb.Exists(ctx, "x").Val())
+		require.Equal(t, "v2", rdb.Get(ctx, "x").Val())
+	})
+
 	t.Run("STRLEN against non-existing key", func(t *testing.T) {
 		require.EqualValues(t, 0, rdb.StrLen(ctx, "notakey").Val())
 	})

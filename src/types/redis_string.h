@@ -50,7 +50,7 @@ class String : public Database {
   rocksdb::Status IncrBy(const std::string &user_key, int64_t increment, int64_t *new_value);
   rocksdb::Status IncrByFloat(const std::string &user_key, double increment, double *new_value);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
-  rocksdb::Status MSet(const std::vector<StringPair> &pairs, uint64_t ttl = 0);
+  rocksdb::Status MSet(const std::vector<StringPair> &pairs, uint64_t ttl = 0, bool lock = true);
   rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag);
   rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
                       uint64_t ttl, int *flag);

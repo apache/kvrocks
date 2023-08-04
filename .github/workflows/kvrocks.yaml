@@ -324,10 +324,12 @@ jobs:
           ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
           mv /usr/bin/g++ /usr/bin/g++-4.8.5
           ln -s /opt/rh/devtoolset-11/root/bin/g++ /usr/bin/g++
+
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
-          yes|pacman -Sy autoconf automake python3 git wget which cmake make gcc
+          pacman -Syu --noconfirm
+          pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

@@ -401,6 +401,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
   int exists = 0;
   std::string ns_key;
   std::vector<std::string> lock_keys;
+  lock_keys.reserve(pairs.size());
   std::vector<Slice> keys;
   keys.reserve(pairs.size());
 
@@ -417,7 +418,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
     return rocksdb::Status::OK();
   }
 
-  rocksdb::Status s = MSet(pairs, ttl, false);
+  rocksdb::Status s = MSet(pairs, /*ttl=*/ttl, /*lock=*/false);
   if (!s.ok()) return s;
 
   *flag = true;

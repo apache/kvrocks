@@ -46,33 +46,34 @@ class CommandBFReserve : public Commander {
       return {Status::RedisParseErr, "capacity should be larger than 0"};
     }
 
-    if (args.size() == 5) {
-      if (args[4] == "NONSCALING") {
-        scaling_ = 0;
-      } else if (args[4] == "EXPANSION") {
+    size_t expect_size = 4;
+    auto iter = find(args.begin(), args.end(), "NONSCALING");
+    if (iter != args.end()) {
+      scaling_ = 0;
+      expect_size += 1;
+    }
+    iter = find(args.begin(), args.end(), "EXPANSION");
+    if (iter != args.end()) {
+      if (scaling_ == 0) {
+        return {Status::RedisParseErr, "nonscaling filters cannot expand"};
+      } else if (++iter == args.end()) {
         return {Status::RedisParseErr, "no expansion"};
       } else {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-    }
-
-    if (args.size() == 6) {
-      if (args[4] == "EXPANSION") {
-        auto parse_expansion = ParseInt<uint16_t>(args[5], 10);
+        auto parse_expansion = ParseInt<uint16_t>(*iter, 10);
         if (!parse_expansion) {
-          return {Status::RedisParseErr, errValueNotInteger};
+          return {Status::RedisParseErr, "ERR bad expansion"};
         }
         expansion_ = *parse_expansion;
         if (expansion_ < 1) {
           return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
         }
+        expect_size += 2;
       }
     }
 
-    if (args.size() > 6) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
+    if (args.size() != expect_size) {
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
-
     return Commander::Parse(args);
   }
 

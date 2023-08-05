@@ -27,6 +27,14 @@
 
 namespace redis {
 
+const char kBloomFilterSeparator[] = ":";
+const uint32_t kBloomFilterSegmentBits = 1024 * 8;
+const uint32_t kBloomFilterSegmentBytes = 1024;
+const uint64_t kBFDefaultInitCapacity = 100;
+const double kBFDefaultErrorRate = 0.01;
+const uint16_t kBFDefaultExpansion = 2;
+const double kErrorTighteningRatio = 0.5;
+
 struct BloomHashval {
   uint64_t a;
   uint64_t b;

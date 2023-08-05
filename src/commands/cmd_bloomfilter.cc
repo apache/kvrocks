@@ -89,7 +89,7 @@ class CommandBFReserve : public Commander {
  private:
   double error_rate_;
   uint64_t capacity_;
-  uint16_t expansion_ = 2;
+  uint16_t expansion_ = kBFDefaultExpansion;
   uint16_t scaling_ = 1;
 };
 
@@ -127,6 +127,115 @@ class CommandBFMADD : public Commander {
 
  private:
   std::vector<Slice> items_;
+};
+
+class CommandBFINSERT : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    insert_options_ = {.capacity = kBFDefaultInitCapacity,
+                       .error_rate = kBFDefaultErrorRate,
+                       .autocreate = 1,
+                       .expansion = kBFDefaultExpansion,
+                       .scaling = 1};
+
+    size_t expect_size = 2;
+
+    auto items_begin = find(args.begin(), args.end(), "ITEMS");
+    if (items_begin == args.end()) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+    expect_size += 1;
+    for (auto item_iter = items_begin + 1; item_iter < args.end(); ++item_iter) {
+      items_.emplace_back(*item_iter);
+      expect_size += 1;
+    }
+    if(items_.size() == 0) {
+      return {Status::RedisParseErr, "num of items should > 0"};
+    }
+
+    auto iter = find(args.begin(), items_begin, "NOCREATE");
+    if (iter != items_begin) {
+      insert_options_.autocreate = 0;
+      expect_size += 1;
+    }
+
+    iter = find(args.begin(), items_begin, "CAPACITY");
+    if (iter != items_begin) {
+      if (insert_options_.autocreate == 0) {
+        return {Status::RedisParseErr, "specify NOCREATE together with CAPACITY"};
+      } else {
+        auto parse_capacity = ParseInt<uint64_t>(*(++iter), 10);
+        if (!parse_capacity) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        insert_options_.capacity = *parse_capacity;
+        if (insert_options_.capacity <= 0) {
+          return {Status::RedisParseErr, "capacity should be larger than 0"};
+        }
+        expect_size += 2;
+      }
+    }
+
+    iter = find(args.begin(), items_begin, "ERROR");
+    if (iter != items_begin) {
+      if (insert_options_.autocreate == 0) {
+        return {Status::RedisParseErr, "specify NOCREATE together with ERROR"};
+      } else {
+        auto parse_error_rate = ParseFloat<double>(*(++iter));
+        if (!parse_error_rate) {
+          return {Status::RedisParseErr, errValueIsNotFloat};
+        }
+        insert_options_.error_rate = *parse_error_rate;
+        if (insert_options_.error_rate >= 1 || insert_options_.error_rate <= 0) {
+          return {Status::RedisParseErr, "0 < error rate range < 1"};
+        }
+        expect_size += 2;
+      }
+    }
+
+    iter = find(args.begin(), items_begin, "NONSCALING");
+    if (iter != items_begin) {
+      insert_options_.scaling = 0;
+      expect_size += 1;
+    }
+    iter = find(args.begin(), items_begin, "EXPANSION");
+    if (iter != items_begin) {
+      if (insert_options_.scaling == 0) {
+        return {Status::RedisParseErr, "nonscaling filters cannot expand"};
+      } else if (++iter == args.end()) {
+        return {Status::RedisParseErr, "no expansion"};
+      } else {
+        auto parse_expansion = ParseInt<uint16_t>(*iter, 10);
+        if (!parse_expansion) {
+          return {Status::RedisParseErr, "ERR bad expansion"};
+        }
+        insert_options_.expansion = *parse_expansion;
+        if (insert_options_.expansion < 1) {
+          return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
+        }
+        expect_size += 2;
+      }
+    }
+
+    if (args.size() != expect_size) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<int> rets(items_.size(), 0);
+    auto s = bloom_db.InsertCommon(args_[1], items_, &insert_options_, rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiInteger(rets);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> items_;
+  BFInsertOptions insert_options_;
 };
 
 class CommandBFEXIST : public Commander {
@@ -168,6 +277,7 @@ class CommandBFMEXIST : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFADD>("bf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFMADD>("bf.madd", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBFINSERT>("bf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFEXIST>("bf.exist", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBFMEXIST>("bf.mexist", -3, "read-only", 1, 1, 1), )
 

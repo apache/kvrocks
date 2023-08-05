@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "parse_util.h"
@@ -213,12 +214,12 @@ rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) 
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, 0);
+  return MSet(pairs, /*ttl=*/0, /*lock=*/true);
 }
 
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, ttl);
+  return MSet(pairs, /*ttl=*/ttl, /*lock=*/true);
 }
 
 rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
@@ -363,7 +364,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl) {
+rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl, bool lock) {
   uint64_t expire = 0;
   if (ttl > 0) {
     uint64_t now = util::GetTimeStampMS();
@@ -384,7 +385,10 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl)
     bytes.append(pair.value.data(), pair.value.size());
     AppendNamespacePrefix(pair.key, &ns_key);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
-    LockGuard guard(storage_->GetLockManager(), ns_key);
+    std::optional<LockGuard> guard;
+    if (lock) {
+      guard.emplace(storage_->GetLockManager(), ns_key);
+    }
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -392,41 +396,29 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl)
 rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {
   *flag = false;
 
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
-
   int exists = 0;
+  std::string ns_key;
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(pairs.size());
   std::vector<Slice> keys;
   keys.reserve(pairs.size());
+
   for (StringPair pair : pairs) {
+    AppendNamespacePrefix(pair.key, &ns_key);
+    lock_keys.emplace_back(ns_key);
     keys.emplace_back(pair.key);
   }
+
+  // Lock these keys before doing anything.
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
   if (Exists(keys, &exists).ok() && exists > 0) {
     return rocksdb::Status::OK();
   }
 
-  std::string ns_key;
-  for (StringPair pair : pairs) {
-    AppendNamespacePrefix(pair.key, &ns_key);
-    LockGuard guard(storage_->GetLockManager(), ns_key);
-    if (Exists({pair.key}, &exists).ok() && exists == 1) {
-      return rocksdb::Status::OK();
-    }
-    std::string bytes;
-    Metadata metadata(kRedisString, false);
-    metadata.expire = expire;
-    metadata.Encode(&bytes);
-    bytes.append(pair.value.data(), pair.value.size());
-    auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisString);
-    batch->PutLogData(log_data.Encode());
-    batch->Put(metadata_cf_handle_, ns_key, bytes);
-    auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-    if (!s.ok()) return s;
-  }
+  rocksdb::Status s = MSet(pairs, /*ttl=*/ttl, /*lock=*/false);
+  if (!s.ok()) return s;
+
   *flag = true;
   return rocksdb::Status::OK();
 }

@@ -127,7 +127,7 @@ struct EvconnlistenerBase {
  private:
   template <void (Derived::*cb)(evconnlistener *, evutil_socket_t, sockaddr *, int)>
   static void callback(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
-    return reinterpret_cast<Derived>(ctx)->cb(listener, fd, address, socklen);
+    return reinterpret_cast<Derived *>(ctx)->cb(listener, fd, address, socklen);
   }
 
  public:

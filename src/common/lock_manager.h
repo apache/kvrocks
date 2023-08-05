@@ -81,7 +81,9 @@ class LockManager {
 template <typename KeyType>
 class BasicLockGuard {
  public:
-  explicit BasicLockGuard(LockManager *lock_mgr, KeyType key) : lock_mgr_(lock_mgr), key_(key) { lock_mgr->Lock(key_); }
+  explicit BasicLockGuard(LockManager *lock_mgr, KeyType key) : lock_mgr_(lock_mgr), key_(std::move(key)) {
+    lock_mgr->Lock(key_);
+  }
   ~BasicLockGuard() {
     if (lock_mgr_) lock_mgr_->UnLock(key_);
   }

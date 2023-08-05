@@ -27,6 +27,7 @@
 #include "event2/buffer.h"
 #include "event2/bufferevent.h"
 #include "event2/event.h"
+#include "event2/listener.h"
 
 template <typename F, F *f>
 struct StaticFunction {
@@ -119,4 +120,19 @@ struct EventCallbackBase {
   }
 
   event *NewTimer(event_base *base) { return evtimer_new(base, timerCB, reinterpret_cast<void *>(this)); }
+};
+
+template <typename Derived>
+struct EvconnlistenerBase {
+ private:
+  template <void (Derived::*cb)(evconnlistener *, evutil_socket_t, sockaddr *, int)>
+  static void callback(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
+    return reinterpret_cast<Derived>(ctx)->cb(listener, fd, address, socklen);
+  }
+
+ public:
+  template <void (Derived::*cb)(evconnlistener *, evutil_socket_t, sockaddr *, int)>
+  evconnlistener *NewEvconnlistener(event_base *base, unsigned flags, int backlog, evutil_socket_t fd) {
+    return evconnlistener_new(base, callback<cb>, this, flags, backlog, fd);
+  }
 };

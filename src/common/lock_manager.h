@@ -30,12 +30,8 @@
 
 class LockManager {
  public:
-  explicit LockManager(unsigned hash_power) : hash_power_(hash_power), hash_mask_((1U << hash_power) - 1) {
-    mutex_pool_.reserve(Size());
-    for (unsigned i = 0; i < Size(); i++) {
-      mutex_pool_.emplace_back(new std::mutex{});
-    }
-  }
+  explicit LockManager(unsigned hash_power)
+      : hash_power_(hash_power), hash_mask_((1U << hash_power) - 1), mutex_pool_(Size()) {}
   ~LockManager() = default;
 
   LockManager(const LockManager &) = delete;
@@ -43,10 +39,15 @@ class LockManager {
 
   unsigned Size() const { return (1U << hash_power_); }
 
-  void Lock(std::string_view key) { mutex_pool_[hash(key)]->lock(); }
-  void UnLock(std::string_view key) { mutex_pool_[hash(key)]->unlock(); }
+  void Lock(std::string_view key) { mutex_pool_[hash(key)].lock(); }
+  void UnLock(std::string_view key) { mutex_pool_[hash(key)].unlock(); }
   void Lock(rocksdb::Slice key) { Lock(key.ToStringView()); }
   void UnLock(rocksdb::Slice key) { UnLock(key.ToStringView()); }
+
+  template <typename Key>
+  std::mutex *Get(const Key &key) {
+    return &mutex_pool_[hash(key)];
+  }
 
   template <typename Keys>
   std::vector<std::mutex *> MultiGet(const Keys &keys) {
@@ -65,7 +66,7 @@ class LockManager {
     std::vector<std::mutex *> locks;
     locks.reserve(to_acquire_indexes.size());
     for (auto index : to_acquire_indexes) {
-      locks.emplace_back(mutex_pool_[index].get());
+      locks.emplace_back(&mutex_pool_[index]);
     }
     return locks;
   }
@@ -73,40 +74,34 @@ class LockManager {
  private:
   unsigned hash_power_;
   unsigned hash_mask_;
-  std::vector<std::unique_ptr<std::mutex>> mutex_pool_;
+  std::vector<std::mutex> mutex_pool_;
 
   unsigned hash(std::string_view key) const { return std::hash<std::string_view>{}(key)&hash_mask_; }
 };
 
-template <typename KeyType>
-class BasicLockGuard {
+class LockGuard {
  public:
-  explicit BasicLockGuard(LockManager *lock_mgr, KeyType key) : lock_mgr_(lock_mgr), key_(std::move(key)) {
-    lock_mgr->Lock(key_);
+  template <typename KeyType>
+  explicit LockGuard(LockManager *lock_mgr, const KeyType &key) : lock_(lock_mgr->Get(key)) {
+    lock_->lock();
   }
-  ~BasicLockGuard() {
-    if (lock_mgr_) lock_mgr_->UnLock(key_);
+  ~LockGuard() {
+    if (lock_) lock_->unlock();
   }
 
-  BasicLockGuard(const BasicLockGuard &) = delete;
-  BasicLockGuard &operator=(const BasicLockGuard &) = delete;
+  LockGuard(const LockGuard &) = delete;
+  LockGuard &operator=(const LockGuard &) = delete;
 
-  BasicLockGuard(BasicLockGuard &&guard) : lock_mgr_(guard.lock_mgr_), key_(std::move(guard.key_)) {
-    guard.lock_mgr_ = nullptr;
-  }
+  LockGuard(LockGuard &&guard) : lock_(guard.lock_) { guard.lock_ = nullptr; }
 
  private:
-  LockManager *lock_mgr_ = nullptr;
-  KeyType key_;
+  std::mutex *lock_;
 };
-
-using LockGuard = BasicLockGuard<rocksdb::Slice>;
 
 class MultiLockGuard {
  public:
   template <typename Keys>
-  explicit MultiLockGuard(LockManager *lock_mgr, const Keys &keys)
-      : lock_mgr_(lock_mgr), locks_(lock_mgr_->MultiGet(keys)) {
+  explicit MultiLockGuard(LockManager *lock_mgr, const Keys &keys) : locks_(lock_mgr->MultiGet(keys)) {
     for (const auto &iter : locks_) {
       iter->lock();
     }
@@ -122,9 +117,8 @@ class MultiLockGuard {
   MultiLockGuard(const MultiLockGuard &) = delete;
   MultiLockGuard &operator=(const MultiLockGuard &) = delete;
 
-  MultiLockGuard(MultiLockGuard &&guard) : lock_mgr_(guard.lock_mgr_), locks_(std::move(guard.locks_)) {}
+  MultiLockGuard(MultiLockGuard &&guard) : locks_(std::move(guard.locks_)) {}
 
  private:
-  LockManager *lock_mgr_ = nullptr;
   std::vector<std::mutex *> locks_;
 };

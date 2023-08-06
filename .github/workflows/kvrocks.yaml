@@ -309,10 +309,11 @@ jobs:
             compiler: gcc
           - name: openSUSE Leap 15
             image: opensuse/leap:15
-            compiler: auto
+            compiler: gcc
           - name: ArchLinux base
             image: archlinux:base
             compiler: gcc
+
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -339,8 +340,8 @@ jobs:
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
           zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake
-          update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
-          update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -350,6 +351,7 @@ jobs:
           path: |
             ~/local/bin/redis-cli
           key: ${{ matrix.image }}-redis-cli
+
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |

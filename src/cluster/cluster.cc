@@ -53,14 +53,8 @@ Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  if (strcasecmp("setnodes", subcommand.c_str()) == 0) {
-    return true;
-  } else if (strcasecmp("setnodeid", subcommand.c_str()) == 0) {
-    return true;
-  } else if (strcasecmp("setslot", subcommand.c_str()) == 0) {
-    return true;
-  } else if (strcasecmp("import", subcommand.c_str()) == 0) {
-    return true;
+  for (auto v : {"setnodes", "setnodeid", "setslot", "import"}) {
+    if (util::EqualICase(v, subcommand)) return true;
   }
   return false;
 }
@@ -667,9 +661,9 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
     // 4) role
     int role = 0;
-    if (strcasecmp(fields[3].c_str(), "master") == 0) {
+    if (util::EqualICase(fields[3], "master")) {
       role = kClusterMaster;
-    } else if (strcasecmp(fields[3].c_str(), "slave") == 0 || strcasecmp(fields[3].c_str(), "replica") == 0) {
+    } else if (util::EqualICase(fields[3], "slave") || util::EqualICase(fields[3], "replica")) {
       role = kClusterSlave;
     } else {
       return {Status::ClusterInvalidInfo, "Invalid cluster node role"};

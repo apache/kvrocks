@@ -25,6 +25,7 @@
 #include <climits>
 #include <functional>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <utility>
 
@@ -167,9 +168,9 @@ class YesNoField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    if (strcasecmp(v.data(), "yes") == 0) {
+    if (util::EqualICase(v, "yes")) {
       *receiver_ = true;
-    } else if (strcasecmp(v.data(), "no") == 0) {
+    } else if (util::EqualICase(v, "no")) {
       *receiver_ = false;
     } else {
       return {Status::NotOK, "argument must be 'yes' or 'no'"};
@@ -202,12 +203,18 @@ class EnumField : public ConfigField {
 
   Status Set(const std::string &v) override {
     for (const auto &e : enums_) {
-      if (strcasecmp(e.name.c_str(), v.c_str()) == 0) {
+      if (util::EqualICase(e.name, v)) {
         *receiver_ = e.val;
         return Status::OK();
       }
     }
-    return {Status::NotOK, "invalid enum option"};
+    return {Status::NotOK, fmt::format("invalid enum option, acceptable values are {}",
+                                       std::accumulate(enums_.begin(), enums_.end(), std::string{},
+                                                       [this](const std::string &res, const ConfigEnum &e) {
+                                                         if (&e != &enums_.back()) return res + "'" + e.name + "', ";
+
+                                                         return res + "'" + e.name + "'";
+                                                       }))};
   }
 
  private:

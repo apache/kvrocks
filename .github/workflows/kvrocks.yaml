@@ -310,7 +310,7 @@ jobs:
           - name: openSUSE Leap 15
             image: opensuse/leap:15
             compiler: gcc
-          - name: ArchLinux base
+          - name: ArchLinux
             image: archlinux:base
             compiler: gcc
 
@@ -340,6 +340,8 @@ jobs:
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
           zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake
+          update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
+          update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
           echo "NPROC=$(nproc)" >> $GITHUB_ENV

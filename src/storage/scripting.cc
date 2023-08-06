@@ -33,6 +33,7 @@
 #include "lua.h"
 #include "parse_util.h"
 #include "rand.h"
+#include "scope_exit.h"
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "sha1.h"
@@ -290,6 +291,12 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   }
 
   return Status::OK();
+}
+
+bool ScriptExists(lua_State *lua, const std::string &sha) {
+  lua_getglobal(lua, (REDIS_LUA_FUNC_SHA_PREFIX + sha).c_str());
+  auto exit = MakeScopeExit([lua] { lua_pop(lua, 1); });
+  return !lua_isnil(lua, -1);
 }
 
 int RedisCallCommand(lua_State *lua) { return RedisGenericCommand(lua, 1); }

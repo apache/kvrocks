@@ -477,7 +477,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []string{"b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 2})
-		require.Equal(t, []string{"a", "b", "c", "d"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+		require.Equal(t, []string{"a", "b", "c"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
 
 		rdb.Del(ctx, "zdst")
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: 0, Stop: 0})
@@ -512,6 +512,31 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.Del(ctx, "zdst")
 		rdb.ZRangeStore(ctx, "zdst", redis.ZRangeArgs{Key: "zsrc", Start: "[a", Stop: "[g", ByLex: true, Offset: 2, Count: 3})
 		require.Equal(t, []string{"c", "d", "f"}, rdb.ZRange(ctx, "zdst", 0, -1).Val())
+	})
+
+	t.Run(fmt.Sprintf("ZRANGESTORE will overwrite dst - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zsrc")
+		rdb.Del(ctx, "zdst")
+
+		// non-existing src key delete the dst key
+		rdb.ZAdd(ctx, "zdst", redis.Z{Score: 1, Member: "dst_a"})
+		require.Equal(t, int64(0), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zdst").Val())
+
+		// non-existing src key delete the dst key (different type)
+		require.Equal(t, "OK", rdb.Set(ctx, "zdst", 100, 0).Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, "zdst").Val())
+
+		// overwrite the dst key with the result zset instead of adding
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 1, Member: "src_a"})
+		rdb.ZAdd(ctx, "zsrc", redis.Z{Score: 2, Member: "src_b"})
+		rdb.ZAdd(ctx, "zdst", redis.Z{Score: 3, Member: "dst_c"})
+		require.Equal(t, int64(2), rdb.Do(ctx, "zrangestore", "zdst", "zsrc", 0, -1).Val())
+		require.Equal(t, []redis.Z{
+			{1, "src_a"},
+			{2, "src_b"},
+		}, rdb.ZRangeWithScores(ctx, "zdst", 0, -1).Val())
 	})
 
 	t.Run(fmt.Sprintf("ZRANGESTORE error - %s", encoding), func(t *testing.T) {
@@ -649,20 +674,42 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 10, Member: "x"})
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 20, Member: "y"})
 		rdb.ZAdd(ctx, "zranktmp", redis.Z{Score: 30, Member: "z"})
+
 		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "y").Val())
 		require.Equal(t, int64(2), rdb.ZRank(ctx, "zranktmp", "z").Val())
-		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "foo").Val())
+		require.Equal(t, redis.Nil, rdb.ZRank(ctx, "zranktmp", "foo").Err())
 		require.Equal(t, int64(2), rdb.ZRevRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRevRank(ctx, "zranktmp", "y").Val())
 		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
-		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "foo").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
+
+		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrank", "zranktmp", "y", "withscore").Val())
+		require.Equal(t, []interface{}{int64(2), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, []interface{}{int64(2), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrevrank", "zranktmp", "y", "withscore").Val())
+		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
 	})
 
-	t.Run(fmt.Sprintf("ZRANK - after deletion -%s", encoding), func(t *testing.T) {
+	t.Run(fmt.Sprintf("ZRANK/ZREVRANK - after deletion -%s", encoding), func(t *testing.T) {
 		rdb.ZRem(ctx, "zranktmp", "y")
+
 		require.Equal(t, int64(0), rdb.ZRank(ctx, "zranktmp", "x").Val())
 		require.Equal(t, int64(1), rdb.ZRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRank(ctx, "zranktmp", "foo").Err())
+		require.Equal(t, int64(1), rdb.ZRevRank(ctx, "zranktmp", "x").Val())
+		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
+
+		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(1), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, []interface{}{int64(1), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
+		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
 	})
 
 	t.Run(fmt.Sprintf("ZINCRBY - can create a new sorted set - %s", encoding), func(t *testing.T) {

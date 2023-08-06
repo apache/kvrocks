@@ -90,7 +90,7 @@ $ ./x.py build -DENABLE_OPENSSL=ON
 To build with lua instead of luaJIT, run:
 
 ```shell
-$ ./x.py build -DUSE_LUAJIT=OFF
+$ ./x.py build -DENABLE_LUAJIT=OFF
 ```
 
 ### Running Kvrocks
@@ -168,9 +168,10 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 
 ## Tools
 
-* Export the Kvrocks monitor metrics, please use [kvrocks_exporter](https://github.com/KvrocksLabs/kvrocks_exporter)
-* Migrate from redis to kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) which was developed by [vipshop](https://github.com/vipshop)
-* Migrate from kvrocks to redis, use `kvrocks2redis` in the build directory
+* To manage Kvrocks clusters for failover, scaling up/down and more, use [kvrocks_controller](https://github.com/RocksLabs/kvrocks_controller)
+* To export the Kvrocks monitor metrics, use [kvrocks_exporter](https://github.com/RocksLabs/kvrocks_exporter)
+* To migrate from Redis to Kvrocks, use [redis-migrate-tool](https://github.com/vipshop/redis-migrate-tool) developed by Vipshop
+* To migrate from Kvrocks to Redis, use `kvrocks2redis` in the build directory
 
 ## Contributing
 

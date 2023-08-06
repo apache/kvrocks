@@ -770,8 +770,8 @@ class CommandZRangeStore : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    uint64_t ret = 0;
-    s = zset_db.Add(dst_, ZAddFlags(), &member_scores, &ret);
+    uint64_t ret = member_scores.size();
+    s = zset_db.Overwrite(dst_, member_scores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -966,24 +966,55 @@ class CommandZRevRangeByScore : public CommandZRangeGeneric {
 class CommandZRank : public Commander {
  public:
   explicit CommandZRank(bool reversed = false) : reversed_(reversed) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    // skip the <CMD> <key> <member> and parse remaining optional arguments
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("withscore") && !with_score_) {
+        with_score_ = true;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     int rank = 0;
+    double score = 0.0;
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
-    auto s = zset_db.Rank(args_[1], args_[2], reversed_, &rank);
+    auto s = zset_db.Rank(args_[1], args_[2], reversed_, &rank, &score);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     if (rank == -1) {
-      *output = redis::NilString();
+      if (with_score_) {
+        output->append(redis::MultiLen(-1));
+      } else {
+        *output = redis::NilString();
+      }
     } else {
-      *output = redis::Integer(rank);
+      if (with_score_) {
+        output->append(redis::MultiLen(2));
+        output->append(redis::Integer(rank));
+        output->append(redis::BulkString(util::Float2String(score)));
+      } else {
+        *output = redis::Integer(rank);
+      }
     }
     return Status::OK();
   }
 
  private:
   bool reversed_;
+  bool with_score_ = false;
 };
 
 class CommandZRevRank : public CommandZRank {
@@ -1361,13 +1392,13 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRangeByLex>("zrevrangebylex", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByScore>("zrangebyscore", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZRank>("zrank", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandZRank>("zrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRem>("zrem", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRemRangeByRank>("zremrangebyrank", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandZRemRangeByScore>("zremrangebyscore", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZRemRangeByScore>("zremrangebyscore", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRemRangeByLex>("zremrangebylex", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRangeByScore>("zrevrangebyscore", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZRevRank>("zrevrank", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandZRevRank>("zrevrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),

@@ -25,6 +25,7 @@
 #include <climits>
 #include <functional>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <utility>
 
@@ -47,14 +48,11 @@ using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
 struct ConfigEnum {
-  const char *name;
+  const std::string name;
   const int val;
 };
 
 enum ConfigType { SingleConfig, MultiConfig };
-
-int ConfigEnumGetValue(ConfigEnum *ce, const char *name);
-const char *ConfigEnumGetName(ConfigEnum *ce, int val);
 
 class ConfigField {
  public:
@@ -170,9 +168,9 @@ class YesNoField : public ConfigField {
     return Status::OK();
   }
   Status Set(const std::string &v) override {
-    if (strcasecmp(v.data(), "yes") == 0) {
+    if (util::EqualICase(v, "yes")) {
       *receiver_ = true;
-    } else if (strcasecmp(v.data(), "no") == 0) {
+    } else if (util::EqualICase(v, "no")) {
       *receiver_ = false;
     } else {
       return {Status::NotOK, "argument must be 'yes' or 'no'"};
@@ -186,23 +184,40 @@ class YesNoField : public ConfigField {
 
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, ConfigEnum *enums, int e) : receiver_(receiver), enums_(enums) { *receiver_ = e; }
+  EnumField(int *receiver, std::vector<ConfigEnum> enums, int e) : receiver_(receiver), enums_(std::move(enums)) {
+    *receiver_ = e;
+  }
   ~EnumField() override = default;
-  std::string ToString() override { return ConfigEnumGetName(enums_, *receiver_); }
+
+  std::string ToString() override {
+    for (const auto &e : enums_) {
+      if (e.val == *receiver_) return e.name;
+    }
+    return {};
+  }
+
   Status ToNumber(int64_t *n) override {
     *n = *receiver_;
     return Status::OK();
   }
+
   Status Set(const std::string &v) override {
-    int e = ConfigEnumGetValue(enums_, v.c_str());
-    if (e == INT_MIN) {
-      return {Status::NotOK, "invalid enum option"};
+    for (const auto &e : enums_) {
+      if (util::EqualICase(e.name, v)) {
+        *receiver_ = e.val;
+        return Status::OK();
+      }
     }
-    *receiver_ = e;
-    return Status::OK();
+    return {Status::NotOK, fmt::format("invalid enum option, acceptable values are {}",
+                                       std::accumulate(enums_.begin(), enums_.end(), std::string{},
+                                                       [this](const std::string &res, const ConfigEnum &e) {
+                                                         if (&e != &enums_.back()) return res + "'" + e.name + "', ";
+
+                                                         return res + "'" + e.name + "'";
+                                                       }))};
   }
 
  private:
   int *receiver_;
-  ConfigEnum *enums_ = nullptr;
+  std::vector<ConfigEnum> enums_;
 };

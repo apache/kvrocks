@@ -27,6 +27,7 @@
 
 #include "commands/commander.h"
 #include "fmt/format.h"
+#include "string_util.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #endif
@@ -80,7 +81,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
-    Reply(redis::Error(s.Msg()));
+    Reply(redis::Error("ERR " + s.Msg()));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -289,6 +290,13 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
+bool IsSpecialExclusiveCommand(const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
+                               Config *config) {
+  return (cmd_name == "config" && cmd_tokens.size() == 2 && util::EqualICase(cmd_tokens[1], "set")) ||
+         (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") && cmd_tokens.size() >= 2 &&
+          Cluster::SubCommandIsExecExclusive(cmd_tokens[1]));
+}
+
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
@@ -330,10 +338,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
-    } else if (attributes->IsExclusive() ||
-               (cmd_name == "config" && cmd_tokens.size() == 2 && !strcasecmp(cmd_tokens[1].c_str(), "set")) ||
-               (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") &&
-                cmd_tokens.size() >= 2 && Cluster::SubCommandIsExecExclusive(cmd_tokens[1]))) {
+    } else if (attributes->IsExclusive() || IsSpecialExclusiveCommand(cmd_name, cmd_tokens, config)) {
       exclusivity = svr_->WorkExclusivityGuard();
 
       // When executing lua script commands that have "exclusive" attribute, we need to know current connection,
@@ -371,7 +376,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (IsFlagEnabled(Connection::kMultiExec) && attributes->IsNoMulti()) {
-      std::string no_multi_err = "Err Can't execute " + attributes->name + " in MULTI";
+      std::string no_multi_err = "ERR Can't execute " + attributes->name + " in MULTI";
       Reply(redis::Error(no_multi_err));
       multi_error_ = true;
       continue;
@@ -381,7 +386,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
-        Reply(redis::Error(s.Msg()));
+        Reply(redis::Error("ERR " + s.Msg()));
         continue;
       }
     }

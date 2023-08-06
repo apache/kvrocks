@@ -24,6 +24,7 @@
 #include <rocksdb/env.h>
 #include <strings.h>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -45,42 +46,32 @@ constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files 
 constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =
     "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
-ConfigEnum compression_types[] = {
-    {"no", rocksdb::CompressionType::kNoCompression},     {"snappy", rocksdb::CompressionType::kSnappyCompression},
-    {"lz4", rocksdb::CompressionType::kLZ4Compression},   {"zstd", rocksdb::CompressionType::kZSTD},
-    {"zlib", rocksdb::CompressionType::kZlibCompression}, {nullptr, 0}};
+std::vector<ConfigEnum> supervised_modes{
+    {"no", kSupervisedNone},
+    {"auto", kSupervisedAutoDetect},
+    {"upstart", kSupervisedUpStart},
+    {"systemd", kSupervisedSystemd},
+};
 
-ConfigEnum supervised_modes[] = {{"no", kSupervisedNone},
-                                 {"auto", kSupervisedAutoDetect},
-                                 {"upstart", kSupervisedUpStart},
-                                 {"systemd", kSupervisedSystemd},
-                                 {nullptr, 0}};
+std::vector<ConfigEnum> log_levels{
+    {"info", google::INFO},
+    {"warning", google::WARNING},
+    {"error", google::ERROR},
+    {"fatal", google::FATAL},
+};
 
-ConfigEnum log_levels[] = {{"info", google::INFO},
-                           {"warning", google::WARNING},
-                           {"error", google::ERROR},
-                           {"fatal", google::FATAL},
-                           {nullptr, 0}};
+std::vector<ConfigEnum> compression_types{[] {
+  std::vector<ConfigEnum> res;
+  res.reserve(engine::CompressionOptions.size());
+  for (const auto &e : engine::CompressionOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
 
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
   return s.substr(8, s.size() - 8);
-}
-
-int ConfigEnumGetValue(ConfigEnum *ce, const char *name) {
-  while (ce->name != nullptr) {
-    if (strcasecmp(ce->name, name) == 0) return ce->val;
-    ce++;
-  }
-  return INT_MIN;
-}
-
-const char *ConfigEnumGetName(ConfigEnum *ce, int val) {
-  while (ce->name != nullptr) {
-    if (ce->val == val) return ce->name;
-    ce++;
-  }
-  return nullptr;
 }
 
 Config::Config() {
@@ -92,6 +83,7 @@ Config::Config() {
     FieldWrapper(std::string name, bool readonly, ConfigField *field)
         : name(std::move(name)), readonly(readonly), field(field) {}
   };
+
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_str_, "")},
@@ -134,7 +126,7 @@ Config::Config() {
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
-      {"log-level", true, new EnumField(&log_level, log_levels, google::INFO)},
+      {"log-level", false, new EnumField(&log_level, log_levels, google::INFO)},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
@@ -328,6 +320,30 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
   };
+  auto set_compression_type_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
+    if (!srv) return Status::OK();
+
+    std::string compression_option;
+    for (auto &option : engine::CompressionOptions) {
+      if (option.name == v) {
+        compression_option = option.val;
+        break;
+      }
+    }
+    if (compression_option.empty()) {
+      return {Status::NotOK, "Invalid compression type"};
+    }
+
+    // For the first two levels, it may contain the frequently accessed data,
+    // so it'd be better to use uncompressed data to save the CPU.
+    std::string compression_levels = "kNoCompression:kNoCompression";
+    auto db = srv->storage->GetDB();
+    for (size_t i = 2; i < db->GetOptions().compression_per_level.size(); i++) {
+      compression_levels += ":";
+      compression_levels += compression_option;
+    }
+    return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_levels);
+  };
 #ifdef ENABLE_OPENSSL
   auto set_tls_option = [](Server *srv, const std::string &k, const std::string &v) {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
@@ -467,6 +483,12 @@ void Config::initFieldCallback() {
          if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
          return Status::OK();
        }},
+      {"log-level",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         FLAGS_minloglevel = log_level;
+         return Status::OK();
+       }},
       {"log-retention-days",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
@@ -601,6 +623,7 @@ void Config::initFieldCallback() {
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
+      {"rocksdb.compression", set_compression_type_cb},
 #ifdef ENABLE_OPENSSL
       {"tls-cert-file", set_tls_option},
       {"tls-key-file", set_tls_option},

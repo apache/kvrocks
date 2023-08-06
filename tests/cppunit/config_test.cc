@@ -36,6 +36,7 @@ TEST(Config, GetAndSet) {
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
   std::map<std::string, std::string> mutable_cases = {
+      {"log-level", "info"},
       {"timeout", "1000"},
       {"maxclients", "2000"},
       {"max-backup-to-keep", "1"},

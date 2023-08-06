@@ -40,7 +40,6 @@
 #include "commands/commander.h"
 #include "config.h"
 #include "fmt/format.h"
-#include "lua.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
@@ -881,7 +880,7 @@ void Server::GetMemoryInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Memory\r\n";
   string_stream << "used_memory_rss:" << rss << "\r\n";
-  string_stream << "used_memory_human:" << used_memory_rss_human << "\r\n";
+  string_stream << "used_memory_rss_human:" << used_memory_rss_human << "\r\n";
   string_stream << "used_memory_lua:" << memory_lua << "\r\n";
   string_stream << "used_memory_lua_human:" << used_memory_lua_human << "\r\n";
   string_stream << "used_memory_startup:" << memory_startup_use_.load(std::memory_order_relaxed) << "\r\n";
@@ -1507,11 +1506,9 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
 }
 
 Status Server::ScriptExists(const std::string &sha) {
-  lua_getglobal(lua_, (REDIS_LUA_FUNC_SHA_PREFIX + sha).c_str());
-  if (!lua_isnil(lua_, -1)) {
+  if (lua::ScriptExists(lua_, sha)) {
     return Status::OK();
   }
-  lua_pop(lua_, 1);
 
   std::string body;
   return ScriptGet(sha, &body);

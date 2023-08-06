@@ -61,6 +61,8 @@ class Hash : public SubKeyScanner {
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &field_prefix, std::vector<std::string> *fields,
                        std::vector<std::string> *values = nullptr);
+  rocksdb::Status RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
+                            HashFetchType type = HashFetchType::kOnlyKey);
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);

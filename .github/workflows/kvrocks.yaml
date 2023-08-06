@@ -111,7 +111,7 @@ jobs:
           - name: Darwin Clang without luaJIT
             os: macos-11
             compiler: auto
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
@@ -160,11 +160,11 @@ jobs:
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
             os: ubuntu-20.04
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
             compiler: gcc
           - name: Ubuntu Clang without luaJIT
             os: ubuntu-20.04
-            without_luajit: -DUSE_LUAJIT=OFF
+            without_luajit: -DENABLE_LUAJIT=OFF
             compiler: clang
           - name: Ubuntu GCC with new encoding
             os: ubuntu-20.04
@@ -290,6 +290,11 @@ jobs:
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
+          push: false
+          tags: kvrocks:ci
+          outputs: type=docker
+      - name: Test built image
+        run: docker run --rm kvrocks:ci -v
 
   build-and-test-in-container:
     name: Build and test in container
@@ -305,6 +310,9 @@ jobs:
           - name: openSUSE Leap 15
             image: opensuse/leap:15
             compiler: auto
+          - name: ArchLinux base
+            image: archlinux:base
+            compiler: gcc
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -313,17 +321,27 @@ jobs:
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           yum install -y centos-release-scl-rh
-          yum install -y devtoolset-11 python3 autoconf automake wget git
-      
+          yum install -y devtoolset-11 python3 autoconf automake wget git gcc gcc-c++
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+          mv /usr/bin/gcc /usr/bin/gcc-4.8.5
+          ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
+          mv /usr/bin/g++ /usr/bin/g++-4.8.5
+          ln -s /opt/rh/devtoolset-11/root/bin/g++ /usr/bin/g++
+
+      - name: Setup ArchLinux
+        if: ${{ startsWith(matrix.image, 'archlinux') }}
+        run: |
+          pacman -Syu --noconfirm
+          pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
           zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
-      
-      - name: Retrieve NPROC
-        run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
         id: cache-redis
@@ -347,18 +365,11 @@ jobs:
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3
-      # - uses: actions/setup-go@v3
-      #   with:
-      #     go-version-file: 'tests/gocase/go.mod'
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'tests/gocase/go.mod'
 
       - name: Build Kvrocks
-        if: ${{ startsWith(matrix.image, 'centos') }}
-        run: |
-          source /opt/rh/devtoolset-11/enable
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
-      
-      - name: Build Kvrocks
-        if: ${{ !startsWith(matrix.image, 'centos') }}
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
 

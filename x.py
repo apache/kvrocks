@@ -108,7 +108,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
 
     makedirs(dir, exist_ok=True)
 
-    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DPORTABLE=0"]
+    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
         cmake_options.append("-DDEPS_FETCH_PROXY=https://ghproxy.com/")
     if ninja:
@@ -119,6 +119,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
     if D:
         cmake_options += [f"-D{o}" for o in D]
+
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
 
     if skip_build:

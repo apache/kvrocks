@@ -298,7 +298,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition]
+    needs: [precondition, check-and-lint]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false

@@ -172,7 +172,7 @@ class CommandClusterX : public Commander {
 
       if (args_.size() == 4) return Status::OK();
 
-      if (args_.size() == 5 && strcasecmp(args_[4].c_str(), "force") == 0) {
+      if (args_.size() == 5 && util::EqualICase(args_[4], "force")) {
         force_ = true;
         return Status::OK();
       }
@@ -187,7 +187,7 @@ class CommandClusterX : public Commander {
         return s;
       }
 
-      if (strcasecmp(args_[3].c_str(), "node") != 0) {
+      if (!util::EqualICase(args_[3], "node")) {
         return {Status::RedisParseErr, "Invalid setslot options"};
       }
 

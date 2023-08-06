@@ -42,7 +42,7 @@
 
 class Server;
 
-class Worker : EventCallbackBase<Worker> {
+class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
  public:
   Worker(Server *svr, Config *config);
   ~Worker();
@@ -76,9 +76,8 @@ class Worker : EventCallbackBase<Worker> {
 
  private:
   Status listenTCP(const std::string &host, uint32_t port, int backlog);
-  static void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx);
-  static void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
-                                      void *ctx);
+  void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
+  void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   redis::Connection *removeConnection(int fd);
 
   event_base *base_;

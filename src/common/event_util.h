@@ -136,3 +136,26 @@ struct EvconnlistenerBase {
     return evconnlistener_new(base, callback<cb>, this, flags, backlog, fd);
   }
 };
+
+namespace details {
+
+template <auto F, typename>
+struct EventCallbackImpl;
+
+template <auto F, typename T, typename R, typename... Args>
+struct EventCallbackImpl<F, R (T::*)(Args...)> {
+  static R Func(Args... args, void *ctx) { return (reinterpret_cast<T *>(ctx)->*F)(args...); }
+};
+
+}  // namespace details
+
+// convert member functions to eventbuffer callbacks
+// e.g. for member function `void A::f(int x)` from class A
+// EventCallback<&A::f> generate a function
+// void EventCallback<&A::f>::Func(int x, void *ctx)
+// and put `this` pointer of A to `void *ctx`
+template <auto F>
+struct EventCallback : details::EventCallbackImpl<F, decltype(F)> {};
+
+template <auto F>
+constexpr auto EventCallbackFunc = EventCallback<F>::Func;

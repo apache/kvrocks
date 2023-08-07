@@ -183,7 +183,7 @@ static void InitGoogleLog(const Config *config) {
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
 
-  if (util::ToLower(config->log_dir) == "stdout") {
+  if (util::EqualICase(config->log_dir, "stdout")) {
     for (int level = google::INFO; level <= google::FATAL; level++) {
       google::SetLogDestination(level, "");
     }
@@ -218,7 +218,7 @@ bool SupervisedSystemd() {
 
   auto fd = UniqueFD(socket(AF_UNIX, SOCK_DGRAM, 0));
   if (!fd) {
-    LOG(WARNING) << "Can't connect to systemd socket " << notify_socket;
+    LOG(WARNING) << "Cannot connect to systemd socket " << notify_socket;
     return false;
   }
 
@@ -248,7 +248,7 @@ bool SupervisedSystemd() {
   sendto_flags |= MSG_NOSIGNAL;
 #endif
   if (sendmsg(*fd, &hdr, sendto_flags) < 0) {
-    LOG(WARNING) << "Can't send notification to systemd";
+    LOG(WARNING) << "Cannot send notification to systemd";
     return false;
   }
   return true;

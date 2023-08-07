@@ -718,10 +718,24 @@ func TestString(t *testing.T) {
 		require.Equal(t, "", rdb.Get(ctx, "cas_key").Val())
 	})
 
+	t.Run("CAS expire EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 10).Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("CAS expire Duplicate EX option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
 		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "ex", 10).Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS expire PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 10000).Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
 	})
 
@@ -732,12 +746,45 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
 	})
 
-	t.Run("CAS expire PX option and EX option exist at the same time", func(t *testing.T) {
+	t.Run("CAS expire EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "exat", time.Now().Add(10*time.Second).Unix()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS Duplicate EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "exat", time.Now().Add(100*time.Second).Unix(), "exat", time.Now().Add(10*time.Second).Unix()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS expire PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "pxat", time.Now().Add(10*time.Second).UnixMilli()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS Duplicate PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
+		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "cas", "cas_key", "123", "234", "pxat", time.Now().Add(100*time.Second).UnixMilli(), "pxat", time.Now().Add(10*time.Second).UnixMilli()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "cas_key").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("CAS expire mutually exclusive options exist at the same time", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "cas_key").Err())
 		require.NoError(t, rdb.Set(ctx, "cas_key", "123", 0).Err())
 		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "px", 100000).Err(), "syntax error")
 		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "ex", 10, "px", 10000).Err(), "syntax error")
 		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 10000, "ex", 100, "ex", 10, "px", 10000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "exat", 100000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "ex", 100, "pxat", 100000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 100, "exat", 100000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "px", 100, "pxat", 100000).Err(), "syntax error")
+		require.ErrorContains(t, rdb.Do(ctx, "CAS", "cas_key", "123", "234", "exat", 100, "pxat", 100000).Err(), "syntax error")
 	})
 
 	t.Run("CAD normal case", func(t *testing.T) {

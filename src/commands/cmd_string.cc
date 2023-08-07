@@ -559,10 +559,8 @@ class CommandCAS : public Commander {
     CommandParser parser(args, 4);
     std::string_view flag;
     while (parser.Good()) {
-      if (parser.EatEqICaseFlag("EX", flag)) {
-        ttl_ = GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
-      } else if (parser.EatEqICaseFlag("PX", flag)) {
-        ttl_ = GET_OR_RET(parser.TakeInt<int64_t>(TTL_RANGE<int64_t>));
+      if (auto v = GET_OR_RET(ParseTTL(parser, flag))) {
+        ttl_ = *v;
       } else {
         return parser.InvalidSyntax();
       }

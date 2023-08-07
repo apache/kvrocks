@@ -378,7 +378,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
   if (lock) {
     std::vector<std::string> lock_keys;
     lock_keys.reserve(pairs.size());
-    for (StringPair pair : pairs) {
+    for (const StringPair& pair : pairs) {
       AppendNamespacePrefix(pair.key, &ns_key);
       lock_keys.emplace_back(ns_key);
     }

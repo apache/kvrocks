@@ -41,8 +41,23 @@ std::function<void()> hup_handler;
 
 struct Options {
   std::string conf_file = kDefaultConfPath;
-  bool show_usage = false;
 };
+
+std::ostream &PrintVersion(std::ostream &os) {
+  os << "kvrocks2redis ";
+
+  if (VERSION != "unstable") {
+    os << "version ";
+  }
+
+  os << VERSION;
+
+  if (!GIT_COMMIT.empty()) {
+    os << " (commit " << GIT_COMMIT << ")";
+  }
+
+  return os;
+}
 
 extern "C" void SignalHandler(int sig) {
   if (hup_handler) hup_handler();
@@ -50,24 +65,25 @@ extern "C" void SignalHandler(int sig) {
 
 static void Usage(const char *program) {
   std::cout << program << " sync kvrocks to redis\n"
-            << "\t-c config file, default is " << kDefaultConfPath << "\n"
-            << "\t-h help\n";
+            << "\t-c <path> specifies the config file, defaulting to " << kDefaultConfPath << "\n"
+            << "\t-h print this help message\n"
+            << "\t-v print version information\n";
   exit(0);
 }
 
 static Options ParseCommandLineOptions(int argc, char **argv) {
   int ch = 0;
   Options opts;
-  while ((ch = ::getopt(argc, argv, "c:h")) != -1) {
+  while ((ch = ::getopt(argc, argv, "c:hv")) != -1) {
     switch (ch) {
       case 'c': {
         opts.conf_file = optarg;
         break;
       }
-      case 'h': {
-        opts.show_usage = true;
-        break;
-      }
+      case 'v':
+        std::cout << PrintVersion << std::endl;
+        exit(0);
+      case 'h':
       default:
         Usage(argv[0]);
     }
@@ -130,9 +146,7 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, SignalHandler);
   signal(SIGTERM, SignalHandler);
 
-  std::cout << "Version: " << VERSION << " @" << GIT_COMMIT << std::endl;
   auto opts = ParseCommandLineOptions(argc, argv);
-  if (opts.show_usage) Usage(argv[0]);
   std::string config_file_path = std::move(opts.conf_file);
 
   kvrocks2redis::Config config;
@@ -143,6 +157,7 @@ int main(int argc, char *argv[]) {
   }
 
   InitGoogleLog(&config);
+  LOG(INFO) << PrintVersion;
 
   if (config.daemonize) Daemonize();
 
@@ -168,7 +183,7 @@ int main(int argc, char *argv[]) {
   Parser parser(&storage, &writer);
 
   Sync sync(&storage, &writer, &parser, &config);
-  hup_handler = [&sync]() {
+  hup_handler = [&sync] {
     if (!sync.IsStopped()) {
       LOG(INFO) << "Bye Bye";
       sync.Stop();

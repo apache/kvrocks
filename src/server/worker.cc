@@ -132,7 +132,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   ssl_st *ssl = nullptr;
 #ifdef ENABLE_OPENSSL
   if (uint32_t(local_port) == svr->GetConfig()->tls_port) {
-    ssl = SSL_new(worker->svr->ssl_ctx.get());
+    ssl = SSL_new(svr->ssl_ctx.get());
     if (!ssl) {
       LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
       evutil_closesocket(fd);

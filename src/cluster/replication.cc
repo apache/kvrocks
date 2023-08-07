@@ -189,7 +189,7 @@ void ReplicationThread::CallbacksStateMachine::SetWriteCB(bufferevent *bev, buff
   bufferevent_setcb(bev, nullptr, cb, EventCallbackFunc<&CallbacksStateMachine::ConnEventCB>, this);
 }
 
-void ReplicationThread::CallbacksStateMachine::EvCallback(bufferevent *bev) {
+void ReplicationThread::CallbacksStateMachine::ReadWriteCB(bufferevent *bev) {
 LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
   DLOG(INFO) << "[replication] Execute handler[" << getHandlerName(handler_idx_) << "]";
@@ -202,9 +202,9 @@ LOOP_LABEL:
     case CBState::PREV:
       if (st == CBState::PREV) --handler_idx_;
       if (getHandlerEventType(handler_idx_) == WRITE) {
-        SetWriteCB(bev, EventCallbackFunc<&CallbacksStateMachine::EvCallback>);
+        SetWriteCB(bev, EventCallbackFunc<&CallbacksStateMachine::ReadWriteCB>);
       } else {
-        SetReadCB(bev, EventCallbackFunc<&CallbacksStateMachine::EvCallback>);
+        SetReadCB(bev, EventCallbackFunc<&CallbacksStateMachine::ReadWriteCB>);
       }
       // invoke the read handler (of next step) directly, as the bev might
       // have the data already.
@@ -271,9 +271,9 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   handler_idx_ = 0;
   repl_->incr_state_ = Incr_batch_size;
   if (getHandlerEventType(0) == WRITE) {
-    SetWriteCB(bev, EventCallbackFunc<&CallbacksStateMachine::EvCallback>);
+    SetWriteCB(bev, EventCallbackFunc<&CallbacksStateMachine::ReadWriteCB>);
   } else {
-    SetReadCB(bev, EventCallbackFunc<&CallbacksStateMachine::EvCallback>);
+    SetReadCB(bev, EventCallbackFunc<&CallbacksStateMachine::ReadWriteCB>);
   }
   bev_ = bev;
 }

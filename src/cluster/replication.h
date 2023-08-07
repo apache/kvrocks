@@ -128,7 +128,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
 
     void Start();
     void Stop();
-    void EvCallback(bufferevent *bev);
+    void ReadWriteCB(bufferevent *bev);
     void ConnEventCB(bufferevent *bev, int16_t events);
     void SetReadCB(bufferevent *bev, bufferevent_data_cb cb);
     void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb);

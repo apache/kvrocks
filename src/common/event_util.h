@@ -27,6 +27,7 @@
 #include "event2/buffer.h"
 #include "event2/bufferevent.h"
 #include "event2/event.h"
+#include "event2/listener.h"
 
 template <typename F, F *f>
 struct StaticFunction {
@@ -120,3 +121,41 @@ struct EventCallbackBase {
 
   event *NewTimer(event_base *base) { return evtimer_new(base, timerCB, reinterpret_cast<void *>(this)); }
 };
+
+template <typename Derived>
+struct EvconnlistenerBase {
+ private:
+  template <void (Derived::*cb)(evconnlistener *, evutil_socket_t, sockaddr *, int)>
+  static void callback(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
+    return (reinterpret_cast<Derived *>(ctx)->*cb)(listener, fd, address, socklen);
+  }
+
+ public:
+  template <void (Derived::*cb)(evconnlistener *, evutil_socket_t, sockaddr *, int)>
+  evconnlistener *NewEvconnlistener(event_base *base, unsigned flags, int backlog, evutil_socket_t fd) {
+    return evconnlistener_new(base, callback<cb>, this, flags, backlog, fd);
+  }
+};
+
+namespace details {
+
+template <auto F, typename>
+struct EventCallbackImpl;
+
+template <auto F, typename T, typename R, typename... Args>
+struct EventCallbackImpl<F, R (T::*)(Args...)> {
+  static R Func(Args... args, void *ctx) { return (reinterpret_cast<T *>(ctx)->*F)(args...); }
+};
+
+}  // namespace details
+
+// convert member functions to eventbuffer callbacks
+// e.g. for member function `void A::f(int x)` from class A
+// EventCallback<&A::f> generate a function
+// void EventCallback<&A::f>::Func(int x, void *ctx)
+// and put `this` pointer of A to `void *ctx`
+template <auto F>
+struct EventCallback : details::EventCallbackImpl<F, decltype(F)> {};
+
+template <auto F>
+constexpr auto EventCallbackFunc = EventCallback<F>::Func;

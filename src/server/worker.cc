@@ -106,10 +106,9 @@ void Worker::TimerCB(int, int16_t events) {
   KickoutIdleClients(config->timeout);
 }
 
-void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen, void *ctx) {
-  auto worker = static_cast<Worker *>(ctx);
+void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen) {
   int local_port = util::GetLocalPort(fd);  // NOLINT
-  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << worker->tid_;
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << tid_;
 
   auto s = util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
@@ -132,7 +131,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   bufferevent *bev = nullptr;
   ssl_st *ssl = nullptr;
 #ifdef ENABLE_OPENSSL
-  if (uint32_t(local_port) == worker->svr->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == svr->GetConfig()->tls_port) {
     ssl = SSL_new(worker->svr->ssl_ctx.get());
     if (!ssl) {
       LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
@@ -158,15 +157,15 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
 #ifdef ENABLE_OPENSSL
-  if (uint32_t(local_port) == worker->svr->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == svr->GetConfig()->tls_port) {
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif
-  auto conn = new redis::Connection(bev, worker);
+  auto conn = new redis::Connection(bev, this);
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
-  s = worker->AddConnection(conn);
+  s = AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = redis::Error("ERR " + s.Msg());
     s = util::SockSend(fd, err_msg, ssl);
@@ -183,26 +182,24 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     conn->SetAddr(ip, port);
   }
 
-  if (worker->rate_limit_group_) {
-    bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
+  if (rate_limit_group_) {
+    bufferevent_add_to_rate_limit_group(bev, rate_limit_group_);
   }
 }
 
-void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen,
-                                     void *ctx) {
-  auto worker = static_cast<Worker *>(ctx);
-  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << worker->svr->GetConfig()->unixsocket
-             << " thread #" << worker->tid_;
+void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen) {
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << svr->GetConfig()->unixsocket
+             << " thread #" << tid_;
   event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
   bufferevent *bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 
-  auto conn = new redis::Connection(bev, worker);
+  auto conn = new redis::Connection(bev, this);
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
-  auto s = worker->AddConnection(conn);
+  auto s = AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = redis::Error("ERR " + s.Msg());
     s = util::SockSend(fd, err_msg);
@@ -213,9 +210,9 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
     return;
   }
 
-  conn->SetAddr(worker->svr->GetConfig()->unixsocket, 0);
-  if (worker->rate_limit_group_) {
-    bufferevent_add_to_rate_limit_group(bev, worker->rate_limit_group_);
+  conn->SetAddr(svr->GetConfig()->unixsocket, 0);
+  if (rate_limit_group_) {
+    bufferevent_add_to_rate_limit_group(bev, rate_limit_group_);
   }
 }
 
@@ -256,7 +253,7 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
     }
 
     evutil_make_socket_nonblocking(fd);
-    auto lev = evconnlistener_new(base_, newTCPConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+    auto lev = NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
   }
 
@@ -282,7 +279,7 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
   }
 
   evutil_make_socket_nonblocking(fd);
-  auto lev = evconnlistener_new(base_, newUnixSocketConnection, this, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+  auto lev = NewEvconnlistener<&Worker::newUnixSocketConnection>(base_, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
   if (perm != 0) {
     chmod(sa.sun_path, (mode_t)perm);

@@ -24,6 +24,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 
 #include "db_util.h"
@@ -229,8 +230,8 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  std::unique_ptr<LockGuard> lock_guard;
-  if (spec.with_deletion) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+  std::optional<LockGuard> lock_guard;
+  if (spec.with_deletion) lock_guard.emplace(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -311,8 +312,8 @@ rocksdb::Status ZSet::RangeByScore(const Slice &user_key, const RangeScoreSpec &
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  std::unique_ptr<LockGuard> lock_guard;
-  if (spec.with_deletion) lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+  std::optional<LockGuard> lock_guard;
+  if (spec.with_deletion) lock_guard.emplace(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -433,9 +434,9 @@ rocksdb::Status ZSet::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   std::string ns_key;
   AppendNamespacePrefix(user_key, &ns_key);
 
-  std::unique_ptr<LockGuard> lock_guard;
+  std::optional<LockGuard> lock_guard;
   if (spec.with_deletion) {
-    lock_guard = std::make_unique<LockGuard>(storage_->GetLockManager(), ns_key);
+    lock_guard.emplace(storage_->GetLockManager(), ns_key);
   }
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);

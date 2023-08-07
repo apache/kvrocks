@@ -24,6 +24,7 @@
 #include <rocksdb/env.h>
 #include <strings.h>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -59,6 +60,15 @@ std::vector<ConfigEnum> log_levels{
     {"fatal", google::FATAL},
 };
 
+std::vector<ConfigEnum> compression_types{[] {
+  std::vector<ConfigEnum> res;
+  res.reserve(engine::CompressionOptions.size());
+  for (const auto &e : engine::CompressionOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
+
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
   return s.substr(8, s.size() - 8);
@@ -74,11 +84,6 @@ Config::Config() {
         : name(std::move(name)), readonly(readonly), field(field) {}
   };
 
-  std::vector<ConfigEnum> compression_types;
-  compression_types.reserve(engine::CompressionOptions.size());
-  for (const auto &e : engine::CompressionOptions) {
-    compression_types.push_back({e.name, e.type});
-  }
   FieldWrapper fields[] = {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_str_, "")},

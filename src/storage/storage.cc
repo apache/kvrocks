@@ -253,8 +253,10 @@ Status Storage::Open(bool read_only) {
   }
 
   rocksdb::Options options = InitRocksDBOptions();
-  if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
-    return s.Prefixed("failed to create column families");
+  if (!read_only) {
+    if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
+      return s.Prefixed("failed to create column families");
+    }
   }
 
   std::shared_ptr<rocksdb::Cache> shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);

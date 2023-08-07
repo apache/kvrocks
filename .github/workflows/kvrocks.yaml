@@ -307,9 +307,13 @@ jobs:
           - name: CentOS 7
             image: centos:7
             compiler: gcc
-          - name: ArchLinux base
+          - name: openSUSE Leap 15
+            image: opensuse/leap:15
+            compiler: gcc
+          - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -332,6 +336,16 @@ jobs:
           pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
+      - name: Setup openSUSE
+        if: ${{ startsWith(matrix.image, 'opensuse') }}
+        run: |
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake go
+          update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
+          update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
       - name: Cache redis
         id: cache-redis
         uses: actions/cache@v3
@@ -339,6 +353,7 @@ jobs:
           path: |
             ~/local/bin/redis-cli
           key: ${{ matrix.image }}-redis-cli
+
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
@@ -348,12 +363,14 @@ jobs:
           pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - name: Install cmake
+        if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
+        if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
 

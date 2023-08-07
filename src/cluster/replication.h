@@ -57,7 +57,7 @@ enum WriteBatchType {
   kBatchTypeStream,
 };
 
-using FetchFileCallback = std::function<void(const std::string, const uint32_t)>;
+using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 
 class FeedSlaveThread {
  public:
@@ -118,17 +118,20 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
       READ,
       WRITE,
     };
-    using CallbackType = std::tuple<EventType, std::string, std::function<State(bufferevent *, void *)>>;
+
+    using CallbackFunc = std::function<State(ReplicationThread *, bufferevent *)>;
+    using CallbackType = std::tuple<EventType, std::string, CallbackFunc>;
     using CallbackList = std::deque<CallbackType>;
+
     CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers)
         : repl_(repl), handlers_(std::move(handlers)) {}
 
     void Start();
     void Stop();
-    static void EvCallback(bufferevent *bev, void *ctx);
-    static void ConnEventCB(bufferevent *bev, int16_t events, void *state_machine_ptr);
-    static void SetReadCB(bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr);
-    static void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb, void *state_machine_ptr);
+    void ReadWriteCB(bufferevent *bev);
+    void ConnEventCB(bufferevent *bev, int16_t events);
+    void SetReadCB(bufferevent *bev, bufferevent_data_cb cb);
+    void SetWriteCB(bufferevent *bev, bufferevent_data_cb cb);
 
    private:
     bufferevent *bev_ = nullptr;
@@ -138,10 +141,10 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
 
     EventType getHandlerEventType(CallbackList::size_type idx) { return std::get<0>(handlers_[idx]); }
     std::string getHandlerName(CallbackList::size_type idx) { return std::get<1>(handlers_[idx]); }
-    std::function<State(bufferevent *, void *)> getHandlerFunc(CallbackList::size_type idx) {
-      return std::get<2>(handlers_[idx]);
-    }
+    CallbackFunc getHandlerFunc(CallbackList::size_type idx) { return std::get<2>(handlers_[idx]); }
   };
+
+  using CallbackType = CallbacksStateMachine::CallbackType;
 
  private:
   std::thread t_;
@@ -181,17 +184,17 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
 
   void run();
 
-  static CBState authWriteCB(bufferevent *bev, void *ctx);
-  static CBState authReadCB(bufferevent *bev, void *ctx);
-  static CBState checkDBNameWriteCB(bufferevent *bev, void *ctx);
-  static CBState checkDBNameReadCB(bufferevent *bev, void *ctx);
-  static CBState replConfWriteCB(bufferevent *bev, void *ctx);
-  static CBState replConfReadCB(bufferevent *bev, void *ctx);
-  static CBState tryPSyncWriteCB(bufferevent *bev, void *ctx);
-  static CBState tryPSyncReadCB(bufferevent *bev, void *ctx);
-  static CBState incrementBatchLoopCB(bufferevent *bev, void *ctx);
-  static CBState fullSyncWriteCB(bufferevent *bev, void *ctx);
-  static CBState fullSyncReadCB(bufferevent *bev, void *ctx);
+  CBState authWriteCB(bufferevent *bev);
+  CBState authReadCB(bufferevent *bev);
+  CBState checkDBNameWriteCB(bufferevent *bev);
+  CBState checkDBNameReadCB(bufferevent *bev);
+  CBState replConfWriteCB(bufferevent *bev);
+  CBState replConfReadCB(bufferevent *bev);
+  CBState tryPSyncWriteCB(bufferevent *bev);
+  CBState tryPSyncReadCB(bufferevent *bev);
+  CBState incrementBatchLoopCB(bufferevent *bev);
+  CBState fullSyncWriteCB(bufferevent *bev);
+  CBState fullSyncReadCB(bufferevent *bev);
 
   // Synchronized-Blocking ops
   Status sendAuth(int sock_fd);

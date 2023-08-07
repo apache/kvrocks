@@ -119,7 +119,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
       WRITE,
     };
 
-    using CallbackFunc = std::function<State(bufferevent *, void *)>;
+    using CallbackFunc = std::function<State(ReplicationThread *, bufferevent *)>;
     using CallbackType = std::tuple<EventType, std::string, CallbackFunc>;
     using CallbackList = std::deque<CallbackType>;
 
@@ -143,6 +143,8 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
     std::string getHandlerName(CallbackList::size_type idx) { return std::get<1>(handlers_[idx]); }
     CallbackFunc getHandlerFunc(CallbackList::size_type idx) { return std::get<2>(handlers_[idx]); }
   };
+
+  using CallbackType = CallbacksStateMachine::CallbackType;
 
  private:
   std::thread t_;

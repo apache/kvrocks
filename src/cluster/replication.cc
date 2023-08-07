@@ -193,7 +193,7 @@ void ReplicationThread::CallbacksStateMachine::EvCallback(bufferevent *bev) {
 LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
   DLOG(INFO) << "[replication] Execute handler[" << getHandlerName(handler_idx_) << "]";
-  auto st = getHandlerFunc(handler_idx_)(bev, repl_);
+  auto st = getHandlerFunc(handler_idx_)(repl_, bev);
   repl_->last_io_time_.store(util::GetTimeStamp(), std::memory_order_relaxed);
   switch (st) {
     case CBState::NEXT:
@@ -239,10 +239,8 @@ void ReplicationThread::CallbacksStateMachine::Start() {
   // Note: It may cause data races to use 'masterauth' directly.
   // It is acceptable because password change is a low frequency operation.
   if (!repl_->srv_->GetConfig()->masterauth.empty()) {
-    handlers_.emplace_front(CallbacksStateMachine::READ, "auth read",
-                            EventCallbackFunc<&ReplicationThread::authReadCB>);
-    handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write",
-                            EventCallbackFunc<&ReplicationThread::authWriteCB>);
+    handlers_.emplace_front(CallbacksStateMachine::READ, "auth read", &ReplicationThread::authReadCB);
+    handlers_.emplace_front(CallbacksStateMachine::WRITE, "auth write", &ReplicationThread::authWriteCB);
   }
 
   uint64_t last_connect_timestamp = 0;
@@ -296,26 +294,17 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port, Server *sr
       psync_steps_(
           this,
           CallbacksStateMachine::CallbackList{
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::WRITE, "dbname write",
-                                                  EventCallbackFunc<&ReplicationThread::checkDBNameWriteCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::READ, "dbname read",
-                                                  EventCallbackFunc<&ReplicationThread::checkDBNameReadCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::WRITE, "replconf write",
-                                                  EventCallbackFunc<&ReplicationThread::replConfWriteCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::READ, "replconf read",
-                                                  EventCallbackFunc<&ReplicationThread::replConfReadCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::WRITE, "psync write",
-                                                  EventCallbackFunc<&ReplicationThread::tryPSyncWriteCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::READ, "psync read",
-                                                  EventCallbackFunc<&ReplicationThread::tryPSyncReadCB>},
-              CallbacksStateMachine::CallbackType{CallbacksStateMachine::READ, "batch loop",
-                                                  EventCallbackFunc<&ReplicationThread::incrementBatchLoopCB>}}),
+              CallbackType{CallbacksStateMachine::WRITE, "dbname write", &ReplicationThread::checkDBNameWriteCB},
+              CallbackType{CallbacksStateMachine::READ, "dbname read", &ReplicationThread::checkDBNameReadCB},
+              CallbackType{CallbacksStateMachine::WRITE, "replconf write", &ReplicationThread::replConfWriteCB},
+              CallbackType{CallbacksStateMachine::READ, "replconf read", &ReplicationThread::replConfReadCB},
+              CallbackType{CallbacksStateMachine::WRITE, "psync write", &ReplicationThread::tryPSyncWriteCB},
+              CallbackType{CallbacksStateMachine::READ, "psync read", &ReplicationThread::tryPSyncReadCB},
+              CallbackType{CallbacksStateMachine::READ, "batch loop", &ReplicationThread::incrementBatchLoopCB}}),
       fullsync_steps_(
           this, CallbacksStateMachine::CallbackList{
-                    CallbacksStateMachine::CallbackType{CallbacksStateMachine::WRITE, "fullsync write",
-                                                        EventCallbackFunc<&ReplicationThread::fullSyncWriteCB>},
-                    CallbacksStateMachine::CallbackType{CallbacksStateMachine::READ, "fullsync read",
-                                                        EventCallbackFunc<&ReplicationThread::fullSyncReadCB>}}) {}
+                    CallbackType{CallbacksStateMachine::WRITE, "fullsync write", &ReplicationThread::fullSyncWriteCB},
+                    CallbackType{CallbacksStateMachine::READ, "fullsync read", &ReplicationThread::fullSyncReadCB}}) {}
 
 Status ReplicationThread::Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb) {
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);

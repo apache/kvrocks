@@ -619,7 +619,8 @@ class CommandCommand : public Commander {
         }
 
         std::vector<int> keys_indexes;
-        auto s = GetKeysFromCommand(cmd_iter->second, static_cast<int>(args_.size()) - 2, &keys_indexes);
+        auto s = GetKeysFromCommand(cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end()),
+                                    &keys_indexes);
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {

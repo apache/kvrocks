@@ -112,20 +112,20 @@ Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector
 
   int argc = static_cast<int>(cmd_tokens.size());
 
-  if (attributes->key_range.first_key == -1) {
+  if ((attributes->arity > 0 && attributes->arity != argc) || argc < -attributes->arity) {
+    return {Status::NotOK, "Invalid number of arguments specified for command"};
+  }
+
+  if (attributes->key_range.first_key > 0) {
+    DumpKeyRange(*keys_index, argc, attributes->key_range);
+  } else if (attributes->key_range.first_key == -1) {
     DumpKeyRange(*keys_index, argc, attributes->key_range_gen(cmd_tokens));
   } else if (attributes->key_range.first_key == -2) {
     for (const auto &range : attributes->key_range_vec_gen(cmd_tokens)) {
       DumpKeyRange(*keys_index, argc, range);
     }
-  } else if (attributes->key_range.first_key < 0) {
-    return {Status::NotOK, "The key range specification is invalid"};
   } else {
-    if ((attributes->arity > 0 && attributes->arity != argc) || argc < -attributes->arity) {
-      return {Status::NotOK, "Invalid number of arguments specified for command"};
-    }
-
-    DumpKeyRange(*keys_index, argc, attributes->key_range);
+    return {Status::NotOK, "The key range specification is invalid"};
   }
 
   return Status::OK();

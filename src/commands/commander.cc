@@ -86,24 +86,6 @@ void DumpKeyRange(std::vector<int> &keys_index, int argc, const CommandKeyRange 
   }
 }
 
-Status GetKeysFromCommand(const CommandAttributes *attributes, int argc, std::vector<int> *keys_index) {
-  if (attributes->key_range.first_key == 0) {
-    return {Status::NotOK, "The command has no key arguments"};
-  }
-
-  if (attributes->key_range.first_key < 0) {
-    return {Status::NotOK, "The command has dynamic positions of key arguments"};
-  }
-
-  if ((attributes->arity > 0 && attributes->arity != argc) || argc < -attributes->arity) {
-    return {Status::NotOK, "Invalid number of arguments specified for command"};
-  }
-
-  DumpKeyRange(*keys_index, argc, attributes->key_range);
-
-  return Status::OK();
-}
-
 Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                           std::vector<int> *keys_index) {
   if (attributes->key_range.first_key == 0) {

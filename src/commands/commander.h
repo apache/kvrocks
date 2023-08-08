@@ -275,7 +275,6 @@ const CommandMap *GetOriginalCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
 std::string GetCommandInfo(const CommandAttributes *command_attributes);
-Status GetKeysFromCommand(const CommandAttributes *attributes, int argc, std::vector<int> *keys_indexes);
 Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                           std::vector<int> *keys_indexes);
 bool IsCommandExists(const std::string &name);

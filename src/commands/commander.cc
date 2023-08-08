@@ -46,7 +46,7 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   command.append(redis::BulkString(command_attributes->name));
   command.append(redis::Integer(command_attributes->arity));
   command_flags.append(redis::MultiLen(1));
-  command_flags.append(redis::BulkString(command_attributes->IsWrite() ? "write" : "readonly"));
+  command_flags.append(redis::BulkString(command_attributes->flags & kCmdWrite ? "write" : "readonly"));
   command.append(command_flags);
   command.append(redis::Integer(command_attributes->key_range.first_key));
   command.append(redis::Integer(command_attributes->key_range.last_key));
@@ -77,30 +77,55 @@ void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_name
   }
 }
 
-Status GetKeysFromCommand(const std::string &cmd_name, int argc, std::vector<int> *keys_indexes) {
-  auto cmd_iter = command_details::original_commands.find(util::ToLower(cmd_name));
-  if (cmd_iter == command_details::original_commands.end()) {
-    return {Status::RedisUnknownCmd, "Invalid command specified"};
-  }
+void DumpKeyRange(std::vector<int> &keys_index, int argc, const CommandKeyRange &range) {
+  auto last = range.last_key;
+  if (last < 0) last = argc + last;
 
-  auto command_attribute = cmd_iter->second;
-  if (command_attribute->key_range.first_key == 0) {
+  for (int i = range.first_key; i <= last; i += range.key_step) {
+    keys_index.emplace_back(i);
+  }
+}
+
+Status GetKeysFromCommand(const CommandAttributes *attributes, int argc, std::vector<int> *keys_index) {
+  if (attributes->key_range.first_key == 0) {
     return {Status::NotOK, "The command has no key arguments"};
   }
 
-  if (command_attribute->key_range.first_key < 0) {
+  if (attributes->key_range.first_key < 0) {
     return {Status::NotOK, "The command has dynamic positions of key arguments"};
   }
 
-  if ((command_attribute->arity > 0 && command_attribute->arity != argc) || argc < -command_attribute->arity) {
+  if ((attributes->arity > 0 && attributes->arity != argc) || argc < -attributes->arity) {
     return {Status::NotOK, "Invalid number of arguments specified for command"};
   }
 
-  auto last = command_attribute->key_range.last_key;
-  if (last < 0) last = argc + last;
+  DumpKeyRange(*keys_index, argc, attributes->key_range);
 
-  for (int j = command_attribute->key_range.first_key; j <= last; j += command_attribute->key_range.key_step) {
-    keys_indexes->emplace_back(j);
+  return Status::OK();
+}
+
+Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                          std::vector<int> *keys_index) {
+  if (attributes->key_range.first_key == 0) {
+    return {Status::NotOK, "The command has no key arguments"};
+  }
+
+  int argc = static_cast<int>(cmd_tokens.size());
+
+  if (attributes->key_range.first_key == -1) {
+    DumpKeyRange(*keys_index, argc, attributes->key_range_gen(cmd_tokens));
+  } else if (attributes->key_range.first_key == -2) {
+    for (const auto &range : attributes->key_range_vec_gen(cmd_tokens)) {
+      DumpKeyRange(*keys_index, argc, range);
+    }
+  } else if (attributes->key_range.first_key < 0) {
+    return {Status::NotOK, "The key range specification is invalid"};
+  } else {
+    if ((attributes->arity > 0 && attributes->arity != argc) || argc < -attributes->arity) {
+      return {Status::NotOK, "Invalid number of arguments specified for command"};
+    }
+
+    DumpKeyRange(*keys_index, argc, attributes->key_range);
   }
 
   return Status::OK();

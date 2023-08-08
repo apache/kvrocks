@@ -94,6 +94,35 @@ TEST_F(RedisZSetTest, Remove) {
   zset_->Del(key_);
 }
 
+TEST_F(RedisZSetTest, AddAndRemoveRepeated) {
+  std::vector<std::string> members{"m1", "m1", "m2", "m3"};
+  std::vector<double> scores{1.1, 1.11, 2.2, 3.3};
+
+  uint64_t ret = 0;
+  std::vector<MemberScore> mscores;
+  for (size_t i = 0; i < members.size(); i++) {
+    mscores.emplace_back(MemberScore{members[i], scores[i]});
+  }
+  zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
+  EXPECT_EQ(mscores.size() - 1, ret);
+  double score;
+  zset_->Score(key_, members[0], &score);
+  EXPECT_EQ(scores[1], score);
+  uint64_t card;
+  zset_->Card(key_, &card);
+  EXPECT_EQ(mscores.size() - 1, card);
+
+  std::vector<rocksdb::Slice> members_to_remove{"m1", "m2", "m2"};
+  zset_->Remove(key_, members_to_remove, &ret);
+  EXPECT_EQ(members_to_remove.size() - 1, ret);
+  zset_->Card(key_, &card);
+  EXPECT_EQ(mscores.size() - 1 - ret, card);
+  zset_->Score(key_, members[3], &score);
+  EXPECT_EQ(scores[3], score);
+
+  zset_->Del(key_);
+}
+
 TEST_F(RedisZSetTest, Range) {
   uint64_t ret = 0;
   std::vector<MemberScore> mscores;

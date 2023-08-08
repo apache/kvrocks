@@ -217,7 +217,11 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string sub_key, value;
+  std::unordered_set<std::string> field_set;
   for (const auto &field : fields) {
+    if (!field_set.emplace(field.ToString()).second) {
+      continue;
+    }
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) {
@@ -250,10 +254,14 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
+  std::unordered_set<std::string> field_set;
+  for (int32_t i = static_cast<int32_t>(field_values.size() - 1); i >= 0; i--) {
+    const auto& fv = field_values[i];
+    if (!field_set.insert(fv.field).second) {
+      continue;
+    }
 
-  for (const auto &fv : field_values) {
     bool exists = false;
-
     std::string sub_key;
     InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
 

@@ -52,7 +52,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   std::string member_key;
-  std::set<std::string> added_member_keys;
+  std::unordered_set<std::string> added_member_keys;
   for (int i = static_cast<int>(mscores->size() - 1); i >= 0; i--) {
     InternalKey(ns_key, (*mscores)[i].member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
 
@@ -65,10 +65,9 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
     // The root cause of this issue was the score key was composed by member and score,
     // so the last one can't overwrite the previous when the score was different.
     // A simple workaround was add those members with reversed order and skip the member if has added.
-    if (added_member_keys.find(member_key) != added_member_keys.end()) {
+    if (!added_member_keys.insert(member_key).second) {
       continue;
     }
-    added_member_keys.insert(member_key);
 
     if (metadata.size > 0) {
       std::string old_score_bytes;
@@ -545,7 +544,11 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   batch->PutLogData(log_data.Encode());
   int removed = 0;
   std::string member_key, score_key;
+  std::unordered_set<std::string> mset;
   for (const auto &member : members) {
+    if (!mset.insert(member.ToString()).second) {
+      continue;
+    }
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     std::string score_bytes;
     s = storage_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);

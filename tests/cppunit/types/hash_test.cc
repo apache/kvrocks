@@ -96,17 +96,17 @@ TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
 
   uint64_t ret = 0;
   rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
-  EXPECT_TRUE(s.ok() && static_cast<uint64_t>(fvs.size()-1) == ret);
+  EXPECT_TRUE(s.ok() && static_cast<uint64_t>(fvs.size() - 1) == ret);
   std::string got;
   s = hash_->Get(key_, "f1", &got);
   EXPECT_EQ("v11", got);
 
   s = hash_->Size(key_, &ret);
-  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fvs.size()-1));
+  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fvs.size() - 1));
 
   std::vector<rocksdb::Slice> fields_to_delete{"f1", "f2", "f2"};
   s = hash_->Delete(key_, fields_to_delete, &ret);
-  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fields_to_delete.size()-1));
+  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fields_to_delete.size() - 1));
   s = hash_->Size(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 1);
   s = hash_->Get(key_, "f3", &got);

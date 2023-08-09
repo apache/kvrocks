@@ -53,8 +53,8 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   batch->PutLogData(log_data.Encode());
   std::string member_key;
   std::unordered_set<std::string> added_member_keys;
-  for (int i = static_cast<int>(mscores->size() - 1); i >= 0; i--) {
-    InternalKey(ns_key, (*mscores)[i].member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
+  for (auto it = mscores->rbegin(); it != mscores->rend(); it++) {
+    InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
 
     // Fix the corner case that adds the same member which may add the score
     // column family many times and cause problems in the ZRANGE command.
@@ -79,27 +79,27 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
         }
         double old_score = DecodeDouble(old_score_bytes.data());
         if (flags.HasIncr()) {
-          if ((flags.HasLT() && (*mscores)[i].score >= 0) || (flags.HasGT() && (*mscores)[i].score <= 0)) {
+          if ((flags.HasLT() && it->score >= 0) || (flags.HasGT() && it->score <= 0)) {
             continue;
           }
-          (*mscores)[i].score += old_score;
-          if (std::isnan((*mscores)[i].score)) {
+          it->score += old_score;
+          if (std::isnan(it->score)) {
             return rocksdb::Status::InvalidArgument("resulting score is not a number (NaN)");
           }
         }
-        if ((*mscores)[i].score != old_score) {
-          if ((flags.HasLT() && (*mscores)[i].score >= old_score) ||
-              (flags.HasGT() && (*mscores)[i].score <= old_score)) {
+        if (it->score != old_score) {
+          if ((flags.HasLT() && it->score >= old_score) ||
+              (flags.HasGT() && it->score <= old_score)) {
             continue;
           }
-          old_score_bytes.append((*mscores)[i].member);
+          old_score_bytes.append(it->member);
           std::string old_score_key;
           InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&old_score_key);
           batch->Delete(score_cf_handle_, old_score_key);
           std::string new_score_bytes, new_score_key;
-          PutDouble(&new_score_bytes, (*mscores)[i].score);
+          PutDouble(&new_score_bytes, it->score);
           batch->Put(member_key, new_score_bytes);
-          new_score_bytes.append((*mscores)[i].member);
+          new_score_bytes.append(it->member);
           InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&new_score_key);
           batch->Put(score_cf_handle_, new_score_key, Slice());
           changed++;
@@ -111,9 +111,9 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
       continue;
     }
     std::string score_bytes, score_key;
-    PutDouble(&score_bytes, (*mscores)[i].score);
+    PutDouble(&score_bytes, it->score);
     batch->Put(member_key, score_bytes);
-    score_bytes.append((*mscores)[i].member);
+    score_bytes.append(it->member);
     InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
     batch->Put(score_cf_handle_, score_key, Slice());
     added++;

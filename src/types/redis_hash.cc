@@ -255,15 +255,14 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
   std::unordered_set<std::string> field_set;
-  for (int32_t i = static_cast<int32_t>(field_values.size() - 1); i >= 0; i--) {
-    const auto& fv = field_values[i];
-    if (!field_set.insert(fv.field).second) {
+  for (auto it = field_values.rbegin(); it != field_values.rend(); it++) {
+    if (!field_set.insert(it->field).second) {
       continue;
     }
 
     bool exists = false;
     std::string sub_key;
-    InternalKey(ns_key, fv.field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
 
     if (metadata.size > 0) {
       std::string field_value;
@@ -271,7 +270,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
-        if (nx || field_value == fv.value) continue;
+        if (nx || field_value == it->value) continue;
 
         exists = true;
       }
@@ -279,7 +278,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 
     if (!exists) added++;
 
-    batch->Put(sub_key, fv.value);
+    batch->Put(sub_key, it->value);
   }
 
   if (added > 0) {

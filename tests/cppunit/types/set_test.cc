@@ -55,16 +55,16 @@ TEST_F(RedisSetTest, AddAndRemoveRepeated) {
   std::vector<rocksdb::Slice> allmembers{"m1", "m1", "m2", "m3"};
   uint64_t ret = 0;
   rocksdb::Status s = set_->Add(key_, allmembers, &ret);
-  EXPECT_TRUE(s.ok() && (allmembers.size()-1) == ret);
+  EXPECT_TRUE(s.ok() && (allmembers.size() - 1) == ret);
   uint64_t card = 0;
   set_->Card(key_, &card);
-  EXPECT_EQ(card, allmembers.size()-1);
+  EXPECT_EQ(card, allmembers.size() - 1);
 
   std::vector<rocksdb::Slice> remembers{"m1", "m2", "m2"};
   s = set_->Remove(key_, remembers, &ret);
-  EXPECT_TRUE(s.ok() && (remembers.size()-1) == ret);
+  EXPECT_TRUE(s.ok() && (remembers.size() - 1) == ret);
   set_->Card(key_, &card);
-  EXPECT_EQ(card, allmembers.size()-1-ret);
+  EXPECT_EQ(card, allmembers.size() - 1 - ret);
 
   set_->Del(key_);
 }

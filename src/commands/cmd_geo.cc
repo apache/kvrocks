@@ -415,6 +415,10 @@ class CommandGeoSearch : public CommandGeoBase {
       }
     }
 
+    if (origin_point_type_ == kNone) {
+      return {Status::RedisParseErr, "exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCH"};
+    }
+
     if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
       return {Status::RedisParseErr, "please use only one of FROMMEMBER or FROMLONLAT"};
     }
@@ -572,6 +576,10 @@ class CommandGeoSearchStore : public CommandGeoSearch {
       } else {
         return {Status::RedisParseErr, "Invalid argument given"};
       }
+    }
+
+    if (origin_point_type_ == kNone) {
+      return {Status::RedisParseErr, "exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCHSTORE"};
     }
 
     if (member_ != "" && longitude_ != 0 && latitude_ != 0) {

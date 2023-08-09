@@ -134,6 +134,12 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})
 
+	t.Run("GEOHASH errors", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "geosearch", "points", "BYBOX", 88, 88, "m", "asc").Err(), ".*exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCH*.")
+	})
+
 	t.Run("GEOHASH against non existing key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.EqualValues(t, []interface{}{nil, nil, nil}, rdb.Do(ctx, "GEOHASH", "points", "a", "b", "c").Val())
@@ -194,6 +200,13 @@ func TestGeo(t *testing.T) {
 			&redis.GeoLocation{Name: "Philadelphia", Longitude: -75.16521960, Latitude: 39.95258288}).Err())
 		require.EqualValues(t, []string([]string{"Baltimore", "Washington"}),
 			rdb.GeoSearch(ctx, "points", &redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Member: "Washington", Sort: "DESC"}).Val())
+	})
+
+	t.Run("GEOSEARCHSTORE errors", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.NoError(t, rdb.Del(ctx, "points2").Err())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "geosearchstore", "points2", "points", "BYBOX", 88, 88, "m", "asc").Err(), ".*exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCHSTORE*.")
 	})
 
 	t.Run("GEOSEARCHSTORE against non existing src key", func(t *testing.T) {

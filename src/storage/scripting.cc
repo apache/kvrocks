@@ -356,7 +356,8 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
   auto attributes = cmd->GetAttributes();
-  if (attributes->flags & redis::kCmdNoScript) {
+  auto cmd_flags = attributes->GenerateFlags(args);
+  if (cmd_flags & redis::kCmdNoScript) {
     PushError(lua, "This Redis command is not allowed from scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
@@ -378,7 +379,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  if (config->slave_readonly && srv->IsSlave() && attributes->IsWrite()) {
+  if (config->slave_readonly && srv->IsSlave() && (cmd_flags & redis::kCmdWrite)) {
     PushError(lua, "READONLY You can't write against a read only slave.");
     return raise_error ? RaiseError(lua) : 1;
   }

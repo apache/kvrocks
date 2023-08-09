@@ -50,7 +50,7 @@ namespace redis {
 class Connection;
 struct CommandAttributes;
 
-enum CommandFlags {
+enum CommandFlags : uint64_t {
   kCmdWrite = 1ULL << 0,        // "write" flag
   kCmdReadOnly = 1ULL << 1,     // "read-only" flag
   kCmdReplication = 1ULL << 2,  // "replication" flag
@@ -115,7 +115,10 @@ using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::
 
 using CommandKeyRangeVecGen = std::function<std::vector<CommandKeyRange>(const std::vector<std::string> &)>;
 
+using AdditionalFlagGen = std::function<uint64_t(const std::vector<std::string> &)>;
+
 struct CommandAttributes {
+  // command name
   std::string name;
 
   // number of command arguments
@@ -123,9 +126,16 @@ struct CommandAttributes {
   // negative number -n means number of arguments is equal to or large than n
   int arity;
 
+  // space-splitted flag strings to initialize flags
   std::string description;
+
+  // bitmap of enum CommandFlags
   uint64_t flags;
 
+  // additional flags regarding to dynamic command arguments
+  AdditionalFlagGen flag_gen;
+
+  // static determined key range
   CommandKeyRange key_range;
 
   // if key_range.first_key == -1, key_range_gen is used instead
@@ -134,13 +144,14 @@ struct CommandAttributes {
   // if key_range.first_key == -2, key_range_vec_gen is used instead
   CommandKeyRangeVecGen key_range_vec_gen;
 
+  // commander object generator
   CommanderFactory factory;
 
-  bool IsWrite() const { return (flags & kCmdWrite) != 0; }
-  bool IsOkLoading() const { return (flags & kCmdLoading) != 0; }
-  bool IsExclusive() const { return (flags & kCmdExclusive) != 0; }
-  bool IsMulti() const { return (flags & kCmdMulti) != 0; }
-  bool IsNoMulti() const { return (flags & kCmdNoMulti) != 0; }
+  auto GenerateFlags(const std::vector<std::string> &args) const {
+    uint64_t res = flags;
+    if (flag_gen) res |= flag_gen(args);
+    return res;
+  }
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
@@ -184,11 +195,12 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
 
 template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step) {
+                 int key_step, const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
                          description,
                          ParseCommandFlags(description, name),
+                         flag_gen,
                          {first_key, last_key, key_step},
                          {},
                          {},
@@ -203,24 +215,33 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
 }
 
 template <typename T>
-auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, const CommandKeyRangeGen &gen) {
-  CommandAttributes attr{
-      name,        arity,
-      description, ParseCommandFlags(description, name),
-      {-1, 0, 0},  gen,
-      {},          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, const CommandKeyRangeGen &gen,
+                 const AdditionalFlagGen &flag_gen = {}) {
+  CommandAttributes attr{name,
+                         arity,
+                         description,
+                         ParseCommandFlags(description, name),
+                         flag_gen,
+                         {-1, 0, 0},
+                         gen,
+                         {},
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   return attr;
 }
 
 template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description,
-                 const CommandKeyRangeVecGen &vec_gen) {
-  CommandAttributes attr{
-      name,        arity,
-      description, ParseCommandFlags(description, name),
-      {-2, 0, 0},  {},
-      vec_gen,     []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
+                 const CommandKeyRangeVecGen &vec_gen, const AdditionalFlagGen &flag_gen = {}) {
+  CommandAttributes attr{name,
+                         arity,
+                         description,
+                         ParseCommandFlags(description, name),
+                         flag_gen,
+                         {-2, 0, 0},
+                         {},
+                         vec_gen,
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   return attr;
 }
@@ -254,7 +275,8 @@ const CommandMap *GetOriginalCommands();
 void GetAllCommandsInfo(std::string *info);
 void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
 std::string GetCommandInfo(const CommandAttributes *command_attributes);
-Status GetKeysFromCommand(const std::string &name, int argc, std::vector<int> *keys_indexes);
+Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                          std::vector<int> *keys_indexes);
 bool IsCommandExists(const std::string &name);
 
 }  // namespace redis

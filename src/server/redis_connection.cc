@@ -290,13 +290,6 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   svr_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
-bool IsSpecialExclusiveCommand(const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
-                               Config *config) {
-  return (cmd_name == "config" && cmd_tokens.size() == 2 && util::EqualICase(cmd_tokens[1], "set")) ||
-         (config->cluster_enabled && (cmd_name == "clusterx" || cmd_name == "cluster") && cmd_tokens.size() >= 2 &&
-          Cluster::SubCommandIsExecExclusive(cmd_tokens[1]));
-}
-
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = svr_->GetConfig();
   std::string reply, password = config->requirepass;
@@ -305,11 +298,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();
 
-    if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !IsFlagEnabled(Connection::kMultiExec)) break;
+    bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
+    if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
     auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
       continue;
     }
@@ -329,6 +323,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     const auto attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
+    auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
     std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
@@ -336,9 +331,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (IsFlagEnabled(Connection::kMultiExec) && attributes->name != "exec") {
+    if (is_multi_exec && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
-    } else if (attributes->IsExclusive() || IsSpecialExclusiveCommand(cmd_name, cmd_tokens, config)) {
+    } else if (cmd_flags & kCmdExclusive) {
       exclusivity = svr_->WorkExclusivityGuard();
 
       // When executing lua script commands that have "exclusive" attribute, we need to know current connection,
@@ -348,21 +343,21 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       concurrency = svr_->WorkConcurrencyGuard();
     }
 
-    if (attributes->flags & kCmdROScript) {
+    if (cmd_flags & kCmdROScript) {
       // if executing read only lua script commands, set current connection.
       svr_->SetCurrentConnection(this);
     }
 
-    if (svr_->IsLoading() && !attributes->IsOkLoading()) {
+    if (svr_->IsLoading() && !(cmd_flags & kCmdLoading)) {
       Reply(redis::Error("LOADING kvrocks is restoring the db from backup"));
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+      if (is_multi_exec) multi_error_ = true;
       continue;
     }
 
     int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
     if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR wrong number of arguments"));
       continue;
     }
@@ -370,12 +365,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     current_cmd->SetArgs(cmd_tokens);
     s = current_cmd->Parse();
     if (!s.IsOK()) {
-      if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR " + s.Msg()));
       continue;
     }
 
-    if (IsFlagEnabled(Connection::kMultiExec) && attributes->IsNoMulti()) {
+    if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
       std::string no_multi_err = "ERR Can't execute " + attributes->name + " in MULTI";
       Reply(redis::Error(no_multi_err));
       multi_error_ = true;
@@ -385,20 +380,20 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (config->cluster_enabled) {
       s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
-        if (IsFlagEnabled(Connection::kMultiExec)) multi_error_ = true;
+        if (is_multi_exec) multi_error_ = true;
         Reply(redis::Error("ERR " + s.Msg()));
         continue;
       }
     }
 
     // We don't execute commands, but queue them, ant then execute in EXEC command
-    if (IsFlagEnabled(Connection::kMultiExec) && !in_exec_ && !attributes->IsMulti()) {
+    if (is_multi_exec && !in_exec_ && !(cmd_flags & kCmdMulti)) {
       multi_cmds_.emplace_back(cmd_tokens);
       Reply(redis::SimpleString("QUEUED"));
       continue;
     }
 
-    if (config->slave_readonly && svr_->IsSlave() && attributes->IsWrite()) {
+    if (config->slave_readonly && svr_->IsSlave() && (cmd_flags & kCmdWrite)) {
       Reply(redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }

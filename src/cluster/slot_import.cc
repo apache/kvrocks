@@ -105,7 +105,7 @@ void SlotImport::StopForLinkError(int fd) {
   // 2. Source server's migration process end after destination server has finished replication.
   // 3. The migration link closed by source server, then this function will be call by OnEvent.
   // 4. ClearKeysOfSlot can clear data although server is a slave, because ClearKeysOfSlot
-  //    deletes data in rocksdb directly. Therefor, it is necessary to avoid clearing data gotten
+  //    deletes data in rocksdb directly. Therefore, it is necessary to avoid clearing data gotten
   //    from new master.
   if (!svr_->IsSlave()) {
     // Clean imported slot data

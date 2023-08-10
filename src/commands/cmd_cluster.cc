@@ -56,7 +56,7 @@ class CommandCluster : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     if (subcommand_ == "keyslot") {
@@ -216,7 +216,7 @@ class CommandClusterX : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     bool need_persist_nodes_info = false;

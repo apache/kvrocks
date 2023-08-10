@@ -60,7 +60,7 @@ jobs:
       - name: Install typos-cli
         run: cargo install typos-cli
       - name: Run typos check
-        run: typos
+        run: typos --config .github/config/typos.toml
 
   check-and-lint:
     name: Lint and check code

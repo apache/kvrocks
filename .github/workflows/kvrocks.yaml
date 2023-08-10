@@ -50,6 +50,18 @@ jobs:
         run: |
           echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
 
+  check-typos:
+    name: Check typos
+    runs-on: ubuntu-22.04
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install typos-cli
+        run: cargo install typos-cli
+      - name: Run typos check
+        run: typos
+
   check-and-lint:
     name: Lint and check code
     needs: [precondition]
@@ -91,7 +103,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -280,7 +292,7 @@ jobs:
 
   check-docker:
     name: Check Docker image
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-20.04
     steps:
@@ -299,7 +311,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false

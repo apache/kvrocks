@@ -82,7 +82,7 @@ class CommandNamespace : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
@@ -173,7 +173,7 @@ class CommandFlushAll : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     if (svr->GetConfig()->cluster_enabled) {
@@ -221,7 +221,7 @@ class CommandConfig : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
@@ -547,7 +547,7 @@ class CommandShutdown : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     if (!srv->IsStopped()) {
@@ -842,7 +842,7 @@ class CommandBGSave : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     Status s = svr->AsyncBgSaveDB();
@@ -858,7 +858,7 @@ class CommandFlushBackup : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     Status s = svr->AsyncPurgeOldBackups(0, 0);
@@ -917,7 +917,7 @@ class CommandSlaveOf : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdministratorPermissionRequired};
     }
 
     if (host_.empty()) {

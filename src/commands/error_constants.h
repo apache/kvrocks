@@ -26,7 +26,8 @@ inline constexpr const char *errInvalidSyntax = "syntax error";
 inline constexpr const char *errInvalidExpireTime = "invalid expire time";
 inline constexpr const char *errWrongNumOfArguments = "wrong number of arguments";
 inline constexpr const char *errValueNotInteger = "value is not an integer or out of range";
-inline constexpr const char *errAdministorPermissionRequired = "administor permission required to perform the command";
+inline constexpr const char *errAdministratorPermissionRequired =
+    "administrator permission required to perform the command";
 inline constexpr const char *errValueMustBePositive = "value is out of range, must be positive";
 inline constexpr const char *errNoSuchKey = "no such key";
 inline constexpr const char *errUnbalancedStreamList =

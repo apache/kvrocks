@@ -1,0 +1,4 @@
+[codespell]
+quiet-level = 2
+skip = ./tests/gocase/util/slot.go
+ignore-words = ./.codespell/wordlist.txt

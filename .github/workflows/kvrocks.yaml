@@ -57,10 +57,8 @@ jobs:
       FORCE_COLOR: 1
     steps:
       - uses: actions/checkout@v3
-      - name: Install typos-cli
-        run: cargo install typos-cli
       - name: Run typos check
-        run: typos --config .github/config/typos.toml
+        uses: crate-ci/typos@master
 
   check-and-lint:
     name: Lint and check code

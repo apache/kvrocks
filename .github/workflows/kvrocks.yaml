@@ -187,7 +187,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y ninja-build
+          sudo apt install -y ninja-build libtsan0
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

@@ -59,6 +59,8 @@ jobs:
       - uses: actions/checkout@v3
       - name: Run typos check
         uses: crate-ci/typos@master
+        with:
+          config: .github/config/typos.toml
 
   check-and-lint:
     name: Lint and check code

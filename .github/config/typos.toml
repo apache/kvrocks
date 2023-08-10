@@ -17,9 +17,11 @@
 
 [files]
 extend-exclude = [
+    ".git/",
     "src/common/sha1.cc",
     "tests/gocase/util/slot.go",
 ]
+ignore-hidden = false
 
 [default.extend-words]
 # keywords

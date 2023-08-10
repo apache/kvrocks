@@ -40,7 +40,7 @@
 #include "server/server.h"
 #include "status.h"
 
-constexpr const char *kDefaultBindAddress = "127.0.0.1";
+constexpr const char *kDefaultBindAddress = "0.0.0.0";
 
 constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
 constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =
@@ -162,14 +162,14 @@ Config::Config() {
       /* rocksdb options */
       {"rocksdb.compression", false,
        new EnumField(&rocks_db.compression, compression_types, rocksdb::CompressionType::kNoCompression)},
-      {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 4096, 0, INT_MAX)},
-      {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 4096, -1, INT_MAX)},
+      {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
+      {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
       {"rocksdb.max_write_buffer_number", false, new IntField(&rocks_db.max_write_buffer_number, 4, 0, 256)},
       {"rocksdb.target_file_size_base", false, new IntField(&rocks_db.target_file_size_base, 128, 1, 1024)},
       {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, 2, -1, 32)},
       {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},
-      {"rocksdb.max_sub_compactions", false, new IntField(&rocks_db.max_sub_compactions, 1, 0, 16)},
+      {"rocksdb.max_sub_compactions", false, new IntField(&rocks_db.max_sub_compactions, 2, 0, 16)},
       {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db.delayed_write_rate, 0, 0, INT64_MAX)},
       {"rocksdb.wal_ttl_seconds", true, new IntField(&rocks_db.wal_ttl_seconds, 3 * 3600, 0, INT_MAX)},
       {"rocksdb.wal_size_limit_mb", true, new IntField(&rocks_db.wal_size_limit_mb, 16384, 0, INT_MAX)},

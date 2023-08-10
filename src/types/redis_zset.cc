@@ -52,7 +52,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   std::string member_key;
-  std::unordered_set<std::string> added_member_keys;
+  std::unordered_set<std::string_view> added_member_keys;
   for (auto it = mscores->rbegin(); it != mscores->rend(); it++) {
     InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
 
@@ -543,7 +543,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   batch->PutLogData(log_data.Encode());
   int removed = 0;
   std::string member_key, score_key;
-  std::unordered_set<std::string> mset;
+  std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
     if (!mset.insert(member.ToString()).second) {
       continue;

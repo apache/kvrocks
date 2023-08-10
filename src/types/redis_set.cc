@@ -70,7 +70,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   std::string sub_key;
-  std::unordered_set<std::string> mset;
+  std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
     if (!mset.insert(member.ToString()).second) {
       continue;
@@ -105,7 +105,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
-  std::unordered_set<std::string> mset;
+  std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
     if (!mset.insert(member.ToString()).second) {
       continue;

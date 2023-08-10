@@ -217,7 +217,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string sub_key, value;
-  std::unordered_set<std::string> field_set;
+  std::unordered_set<std::string_view> field_set;
   for (const auto &field : fields) {
     if (!field_set.emplace(field.ToString()).second) {
       continue;
@@ -254,7 +254,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
-  std::unordered_set<std::string> field_set;
+  std::unordered_set<std::string_view> field_set;
   for (auto it = field_values.rbegin(); it != field_values.rend(); it++) {
     if (!field_set.insert(it->field).second) {
       continue;

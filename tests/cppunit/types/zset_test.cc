@@ -105,10 +105,10 @@ TEST_F(RedisZSetTest, AddAndRemoveRepeated) {
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(mscores.size() - 1, ret);
-  double score;
+  double score = 0.0;
   zset_->Score(key_, members[0], &score);
   EXPECT_EQ(scores[1], score);
-  uint64_t card;
+  uint64_t card = 0;
   zset_->Card(key_, &card);
   EXPECT_EQ(mscores.size() - 1, card);
 

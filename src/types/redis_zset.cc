@@ -88,8 +88,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
           }
         }
         if (it->score != old_score) {
-          if ((flags.HasLT() && it->score >= old_score) ||
-              (flags.HasGT() && it->score <= old_score)) {
+          if ((flags.HasLT() && it->score >= old_score) || (flags.HasGT() && it->score <= old_score)) {
             continue;
           }
           old_score_bytes.append(it->member);

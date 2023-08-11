@@ -126,7 +126,7 @@ struct CommandAttributes {
   // negative number -n means number of arguments is equal to or large than n
   int arity;
 
-  // space-splitted flag strings to initialize flags
+  // space-separated flag strings to initialize flags
   std::string description;
 
   // bitmap of enum CommandFlags

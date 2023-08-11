@@ -50,6 +50,18 @@ jobs:
         run: |
           echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
 
+  check-typos:
+    name: Check typos
+    runs-on: ubuntu-22.04
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install typos
+        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.16.3/typos-v1.16.3-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+      - name: Run typos check
+        run: typos --config .github/config/typos.toml
+
   check-and-lint:
     name: Lint and check code
     needs: [precondition]
@@ -91,7 +103,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -134,12 +146,13 @@ jobs:
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
-          - name: Ubuntu GCC TSan
-            os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_sanitizer: -DENABLE_TSAN=ON
-            compiler: gcc
-            ignore_when_tsan: -tags="ignore_when_tsan"
+          # FIXME - tsan.so not found https://github.com/apache/kvrocks/issues/1662
+          # - name: Ubuntu GCC TSan
+          #   os: ubuntu-20.04
+          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          #   compiler: gcc
+          #   ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON
@@ -279,7 +292,7 @@ jobs:
 
   check-docker:
     name: Check Docker image
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-20.04
     steps:
@@ -298,7 +311,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-and-lint]
+    needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false

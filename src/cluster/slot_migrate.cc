@@ -363,7 +363,7 @@ Status SlotMigrator::sendSnapshot() {
   }
 
   LOG(INFO) << "[migrate] Succeed to migrate slot snapshot, slot: " << slot << ", Migrated keys: " << migrated_key_cnt
-            << ", Expired keys: " << expired_key_cnt << ", Emtpy keys: " << empty_key_cnt;
+            << ", Expired keys: " << expired_key_cnt << ", Empty keys: " << empty_key_cnt;
 
   return Status::OK();
 }

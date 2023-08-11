@@ -121,8 +121,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     geo_shape.xy[1] = geo_point.latitude;
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;

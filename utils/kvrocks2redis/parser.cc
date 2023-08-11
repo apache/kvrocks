@@ -61,17 +61,18 @@ Status Parser::ParseFullDB() {
 }
 
 Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire) {
-  std::string ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
+  auto [ns, user_key] = ExtractNamespaceKey(ns_key, slot_id_encoded_);
+  auto ns_str = ns.ToString();
+  auto user_key_str = user_key.ToString();
 
   auto command =
-      redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
-  Status s = writer_->Write(ns, {command});
+      redis::Command2RESP({"SET", user_key_str, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
+  Status s = writer_->Write(ns_str, {command});
   if (!s.IsOK()) return s;
 
   if (expire > 0) {
-    command = redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire / 1000)});
-    s = writer_->Write(ns, {command});
+    command = redis::Command2RESP({"EXPIREAT", user_key_str, std::to_string(expire / 1000)});
+    s = writer_->Write(ns_str, {command});
   }
 
   return s;
@@ -83,12 +84,11 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     return {Status::NotOK, "unknown metadata type: " + std::to_string(type)};
   }
 
-  std::string ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode(&prefix_key);
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
+  auto [ns_s, user_key_s] = ExtractNamespaceKey(ns_key, slot_id_encoded_);
+  auto ns = ns_s.ToString();
+  auto user_key = user_key_s.ToString();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode();
+  std::string next_version_prefix_key = InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = latest_snapshot_->GetSnapShot();

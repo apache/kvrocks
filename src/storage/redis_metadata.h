@@ -73,9 +73,9 @@ struct KeyNumStats {
   uint64_t avg_ttl = 0;
 };
 
-void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded);
-void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded);
-void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output);
+[[nodiscard]] std::tuple<Slice, Slice> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded);
+[[nodiscard]] std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded);
+[[nodiscard]] std::string ComposeSlotKeyPrefix(const Slice &ns, int slotid);
 
 class InternalKey {
  public:
@@ -87,7 +87,7 @@ class InternalKey {
   Slice GetKey() const;
   Slice GetSubKey() const;
   uint64_t GetVersion() const;
-  void Encode(std::string *out);
+  [[nodiscard]] std::string Encode() const;
   bool operator==(const InternalKey &that) const;
 
  private:

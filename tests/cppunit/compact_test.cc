@@ -61,8 +61,7 @@ TEST(Compact, Filter) {
 
   auto iter = new_iterator("metadata");
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    std::string user_key, user_ns;
-    ExtractNamespaceKey(iter->key(), &user_ns, &user_key, storage->IsSlotIdEncoded());
+    auto [user_key, user_ns] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(user_key, live_hash_key);
   }
 

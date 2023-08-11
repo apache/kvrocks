@@ -275,7 +275,7 @@ class CommandGeoRadius : public CommandGeoBase {
 
         count_ = *parse_result;
         i += 2;
-      } else if (attributes_->IsWrite() &&
+      } else if ((attributes_->flags & kCmdWrite) &&
                  (util::ToLower(args_[i]) == "store" || util::ToLower(args_[i]) == "storedist") &&
                  i + 1 < args_.size()) {
         store_key_ = args_[i + 1];
@@ -413,6 +413,10 @@ class CommandGeoSearch : public CommandGeoBase {
       } else {
         return {Status::RedisParseErr, "Invalid argument given"};
       }
+    }
+
+    if (origin_point_type_ == kNone) {
+      return {Status::RedisParseErr, "exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCH"};
     }
 
     if (member_ != "" && longitude_ != 0 && latitude_ != 0) {
@@ -572,6 +576,10 @@ class CommandGeoSearchStore : public CommandGeoSearch {
       } else {
         return {Status::RedisParseErr, "Invalid argument given"};
       }
+    }
+
+    if (origin_point_type_ == kNone) {
+      return {Status::RedisParseErr, "exactly one of FROMMEMBER or FROMLONLAT can be specified for GEOSEARCHSTORE"};
     }
 
     if (member_ != "" && longitude_ != 0 && latitude_ != 0) {

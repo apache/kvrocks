@@ -26,7 +26,7 @@ inline constexpr const char *errInvalidSyntax = "syntax error";
 inline constexpr const char *errInvalidExpireTime = "invalid expire time";
 inline constexpr const char *errWrongNumOfArguments = "wrong number of arguments";
 inline constexpr const char *errValueNotInteger = "value is not an integer or out of range";
-inline constexpr const char *errAdministorPermissionRequired = "administor permission required to perform the command";
+inline constexpr const char *errAdminPermissionRequired = "admin permission required to perform the command";
 inline constexpr const char *errValueMustBePositive = "value is out of range, must be positive";
 inline constexpr const char *errNoSuchKey = "no such key";
 inline constexpr const char *errUnbalancedStreamList =
@@ -41,5 +41,6 @@ inline constexpr const char *errScoreIsNotValidFloat = "score is not a valid flo
 inline constexpr const char *errValueIsNotFloat = "value is not a valid float";
 inline constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
 inline constexpr const char *errUnknownOption = "unknown option";
+inline constexpr const char *errUnknownSubcommandOrWrongArguments = "Unknown subcommand or wrong number of arguments";
 
 }  // namespace redis

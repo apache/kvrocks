@@ -332,7 +332,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
   EXPECT_EQ("key1", result[0].field);
   EXPECT_EQ("key2", result[1].field);
 
-  // inf and revered
+  // inf and reversed
   spec.minex = false;
   spec.maxex = false;
   spec.min = "-";

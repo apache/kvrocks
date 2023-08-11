@@ -115,6 +115,63 @@ func TestPubSub(t *testing.T) {
 		require.Equal(t, "hello", msg.Payload)
 	})
 
+	t.Run("MPUBLISH basics", func(t *testing.T) {
+		var (
+			channelName = "channel1"
+			msg1        = "hello"
+			msg2        = "world"
+			msg3        = "!"
+			msg4        = "foo-bar"
+		)
+
+		c1 := srv.NewClient()
+		defer func() { require.NoError(t, c1.Close()) }()
+		c2 := srv.NewClient()
+		defer func() { require.NoError(t, c2.Close()) }()
+
+		pubsub1 := c1.Subscribe(ctx, channelName)
+		pubsub2 := c2.Subscribe(ctx, channelName)
+
+		require.EqualValues(t, 1, receiveType(t, pubsub1, &redis.Subscription{}).Count)
+		require.EqualValues(t, 1, receiveType(t, pubsub2, &redis.Subscription{}).Count)
+
+		require.EqualValues(t, 6, rdb.Do(ctx, "MPUBLISH", channelName, msg1, msg2, msg3).Val())
+
+		msg := receiveType(t, pubsub1, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg1, msg.Payload)
+
+		msg = receiveType(t, pubsub2, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg1, msg.Payload)
+
+		msg = receiveType(t, pubsub1, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg2, msg.Payload)
+
+		msg = receiveType(t, pubsub2, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg2, msg.Payload)
+
+		msg = receiveType(t, pubsub1, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg3, msg.Payload)
+
+		msg = receiveType(t, pubsub2, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg3, msg.Payload)
+
+		require.EqualValues(t, 2, rdb.Do(ctx, "MPUBLISH", channelName, msg4).Val())
+
+		msg = receiveType(t, pubsub1, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg4, msg.Payload)
+
+		msg = receiveType(t, pubsub2, &redis.Message{})
+		require.Equal(t, channelName, msg.Channel)
+		require.Equal(t, msg4, msg.Payload)
+	})
+
 	t.Run("PUBLISH/SUBSCRIBE after UNSUBSCRIBE without arguments", func(t *testing.T) {
 		pubsub := rdb.Subscribe(ctx, "chan1", "chan2", "chan3")
 		require.EqualValues(t, 1, receiveType(t, pubsub, &redis.Subscription{}).Count)

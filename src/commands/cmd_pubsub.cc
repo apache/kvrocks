@@ -27,12 +27,13 @@ namespace redis {
 
 class CommandPublish : public Commander {
  public:
-  // mark is_write as false here because slave should be able to execute publish command
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!svr->IsSlave()) {
-      // Compromise: can't replicate message to sub-replicas in a cascading-like structure.
-      // Replication relies on WAL seq, increase the seq on slave will break the replication, hence the compromise
+      // Compromise: can't replicate a message to sub-replicas in a cascading-like structure.
+      // Replication relies on WAL seq; increasing the seq on a replica will break the replication process,
+      // hence the compromise solution
       redis::PubSub pubsub_db(svr->storage);
+
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
@@ -40,7 +41,34 @@ class CommandPublish : public Commander {
     }
 
     int receivers = svr->PublishMessage(args_[1], args_[2]);
+
     *output = redis::Integer(receivers);
+
+    return Status::OK();
+  }
+};
+
+class CommandMPublish : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int total_receivers = 0;
+
+    for (size_t i = 2; i < args_.size(); i++) {
+      if (!svr->IsSlave()) {
+        redis::PubSub pubsub_db(svr->storage);
+
+        auto s = pubsub_db.Publish(args_[1], args_[i]);
+        if (!s.ok()) {
+          return {Status::RedisExecErr, s.ToString()};
+        }
+      }
+
+      int receivers = svr->PublishMessage(args_[1], args_[i]);
+      total_receivers += receivers;
+    }
+
+    *output = redis::Integer(total_receivers);
+
     return Status::OK();
   }
 };
@@ -132,7 +160,7 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments"};
+    return {Status::RedisInvalidCmd, errUnknownSubcommandOrWrongArguments};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -161,7 +189,7 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Unknown subcommand or wrong number of arguments"};
+    return {Status::RedisInvalidCmd, errUnknownSubcommandOrWrongArguments};
   }
 
  private:
@@ -172,6 +200,7 @@ class CommandPubSub : public Commander {
 
 REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPublish>("publish", 3, "read-only pub-sub", 0, 0, 0),
+    MakeCmdAttr<CommandMPublish>("mpublish", -3, "read-only pub-sub", 0, 0, 0),
     MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),

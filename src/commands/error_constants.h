@@ -41,5 +41,6 @@ inline constexpr const char *errScoreIsNotValidFloat = "score is not a valid flo
 inline constexpr const char *errValueIsNotFloat = "value is not a valid float";
 inline constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
 inline constexpr const char *errUnknownOption = "unknown option";
+inline constexpr const char *errUnknownSubcommandOrWrongArguments = "Unknown subcommand or wrong number of arguments";
 
 }  // namespace redis

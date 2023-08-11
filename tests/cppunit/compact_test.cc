@@ -62,7 +62,7 @@ TEST(Compact, Filter) {
   auto iter = new_iterator("metadata");
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     auto [user_key, user_ns] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
-    EXPECT_EQ(user_key, live_hash_key);
+    EXPECT_EQ(user_key.ToString(), live_hash_key);
   }
 
   iter = new_iterator("subkey");

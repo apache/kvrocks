@@ -23,7 +23,6 @@
 #include <memory>
 
 #include "fmt/ostream.h"
-#include "fmt/std.h"
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/utilities/backup_engine.h"

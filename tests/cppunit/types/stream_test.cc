@@ -718,7 +718,7 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqual) {
   CheckStreamEntryValues(entries[0].values, values2);
 }
 
-TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExludedStart) {
+TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedStart) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
@@ -741,7 +741,7 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExludedStart) {
   EXPECT_EQ(entries.size(), 0);
 }
 
-TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExludedEnd) {
+TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedEnd) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
@@ -876,7 +876,7 @@ TEST_F(RedisStreamTest, RangeWithExcludedStartAndExcludedEnd) {
   CheckStreamEntryValues(entries[1].values, values3);
 }
 
-TEST_F(RedisStreamTest, RangeWithStartAsMaximumAndExlusion) {
+TEST_F(RedisStreamTest, RangeWithStartAsMaximumAndExclusion) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
@@ -893,7 +893,7 @@ TEST_F(RedisStreamTest, RangeWithStartAsMaximumAndExlusion) {
   EXPECT_TRUE(!s.ok());
 }
 
-TEST_F(RedisStreamTest, RangeWithEndAsMinimumAndExlusion) {
+TEST_F(RedisStreamTest, RangeWithEndAsMinimumAndExclusion) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};

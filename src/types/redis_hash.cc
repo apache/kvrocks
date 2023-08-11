@@ -219,7 +219,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   std::string sub_key, value;
   std::unordered_set<std::string_view> field_set;
   for (const auto &field : fields) {
-    if (!field_set.emplace(field.ToString()).second) {
+    if (!field_set.emplace(field.ToStringView()).second) {
       continue;
     }
     InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);

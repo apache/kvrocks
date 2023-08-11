@@ -72,7 +72,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   std::string sub_key;
   std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
-    if (!mset.insert(member.ToString()).second) {
+    if (!mset.insert(member.ToStringView()).second) {
       continue;
     }
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
@@ -107,7 +107,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
   batch->PutLogData(log_data.Encode());
   std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
-    if (!mset.insert(member.ToString()).second) {
+    if (!mset.insert(member.ToStringView()).second) {
       continue;
     }
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);

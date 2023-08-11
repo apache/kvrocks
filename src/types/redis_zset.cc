@@ -54,21 +54,10 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   std::string member_key;
   std::unordered_set<std::string_view> added_member_keys;
   for (auto it = mscores->rbegin(); it != mscores->rend(); it++) {
-    InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-
-    // Fix the corner case that adds the same member which may add the score
-    // column family many times and cause problems in the ZRANGE command.
-    //
-    // For example, we add members with `ZADD mykey 1 a 2 a` and `ZRANGE mykey 0 1`
-    // return only one member(`a`) was expected but got the member `a` twice now.
-    //
-    // The root cause of this issue was the score key was composed by member and score,
-    // so the last one can't overwrite the previous when the score was different.
-    // A simple workaround was add those members with reversed order and skip the member if has added.
-    if (!added_member_keys.insert(member_key).second) {
+    if (!added_member_keys.insert(it->member).second) {
       continue;
     }
-
+    InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = storage_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
@@ -545,7 +534,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   std::string member_key, score_key;
   std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
-    if (!mset.insert(member.ToString()).second) {
+    if (!mset.insert(member.ToStringView()).second) {
       continue;
     }
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);

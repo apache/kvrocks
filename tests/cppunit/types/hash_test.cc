@@ -86,6 +86,35 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   hash_->Del(key_);
 }
 
+TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
+  std::vector<std::string> fields{"f1", "f1", "f2", "f3"};
+  std::vector<std::string> values{"v1", "v11", "v2", "v3"};
+  std::vector<FieldValue> fvs;
+  for (size_t i = 0; i < fields.size(); i++) {
+    fvs.emplace_back(fields[i], values[i]);
+  }
+
+  uint64_t ret = 0;
+  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  EXPECT_TRUE(s.ok() && static_cast<uint64_t>(fvs.size() - 1) == ret);
+  std::string got;
+  s = hash_->Get(key_, "f1", &got);
+  EXPECT_EQ("v11", got);
+
+  s = hash_->Size(key_, &ret);
+  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fvs.size() - 1));
+
+  std::vector<rocksdb::Slice> fields_to_delete{"f1", "f2", "f2"};
+  s = hash_->Delete(key_, fields_to_delete, &ret);
+  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fields_to_delete.size() - 1));
+  s = hash_->Size(key_, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+  s = hash_->Get(key_, "f3", &got);
+  EXPECT_EQ("v3", got);
+
+  s = hash_->Del(key_);
+}
+
 TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
   uint64_t ret = 0;
   std::vector<FieldValue> values = {{"field-one", "value-one"}};

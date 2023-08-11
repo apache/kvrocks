@@ -134,12 +134,13 @@ jobs:
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
-          - name: Ubuntu GCC TSan
-            os: ubuntu-20.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_sanitizer: -DENABLE_TSAN=ON
-            compiler: gcc
-            ignore_when_tsan: -tags="ignore_when_tsan"
+          # FIXME - tsan.so not found https://github.com/apache/kvrocks/issues/1662
+          # - name: Ubuntu GCC TSan
+          #   os: ubuntu-20.04
+          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
+          #   with_sanitizer: -DENABLE_TSAN=ON
+          #   compiler: gcc
+          #   ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
             os: ubuntu-20.04
             with_sanitizer: -DENABLE_TSAN=ON

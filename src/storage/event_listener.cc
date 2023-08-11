@@ -133,7 +133,7 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
     storage_->SetDBInRetryableIOError(true);
   }
 
-  LOG(WARNING) << fmt::format("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
+  LOG(ERROR) << fmt::format("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
 void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {

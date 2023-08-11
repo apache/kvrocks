@@ -104,7 +104,7 @@ class CommandSIsMember : public Commander {
     redis::Set set_db(svr->storage, conn->GetNamespace());
     bool ret = false;
     auto s = set_db.IsMember(args_[1], args_[2], &ret);
-    if (!s.ok()) {
+    if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 

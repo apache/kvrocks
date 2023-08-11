@@ -45,7 +45,7 @@ TEST(InternalKey, EncodeAndDecode) {
   EXPECT_EQ(ikey, ikey1);
 }
 
-TEST(Metadata, EncodeAndDeocde) {
+TEST(Metadata, EncodeAndDecode) {
   std::string string_bytes;
   Metadata string_md(kRedisString);
   string_md.expire = 123000;

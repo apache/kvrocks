@@ -37,7 +37,7 @@ func TestMulti(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("MUTLI / EXEC basics", func(t *testing.T) {
+	t.Run("MULTI / EXEC basics", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mylist").Err())
 		require.NoError(t, rdb.RPush(ctx, "mylist", "a").Err())
 		require.NoError(t, rdb.RPush(ctx, "mylist", "b").Err())

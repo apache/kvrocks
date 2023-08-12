@@ -56,7 +56,7 @@ InternalKey::InternalKey(Slice input, bool slot_id_encoded) : slot_id_encoded_(s
 }
 
 InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slot_id_encoded)
-    : slot_id_encoded_(slot_id_encoded) {
+    : sub_key_(sub_key), version_(version), slot_id_encoded_(slot_id_encoded) {
   uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
   namespace_ = Slice(ns_key.data(), namespace_size);
@@ -65,8 +65,6 @@ InternalKey::InternalKey(Slice ns_key, Slice sub_key, uint64_t version, bool slo
     GetFixed16(&ns_key, &slotid_);
   }
   key_ = ns_key;
-  sub_key_ = sub_key;
-  version_ = version;
 }
 
 Slice InternalKey::GetNamespace() const { return namespace_; }
@@ -77,15 +75,15 @@ Slice InternalKey::GetSubKey() const { return sub_key_; }
 
 uint64_t InternalKey::GetVersion() const { return version_; }
 
-void InternalKey::Encode(std::string *out) {
-  out->clear();
+std::string InternalKey::Encode() const {
+  std::string out;
   size_t pos = 0;
   size_t total = 1 + namespace_.size() + 4 + key_.size() + 8 + sub_key_.size();
   if (slot_id_encoded_) {
     total += 2;
   }
-  out->resize(total);
-  auto buf = out->data();
+  out.resize(total);
+  auto buf = out.data();
   EncodeFixed8(buf + pos, static_cast<uint8_t>(namespace_.size()));
   pos += 1;
   memcpy(buf + pos, namespace_.data(), namespace_.size());
@@ -102,6 +100,7 @@ void InternalKey::Encode(std::string *out) {
   pos += 8;
   memcpy(buf + pos, sub_key_.data(), sub_key_.size());
   // pos += sub_key_.size();
+  return out;
 }
 
 bool InternalKey::operator==(const InternalKey &that) const {
@@ -110,10 +109,11 @@ bool InternalKey::operator==(const InternalKey &that) const {
   return version_ == that.version_;
 }
 
-void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool slot_id_encoded) {
+template <typename T>
+std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded) {
   uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
-  *ns = ns_key.ToString().substr(0, namespace_size);
+  T ns(ns_key.data(), namespace_size);
   ns_key.remove_prefix(namespace_size);
 
   if (slot_id_encoded) {
@@ -121,30 +121,38 @@ void ExtractNamespaceKey(Slice ns_key, std::string *ns, std::string *key, bool s
     GetFixed16(&ns_key, &slot_id);
   }
 
-  *key = ns_key.ToString();
+  T key = {ns_key.data(), ns_key.size()};
+  return {ns, key};
 }
 
-void ComposeNamespaceKey(const Slice &ns, const Slice &key, std::string *ns_key, bool slot_id_encoded) {
-  ns_key->clear();
+template std::tuple<Slice, Slice> ExtractNamespaceKey<Slice>(Slice ns_key, bool slot_id_encoded);
+template std::tuple<std::string, std::string> ExtractNamespaceKey<std::string>(Slice ns_key, bool slot_id_encoded);
 
-  PutFixed8(ns_key, static_cast<uint8_t>(ns.size()));
-  ns_key->append(ns.data(), ns.size());
+std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded) {
+  std::string ns_key;
+
+  PutFixed8(&ns_key, static_cast<uint8_t>(ns.size()));
+  ns_key.append(ns.data(), ns.size());
 
   if (slot_id_encoded) {
     auto slot_id = GetSlotIdFromKey(key.ToString());
-    PutFixed16(ns_key, slot_id);
+    PutFixed16(&ns_key, slot_id);
   }
 
-  ns_key->append(key.data(), key.size());
+  ns_key.append(key.data(), key.size());
+
+  return ns_key;
 }
 
-void ComposeSlotKeyPrefix(const Slice &ns, int slotid, std::string *output) {
-  output->clear();
+std::string ComposeSlotKeyPrefix(const Slice &ns, int slotid) {
+  std::string output;
 
-  PutFixed8(output, static_cast<uint8_t>(ns.size()));
-  output->append(ns.data(), ns.size());
+  PutFixed8(&output, static_cast<uint8_t>(ns.size()));
+  output.append(ns.data(), ns.size());
 
-  PutFixed16(output, static_cast<uint16_t>(slotid));
+  PutFixed16(&output, static_cast<uint16_t>(slotid));
+
+  return output;
 }
 
 Metadata::Metadata(RedisType type, bool generate_version, bool use_64bit_common_field)

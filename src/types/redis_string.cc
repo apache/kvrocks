@@ -115,8 +115,7 @@ rocksdb::Status String::updateRawValue(const std::string &ns_key, const std::str
 
 rocksdb::Status String::Append(const std::string &user_key, const std::string &value, uint64_t *new_size) {
   *new_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;
@@ -135,8 +134,7 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
   std::vector<std::string> ns_keys;
   ns_keys.reserve(keys.size());
   for (const auto &key : keys) {
-    std::string ns_key;
-    AppendNamespacePrefix(key, &ns_key);
+    std::string ns_key = AppendNamespacePrefix(key);
     ns_keys.emplace_back(ns_key);
   }
   std::vector<Slice> slice_keys;
@@ -148,8 +146,7 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
 }
 
 rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   return getValue(ns_key, value);
 }
 
@@ -159,8 +156,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
     uint64_t now = util::GetTimeStampMS();
     expire = now + ttl;
   }
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, value);
@@ -186,8 +182,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 }
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, old_value);
@@ -202,8 +197,7 @@ rocksdb::Status String::GetSet(const std::string &user_key, const std::string &n
   return !write_status.ok() ? write_status : s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, value);
@@ -236,8 +230,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
     expire = now + ttl;
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   Exists({user_key}, &exists);
   if (exists != 1) return rocksdb::Status::OK();
@@ -253,8 +246,7 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
 
 rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, const std::string &value,
                                  uint64_t *new_size) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;
@@ -293,8 +285,8 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
 }
 
 rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, int64_t *new_value) {
-  std::string ns_key, value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;
@@ -331,8 +323,8 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
 }
 
 rocksdb::Status String::IncrByFloat(const std::string &user_key, double increment, double *new_value) {
-  std::string ns_key, value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;
   rocksdb::Status s = getRawValue(ns_key, &raw_value);
@@ -373,13 +365,12 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
 
   // Data race, key string maybe overwrite by other key while didn't lock the keys here,
   // to improve the set performance
-  std::string ns_key;
   std::optional<MultiLockGuard> guard;
   if (lock) {
     std::vector<std::string> lock_keys;
     lock_keys.reserve(pairs.size());
     for (const StringPair &pair : pairs) {
-      AppendNamespacePrefix(pair.key, &ns_key);
+      std::string ns_key = AppendNamespacePrefix(pair.key);
       lock_keys.emplace_back(ns_key);
     }
     guard.emplace(storage_->GetLockManager(), lock_keys);
@@ -394,7 +385,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
     metadata.expire = expire;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
-    AppendNamespacePrefix(pair.key, &ns_key);
+    std::string ns_key = AppendNamespacePrefix(pair.key);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -404,14 +395,13 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
   *flag = false;
 
   int exists = 0;
-  std::string ns_key;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(pairs.size());
   std::vector<Slice> keys;
   keys.reserve(pairs.size());
 
   for (StringPair pair : pairs) {
-    AppendNamespacePrefix(pair.key, &ns_key);
+    std::string ns_key = AppendNamespacePrefix(pair.key);
     lock_keys.emplace_back(ns_key);
     keys.emplace_back(pair.key);
   }
@@ -439,8 +429,8 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
                             uint64_t ttl, int *flag) {
   *flag = 0;
 
-  std::string ns_key, current_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string current_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, &current_value);
@@ -480,8 +470,8 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 rocksdb::Status String::CAD(const std::string &user_key, const std::string &value, int *flag) {
   *flag = 0;
 
-  std::string ns_key, current_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string current_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = getValue(ns_key, &current_value);

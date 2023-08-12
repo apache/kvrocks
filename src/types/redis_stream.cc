@@ -44,8 +44,7 @@ rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *me
 }
 
 rocksdb::Status Stream::GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id) {
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
@@ -77,8 +76,7 @@ std::string Stream::internalKeyFromEntryID(const std::string &ns_key, const Stre
   std::string sub_key;
   PutFixed64(&sub_key, id.ms);
   PutFixed64(&sub_key, id.seq);
-  std::string entry_key;
-  InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode(&entry_key);
+  std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   return entry_key;
 }
 
@@ -92,8 +90,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   std::string entry_value = EncodeStreamEntryValue(args);
 
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
@@ -167,8 +164,7 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
                                       uint64_t *deleted_cnt) {
   *deleted_cnt = 0;
 
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
@@ -181,10 +177,9 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -259,8 +254,7 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
 // The entry with the ID `StreamLenOptions::entry_id` has not taken into account (it serves as exclusive boundary).
 rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size) {
   *size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
@@ -289,10 +283,9 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
     return rocksdb::Status::OK();
   }
 
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -353,10 +346,9 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     return rocksdb::Status::OK();
   }
 
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -405,8 +397,7 @@ rocksdb::Status Stream::getEntryRawValue(const std::string &ns_key, const Stream
 }
 
 rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full, uint64_t count, StreamInfo *info) {
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
@@ -492,8 +483,7 @@ rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions
     return rocksdb::Status::InvalidArgument("invalid end ID for the interval");
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
@@ -511,8 +501,7 @@ rocksdb::Status Stream::Trim(const Slice &stream_name, const StreamTrimOptions &
     return rocksdb::Status::OK();
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
@@ -555,10 +544,9 @@ uint64_t Stream::trim(const std::string &ns_key, const StreamTrimOptions &option
 
   uint64_t ret = 0;
 
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata->version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata->version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -618,8 +606,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
     return rocksdb::Status::InvalidArgument(errMaxDeletedIdGreaterThanLastGenerated);
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(stream_name, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
 

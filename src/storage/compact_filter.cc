@@ -25,6 +25,7 @@
 #include <string>
 #include <utility>
 
+#include "db_util.h"
 #include "time_util.h"
 #include "types/redis_bitmap.h"
 
@@ -34,10 +35,10 @@ using rocksdb::Slice;
 
 bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
                             bool *modified) const {
-  std::string ns, user_key, bytes = value.ToString();
+  std::string bytes = value.ToString();
   Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(bytes);
-  ExtractNamespaceKey(key, &ns, &user_key, stor_->IsSlotIdEncoded());
+  auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
   if (!s.ok()) {
     LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
                  << ", namespace: " << ns << ", key: " << user_key << ", err: " << s.ToString();
@@ -50,13 +51,11 @@ bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std
 }
 
 Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) const {
-  std::string metadata_key;
-
   auto db = stor_->GetDB();
   const auto cf_handles = stor_->GetCFHandles();
   // storage close the would delete the column family handler and DB
   if (!db || cf_handles->size() < 2) return {Status::NotOK, "storage is closed"};
-  ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), &metadata_key, stor_->IsSlotIdEncoded());
+  std::string metadata_key = ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), stor_->IsSlotIdEncoded());
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;

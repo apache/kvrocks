@@ -32,15 +32,12 @@ TEST(InternalKey, EncodeAndDecode) {
   Slice sub_key = "test-metadata-sub-key";
   Slice ns = "namespace";
   uint64_t version = 12;
-  std::string ns_key;
-
-  ComposeNamespaceKey(ns, key, &ns_key, false);
+  std::string ns_key = ComposeNamespaceKey(ns, key, false);
   InternalKey ikey(ns_key, sub_key, version, false);
   ASSERT_EQ(ikey.GetKey(), key);
   ASSERT_EQ(ikey.GetSubKey(), sub_key);
   ASSERT_EQ(ikey.GetVersion(), version);
-  std::string bytes;
-  ikey.Encode(&bytes);
+  std::string bytes = ikey.Encode();
   InternalKey ikey1(bytes, false);
   EXPECT_EQ(ikey, ikey1);
 }
@@ -92,8 +89,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   HashMetadata metadata;
-  std::string ns_key;
-  redis_->AppendNamespacePrefix(key_, &ns_key);
+  std::string ns_key = redis_->AppendNamespacePrefix(key_);
   redis_->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis_->Del(key_);

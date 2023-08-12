@@ -22,6 +22,7 @@
 
 #include <memory>
 
+#include "fmt/ostream.h"
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/utilities/backup_engine.h"
@@ -103,3 +104,14 @@ inline StatusOr<std::unique_ptr<rocksdb::BackupEngine>> BackupEngineOpen(rocksdb
 }
 
 }  // namespace util
+
+namespace rocksdb {
+
+inline std::ostream& operator<<(std::ostream& os, const Slice& slice) {
+  return os << std::string_view{slice.data(), slice.size()};
+}
+
+}  // namespace rocksdb
+
+template <>
+struct fmt::formatter<rocksdb::Slice> : fmt::ostream_formatter {};

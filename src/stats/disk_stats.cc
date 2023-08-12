@@ -33,9 +33,9 @@ namespace redis {
 rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice &ns_key,
                                           rocksdb::ColumnFamilyHandle *column_family, uint64_t *key_size,
                                           Slice subkeyleft, Slice subkeyright) {
-  std::string prefix_key, next_version_prefix_key;
-  InternalKey(ns_key, subkeyleft, metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
-  InternalKey(ns_key, subkeyright, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix_key);
+  std::string prefix_key = InternalKey(ns_key, subkeyleft, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, subkeyright, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
   auto key_range = rocksdb::Range(prefix_key, next_version_prefix_key);
   uint64_t tmp_size = 0;
   rocksdb::Status s = storage_->GetDB()->GetApproximateSizes(option_, column_family, &key_range, 1, &tmp_size);
@@ -46,8 +46,7 @@ rocksdb::Status Disk::GetApproximateSizes(const Metadata &metadata, const Slice 
 
 rocksdb::Status Disk::GetKeySize(const Slice &user_key, RedisType type, uint64_t *key_size) {
   *key_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   switch (type) {
     case RedisType::kRedisString:
       return GetStringSize(ns_key, key_size);

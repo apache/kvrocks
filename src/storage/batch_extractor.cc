@@ -110,7 +110,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
   if (column_family_id == kColumnFamilyIDDefault) {
     InternalKey ikey(key, is_slot_id_encoded_);
-    auto user_key = ikey.GetKey().ToString();
+    user_key = ikey.GetKey().ToString();
     if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
       return rocksdb::Status::OK();
     }
@@ -268,9 +268,10 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   }
 
   std::vector<std::string> command_args;
-  std::string ns, user_key;
+  std::string ns;
 
   if (column_family_id == kColumnFamilyIDMetadata) {
+    std::string user_key;
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
     if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {

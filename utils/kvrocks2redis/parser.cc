@@ -61,18 +61,16 @@ Status Parser::ParseFullDB() {
 }
 
 Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire) {
-  auto [ns, user_key] = ExtractNamespaceKey(ns_key, slot_id_encoded_);
-  auto ns_str = ns.ToString();
-  auto user_key_str = user_key.ToString();
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
 
   auto command =
-      redis::Command2RESP({"SET", user_key_str, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
-  Status s = writer_->Write(ns_str, {command});
+      redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
+  Status s = writer_->Write(ns, {command});
   if (!s.IsOK()) return s;
 
   if (expire > 0) {
-    command = redis::Command2RESP({"EXPIREAT", user_key_str, std::to_string(expire / 1000)});
-    s = writer_->Write(ns_str, {command});
+    command = redis::Command2RESP({"EXPIREAT", user_key, std::to_string(expire / 1000)});
+    s = writer_->Write(ns, {command});
   }
 
   return s;
@@ -84,9 +82,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     return {Status::NotOK, "unknown metadata type: " + std::to_string(type)};
   }
 
-  auto [ns_s, user_key_s] = ExtractNamespaceKey(ns_key, slot_id_encoded_);
-  auto ns = ns_s.ToString();
-  auto user_key = user_key_s.ToString();
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode();
   std::string next_version_prefix_key = InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode();
 

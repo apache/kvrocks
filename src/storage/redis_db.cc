@@ -227,15 +227,15 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   end_cursor->clear();
   uint64_t cnt = 0;
   uint16_t slot_start = 0;
-  std::string ns_prefix, ns_cursor, value, index_key;
-  Slice user_key;
+  std::string ns_prefix;
+  std::string user_key;
 
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
-  ns_cursor = AppendNamespacePrefix(cursor);
+  std::string ns_cursor = AppendNamespacePrefix(cursor);
   if (storage_->IsSlotIdEncoded()) {
     slot_start = cursor.empty() ? 0 : GetSlotIdFromKey(cursor);
     ns_prefix = ComposeNamespaceKey(namespace_, "", false);
@@ -265,22 +265,22 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
         break;
       }
       Metadata metadata(kRedisNone, false);
-      value = iter->value().ToString();
+      std::string value = iter->value().ToString();
       metadata.Decode(value);
       if (metadata.Expired()) continue;
-      std::tie(std::ignore, user_key) = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
-      keys->emplace_back(user_key.ToString());
+      std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
+      keys->emplace_back(user_key);
       cnt++;
     }
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty() && cnt >= limit) {
-        end_cursor->append(user_key.ToString());
+        end_cursor->append(user_key);
       }
       break;
     }
 
     if (cnt >= limit) {
-      end_cursor->append(user_key.ToString());
+      end_cursor->append(user_key);
       break;
     }
 
@@ -291,16 +291,16 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
     if (slot_id > slot_start + HASH_SLOTS_MAX_ITERATIONS) {
       if (keys->empty()) {
         if (iter->Valid()) {
-          std::tie(std::ignore, user_key) = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
-          auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.ToStringView().begin());
+          std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
+          auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
           if (res.first == prefix.end()) {
-            keys->emplace_back(user_key.ToString());
+            keys->emplace_back(user_key);
           }
 
-          end_cursor->append(user_key.ToString());
+          end_cursor->append(user_key);
         }
       } else {
-        end_cursor->append(user_key.ToString());
+        end_cursor->append(user_key);
       }
       break;
     }
@@ -537,7 +537,7 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slo
       if (slot != -1 && count > 0 && !end) {
         // Get user key
         if (cnt < count) {
-          auto [ns, user_key] = ExtractNamespaceKey(iter->key(), true);
+          auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
           keys->emplace_back(user_key.ToString());
           cnt++;
         }

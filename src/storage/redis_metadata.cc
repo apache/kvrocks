@@ -109,10 +109,11 @@ bool InternalKey::operator==(const InternalKey &that) const {
   return version_ == that.version_;
 }
 
-std::tuple<Slice, Slice> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded) {
+template <typename T>
+std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded) {
   uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
-  Slice ns(ns_key.data(), namespace_size);
+  T ns(ns_key.data(), namespace_size);
   ns_key.remove_prefix(namespace_size);
 
   if (slot_id_encoded) {
@@ -120,9 +121,12 @@ std::tuple<Slice, Slice> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded)
     GetFixed16(&ns_key, &slot_id);
   }
 
-  Slice key = ns_key;
+  T key = {ns_key.data(), ns_key.size()};
   return {ns, key};
 }
+
+template std::tuple<Slice, Slice> ExtractNamespaceKey<Slice>(Slice ns_key, bool slot_id_encoded);
+template std::tuple<std::string, std::string> ExtractNamespaceKey<std::string>(Slice ns_key, bool slot_id_encoded);
 
 std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded) {
   std::string ns_key;

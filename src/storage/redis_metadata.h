@@ -73,7 +73,8 @@ struct KeyNumStats {
   uint64_t avg_ttl = 0;
 };
 
-[[nodiscard]] std::tuple<Slice, Slice> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded);
+template <typename T = Slice>
+[[nodiscard]] std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded);
 [[nodiscard]] std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded);
 [[nodiscard]] std::string ComposeSlotKeyPrefix(const Slice &ns, int slotid);
 

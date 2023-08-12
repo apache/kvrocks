@@ -48,26 +48,23 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     return rocksdb::Status::OK();
   }
 
-  std::string ns;
+  std::string ns, user_key;
   std::vector<std::string> command_args;
 
   if (column_family_id == kColumnFamilyIDMetadata) {
-    auto [ns_s, user_key] = ExtractNamespaceKey(key, is_slot_id_encoded_);
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key.ToStringView())) {
+    std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
       return rocksdb::Status::OK();
     }
-
-    ns = ns_s.ToString();
-    auto user_key_str = user_key.ToString();
 
     Metadata metadata(kRedisNone);
     metadata.Decode(value.ToString());
 
     if (metadata.Type() == kRedisString) {
-      command_args = {"SET", user_key_str, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
+      command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
       resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
       if (metadata.expire > 0) {
-        command_args = {"PEXPIREAT", user_key_str, std::to_string(metadata.expire)};
+        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
         resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
       }
     } else if (metadata.expire > 0) {
@@ -81,7 +78,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
         auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
-          command_args = {"PEXPIREAT", user_key_str, std::to_string(metadata.expire)};
+          command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
           resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
         }
       }
@@ -99,7 +96,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       if (!s.ok()) return s;
 
       command_args = {"XSETID",
-                      user_key_str,
+                      user_key,
                       stream_metadata.last_entry_id.ToString(),
                       "ENTRIESADDED",
                       std::to_string(stream_metadata.entries_added),
@@ -271,17 +268,16 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   }
 
   std::vector<std::string> command_args;
-  std::string ns;
+  std::string ns, user_key;
 
   if (column_family_id == kColumnFamilyIDMetadata) {
-    auto [ns_s, user_key] = ExtractNamespaceKey(key, is_slot_id_encoded_);
-    ns = ns_s.ToString();
+    std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key.ToStringView())) {
+    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
       return rocksdb::Status::OK();
     }
 
-    command_args = {"DEL", user_key.ToString()};
+    command_args = {"DEL", user_key};
   } else if (column_family_id == kColumnFamilyIDDefault) {
     InternalKey ikey(key, is_slot_id_encoded_);
     std::string user_key = ikey.GetKey().ToString();

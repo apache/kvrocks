@@ -26,6 +26,7 @@
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
+#include "string_util.h"
 #include "time_util.h"
 
 namespace redis {
@@ -81,7 +82,7 @@ class CommandNamespace : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
@@ -172,7 +173,7 @@ class CommandFlushAll : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     if (svr->GetConfig()->cluster_enabled) {
@@ -220,7 +221,7 @@ class CommandConfig : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     Config *config = svr->GetConfig();
@@ -546,7 +547,7 @@ class CommandShutdown : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     if (!srv->IsStopped()) {
@@ -612,8 +613,14 @@ class CommandCommand : public Commander {
       } else if (sub_command == "info") {
         GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
+        auto cmd_iter = command_details::original_commands.find(util::ToLower(args_[2]));
+        if (cmd_iter == command_details::original_commands.end()) {
+          return {Status::RedisUnknownCmd, "Invalid command specified"};
+        }
+
         std::vector<int> keys_indexes;
-        auto s = GetKeysFromCommand(args_[2], static_cast<int>(args_.size()) - 2, &keys_indexes);
+        auto s = GetKeysFromCommand(cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end()),
+                                    &keys_indexes);
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {
@@ -835,7 +842,7 @@ class CommandBGSave : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     Status s = svr->AsyncBgSaveDB();
@@ -851,7 +858,7 @@ class CommandFlushBackup : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     Status s = svr->AsyncPurgeOldBackups(0, 0);
@@ -910,7 +917,7 @@ class CommandSlaveOf : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     if (host_.empty()) {
@@ -964,12 +971,20 @@ class CommandStats : public Commander {
   }
 };
 
+static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
+  if (args.size() >= 2 && util::EqualICase(args[1], "set")) {
+    return kCmdExclusive;
+  }
+
+  return 0;
+}
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
-                        MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0, GenerateConfigFlag),
                         MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write", 0, 0, 0),

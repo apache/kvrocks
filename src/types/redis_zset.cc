@@ -52,24 +52,12 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   std::string member_key;
-  std::set<std::string> added_member_keys;
-  for (int i = static_cast<int>(mscores->size() - 1); i >= 0; i--) {
-    InternalKey(ns_key, (*mscores)[i].member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
-
-    // Fix the corner case that adds the same member which may add the score
-    // column family many times and cause problems in the ZRANGE command.
-    //
-    // For example, we add members with `ZADD mykey 1 a 2 a` and `ZRANGE mykey 0 1`
-    // return only one member(`a`) was expected but got the member `a` twice now.
-    //
-    // The root cause of this issue was the score key was composed by member and score,
-    // so the last one can't overwrite the previous when the score was different.
-    // A simple workaround was add those members with reversed order and skip the member if has added.
-    if (added_member_keys.find(member_key) != added_member_keys.end()) {
+  std::unordered_set<std::string_view> added_member_keys;
+  for (auto it = mscores->rbegin(); it != mscores->rend(); it++) {
+    if (!added_member_keys.insert(it->member).second) {
       continue;
     }
-    added_member_keys.insert(member_key);
-
+    InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = storage_->Get(rocksdb::ReadOptions(), member_key, &old_score_bytes);
@@ -80,27 +68,26 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
         }
         double old_score = DecodeDouble(old_score_bytes.data());
         if (flags.HasIncr()) {
-          if ((flags.HasLT() && (*mscores)[i].score >= 0) || (flags.HasGT() && (*mscores)[i].score <= 0)) {
+          if ((flags.HasLT() && it->score >= 0) || (flags.HasGT() && it->score <= 0)) {
             continue;
           }
-          (*mscores)[i].score += old_score;
-          if (std::isnan((*mscores)[i].score)) {
+          it->score += old_score;
+          if (std::isnan(it->score)) {
             return rocksdb::Status::InvalidArgument("resulting score is not a number (NaN)");
           }
         }
-        if ((*mscores)[i].score != old_score) {
-          if ((flags.HasLT() && (*mscores)[i].score >= old_score) ||
-              (flags.HasGT() && (*mscores)[i].score <= old_score)) {
+        if (it->score != old_score) {
+          if ((flags.HasLT() && it->score >= old_score) || (flags.HasGT() && it->score <= old_score)) {
             continue;
           }
-          old_score_bytes.append((*mscores)[i].member);
+          old_score_bytes.append(it->member);
           std::string old_score_key;
           InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&old_score_key);
           batch->Delete(score_cf_handle_, old_score_key);
           std::string new_score_bytes, new_score_key;
-          PutDouble(&new_score_bytes, (*mscores)[i].score);
+          PutDouble(&new_score_bytes, it->score);
           batch->Put(member_key, new_score_bytes);
-          new_score_bytes.append((*mscores)[i].member);
+          new_score_bytes.append(it->member);
           InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&new_score_key);
           batch->Put(score_cf_handle_, new_score_key, Slice());
           changed++;
@@ -112,9 +99,9 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
       continue;
     }
     std::string score_bytes, score_key;
-    PutDouble(&score_bytes, (*mscores)[i].score);
+    PutDouble(&score_bytes, it->score);
     batch->Put(member_key, score_bytes);
-    score_bytes.append((*mscores)[i].member);
+    score_bytes.append(it->member);
     InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode(&score_key);
     batch->Put(score_cf_handle_, score_key, Slice());
     added++;
@@ -545,7 +532,11 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
   batch->PutLogData(log_data.Encode());
   int removed = 0;
   std::string member_key, score_key;
+  std::unordered_set<std::string_view> mset;
   for (const auto &member : members) {
+    if (!mset.insert(member.ToStringView()).second) {
+      continue;
+    }
     InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode(&member_key);
     std::string score_bytes;
     s = storage_->Get(rocksdb::ReadOptions(), member_key, &score_bytes);

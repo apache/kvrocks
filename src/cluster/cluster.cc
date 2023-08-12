@@ -742,7 +742,7 @@ bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator->GetFo
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = redis::GetKeysFromCommand(attributes->name, static_cast<int>(cmd_tokens.size()), &keys_indexes);
+  auto s = redis::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
   // No keys
   if (!s.IsOK()) return Status::OK();
 
@@ -773,7 +773,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
-    if (attributes->IsWrite() && IsWriteForbiddenSlot(slot)) {
+    if ((attributes->flags & redis::kCmdWrite) && IsWriteForbiddenSlot(slot)) {
       return {Status::RedisExecErr, "TRYAGAIN Can't write to slot being migrated which is in write forbidden phase"};
     }
 
@@ -795,7 +795,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // I'm serving the imported slot
   }
 
-  if (myself_ && myself_->role == kClusterSlave && !attributes->IsWrite() &&
+  if (myself_ && myself_->role == kClusterSlave && !(attributes->flags & redis::kCmdWrite) &&
       nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot]) {
     return Status::OK();  // My master is serving this slot
   }

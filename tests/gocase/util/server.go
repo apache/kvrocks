@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -108,11 +109,27 @@ func (s *KvrocksServer) Close() {
 func (s *KvrocksServer) close(keepDir bool) {
 	require.NoError(s.t, s.cmd.Process.Signal(syscall.SIGTERM))
 	f := func(err error) { require.NoError(s.t, err) }
+
+	var wg sync.WaitGroup
 	timer := time.AfterFunc(defaultGracePeriod, func() {
+		defer wg.Done()
+		wg.Add(1)
+
 		require.NoError(s.t, s.cmd.Process.Kill())
-		f = func(err error) { require.EqualError(s.t, err, "signal: killed") }
+		f = func(err error) {
+			// The process may have already exited, so we can't use `require.NoError` here.
+			if err != nil {
+				require.EqualError(s.t, err, "signal: killed")
+			}
+		}
 	})
-	defer timer.Stop()
+
+	defer func() {
+		_ = timer.Stop()
+		// Stop function won't wait for the timer routine if it's already expired,
+		// so we need to wait for it here to prevent panic.
+		wg.Wait()
+	}()
 	f(s.cmd.Wait())
 	s.clean(keepDir)
 }

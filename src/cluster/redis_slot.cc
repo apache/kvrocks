@@ -53,7 +53,7 @@ uint16_t Crc16(const char *buf, size_t len) {
   return crc;
 }
 
-uint16_t GetSlotIdFromKey(const std::string &key) {
+uint16_t GetSlotIdFromKey(std::string_view key) {
   auto tag = GetTagFromKey(key);
   if (tag.empty()) {
     tag = key;
@@ -63,7 +63,7 @@ uint16_t GetSlotIdFromKey(const std::string &key) {
   return crc & HASH_SLOTS_MASK;
 }
 
-std::string GetTagFromKey(const std::string &key) {
+std::string_view GetTagFromKey(std::string_view key) {
   auto left_pos = key.find('{');
   if (left_pos == std::string::npos) return {};
 

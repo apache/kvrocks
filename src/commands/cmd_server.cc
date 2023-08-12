@@ -814,8 +814,7 @@ class CommandCompact : public Commander {
     auto ns = conn->GetNamespace();
 
     if (ns != kDefaultNamespace) {
-      std::string prefix;
-      ComposeNamespaceKey(ns, "", &prefix, false);
+      std::string prefix = ComposeNamespaceKey(ns, "", false);
 
       redis::Database redis_db(svr->storage, conn->GetNamespace());
       auto s = redis_db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key);

@@ -61,8 +61,7 @@ Status Parser::ParseFullDB() {
 }
 
 Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire) {
-  std::string ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
 
   auto command =
       redis::Command2RESP({"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))});
@@ -83,12 +82,9 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     return {Status::NotOK, "unknown metadata type: " + std::to_string(type)};
   }
 
-  std::string ns, user_key;
-  ExtractNamespaceKey(ns_key, &ns, &user_key, slot_id_encoded_);
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode(&prefix_key);
-  std::string next_version_prefix_key;
-  InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode(&next_version_prefix_key);
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, slot_id_encoded_).Encode();
+  std::string next_version_prefix_key = InternalKey(ns_key, "", metadata.version + 1, slot_id_encoded_).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = latest_snapshot_->GetSnapShot();

@@ -52,7 +52,7 @@ struct Config {
   std::string kvrocks_host;
   int kvrocks_port = 0;
   std::map<std::string, RedisServer> tokens;
-  bool cluster_enable = false;
+  bool cluster_enabled = false;
 
   Status Load(std::string path);
   Config() = default;

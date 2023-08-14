@@ -121,8 +121,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     geo_shape.xy[1] = geo_point.latitude;
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -320,7 +319,7 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
  * 'max', appending them into the array of GeoPoint structures 'gparray'.
  * The command returns the number of elements added to the array.
  *
- * Elements which are farest than 'radius' from the specified 'x' and 'y'
+ * Elements which are farthest than 'radius' from the specified 'x' and 'y'
  * coordinates are not included.
  *
  * The ability of this function to append to an existing set of points is

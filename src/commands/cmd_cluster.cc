@@ -56,7 +56,7 @@ class CommandCluster : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     if (subcommand_ == "keyslot") {
@@ -216,7 +216,7 @@ class CommandClusterX : public Commander {
     }
 
     if (!conn->IsAdmin()) {
-      return {Status::RedisExecErr, errAdministorPermissionRequired};
+      return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
     bool need_persist_nodes_info = false;
@@ -284,7 +284,16 @@ class CommandClusterX : public Commander {
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0), )
+static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
+  if (args.size() >= 2 && Cluster::SubCommandIsExecExclusive(args[1])) {
+    return kCmdExclusive;
+  }
+
+  return 0;
+}
+
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
+                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0,
+                                                     GenerateClusterFlag), )
 
 }  // namespace redis

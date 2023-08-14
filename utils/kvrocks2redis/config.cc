@@ -96,7 +96,10 @@ Status Config::parseConfigFromString(const std::string &input) {
       kvrocks_auth = args[2];
     }
   } else if (size == 1 && key == "cluster-enable") {
-    cluster_enable = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));
+    // Renamed to cluster-enabled, keeping the old one for compatibility.
+    cluster_enabled = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));
+  } else if (size == 1 && key == "cluster-enabled") {
+    cluster_enabled = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enabled'"));
   } else if (size >= 2 && strncasecmp(key.data(), "namespace.", 10) == 0) {
     std::string ns = original_key.substr(10);
     if (ns.size() > INT8_MAX) {

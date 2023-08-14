@@ -313,8 +313,7 @@ Status SlotMigrator::sendSnapshot() {
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Construct key prefix to iterate the keys belong to the target slot
-  std::string prefix;
-  ComposeSlotKeyPrefix(namespace_, slot, &prefix);
+  std::string prefix = ComposeSlotKeyPrefix(namespace_, slot);
   LOG(INFO) << "[migrate] Iterate keys of slot, key's prefix: " << prefix;
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
@@ -331,8 +330,7 @@ Status SlotMigrator::sendSnapshot() {
     }
 
     // Get user key
-    std::string ns, user_key;
-    ExtractNamespaceKey(iter->key(), &ns, &user_key, true);
+    auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
 
     // Add key's constructed commands to restore_cmds, send pipeline or not according to task's max_pipeline_size
     auto result = migrateOneKey(user_key, iter->value(), &restore_cmds);
@@ -363,7 +361,7 @@ Status SlotMigrator::sendSnapshot() {
   }
 
   LOG(INFO) << "[migrate] Succeed to migrate slot snapshot, slot: " << slot << ", Migrated keys: " << migrated_key_cnt
-            << ", Expired keys: " << expired_key_cnt << ", Emtpy keys: " << empty_key_cnt;
+            << ", Expired keys: " << expired_key_cnt << ", Empty keys: " << empty_key_cnt;
 
   return Status::OK();
 }
@@ -665,9 +663,8 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
 
   // Construct key prefix to iterate values of the complex type user key
-  std::string slot_key, prefix_subkey;
-  AppendNamespacePrefix(key, &slot_key);
-  InternalKey(slot_key, "", metadata.version, true).Encode(&prefix_subkey);
+  std::string slot_key = AppendNamespacePrefix(key);
+  std::string prefix_subkey = InternalKey(slot_key, "", metadata.version, true).Encode();
   int item_count = 0;
 
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
@@ -766,11 +763,9 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
   auto iter = util::UniqueIterator(
       storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kStreamColumnFamilyName)));
 
-  std::string ns_key;
-  AppendNamespacePrefix(key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(key);
   // Construct key prefix to iterate values of the stream
-  std::string prefix_key;
-  InternalKey(ns_key, "", metadata.version, true).Encode(&prefix_key);
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, true).Encode();
 
   std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
 

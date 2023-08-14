@@ -52,7 +52,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   std::vector<std::string> command_args;
 
   if (column_family_id == kColumnFamilyIDMetadata) {
-    ExtractNamespaceKey(key, &ns, &user_key, is_slot_id_encoded_);
+    std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
     if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
       return rocksdb::Status::OK();
     }
@@ -272,7 +272,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
 
   if (column_family_id == kColumnFamilyIDMetadata) {
     std::string user_key;
-    ExtractNamespaceKey(key, &ns, &user_key, is_slot_id_encoded_);
+    std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
     if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
       return rocksdb::Status::OK();

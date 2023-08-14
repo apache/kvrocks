@@ -60,9 +60,9 @@ std::string CompressType2String(const rocksdb::CompressionType type) {
 }
 
 std::string ExtractSSTFileNameFromError(const std::string &error) {
-  auto match_results = util::RegexMatch(error, "(.*)(/\\w*\\.sst)(.*)");
-  if (match_results.size() > 2) {
-    return match_results[2];
+  auto match_results = util::RegexMatch(error, ".*(/\\w*\\.sst).*");
+  if (match_results.size() == 2) {
+    return match_results[1];
   }
   return {};
 }

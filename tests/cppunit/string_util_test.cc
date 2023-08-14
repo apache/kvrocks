@@ -107,8 +107,8 @@ TEST(StringUtil, RegexMatchExtractSSTFile) {
                        "/tmp/kvrocks_db/data/db/000038.sst offset 0 size 15715"};
 
   for (const auto &str : bg_error_str) {
-    auto match_results = util::RegexMatch(str, "(.*)(/\\w*\\.sst)(.*)");
-    ASSERT_TRUE(match_results.size() > 2);
-    ASSERT_TRUE(match_results[2] == "/000038.sst");
+    auto match_results = util::RegexMatch(str, ".*(/\\w*\\.sst).*");
+    ASSERT_TRUE(match_results.size() == 2);
+    ASSERT_TRUE(match_results[1] == "/000038.sst");
   }
 }

@@ -40,7 +40,7 @@
 #include "server/server.h"
 #include "status.h"
 
-constexpr const char *kDefaultBindAddress = "0.0.0.0";
+constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
 constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
 constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =

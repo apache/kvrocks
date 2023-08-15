@@ -106,8 +106,6 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   }
   value->assign(metadata.size, 0);
 
-  std::string fragment;
-  fragment.reserve(kBitmapSegmentBytes * 2);
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
@@ -122,7 +120,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
       return rocksdb::Status::InvalidArgument(parse_result.Msg());
     }
     uint32_t frag_index = *parse_result;
-    fragment = iter->value().ToString();
+    std::string fragment = iter->value().ToString();
     // To be compatible with data written before the commit d603b0e(#338)
     // and avoid returning extra null char after expansion.
     uint32_t valid_size = std::min(

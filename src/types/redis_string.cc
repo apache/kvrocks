@@ -285,7 +285,6 @@ rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, con
 }
 
 rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, int64_t *new_value) {
-  std::string value;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -298,7 +297,7 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
   }
 
   size_t offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
-  value = raw_value.substr(offset);
+  std::string value = raw_value.substr(offset);
   int64_t n = 0;
   if (!value.empty()) {
     auto parse_result = ParseInt<int64_t>(value, 10);
@@ -323,7 +322,6 @@ rocksdb::Status String::IncrBy(const std::string &user_key, int64_t increment, i
 }
 
 rocksdb::Status String::IncrByFloat(const std::string &user_key, double increment, double *new_value) {
-  std::string value;
   std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;
@@ -335,7 +333,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
     metadata.Encode(&raw_value);
   }
   size_t offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
-  value = raw_value.substr(offset);
+  std::string value = raw_value.substr(offset);
   double n = 0;
   if (!value.empty()) {
     auto n_stat = ParseFloat(value);

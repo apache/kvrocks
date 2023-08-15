@@ -165,15 +165,17 @@ func TestTLSReplica(t *testing.T) {
 	defer func() { require.NoError(t, rc.Close()) }()
 
 	t.Run("TLS: Replication (incremental)", func(t *testing.T) {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		require.Equal(t, rc.Get(ctx, "a").Val(), "")
 		require.Equal(t, rc.Get(ctx, "b").Val(), "")
 		require.NoError(t, sc.Set(ctx, "a", "1", 0).Err())
 		require.NoError(t, sc.Set(ctx, "b", "2", 0).Err())
-		time.Sleep(1000 * time.Millisecond)
+		util.WaitForSync(t, rc)
 		require.Equal(t, rc.Get(ctx, "a").Val(), "1")
 		require.Equal(t, rc.Get(ctx, "b").Val(), "2")
 	})
+
+	require.NoError(t, sc.Set(ctx, "c", "3", 0).Err())
 
 	replica2 := util.StartTLSServer(t, map[string]string{
 		"tls-replication": "yes",
@@ -185,11 +187,9 @@ func TestTLSReplica(t *testing.T) {
 	defer func() { require.NoError(t, rc2.Close()) }()
 
 	t.Run("TLS: Replication (full)", func(t *testing.T) {
-		require.NoError(t, sc.Set(ctx, "c", "3", 0).Err())
-		time.Sleep(1000 * time.Millisecond)
+		util.WaitForSync(t, rc2)
 		require.Equal(t, rc2.Get(ctx, "a").Val(), "1")
 		require.Equal(t, rc2.Get(ctx, "b").Val(), "2")
 		require.Equal(t, rc2.Get(ctx, "c").Val(), "3")
-		require.Equal(t, rc.Get(ctx, "c").Val(), "3")
 	})
 }

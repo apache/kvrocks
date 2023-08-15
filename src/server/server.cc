@@ -143,15 +143,17 @@ Status Server::Start() {
     }
   }
 
-  if (config_->cluster_enabled && config_->persist_cluster_nodes_enabled) {
-    auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
-    if (!s.IsOK()) {
-      return s.Prefixed("failed to load cluster nodes info");
+  if (config_->cluster_enabled) {
+    if (config_->persist_cluster_nodes_enabled) {
+      auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
+      if (!s.IsOK()) {
+        return s.Prefixed("failed to load cluster nodes info");
+      }
     }
     // Create objects used for slot migration
     slot_migrator =
         std::make_unique<SlotMigrator>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
-    s = slot_migrator->CreateMigrationThread();
+    auto s = slot_migrator->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");
     }

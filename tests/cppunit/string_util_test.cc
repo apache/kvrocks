@@ -97,3 +97,18 @@ TEST(StringUtil, EscapeString) {
     ASSERT_TRUE(util::EscapeString(origin) == escaped);
   }
 }
+
+TEST(StringUtil, RegexMatchExtractSSTFile) {
+  // Test for ExtractSSTFileNameFromError() in event_listener.cc
+  auto bg_error_str = {"Corruption: Corrupt or unsupported format_version: 1005 in /tmp/kvrocks/data/db/000038.sst",
+                       "Corruption: Bad table magic number: expected 9863518390377041911, found 9863518390377041912 in "
+                       "/tmp/kvrocks_db/data/db/000038.sst",
+                       "Corruption: block checksum mismatch: stored = 3308200672, computed = 51173877, type = 4  in "
+                       "/tmp/kvrocks_db/data/db/000038.sst offset 0 size 15715"};
+
+  for (const auto &str : bg_error_str) {
+    auto match_results = util::RegexMatch(str, ".*(/\\w*\\.sst).*");
+    ASSERT_TRUE(match_results.size() == 2);
+    ASSERT_TRUE(match_results[1] == "/000038.sst");
+  }
+}

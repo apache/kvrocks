@@ -20,9 +20,19 @@
 
 #include "event_listener.h"
 
-#include <map>
 #include <string>
 #include <vector>
+
+#include "fmt/format.h"
+
+std::string BackgroundErrorReason2String(const rocksdb::BackgroundErrorReason reason) {
+  std::vector<std::string> background_error_reason = {
+      "flush", "compaction", "write_callback", "memtable", "manifest_write", "flush_no_wal", "manifest_write_no_wal"};
+  if (static_cast<size_t>(reason) < background_error_reason.size()) {
+    return background_error_reason[static_cast<size_t>(reason)];
+  }
+  return "unknown";
+}
 
 std::string FileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
   std::vector<std::string> file_created_reason = {"flush", "compaction", "recovery", "misc"};
@@ -49,6 +59,14 @@ std::string CompressType2String(const rocksdb::CompressionType type) {
   return "unknown";
 }
 
+std::string ExtractSSTFileNameFromError(const std::string &error) {
+  auto match_results = util::RegexMatch(error, ".*(/\\w*\\.sst).*");
+  if (match_results.size() == 2) {
+    return match_results[1];
+  }
+  return {};
+}
+
 bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
   // EDQUOT: Disk quota exceeded (POSIX.1-2001)
   std::string exceeded_quota_str = "Disk quota exceeded";
@@ -58,7 +76,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 }
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name
+  LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name << ", job_id: " << ci.job_id
             << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
             << ", output compression type: " << CompressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
@@ -87,30 +105,35 @@ void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInf
 }
 
 void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *bg_error) {
-  std::string reason_str;
-  switch (reason) {
-    case rocksdb::BackgroundErrorReason::kCompaction:
-      reason_str = "compact";
-      break;
-    case rocksdb::BackgroundErrorReason::kFlush:
-      reason_str = "flush";
-      break;
-    case rocksdb::BackgroundErrorReason::kMemTable:
-      reason_str = "memtable";
-      break;
-    case rocksdb::BackgroundErrorReason::kWriteCallback:
-      reason_str = "writecallback";
-      break;
-    default:
-      // Should not arrive here
-      break;
+  auto reason_str = BackgroundErrorReason2String(reason);
+  auto error_str = bg_error->ToString();
+  if (bg_error->IsCorruption() || bg_error->IsIOError()) {
+    // Background error may occur when SST are generated during flush/compaction. If those files are not applied
+    // to Version, we consider them non-fatal background error. We can override bg_error to recover from
+    // background error.
+    // Note that we cannot call Resume() manually because the error severity is unrecoverable.
+    auto corrupt_sst = ExtractSSTFileNameFromError(error_str);
+    if (!corrupt_sst.empty()) {
+      std::vector<std::string> live_files;
+      uint64_t manifest_size = 0;
+      auto s = storage_->GetDB()->GetLiveFiles(live_files, &manifest_size, false /* flush_memtable */);
+      if (s.ok() && std::find(live_files.begin(), live_files.end(), corrupt_sst) == live_files.end()) {
+        *bg_error = rocksdb::Status::OK();
+        LOG(WARNING) << fmt::format(
+            "[event_listener/background_error] ignore no-fatal background error about sst file, reason: {}, bg_error: "
+            "{}",
+            reason_str, error_str);
+        return;
+      }
+    }
   }
+
   if ((bg_error->IsNoSpace() || IsDiskQuotaExceeded(*bg_error)) &&
       bg_error->severity() < rocksdb::Status::kFatalError) {
     storage_->SetDBInRetryableIOError(true);
   }
 
-  LOG(ERROR) << "[event_listener/background_error] reason: " << reason_str << ", bg_error: " << bg_error->ToString();
+  LOG(ERROR) << fmt::format("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
 void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {
@@ -126,6 +149,6 @@ void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info
 
 void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) {
   LOG(INFO) << "[event_listener/table_file_created] column family: " << info.cf_name
-            << ", file path: " << info.file_path << ", file size: " << info.file_size << ", job id: " << info.job_id
+            << ", file path: " << info.file_path << ", file size: " << info.file_size << ", job_id: " << info.job_id
             << ", reason: " << FileCreatedReason2String(info.reason) << ", status: " << info.status.ToString();
 }

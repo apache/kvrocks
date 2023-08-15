@@ -34,6 +34,7 @@ std::vector<std::string> Split2KV(const std::string &in, const std::string &deli
 bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, size_t plen, const char *s, size_t slen, int nocase);
+std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex);
 std::string StringToHex(const std::string &input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 std::string EscapeString(const std::string &s);

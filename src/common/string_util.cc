@@ -22,6 +22,7 @@
 
 #include <fmt/format.h>
 
+#include <regex>
 #include <string>
 
 #include "parse_util.h"
@@ -212,6 +213,19 @@ int StringMatchLen(const char *pattern, size_t pattern_len, const char *string, 
 
   if (pattern_len == 0 && string_len == 0) return 1;
   return 0;
+}
+
+std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex) {
+  std::regex base_regex(regex);
+  std::smatch pieces_match;
+  std::vector<std::string> out;
+
+  if (std::regex_match(str, pieces_match, base_regex)) {
+    for (const auto &piece : pieces_match) {
+      out.emplace_back(piece.str());
+    }
+  }
+  return out;
 }
 
 std::string StringToHex(const std::string &input) {

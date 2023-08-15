@@ -240,7 +240,7 @@ func TestGeo(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "geoadd", "src", "10", "10", "Shenzhen").Err())
 		require.NoError(t, rdb.Do(ctx, "geoadd", "src2", "10", "10", "Beijing").Err())
 		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src", "frommember", "Shenzhen", "bybox", "88", "88", "m").Err())
-		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src2", "frommember", "Shenzhen", "bybox", "88", "88", "m").Err())
+		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src2", "frommember", "Beijing", "bybox", "88", "88", "m").Err())
 		require.Equal(t, int64(1), rdb.ZCard(ctx, "dst").Val())
 		require.Equal(t, []string{"Beijing"}, rdb.ZRange(ctx, "dst", 0, -1).Val())
 	})

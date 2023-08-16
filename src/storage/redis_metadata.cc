@@ -440,15 +440,9 @@ rocksdb::Status SBChainMetadata::Decode(const std::string &bytes) {
 void BFMetadata::Encode(std::string *dst) {
   Metadata::Encode(dst);
 
-  PutFixed32(dst, hashes);
-  PutFixed8(dst, n2);
-  PutFixed64(dst, entries);
-
+  PutFixed32(dst, entries);
   PutDouble(dst, error);
-  PutDouble(dst, bpe);
-
-  PutFixed64(dst, bf_bits);
-  PutFixed64(dst, bf_bytes);
+  PutFixed32(dst, bf_bytes);
 }
 
 rocksdb::Status BFMetadata::Decode(const std::string &bytes) {
@@ -467,19 +461,13 @@ rocksdb::Status BFMetadata::Decode(const std::string &bytes) {
   GetFixed64(&input, &version);
   GetFixedCommon(&input, &size);
 
-  if (input.size() < 45) {
+  if (input.size() < 16) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
-  GetFixed32(&input, &hashes);
-  GetFixed8(&input, &n2);
-  GetFixed64(&input, &entries);
-
+  GetFixed32(&input, &entries);
   GetDouble(&input, &error);
-  GetDouble(&input, &bpe);
-
-  GetFixed64(&input, &bf_bits);
-  GetFixed64(&input, &bf_bytes);
+  GetFixed32(&input, &bf_bytes);
 
   return rocksdb::Status::OK();
 }

@@ -203,6 +203,7 @@ class StreamMetadata : public Metadata {
 class SBChainMetadata : public Metadata {
  public:
   uint16_t n_filters;
+  // now, options only used to scaling
   uint16_t options;
   uint16_t growth;
 
@@ -214,15 +215,9 @@ class SBChainMetadata : public Metadata {
 
 class BFMetadata : public Metadata {
  public:
-  uint32_t hashes;
-  uint8_t n2;
-  uint64_t entries;
-
+  uint32_t entries;
   double error;
-  double bpe;
-
-  uint64_t bf_bits;
-  uint64_t bf_bytes;
+  uint32_t bf_bytes;
 
   explicit BFMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 

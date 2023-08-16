@@ -78,7 +78,7 @@ class CommandBFReserve : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloomfilter_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloomfilter_db(svr->storage, conn->GetNamespace());
     auto s = bloomfilter_db.Reserve(args_[1], error_rate_, capacity_, expansion_, scaling_);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -96,7 +96,7 @@ class CommandBFReserve : public Commander {
 class CommandBFADD : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = bloom_db.Add(args_[1], args_[2], ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -116,7 +116,7 @@ class CommandBFMADD : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
     std::vector<int> rets(items_.size(), 0);
     auto s = bloom_db.MAdd(args_[1], items_, rets);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -224,7 +224,7 @@ class CommandBFINSERT : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
     std::vector<int> rets(items_.size(), 0);
     auto s = bloom_db.InsertCommon(args_[1], items_, &insert_options_, rets);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -241,7 +241,7 @@ class CommandBFINSERT : public Commander {
 class CommandBFEXIST : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = bloom_db.Exist(args_[1], args_[2], ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -261,7 +261,7 @@ class CommandBFMEXIST : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::BloomFilter bloom_db(svr->storage, conn->GetNamespace());
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
     std::vector<int> rets(items_.size(), 0);
     auto s = bloom_db.MExist(args_[1], items_, rets);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

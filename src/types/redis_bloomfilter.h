@@ -20,8 +20,7 @@
 
 #pragma once
 
-#include <common/murmurhash2.h>
-
+#include "bloom_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -34,11 +33,6 @@ const uint64_t kBFDefaultInitCapacity = 100;
 const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;
 const double kErrorTighteningRatio = 0.5;
-
-struct BloomHashval {
-  uint64_t a;
-  uint64_t b;
-};
 
 struct BFInsertOptions {
   uint64_t capacity;
@@ -55,10 +49,10 @@ enum class ReadWriteMode {
   MODE_WRITE = 1,
 };
 
-class BloomFilter : public Database {
+class SBChain : public Database {
  public:
-  BloomFilter(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Reserve(const Slice &user_key, double error_rate, uint64_t capacity, uint16_t expansion,
+  SBChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  rocksdb::Status Reserve(const Slice &user_key, double error_rate, uint32_t capacity, uint16_t expansion,
                           uint16_t scaling);
   rocksdb::Status Add(const Slice &user_key, const Slice &item, int &ret);
   rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> &rets);
@@ -71,18 +65,15 @@ class BloomFilter : public Database {
   rocksdb::Status getSBChainMetadata(const Slice &ns_key, SBChainMetadata *metadata);
   rocksdb::Status getBFMetadata(const Slice &bf_meta_key,
                                 BFMetadata *metadata);  // todo: where bfmeta should be placed ?
-  rocksdb::Status createSBChain(const Slice &ns_key, double error_rate, uint64_t capacity, uint16_t expansion,
+  rocksdb::Status createSBChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                 uint16_t scaling, SBChainMetadata &sb_chain_metadata);
   rocksdb::Status createBloomFilter(const Slice &ns_key, SBChainMetadata &sb_chain_metadata, BFMetadata &bf_metadata,
                                     std::string &bf_key);
-  rocksdb::Status bloomCheckAdd64(const Slice &bf_key, BFMetadata &bf_metadata, BloomHashval hashval,
+  rocksdb::Status bloomCheckAdd64(const Slice &bf_key, BFMetadata &bf_metadata, const std::string &item,
                                   ReadWriteMode mode, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, int &ret);
 
   static void appendBFSuffix(const Slice &ns_key, uint16_t filters_index, std::string *output);
   static void appendBFMetaSuffix(const Slice &bf_key, std::string *output);
-  static void bfInit(BFMetadata *bf_metadata, uint64_t entries, double error, unsigned options);
-  static double calcBpe(double error);
-  static BloomHashval bloomCalcHash64(const void *buffer, int len);
-  static int testBitSetBit(std::string &value, uint64_t x, ReadWriteMode mode);
+  static void bfInit(BFMetadata *bf_metadata, std::string *bf_data,uint32_t entries, double error);
 };
 }  // namespace redis

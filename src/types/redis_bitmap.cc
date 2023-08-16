@@ -63,8 +63,8 @@ rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadat
 
 rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit) {
   *bit = false;
-  std::string ns_key, raw_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
@@ -79,8 +79,9 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
-  std::string sub_key, value;
-  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  std::string value;
+  std::string sub_key =
+      InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(read_options, sub_key, &value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
@@ -94,8 +95,8 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
 // according to the max size of the bitmap string to prevent OOM.
 rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos_size, std::string *value) {
   value->clear();
-  std::string ns_key, raw_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
@@ -105,9 +106,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   }
   value->assign(metadata.size, 0);
 
-  std::string fragment, prefix_key;
-  fragment.reserve(kBitmapSegmentBytes * 2);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix_key);
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -121,7 +120,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
       return rocksdb::Status::InvalidArgument(parse_result.Msg());
     }
     uint32_t frag_index = *parse_result;
-    fragment = iter->value().ToString();
+    std::string fragment = iter->value().ToString();
     // To be compatible with data written before the commit d603b0e(#338)
     // and avoid returning extra null char after expansion.
     uint32_t valid_size = std::min(
@@ -162,8 +161,8 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
 }
 
 rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit) {
-  std::string ns_key, raw_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   BitmapMetadata metadata;
@@ -175,9 +174,10 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
     return bitmap_string_db.SetBit(ns_key, &raw_value, offset, new_bit, old_bit);
   }
 
-  std::string sub_key, value;
+  std::string value;
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
-  InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  std::string sub_key =
+      InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
@@ -218,8 +218,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
 
 rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t stop, uint32_t *cnt) {
   *cnt = 0;
-  std::string ns_key, raw_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
@@ -244,10 +244,11 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
-  std::string sub_key, value;
+  std::string value;
   for (uint32_t i = start_index; i <= stop_index; i++) {
-    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
-        .Encode(&sub_key);
+    std::string sub_key =
+        InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
+            .Encode();
     s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
@@ -262,8 +263,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
 
 rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given,
                                int64_t *pos) {
-  std::string ns_key, raw_value;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
@@ -301,10 +302,11 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
-  std::string sub_key, value;
+  std::string value;
   for (uint32_t i = start_index; i <= stop_index; i++) {
-    InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
-        .Encode(&sub_key);
+    std::string sub_key =
+        InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
+            .Encode();
     s = storage_->Get(read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
@@ -335,8 +337,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
 
 rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
                               const std::vector<Slice> &op_keys, int64_t *len) {
-  std::string ns_key, raw_value, ns_op_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string raw_value;
+  std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   std::vector<std::pair<std::string, BitmapMetadata>> meta_pairs;
@@ -344,7 +346,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
   for (const auto &op_key : op_keys) {
     BitmapMetadata metadata(false);
-    AppendNamespacePrefix(op_key, &ns_op_key);
+    std::string ns_op_key = AppendNamespacePrefix(op_key);
     auto s = GetMetadata(ns_op_key, &metadata, &raw_value);
     if (!s.ok()) {
       if (s.IsNotFound()) {
@@ -377,7 +379,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     uint64_t frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
     uint16_t frag_maxlen = 0, frag_minlen = 0;
-    std::string sub_key, fragment;
+    std::string fragment;
     unsigned char output = 0, byte = 0;
     std::vector<std::string> fragments;
 
@@ -386,9 +388,9 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     read_options.snapshot = ss.GetSnapShot();
     for (uint64_t frag_index = 0; frag_index <= stop_index; frag_index++) {
       for (const auto &meta_pair : meta_pairs) {
-        InternalKey(meta_pair.first, std::to_string(frag_index * kBitmapSegmentBytes), meta_pair.second.version,
-                    storage_->IsSlotIdEncoded())
-            .Encode(&sub_key);
+        std::string sub_key = InternalKey(meta_pair.first, std::to_string(frag_index * kBitmapSegmentBytes),
+                                          meta_pair.second.version, storage_->IsSlotIdEncoded())
+                                  .Encode();
         auto s = storage_->Get(read_options, sub_key, &fragment);
         if (!s.ok() && !s.IsNotFound()) {
           return s;
@@ -505,9 +507,9 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
             frag_maxlen = kBitmapSegmentBytes;
           }
         }
-        InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes), res_metadata.version,
-                    storage_->IsSlotIdEncoded())
-            .Encode(&sub_key);
+        std::string sub_key = InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes),
+                                          res_metadata.version, storage_->IsSlotIdEncoded())
+                                  .Encode();
         batch->Put(sub_key, Slice(reinterpret_cast<char *>(frag_res.get()), frag_maxlen));
       }
 

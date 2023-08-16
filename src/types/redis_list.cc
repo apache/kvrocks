@@ -34,8 +34,7 @@ rocksdb::Status List::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
 rocksdb::Status List::Size(const Slice &user_key, uint64_t *size) {
   *size = 0;
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -54,8 +53,7 @@ rocksdb::Status List::PushX(const Slice &user_key, const std::vector<Slice> &ele
 rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elems, bool create_if_missing, bool left,
                            uint64_t *new_size) {
   *new_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   ListMetadata metadata;
   auto batch = storage_->GetWriteBatchBase();
@@ -69,9 +67,9 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   }
   uint64_t index = left ? metadata.head - 1 : metadata.tail;
   for (const auto &elem : elems) {
-    std::string index_buf, sub_key;
+    std::string index_buf;
     PutFixed64(&index_buf, index);
-    InternalKey(ns_key, index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    std::string sub_key = InternalKey(ns_key, index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     batch->Put(sub_key, elem);
     left ? --index : ++index;
   }
@@ -103,8 +101,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
                                std::vector<std::string> *elems) {
   elems->clear();
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
@@ -120,8 +117,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
     uint64_t index = left ? metadata.head : metadata.tail - 1;
     std::string buf;
     PutFixed64(&buf, index);
-    std::string sub_key;
-    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     std::string elem;
     s = storage_->Get(rocksdb::ReadOptions(), sub_key, &elem);
     if (!s.ok()) {
@@ -169,8 +165,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
 rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, uint64_t *removed_cnt) {
   *removed_cnt = 0;
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
@@ -178,11 +173,11 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
   if (!s.ok()) return s;
 
   uint64_t index = count >= 0 ? metadata.head : metadata.tail - 1;
-  std::string buf, start_key, prefix, next_version_prefix;
+  std::string buf;
   PutFixed64(&buf, index);
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  std::string start_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
@@ -216,7 +211,6 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
   if (to_delete_indexes.size() == metadata.size) {
     batch->Delete(metadata_cf_handle_, ns_key);
   } else {
-    std::string to_update_key, to_delete_key;
     uint64_t min_to_delete_index = !reversed ? to_delete_indexes[0] : to_delete_indexes[to_delete_indexes.size() - 1];
     uint64_t max_to_delete_index = !reversed ? to_delete_indexes[to_delete_indexes.size() - 1] : to_delete_indexes[0];
     uint64_t left_part_len = max_to_delete_index - metadata.head;
@@ -224,14 +218,14 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
     reversed = left_part_len <= right_part_len;
     buf.clear();
     PutFixed64(&buf, reversed ? max_to_delete_index : min_to_delete_index);
-    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
+    start_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     size_t processed = 0;
     for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
          !reversed ? iter->Next() : iter->Prev()) {
       if (iter->value() != elem || processed >= to_delete_indexes.size()) {
         buf.clear();
         PutFixed64(&buf, reversed ? max_to_delete_index-- : min_to_delete_index++);
-        InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
+        std::string to_update_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
         batch->Put(to_update_key, iter->value());
       } else {
         processed++;
@@ -241,7 +235,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
     for (uint64_t idx = 0; idx < to_delete_indexes.size(); ++idx) {
       buf.clear();
       PutFixed64(&buf, reversed ? (metadata.head + idx) : (metadata.tail - 1 - idx));
-      InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_delete_key);
+      std::string to_delete_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
       batch->Delete(to_delete_key);
     }
     if (reversed) {
@@ -261,20 +255,19 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
 
 rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *new_size) {
   *new_size = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  std::string buf, start_key, prefix, next_version_prefix;
+  std::string buf;
   uint64_t pivot_index = metadata.head - 1;
   PutFixed64(&buf, metadata.head);
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  std::string start_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -301,7 +294,6 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
                              {std::to_string(kRedisCmdLInsert), before ? "1" : "0", pivot.ToString(), elem.ToString()});
   batch->PutLogData(log_data.Encode());
 
-  std::string to_update_key;
   uint64_t left_part_len = pivot_index - metadata.head + (before ? 0 : 1);
   uint64_t right_part_len = metadata.tail - 1 - pivot_index + (before ? 1 : 0);
   bool reversed = left_part_len <= right_part_len;
@@ -315,12 +307,12 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
   for (; iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     buf.clear();
     PutFixed64(&buf, reversed ? --pivot_index : ++pivot_index);
-    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
+    std::string to_update_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     batch->Put(to_update_key, iter->value());
   }
   buf.clear();
   PutFixed64(&buf, new_elem_index);
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&to_update_key);
+  std::string to_update_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   batch->Put(to_update_key, elem);
 
   if (reversed) {
@@ -340,8 +332,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
 rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem) {
   elem->clear();
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
@@ -354,8 +345,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
   read_options.snapshot = ss.GetSnapShot();
   std::string buf;
   PutFixed64(&buf, metadata.head + index);
-  std::string sub_key;
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   return storage_->Get(read_options, sub_key, elem);
 }
 
@@ -367,8 +357,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
 rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems) {
   elems->clear();
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -380,10 +369,9 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
 
   std::string buf;
   PutFixed64(&buf, metadata.head + start);
-  std::string start_key, prefix, next_version_prefix;
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&start_key);
-  InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode(&prefix);
-  InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode(&next_version_prefix);
+  std::string start_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -405,8 +393,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
 }
 
 rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
@@ -417,9 +404,9 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
     return rocksdb::Status::InvalidArgument("index out of range");
   }
 
-  std::string buf, value, sub_key;
+  std::string buf, value;
   PutFixed64(&buf, metadata.head + index);
-  InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+  std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
   if (!s.ok()) {
     return s;
@@ -442,8 +429,7 @@ rocksdb::Status List::LMove(const rocksdb::Slice &src, const rocksdb::Slice &dst
 }
 
 rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left, bool dst_left, std::string *elem) {
-  std::string ns_key;
-  AppendNamespacePrefix(src, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(src);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
@@ -457,8 +443,8 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   uint64_t curr_index = src_left ? metadata.head : metadata.tail - 1;
   std::string curr_index_buf;
   PutFixed64(&curr_index_buf, curr_index);
-  std::string curr_sub_key;
-  InternalKey(ns_key, curr_index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&curr_sub_key);
+  std::string curr_sub_key =
+      InternalKey(ns_key, curr_index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(rocksdb::ReadOptions(), curr_sub_key, elem);
   if (!s.ok()) {
     return s;
@@ -492,8 +478,7 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
   uint64_t new_index = src_left ? metadata.tail - 1 : metadata.head;
   std::string new_index_buf;
   PutFixed64(&new_index_buf, new_index);
-  std::string new_sub_key;
-  InternalKey(ns_key, new_index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&new_sub_key);
+  std::string new_sub_key = InternalKey(ns_key, new_index_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   batch->Put(new_sub_key, *elem);
 
   std::string bytes;
@@ -505,10 +490,8 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
 
 rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::Slice &dst, bool src_left,
                                       bool dst_left, std::string *elem) {
-  std::string src_ns_key;
-  AppendNamespacePrefix(src, &src_ns_key);
-  std::string dst_ns_key;
-  AppendNamespacePrefix(dst, &dst_ns_key);
+  std::string src_ns_key = AppendNamespacePrefix(src);
+  std::string dst_ns_key = AppendNamespacePrefix(dst);
 
   std::vector<std::string> lock_keys{src_ns_key, dst_ns_key};
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
@@ -534,8 +517,8 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   uint64_t src_index = src_left ? src_metadata.head : src_metadata.tail - 1;
   std::string src_buf;
   PutFixed64(&src_buf, src_index);
-  std::string src_sub_key;
-  InternalKey(src_ns_key, src_buf, src_metadata.version, storage_->IsSlotIdEncoded()).Encode(&src_sub_key);
+  std::string src_sub_key =
+      InternalKey(src_ns_key, src_buf, src_metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(rocksdb::ReadOptions(), src_sub_key, elem);
   if (!s.ok()) {
     return s;
@@ -555,8 +538,8 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   uint64_t dst_index = dst_left ? dst_metadata.head - 1 : dst_metadata.tail;
   std::string dst_buf;
   PutFixed64(&dst_buf, dst_index);
-  std::string dst_sub_key;
-  InternalKey(dst_ns_key, dst_buf, dst_metadata.version, storage_->IsSlotIdEncoded()).Encode(&dst_sub_key);
+  std::string dst_sub_key =
+      InternalKey(dst_ns_key, dst_buf, dst_metadata.version, storage_->IsSlotIdEncoded()).Encode();
   batch->Put(dst_sub_key, *elem);
   dst_left ? --dst_metadata.head : ++dst_metadata.tail;
 
@@ -571,8 +554,7 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
 // Caution: trim the big list may block the server
 rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   uint32_t trim_cnt = 0;
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
@@ -597,8 +579,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   for (uint64_t i = metadata.head; i < left_index; i++) {
     std::string buf;
     PutFixed64(&buf, i);
-    std::string sub_key;
-    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     batch->Delete(sub_key);
     metadata.head++;
     trim_cnt++;
@@ -607,8 +588,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   for (uint64_t i = right_index; i < tail; i++) {
     std::string buf;
     PutFixed64(&buf, i);
-    std::string sub_key;
-    InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode(&sub_key);
+    std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     batch->Delete(sub_key);
     metadata.tail--;
     trim_cnt++;

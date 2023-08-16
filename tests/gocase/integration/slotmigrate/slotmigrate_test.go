@@ -263,6 +263,51 @@ func TestSlotMigrateSourceServerFlushedOrKilled(t *testing.T) {
 	})
 }
 
+func TestSlotMigrateDisablePersistClusterNodes(t *testing.T) {
+	ctx := context.Background()
+
+	srv0 := util.StartServer(t, map[string]string{
+		"cluster-enabled":               "yes",
+		"persist-cluster-nodes-enabled": "no",
+	})
+	defer func() { srv0.Close() }()
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+	id0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODEID", id0).Err())
+
+	srv1 := util.StartServer(t, map[string]string{
+		"cluster-enabled":               "yes",
+		"persist-cluster-nodes-enabled": "no",
+	})
+	defer func() { srv1.Close() }()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", id0, srv0.Host(), srv0.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master -", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	slot := 1
+	require.NoError(t, rdb0.Del(ctx, util.SlotTable[slot]).Err())
+	require.ErrorContains(t, rdb1.Set(ctx, util.SlotTable[slot], "foobar", 0).Err(), "MOVED")
+
+	cnt := 100
+	for i := 0; i < cnt; i++ {
+		require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
+	}
+	require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
+	waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
+	require.EqualValues(t, cnt, rdb1.LLen(ctx, util.SlotTable[slot]).Val())
+
+	k := fmt.Sprintf("{%s}_1", util.SlotTable[slot])
+	require.ErrorContains(t, rdb0.Set(ctx, k, "slot1_value", 0).Err(), "MOVED")
+	require.Equal(t, "OK", rdb1.Set(ctx, k, "slot1_value", 0).Val())
+}
+
 func TestSlotMigrateNewNodeAndAuth(t *testing.T) {
 	ctx := context.Background()
 

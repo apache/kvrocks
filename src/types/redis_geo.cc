@@ -121,8 +121,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     geo_shape.xy[1] = geo_point.latitude;
   }
 
-  std::string ns_key;
-  AppendNamespacePrefix(user_key, &ns_key);
+  std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -160,8 +159,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
         double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
-      uint64_t ret = 0;
-      ZSet::Add(store_key, ZAddFlags::Default(), &member_scores, &ret);
+      ZSet::Overwrite(store_key, member_scores);
     }
   }
   return rocksdb::Status::OK();

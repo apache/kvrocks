@@ -225,6 +225,26 @@ func TestGeo(t *testing.T) {
 			rdb.GeoSearchStore(ctx, "points", "points2", &redis.GeoSearchStoreQuery{GeoSearchQuery: redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Longitude: -77.0368707, Latitude: 38.9071923, Sort: "DESC"}, StoreDist: false}).Val())
 	})
 
+	t.Run("GEOSEARCHSTORE will overwrite the dst key", func(t *testing.T) {
+		// dst key wrong type
+		require.NoError(t, rdb.Do(ctx, "del", "src", "dst").Err())
+		require.NoError(t, rdb.Do(ctx, "geoadd", "src", "10", "10", "Shenzhen").Err())
+		require.NoError(t, rdb.Do(ctx, "set", "dst", "string").Err())
+		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src", "frommember", "Shenzhen", "bybox", "88", "88", "m").Err())
+		require.Equal(t, "zset", rdb.Type(ctx, "dst").Val())
+		require.Equal(t, []string{"Shenzhen"}, rdb.ZRange(ctx, "dst", 0, -1).Val())
+
+		// normal case
+		require.NoError(t, rdb.Del(ctx, "dst").Err())
+		require.NoError(t, rdb.Do(ctx, "del", "src", "src2", "dst").Err())
+		require.NoError(t, rdb.Do(ctx, "geoadd", "src", "10", "10", "Shenzhen").Err())
+		require.NoError(t, rdb.Do(ctx, "geoadd", "src2", "10", "10", "Beijing").Err())
+		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src", "frommember", "Shenzhen", "bybox", "88", "88", "m").Err())
+		require.NoError(t, rdb.Do(ctx, "geosearchstore", "dst", "src2", "frommember", "Beijing", "bybox", "88", "88", "m").Err())
+		require.Equal(t, int64(1), rdb.ZCard(ctx, "dst").Val())
+		require.Equal(t, []string{"Beijing"}, rdb.ZRange(ctx, "dst", 0, -1).Val())
+	})
+
 	t.Run("GEOHASH is able to return geohash strings", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "test", Longitude: -5.6, Latitude: 42.6}).Err())

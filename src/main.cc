@@ -349,7 +349,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL
-  if (config.tls_port) {
+  if (config.tls_port || config.tls_replication) {
     InitSSL();
   }
 #endif

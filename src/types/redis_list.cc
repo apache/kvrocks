@@ -392,6 +392,67 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status List::Pos(const Slice &user_key, const Slice &elem, const PosSpec &spec,
+                          std::vector<int64_t> *indexes) {
+  assert(spec.rank != 0);
+  assert(!spec.count.has_value() || spec.count >= 0);
+  assert(spec.max_len >= 0);
+  indexes->clear();
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  ListMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  // A negative rank means start from the tail.
+  int64_t rank = spec.rank;
+  uint64_t start = metadata.head;
+  bool reversed = false;
+  if (rank < 0) {
+    rank = -rank;
+    start = metadata.tail - 1;
+    reversed = true;
+  }
+
+  std::string buf;
+  PutFixed64(&buf, start);
+  std::string start_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+
+  std::vector<uint64_t> to_delete_indexes;
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto list_len = static_cast<int64_t>(metadata.size);
+  int64_t max_len = spec.max_len;
+  int64_t count = spec.count.value_or(-1);
+  int64_t index = 0, matches = 0;
+
+  auto iter = util::UniqueIterator(storage_, read_options);
+  iter->Seek(start_key);
+  while (iter->Valid() && iter->key().starts_with(prefix) && (max_len == 0 || index < max_len)) {
+    if (iter->value() == elem) {
+      matches++;
+      if (matches >= rank) {
+        int64_t pos = !reversed ? index : list_len - index - 1;
+        indexes->push_back(pos);
+        if (count && matches - rank + 1 >= count) {
+          break;
+        }
+      }
+    }
+    index++;
+    !reversed ? iter->Next() : iter->Prev();
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 

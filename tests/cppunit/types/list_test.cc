@@ -79,6 +79,21 @@ class RedisListLMoveTest : public RedisListTest {
   std::vector<Slice> dst_fields_;
 };
 
+class RedisListLPosTest : public RedisListTest {
+ protected:
+  void SetUp() override {
+    // Assume that `field_` is a matrix of size `m_` * `n_`,
+    // where every row is identical, and each element within a single row is distinct.
+    key_ = "test-list-Pos-key";
+    fields_ = {"1", "2", "3", "4", "5", "1", "2", "3", "4", "5", "1", "2", "3", "4", "5", "1", "2", "3", "4", "5"};
+    m_ = 4;
+    n_ = 5;
+  }
+
+  int n_;
+  int m_;
+};
+
 TEST_F(RedisListTest, PushAndPop) {
   uint64_t ret = 0;
   list_->Push(key_, fields_, true, &ret);
@@ -159,6 +174,89 @@ TEST_F(RedisListTest, Range) {
     list_->Pop(key_, true, &elem);
     EXPECT_EQ(elem, field.ToString());
   }
+  list_->Del(key_);
+}
+
+TEST_F(RedisListLPosTest, Pos) {
+  uint64_t ret = 0;
+  list_->Push(key_, fields_, false, &ret);
+  EXPECT_EQ(fields_.size(), ret);
+
+  // Basic usage
+  PosSpec spec;
+  std::vector<int64_t> indexes;
+  list_->Pos(key_, fields_[0], spec, &indexes);
+  EXPECT_EQ(1, indexes.size());
+  EXPECT_EQ(0, indexes[0]);
+  list_->Pos(key_, fields_[2], spec, &indexes);
+  EXPECT_EQ(1, indexes.size());
+  EXPECT_EQ(2, indexes[0]);
+
+  // RANK option
+  spec = PosSpec{};
+  spec.rank = m_ + 1;
+  auto s = list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(indexes.empty());
+  spec.rank = -(m_ + 1);
+  s = list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(indexes.empty());
+  // positive
+  for (int i = 1; i <= m_; ++i) {
+    spec.rank = i;
+    list_->Pos(key_, fields_[3], spec, &indexes);
+    EXPECT_EQ(1, indexes.size());
+    EXPECT_EQ(n_ * (i - 1) + 3, indexes[0]);
+  }
+  // negative
+  for (int i = 1; i <= m_; ++i) {
+    spec.rank = -i;
+    list_->Pos(key_, fields_[3], spec, &indexes);
+    EXPECT_EQ(1, indexes.size());
+    EXPECT_EQ(fields_.size() - n_ * i + 3, indexes[0]);
+  }
+
+  // COUNT option
+  spec = PosSpec{};
+  spec.count = 0;
+  list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_EQ(m_, indexes.size());
+  EXPECT_EQ(3, indexes[0]);
+  spec.count = 2;
+  list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_EQ(2, indexes.size());
+  EXPECT_EQ(3, indexes[0]);
+  spec.count = 100;
+  list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_EQ(m_, indexes.size());
+  EXPECT_EQ(3, indexes[0]);
+
+  // COUNT + RANK option
+  spec = PosSpec{};
+  spec.count = 0;
+  spec.rank = 2;
+  list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_EQ(n_ - 2, indexes.size());
+  spec.count = 2;
+  spec.rank = -2;
+  list_->Pos(key_, fields_[3], spec, &indexes);
+  EXPECT_EQ(2, indexes.size());
+
+  // MAXLEN option
+  PosSpec maxlen_spec;
+  maxlen_spec.max_len = 2;
+  list_->Pos(key_, fields_[2], maxlen_spec, &indexes);
+  EXPECT_TRUE(indexes.empty());
+  list_->Pos(key_, fields_[1], maxlen_spec, &indexes);
+  EXPECT_EQ(1, indexes.size());
+  EXPECT_EQ(1, indexes[0]);
+  maxlen_spec.count = 0;
+  maxlen_spec.max_len = (n_ * 2);
+  list_->Pos(key_, fields_[3], maxlen_spec, &indexes);
+  EXPECT_EQ(2, indexes.size());
+  EXPECT_EQ(3, indexes[0]);
+
   list_->Del(key_);
 }
 

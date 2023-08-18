@@ -473,9 +473,12 @@ func TestSlotMigrateSync(t *testing.T) {
 		validTimeouts := []int{0, 10, 20, 30}
 		for _, timeout := range validTimeouts {
 			slot++
-			result := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout)
-			require.NoError(t, result.Err(), "with timeout: %v", timeout)
-			require.Equal(t, "OK", result.Val(), "with timeout: %d", timeout)
+			err := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout).Err()
+			// go-redis will auto-retry if occurs timeout error, so it may return the already migrated slot error,
+			// so we just allow this error here to prevent the flaky test failure.
+			if err != nil && !strings.Contains(err.Error(), "ERR There is already a migrating slot") {
+				require.NoError(t, err)
+			}
 		}
 	})
 

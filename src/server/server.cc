@@ -38,6 +38,7 @@
 #include <utility>
 
 #include "commands/commander.h"
+#include "common/crc64.h"
 #include "config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
@@ -63,6 +64,7 @@ Server::Server(engine::Storage *storage, Config *config)
 
   // init cursor_dict_
   cursor_dict_ = std::make_unique<CursorDictType>();
+  crc64_init();
 
 #ifdef ENABLE_OPENSSL
   // init ssl context

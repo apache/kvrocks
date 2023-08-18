@@ -18,6 +18,7 @@
  *
  */
 
+#include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
@@ -27,7 +28,9 @@
 #include "server/server.h"
 #include "stats/disk_stats.h"
 #include "string_util.h"
+#include "storage/rdb.h"
 #include "time_util.h"
+#include "types/redis_string.h"
 
 namespace redis {
 
@@ -978,6 +981,79 @@ static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
   return 0;
 }
 
+class CommandRestore : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 4);
+    ttl_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
+    while (parser.Good()) {
+      if (parser.EatEqICase("replace")) {
+        replace_ = true;
+      } else if (parser.EatEqICase("absttl")) {
+        auto now = util::GetTimeStamp();
+        if (ttl_ <= static_cast<uint64_t>(now)) {
+          return {Status::RedisExecErr, "Invalid expire time"};
+        }
+        ttl_ -= now;
+      } else if (parser.EatEqICase("idletime")) {
+        // idle time is not supported in Kvrocks, so just skip it
+        auto idle_time = GET_OR_RET(parser.TakeInt());
+        if (idle_time < 0) {
+          return {Status::RedisParseErr, "IDLETIME can't be negative"};
+        }
+      } else if (parser.EatEqICase("freq")) {
+        // freq is not supported in Kvrocks, so just skip it
+        auto freq = GET_OR_RET(parser.TakeInt());
+        if (freq < 0 || freq > 255) {
+          return {Status::RedisParseErr, "FREQ must be >= 0 and <= 255"};
+        }
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    RDB rdb(args_[3]);
+    auto s = rdb.VerifyPayloadChecksum();
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    rocksdb::Status db_status;
+    if (!replace_) {
+      redis::Database redis(svr->storage, conn->GetNamespace());
+      int count = 0;
+      db_status = redis.Exists({args_[1]}, &count);
+      if (!db_status.ok()) {
+        return {Status::RedisExecErr, db_status.ToString()};
+      }
+      if (count > 0) {
+        return {Status::RedisExecErr, "target key name already exists."};
+      }
+    }
+
+    auto type = GET_OR_RET(rdb.LoadObjectType());
+    auto value = GET_OR_RET(rdb.LoadObject(type));
+    if (type == RDB_TYPE_STRING) {
+        redis::String string_db(svr->storage, conn->GetNamespace());
+        db_status = string_db.SetEX(args_[1], value, ttl_);
+        if (!db_status.ok()) {
+          return {Status::RedisExecErr, db_status.ToString()};
+        }
+    } else {
+        return {Status::RedisExecErr, "ERR only string type is supported"};
+    }
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  bool replace_ = false;
+  uint64_t ttl_ = 0;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1004,6 +1080,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading", 0, 0, 0),
+                        MakeCmdAttr<CommandRestore>("restore", -4, "write", 1, 1, 1),
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),

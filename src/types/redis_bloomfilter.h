@@ -60,6 +60,7 @@ class SBChain : public Database {
                                const BFInsertOptions *insert_options, std::vector<int> &rets);
   rocksdb::Status Exist(const Slice &user_key, const Slice &item, int &ret);
   rocksdb::Status MExist(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> &rets);
+  rocksdb::Status Info(const Slice &user_key, const std::string &info, std::vector<int> &rets);
 
  private:
   rocksdb::Status getSBChainMetadata(const Slice &ns_key, SBChainMetadata *metadata);

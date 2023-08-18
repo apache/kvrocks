@@ -38,7 +38,7 @@ void SBChain ::appendBFMetaSuffix(const Slice &bf_key, std::string *output) {
   output->append("meta");
 }
 
-void SBChain::bfInit(BFMetadata *bf_metadata, std::string* bf_data, uint32_t entries, double error) {
+void SBChain::bfInit(BFMetadata *bf_metadata, std::string *bf_data, uint32_t entries, double error) {
   bf_metadata->error = error;
   bf_metadata->entries = entries;
   bf_metadata->size = 0;
@@ -266,10 +266,11 @@ rocksdb::Status SBChain::MExist(const Slice &user_key, const std::vector<Slice> 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SBChainMetadata sb_chain_metadata;
   rocksdb::Status s = getSBChainMetadata(ns_key, &sb_chain_metadata);
+  if (s.IsNotFound()) return rocksdb::Status::NotFound("key is not found");
   if (!s.ok()) return s;
 
   std::vector<BFMetadata> bf_metadata_list;
-  for (u_int16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
+  for (uint16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
     std::string bf_key, bf_meta_key;
     appendBFSuffix(ns_key, i, &bf_key);
     appendBFMetaSuffix(bf_key, &bf_meta_key);
@@ -293,6 +294,58 @@ rocksdb::Status SBChain::MExist(const Slice &user_key, const std::vector<Slice> 
         break;
       }
     }
+  }
+
+  return rocksdb::Status::OK();
+}
+rocksdb::Status SBChain::Info(const Slice &user_key, const std::string &info, std::vector<int> &rets) {
+  std::string ns_key;
+  AppendNamespacePrefix(user_key, &ns_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  SBChainMetadata sb_chain_metadata;
+  rocksdb::Status s = getSBChainMetadata(ns_key, &sb_chain_metadata);
+  if (s.IsNotFound()) return rocksdb::Status::NotFound("key is not found");
+  if (!s.ok()) return s;
+
+  std::vector<BFMetadata> bf_metadata_list;
+  for (uint16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
+    std::string bf_key, bf_meta_key;
+    appendBFSuffix(ns_key, i, &bf_key);
+    appendBFMetaSuffix(bf_key, &bf_meta_key);
+    BFMetadata bf_metadata;
+    s = getBFMetadata(bf_meta_key, &bf_metadata);
+    if (!s.ok()) return s;
+    bf_metadata_list.push_back(bf_metadata);
+  }
+
+  uint32_t capacity = 0;
+  uint32_t size = 0;
+  uint16_t filters = sb_chain_metadata.n_filters;
+  uint64_t items = sb_chain_metadata.size;
+  uint16_t expansion = sb_chain_metadata.growth;
+
+  for (uint16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
+    capacity += bf_metadata_list[i].entries;
+    size += bf_metadata_list[i].bf_bytes;
+  }
+
+  if (info == "ALL") {
+    rets[0] = static_cast<int>(capacity);
+    rets[1] = static_cast<int>(size);
+    rets[2] = static_cast<int>(filters);
+    rets[3] = static_cast<int>(items);
+    rets[4] = static_cast<int>(expansion);
+  } else if (info == "CAPACITY") {
+    rets[0] = static_cast<int>(capacity);
+  } else if (info == "SIZE") {
+    rets[0] = static_cast<int>(size);
+  } else if (info == "FILTERS") {
+    rets[0] = static_cast<int>(filters);
+  } else if (info == "ITEMS") {
+    rets[0] = static_cast<int>(items);
+  } else if (info == "EXPANSION") {
+    rets[0] = static_cast<int>(expansion);
   }
 
   return rocksdb::Status::OK();

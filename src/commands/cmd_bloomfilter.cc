@@ -149,7 +149,7 @@ class CommandBFINSERT : public Commander {
       items_.emplace_back(*item_iter);
       expect_size += 1;
     }
-    if(items_.size() == 0) {
+    if (items_.size() == 0) {
       return {Status::RedisParseErr, "num of items should > 0"};
     }
 
@@ -274,11 +274,73 @@ class CommandBFMEXIST : public Commander {
   std::vector<Slice> items_;
 };
 
+class CommandBFINFO : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 3) {
+      const std::string &info = args[2];
+      if (info != "CAPACITY" && info != "SIZE" && info != "FILTERS" && info != "ITEMS" && info != "EXPANSION") {
+        return {Status::RedisParseErr, "Invalid info argument"};
+      }
+      info_ = info;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<int> rets;
+    if (info_ == "ALL") {
+      rets.resize(5, 0);
+    } else {
+      rets.resize(1, 0);
+    }
+    auto s = bloom_db.Info(args_[1], info_, rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (info_ == "ALL") {
+      *output = "*" + std::to_string(2 * all_nums_) + CRLF;  // todo: this reply only used in here, whether should I place it in redis_reply.h
+      for (int i = 0; i < all_nums_; ++i) {
+        *output += redis::SimpleString(all_info_rets_[i]);
+        *output += redis::Integer(rets[i]);
+      }
+    } else {
+      *output = redis::Integer(rets[0]);
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string info_ = "ALL";
+  const int all_nums_ = 5;
+  const std::vector<std::string> all_info_rets_ = {"Capacity", "Size", "Number of filters", "Number of items inserted",
+                                                   "Expansion rate"};
+};
+
+class CommandBFCARD : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::SBChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<int> rets(1, 0);
+    auto s = bloom_db.Info(args_[1], info_, rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::Integer(rets[0]);
+    return Status::OK();
+  }
+
+ private:
+  std::string info_ = "ITEMS";
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFADD>("bf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFMADD>("bf.madd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFINSERT>("bf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFEXIST>("bf.exist", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandBFMEXIST>("bf.mexist", -3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandBFMEXIST>("bf.mexist", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFINFO>("bf.info", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFCARD>("bf.card", 2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

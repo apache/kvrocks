@@ -57,7 +57,7 @@ void EncodeFixed32(char *buf, uint32_t value) { EncodeFixed(buf, value); }
 void EncodeFixed64(char *buf, uint64_t value) { EncodeFixed(buf, value); }
 
 template <typename T>
-constexpr void PutFixed(std::string *dst, T value) {
+void PutFixed(std::string *dst, T value) {
   char buf[sizeof(value)];
   EncodeFixed(buf, value);
   dst->append(buf, sizeof(buf));

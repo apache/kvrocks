@@ -31,14 +31,20 @@ class RedisListTest : public TestBase {
   ~RedisListTest() override = default;
 
   void SetUp() override {
+    // Assume that `field_` is a matrix of size `m_` * `n_`,
+    // where every row is identical, and each element within a single row is distinct.
     key_ = "test-list-key";
     fields_ = {"list-test-key-1", "list-test-key-2", "list-test-key-3", "list-test-key-4", "list-test-key-5",
                "list-test-key-1", "list-test-key-2", "list-test-key-3", "list-test-key-4", "list-test-key-5",
                "list-test-key-1", "list-test-key-2", "list-test-key-3", "list-test-key-4", "list-test-key-5",
                "list-test-key-1", "list-test-key-2", "list-test-key-3", "list-test-key-4", "list-test-key-5"};
+    m_ = 4;
+    n_ = 5;
   }
 
   std::unique_ptr<redis::List> list_;
+  int n_;
+  int m_;
 };
 
 class RedisListSpecificTest : public RedisListTest {
@@ -77,21 +83,6 @@ class RedisListLMoveTest : public RedisListTest {
 
   std::string dst_key_ = "test-dst-key";
   std::vector<Slice> dst_fields_;
-};
-
-class RedisListLPosTest : public RedisListTest {
- protected:
-  void SetUp() override {
-    // Assume that `field_` is a matrix of size `m_` * `n_`,
-    // where every row is identical, and each element within a single row is distinct.
-    key_ = "test-list-Pos-key";
-    fields_ = {"1", "2", "3", "4", "5", "1", "2", "3", "4", "5", "1", "2", "3", "4", "5", "1", "2", "3", "4", "5"};
-    m_ = 4;
-    n_ = 5;
-  }
-
-  int n_;
-  int m_;
 };
 
 TEST_F(RedisListTest, PushAndPop) {
@@ -177,7 +168,7 @@ TEST_F(RedisListTest, Range) {
   list_->Del(key_);
 }
 
-TEST_F(RedisListLPosTest, Pos) {
+TEST_F(RedisListTest, Pos) {
   uint64_t ret = 0;
   list_->Push(key_, fields_, false, &ret);
   EXPECT_EQ(fields_.size(), ret);

@@ -681,7 +681,7 @@ class CommandBLMove : public Commander,
   void unblockOnSrc() { svr_->UnblockOnKey(args_[1], conn_); }
 };
 
-class CommandLPOS : public Commander {
+class CommandLPos : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() > 9) {
@@ -748,21 +748,24 @@ class CommandLPOS : public Commander {
   PosSpec spec_;
 };
 
-REDIS_REGISTER_COMMANDS(
-    MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
-    MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
-    MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
-    MakeCmdAttr<CommandBLMove>("blmove", 6, "write", 1, 2, 1), MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLPOS>("lpos", -3, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1), MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1), MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
-    MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), )
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
+                        MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
+                        MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandBLMove>("blmove", 6, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandLPos>("lpos", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRPushX>("rpushx", -3, "write", 1, 1, 1), )
 
 }  // namespace redis

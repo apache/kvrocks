@@ -32,28 +32,73 @@ enum class Endian {
   NATIVE = __BYTE_ORDER__,
 };
 
-constexpr bool IsLittleEndian() { return Endian::NATIVE == Endian::LITTLE; }
-constexpr bool IsBigEndian() { return Endian::NATIVE == Endian::BIG; }
+constexpr inline bool IsLittleEndian() { return Endian::NATIVE == Endian::LITTLE; }
+constexpr inline bool IsBigEndian() { return Endian::NATIVE == Endian::BIG; }
 
-bool GetFixed8(rocksdb::Slice *input, uint8_t *value);
-bool GetFixed16(rocksdb::Slice *input, uint16_t *value);
-bool GetFixed32(rocksdb::Slice *input, uint32_t *value);
-bool GetFixed64(rocksdb::Slice *input, uint64_t *value);
-bool GetDouble(rocksdb::Slice *input, double *value);
-void PutFixed8(std::string *dst, uint8_t value);
-void PutFixed16(std::string *dst, uint16_t value);
-void PutFixed32(std::string *dst, uint32_t value);
-void PutFixed64(std::string *dst, uint64_t value);
+constexpr inline uint8_t BitSwap(uint8_t x) { return x; }
+
+constexpr inline uint16_t BitSwap(uint16_t x) { return __builtin_bswap16(x); }
+
+constexpr inline uint32_t BitSwap(uint32_t x) { return __builtin_bswap32(x); }
+
+constexpr inline uint64_t BitSwap(uint64_t x) { return __builtin_bswap64(x); }
+
+template <typename T>
+constexpr void EncodeFixed(char *buf, T value) {
+  if constexpr (IsLittleEndian()) {
+    value = BitSwap(value);
+  }
+  __builtin_memcpy(buf, &value, sizeof(value));
+}
+
+inline void EncodeFixed8(char *buf, uint8_t value) { EncodeFixed(buf, value); }
+inline void EncodeFixed16(char *buf, uint16_t value) { EncodeFixed(buf, value); }
+inline void EncodeFixed32(char *buf, uint32_t value) { EncodeFixed(buf, value); }
+inline void EncodeFixed64(char *buf, uint64_t value) { EncodeFixed(buf, value); }
+
+template <typename T>
+void PutFixed(std::string *dst, T value) {
+  char buf[sizeof(value)];
+  EncodeFixed(buf, value);
+  dst->append(buf, sizeof(buf));
+}
+
+inline void PutFixed8(std::string *dst, uint8_t value) { PutFixed(dst, value); }
+inline void PutFixed16(std::string *dst, uint16_t value) { PutFixed(dst, value); }
+inline void PutFixed32(std::string *dst, uint32_t value) { PutFixed(dst, value); }
+inline void PutFixed64(std::string *dst, uint64_t value) { PutFixed(dst, value); }
+
+template <typename T>
+constexpr T DecodeFixed(const char *ptr) {
+  T value = 0;
+
+  __builtin_memcpy(&value, ptr, sizeof(value));
+
+  return IsLittleEndian() ? BitSwap(value) : value;
+}
+
+inline uint8_t DecodeFixed8(const char *ptr) { return DecodeFixed<uint8_t>(ptr); }
+inline uint16_t DecodeFixed16(const char *ptr) { return DecodeFixed<uint16_t>(ptr); }
+inline uint32_t DecodeFixed32(const char *ptr) { return DecodeFixed<uint32_t>(ptr); }
+inline uint64_t DecodeFixed64(const char *ptr) { return DecodeFixed<uint64_t>(ptr); }
+
+template <typename T>
+bool GetFixed(rocksdb::Slice *input, T *value) {
+  if (input->size() < sizeof(T)) return false;
+  *value = DecodeFixed<T>(input->data());
+  input->remove_prefix(sizeof(T));
+  return true;
+}
+
+inline bool GetFixed8(rocksdb::Slice *input, uint8_t *value) { return GetFixed(input, value); }
+inline bool GetFixed16(rocksdb::Slice *input, uint16_t *value) { return GetFixed(input, value); }
+inline bool GetFixed32(rocksdb::Slice *input, uint32_t *value) { return GetFixed(input, value); }
+inline bool GetFixed64(rocksdb::Slice *input, uint64_t *value) { return GetFixed(input, value); }
+
+void EncodeDouble(char *buf, double value);
 void PutDouble(std::string *dst, double value);
-
-void EncodeFixed8(char *buf, uint8_t value);
-void EncodeFixed16(char *buf, uint16_t value);
-void EncodeFixed32(char *buf, uint32_t value);
-void EncodeFixed64(char *buf, uint64_t value);
-uint16_t DecodeFixed16(const char *ptr);
-uint32_t DecodeFixed32(const char *ptr);
-uint64_t DecodeFixed64(const char *ptr);
 double DecodeDouble(const char *ptr);
+bool GetDouble(rocksdb::Slice *input, double *value);
 
 char *EncodeVarint32(char *dst, uint32_t v);
 void PutVarint32(std::string *dst, uint32_t v);

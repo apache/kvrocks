@@ -57,6 +57,12 @@ inline char *EncodeFixed16(char *buf, uint16_t value) { return EncodeFixed(buf, 
 inline char *EncodeFixed32(char *buf, uint32_t value) { return EncodeFixed(buf, value); }
 inline char *EncodeFixed64(char *buf, uint64_t value) { return EncodeFixed(buf, value); }
 
+inline char *EncodeBuffer(char *buf, rocksdb::Slice value) {
+  __builtin_memcpy(buf, value.data(), value.size());
+
+  return buf + value.size();
+}
+
 template <typename T>
 void PutFixed(std::string *dst, T value) {
   char buf[sizeof(value)];

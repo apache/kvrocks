@@ -84,16 +84,14 @@ std::string InternalKey::Encode() const {
   out.resize(total);
   auto buf = out.data();
   buf = EncodeFixed8(buf, static_cast<uint8_t>(namespace_.size()));
-  memcpy(buf, namespace_.data(), namespace_.size());
-  buf += namespace_.size();
+  buf = EncodeBuffer(buf, namespace_);
   if (slot_id_encoded_) {
     buf = EncodeFixed16(buf, slotid_);
   }
   buf = EncodeFixed32(buf, static_cast<uint32_t>(key_.size()));
-  memcpy(buf, key_.data(), key_.size());
-  buf += key_.size();
+  buf = EncodeBuffer(buf, key_);
   buf = EncodeFixed64(buf, version_);
-  memcpy(buf, sub_key_.data(), sub_key_.size());
+  EncodeBuffer(buf, sub_key_);
   return out;
 }
 

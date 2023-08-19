@@ -28,14 +28,7 @@
 #include "event2/bufferevent.h"
 #include "event2/event.h"
 #include "event2/listener.h"
-
-template <typename F, F *f>
-struct StaticFunction {
-  template <typename... Ts>
-  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
-    return f(std::forward<Ts>(args)...);                                           // NOLINT
-  }
-};
+#include "type_util.h"
 
 using StaticFree = StaticFunction<decltype(std::free), std::free>;
 

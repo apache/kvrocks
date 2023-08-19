@@ -19,6 +19,7 @@
  */
 
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
@@ -680,6 +681,73 @@ class CommandBLMove : public Commander,
   void unblockOnSrc() { svr_->UnblockOnKey(args_[1], conn_); }
 };
 
+class CommandLPos : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 9) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("rank")) {
+        spec_.rank = GET_OR_RET(parser.TakeInt());
+        if (spec_.rank == 0) {
+          return {Status::RedisParseErr,
+                  "RANK can't be zero: use 1 to start from "
+                  "the first match, 2 from the second ... "
+                  "or use negative to start from the end of the list"};
+        }
+      } else if (parser.EatEqICase("count")) {
+        spec_.count = GET_OR_RET(parser.TakeInt());
+        if (spec_.count < 0) {
+          return {Status::RedisExecErr, "COUNT can't be negative"};
+        }
+      } else if (parser.EatEqICase("maxlen")) {
+        spec_.max_len = GET_OR_RET(parser.TakeInt());
+        if (spec_.max_len < 0) {
+          return {Status::RedisExecErr, "MAXLEN can't be negative"};
+        }
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::List list_db(svr->storage, conn->GetNamespace());
+    std::vector<int64_t> indexes;
+    auto s = list_db.Pos(args_[1], args_[2], spec_, &indexes);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    // We return nil or a single value if `COUNT` option is not given.
+    if (!spec_.count.has_value()) {
+      if (s.IsNotFound() || indexes.empty()) {
+        *output = redis::NilString();
+      } else {
+        assert(indexes.size() == 1);
+        *output = redis::Integer(indexes[0]);
+      }
+    }
+    // Otherwise we return an array.
+    else {
+      std::vector<std::string> values;
+      values.reserve(indexes.size());
+      for (const auto &index : indexes) {
+        values.emplace_back(std::to_string(index));
+      }
+      *output = redis::MultiBulkString(values, false);
+    }
+    return Status::OK();
+  }
+
+ private:
+  PosSpec spec_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
@@ -688,6 +756,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
                         MakeCmdAttr<CommandBLMove>("blmove", 6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandLPop>("lpop", -2, "write", 1, 1, 1),  //
+                        MakeCmdAttr<CommandLPos>("lpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),

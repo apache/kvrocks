@@ -22,12 +22,20 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "encoding.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+
+struct PosSpec {
+  int64_t rank = 1;
+  std::optional<int64_t> count = std::nullopt;
+  int64_t max_len = 0;
+  explicit PosSpec() = default;
+};
 
 namespace redis {
 class List : public Database {
@@ -45,6 +53,7 @@ class List : public Database {
   rocksdb::Status Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);
   rocksdb::Status PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);
   rocksdb::Status Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems);
+  rocksdb::Status Pos(const Slice &user_key, const Slice &elem, const PosSpec &spec, std::vector<int64_t> *indexes);
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, ListMetadata *metadata);

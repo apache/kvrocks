@@ -20,6 +20,22 @@
 
 #pragma once
 
+#include <utility>
+
+template <typename F, F *f>
+struct StaticFunction {
+  template <typename... Ts>
+  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
+    return f(std::forward<Ts>(args)...);                                           // NOLINT
+  }
+};
+
+template <typename... Ts>
+using FirstElement = typename std::tuple_element_t<0, std::tuple<Ts...>>;
+
+template <typename T>
+using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
+
 // dependent false for static_assert with constexpr if, see CWG2518/P2593R1
 template <typename T>
 constexpr bool AlwaysFalse = false;

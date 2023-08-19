@@ -27,8 +27,8 @@
 #include "server/redis_connection.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
-#include "string_util.h"
 #include "storage/rdb.h"
+#include "string_util.h"
 #include "time_util.h"
 #include "types/redis_string.h"
 
@@ -1037,13 +1037,13 @@ class CommandRestore : public Commander {
     auto type = GET_OR_RET(rdb.LoadObjectType());
     auto value = GET_OR_RET(rdb.LoadObject(type));
     if (type == RDB_TYPE_STRING) {
-        redis::String string_db(svr->storage, conn->GetNamespace());
-        db_status = string_db.SetEX(args_[1], value, ttl_);
-        if (!db_status.ok()) {
-          return {Status::RedisExecErr, db_status.ToString()};
-        }
+      redis::String string_db(svr->storage, conn->GetNamespace());
+      db_status = string_db.SetEX(args_[1], value, ttl_);
+      if (!db_status.ok()) {
+        return {Status::RedisExecErr, db_status.ToString()};
+      }
     } else {
-        return {Status::RedisExecErr, "ERR only string type is supported"};
+      return {Status::RedisExecErr, "ERR only string type is supported"};
     }
     *output = redis::SimpleString("OK");
     return Status::OK();

@@ -318,3 +318,25 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   }
   return list;
 }
+
+StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
+  auto len = GET_OR_RET(loadObjectLen(nullptr));
+  std::vector<std::string> set;
+  if (len == 0) {
+    return set;
+  }
+  for (size_t i = 0; i < len; i++) {
+    auto type = GET_OR_RET(LoadObjectType());
+    if (type != RDB_TYPE_STRING) {
+      return {Status::NotOK, fmt::format("Unknown object type {} in loadSet()", type)};
+    }
+    auto element = GET_OR_RET(loadEncodedString());
+    set.push_back(element);
+  }
+  return set;
+}
+
+StatusOr<std::vector<MemberScore>>  RDB::LoadZSetObject() {
+  std::vector<MemberScore> member_scores;
+  return member_scores;
+}

@@ -22,6 +22,7 @@
 #include <string_view>
 
 #include "status.h"
+#include "types/redis_zset.h"
 // Redis object type
 constexpr const int RDB_TYPE_STRING = 0;
 constexpr const int RDB_TYPE_LIST = 1;
@@ -55,6 +56,8 @@ class RDB {
   Status VerifyPayloadChecksum();
   StatusOr<int> LoadObjectType();
   StatusOr<std::string> LoadStringObject();
+  StatusOr<std::vector<std::string>> LoadSetObject();
+  StatusOr<std::vector<MemberScore>> LoadZSetObject();
   StatusOr<std::vector<std::string>> LoadListObject();
   StatusOr<std::vector<std::string>> LoadQuickListObject(int rdb_type);
 

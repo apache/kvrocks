@@ -168,7 +168,7 @@ struct StringInStatusOr<T, std::enable_if_t<sizeof(T) < sizeof(std::string)>> : 
   StringInStatusOr(StringInStatusOr<U>&& v) : BaseType(new std::string(*std::move(v))) {}  // NOLINT
   template <typename U, typename std::enable_if_t<!StringInStatusOr<U>::inplace, int> = 0>
   StringInStatusOr(StringInStatusOr<U>&& v)  // NOLINT
-      : BaseType((typename StringInStatusOr<U>::BaseType&&)(std::move(v))) {}
+      : BaseType((typename StringInStatusOr<U>::BaseType &&)(std::move(v))) {}
 
   StringInStatusOr(const StringInStatusOr& v) = delete;
 

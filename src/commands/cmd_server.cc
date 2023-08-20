@@ -1043,6 +1043,10 @@ class CommandRestore : public Commander {
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
+    } else if (type == RDB_TYPE_SET) {
+      auto members = GET_OR_RET(rdb.LoadSetObject());
+    } else if (type == RDB_TYPE_ZSET || type == RDB_TYPE_ZSET2) {
+      auto member_scores = GET_OR_RET(rdb.LoadZSetObject());
     } else if (type == RDB_TYPE_LIST || type == RDB_TYPE_LIST_QUICKLIST || type == RDB_TYPE_LIST_QUICKLIST_2) {
       std::vector<std::string> elements;
 

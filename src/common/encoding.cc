@@ -58,7 +58,7 @@ inline double DecodeDoubleFromUInt64(uint64_t value) {
   return result;
 }
 
-void EncodeDouble(char *buf, double value) { EncodeFixed64(buf, EncodeDoubleToUInt64(value)); }
+char *EncodeDouble(char *buf, double value) { return EncodeFixed64(buf, EncodeDoubleToUInt64(value)); }
 
 void PutDouble(std::string *dst, double value) { PutFixed64(dst, EncodeDoubleToUInt64(value)); }
 

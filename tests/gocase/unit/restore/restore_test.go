@@ -21,6 +21,7 @@ package restore
 
 import (
 	"context"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -52,4 +53,26 @@ func TestRestore_String(t *testing.T) {
 	require.Equal(t, "new", rdb.Get(ctx, key).Val())
 	require.Greater(t, rdb.TTL(ctx, key).Val(), 5*time.Second)
 	require.LessOrEqual(t, rdb.TTL(ctx, key).Val(), 10*time.Second)
+}
+
+func TestRestore_ListWithListPackEncoding(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	rand.Seed(time.Now().Unix())
+	key := util.RandString(0, 10, util.Alpha)
+	value := "\x12\x01\x02\xc3%@z\az\x00\x00\x00\a\x00\xb5x\xe0+\x00\x026\xa2y\xe0\x18\x00\x02#\x8ez\xe0\x04\x00\t\x0f\x01\x01\x02\x01\x03\x01\x04\x01\xff\n\x00\x89\x14\xff>\xf8F\x0e="
+	require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+	require.EqualValues(t, 7, rdb.LLen(ctx, key).Val())
+	require.EqualValues(t, []string{
+		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+		"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+		"zzzzzzzzzzzzzz",
+		"1", "2", "3", "4",
+	}, rdb.LRange(ctx, key, 0, -1).Val())
+	require.EqualValues(t, -1, rdb.TTL(ctx, key).Val())
 }

@@ -30,6 +30,7 @@
 #include "storage/rdb.h"
 #include "string_util.h"
 #include "time_util.h"
+#include "types/redis_list.h"
 #include "types/redis_string.h"
 
 namespace redis {
@@ -1035,15 +1036,42 @@ class CommandRestore : public Commander {
     }
 
     auto type = GET_OR_RET(rdb.LoadObjectType());
-    auto value = GET_OR_RET(rdb.LoadObject(type));
     if (type == RDB_TYPE_STRING) {
+      auto value = GET_OR_RET(rdb.LoadStringObject());
       redis::String string_db(svr->storage, conn->GetNamespace());
       db_status = string_db.SetEX(args_[1], value, ttl_);
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
+    } else if (type == RDB_TYPE_LIST || type == RDB_TYPE_LIST_QUICKLIST || type == RDB_TYPE_LIST_QUICKLIST_2) {
+      std::vector<std::string> elements;
+
+      if (type == RDB_TYPE_LIST) {
+        elements = GET_OR_RET(rdb.LoadListObject());
+      } else {
+        elements = GET_OR_RET(rdb.LoadQuickListObject(type));
+      }
+      if (!elements.empty()) {
+        std::vector<Slice> insert_elements;
+        insert_elements.reserve(elements.size());
+        for (const auto &element : elements) {
+          insert_elements.emplace_back(element);
+        }
+        redis::List list_db(svr->storage, conn->GetNamespace());
+        uint64_t list_size = 0;
+        db_status = list_db.Push(args_[1], insert_elements, false, &list_size);
+        if (!db_status.ok()) {
+          return {Status::RedisExecErr, db_status.ToString()};
+        }
+        if (ttl_ > 0) {
+          db_status = list_db.Expire(args_[1], ttl_);
+          if (!db_status.ok()) {
+            return {Status::RedisExecErr, db_status.ToString()};
+          }
+        }
+      }
     } else {
-      return {Status::RedisExecErr, "ERR only string type is supported"};
+      return {Status::RedisExecErr, "only string type is supported"};
     }
     *output = redis::SimpleString("OK");
     return Status::OK();

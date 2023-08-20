@@ -78,7 +78,6 @@ size_t lzf_decompress(const void *const in_data, size_t in_len, void *out_data, 
         return 0;
       }
 #endif
-
 #ifdef lzf_movsb
       lzf_movsb(op, ip, ctrl);
 #else

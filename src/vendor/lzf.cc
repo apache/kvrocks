@@ -36,6 +36,7 @@
 
 #include "lzf.h"
 
+// NOLINTBEGIN
 #if AVOID_ERRNO
 #define SET_ERRNO(n)
 #else
@@ -233,3 +234,4 @@ size_t lzf_decompress(const void *const in_data, size_t in_len, void *out_data, 
 #if defined(__GNUC__) && __GNUC__ >= 5
 #pragma GCC diagnostic pop
 #endif
+// NOLINTEND

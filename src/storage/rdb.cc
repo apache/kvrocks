@@ -20,10 +20,10 @@
 
 #include "rdb.h"
 
-#include "common/crc64.h"
 #include "common/encoding.h"
-#include "common/lzf.h"
 #include "list_pack.h"
+#include "vendor/crc64.h"
+#include "vendor/lzf.h"
 
 // Redis object encoding length
 constexpr const int RDB6BitLen = 0;
@@ -207,9 +207,4 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
     set.push_back(element);
   }
   return set;
-}
-
-StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject() {
-  std::vector<MemberScore> member_scores;
-  return member_scores;
 }

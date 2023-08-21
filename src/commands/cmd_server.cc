@@ -1046,7 +1046,6 @@ class CommandRestore : public Commander {
     } else if (type == RDBTypeSet) {
       auto members = GET_OR_RET(rdb.LoadSetObject());
     } else if (type == RDBTypeZSet || type == RDBTypeZSet2) {
-      auto member_scores = GET_OR_RET(rdb.LoadZSetObject());
     } else if (type == RDBTypeList || type == RDBTypeListQuickList || type == RDBTypeListQuickList2) {
       std::vector<std::string> elements;
 

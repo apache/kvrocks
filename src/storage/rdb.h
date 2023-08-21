@@ -58,7 +58,6 @@ class RDB {
   StatusOr<int> LoadObjectType();
   StatusOr<std::string> LoadStringObject();
   StatusOr<std::vector<std::string>> LoadSetObject();
-  StatusOr<std::vector<MemberScore>> LoadZSetObject();
   StatusOr<std::vector<std::string>> LoadListObject();
   StatusOr<std::vector<std::string>> LoadQuickListObject(int rdb_type);
 

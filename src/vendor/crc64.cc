@@ -27,6 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE. */
 
 #include "crc64.h"
+// NOLINTBEGIN
 
 static uint64_t crc64_table[8][256] = {{0}};
 
@@ -431,3 +432,4 @@ int crc64Test(int argc, char *argv[], int flags) {
 int main(int argc, char *argv[]) { return crc64Test(argc, argv); }
 
 #endif
+// NOLINTEND

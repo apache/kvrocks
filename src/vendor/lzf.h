@@ -37,6 +37,8 @@
 #pragma once
 
 #include <stddef.h>
+// NOLINTBEGIN
+
 /*
  * Decompress data compressed with some version of the lzf_compress
  * function and stored at location in_data and length in_len. The result
@@ -196,3 +198,4 @@ typedef unsigned int u16;
 #if ULTRA_FAST
 #undef VERY_FAST
 #endif
+// NOLINTEND

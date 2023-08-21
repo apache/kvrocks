@@ -38,7 +38,6 @@
 #include <utility>
 
 #include "commands/commander.h"
-#include "common/crc64.h"
 #include "config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
@@ -48,6 +47,7 @@
 #include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
+#include "vendor/crc64.h"
 #include "version.h"
 #include "worker.h"
 

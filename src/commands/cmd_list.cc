@@ -697,16 +697,19 @@ class CommandLPos : public Commander {
                   "RANK can't be zero: use 1 to start from "
                   "the first match, 2 from the second ... "
                   "or use negative to start from the end of the list"};
+        } else if (spec_.rank == LLONG_MIN) {
+          // Negating LLONG_MIN will cause an overflow, and is effectively be the same as passing -1.
+          return {Status::RedisParseErr, "rank would overflow"};
         }
       } else if (parser.EatEqICase("count")) {
         spec_.count = GET_OR_RET(parser.TakeInt());
         if (spec_.count < 0) {
-          return {Status::RedisExecErr, "COUNT can't be negative"};
+          return {Status::RedisParseErr, "COUNT can't be negative"};
         }
       } else if (parser.EatEqICase("maxlen")) {
         spec_.max_len = GET_OR_RET(parser.TakeInt());
         if (spec_.max_len < 0) {
-          return {Status::RedisExecErr, "MAXLEN can't be negative"};
+          return {Status::RedisParseErr, "MAXLEN can't be negative"};
         }
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};

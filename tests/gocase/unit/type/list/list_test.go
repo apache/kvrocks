@@ -942,6 +942,11 @@ func TestList(t *testing.T) {
 		require.Equal(t, "bar", rdb.LRange(ctx, "target", 0, -1).Val()[0])
 	})
 
+	t.Run("LPOS rank negation overflow", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mylist").Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "LPOS", "mylist", "foo", "RANK", "-9223372036854775808").Err(), ".*rank would overflow.*")
+	})
+
 	for listType, large := range largeValue {
 		t.Run(fmt.Sprintf("LPOS basic usage - %s", listType), func(t *testing.T) {
 			createList("mylist", []string{"a", "b", "c", large, "2", "3", "c", "c"})

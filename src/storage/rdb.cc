@@ -92,47 +92,47 @@ class ListPack {
   }
 
   StatusOr<std::string> next() {
-    RET_IF_ERROR(peekOK(1));
+    GET_OR_RET(peekOK(1));
 
     uint32_t value_len = 0;
     uint64_t int_value = 0;
     std::string value;
     unsigned char c = input_[pos_];
     if ((c & 0x80) == 0) {  // 7bit unsigned int
-      RET_IF_ERROR(peekOK(2));
+      GET_OR_RET(peekOK(2));
       int_value = c & 0x7F;
       value = std::to_string(int_value);
       pos_ += 2;
     } else if ((c & 0xC0) == 0x80) {  // 6bit string
       value_len = (c & 0x3F);
       pos_ += 1;
-      RET_IF_ERROR(peekOK(value_len));
+      GET_OR_RET(peekOK(value_len));
       value = input_.substr(pos_, value_len);
       pos_ += value_len + encodeBackLen(value_len + 1);
     } else if ((c & 0xE0) == 0xC0) {  // 13bit int
-      RET_IF_ERROR(peekOK(3));
+      GET_OR_RET(peekOK(3));
       int_value = ((c & 0x1F) << 8) | input_[pos_];
       value = std::to_string(int_value);
       pos_ += 3;
     } else if ((c & 0xFF) == 0xF1) {  // 16bit int
-      RET_IF_ERROR(peekOK(4));
+      GET_OR_RET(peekOK(4));
       int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8);
       value = std::to_string(int_value);
       pos_ += 4;
     } else if ((c & 0xFF) == 0xF2) {  // 24bit int
-      RET_IF_ERROR(peekOK(5));
+      GET_OR_RET(peekOK(5));
       int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
                   (static_cast<uint64_t>(input_[pos_ + 3]) << 16);
       value = std::to_string(int_value);
       pos_ += 5;
     } else if ((c & 0xFF) == 0xF3) {  // 32bit int
-      RET_IF_ERROR(peekOK(6));
+      GET_OR_RET(peekOK(6));
       int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
                   (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24);
       value = std::to_string(int_value);
       pos_ += 6;
     } else if ((c & 0xFF) == 0xF4) {  // 64bit int
-      RET_IF_ERROR(peekOK(10));
+      GET_OR_RET(peekOK(10));
       int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
                   (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24) |
                   (static_cast<uint64_t>(input_[pos_ + 5]) << 32) | (static_cast<uint64_t>(input_[pos_ + 6]) << 40) |
@@ -140,18 +140,18 @@ class ListPack {
       value = std::to_string(int_value);
       pos_ += 10;
     } else if ((c & 0xF0) == 0xE0) {  // 12bit string
-      RET_IF_ERROR(peekOK(2));
+      GET_OR_RET(peekOK(2));
       value_len = ((input_[pos_] & 0xF) << 8) | input_[pos_ + 1];
       pos_ += 2;
-      RET_IF_ERROR(peekOK(value_len));
+      GET_OR_RET(peekOK(value_len));
       value = input_.substr(pos_, value_len);
       pos_ += value_len + encodeBackLen(value_len + 2);
     } else if ((c & 0xFF) == 0xF0) {  // 32bit string
-      RET_IF_ERROR(peekOK(5));
+      GET_OR_RET(peekOK(5));
       value_len = (static_cast<uint32_t>(input_[pos_])) | (static_cast<uint32_t>(input_[pos_ + 1]) << 8) |
                   (static_cast<uint32_t>(input_[pos_ + 2]) << 16) | (static_cast<uint32_t>(input_[pos_ + 3]) << 24);
       pos_ += 5;
-      RET_IF_ERROR(peekOK(value_len));
+      GET_OR_RET(peekOK(value_len));
       value = input_.substr(pos_, value_len);
       pos_ += value_len + encodeBackLen(value_len + 5);
     } else if (c == 0xFF) {
@@ -189,7 +189,7 @@ Status RDB::VerifyPayloadChecksum() {
 }
 
 StatusOr<int> RDB::LoadObjectType() {
-  RET_IF_ERROR(peekOk(1));
+  GET_OR_RET(peekOk(1));
   auto type = input_[pos_++] & 0xFF;
   // 0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
   // Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.
@@ -200,7 +200,7 @@ StatusOr<int> RDB::LoadObjectType() {
 }
 
 StatusOr<uint64_t> RDB::loadObjectLen(bool* is_encoded) {
-  RET_IF_ERROR(peekOk(1));
+  GET_OR_RET(peekOk(1));
   uint64_t len = 0;
   auto c = input_[pos_++];
   auto type = (c & 0xC0) >> 6;
@@ -212,15 +212,15 @@ StatusOr<uint64_t> RDB::loadObjectLen(bool* is_encoded) {
       return c & 0x3F;
     case RDB_14BITLEN:
       len = c & 0x3F;
-      RET_IF_ERROR(peekOk(1));
+      GET_OR_RET(peekOk(1));
       return (len << 8) | input_[pos_++];
     case RDB_32BITLEN:
-      RET_IF_ERROR(peekOk(4));
+      GET_OR_RET(peekOk(4));
       __builtin_memcpy(&len, input_.data() + pos_, 4);
       pos_ += 4;
       return len;
     case RDB_64BITLEN:
-      RET_IF_ERROR(peekOk(8));
+      GET_OR_RET(peekOk(8));
       __builtin_memcpy(&len, input_.data() + pos_, 8);
       pos_ += 8;
       return len;
@@ -235,7 +235,7 @@ StatusOr<std::string> RDB::LoadStringObject() { return loadEncodedString(); }
 StatusOr<std::string> RDB::loadLzfString() {
   auto compression_len = GET_OR_RET(loadObjectLen(nullptr));
   auto len = GET_OR_RET(loadObjectLen(nullptr));
-  RET_IF_ERROR(peekOk(static_cast<size_t>(compression_len)));
+  GET_OR_RET(peekOk(static_cast<size_t>(compression_len)));
 
   auto out_buf = make_unique<char*>(new char[len]);
   if (lzf_decompress(input_.data() + pos_, compression_len, *out_buf, len) != len) {
@@ -252,15 +252,15 @@ StatusOr<std::string> RDB::loadEncodedString() {
   if (is_encoded) {
     switch (len) {
       case RDB_ENC_INT8:
-        RET_IF_ERROR(peekOk(1));
+        GET_OR_RET(peekOk(1));
         return std::to_string(input_[pos_++]);
       case RDB_ENC_INT16:
-        RET_IF_ERROR(peekOk(2));
+        GET_OR_RET(peekOk(2));
         value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8));
         pos_ += 2;
         return value;
       case RDB_ENC_INT32:
-        RET_IF_ERROR(peekOk(4));
+        GET_OR_RET(peekOk(4));
         value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8) | (input_[pos_ + 2] << 16) |
                                (input_[pos_ + 3] << 24));
         pos_ += 4;
@@ -273,7 +273,7 @@ StatusOr<std::string> RDB::loadEncodedString() {
   }
 
   // Normal string
-  RET_IF_ERROR(peekOk(static_cast<size_t>(len)));
+  GET_OR_RET(peekOk(static_cast<size_t>(len)));
   value = std::string(input_.data() + pos_, len);
   pos_ += len;
   return value;

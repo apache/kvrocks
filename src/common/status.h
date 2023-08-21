@@ -368,9 +368,3 @@ struct [[nodiscard]] StatusOr {
     if (!status) return std::forward<decltype(status)>(status); \
     std::forward<decltype(status)>(status);                     \
   }).GetValue()
-
-#define RET_IF_ERROR(...)                                       \
-  ({                                                            \
-    auto&& status = (__VA_ARGS__);                              \
-    if (!status) return std::forward<decltype(status)>(status); \
-  })

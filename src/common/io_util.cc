@@ -29,8 +29,6 @@
 #include <poll.h>
 #include <sys/types.h>
 
-#include "fmt/core.h"
-
 #ifdef __linux__
 #include <sys/sendfile.h>
 #endif

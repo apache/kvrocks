@@ -1036,21 +1036,21 @@ class CommandRestore : public Commander {
     }
 
     auto type = GET_OR_RET(rdb.LoadObjectType());
-    if (type == RDB_TYPE_STRING) {
+    if (type == RDBTypeString) {
       auto value = GET_OR_RET(rdb.LoadStringObject());
       redis::String string_db(svr->storage, conn->GetNamespace());
       db_status = string_db.SetEX(args_[1], value, ttl_);
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
-    } else if (type == RDB_TYPE_SET) {
+    } else if (type == RDBTypeSet) {
       auto members = GET_OR_RET(rdb.LoadSetObject());
-    } else if (type == RDB_TYPE_ZSET || type == RDB_TYPE_ZSET2) {
+    } else if (type == RDBTypeZSet || type == RDBTypeZSet2) {
       auto member_scores = GET_OR_RET(rdb.LoadZSetObject());
-    } else if (type == RDB_TYPE_LIST || type == RDB_TYPE_LIST_QUICKLIST || type == RDB_TYPE_LIST_QUICKLIST_2) {
+    } else if (type == RDBTypeList || type == RDBTypeListQuickList || type == RDBTypeListQuickList2) {
       std::vector<std::string> elements;
 
-      if (type == RDB_TYPE_LIST) {
+      if (type == RDBTypeList) {
         elements = GET_OR_RET(rdb.LoadListObject());
       } else {
         elements = GET_OR_RET(rdb.LoadQuickListObject(type));

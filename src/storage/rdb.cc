@@ -23,145 +23,18 @@
 #include "common/crc64.h"
 #include "common/encoding.h"
 #include "common/lzf.h"
+#include "list_pack.h"
 
 // Redis object encoding length
-constexpr const int RDB_6BITLEN = 0;
-constexpr const int RDB_14BITLEN = 1;
-constexpr const int RDB_ENCVAL = 3;
-constexpr const int RDB_32BITLEN = 0x08;
-constexpr const int RDB_64BITLEN = 0x81;
-
-constexpr const int RDB_ENC_INT8 = 0;
-constexpr const int RDB_ENC_INT16 = 1;
-constexpr const int RDB_ENC_INT32 = 2;
-constexpr const int RDB_ENC_LZF = 3;
-
-class ListPack {
- public:
-  explicit ListPack(std::string_view input) : input_(input){};
-  ~ListPack() = default;
-
-  StatusOr<std::vector<std::string>> Elements() {
-    auto len = GET_OR_RET(length());
-    std::vector<std::string> elements;
-    while (len-- != 0) {
-      auto element = GET_OR_RET(next());
-      elements.emplace_back(element);
-    }
-    return elements;
-  }
-
- private:
-  std::string_view input_;
-  uint64_t pos_ = 0;
-
-  StatusOr<uint32_t> length() {
-    constexpr const int listPackHeaderSize = 6;
-    if (input_.size() < listPackHeaderSize) {
-      return {Status::NotOK, "invalid listpack length"};
-    }
-    uint32_t total_bytes = (static_cast<uint32_t>(input_[0])) | (static_cast<uint32_t>(input_[1]) << 8) |
-                           (static_cast<uint32_t>(input_[2]) << 16) | (static_cast<uint32_t>(input_[3]) << 24);
-    uint32_t len = (static_cast<uint32_t>(input_[4])) | (static_cast<uint32_t>(input_[5]) << 8);
-    pos_ += listPackHeaderSize;
-    if (total_bytes != input_.size()) {
-      return {Status::NotOK, "invalid list pack length"};
-    }
-    return len;
-  }
-
-  static uint32_t encodeBackLen(uint32_t len) {
-    if (len <= 127) {
-      return 1;
-    } else if (len < 16383) {
-      return 2;
-    } else if (len < 2097151) {
-      return 3;
-    } else if (len < 268435455) {
-      return 4;
-    } else {
-      return 5;
-    }
-  }
-
-  Status peekOK(size_t n) {
-    if (pos_ + n > input_.size()) {
-      return {Status::NotOK, "invalid list pack entry"};
-    }
-    return Status::OK();
-  }
-
-  StatusOr<std::string> next() {
-    GET_OR_RET(peekOK(1));
-
-    uint32_t value_len = 0;
-    uint64_t int_value = 0;
-    std::string value;
-    unsigned char c = input_[pos_];
-    if ((c & 0x80) == 0) {  // 7bit unsigned int
-      GET_OR_RET(peekOK(2));
-      int_value = c & 0x7F;
-      value = std::to_string(int_value);
-      pos_ += 2;
-    } else if ((c & 0xC0) == 0x80) {  // 6bit string
-      value_len = (c & 0x3F);
-      pos_ += 1;
-      GET_OR_RET(peekOK(value_len));
-      value = input_.substr(pos_, value_len);
-      pos_ += value_len + encodeBackLen(value_len + 1);
-    } else if ((c & 0xE0) == 0xC0) {  // 13bit int
-      GET_OR_RET(peekOK(3));
-      int_value = ((c & 0x1F) << 8) | input_[pos_];
-      value = std::to_string(int_value);
-      pos_ += 3;
-    } else if ((c & 0xFF) == 0xF1) {  // 16bit int
-      GET_OR_RET(peekOK(4));
-      int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8);
-      value = std::to_string(int_value);
-      pos_ += 4;
-    } else if ((c & 0xFF) == 0xF2) {  // 24bit int
-      GET_OR_RET(peekOK(5));
-      int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                  (static_cast<uint64_t>(input_[pos_ + 3]) << 16);
-      value = std::to_string(int_value);
-      pos_ += 5;
-    } else if ((c & 0xFF) == 0xF3) {  // 32bit int
-      GET_OR_RET(peekOK(6));
-      int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                  (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24);
-      value = std::to_string(int_value);
-      pos_ += 6;
-    } else if ((c & 0xFF) == 0xF4) {  // 64bit int
-      GET_OR_RET(peekOK(10));
-      int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                  (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24) |
-                  (static_cast<uint64_t>(input_[pos_ + 5]) << 32) | (static_cast<uint64_t>(input_[pos_ + 6]) << 40) |
-                  (static_cast<uint64_t>(input_[pos_ + 7]) << 48) | (static_cast<uint64_t>(input_[pos_ + 8]) << 56);
-      value = std::to_string(int_value);
-      pos_ += 10;
-    } else if ((c & 0xF0) == 0xE0) {  // 12bit string
-      GET_OR_RET(peekOK(2));
-      value_len = ((input_[pos_] & 0xF) << 8) | input_[pos_ + 1];
-      pos_ += 2;
-      GET_OR_RET(peekOK(value_len));
-      value = input_.substr(pos_, value_len);
-      pos_ += value_len + encodeBackLen(value_len + 2);
-    } else if ((c & 0xFF) == 0xF0) {  // 32bit string
-      GET_OR_RET(peekOK(5));
-      value_len = (static_cast<uint32_t>(input_[pos_])) | (static_cast<uint32_t>(input_[pos_ + 1]) << 8) |
-                  (static_cast<uint32_t>(input_[pos_ + 2]) << 16) | (static_cast<uint32_t>(input_[pos_ + 3]) << 24);
-      pos_ += 5;
-      GET_OR_RET(peekOK(value_len));
-      value = input_.substr(pos_, value_len);
-      pos_ += value_len + encodeBackLen(value_len + 5);
-    } else if (c == 0xFF) {
-      ++pos_;
-    } else {
-      return {Status::NotOK, "invalid list pack entry"};
-    }
-    return value;
-  }
-};
+constexpr const int RDB6BitLen = 0;
+constexpr const int RDB14BitLen = 1;
+constexpr const int RDBEncVal = 3;
+constexpr const int RDB32BitLen = 0x08;
+constexpr const int RDB64BitLen = 0x81;
+constexpr const int RDBEncInt8 = 0;
+constexpr const int RDBEncInt16 = 1;
+constexpr const int RDBEncInt32 = 2;
+constexpr const int RDBEncLzf = 3;
 
 Status RDB::peekOk(size_t n) {
   if (pos_ + n > input_.size()) {
@@ -205,21 +78,21 @@ StatusOr<uint64_t> RDB::loadObjectLen(bool* is_encoded) {
   auto c = input_[pos_++];
   auto type = (c & 0xC0) >> 6;
   switch (type) {
-    case RDB_ENCVAL:
+    case RDBEncVal:
       if (is_encoded) *is_encoded = true;
       return c & 0x3F;
-    case RDB_6BITLEN:
+    case RDB6BitLen:
       return c & 0x3F;
-    case RDB_14BITLEN:
+    case RDB14BitLen:
       len = c & 0x3F;
       GET_OR_RET(peekOk(1));
       return (len << 8) | input_[pos_++];
-    case RDB_32BITLEN:
+    case RDB32BitLen:
       GET_OR_RET(peekOk(4));
       __builtin_memcpy(&len, input_.data() + pos_, 4);
       pos_ += 4;
       return len;
-    case RDB_64BITLEN:
+    case RDB64BitLen:
       GET_OR_RET(peekOk(8));
       __builtin_memcpy(&len, input_.data() + pos_, 8);
       pos_ += 8;
@@ -251,21 +124,21 @@ StatusOr<std::string> RDB::loadEncodedString() {
   auto len = GET_OR_RET(loadObjectLen(&is_encoded));
   if (is_encoded) {
     switch (len) {
-      case RDB_ENC_INT8:
+      case RDBEncInt8:
         GET_OR_RET(peekOk(1));
         return std::to_string(input_[pos_++]);
-      case RDB_ENC_INT16:
+      case RDBEncInt16:
         GET_OR_RET(peekOk(2));
         value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8));
         pos_ += 2;
         return value;
-      case RDB_ENC_INT32:
+      case RDBEncInt32:
         GET_OR_RET(peekOk(4));
         value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8) | (input_[pos_ + 2] << 16) |
                                (input_[pos_ + 3] << 24));
         pos_ += 4;
         return value;
-      case RDB_ENC_LZF:
+      case RDBEncLzf:
         return loadLzfString();
       default:
         return {Status::NotOK, fmt::format("Unknown RDB string encoding type {}", len)};
@@ -286,11 +159,11 @@ StatusOr<std::vector<std::string>> RDB::LoadQuickListObject(int rdb_type) {
     return list;
   }
 
-  uint64_t container = QUICKLIST_NODE_CONTAINER_PACKED;
+  uint64_t container = QuickListNodeContainerPacked;
   for (size_t i = 0; i < len; i++) {
-    if (rdb_type == RDB_TYPE_LIST_QUICKLIST_2) {
+    if (rdb_type == RDBTypeListQuickList2) {
       container = GET_OR_RET(loadObjectLen(nullptr));
-      if (container != QUICKLIST_NODE_CONTAINER_PLAIN && container != QUICKLIST_NODE_CONTAINER_PACKED) {
+      if (container != QuickListNodeContainerPlain && container != QuickListNodeContainerPacked) {
         return {Status::NotOK, fmt::format("Unknown quicklist node container type {}", container)};
       }
     }
@@ -310,7 +183,7 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   }
   for (size_t i = 0; i < len; i++) {
     auto type = GET_OR_RET(LoadObjectType());
-    if (type != RDB_TYPE_STRING) {
+    if (type != RDBTypeString) {
       return {Status::NotOK, fmt::format("Unknown object type {} in loadList()", type)};
     }
     auto element = GET_OR_RET(loadEncodedString());
@@ -327,7 +200,7 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
   }
   for (size_t i = 0; i < len; i++) {
     auto type = GET_OR_RET(LoadObjectType());
-    if (type != RDB_TYPE_STRING) {
+    if (type != RDBTypeString) {
       return {Status::NotOK, fmt::format("Unknown object type {} in loadSet()", type)};
     }
     auto element = GET_OR_RET(loadEncodedString());
@@ -336,7 +209,7 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
   return set;
 }
 
-StatusOr<std::vector<MemberScore>>  RDB::LoadZSetObject() {
+StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject() {
   std::vector<MemberScore> member_scores;
   return member_scores;
 }

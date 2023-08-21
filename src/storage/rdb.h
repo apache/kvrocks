@@ -23,30 +23,31 @@
 
 #include "status.h"
 #include "types/redis_zset.h"
+
 // Redis object type
-constexpr const int RDB_TYPE_STRING = 0;
-constexpr const int RDB_TYPE_LIST = 1;
-constexpr const int RDB_TYPE_SET = 2;
-constexpr const int RDB_TYPE_ZSET = 3;
-constexpr const int RDB_TYPE_HASH = 4;
-constexpr const int RDB_TYPE_ZSET2 = 5;
+constexpr const int RDBTypeString = 0;
+constexpr const int RDBTypeList = 1;
+constexpr const int RDBTypeSet = 2;
+constexpr const int RDBTypeZSet = 3;
+constexpr const int RDBTypeHash = 4;
+constexpr const int RDBTypeZSet2 = 5;
 
 // Redis object encoding
-constexpr const int RDB_TYPE_HASH_ZIPMAP = 9;
-constexpr const int RDB_TYPE_LIST_ZIPLIST = 10;
-constexpr const int RDB_TYPE_SET_INTSET = 11;
-constexpr const int RDB_TYPE_ZSET_ZIPLIST = 12;
-constexpr const int RDB_TYPE_HASH_ZIPLIST = 13;
-constexpr const int RDB_TYPE_LIST_QUICKLIST = 14;
-constexpr const int RDB_TYPE_STREAM_LISTPACKS = 15;
-constexpr const int RDB_TYPE_HASH_LISTPACK = 16;
-constexpr const int RDB_TYPE_ZSET_LISTPACK = 17;
-constexpr const int RDB_TYPE_LIST_QUICKLIST_2 = 18;
-constexpr const int RDB_TYPE_STREAM_LISTPACKS_2 = 19;
+constexpr const int RDBTypeHashZipMap = 9;
+constexpr const int RDBTypeListZipList = 10;
+constexpr const int RDBTypeSetIntSet = 11;
+constexpr const int RDBTypeZSetZipList = 12;
+constexpr const int RDBTypeHashZipList = 13;
+constexpr const int RDBTypeListQuickList = 14;
+constexpr const int RDBTypeStreamListPack = 15;
+constexpr const int RDBTypeHashListPack = 16;
+constexpr const int RDBTypeZSetListPack = 17;
+constexpr const int RDBTypeListQuickList2 = 18;
+constexpr const int RDBTypeStreamListPack2 = 19;
 
 // Quick list node encoding
-constexpr const int QUICKLIST_NODE_CONTAINER_PLAIN = 1;
-constexpr const int QUICKLIST_NODE_CONTAINER_PACKED = 2;
+constexpr const int QuickListNodeContainerPlain = 1;
+constexpr const int QuickListNodeContainerPacked = 2;
 
 class RDB {
  public:

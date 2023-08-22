@@ -49,7 +49,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt.
 * libevent(https://github.com/libevent/libevent)
 * snappy(https://github.com/google/snappy)
 
-Files src/types/geohash.*, src/common/rand.*, src/storage/scripting.*
+Files src/types/geohash.*, src/vendor/rand.*, src/storage/scripting.*
 and some utility functions in src/common are modified from Redis.
 The text of the license is included in licenses/LICENSE-redis.txt.
 
@@ -82,4 +82,4 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 ================================================================
 Public Domain
 ================================================================
-Files src/common/sha1.* are provided in Public Domain by Steve Reid <steve@edmweb.com>.
+Files src/vendor/sha1.* are provided in Public Domain by Steve Reid <steve@edmweb.com>.

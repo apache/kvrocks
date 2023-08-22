@@ -32,11 +32,8 @@ header:
     - '**/*.yml'
     - '**/*.yaml'
   paths-ignore:
-    - 'src/common/rand.h'
-    - 'src/common/rand.cc'
+    - 'src/vendor/*'
     - 'src/common/rocksdb_crc32c.h'
-    - 'src/common/sha1.h'
-    - 'src/common/sha1.cc'
     - 'src/storage/batch_debugger.h'
     - 'src/types/geohash.h'
     - 'src/types/geohash.cc'

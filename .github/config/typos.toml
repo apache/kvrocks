@@ -18,7 +18,7 @@
 [files]
 extend-exclude = [
     ".git/",
-    "src/common/sha1.cc",
+    "src/vendor/",
     "tests/gocase/util/slot.go",
 ]
 ignore-hidden = false

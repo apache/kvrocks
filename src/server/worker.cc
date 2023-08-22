@@ -176,9 +176,8 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
 
-  std::string ip;
-  uint32_t port = 0;
-  if (util::GetPeerAddr(fd, &ip, &port) == 0) {
+  if (auto s = util::GetPeerAddr(fd)) {
+    auto [ip, port] = std::move(*s);
     conn->SetAddr(ip, port);
   }
 

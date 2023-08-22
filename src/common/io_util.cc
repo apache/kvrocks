@@ -272,29 +272,26 @@ StatusOr<std::string> SockReadLine(int fd) {
   return std::string(line.get(), line.length);
 }
 
-int GetPeerAddr(int fd, std::string *addr, uint32_t *port) {
-  addr->clear();
-
+StatusOr<std::tuple<std::string, uint32_t>> GetPeerAddr(int fd) {
   sockaddr_storage sa{};
   socklen_t sa_len = sizeof(sa);
   if (getpeername(fd, reinterpret_cast<sockaddr *>(&sa), &sa_len) < 0) {
-    return -1;
+    return Status::FromErrno("Failed to get peer name");
   }
 
   if (sa.ss_family == AF_INET6) {
     char buf[INET6_ADDRSTRLEN];
     auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
     inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET_ADDRSTRLEN);
-    addr->append(buf);
-    *port = ntohs(sa6->sin6_port);
-  } else {
+    return {buf, ntohs(sa6->sin6_port)};
+  } else if (sa.ss_family == AF_INET) {
     auto sa4 = reinterpret_cast<sockaddr_in *>(&sa);
     char buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, reinterpret_cast<void *>(&sa4->sin_addr), buf, INET_ADDRSTRLEN);
-    addr->append(buf);
-    *port = ntohs(sa4->sin_port);
+    return {buf, ntohs(sa4->sin_port)};
   }
-  return 0;
+
+  return {Status::NotOK, "Failed to get peer name due to invalid family type"};
 }
 
 int GetLocalPort(int fd) {

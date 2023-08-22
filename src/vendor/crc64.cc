@@ -32,62 +32,6 @@
 static uint64_t crc64_table[8][256] = {{0}};
 
 #define POLY UINT64_C(0xad93d23594c935a9)
-/* Toggle the 16 bit unsigned integer pointed by *p from little endian to
- * big endian */
-void memrev16(void *p) {
-  unsigned char *x = static_cast<unsigned char *>(p), t;
-
-  t = x[0];
-  x[0] = x[1];
-  x[1] = t;
-}
-
-/* Toggle the 32 bit unsigned integer pointed by *p from little endian to
- * big endian */
-void memrev32(void *p) {
-  unsigned char *x = static_cast<unsigned char *>(p), t;
-
-  t = x[0];
-  x[0] = x[3];
-  x[3] = t;
-  t = x[1];
-  x[1] = x[2];
-  x[2] = t;
-}
-
-/* Toggle the 64 bit unsigned integer pointed by *p from little endian to
- * big endian */
-void memrev64(void *p) {
-  unsigned char *x = static_cast<unsigned char *>(p), t;
-
-  t = x[0];
-  x[0] = x[7];
-  x[7] = t;
-  t = x[1];
-  x[1] = x[6];
-  x[6] = t;
-  t = x[2];
-  x[2] = x[5];
-  x[5] = t;
-  t = x[3];
-  x[3] = x[4];
-  x[4] = t;
-}
-
-uint16_t intrev16(uint16_t v) {
-  memrev16(&v);
-  return v;
-}
-
-uint32_t intrev32(uint32_t v) {
-  memrev32(&v);
-  return v;
-}
-
-uint64_t intrev64(uint64_t v) {
-  memrev64(&v);
-  return v;
-}
 
 /* Fill in a CRC constants table. */
 void crcspeed64little_init(crcfn64 crcfn, uint64_t table[8][256]) {

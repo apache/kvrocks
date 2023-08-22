@@ -26,32 +26,65 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE. */
 
-#pragma once
-#include <inttypes.h>
-#include <stdint.h>
-#include <stdio.h>
+#include "endianconv.h"
+
 // NOLINTBEGIN
-void crc64_init(void);
-uint64_t crc64(uint64_t crc, const unsigned char *s, uint64_t l);
 
-typedef uint64_t (*crcfn64)(uint64_t, const void *, const uint64_t);
-typedef uint16_t (*crcfn16)(uint16_t, const void *, const uint64_t);
+/* Toggle the 16 bit unsigned integer pointed by *p from little endian to
+ * big endian */
+void memrev16(void *p) {
+  unsigned char *x = static_cast<unsigned char *>(p), t;
 
-/* CRC-64 */
-void crcspeed64little_init(crcfn64 fn, uint64_t table[8][256]);
-void crcspeed64big_init(crcfn64 fn, uint64_t table[8][256]);
-void crcspeed64native_init(crcfn64 fn, uint64_t table[8][256]);
+  t = x[0];
+  x[0] = x[1];
+  x[1] = t;
+}
 
-uint64_t crcspeed64little(uint64_t table[8][256], uint64_t crc, void *buf, size_t len);
-uint64_t crcspeed64big(uint64_t table[8][256], uint64_t crc, void *buf, size_t len);
-uint64_t crcspeed64native(uint64_t table[8][256], uint64_t crc, void *buf, size_t len);
+/* Toggle the 32 bit unsigned integer pointed by *p from little endian to
+ * big endian */
+void memrev32(void *p) {
+  unsigned char *x = static_cast<unsigned char *>(p), t;
 
-/* CRC-16 */
-void crcspeed16little_init(crcfn16 fn, uint16_t table[8][256]);
-void crcspeed16big_init(crcfn16 fn, uint16_t table[8][256]);
-void crcspeed16native_init(crcfn16 fn, uint16_t table[8][256]);
+  t = x[0];
+  x[0] = x[3];
+  x[3] = t;
+  t = x[1];
+  x[1] = x[2];
+  x[2] = t;
+}
 
-uint16_t crcspeed16little(uint16_t table[8][256], uint16_t crc, void *buf, size_t len);
-uint16_t crcspeed16big(uint16_t table[8][256], uint16_t crc, void *buf, size_t len);
-uint16_t crcspeed16native(uint16_t table[8][256], uint16_t crc, void *buf, size_t len);
+/* Toggle the 64 bit unsigned integer pointed by *p from little endian to
+ * big endian */
+void memrev64(void *p) {
+  unsigned char *x = static_cast<unsigned char *>(p), t;
+
+  t = x[0];
+  x[0] = x[7];
+  x[7] = t;
+  t = x[1];
+  x[1] = x[6];
+  x[6] = t;
+  t = x[2];
+  x[2] = x[5];
+  x[5] = t;
+  t = x[3];
+  x[3] = x[4];
+  x[4] = t;
+}
+
+uint16_t intrev16(uint16_t v) {
+  memrev16(&v);
+  return v;
+}
+
+uint32_t intrev32(uint32_t v) {
+  memrev32(&v);
+  return v;
+}
+
+uint64_t intrev64(uint64_t v) {
+  memrev64(&v);
+  return v;
+}
+
 // NOLINTEND

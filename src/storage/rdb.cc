@@ -23,6 +23,7 @@
 #include "common/encoding.h"
 #include "list_pack.h"
 #include "vendor/crc64.h"
+#include "vendor/endianconv.h"
 #include "vendor/lzf.h"
 
 // Redis object encoding length
@@ -169,7 +170,7 @@ StatusOr<std::vector<std::string>> RDB::LoadQuickListObject(int rdb_type) {
     }
     auto list_pack_string = GET_OR_RET(loadEncodedString());
     ListPack lp(list_pack_string);
-    auto elements = GET_OR_RET(lp.Elements());
+    auto elements = GET_OR_RET(lp.Entries());
     list.insert(list.end(), elements.begin(), elements.end());
   }
   return list;

@@ -20,23 +20,25 @@
 
 #pragma once
 
+#include <map>
 #include <string_view>
 
 #include "common/status.h"
 
-class ListPack {
+class ZipList {
  public:
-  explicit ListPack(std::string_view input) : input_(input){};
-  ~ListPack() = default;
+  explicit ZipList(std::string_view input) : input_(input){};
+  ~ZipList() = default;
 
-  StatusOr<uint32_t> Length();
   StatusOr<std::string> Next();
   StatusOr<std::vector<std::string>> Entries();
 
  private:
   std::string_view input_;
   uint64_t pos_ = 0;
+  uint32_t pre_entry_len_ = 0;
 
   Status peekOK(size_t n);
-  static uint32_t encodeBackLen(uint32_t len);
+  void setPreEntryLen(uint32_t len) { pre_entry_len_ = len; }
+  static uint32_t getEncodedLengthSize(uint32_t len);
 };

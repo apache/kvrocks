@@ -91,7 +91,7 @@ constexpr const int ListPack32BitString = 0xF0;
 
 constexpr const int ListPackEOF = 0xFF;
 
-StatusOr<std::vector<std::string>> ListPack::Elements() {
+StatusOr<std::vector<std::string>> ListPack::Entries() {
   auto len = GET_OR_RET(Length());
   std::vector<std::string> elements;
   while (len-- != 0) {
@@ -137,7 +137,7 @@ uint32_t ListPack::encodeBackLen(uint32_t len) {
 
 Status ListPack::peekOK(size_t n) {
   if (pos_ + n > input_.size()) {
-    return {Status::NotOK, "invalid list pack entry"};
+    return {Status::NotOK, "reach the end of list pack"};
   }
   return Status::OK();
 }

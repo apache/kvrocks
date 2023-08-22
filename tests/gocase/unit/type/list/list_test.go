@@ -941,4 +941,63 @@ func TestList(t *testing.T) {
 		rd.MustRead(t, "$3")
 		require.Equal(t, "bar", rdb.LRange(ctx, "target", 0, -1).Val()[0])
 	})
+
+	t.Run("LPOS rank negation overflow", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mylist").Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "LPOS", "mylist", "foo", "RANK", "-9223372036854775808").Err(), ".*rank would overflow.*")
+	})
+
+	for listType, large := range largeValue {
+		t.Run(fmt.Sprintf("LPOS basic usage - %s", listType), func(t *testing.T) {
+			createList("mylist", []string{"a", "b", "c", large, "2", "3", "c", "c"})
+			require.Equal(t, int64(0), rdb.LPos(ctx, "mylist", "a", redis.LPosArgs{}).Val())
+			require.Equal(t, int64(2), rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{}).Val())
+		})
+
+		t.Run("LPOS RANK option", func(t *testing.T) {
+			require.Equal(t, int64(2), rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{Rank: 1}).Val())
+			require.Equal(t, int64(6), rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{Rank: 2}).Val())
+			require.Error(t, rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{Rank: 4}).Err())
+			require.Equal(t, int64(7), rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{Rank: -1}).Val())
+			require.Equal(t, int64(6), rdb.LPos(ctx, "mylist", "c", redis.LPosArgs{Rank: -2}).Val())
+			err := rdb.Do(ctx, "LPOS", "mylist", "c", "RANK", 0).Err()
+			require.Error(t, err)
+			require.True(t, strings.Contains(err.Error(), "RANK can't be zero"))
+		})
+
+		t.Run("LPOS COUNT option", func(t *testing.T) {
+			require.Equal(t, []int64{2, 6, 7}, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{}).Val())
+			require.Equal(t, []int64{2}, rdb.LPosCount(ctx, "mylist", "c", 1, redis.LPosArgs{}).Val())
+			require.Equal(t, []int64{2, 6}, rdb.LPosCount(ctx, "mylist", "c", 2, redis.LPosArgs{}).Val())
+			require.Equal(t, []int64{2, 6, 7}, rdb.LPosCount(ctx, "mylist", "c", 100, redis.LPosArgs{}).Val())
+		})
+
+		t.Run("LPOS COUNT + RANK option", func(t *testing.T) {
+			require.Equal(t, []int64{6, 7}, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{Rank: 2}).Val())
+			require.Equal(t, []int64{7, 6}, rdb.LPosCount(ctx, "mylist", "c", 2, redis.LPosArgs{Rank: -1}).Val())
+		})
+
+		t.Run("LPOS non existing key", func(t *testing.T) {
+			require.Empty(t, rdb.LPosCount(ctx, "mylistxxx", "c", 0, redis.LPosArgs{Rank: 2}).Val())
+		})
+
+		t.Run("LPOS no match", func(t *testing.T) {
+			require.Empty(t, rdb.LPosCount(ctx, "mylist", "x", 2, redis.LPosArgs{Rank: -1}).Val())
+			require.Empty(t, rdb.LPos(ctx, "mylist", "x", redis.LPosArgs{Rank: -1}).Val())
+		})
+
+		t.Run("LPOS MAXLEN", func(t *testing.T) {
+			require.Equal(t, []int64{0}, rdb.LPosCount(ctx, "mylist", "a", 0, redis.LPosArgs{MaxLen: 1}).Val())
+			require.Empty(t, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{MaxLen: 1}).Val())
+			require.Equal(t, []int64{2}, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{MaxLen: 3}).Val())
+			require.Equal(t, []int64{7, 6}, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{MaxLen: 3, Rank: -1}).Val())
+			require.Equal(t, []int64{6}, rdb.LPosCount(ctx, "mylist", "c", 0, redis.LPosArgs{MaxLen: 7, Rank: 2}).Val())
+		})
+
+		t.Run("LPOS when RANK is greater than matches", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "mylist").Err())
+			require.NoError(t, rdb.LPush(ctx, "mylist", "a").Err())
+			require.Empty(t, rdb.LPosCount(ctx, "mylist", "b", 10, redis.LPosArgs{Rank: 5}).Val())
+		})
+	}
 }

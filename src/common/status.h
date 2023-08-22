@@ -30,6 +30,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "type_util.h"
+
 class [[nodiscard]] Status {
  public:
   enum Code : unsigned char {
@@ -133,14 +135,6 @@ class [[nodiscard]] Status {
   friend struct StatusOr;
 };
 
-namespace type_details {
-template <typename... Ts>
-using FirstElement = typename std::tuple_element_t<0, std::tuple<Ts...>>;
-
-template <typename T>
-using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
-}  // namespace type_details
-
 template <typename, typename = void>
 struct StringInStatusOr : private std::string {
   using BaseType = std::string;
@@ -222,14 +216,12 @@ struct [[nodiscard]] StatusOr {
     new (&error) ErrorType(std::move(msg));
   }
 
-  template <
-      typename... Ts,
-      typename std::enable_if<(sizeof...(Ts) > 0 &&
-                               !std::is_same_v<Status, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
-                               !std::is_same_v<Code, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>> &&
-                               !std::is_same_v<StatusOr, type_details::RemoveCVRef<type_details::FirstElement<Ts...>>>),
-                              int>::type = 0>    // NOLINT
-  StatusOr(Ts&&... args) : code_(Status::cOK) {  // NOLINT
+  template <typename... Ts,
+            typename std::enable_if<(sizeof...(Ts) > 0 && !std::is_same_v<Status, RemoveCVRef<FirstElement<Ts...>>> &&
+                                     !std::is_same_v<Code, RemoveCVRef<FirstElement<Ts...>>> &&
+                                     !std::is_same_v<StatusOr, RemoveCVRef<FirstElement<Ts...>>>),
+                                    int>::type = 0>  // NOLINT
+  StatusOr(Ts&&... args) : code_(Status::cOK) {      // NOLINT
     new (&value) ValueType(std::forward<Ts>(args)...);
   }
 

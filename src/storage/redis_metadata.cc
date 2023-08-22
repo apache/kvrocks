@@ -77,29 +77,21 @@ uint64_t InternalKey::GetVersion() const { return version_; }
 
 std::string InternalKey::Encode() const {
   std::string out;
-  size_t pos = 0;
   size_t total = 1 + namespace_.size() + 4 + key_.size() + 8 + sub_key_.size();
   if (slot_id_encoded_) {
     total += 2;
   }
   out.resize(total);
   auto buf = out.data();
-  EncodeFixed8(buf + pos, static_cast<uint8_t>(namespace_.size()));
-  pos += 1;
-  memcpy(buf + pos, namespace_.data(), namespace_.size());
-  pos += namespace_.size();
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(namespace_.size()));
+  buf = EncodeBuffer(buf, namespace_);
   if (slot_id_encoded_) {
-    EncodeFixed16(buf + pos, slotid_);
-    pos += 2;
+    buf = EncodeFixed16(buf, slotid_);
   }
-  EncodeFixed32(buf + pos, static_cast<uint32_t>(key_.size()));
-  pos += 4;
-  memcpy(buf + pos, key_.data(), key_.size());
-  pos += key_.size();
-  EncodeFixed64(buf + pos, version_);
-  pos += 8;
-  memcpy(buf + pos, sub_key_.data(), sub_key_.size());
-  // pos += sub_key_.size();
+  buf = EncodeFixed32(buf, static_cast<uint32_t>(key_.size()));
+  buf = EncodeBuffer(buf, key_);
+  buf = EncodeFixed64(buf, version_);
+  EncodeBuffer(buf, sub_key_);
   return out;
 }
 

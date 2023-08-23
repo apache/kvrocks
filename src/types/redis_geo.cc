@@ -96,7 +96,7 @@ rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, 
                                     double unit_conversion, std::vector<GeoPoint> *geo_points) {
   GeoPoint geo_point;
   auto s = Get(user_key, member, &geo_point);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   return Radius(user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
                 store_distance, unit_conversion, geo_points);

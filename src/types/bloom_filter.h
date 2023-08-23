@@ -55,8 +55,6 @@ static constexpr uint32_t kMaximumBloomFilterBytes = 128 * 1024 * 1024;
 class BlockSplitBloomFilter {
  public:
   /// The constructor of BlockSplitBloomFilter. It uses XXH64 as hash function.
-  ///
-  /// \param pool memory pool to use.
   BlockSplitBloomFilter();
 
   /// Initialize the BlockSplitBloomFilter. The range of num_bytes should be within

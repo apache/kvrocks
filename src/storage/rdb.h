@@ -60,6 +60,9 @@ class RDB {
   StatusOr<std::vector<std::string>> LoadSetObject();
   StatusOr<std::vector<std::string>> LoadListObject();
   StatusOr<std::vector<std::string>> LoadQuickListObject(int rdb_type);
+  StatusOr<std::map<std::string, std::string>> LoadHashWithZipMap();
+  StatusOr<std::map<std::string, std::string>> LoadHashObject();
+  StatusOr<std::vector<MemberScore>> LoadZSetObject(int type);
 
  private:
   std::string_view input_;
@@ -69,4 +72,7 @@ class RDB {
   StatusOr<std::string> loadEncodedString();
   StatusOr<uint64_t> loadObjectLen(bool *is_encoded);
   Status peekOk(size_t n);
+  StatusOr<double> loadBinaryDouble();
+  StatusOr<double> loadDouble();
+  StatusOr<std::vector<std::string>> LoadListWithQuickList();
 };

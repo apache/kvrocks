@@ -25,6 +25,7 @@
 #include "vendor/crc64.h"
 #include "vendor/endianconv.h"
 #include "vendor/lzf.h"
+#include "zip_map.h"
 
 // Redis object encoding length
 constexpr const int RDB6BitLen = 0;
@@ -176,6 +177,29 @@ StatusOr<std::vector<std::string>> RDB::LoadQuickListObject(int rdb_type) {
   return list;
 }
 
+StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
+  std::vector<std::string> list;
+  auto len = GET_OR_RET(loadObjectLen(nullptr));
+  if (len == 0) {
+    return list;
+  }
+
+  uint64_t container = QuickListNodeContainerPacked;
+  for (size_t i = 0; i < len; i++) {
+    if (type == RDBTypeListQuickList2) {
+      container = GET_OR_RET(loadObjectLen(nullptr));
+      if (container != QuickListNodeContainerPlain && container != QuickListNodeContainerPacked) {
+        return {Status::NotOK, fmt::format("Unknown quicklist node container type {}", container)};
+      }
+    }
+    auto list_pack_string = GET_OR_RET(loadEncodedString());
+    ListPack lp(list_pack_string);
+    auto elements = GET_OR_RET(lp.Entries());
+    list.insert(list.end(), elements.begin(), elements.end());
+  }
+  return list;
+}
+
 StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   auto len = GET_OR_RET(loadObjectLen(nullptr));
   std::vector<std::string> list;
@@ -200,12 +224,77 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
     return set;
   }
   for (size_t i = 0; i < len; i++) {
-    auto type = GET_OR_RET(LoadObjectType());
-    if (type != RDBTypeString) {
-      return {Status::NotOK, fmt::format("Unknown object type {} in loadSet()", type)};
-    }
-    auto element = GET_OR_RET(loadEncodedString());
+    auto element = GET_OR_RET(LoadStringObject());
     set.push_back(element);
   }
   return set;
+}
+
+StatusOr<std::map<std::string, std::string>> RDB::LoadHashObject() {
+  auto len = GET_OR_RET(loadObjectLen(nullptr));
+  std::map<std::string, std::string> hash;
+  if (len == 0) {
+    return hash;
+  }
+
+  for (size_t i = 0; i < len; i++) {
+    auto field = GET_OR_RET(LoadStringObject());
+    auto value = GET_OR_RET(LoadStringObject());
+    hash[field] = value;
+  }
+  return hash;
+}
+
+StatusOr<std::map<std::string, std::string>> RDB::LoadHashWithZipMap() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ZipMap zip_map(encoded_string);
+  return zip_map.Entries();
+}
+
+StatusOr<double> RDB::loadBinaryDouble() {
+  GET_OR_RET(peekOk(8));
+  double value = 0;
+  memcpy(&value, input_.data() + pos_, 8);
+  memrev64ifbe(&value);
+  pos_ += 8;
+  return value;
+}
+
+StatusOr<double> RDB::loadDouble() {
+  char buf[256];
+  GET_OR_RET(peekOk(1));
+  auto len = static_cast<uint8_t>(input_[pos_++]);
+  switch (len) {
+    case 255:
+      return -1.0 / 0.0; /* Negative inf */
+    case 254:
+      return 1.0 / 0.0; /* Positive inf */
+    case 253:
+      return 0.0 / 0.0; /* NaN */
+  }
+  GET_OR_RET(peekOk(len));
+  memcpy(buf, input_.data() + pos_, len);
+  buf[len] = '\0';
+  pos_ += len;
+  return strtod(buf, nullptr);
+}
+
+StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject(int type) {
+  auto len = GET_OR_RET(loadObjectLen(nullptr));
+  std::vector<MemberScore> zset;
+  if (len == 0) {
+    return zset;
+  }
+
+  for (size_t i = 0; i < len; i++) {
+    auto member = GET_OR_RET(LoadStringObject());
+    double score = 0;
+    if (type == RDBTypeZSet2) {
+      score = GET_OR_RET(loadBinaryDouble());
+    } else {
+      score = GET_OR_RET(loadDouble());
+    }
+    zset.emplace_back(MemberScore{member, score});
+  }
+  return zset;
 }

@@ -31,6 +31,7 @@
 #include "string_util.h"
 #include "time_util.h"
 #include "types/redis_list.h"
+#include "types/redis_set.h"
 #include "types/redis_string.h"
 
 namespace redis {
@@ -1045,7 +1046,19 @@ class CommandRestore : public Commander {
       }
     } else if (type == RDBTypeSet) {
       auto members = GET_OR_RET(rdb.LoadSetObject());
+      redis::Set set_db(svr->storage, conn->GetNamespace());
+      uint64_t count = 0;
+      std::vector<Slice> insert_members;
+      insert_members.reserve(members.size());
+      for (const auto &member : members) {
+        insert_members.emplace_back(member);
+      }
+      db_status = set_db.Add(args_[1], insert_members, &count);
+      if (!db_status.ok()) {
+        return {Status::RedisExecErr, db_status.ToString()};
+      }
     } else if (type == RDBTypeZSet || type == RDBTypeZSet2) {
+    } else if (type == RDBTypeHash) {
     } else if (type == RDBTypeList || type == RDBTypeListQuickList || type == RDBTypeListQuickList2) {
       std::vector<std::string> elements;
 
@@ -1073,6 +1086,9 @@ class CommandRestore : public Commander {
           }
         }
       }
+    } else if (type == RDBTypeHashZipMap) {
+      auto entries = GET_OR_RET(rdb.LoadHashWithZipMap());
+      std::cout << "entries size: " << entries.size() << std::endl;
     } else {
       return {Status::RedisExecErr, "only string type is supported"};
     }

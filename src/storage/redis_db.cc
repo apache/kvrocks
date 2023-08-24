@@ -55,7 +55,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
     metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
-  if (metadata->size == 0 && type != kRedisStream) {  // stream is allowed to be empty
+  if (metadata->size == 0 && type != kRedisStream && type != kRedisBloomFilter) {  // stream and bloom is allowed to be empty
     metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no elements");
   }

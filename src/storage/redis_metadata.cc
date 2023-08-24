@@ -303,7 +303,7 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::ExpireAt(uint64_t expired_ts) const {
-  if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
+  if (Type() != kRedisString && Type() != kRedisStream && Type() != kRedisBloomFilter && size == 0) {
     return true;
   }
   if (expire == 0) {
@@ -398,6 +398,76 @@ rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
   GetFixed64(&input, &last_entry_id.seq);
 
   GetFixed64(&input, &entries_added);
+
+  return rocksdb::Status::OK();
+}
+
+void SBChainMetadata::Encode(std::string *dst) {
+  Metadata::Encode(dst);
+
+  PutFixed16(dst, n_filters);
+  PutFixed16(dst, scaling);
+  PutFixed16(dst, expansion);
+}
+
+rocksdb::Status SBChainMetadata::Decode(const std::string &bytes) {
+  Slice input(bytes);
+  if (!GetFixed8(&input, &flags)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetExpire(&input)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  if (input.size() < 8 + CommonEncodedSize()) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(&input, &version);
+  GetFixedCommon(&input, &size);
+
+  if (input.size() < 6) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed16(&input, &n_filters);
+  GetFixed16(&input, &scaling);
+  GetFixed16(&input, &expansion);
+
+  return rocksdb::Status::OK();
+}
+
+void BFMetadata::Encode(std::string *dst) {
+  Metadata::Encode(dst);
+
+  PutFixed32(dst, entries);
+  PutDouble(dst, error);
+  PutFixed32(dst, bf_bytes);
+}
+
+rocksdb::Status BFMetadata::Decode(const std::string &bytes) {
+  Slice input(bytes);
+  if (!GetFixed8(&input, &flags)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetExpire(&input)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  if (input.size() < 8 + CommonEncodedSize()) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(&input, &version);
+  GetFixedCommon(&input, &size);
+
+  if (input.size() < 16) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed32(&input, &entries);
+  GetDouble(&input, &error);
+  GetFixed32(&input, &bf_bytes);
 
   return rocksdb::Status::OK();
 }

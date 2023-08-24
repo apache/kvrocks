@@ -31,11 +31,14 @@ namespace test {
 
 TEST(ConstructorTest, TestBloomFilter) {
   BlockSplitBloomFilter bloom_filter;
-  EXPECT_TRUE(bloom_filter.Init(1000));
 
   // It return false because the number of bytes of Bloom filter bitset must be a power of 2.
-  std::unique_ptr<uint8_t[]> bitset2(new uint8_t[1024]());
-  EXPECT_FALSE(bloom_filter.Init(bitset2.get(), 1023));
+  std::unique_ptr<uint8_t[]> bitset1(new uint8_t[1024]());
+  EXPECT_FALSE(bloom_filter.Init(bitset1.get(), 1023));
+
+  // It return false because the number of bytes of Bloom filter bitset must be a power of 2.
+  std::string bitset2(1022, 's');
+  EXPECT_FALSE(bloom_filter.Init(bitset2));
 }
 
 // The BasicTest is used to test basic operations including InsertHash, FindHash and

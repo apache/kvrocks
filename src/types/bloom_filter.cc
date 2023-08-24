@@ -24,7 +24,7 @@
 
 BlockSplitBloomFilter::BlockSplitBloomFilter() = default;
 
-bool BlockSplitBloomFilter::Init(uint32_t num_bytes) {
+void BlockSplitBloomFilter::Init(uint32_t num_bytes) {
   if (num_bytes < kMinimumBloomFilterBytes) {
     num_bytes = kMinimumBloomFilterBytes;
   }
@@ -40,7 +40,6 @@ bool BlockSplitBloomFilter::Init(uint32_t num_bytes) {
 
   num_bytes_ = num_bytes;
   data_.resize(num_bytes_, 0);
-  return true;
 }
 
 bool BlockSplitBloomFilter::Init(const uint8_t* bitset, uint32_t num_bytes) {

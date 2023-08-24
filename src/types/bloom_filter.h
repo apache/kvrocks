@@ -63,18 +63,25 @@ class BlockSplitBloomFilter {
   /// will be rounded up to a power of 2.
   ///
   /// @param num_bytes The number of bytes to store Bloom filter bitset.
-  bool Init(uint32_t num_bytes);
+  void Init(uint32_t num_bytes);
 
   /// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
   /// bitset because the given bitset may not satisfy the 32-byte alignment requirement
   /// which may lead to segfault when performing SIMD instructions. It is the caller's
-  /// responsibility to free the bitset passed in. This is used when reconstructing
-  /// a Bloom filter from a parquet file.
+  /// responsibility to free the bitset passed in.
   ///
   /// @param bitset The given bitset to initialize the Bloom filter.
   /// @param num_bytes  The number of bytes of given bitset.
+  /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
   bool Init(const uint8_t* bitset, uint32_t num_bytes);
 
+  /// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
+  /// bitset because the given bitset may not satisfy the 32-byte alignment requirement
+  /// which may lead to segfault when performing SIMD instructions. It is the caller's
+  /// responsibility to free the bitset passed in.
+  ///
+  /// @param bitset The given bitset to initialize the Bloom filter.
+  /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
   bool Init(std::string bitset);
 
   /// Minimum Bloom filter size, it sets to 32 bytes to fit a tiny Bloom filter.
@@ -130,11 +137,30 @@ class BlockSplitBloomFilter {
     return num_bits;
   }
 
+  /// Determine whether an element exist in set or not.
+  ///
+  /// @param hash the element to contain.
+  /// @return false if value is definitely not in set, and true means PROBABLY
+  /// in set.
   bool FindHash(uint64_t hash) const;
+
+  /// Insert element to set represented by Bloom filter bitset.
+  ///
+  /// @param hash the hash of value to insert into Bloom filter.
   void InsertHash(uint64_t hash);
+
   uint32_t GetBitsetSize() const { return num_bytes_; }
+
+  /// Get the plain bitset value from the Bloom filter bitset.
+  ///
+  /// @return bitset value;
   const std::string& GetData() { return data_; }
 
+  /// Compute hash for string value by using its plain encoding result.
+  ///
+  /// @param value the value address.
+  /// @param len the value length.
+  /// @return hash result.
   static uint64_t Hash(const char* data, size_t length);
 
  private:

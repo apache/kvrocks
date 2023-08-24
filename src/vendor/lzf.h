@@ -152,7 +152,6 @@ size_t lzf_decompress(const void *const in_data, size_t in_len, void *out_data, 
 #ifdef __cplusplus
 #include <climits>
 #include <cstring>
-using namespace std;
 #else
 #include <limits.h>
 #include <string.h>

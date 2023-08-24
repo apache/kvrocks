@@ -296,11 +296,11 @@ StatusOr<double> RDB::loadDouble() {
   auto len = static_cast<uint8_t>(input_[pos_++]);
   switch (len) {
     case 255:
-      return -1.0 / 0.0; /* Negative inf */
+      return -INFINITY; /* Negative inf */
     case 254:
-      return 1.0 / 0.0; /* Positive inf */
+      return INFINITY; /* Positive inf */
     case 253:
-      return 0.0 / 0.0; /* NaN */
+      return NAN; /* NaN */
   }
   GET_OR_RET(peekOk(len));
   memcpy(buf, input_.data() + pos_, len);

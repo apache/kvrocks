@@ -47,7 +47,6 @@
 #include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
-#include "vendor/crc64.h"
 #include "version.h"
 #include "worker.h"
 
@@ -64,7 +63,6 @@ Server::Server(engine::Storage *storage, Config *config)
 
   // init cursor_dict_
   cursor_dict_ = std::make_unique<CursorDictType>();
-  crc64_init();
 
 #ifdef ENABLE_OPENSSL
   // init ssl context

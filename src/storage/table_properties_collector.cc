@@ -30,10 +30,6 @@
 rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key, const rocksdb::Slice &value,
                                                       rocksdb::EntryType entry_type, rocksdb::SequenceNumber,
                                                       uint64_t) {
-  uint8_t type = 0;
-  uint32_t expired = 0, subkeys = 0;
-  uint64_t version = 0;
-
   if (start_key_.empty()) {
     start_key_ = key.ToString();
   }
@@ -47,23 +43,18 @@ rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key,
   if (cf_name_ != "metadata") {
     return rocksdb::Status::OK();
   }
-  rocksdb::Slice cv = value;
-  if (entry_type != rocksdb::kEntryPut || cv.size() < 5) {
+
+  if (entry_type != rocksdb::kEntryPut || value.size() < 5) {
     return rocksdb::Status::OK();
   }
-  GetFixed8(&cv, &type);
-  GetFixed32(&cv, &expired);
-  type = type & (uint8_t)0x0f;
-  if (type == kRedisBitmap || type == kRedisSet || type == kRedisList || type == kRedisHash || type == kRedisZSet ||
-      type == kRedisSortedint) {
-    if (cv.size() <= 12) return rocksdb::Status::OK();
-    GetFixed64(&cv, &version);
-    GetFixed32(&cv, &subkeys);
-  }
-  total_keys_ += subkeys;
-  int now = Server::GetCachedUnixTime();
-  if ((expired > 0 && expired < static_cast<uint32_t>(now)) || (type != kRedisString && subkeys == 0)) {
-    deleted_keys_ += subkeys + 1;
+
+  Metadata metadata(RedisType::kRedisNone);
+  auto s = metadata.Decode(value);
+  if (!s.ok()) return rocksdb::Status::OK();
+
+  total_keys_ += metadata.size;
+  if (metadata.ExpireAt(Server::GetCachedUnixTime())) {
+    deleted_keys_ += metadata.size + 1;
   }
   return rocksdb::Status::OK();
 }

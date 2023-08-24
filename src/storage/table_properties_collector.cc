@@ -53,7 +53,7 @@ rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key,
   if (!s.ok()) return rocksdb::Status::OK();
 
   total_keys_ += metadata.size;
-  if (metadata.ExpireAt(Server::GetCachedUnixTime())) {
+  if (metadata.ExpireAt(Server::GetCachedUnixTime() * 1000)) {
     deleted_keys_ += metadata.size + 1;
   }
   return rocksdb::Status::OK();

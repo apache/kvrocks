@@ -23,7 +23,7 @@
 #include "vendor/endianconv.h"
 
 constexpr const int zlHeaderSize = 10;
-constexpr const uint8_t ZipListBigLen = 254;
+constexpr const uint8_t ZipListBigLen = 0xFE;
 constexpr const uint8_t zlEnd = 0xFF;
 
 constexpr const uint8_t ZIP_STR_MASK = 0xC0;
@@ -43,7 +43,7 @@ StatusOr<std::string> ZipList::Next() {
   auto prev_entry_encoded_size = getEncodedLengthSize(pre_entry_len_);
   pos_ += prev_entry_encoded_size;
   GET_OR_RET(peekOK(1));
-  auto encoding = static_cast<uint8_t>(input_[pos_++]);
+  auto encoding = static_cast<uint8_t>(input_[pos_]);
   if (encoding < ZIP_STR_MASK) {
     encoding &= ZIP_STR_MASK;
   }
@@ -52,7 +52,6 @@ StatusOr<std::string> ZipList::Next() {
   std::string value;
   if ((encoding) < ZIP_STR_MASK) {
     if ((encoding) == ZIP_STR_06B) {
-      GET_OR_RET(peekOK(1));
       len_bytes = 1;
       len = input_[pos_] & 0x3F;
     } else if ((encoding) == ZIP_STR_14B) {
@@ -69,7 +68,7 @@ StatusOr<std::string> ZipList::Next() {
     }
     pos_ += len_bytes;
     GET_OR_RET(peekOK(len));
-    value = input_.substr(pos_ + len_bytes, len);
+    value = input_.substr(pos_, len);
     pos_ += len;
     setPreEntryLen(len_bytes + len + prev_entry_encoded_size);
   } else {
@@ -114,7 +113,7 @@ StatusOr<std::string> ZipList::Next() {
       return std::to_string(i64);
     } else if (encoding >= ZIP_INT_IMM_MIN && encoding <= ZIP_INT_IMM_MAX) {
       setPreEntryLen(1);  // 8byte for encoding and 1byte for the prev entry length
-      return std::to_string(encoding & 0x0F);
+      return std::to_string((encoding & 0x0F) - 1);
     } else {
       return {Status::NotOK, "invalid ziplist encoding"};
     }

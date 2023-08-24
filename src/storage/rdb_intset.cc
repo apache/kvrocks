@@ -80,6 +80,8 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         entries.emplace_back(std::to_string(v));
         break;
       }
+      default:
+        return {Status::NotOK, "invalid intset encoding"};
     }
   }
   return entries;

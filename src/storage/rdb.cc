@@ -129,7 +129,9 @@ StatusOr<std::string> RDB::loadLzfString() {
 
 StatusOr<std::string> RDB::loadEncodedString() {
   bool is_encoded = false;
+  uint32_t int_value = 0;
   std::string value;
+  auto input = reinterpret_cast<const uint8_t *>(input_.data());
   auto len = GET_OR_RET(loadObjectLen(&is_encoded));
   if (is_encoded) {
     switch (len) {
@@ -138,15 +140,14 @@ StatusOr<std::string> RDB::loadEncodedString() {
         return std::to_string(input_[pos_++]);
       case RDBEncInt16:
         GET_OR_RET(peekOk(2));
-        value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8));
+        int_value = (input[pos_] | (input[pos_ + 1] << 8));
         pos_ += 2;
-        return value;
+        return std::to_string(static_cast<int16_t>(int_value));
       case RDBEncInt32:
         GET_OR_RET(peekOk(4));
-        value = std::to_string(input_[pos_] | (input_[pos_ + 1] << 8) | (input_[pos_ + 2] << 16) |
-                               (input_[pos_ + 3] << 24));
+        int_value = input[pos_] | (input[pos_ + 1] << 8) | (input[pos_ + 2] << 16) | (input[pos_ + 3] << 24);
         pos_ += 4;
-        return value;
+        return std::to_string(static_cast<int32_t>(int_value));
       case RDBEncLzf:
         return loadLzfString();
       default:

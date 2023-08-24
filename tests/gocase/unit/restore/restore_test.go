@@ -64,6 +64,32 @@ func TestRestore_Hash(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("Hash object encoding", func(t *testing.T) {
+		key := util.RandString(0, 10, util.Alpha)
+		value := "\x04\x06\x02f2\xc0\x01\x02f3\xc1\xd2\x04\xc3\x12@F\n01234567890\xe00\t\x0189\xc0\x01\x02f4\xc2Na\xbc\x00\x02f6\xc0b\x02f5\x0e12345678901234\a\x00\xc5f\xe3\xf8\xa4w\a)"
+		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+		require.EqualValues(t, map[string]string{
+			"0123456789012345678901234567890123456789012345678901234567890123456789": "1",
+			"f2": "1",
+			"f3": "1234",
+			"f4": "12345678",
+			"f5": "12345678901234",
+			"f6": "98",
+		}, rdb.HGetAll(ctx, key).Val())
+	})
+
+	t.Run("Hash ziplist encoding", func(t *testing.T) {
+		key := util.RandString(0, 10, util.Alpha)
+		value := "\r22\x00\x00\x00,\x00\x00\x00\b\x00\x00\x0bxxxxxxxxxxy\r\xf5\x02\x02f2\x04\xfe \x03\x02f3\x04\xc0,\x01\x04\x02f4\x04\xf0\x87\xd6\x12\xff\a\x00\xba\x1dc/U\xa5\x88\x94"
+		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+		require.EqualValues(t, map[string]string{
+			"xxxxxxxxxxy": "4",
+			"f2":          "32",
+			"f3":          "300",
+			"f4":          "1234567",
+		}, rdb.HGetAll(ctx, key).Val())
+	})
+
 	t.Run("List pack encoding", func(t *testing.T) {
 		key := util.RandString(0, 10, util.Alpha)
 		value := "\x10\x1f\x1f\x00\x00\x00\x06\x00\x82f1\x03\x82v1\x03\x82f2\x03\x82v2\x03\x82f3\x03\x82v3\x03\xff\x0b\x00L\xcd\xdfe(4xd"

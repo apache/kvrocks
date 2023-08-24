@@ -1348,6 +1348,11 @@ class CommandZInterStore : public CommandZUnionStore {
     *output = redis::Integer(size);
     return Status::OK();
   }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {3, 2 + num_key, 1};
+  }
 };
 
 class CommandZScan : public CommandSubkeyScanBase {
@@ -1378,7 +1383,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", CommandZInterStore::Range),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),

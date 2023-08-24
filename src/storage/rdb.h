@@ -53,7 +53,7 @@ constexpr const int QuickListNodeContainerPacked = 2;
 
 class RDB {
  public:
-  explicit RDB(engine::Storage *storage, std::string ns, const std::string &input)
+  explicit RDB(engine::Storage *storage, std::string ns, std::string_view input)
       : storage_(storage), ns_(std::move(ns)), input_(input){};
   ~RDB() = default;
 

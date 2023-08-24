@@ -21,11 +21,18 @@
 #include "rdb.h"
 
 #include "common/encoding.h"
-#include "list_pack.h"
+#include "rdb_intset.h"
+#include "rdb_listpack.h"
+#include "rdb_ziplist.h"
+#include "rdb_zipmap.h"
+#include "types/redis_hash.h"
+#include "types/redis_list.h"
+#include "types/redis_set.h"
+#include "types/redis_string.h"
+#include "types/redis_zset.h"
 #include "vendor/crc64.h"
 #include "vendor/endianconv.h"
 #include "vendor/lzf.h"
-#include "zip_map.h"
 
 // Redis object encoding length
 constexpr const int RDB6BitLen = 0;
@@ -55,7 +62,7 @@ Status RDB::VerifyPayloadChecksum() {
   if (rdb_version > 11) {
     return {Status::NotOK, fmt::format("invalid version: {}", rdb_version)};
   }
-  uint64_t crc = crc64(0, reinterpret_cast<const unsigned char*>(input_.data()), input_.size() - 8);
+  uint64_t crc = crc64(0, reinterpret_cast<const unsigned char *>(input_.data()), input_.size() - 8);
   memrev64ifbe(&crc);
   if (memcmp(&crc, footer.data() + 2, 8)) {
     return {Status::NotOK, "incorrect checksum"};
@@ -74,7 +81,7 @@ StatusOr<int> RDB::LoadObjectType() {
   return {Status::NotOK, fmt::format("invalid object type: {}", type)};
 }
 
-StatusOr<uint64_t> RDB::loadObjectLen(bool* is_encoded) {
+StatusOr<uint64_t> RDB::loadObjectLen(bool *is_encoded) {
   GET_OR_RET(peekOk(1));
   uint64_t len = 0;
   auto c = input_[pos_++];
@@ -154,29 +161,6 @@ StatusOr<std::string> RDB::loadEncodedString() {
   return value;
 }
 
-StatusOr<std::vector<std::string>> RDB::LoadQuickListObject(int rdb_type) {
-  auto len = GET_OR_RET(loadObjectLen(nullptr));
-  std::vector<std::string> list;
-  if (len == 0) {
-    return list;
-  }
-
-  uint64_t container = QuickListNodeContainerPacked;
-  for (size_t i = 0; i < len; i++) {
-    if (rdb_type == RDBTypeListQuickList2) {
-      container = GET_OR_RET(loadObjectLen(nullptr));
-      if (container != QuickListNodeContainerPlain && container != QuickListNodeContainerPacked) {
-        return {Status::NotOK, fmt::format("Unknown quicklist node container type {}", container)};
-      }
-    }
-    auto list_pack_string = GET_OR_RET(loadEncodedString());
-    ListPack lp(list_pack_string);
-    auto elements = GET_OR_RET(lp.Entries());
-    list.insert(list.end(), elements.begin(), elements.end());
-  }
-  return list;
-}
-
 StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
   std::vector<std::string> list;
   auto len = GET_OR_RET(loadObjectLen(nullptr));
@@ -217,6 +201,12 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   return list;
 }
 
+StatusOr<std::vector<std::string>> RDB::LoadListWithZipList() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ZipList zip_list(encoded_string);
+  return zip_list.Entries();
+}
+
 StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
   auto len = GET_OR_RET(loadObjectLen(nullptr));
   std::vector<std::string> set;
@@ -228,6 +218,18 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
     set.push_back(element);
   }
   return set;
+}
+
+StatusOr<std::vector<std::string>> RDB::LoadSetWithListPack() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ListPack lp(encoded_string);
+  return lp.Entries();
+}
+
+StatusOr<std::vector<std::string>> RDB::LoadSetWithIntSet() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  IntSet intset(encoded_string);
+  return intset.Entries();
 }
 
 StatusOr<std::map<std::string, std::string>> RDB::LoadHashObject() {
@@ -249,6 +251,34 @@ StatusOr<std::map<std::string, std::string>> RDB::LoadHashWithZipMap() {
   auto encoded_string = GET_OR_RET(LoadStringObject());
   ZipMap zip_map(encoded_string);
   return zip_map.Entries();
+}
+
+StatusOr<std::map<std::string, std::string>> RDB::LoadHashWithListPack() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ListPack lp(encoded_string);
+  auto entries = GET_OR_RET(lp.Entries());
+  if (entries.size() % 2 != 0) {
+    return {Status::NotOK, "invalid list pack length"};
+  }
+  std::map<std::string, std::string> hash;
+  for (size_t i = 0; i < entries.size(); i += 2) {
+    hash[entries[i]] = entries[i + 1];
+  }
+  return hash;
+}
+
+StatusOr<std::map<std::string, std::string>> RDB::LoadHashWithZipList() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ZipList zip_list(encoded_string);
+  auto entries = GET_OR_RET(zip_list.Entries());
+  if (entries.size() % 2 != 0) {
+    return {Status::NotOK, "invalid zip list length"};
+  }
+  std::map<std::string, std::string> hash;
+  for (size_t i = 0; i < entries.size(); i += 2) {
+    hash[entries[i]] = entries[i + 1];
+  }
+  return hash;
 }
 
 StatusOr<double> RDB::loadBinaryDouble() {
@@ -276,7 +306,7 @@ StatusOr<double> RDB::loadDouble() {
   memcpy(buf, input_.data() + pos_, len);
   buf[len] = '\0';
   pos_ += len;
-  return strtod(buf, nullptr);
+  return ParseFloat<double>(std::string(buf, len));
 }
 
 StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject(int type) {
@@ -297,4 +327,118 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject(int type) {
     zset.emplace_back(MemberScore{member, score});
   }
   return zset;
+}
+
+StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithListPack() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ListPack lp(encoded_string);
+  auto entries = GET_OR_RET(lp.Entries());
+  if (entries.size() % 2 != 0) {
+    return {Status::NotOK, "invalid list pack length"};
+  }
+  std::vector<MemberScore> zset;
+  for (size_t i = 0; i < entries.size(); i += 2) {
+    zset.emplace_back(MemberScore{entries[i], std::stod(entries[i + 1])});
+  }
+  return zset;
+}
+
+StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithZipList() {
+  auto encoded_string = GET_OR_RET(LoadStringObject());
+  ZipList zip_list(encoded_string);
+  auto entries = GET_OR_RET(zip_list.Entries());
+  if (entries.size() % 2 != 0) {
+    return {Status::NotOK, "invalid zip list length"};
+  }
+  std::vector<MemberScore> zset;
+  for (size_t i = 0; i < entries.size(); i += 2) {
+    zset.emplace_back(MemberScore{entries[i], std::stod(entries[i + 1])});
+  }
+  return zset;
+}
+
+Status RDB::Restore(const std::string &key, uint64_t ttl) {
+  rocksdb::Status db_status;
+
+  // Check the checksum of the payload
+  GET_OR_RET(VerifyPayloadChecksum());
+
+  auto type = GET_OR_RET(LoadObjectType());
+  if (type == RDBTypeString) {
+    auto value = GET_OR_RET(LoadStringObject());
+    redis::String string_db(storage_, ns_);
+    db_status = string_db.SetEX(key, value, ttl);
+  } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
+    std::vector<std::string> members;
+    if (type == RDBTypeSet) {
+      members = GET_OR_RET(LoadSetObject());
+    } else if (type == RDBTypeSetListPack) {
+      members = GET_OR_RET(LoadSetWithListPack());
+    } else {
+      members = GET_OR_RET(LoadSetWithIntSet());
+    }
+    redis::Set set_db(storage_, ns_);
+    uint64_t count = 0;
+    std::vector<Slice> insert_members;
+    insert_members.reserve(members.size());
+    for (const auto &member : members) {
+      insert_members.emplace_back(member);
+    }
+    db_status = set_db.Add(key, insert_members, &count);
+  } else if (type == RDBTypeZSet || type == RDBTypeZSet2 || type == RDBTypeZSetListPack || type == RDBTypeZSetZipList) {
+    std::vector<MemberScore> member_scores;
+    if (type == RDBTypeZSet || type == RDBTypeZSet2) {
+      member_scores = GET_OR_RET(LoadZSetObject(type));
+    } else if (type == RDBTypeZSetListPack) {
+      member_scores = GET_OR_RET(LoadZSetWithListPack());
+    } else {
+      member_scores = GET_OR_RET(LoadZSetWithZipList());
+    }
+    redis::ZSet zset_db(storage_, ns_);
+    uint64_t count = 0;
+    db_status = zset_db.Add(key, ZAddFlags(0), (redis::ZSet::MemberScores *)&member_scores, &count);
+  } else if (type == RDBTypeHash || type == RDBTypeHashListPack || type == RDBTypeHashZipList ||
+             type == RDBTypeHashZipMap) {
+    std::map<std::string, std::string> entries;
+    if (type == RDBTypeHash) {
+      entries = GET_OR_RET(LoadHashObject());
+    } else if (type == RDBTypeHashListPack) {
+      entries = GET_OR_RET(LoadHashWithListPack());
+    } else if (type == RDBTypeHashZipList) {
+      entries = GET_OR_RET(LoadHashWithZipList());
+    } else {
+      entries = GET_OR_RET(LoadHashWithZipMap());
+    }
+    std::vector<FieldValue> filed_values;
+    filed_values.reserve(entries.size());
+    for (const auto &entry : entries) {
+      filed_values.emplace_back(entry.first, entry.second);
+    }
+    redis::Hash hash_db(storage_, ns_);
+    uint64_t count = 0;
+    db_status = hash_db.MSet(key, filed_values, false /*nx*/, &count);
+  } else if (type == RDBTypeList || type == RDBTypeListZipList || type == RDBTypeListQuickList ||
+             type == RDBTypeListQuickList2) {
+    std::vector<std::string> elements;
+    if (type == RDBTypeList) {
+      elements = GET_OR_RET(LoadListObject());
+    } else if (type == RDBTypeListZipList) {
+      elements = GET_OR_RET(LoadListWithZipList());
+    } else {
+      elements = GET_OR_RET(LoadListWithQuickList(type));
+    }
+    if (!elements.empty()) {
+      std::vector<Slice> insert_elements;
+      insert_elements.reserve(elements.size());
+      for (const auto &element : elements) {
+        insert_elements.emplace_back(element);
+      }
+      redis::List list_db(storage_, ns_);
+      uint64_t list_size = 0;
+      db_status = list_db.Push(key, insert_elements, false, &list_size);
+    }
+  } else {
+    return {Status::RedisExecErr, fmt::format("unsupported restore type: {}", type)};
+  }
+  return db_status.ok() ? Status::OK() : Status(Status::RedisExecErr, db_status.ToString());
 }

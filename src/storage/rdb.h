@@ -20,6 +20,7 @@
 #pragma once
 
 #include <string_view>
+#include <utility>
 
 #include "status.h"
 #include "types/redis_zset.h"
@@ -44,6 +45,7 @@ constexpr const int RDBTypeHashListPack = 16;
 constexpr const int RDBTypeZSetListPack = 17;
 constexpr const int RDBTypeListQuickList2 = 18;
 constexpr const int RDBTypeStreamListPack2 = 19;
+constexpr const int RDBTypeSetListPack = 20;
 
 // Quick list node encoding
 constexpr const int QuickListNodeContainerPlain = 1;
@@ -51,20 +53,41 @@ constexpr const int QuickListNodeContainerPacked = 2;
 
 class RDB {
  public:
-  explicit RDB(std::string_view input) : input_(input){};
+  explicit RDB(engine::Storage *storage, std::string ns, const std::string &input)
+      : storage_(storage), ns_(std::move(ns)), input_(input){};
   ~RDB() = default;
 
   Status VerifyPayloadChecksum();
   StatusOr<int> LoadObjectType();
+  Status Restore(const std::string &key, uint64_t ttl);
+
+  // String
   StatusOr<std::string> LoadStringObject();
-  StatusOr<std::vector<std::string>> LoadSetObject();
-  StatusOr<std::vector<std::string>> LoadListObject();
-  StatusOr<std::vector<std::string>> LoadQuickListObject(int rdb_type);
-  StatusOr<std::map<std::string, std::string>> LoadHashWithZipMap();
+
+  // List
   StatusOr<std::map<std::string, std::string>> LoadHashObject();
+  StatusOr<std::map<std::string, std::string>> LoadHashWithZipMap();
+  StatusOr<std::map<std::string, std::string>> LoadHashWithListPack();
+  StatusOr<std::map<std::string, std::string>> LoadHashWithZipList();
+
+  // Sorted Set
   StatusOr<std::vector<MemberScore>> LoadZSetObject(int type);
+  StatusOr<std::vector<MemberScore>> LoadZSetWithListPack();
+  StatusOr<std::vector<MemberScore>> LoadZSetWithZipList();
+
+  // Set
+  StatusOr<std::vector<std::string>> LoadSetObject();
+  StatusOr<std::vector<std::string>> LoadSetWithIntSet();
+  StatusOr<std::vector<std::string>> LoadSetWithListPack();
+
+  // List
+  StatusOr<std::vector<std::string>> LoadListObject();
+  StatusOr<std::vector<std::string>> LoadListWithZipList();
+  StatusOr<std::vector<std::string>> LoadListWithQuickList(int type);
 
  private:
+  engine::Storage *storage_;
+  std::string ns_;
   std::string_view input_;
   size_t pos_ = 0;
 
@@ -74,5 +97,4 @@ class RDB {
   Status peekOk(size_t n);
   StatusOr<double> loadBinaryDouble();
   StatusOr<double> loadDouble();
-  StatusOr<std::vector<std::string>> LoadListWithQuickList();
 };

@@ -18,7 +18,7 @@
  *
  */
 
-#include "zip_map.h"
+#include "rdb_zipmap.h"
 
 #include "vendor/endianconv.h"
 
@@ -29,7 +29,7 @@ const uint8_t ZipMapEOF = 0xFF;
 
 Status ZipMap::peekOK(size_t n) {
   if (pos_ + n > input_.size()) {
-    return {Status::NotOK, "reach the end of zip map"};
+    return {Status::NotOK, "reach the end of zipmap"};
   }
   return Status::OK();
 }
@@ -87,7 +87,7 @@ StatusOr<std::map<std::string, std::string>> ZipMap::Entries() {
     GET_OR_RET(peekOK(1));
   }
   if (zipmap_len < ZipMapBigLen && zipmap_len != kvs.size()) {
-    return {Status::NotOK, "invalid zip map length"};
+    return {Status::NotOK, "invalid zipmap length"};
   }
   return kvs;
 }

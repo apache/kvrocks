@@ -18,7 +18,7 @@
  *
  */
 
-#include "zip_list.h"
+#include "rdb_ziplist.h"
 
 #include "vendor/endianconv.h"
 
@@ -65,7 +65,7 @@ StatusOr<std::string> ZipList::Next() {
       len = ((uint32_t)(input_[pos_])) << 24 | (uint32_t)input_[pos_ + 1] << 16 | (uint32_t)input_[pos_ + 2] << 8 |
             (uint32_t)input_[pos_ + 3];
     } else {
-      return {Status::NotOK, "invalid encoding"};
+      return {Status::NotOK, "invalid ziplist encoding"};
     }
     pos_ += len_bytes;
     GET_OR_RET(peekOK(len));
@@ -116,7 +116,7 @@ StatusOr<std::string> ZipList::Next() {
       setPreEntryLen(1);  // 8byte for encoding and 1byte for the prev entry length
       return std::to_string(encoding & 0x0F);
     } else {
-      return {Status::NotOK, "invalid encoding"};
+      return {Status::NotOK, "invalid ziplist encoding"};
     }
   }
   return value;
@@ -138,14 +138,14 @@ StatusOr<std::vector<std::string>> ZipList::Entries() {
     entries.emplace_back(entry);
   }
   if (zl_len != entries.size()) {
-    return {Status::NotOK, "invalid zip list length"};
+    return {Status::NotOK, "invalid ziplist length"};
   }
   return entries;
 }
 
 Status ZipList::peekOK(size_t n) {
   if (pos_ + n > input_.size()) {
-    return {Status::NotOK, "reach the end of zip map"};
+    return {Status::NotOK, "reach the end of ziplist"};
   }
   return Status::OK();
 }

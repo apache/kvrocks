@@ -30,9 +30,6 @@
 #include "storage/rdb.h"
 #include "string_util.h"
 #include "time_util.h"
-#include "types/redis_list.h"
-#include "types/redis_set.h"
-#include "types/redis_string.h"
 
 namespace redis {
 
@@ -1017,12 +1014,6 @@ class CommandRestore : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    RDB rdb(args_[3]);
-    auto s = rdb.VerifyPayloadChecksum();
-    if (!s.IsOK()) {
-      return s;
-    }
-
     rocksdb::Status db_status;
     if (!replace_) {
       redis::Database redis(svr->storage, conn->GetNamespace());
@@ -1036,62 +1027,9 @@ class CommandRestore : public Commander {
       }
     }
 
-    auto type = GET_OR_RET(rdb.LoadObjectType());
-    if (type == RDBTypeString) {
-      auto value = GET_OR_RET(rdb.LoadStringObject());
-      redis::String string_db(svr->storage, conn->GetNamespace());
-      db_status = string_db.SetEX(args_[1], value, ttl_);
-      if (!db_status.ok()) {
-        return {Status::RedisExecErr, db_status.ToString()};
-      }
-    } else if (type == RDBTypeSet) {
-      auto members = GET_OR_RET(rdb.LoadSetObject());
-      redis::Set set_db(svr->storage, conn->GetNamespace());
-      uint64_t count = 0;
-      std::vector<Slice> insert_members;
-      insert_members.reserve(members.size());
-      for (const auto &member : members) {
-        insert_members.emplace_back(member);
-      }
-      db_status = set_db.Add(args_[1], insert_members, &count);
-      if (!db_status.ok()) {
-        return {Status::RedisExecErr, db_status.ToString()};
-      }
-    } else if (type == RDBTypeZSet || type == RDBTypeZSet2) {
-    } else if (type == RDBTypeHash) {
-    } else if (type == RDBTypeList || type == RDBTypeListQuickList || type == RDBTypeListQuickList2) {
-      std::vector<std::string> elements;
-
-      if (type == RDBTypeList) {
-        elements = GET_OR_RET(rdb.LoadListObject());
-      } else {
-        elements = GET_OR_RET(rdb.LoadQuickListObject(type));
-      }
-      if (!elements.empty()) {
-        std::vector<Slice> insert_elements;
-        insert_elements.reserve(elements.size());
-        for (const auto &element : elements) {
-          insert_elements.emplace_back(element);
-        }
-        redis::List list_db(svr->storage, conn->GetNamespace());
-        uint64_t list_size = 0;
-        db_status = list_db.Push(args_[1], insert_elements, false, &list_size);
-        if (!db_status.ok()) {
-          return {Status::RedisExecErr, db_status.ToString()};
-        }
-        if (ttl_ > 0) {
-          db_status = list_db.Expire(args_[1], ttl_);
-          if (!db_status.ok()) {
-            return {Status::RedisExecErr, db_status.ToString()};
-          }
-        }
-      }
-    } else if (type == RDBTypeHashZipMap) {
-      auto entries = GET_OR_RET(rdb.LoadHashWithZipMap());
-      std::cout << "entries size: " << entries.size() << std::endl;
-    } else {
-      return {Status::RedisExecErr, "only string type is supported"};
-    }
+    RDB rdb(svr->storage, conn->GetNamespace(), args_[3]);
+    auto s = rdb.Restore(args_[1], ttl_);
+    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
     return Status::OK();
   }

@@ -48,7 +48,7 @@
  * element-data was determined by the encoding-type and element-total-bytes is the total bytes of the element.
  * The total bytes of the element is used to traverse the list-pack from the end to the beginning.
  */
-#include "list_pack.h"
+#include "rdb_listpack.h"
 
 constexpr const int ListPack7BitUIntMask = 0x80;
 constexpr const int ListPack7BitUInt = 0;
@@ -115,7 +115,7 @@ StatusOr<uint32_t> ListPack::Length() {
   pos_ += listPackHeaderSize;
 
   if (total_bytes != input_.size()) {
-    return {Status::NotOK, "invalid list pack length"};
+    return {Status::NotOK, "invalid listpack length"};
   }
   return len;
 }
@@ -137,7 +137,7 @@ uint32_t ListPack::encodeBackLen(uint32_t len) {
 
 Status ListPack::peekOK(size_t n) {
   if (pos_ + n > input_.size()) {
-    return {Status::NotOK, "reach the end of list pack"};
+    return {Status::NotOK, "reach the end of listpack"};
   }
   return Status::OK();
 }
@@ -214,7 +214,7 @@ StatusOr<std::string> ListPack::Next() {
   } else if (c == ListPackEOF) {
     ++pos_;
   } else {
-    return {Status::NotOK, "invalid list pack entry"};
+    return {Status::NotOK, "invalid listpack entry"};
   }
   return value;
 }

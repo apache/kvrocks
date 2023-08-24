@@ -151,37 +151,37 @@ TEST(FPPTest, TestBloomFilter) {
 // Also it is used to test whether OptimalNumOfBits returns value between
 // [MINIMUM_BLOOM_FILTER_SIZE, MAXIMUM_BLOOM_FILTER_SIZE].
 TEST(OptimalValueTest, TestBloomFilter) {
-  auto testOptimalNumEstimation = [](uint32_t ndv, double fpp, uint32_t num_bits) {
+  auto test_optimal_num_estimation = [](uint32_t ndv, double fpp, uint32_t num_bits) {
     EXPECT_EQ(BlockSplitBloomFilter::OptimalNumOfBits(ndv, fpp), num_bits);
     EXPECT_EQ(BlockSplitBloomFilter::OptimalNumOfBytes(ndv, fpp), num_bits / 8);
   };
 
-  testOptimalNumEstimation(256, 0.01, UINT32_C(4096));
-  testOptimalNumEstimation(512, 0.01, UINT32_C(8192));
-  testOptimalNumEstimation(1024, 0.01, UINT32_C(16384));
-  testOptimalNumEstimation(2048, 0.01, UINT32_C(32768));
+  test_optimal_num_estimation(256, 0.01, UINT32_C(4096));
+  test_optimal_num_estimation(512, 0.01, UINT32_C(8192));
+  test_optimal_num_estimation(1024, 0.01, UINT32_C(16384));
+  test_optimal_num_estimation(2048, 0.01, UINT32_C(32768));
 
-  testOptimalNumEstimation(200, 0.01, UINT32_C(2048));
-  testOptimalNumEstimation(300, 0.01, UINT32_C(4096));
-  testOptimalNumEstimation(700, 0.01, UINT32_C(8192));
-  testOptimalNumEstimation(1500, 0.01, UINT32_C(16384));
+  test_optimal_num_estimation(200, 0.01, UINT32_C(2048));
+  test_optimal_num_estimation(300, 0.01, UINT32_C(4096));
+  test_optimal_num_estimation(700, 0.01, UINT32_C(8192));
+  test_optimal_num_estimation(1500, 0.01, UINT32_C(16384));
 
-  testOptimalNumEstimation(200, 0.025, UINT32_C(2048));
-  testOptimalNumEstimation(300, 0.025, UINT32_C(4096));
-  testOptimalNumEstimation(700, 0.025, UINT32_C(8192));
-  testOptimalNumEstimation(1500, 0.025, UINT32_C(16384));
+  test_optimal_num_estimation(200, 0.025, UINT32_C(2048));
+  test_optimal_num_estimation(300, 0.025, UINT32_C(4096));
+  test_optimal_num_estimation(700, 0.025, UINT32_C(8192));
+  test_optimal_num_estimation(1500, 0.025, UINT32_C(16384));
 
-  testOptimalNumEstimation(200, 0.05, UINT32_C(2048));
-  testOptimalNumEstimation(300, 0.05, UINT32_C(4096));
-  testOptimalNumEstimation(700, 0.05, UINT32_C(8192));
-  testOptimalNumEstimation(1500, 0.05, UINT32_C(16384));
+  test_optimal_num_estimation(200, 0.05, UINT32_C(2048));
+  test_optimal_num_estimation(300, 0.05, UINT32_C(4096));
+  test_optimal_num_estimation(700, 0.05, UINT32_C(8192));
+  test_optimal_num_estimation(1500, 0.05, UINT32_C(16384));
 
   // Boundary check
-  testOptimalNumEstimation(4, 0.01, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
-  testOptimalNumEstimation(4, 0.25, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
+  test_optimal_num_estimation(4, 0.01, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
+  test_optimal_num_estimation(4, 0.25, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
 
-  testOptimalNumEstimation(std::numeric_limits<uint32_t>::max(), 0.01, kMaximumBloomFilterBytes * 8);
-  testOptimalNumEstimation(std::numeric_limits<uint32_t>::max(), 0.25, kMaximumBloomFilterBytes * 8);
+  test_optimal_num_estimation(std::numeric_limits<uint32_t>::max(), 0.01, kMaximumBloomFilterBytes * 8);
+  test_optimal_num_estimation(std::numeric_limits<uint32_t>::max(), 0.25, kMaximumBloomFilterBytes * 8);
 }
 
 }  // namespace test

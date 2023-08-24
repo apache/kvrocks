@@ -110,7 +110,7 @@ class BlockSplitBloomFilter {
   static uint32_t OptimalNumOfBits(uint32_t ndv, double fpp) {
     //    CHECK(fpp > 0.0 && fpp < 1.0);
     const double m = -8.0 * ndv / log(1 - pow(fpp, 1.0 / 8));
-    uint32_t num_bits;
+    uint32_t num_bits = 0;
 
     // Handle overflow.
     if (m < 0 || m > kMaximumBloomFilterBytes << 3) {

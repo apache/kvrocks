@@ -119,12 +119,12 @@ StatusOr<std::string> RDB::loadLzfString() {
   auto len = GET_OR_RET(loadObjectLen(nullptr));
   GET_OR_RET(peekOk(static_cast<size_t>(compression_len)));
 
-  auto out_buf = make_unique<char[]>(len);
-  if (lzf_decompress(input_.data() + pos_, compression_len, out_buf.get(), len) != len) {
+  std::string out_buf(len, 0);
+  if (lzf_decompress(input_.data() + pos_, compression_len, out_buf.data(), len) != len) {
     return {Status::NotOK, "Invalid LZF compressed string"};
   }
   pos_ += compression_len;
-  return std::string().assign(out_buf.get(), len);
+  return out_buf;
 }
 
 StatusOr<std::string> RDB::loadEncodedString() {

@@ -626,6 +626,15 @@ rocksdb::Status ZSet::Overwrite(const Slice &user_key, const MemberScores &mscor
 
 rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
+  std::string ns_key;
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys_weights.size());
+  for (const auto &key_weight : keys_weights) {
+    ns_key = AppendNamespacePrefix(key_weight.key);
+    lock_keys.emplace_back(ns_key);
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
   if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
@@ -697,6 +706,15 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
 
 rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
                             uint64_t *saved_cnt, std::vector<MemberScore> *members) {
+  std::string ns_key;
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys_weights.size());
+  for (const auto &key_weight : keys_weights) {
+    ns_key = AppendNamespacePrefix(key_weight.key);
+    lock_keys.emplace_back(ns_key);
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
   if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;

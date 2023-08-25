@@ -25,6 +25,7 @@
 #include "rdb_listpack.h"
 #include "rdb_ziplist.h"
 #include "rdb_zipmap.h"
+#include "time_util.h"
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
@@ -191,10 +192,6 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
     return list;
   }
   for (size_t i = 0; i < len; i++) {
-    auto type = GET_OR_RET(LoadObjectType());
-    if (type != RDBTypeString) {
-      return {Status::NotOK, fmt::format("Unknown object type {} in loadList()", type)};
-    }
     auto element = GET_OR_RET(loadEncodedString());
     list.push_back(element);
   }
@@ -357,7 +354,7 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithZipList() {
   return zset;
 }
 
-Status RDB::Restore(const std::string &key, uint64_t ttl) {
+Status RDB::Restore(const std::string &key, uint64_t ttl_ms) {
   rocksdb::Status db_status;
 
   // Check the checksum of the payload
@@ -367,7 +364,7 @@ Status RDB::Restore(const std::string &key, uint64_t ttl) {
   if (type == RDBTypeString) {
     auto value = GET_OR_RET(LoadStringObject());
     redis::String string_db(storage_, ns_);
-    db_status = string_db.SetEX(key, value, ttl);
+    db_status = string_db.SetEX(key, value, ttl_ms);
   } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
     std::vector<std::string> members;
     if (type == RDBTypeSet) {
@@ -444,9 +441,9 @@ Status RDB::Restore(const std::string &key, uint64_t ttl) {
     return {Status::RedisExecErr, db_status.ToString()};
   }
   // String type will use the SETEX, so just only set the ttl for other types
-  if (ttl > 0 && type != RDBTypeString) {
+  if (ttl_ms > 0 && type != RDBTypeString) {
     redis::Database db(storage_, ns_);
-    db_status = db.Expire(key, ttl);
+    db_status = db.Expire(key, ttl_ms + util::GetTimeStampMS());
   }
   return db_status.ok() ? Status::OK() : Status{Status::RedisExecErr, db_status.ToString()};
 }

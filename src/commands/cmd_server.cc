@@ -984,16 +984,16 @@ class CommandRestore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 4);
-    ttl_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
+    ttl_ms_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
     while (parser.Good()) {
       if (parser.EatEqICase("replace")) {
         replace_ = true;
       } else if (parser.EatEqICase("absttl")) {
-        auto now = util::GetTimeStamp();
-        if (ttl_ <= static_cast<uint64_t>(now)) {
+        auto now = util::GetTimeStampMS();
+        if (ttl_ms_ <= static_cast<uint64_t>(now)) {
           return {Status::RedisExecErr, "Invalid expire time"};
         }
-        ttl_ -= now;
+        ttl_ms_ -= now;
       } else if (parser.EatEqICase("idletime")) {
         // idle time is not supported in Kvrocks, so just skip it
         auto idle_time = GET_OR_RET(parser.TakeInt());
@@ -1015,8 +1015,8 @@ class CommandRestore : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     rocksdb::Status db_status;
+    redis::Database redis(svr->storage, conn->GetNamespace());
     if (!replace_) {
-      redis::Database redis(svr->storage, conn->GetNamespace());
       int count = 0;
       db_status = redis.Exists({args_[1]}, &count);
       if (!db_status.ok()) {
@@ -1025,10 +1025,15 @@ class CommandRestore : public Commander {
       if (count > 0) {
         return {Status::RedisExecErr, "target key name already exists."};
       }
+    } else {
+      db_status = redis.Del(args_[1]);
+      if (!db_status.ok()) {
+        return {Status::RedisExecErr, db_status.ToString()};
+      }
     }
 
     RDB rdb(svr->storage, conn->GetNamespace(), args_[3]);
-    auto s = rdb.Restore(args_[1], ttl_);
+    auto s = rdb.Restore(args_[1], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -1036,7 +1041,7 @@ class CommandRestore : public Commander {
 
  private:
   bool replace_ = false;
-  uint64_t ttl_ = 0;
+  uint64_t ttl_ms_ = 0;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),

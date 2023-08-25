@@ -59,7 +59,7 @@ class RDB {
 
   Status VerifyPayloadChecksum();
   StatusOr<int> LoadObjectType();
-  Status Restore(const std::string &key, uint64_t ttl);
+  Status Restore(const std::string &key, uint64_t ttl_ms);
 
   // String
   StatusOr<std::string> LoadStringObject();

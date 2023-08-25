@@ -22,22 +22,6 @@
 
 namespace redis {
 
-void SBChain::appendBFSuffix(const Slice &ns_key, uint16_t filters_index, std::string *output) {
-  output->clear();
-
-  output->append(ns_key.data(), ns_key.size());
-  output->append(kBloomFilterSeparator);
-  PutFixed16(output, filters_index);
-}
-
-void SBChain ::appendBFMetaSuffix(const Slice &bf_key, std::string *output) {
-  output->clear();
-
-  output->append(bf_key.data(), bf_key.size());
-  output->append(kBloomFilterSeparator);
-  output->append("meta");
-}
-
 void SBChain::bfInit(BFMetadata *bf_metadata, std::string *bf_data, uint32_t entries, double error) {
   bf_metadata->entries = entries;
   bf_metadata->error = error;
@@ -49,6 +33,26 @@ void SBChain::bfInit(BFMetadata *bf_metadata, std::string *bf_data, uint32_t ent
   BlockSplitBloomFilter block_split_bloom_filter;
   block_split_bloom_filter.Init(bf_bytes);
   *bf_data = block_split_bloom_filter.GetData();
+}
+
+std::string SBChain::getBFKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index) {
+  std::string sub_key;
+  sub_key.append(kBloomFilterSeparator);
+  PutFixed16(&sub_key, filters_index);
+
+  std::string bf_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return bf_key;
+}
+
+std::string SBChain::getBFMetaKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index) {
+  std::string sub_key;
+  sub_key.append(kBloomFilterSeparator);
+  PutFixed16(&sub_key, filters_index);
+  sub_key.append(kBloomFilterSeparator);
+  sub_key.append("meta");
+
+  std::string bf_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return bf_key;
 }
 
 rocksdb::Status SBChain::getSBChainMetadata(const Slice &ns_key, SBChainMetadata *metadata) {
@@ -90,10 +94,8 @@ rocksdb::Status SBChain::createSBChain(const Slice &ns_key, double error_rate, u
   sb_chain_metadata.Encode(&sb_chain_meta_bytes);
   batch->Put(metadata_cf_handle_, ns_key, sb_chain_meta_bytes);
 
-  std::string bf_key;
-  appendBFSuffix(ns_key, sb_chain_metadata.n_filters - 1, &bf_key);
-  std::string bf_meta_key;
-  appendBFMetaSuffix(bf_key, &bf_meta_key);
+  std::string bf_key = getBFKey(ns_key, sb_chain_metadata, sb_chain_metadata.n_filters - 1);
+  std::string bf_meta_key = getBFMetaKey(ns_key, sb_chain_metadata, sb_chain_metadata.n_filters - 1);
   BFMetadata bf_metadata;
   std::string bf_data;
   bfInit(&bf_metadata, &bf_data, capacity, error_rate);
@@ -115,9 +117,9 @@ rocksdb::Status SBChain::bloomCheckAdd(const Slice &bf_key, const std::string &i
   bool found = block_split_bloom_filter.FindHash(h);
 
   ret = 0;
-  if (found && mode == ReadWriteMode::MODE_READ) {
+  if (found && mode == ReadWriteMode::READ) {
     ret = 1;
-  } else if (!found && mode == ReadWriteMode::MODE_WRITE) {
+  } else if (!found && mode == ReadWriteMode::WRITE) {
     auto batch = storage_->GetWriteBatchBase();
     ret = 1;
     block_split_bloom_filter.InsertHash(h);
@@ -161,9 +163,8 @@ rocksdb::Status SBChain::Add(const Slice &user_key, const Slice &item, int &ret)
   std::vector<std::string> bf_key_list;
   std::vector<BFMetadata> bf_metadata_list;
   for (u_int16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
-    std::string bf_key, bf_meta_key;
-    appendBFSuffix(ns_key, i, &bf_key);
-    appendBFMetaSuffix(bf_key, &bf_meta_key);
+    std::string bf_key = getBFKey(ns_key, sb_chain_metadata, i);
+    std::string bf_meta_key = getBFMetaKey(ns_key, sb_chain_metadata, i);
     BFMetadata bf_metadata;
     s = getBFMetadata(bf_meta_key, &bf_metadata);
     if (!s.ok()) return s;
@@ -186,7 +187,7 @@ rocksdb::Status SBChain::Add(const Slice &user_key, const Slice &item, int &ret)
 
   // check
   for (int i = sb_chain_metadata.n_filters - 1; i >= 0; --i) {
-    s = bloomCheckAdd(bf_key_list[i], item_string, ReadWriteMode::MODE_READ, ret);
+    s = bloomCheckAdd(bf_key_list[i], item_string, ReadWriteMode::READ, ret);
     if (ret == 1) {
       item_exist = true;
       break;
@@ -195,15 +196,14 @@ rocksdb::Status SBChain::Add(const Slice &user_key, const Slice &item, int &ret)
 
   // insert
   if (!item_exist) {
-    s = bloomCheckAdd(cur_bf_key, item_string, ReadWriteMode::MODE_WRITE, ret);
+    s = bloomCheckAdd(cur_bf_key, item_string, ReadWriteMode::WRITE, ret);
     cur_bf_metadata.size += ret;
     sb_chain_metadata.size += ret;
   }
-
-  std::string cur_bf_metadata_bytes, cur_bf_meta_key, sb_chain_metadata_bytes;
+  std::string cur_bf_meta_key = getBFMetaKey(ns_key, sb_chain_metadata, sb_chain_metadata.n_filters - 1);
+  std::string cur_bf_metadata_bytes, sb_chain_metadata_bytes;
   cur_bf_metadata.Encode(&cur_bf_metadata_bytes);
   sb_chain_metadata.Encode(&sb_chain_metadata_bytes);
-  appendBFMetaSuffix(cur_bf_key, &cur_bf_meta_key);
   batch->Put(cur_bf_meta_key, cur_bf_metadata_bytes);
   batch->Put(metadata_cf_handle_, ns_key, sb_chain_metadata_bytes);
 
@@ -220,15 +220,14 @@ rocksdb::Status SBChain::Exist(const Slice &user_key, const Slice &item, int &re
 
   std::vector<std::string> bf_key_list;
   for (uint16_t i = 0; i < sb_chain_metadata.n_filters; ++i) {
-    std::string bf_key;
-    appendBFSuffix(ns_key, i, &bf_key);
+    std::string bf_key = getBFKey(ns_key, sb_chain_metadata, i);
     bf_key_list.push_back(bf_key);
   }
 
   const auto &item_string = item.ToString();
   // check
   for (int i = sb_chain_metadata.n_filters - 1; i >= 0; --i) {
-    s = bloomCheckAdd(bf_key_list[i], item_string, ReadWriteMode::MODE_READ, ret);
+    s = bloomCheckAdd(bf_key_list[i], item_string, ReadWriteMode::READ, ret);
     if (ret == 1) {
       break;
     }

@@ -33,8 +33,8 @@ const uint16_t kBFDefaultExpansion = 2;
 const double kErrorTighteningRatio = 0.5;
 
 enum class ReadWriteMode {
-  MODE_READ = 0,
-  MODE_WRITE = 1,
+  READ = 0,
+  WRITE = 1,
 };
 
 class SBChain : public Database {
@@ -46,14 +46,14 @@ class SBChain : public Database {
   rocksdb::Status Exist(const Slice &user_key, const Slice &item, int &ret);
 
  private:
+  std::string getBFKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index);
+  std::string getBFMetaKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index);
   rocksdb::Status getSBChainMetadata(const Slice &ns_key, SBChainMetadata *metadata);
   rocksdb::Status getBFMetadata(const Slice &bf_meta_key, BFMetadata *metadata);
   rocksdb::Status createSBChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                 uint16_t scaling, SBChainMetadata &sb_chain_metadata);
   rocksdb::Status bloomCheckAdd(const Slice &bf_key, const std::string &item, ReadWriteMode mode, int &ret);
 
-  static void appendBFSuffix(const Slice &ns_key, uint16_t filters_index, std::string *output);
-  static void appendBFMetaSuffix(const Slice &bf_key, std::string *output);
   static void bfInit(BFMetadata *bf_metadata, std::string *bf_data, uint32_t entries, double error);
 };
 }  // namespace redis

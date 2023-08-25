@@ -129,35 +129,34 @@ StatusOr<std::string> RDB::loadLzfString() {
 
 StatusOr<std::string> RDB::loadEncodedString() {
   bool is_encoded = false;
-  uint32_t int_value = 0;
-  std::string value;
-  auto input = reinterpret_cast<const uint8_t *>(input_.data());
   auto len = GET_OR_RET(loadObjectLen(&is_encoded));
   if (is_encoded) {
-    switch (len) {
-      case RDBEncInt8:
-        GET_OR_RET(peekOk(1));
-        return std::to_string(input_[pos_++]);
-      case RDBEncInt16:
-        GET_OR_RET(peekOk(2));
-        int_value = (input[pos_] | (input[pos_ + 1] << 8));
-        pos_ += 2;
-        return std::to_string(static_cast<int16_t>(int_value));
-      case RDBEncInt32:
-        GET_OR_RET(peekOk(4));
-        int_value = input[pos_] | (input[pos_ + 1] << 8) | (input[pos_ + 2] << 16) | (input[pos_ + 3] << 24);
-        pos_ += 4;
-        return std::to_string(static_cast<int32_t>(int_value));
-      case RDBEncLzf:
-        return loadLzfString();
-      default:
-        return {Status::NotOK, fmt::format("Unknown RDB string encoding type {}", len)};
+    // For integer type, needs to convert to uint8_t* to avoid signed extension
+    auto data = reinterpret_cast<const uint8_t *>(input_.data());
+    if (len == RDBEncInt8) {
+      GET_OR_RET(peekOk(1));
+      return std::to_string(data[pos_++]);
+    } else if (len == RDBEncInt16) {
+      GET_OR_RET(peekOk(2));
+      auto value = static_cast<uint16_t>(data[pos_]) | (static_cast<uint16_t>(data[pos_ + 1]) << 8);
+      pos_ += 2;
+      return std::to_string(static_cast<int16_t>(value));
+    } else if (len == RDBEncInt32) {
+      GET_OR_RET(peekOk(4));
+      auto value = static_cast<uint32_t>(data[pos_]) | (static_cast<uint32_t>(data[pos_ + 1]) << 8) |
+                   (static_cast<uint32_t>(data[pos_ + 2]) << 16) | (static_cast<uint32_t>(data[pos_ + 3]) << 24);
+      pos_ += 4;
+      return std::to_string(static_cast<int32_t>(value));
+    } else if (len == RDBEncLzf) {
+      return loadLzfString();
+    } else {
+      return {Status::NotOK, fmt::format("Unknown RDB string encoding type {}", len)};
     }
   }
 
   // Normal string
   GET_OR_RET(peekOk(static_cast<size_t>(len)));
-  value = std::string(input_.data() + pos_, len);
+  auto value = std::string(input_.data() + pos_, len);
   pos_ += len;
   return value;
 }
@@ -441,5 +440,13 @@ Status RDB::Restore(const std::string &key, uint64_t ttl) {
   } else {
     return {Status::RedisExecErr, fmt::format("unsupported restore type: {}", type)};
   }
-  return db_status.ok() ? Status::OK() : Status(Status::RedisExecErr, db_status.ToString());
+  if (!db_status.ok()) {
+    return {Status::RedisExecErr, db_status.ToString()};
+  }
+  // String type will use the SETEX, so just only set the ttl for other types
+  if (ttl > 0 && type != RDBTypeString) {
+    redis::Database db(storage_, ns_);
+    db_status = db.Expire(key, ttl);
+  }
+  return db_status.ok() ? Status::OK() : Status{Status::RedisExecErr, db_status.ToString()};
 }

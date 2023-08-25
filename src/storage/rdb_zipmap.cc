@@ -38,7 +38,7 @@ uint32_t ZipMap::getEncodedLengthSize(uint32_t len) { return len < ZipMapBigLen 
 
 StatusOr<uint32_t> ZipMap::decodeLength() {
   GET_OR_RET(peekOK(1));
-  unsigned int len = input_[pos_++];
+  unsigned int len = static_cast<uint8_t>(input_[pos_++]);
   if (len == ZipMapBigLen) {
     GET_OR_RET(peekOK(4));
     memcpy(&len, input_.data() + pos_, sizeof(unsigned int));
@@ -78,7 +78,7 @@ StatusOr<std::pair<std::string, std::string>> ZipMap::Next() {
 StatusOr<std::map<std::string, std::string>> ZipMap::Entries() {
   std::map<std::string, std::string> kvs;
   GET_OR_RET(peekOK(1));
-  auto zipmap_len = static_cast<uint8_t>(input_[pos_++]);
+  auto zm_len = static_cast<uint8_t>(input_[pos_++]);
 
   GET_OR_RET(peekOK(1));
   while (static_cast<uint8_t>(input_[pos_]) != ZipMapEOF) {
@@ -86,7 +86,7 @@ StatusOr<std::map<std::string, std::string>> ZipMap::Entries() {
     kvs.insert(kv);
     GET_OR_RET(peekOK(1));
   }
-  if (zipmap_len < ZipMapBigLen && zipmap_len != kvs.size()) {
+  if (zm_len < ZipMapBigLen && zm_len != kvs.size()) {
     return {Status::NotOK, "invalid zipmap length"};
   }
   return kvs;

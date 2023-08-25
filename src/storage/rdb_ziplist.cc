@@ -51,18 +51,20 @@ StatusOr<std::string> ZipList::Next() {
   uint32_t len = 0, len_bytes = 0;
   std::string value;
   if ((encoding) < ZIP_STR_MASK) {
+    // For integer type, needs to convert to uint8_t* to avoid signed extension
+    auto data = reinterpret_cast<const uint8_t*>(input_.data());
     if ((encoding) == ZIP_STR_06B) {
       len_bytes = 1;
-      len = input_[pos_] & 0x3F;
+      len = data[pos_] & 0x3F;
     } else if ((encoding) == ZIP_STR_14B) {
       GET_OR_RET(peekOK(2));
       len_bytes = 2;
-      len = ((uint32_t)(input_[pos_] & 0x3F)) << 8 | input_[pos_ + 1];
+      len = ((static_cast<uint32_t>(data[pos_]) & 0x3F) << 8) | static_cast<uint32_t>(data[pos_ + 1]);
     } else if ((encoding) == ZIP_STR_32B) {
       GET_OR_RET(peekOK(5));
       len_bytes = 5;
-      len = ((uint32_t)(input_[pos_])) << 24 | (uint32_t)input_[pos_ + 1] << 16 | (uint32_t)input_[pos_ + 2] << 8 |
-            (uint32_t)input_[pos_ + 3];
+      len = (static_cast<uint32_t>(data[pos_]) << 24) | (static_cast<uint32_t>(data[pos_ + 1]) << 16) |
+            (static_cast<uint32_t>(data[pos_ + 2]) << 8) | static_cast<uint32_t>(data[pos_ + 3]);
     } else {
       return {Status::NotOK, "invalid ziplist encoding"};
     }

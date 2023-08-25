@@ -22,6 +22,7 @@ package restore
 import (
 	"context"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -29,6 +30,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+func setup() {
+	rand.NewSource(time.Now().Unix())
+}
+
+func TestMain(m *testing.M) {
+	setup()
+	os.Exit(m.Run())
+}
 
 func TestRestore_String(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})

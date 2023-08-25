@@ -978,6 +978,19 @@ static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
   return 0;
 }
 
+class CommandLastSave : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      return {Status::RedisExecErr, errAdminPermissionRequired};
+    }
+
+    int unix_sec = svr->GetLastBgsaveTime();
+    *output = redis::Integer(unix_sec);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1007,6 +1020,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0), )

@@ -211,6 +211,7 @@ class Server {
   void SetLastRandomKeyCursor(const std::string &cursor);
 
   static int GetCachedUnixTime();
+  int GetLastBgsaveTime();
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
   void GetMemoryInfo(std::string *info);

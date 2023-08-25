@@ -272,12 +272,11 @@ rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, uint
  * DIFF key1 key2 key3 = {b,d}
  */
 rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::string> *members) {
-  std::string ns_key;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
-    ns_key = AppendNamespacePrefix(key);
-    lock_keys.emplace_back(ns_key);
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
   }
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 
@@ -312,12 +311,11 @@ rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::strin
  * UNION key1 key2 key3 = {a,b,c,d,e}
  */
 rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::string> *members) {
-  std::string ns_key;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
-    ns_key = AppendNamespacePrefix(key);
-    lock_keys.emplace_back(ns_key);
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
   }
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 
@@ -347,12 +345,11 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
  * INTER key1 key2 key3 = {c}
  */
 rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
-  std::string ns_key;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
-    ns_key = AppendNamespacePrefix(key);
-    lock_keys.emplace_back(ns_key);
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
   }
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 

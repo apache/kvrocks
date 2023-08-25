@@ -38,6 +38,9 @@ const char *errMaxDeletedIdGreaterThanLastGenerated =
     "The ID specified in XSETID is smaller than the provided max_deleted_entry_id";
 const char *errEntriesAddedNotSpecifiedForEmptyStream = "an empty stream should have non-zero value of ENTRIESADDED";
 const char *errMaxDeletedIdNotSpecifiedForEmptyStream = "an empty stream should have MAXDELETEDID";
+const char *errXGroupSubcommandRequiresKeyExist =
+    "The XGROUP subcommand requires the key to exist.\
+Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically.";
 
 rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
   return Database::GetMetadata(kRedisStream, stream_name, metadata);
@@ -157,6 +160,65 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   *id = next_entry_id;
 
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+std::string Stream::internalKeyFromCGname(const std::string &ns_key, const StreamMetadata &metadata,
+                                          const std::string &CGname) const {
+  std::string sub_key;
+  PutFixed64(&sub_key, CGname.size());
+  sub_key += CGname;
+  sub_key += "METADATA";
+  std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return entry_key;
+}
+
+std::string Stream::EncodeStreamCGMetadataValue(const StreamConsumerGroupMetadata &CGmetadata) const {
+  std::string dst;
+  PutFixed64(&dst, CGmetadata.consumer_number);
+  PutFixed64(&dst, CGmetadata.pending_number);
+  PutFixed64(&dst, CGmetadata.last_delivered_id.ms);
+  PutFixed64(&dst, CGmetadata.last_delivered_id.seq);
+  PutFixed64(&dst, CGmetadata.entries_read);
+  PutFixed64(&dst, CGmetadata.lag);
+}
+
+rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
+                                    const std::string &CGname) {
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound() && !options.mkstream) {
+    return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
+  }
+
+  StreamConsumerGroupMetadata CGMetadata;
+  if (options.last_id == "$") {
+    CGMetadata.last_delivered_id = metadata.last_entry_id;
+  } else {
+    auto s = ParseStreamEntryID(options.last_id, &CGMetadata.last_delivered_id);
+    if (!s.IsOK()) {
+      return rocksdb::Status::InvalidArgument(s.Msg());
+    }
+  }
+  CGMetadata.entries_read = options.entries_read;
+  std::string entry_key = internalKeyFromCGname(ns_key, metadata, CGname);
+  std::string entry_value = EncodeStreamCGMetadataValue(CGMetadata);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(stream_cf_handle_, entry_key, entry_value);
+  metadata.group_number += 1;
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

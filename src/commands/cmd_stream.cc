@@ -205,6 +205,78 @@ class CommandXDel : public Commander {
   std::vector<redis::StreamEntryID> ids_;
 };
 
+class CommandXGroup : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = util::ToLower(args[1]);
+    stream_name_ = args[2];
+    group_name_ = args[3];
+    if (std::isdigit(group_name_[0])) {
+      return {Status::RedisParseErr, "group name cannot start with number"};
+    }
+
+    if (subcommand_ == "create") {
+      if (args.size() < 5 || args.size() > 8) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      xgroup_create_options_.last_id = args[4];
+
+      for (size_t i = 5; i < args.size(); ++i) {
+        auto val = util::ToLower(args[i]);
+        if (val == "mkstream") {
+          xgroup_create_options_.mkstream = true;
+          continue;
+        }
+
+        if (val == "entriesread") {
+          if (i + 1 >= args.size()) {
+            return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+          }
+          auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
+          if (!parse_result) {
+            return {Status::RedisParseErr, errValueNotInteger};
+          }
+          if (*parse_result < 0 && *parse_result != -1) {
+            return {Status::RedisParseErr, "value for ENTRIESREAD must be positive or -1"};
+          }
+          xgroup_create_options_.entries_read = *parse_result;
+          ++i;
+          continue;
+        }
+      }
+
+      return Status::OK();
+    }
+
+    if (subcommand_ == "destroy") {
+    }
+
+    return {Status::RedisParseErr, "unknown subcommand" + subcommand_};
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+
+    if (subcommand_ == "create") {
+      auto s = stream_db.CreateGroup(stream_name_, xgroup_create_options_, group_name_);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::BulkString("OK");
+
+      return Status::OK();
+    }
+  }
+
+ private:
+  std::string subcommand_;
+  std::string stream_name_;
+  std::string group_name_;
+  StreamXGroupCreateOptions xgroup_create_options_;
+};
+
 class CommandXLen : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -969,6 +1041,7 @@ class CommandXSetId : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),

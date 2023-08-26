@@ -23,37 +23,36 @@
 #include <memory>
 
 #include "test_base.h"
-#include "types/redis_sb_chain.h"
+#include "types/redis_bloom_chain.h"
 
-class RedisSBChainTest : public TestBase {
+class RedisBloomChainTest : public TestBase {
  protected:
-  explicit RedisSBChainTest() { sb_chain_ = std::make_unique<redis::SBChain>(storage_, "sb_chain_ns"); }
-  ~RedisSBChainTest() override = default;
+  explicit RedisBloomChainTest() { sb_chain_ = std::make_unique<redis::BloomChain>(storage_, "sb_chain_ns"); }
+  ~RedisBloomChainTest() override = default;
 
   void SetUp() override { key_ = "test_sb_chain_key"; }
   void TearDown() override {}
 
-  std::unique_ptr<redis::SBChain> sb_chain_;
+  std::unique_ptr<redis::BloomChain> sb_chain_;
 };
 
-TEST_F(RedisSBChainTest, Reserve) {
+TEST_F(RedisBloomChainTest, Reserve) {
   uint32_t capacity = 1000;
   double error_rate = 0.02;
-  uint16_t expansion = redis::kBFDefaultExpansion;
-  uint16_t scaling = 0;
+  uint16_t expansion = 0;
 
-  auto s = sb_chain_->Reserve(key_, capacity, error_rate, expansion, scaling);
+  auto s = sb_chain_->Reserve(key_, capacity, error_rate, expansion);
   EXPECT_TRUE(s.ok());
 
   // return false because the key is already exists;
-  s = sb_chain_->Reserve(key_, capacity, error_rate, expansion, scaling);
+  s = sb_chain_->Reserve(key_, capacity, error_rate, expansion);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "Invalid argument: the key already exists");
 
   sb_chain_->Del(key_);
 }
 
-TEST_F(RedisSBChainTest, BasicAddAndTest) {
+TEST_F(RedisBloomChainTest, BasicAddAndTest) {
   int ret = 0;
 
   auto s = sb_chain_->Exist("no_exist_key", "test_item", ret);

@@ -30,30 +30,25 @@ const char kBloomFilterSeparator[] = ":";
 const uint32_t kBFDefaultInitCapacity = 100;
 const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;
-const double kErrorTighteningRatio = 0.5;
 
 enum class ReadWriteMode {
   READ = 0,
   WRITE = 1,
 };
 
-class SBChain : public Database {
+class BloomChain : public Database {
  public:
-  SBChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion,
-                          uint16_t scaling);
+  BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
   rocksdb::Status Add(const Slice &user_key, const Slice &item, int &ret);
   rocksdb::Status Exist(const Slice &user_key, const Slice &item, int &ret);
 
  private:
-  std::string getBFKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index);
-  std::string getBFMetaKey(const Slice &ns_key, const SBChainMetadata &metadata, uint16_t filters_index);
-  rocksdb::Status getSBChainMetadata(const Slice &ns_key, SBChainMetadata *metadata);
-  rocksdb::Status getBFMetadata(const Slice &bf_meta_key, BFMetadata *metadata);
-  rocksdb::Status createSBChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
-                                uint16_t scaling, SBChainMetadata &sb_chain_metadata);
+  std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);
+  void getBFKeyList(const Slice &ns_key, const BloomChainMetadata &metadata, std::vector<std::string> &bf_key_list);
+  rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
+  rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
+                                   BloomChainMetadata &sb_chain_metadata);
   rocksdb::Status bloomCheckAdd(const Slice &bf_key, const std::string &item, ReadWriteMode mode, int &ret);
-
-  static void bfInit(BFMetadata *bf_metadata, std::string *bf_data, uint32_t entries, double error);
 };
 }  // namespace redis

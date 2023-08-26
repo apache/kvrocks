@@ -201,26 +201,46 @@ class StreamMetadata : public Metadata {
   rocksdb::Status Decode(const std::string &bytes) override;
 };
 
-class SBChainMetadata : public Metadata {
+class BloomChainMetadata : public Metadata {
  public:
+  /// The number of sub-filters
   uint16_t n_filters;
-  uint16_t scaling;
+
+  /// Adding an element to a Bloom filter never fails due to the data structure "filling up". Instead the error rate
+  /// starts to grow. To keep the error close to the one set on filter initialisation - the bloom filter will
+  /// auto-scale, meaning when capacity is reached an additional sub-filter will be created.
+  ///
+  /// The capacity of the new sub-filter is the capacity of the last sub-filter multiplied by expansion.
+  ///
+  /// The default expansion value is 2.
+  ///
+  /// For non-scaling, expansion should be set to 0
   uint16_t expansion;
 
-  explicit SBChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
+  /// The number of entries intended to be added to the filter. If your filter allows scaling, the capacity of the last
+  /// sub-filter should be: base_capacity -> base_capacity * expansion -> base_capacity * expansion^2...
+  ///
+  /// The default base_capacity value is 100.
+  uint32_t base_capacity;
+
+  /// The desired probability for false positives.
+  ///
+  /// The rate is a decimal value between 0 and 1. For example, for a desired false positive rate of 0.1% (1 in 1000),
+  /// error_rate should be set to 0.001.
+  ///
+  /// The default error_rate value is 0.01.
+  double error_rate;
+
+  /// The total number of bytes allocated for all sub-filters.
+  uint32_t bloom_bytes;
+
+  explicit BloomChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 
   void Encode(std::string *dst) override;
   rocksdb::Status Decode(const std::string &bytes) override;
-};
 
-class BFMetadata : public Metadata {
- public:
-  uint32_t entries;
-  double error;
-  uint32_t bf_bytes;
-
-  explicit BFMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
-
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
+  ///
+  /// @return the total capacity value
+  uint32_t GetCapacity() const;
 };

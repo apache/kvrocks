@@ -402,15 +402,18 @@ rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
   return rocksdb::Status::OK();
 }
 
-void SBChainMetadata::Encode(std::string *dst) {
+void BloomChainMetadata::Encode(std::string *dst) {
   Metadata::Encode(dst);
 
   PutFixed16(dst, n_filters);
-  PutFixed16(dst, scaling);
   PutFixed16(dst, expansion);
+
+  PutFixed32(dst, base_capacity);
+  PutDouble(dst, error_rate);
+  PutFixed32(dst, bloom_bytes);
 }
 
-rocksdb::Status SBChainMetadata::Decode(const std::string &bytes) {
+rocksdb::Status BloomChainMetadata::Decode(const std::string &bytes) {
   Slice input(bytes);
   if (!GetFixed8(&input, &flags)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
@@ -426,48 +429,29 @@ rocksdb::Status SBChainMetadata::Decode(const std::string &bytes) {
   GetFixed64(&input, &version);
   GetFixedCommon(&input, &size);
 
-  if (input.size() < 6) {
+  if (input.size() < 20) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
   GetFixed16(&input, &n_filters);
-  GetFixed16(&input, &scaling);
   GetFixed16(&input, &expansion);
 
+  GetFixed32(&input, &base_capacity);
+  GetDouble(&input, &error_rate);
+  GetFixed32(&input, &bloom_bytes);
+
   return rocksdb::Status::OK();
 }
 
-void BFMetadata::Encode(std::string *dst) {
-  Metadata::Encode(dst);
-
-  PutFixed32(dst, entries);
-  PutDouble(dst, error);
-  PutFixed32(dst, bf_bytes);
-}
-
-rocksdb::Status BFMetadata::Decode(const std::string &bytes) {
-  Slice input(bytes);
-  if (!GetFixed8(&input, &flags)) {
-    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-  }
-  if (!GetExpire(&input)) {
-    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+uint32_t BloomChainMetadata::GetCapacity() const {
+  // non-scaling
+  if (expansion == 0) {
+    return base_capacity;
   }
 
-  if (input.size() < 8 + CommonEncodedSize()) {
-    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  // the sum of Geometric progression
+  if (expansion == 1) {
+    return base_capacity * n_filters;
   }
-
-  GetFixed64(&input, &version);
-  GetFixedCommon(&input, &size);
-
-  if (input.size() < 16) {
-    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-  }
-
-  GetFixed32(&input, &entries);
-  GetDouble(&input, &error);
-  GetFixed32(&input, &bf_bytes);
-
-  return rocksdb::Status::OK();
+  return static_cast<uint32_t>(base_capacity * (1 - pow(expansion, n_filters)) / 1 - expansion);
 }

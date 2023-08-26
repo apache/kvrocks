@@ -379,7 +379,7 @@ rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
   GetFixed64(&input, &version);
   GetFixedCommon(&input, &size);
 
-  if (input.size() < 96) {
+  if (input.size() < 88) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
@@ -399,7 +399,10 @@ rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
   GetFixed64(&input, &last_entry_id.seq);
 
   GetFixed64(&input, &entries_added);
-  GetFixed64(&input, &group_number);
+
+  if (input.size() != 0) {
+    GetFixed64(&input, &group_number);
+  }
 
   return rocksdb::Status::OK();
 }

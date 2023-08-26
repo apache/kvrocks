@@ -239,7 +239,7 @@ class BloomChainMetadata : public Metadata {
   explicit BloomChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  rocksdb::Status Decode(Slice bytes) override;
 
   /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
   ///

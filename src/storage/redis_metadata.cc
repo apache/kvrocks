@@ -410,7 +410,7 @@ void BloomChainMetadata::Encode(std::string *dst) {
   PutFixed32(dst, bloom_bytes);
 }
 
-rocksdb::Status BloomChainMetadata::Decode(const std::string &bytes) {
+rocksdb::Status BloomChainMetadata::Decode(Slice bytes) {
   Slice input(bytes);
   if (!GetFixed8(&input, &flags)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);

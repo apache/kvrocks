@@ -170,7 +170,6 @@ std::string Stream::internalKeyFromGroupName(const std::string &ns_key, const St
   sub_key += group_name;
   sub_key += "METADATA";
   std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  std::cout << "key " << entry_key << std::endl;
   return entry_key;
 }
 
@@ -180,7 +179,6 @@ std::string Stream::groupNameFromInternalKey(const rocksdb::Slice &key) const {
   uint64_t len = 0;
   GetFixed64(&group_name_metadata, &len);
   std::string group_name = group_name_metadata.ToString().substr(0, len);
-  std::cout << "group_name " << group_name << std::endl;
   return group_name;
 }
 

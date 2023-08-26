@@ -36,7 +36,7 @@ void BloomChain::getBFKeyList(const Slice &ns_key, const BloomChainMetadata &met
   bf_key_list.reserve(metadata.n_filters);
   for (uint16_t i = 0; i < metadata.n_filters; ++i) {
     std::string bf_key = getBFKey(ns_key, metadata, i);
-    bf_key_list[i] = std::move(bf_key);
+    bf_key_list.push_back(std::move(bf_key));
   }
 }
 

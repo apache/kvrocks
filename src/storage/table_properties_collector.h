@@ -40,8 +40,8 @@ class CompactOnExpiredCollector : public rocksdb::TablePropertiesCollector {
  private:
   std::string cf_name_;
   float trigger_threshold_;
-  int64_t total_keys_ = 0;
-  int64_t deleted_keys_ = 0;
+  uint64_t total_keys_ = 0;
+  uint64_t deleted_keys_ = 0;
   std::string start_key_;
   std::string stop_key_;
 };

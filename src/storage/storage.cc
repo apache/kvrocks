@@ -643,6 +643,9 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
 rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
+  // For the manual compaction, we would like to force the bottommost level to be compacted.
+  // Or it may use the trivial mode and some expired key-values were still exist in the bottommost level.
+  compact_opts.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForceOptimized;
   for (const auto &cf_handle : cf_handles_) {
     rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle, begin, end);
     if (!s.ok()) return s;

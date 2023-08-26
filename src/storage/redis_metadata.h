@@ -31,16 +31,18 @@
 
 constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
+// We write enum integer value of every datatype
+// explicitly since it cannot be changed once confirmed
 enum RedisType {
-  kRedisNone,
-  kRedisString,
-  kRedisHash,
-  kRedisList,
-  kRedisSet,
-  kRedisZSet,
-  kRedisBitmap,
-  kRedisSortedint,
-  kRedisStream,
+  kRedisNone = 0,
+  kRedisString = 1,
+  kRedisHash = 2,
+  kRedisList = 3,
+  kRedisSet = 4,
+  kRedisZSet = 5,
+  kRedisBitmap = 6,
+  kRedisSortedint = 7,
+  kRedisStream = 8,
 };
 
 enum RedisCommand {
@@ -142,7 +144,7 @@ class Metadata {
   bool Expired() const;
   bool ExpireAt(uint64_t expired_ts) const;
   virtual void Encode(std::string *dst);
-  virtual rocksdb::Status Decode(const std::string &bytes);
+  virtual rocksdb::Status Decode(Slice input);
   bool operator==(const Metadata &that) const;
 
  private:
@@ -181,7 +183,7 @@ class ListMetadata : public Metadata {
   explicit ListMetadata(bool generate_version = true);
 
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  rocksdb::Status Decode(Slice input) override;
 };
 
 class StreamMetadata : public Metadata {
@@ -197,5 +199,5 @@ class StreamMetadata : public Metadata {
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  rocksdb::Status Decode(Slice input) override;
 };

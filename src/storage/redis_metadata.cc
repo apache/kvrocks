@@ -153,8 +153,7 @@ Metadata::Metadata(RedisType type, bool generate_version, bool use_64bit_common_
       version(generate_version ? generateVersion() : 0),
       size(0) {}
 
-rocksdb::Status Metadata::Decode(const std::string &bytes) {
-  Slice input(bytes);
+rocksdb::Status Metadata::Decode(Slice input) {
   if (!GetFixed8(&input, &flags)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
@@ -324,8 +323,7 @@ void ListMetadata::Encode(std::string *dst) {
   PutFixed64(dst, tail);
 }
 
-rocksdb::Status ListMetadata::Decode(const std::string &bytes) {
-  Slice input(bytes);
+rocksdb::Status ListMetadata::Decode(Slice input) {
   GetFixed8(&input, &flags);
   GetExpire(&input);
   if (Type() != kRedisString) {
@@ -363,8 +361,7 @@ void StreamMetadata::Encode(std::string *dst) {
   PutFixed64(dst, group_number);
 }
 
-rocksdb::Status StreamMetadata::Decode(const std::string &bytes) {
-  Slice input(bytes);
+rocksdb::Status StreamMetadata::Decode(Slice input) {
   if (!GetFixed8(&input, &flags)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }

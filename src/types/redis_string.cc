@@ -369,7 +369,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
     lock_keys.reserve(pairs.size());
     for (const StringPair &pair : pairs) {
       std::string ns_key = AppendNamespacePrefix(pair.key);
-      lock_keys.emplace_back(ns_key);
+      lock_keys.emplace_back(std::move(ns_key));
     }
     guard.emplace(storage_->GetLockManager(), lock_keys);
   }
@@ -400,7 +400,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 
   for (StringPair pair : pairs) {
     std::string ns_key = AppendNamespacePrefix(pair.key);
-    lock_keys.emplace_back(ns_key);
+    lock_keys.emplace_back(std::move(ns_key));
     keys.emplace_back(pair.key);
   }
 

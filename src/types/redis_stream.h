@@ -68,7 +68,7 @@ class Stream : public SubKeyScanner {
                                        const std::string &group_name) const;
   std::string groupNameFromInternalKey(const rocksdb::Slice &key) const;
   static std::string encodeStreamConsumerGroupMetadataValue(const StreamConsumerGroupMetadata &consumer_group_metadata);
-  StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
+  static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
 };
 
 }  // namespace redis

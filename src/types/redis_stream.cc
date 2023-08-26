@@ -177,7 +177,7 @@ std::string Stream::internalKeyFromGroupName(const std::string &ns_key, const St
 std::string Stream::groupNameFromInternalKey(const rocksdb::Slice &key) const {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice group_name_metadata = ikey.GetSubKey();
-  uint64_t len;
+  uint64_t len = 0;
   GetFixed64(&group_name_metadata, &len);
   std::string group_name = group_name_metadata.ToString().substr(0, len);
   std::cout << "group_name " << group_name << std::endl;
@@ -202,7 +202,7 @@ StreamConsumerGroupMetadata Stream::decodeStreamConsumerGroupMetadataValue(const
   GetFixed64(&input, &consumer_group_metadata.pending_number);
   GetFixed64(&input, &consumer_group_metadata.last_delivered_id.ms);
   GetFixed64(&input, &consumer_group_metadata.last_delivered_id.seq);
-  uint64_t entries_read;
+  uint64_t entries_read = 0;
   GetFixed64(&input, &entries_read);
   consumer_group_metadata.entries_read = static_cast<int64_t>(entries_read);
   GetFixed64(&input, &consumer_group_metadata.lag);

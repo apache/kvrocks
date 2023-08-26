@@ -250,9 +250,14 @@ class CommandXGroup : public Commander {
     }
 
     if (subcommand_ == "destroy") {
+      if (args.size() != 4) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      return Status::OK();
     }
 
-    return {Status::RedisParseErr, "unknown subcommand" + subcommand_};
+    return {Status::RedisParseErr, "unknown subcommand"};
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -265,9 +270,23 @@ class CommandXGroup : public Commander {
       }
 
       *output = redis::BulkString("OK");
-
-      return Status::OK();
     }
+
+    if (subcommand_ == "destroy") {
+      uint64_t delete_cnt = 0;
+      auto s = stream_db.DestroyGroup(stream_name_, group_name_, &delete_cnt);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      if (delete_cnt > 0) {
+        *output = redis::Integer(1);
+      } else {
+        *output = redis::Integer(0);
+      }
+    }
+
+    return Status::OK();
   }
 
  private:

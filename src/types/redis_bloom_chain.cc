@@ -24,9 +24,7 @@ namespace redis {
 
 std::string BloomChain::getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index) {
   std::string sub_key;
-  sub_key.append(kBloomFilterSeparator);
   PutFixed16(&sub_key, filters_index);
-
   std::string bf_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   return bf_key;
 }
@@ -132,10 +130,9 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
 
   if (s.IsNotFound()) {
-    rocksdb::Status create_s =
-        createBloomChain(ns_key, kBFDefaultErrorRate, kBFDefaultInitCapacity, kBFDefaultExpansion, &metadata);
-    if (!create_s.ok()) return create_s;
-  } else if (!s.ok()) {
+    s = createBloomChain(ns_key, kBFDefaultErrorRate, kBFDefaultInitCapacity, kBFDefaultExpansion, &metadata);
+  }
+  if (!s.ok()) {
     return s;
   }
 

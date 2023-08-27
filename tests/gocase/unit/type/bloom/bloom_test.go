@@ -79,4 +79,30 @@ func TestBloom(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "1", "nonscaling").Err(), "ERR nonscaling filters cannot expand")
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "nonscaling", "expansion", "1").Err(), "ERR nonscaling filters cannot expand")
 	})
+
+	t.Run("Check no exists key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Err(), "ERR NotFound: key is not found")
+		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
+	})
+
+	t.Run("BasicAddAndCheck", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		var insertItems []string
+		for i := 0; i < 100; i++ {
+			buf := util.RandString(1, 100000, util.Alpha)
+			insertItems = append(insertItems, buf)
+			require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, buf).Val())
+		}
+
+		for i := 0; i < 1000; i++ {
+			index := util.RandomInt(100)
+			require.Equal(t, int64(1), rdb.Do(ctx, "bf.exists", key, insertItems[index]).Val())
+		}
+
+		for i := 0; i < 1000; i++ {
+			index := util.RandomInt(100)
+			require.Equal(t, int64(0), rdb.Do(ctx, "bf.exists", key, "no_exist"+insertItems[index]).Val())
+		}
+	})
 }

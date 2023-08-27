@@ -98,7 +98,7 @@ class CommandBFAdd : public Commander {
   }
 };
 
-class CommandBFExist : public Commander {
+class CommandBFExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
@@ -113,5 +113,5 @@ class CommandBFExist : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandBFExist>("bf.exist", 3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1), )
 }  // namespace redis

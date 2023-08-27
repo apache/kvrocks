@@ -26,7 +26,6 @@
 
 namespace redis {
 
-const char kBloomFilterSeparator[] = ":";
 const uint32_t kBFDefaultInitCapacity = 100;
 const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;

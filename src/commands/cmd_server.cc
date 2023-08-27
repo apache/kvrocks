@@ -984,16 +984,12 @@ class CommandRestore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 4);
-    ttl_ms_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
+    ttl_ms_ = GET_OR_RET(ParseInt<int64_t>(args[2], {0, INT64_MAX}, 10));
     while (parser.Good()) {
       if (parser.EatEqICase("replace")) {
         replace_ = true;
       } else if (parser.EatEqICase("absttl")) {
-        auto now = util::GetTimeStampMS();
-        if (ttl_ms_ <= static_cast<uint64_t>(now)) {
-          return {Status::RedisExecErr, "Invalid expire time"};
-        }
-        ttl_ms_ -= now;
+        absttl_ = true;
       } else if (parser.EatEqICase("idletime")) {
         // idle time is not supported in Kvrocks, so just skip it
         auto idle_time = GET_OR_RET(parser.TakeInt());
@@ -1031,6 +1027,15 @@ class CommandRestore : public Commander {
         return {Status::RedisExecErr, db_status.ToString()};
       }
     }
+    if (absttl_) {
+      auto now = util::GetTimeStampMS();
+      if (ttl_ms_ < now) {
+        // return ok if the ttl is already expired
+        *output = redis::SimpleString("OK");
+        return Status::OK();
+      }
+      ttl_ms_ -= now;
+    }
 
     RDB rdb(svr->storage, conn->GetNamespace(), args_[3]);
     auto s = rdb.Restore(args_[1], ttl_ms_);
@@ -1041,6 +1046,7 @@ class CommandRestore : public Commander {
 
  private:
   bool replace_ = false;
+  bool absttl_ = false;
   uint64_t ttl_ms_ = 0;
 };
 

@@ -257,3 +257,22 @@ func TestRestoreWithTTL(t *testing.T) {
 	require.Greater(t, rdb.TTL(ctx, key).Val(), 5*time.Second)
 	require.LessOrEqual(t, rdb.TTL(ctx, key).Val(), 10*time.Second)
 }
+
+func TestRestoreWithExpiredTTL(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := util.RandString(32, 64, util.Alpha)
+	value := "\x00\x03bar\n\x00\xe6\xbeI`\xeef\xfd\x17"
+
+	// Wrong TTL value
+	require.EqualError(t, rdb.Do(ctx, "RESTORE", key, -1, value).Err(), "ERR out of numeric range")
+	require.NoError(t, rdb.Do(ctx, "RESTORE", key, 0, value).Err())
+	require.Equal(t, "bar", rdb.Get(ctx, key).Val())
+	require.NoError(t, rdb.Do(ctx, "RESTORE", key, 1111, value, "REPLACE", "ABSTTL").Err())
+	require.EqualError(t, rdb.Get(ctx, key).Err(), redis.Nil.Error())
+}

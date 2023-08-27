@@ -31,11 +31,6 @@ const uint32_t kBFDefaultInitCapacity = 100;
 const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;
 
-enum class ReadWriteMode {
-  READ = 0,
-  WRITE = 1,
-};
-
 class BloomChain : public Database {
  public:
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -49,6 +44,7 @@ class BloomChain : public Database {
   rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                    BloomChainMetadata *metadata);
-  rocksdb::Status bloomCheckAdd(const Slice &bf_key, const std::string &item, ReadWriteMode mode, int *ret);
+  rocksdb::Status bloomAdd(const Slice &bf_key, const std::string &item, int *ret);
+  rocksdb::Status bloomCheck(const Slice &bf_key, const std::string &item, int *ret);
 };
 }  // namespace redis

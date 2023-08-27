@@ -35,7 +35,7 @@ class CommandBFReserve : public Commander {
     }
     error_rate_ = *parse_error_rate;
     if (error_rate_ >= 1 || error_rate_ <= 0) {
-      return {Status::RedisParseErr, "0 < error rate range < 1"};
+      return {Status::RedisParseErr, "error rate should be between 0 and 1"};
     }
 
     auto parse_capacity = ParseInt<uint32_t>(args[3], 10);

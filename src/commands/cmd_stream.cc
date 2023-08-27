@@ -22,6 +22,7 @@
 #include <stdexcept>
 
 #include "commander.h"
+#include "command_parser.h"
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
@@ -208,9 +209,10 @@ class CommandXDel : public Commander {
 class CommandXGroup : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    subcommand_ = util::ToLower(args[1]);
-    stream_name_ = args[2];
-    group_name_ = args[3];
+    CommandParser parser(args, 1);
+    subcommand_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
     if (std::isdigit(group_name_[0])) {
       return {Status::RedisParseErr, "group name cannot start with number"};
     }
@@ -220,29 +222,24 @@ class CommandXGroup : public Commander {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
 
-      xgroup_create_options_.last_id = args[4];
+      xgroup_create_options_.last_id = GET_OR_RET(parser.TakeStr());
 
-      for (size_t i = 5; i < args.size(); ++i) {
-        auto val = util::ToLower(args[i]);
-        if (val == "mkstream") {
+      while (parser.Good()) {
+        if (parser.EatEqICase("mkstream")) {
           xgroup_create_options_.mkstream = true;
-          continue;
         }
-
-        if (val == "entriesread") {
-          if (i + 1 >= args.size()) {
+        else if (parser.EatEqICase("entriesread")) {
+          if (!parser.Good()) {
             return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
           }
-          auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
-          if (!parse_result) {
+          auto parse_result = parser.TakeInt<int64_t>();
+          if (!parse_result.IsOK()) {
             return {Status::RedisParseErr, errValueNotInteger};
           }
-          if (*parse_result < 0 && *parse_result != -1) {
+          if (parse_result.GetValue() < 0 && parse_result.GetValue() != -1) {
             return {Status::RedisParseErr, "value for ENTRIESREAD must be positive or -1"};
           }
-          xgroup_create_options_.entries_read = *parse_result;
-          ++i;
-          continue;
+          xgroup_create_options_.entries_read = parse_result.GetValue();
         }
       }
 

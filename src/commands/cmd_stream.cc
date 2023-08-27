@@ -21,8 +21,8 @@
 #include <memory>
 #include <stdexcept>
 
-#include "commander.h"
 #include "command_parser.h"
+#include "commander.h"
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
@@ -227,8 +227,7 @@ class CommandXGroup : public Commander {
       while (parser.Good()) {
         if (parser.EatEqICase("mkstream")) {
           xgroup_create_options_.mkstream = true;
-        }
-        else if (parser.EatEqICase("entriesread")) {
+        } else if (parser.EatEqICase("entriesread")) {
           if (!parser.Good()) {
             return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
           }

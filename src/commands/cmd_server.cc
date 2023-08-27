@@ -1027,7 +1027,7 @@ class CommandRestore : public Commander {
       }
     } else {
       db_status = redis.Del(args_[1]);
-      if (!db_status.ok()) {
+      if (!db_status.ok() && !db_status.IsNotFound()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
     }

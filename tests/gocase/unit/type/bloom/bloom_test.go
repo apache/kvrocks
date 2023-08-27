@@ -42,8 +42,8 @@ func TestBloom(t *testing.T) {
 	t.Run("Reserve a bloom filter with wrong error_rate", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "abc", "1000").Err(), "ERR value is not a valid float")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "-0.03", "1000").Err(), "ERR 0 < error rate range < 1")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "1", "1000").Err(), "ERR 0 < error rate range < 1")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "-0.03", "1000").Err(), "ERR error rate should be between 0 and 1")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "1", "1000").Err(), "ERR error rate should be between 0 and 1")
 	})
 
 	t.Run("Reserve a bloom filter with wrong capacity", func(t *testing.T) {

@@ -150,8 +150,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   std::string item_string = item.ToString();
 
   // check
-  for (check_index = metadata.n_filters - 1; check_index >= 0;
-       --check_index) {  // TODO: to test which direction for searching is better
+  for (; check_index >= 0; --check_index) {  // TODO: to test which direction for searching is better
     s = bloomCheck(bf_key_list[check_index], item_string, ret);
     if (!s.ok()) return s;
     if (*ret == 1) {

@@ -21,9 +21,10 @@ package bloom
 
 import (
 	"context"
+	"testing"
+
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestBloom(t *testing.T) {

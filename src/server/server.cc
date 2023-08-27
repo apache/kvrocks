@@ -621,11 +621,7 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
   }
 }
 
-void Server::updateCachedTime() {
-  time_t ret = util::GetTimeStamp();
-  if (ret == -1) return;
-  unix_time.store(static_cast<int>(ret));
-}
+void Server::updateCachedTime() { unix_time.store(util::GetTimeStamp()); }
 
 int Server::IncrClientNum() {
   total_clients_.fetch_add(1, std::memory_order::memory_order_relaxed);
@@ -983,9 +979,9 @@ void Server::SetLastRandomKeyCursor(const std::string &cursor) {
   last_random_key_cursor_ = cursor;
 }
 
-int Server::GetCachedUnixTime() {
+int64_t Server::GetCachedUnixTime() {
   if (unix_time.load() == 0) {
-    unix_time.store(static_cast<int>(util::GetTimeStamp()));
+    updateCachedTime();
   }
   return unix_time.load();
 }
@@ -1279,9 +1275,9 @@ Status Server::AsyncBgSaveDB() {
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
-    last_bgsave_time_ = static_cast<int>(start_bgsave_time);
+    last_bgsave_time_ = start_bgsave_time;
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_sec_ = static_cast<int>(stop_bgsave_time - start_bgsave_time);
+    last_bgsave_time_sec_ = stop_bgsave_time - start_bgsave_time;
   });
 }
 

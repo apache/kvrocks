@@ -985,7 +985,7 @@ class CommandLastSave : public Commander {
       return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
-    int unix_sec = svr->GetLastBgsaveTime();
+    std::int64_t unix_sec = svr->GetLastBgsaveTime();
     *output = redis::Integer(unix_sec);
     return Status::OK();
   }

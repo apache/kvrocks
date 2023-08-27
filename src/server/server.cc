@@ -990,7 +990,7 @@ int Server::GetCachedUnixTime() {
   return unix_time.load();
 }
 
-int Server::GetLastBgsaveTime() {
+std::int64_t Server::GetLastBgsaveTime() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   return last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_;
 }

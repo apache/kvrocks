@@ -122,12 +122,12 @@ func TestRestore_ZSet(t *testing.T) {
 
 	t.Run("List pack encoding", func(t *testing.T) {
 		key := util.RandString(32, 64, util.Alpha)
-		value := "\x11\x1c\x1c\x00\x00\x00\x06\x00\x81a\x02\x01\x01\x81b\x02\x831.2\x04\x81c\x02\x831.5\x04\xff\x0b\x00\xc9{\xd4\xbe\x98\xba\x87\xab"
+		value := "\x11''\x00\x00\x00\x06\x00\x81a\x02\x831.2\x04\x81b\x02\x861234.5\a\x81c\x02\xf4\xd8Y`\xe0\x02\x00\x00\x00\t\xff\n\x00\xce\xfdp\xbdHN\xdbG"
 		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
 		require.EqualValues(t, []redis.Z{
-			{Member: "a", Score: 1},
-			{Member: "b", Score: 1.2},
-			{Member: "c", Score: 1.5},
+			{Member: "a", Score: 1.2},
+			{Member: "b", Score: 1234.5},
+			{Member: "c", Score: 12354345432},
 		}, rdb.ZRangeWithScores(ctx, key, 0, -1).Val())
 	})
 

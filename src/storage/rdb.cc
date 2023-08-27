@@ -335,7 +335,8 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithListPack() {
   }
   std::vector<MemberScore> zset;
   for (size_t i = 0; i < entries.size(); i += 2) {
-    zset.emplace_back(MemberScore{entries[i], std::stod(entries[i + 1])});
+    auto score = GET_OR_RET(ParseFloat<double>(entries[i + 1]));
+    zset.emplace_back(MemberScore{entries[i], score});
   }
   return zset;
 }
@@ -349,7 +350,8 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithZipList() {
   }
   std::vector<MemberScore> zset;
   for (size_t i = 0; i < entries.size(); i += 2) {
-    zset.emplace_back(MemberScore{entries[i], std::stod(entries[i + 1])});
+    auto score = GET_OR_RET(ParseFloat<double>(entries[i + 1]));
+    zset.emplace_back(MemberScore{entries[i], score});
   }
   return zset;
 }

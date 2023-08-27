@@ -148,7 +148,9 @@ StatusOr<std::string> ListPack::Next() {
   uint32_t value_len = 0;
   uint64_t int_value = 0;
   std::string value;
-  unsigned char c = input_[pos_];
+  // For integer type, need to convert the byte to the uint8_t type to avoid the sign extension.
+  auto data = reinterpret_cast<const uint8_t*>(input_.data());
+  auto c = data[pos_];
   if ((c & ListPack7BitUIntMask) == ListPack7BitUInt) {  // 7bit unsigned int
     GET_OR_RET(peekOK(2));
     int_value = c & 0x7F;
@@ -164,37 +166,37 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += value_len + encodeBackLen(value_len + 1);
   } else if ((c & ListPack13BitIntMask) == ListPack13BitInt) {  // 13bit int
     GET_OR_RET(peekOK(3));
-    int_value = ((c & 0x1F) << 8) | input_[pos_];
+    int_value = ((c & 0x1F) << 8) | data[pos_];
     value = std::to_string(int_value);
     pos_ += ListPack13BitIntEntrySize;
   } else if ((c & ListPack16BitIntMask) == ListPack16BitInt) {  // 16bit int
     GET_OR_RET(peekOK(4));
-    int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8);
+    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8);
     value = std::to_string(int_value);
     pos_ += ListPack16BitIntEntrySize;
   } else if ((c & ListPack24BitIntMask) == ListPack24BitInt) {  // 24bit int
     GET_OR_RET(peekOK(5));
-    int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(input_[pos_ + 3]) << 16);
+    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
+                (static_cast<uint64_t>(data[pos_ + 3]) << 16);
     value = std::to_string(int_value);
     pos_ += ListPack24BitIntEntrySize;
   } else if ((c & ListPack32BitIntMask) == ListPack32BitInt) {  // 32bit int
     GET_OR_RET(peekOK(6));
-    int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24);
+    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
+                (static_cast<uint64_t>(data[pos_ + 3]) << 16) | (static_cast<uint64_t>(data[pos_ + 4]) << 24);
     value = std::to_string(int_value);
     pos_ += ListPack32BitIntEntrySize;
   } else if ((c & ListPack64BitIntMask) == ListPack64BitInt) {  // 64bit int
     GET_OR_RET(peekOK(10));
-    int_value = (static_cast<uint64_t>(input_[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(input_[pos_ + 3]) << 16) | (static_cast<uint64_t>(input_[pos_ + 4]) << 24) |
-                (static_cast<uint64_t>(input_[pos_ + 5]) << 32) | (static_cast<uint64_t>(input_[pos_ + 6]) << 40) |
-                (static_cast<uint64_t>(input_[pos_ + 7]) << 48) | (static_cast<uint64_t>(input_[pos_ + 8]) << 56);
+    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
+                (static_cast<uint64_t>(data[pos_ + 3]) << 16) | (static_cast<uint64_t>(data[pos_ + 4]) << 24) |
+                (static_cast<uint64_t>(data[pos_ + 5]) << 32) | (static_cast<uint64_t>(data[pos_ + 6]) << 40) |
+                (static_cast<uint64_t>(data[pos_ + 7]) << 48) | (static_cast<uint64_t>(data[pos_ + 8]) << 56);
     value = std::to_string(int_value);
     pos_ += ListPack64BitIntEntrySize;
   } else if ((c & ListPack12BitStringMask) == ListPack12BitString) {  // 12bit string
     GET_OR_RET(peekOK(2));
-    value_len = ((input_[pos_] & 0xF) << 8) | input_[pos_ + 1];
+    value_len = ((data[pos_] & 0xF) << 8) | data[pos_ + 1];
     // skip 2byte encoding type
     pos_ += 2;
     GET_OR_RET(peekOK(value_len));
@@ -203,8 +205,8 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += value_len + encodeBackLen(value_len + 2);
   } else if ((c & ListPack32BitStringMask) == ListPack32BitString) {  // 32bit string
     GET_OR_RET(peekOK(5));
-    value_len = (static_cast<uint32_t>(input_[pos_])) | (static_cast<uint32_t>(input_[pos_ + 1]) << 8) |
-                (static_cast<uint32_t>(input_[pos_ + 2]) << 16) | (static_cast<uint32_t>(input_[pos_ + 3]) << 24);
+    value_len = (static_cast<uint32_t>(data[pos_])) | (static_cast<uint32_t>(data[pos_ + 1]) << 8) |
+                (static_cast<uint32_t>(data[pos_ + 2]) << 16) | (static_cast<uint32_t>(data[pos_ + 3]) << 24);
     // skip 5byte encoding type
     pos_ += 5;
     GET_OR_RET(peekOK(value_len));

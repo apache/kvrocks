@@ -89,21 +89,31 @@ func TestBloom(t *testing.T) {
 
 	t.Run("BasicAddAndCheck", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
+		var totalCount = 10000
+		var fpp = 0.01
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, fpp, totalCount).Err())
+
 		var insertItems []string
-		for i := 0; i < 100; i++ {
-			buf := util.RandString(1, 100000, util.Alpha)
+		for i := 0; i < totalCount; i++ {
+			buf := util.RandString(1, 5, util.Alpha)
 			insertItems = append(insertItems, buf)
 			require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, buf).Val())
 		}
 
-		for i := 0; i < 1000; i++ {
-			index := util.RandomInt(100)
+		for i := 0; i < totalCount; i++ {
+			index := util.RandomInt(int64(totalCount))
 			require.Equal(t, int64(1), rdb.Do(ctx, "bf.exists", key, insertItems[index]).Val())
 		}
 
-		for i := 0; i < 1000; i++ {
-			index := util.RandomInt(100)
-			require.Equal(t, int64(0), rdb.Do(ctx, "bf.exists", key, "no_exist"+insertItems[index]).Val())
+		var exist = 0
+		for i := 0; i < totalCount; i++ {
+			buf := util.RandString(5, 10, util.Alpha)
+			check := rdb.Do(ctx, "bf.exists", key, buf)
+			require.NoError(t, check.Err())
+			if check.Val() == int64(1) {
+				exist += 1
+			}
 		}
+		require.LessOrEqual(t, float64(exist), fpp*float64(totalCount))
 	})
 }

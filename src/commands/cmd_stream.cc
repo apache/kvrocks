@@ -261,7 +261,7 @@ class CommandXGroup : public Commander {
         return {Status::RedisExecErr, s.ToString()};
       }
 
-      *output = redis::BulkString("OK");
+      *output = redis::SimpleString("OK");
     }
 
     if (subcommand_ == "destroy") {

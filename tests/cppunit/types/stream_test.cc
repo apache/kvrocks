@@ -2522,4 +2522,7 @@ TEST_F(RedisStreamTest, StreamConsumerGroupCreateAndDestroy) {
   uint64_t delete_cnt = 0;
   s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
   EXPECT_TRUE(delete_cnt != 0);
+  delete_cnt = 0;
+  s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
+  EXPECT_TRUE(delete_cnt == 0);
 }

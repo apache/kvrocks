@@ -862,27 +862,27 @@ func TestStreamOffset(t *testing.T) {
 		groupName := "test-group-a"
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		// No such stream (No such key)
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "ENTRIESREAD 10").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "ENTRIESREAD").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "MKSTREAM", "ENTRIESREAD").Err())
-		require.NoError(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "MKSTREAM").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIESREAD", "10").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIESREAD").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "MKSTREAM", "ENTRIESREAD").Err())
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "MKSTREAM").Err())
 		// Invalid syntax
 		groupName = "test-group-b"
-		require.Error(t, rdb.Do(ctx, "XGROUP CREAT", streamName, groupName, "$").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "ENTRIEREAD 10").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, groupName, "$", "ENTRIESREAD -10").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP CREATE", streamName, "1test-group-c", "$").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREAT", streamName, groupName, "$").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIEREAD", "10").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIESREAD", "-10").Err())
+		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, "1test-group-c", "$").Err())
 
 		require.NoError(t, rdb.Del(ctx, "myStream").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"iTeM", "1", "vAluE", "a"}}).Err())
 		require.NoError(t, rdb.XGroupCreate(ctx, "myStream", "myGroup", "$").Err())
 		result, err := rdb.XGroupDestroy(ctx, "myStream", "myGroup").Result()
 		require.NoError(t, err)
-		require.Equal(t, 1, result)
+		require.Equal(t, int64(1), result)
 		result, err = rdb.XGroupDestroy(ctx, "myStream", "myGroup").Result()
 		require.NoError(t, err)
-		require.Equal(t, 0, result)
+		require.Equal(t, int64(0), result)
 	})
 }
 

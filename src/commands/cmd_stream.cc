@@ -213,9 +213,6 @@ class CommandXGroup : public Commander {
     subcommand_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
     stream_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
-    if (std::isdigit(group_name_[0])) {
-      return {Status::RedisParseErr, "group name cannot start with number"};
-    }
 
     if (subcommand_ == "create") {
       if (args.size() < 5 || args.size() > 8) {
@@ -228,9 +225,6 @@ class CommandXGroup : public Commander {
         if (parser.EatEqICase("mkstream")) {
           xgroup_create_options_.mkstream = true;
         } else if (parser.EatEqICase("entriesread")) {
-          if (!parser.Good()) {
-            return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
-          }
           auto parse_result = parser.TakeInt<int64_t>();
           if (!parse_result.IsOK()) {
             return {Status::RedisParseErr, errValueNotInteger};
@@ -239,6 +233,8 @@ class CommandXGroup : public Commander {
             return {Status::RedisParseErr, "value for ENTRIESREAD must be positive or -1"};
           }
           xgroup_create_options_.entries_read = parse_result.GetValue();
+        } else {
+          return parser.InvalidSyntax();
         }
       }
 

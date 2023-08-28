@@ -397,7 +397,7 @@ rocksdb::Status StreamMetadata::Decode(Slice input) {
 
   GetFixed64(&input, &entries_added);
 
-  if (input.size() != 0) {
+  if (input.size() >= 8) {
     GetFixed64(&input, &group_number);
   }
 

@@ -209,6 +209,9 @@ StreamConsumerGroupMetadata Stream::decodeStreamConsumerGroupMetadataValue(const
 
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
                                     const std::string &group_name) {
+  if (std::isdigit(group_name[0])) {
+    return rocksdb::Status::InvalidArgument("group name cannot start with number");
+  }
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);

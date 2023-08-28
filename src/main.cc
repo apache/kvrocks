@@ -47,6 +47,7 @@
 #include "string_util.h"
 #include "time_util.h"
 #include "unique_fd.h"
+#include "vendor/crc64.h"
 #include "version.h"
 
 namespace google {
@@ -328,6 +329,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  crc64_init();
   InitGoogleLog(&config);
   LOG(INFO) << PrintVersion;
   // Tricky: We don't expect that different instances running on the same port,

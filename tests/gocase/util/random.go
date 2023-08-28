@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 )
 
 func RandPath[T any](f ...func() T) T {
@@ -57,7 +58,8 @@ const (
 )
 
 func RandString(min, max int, typ RandStringType) string {
-	length := min + rand.Intn(max-min+1)
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	length := min + r.Intn(max-min+1)
 
 	var minVal, maxVal int
 	switch typ {

@@ -987,11 +987,12 @@ class CommandLastSave : public Commander {
       return {Status::RedisExecErr, errAdminPermissionRequired};
     }
 
-    std::int64_t unix_sec = svr->GetLastBgsaveTime();
+    int64_t unix_sec = svr->GetLastBgsaveTime();
     *output = redis::Integer(unix_sec);
     return Status::OK();
   }
 };
+
 class CommandRestore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {

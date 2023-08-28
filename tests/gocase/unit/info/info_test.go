@@ -72,7 +72,6 @@ func TestInfo(t *testing.T) {
 
 	t.Run("get bgsave information by INFO", func(t *testing.T) {
 		require.Equal(t, "0", util.FindInfoEntry(rdb, "bgsave_in_progress", "persistence"))
-		require.Equal(t, "-1", util.FindInfoEntry(rdb, "last_bgsave_time", "persistence"))
 		require.Equal(t, "ok", util.FindInfoEntry(rdb, "last_bgsave_status", "persistence"))
 		require.Equal(t, "-1", util.FindInfoEntry(rdb, "last_bgsave_time_sec", "persistence"))
 

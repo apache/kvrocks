@@ -986,6 +986,11 @@ int64_t Server::GetCachedUnixTime() {
   return unix_time.load();
 }
 
+int64_t Server::GetLastBgsaveTime() {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
+  return last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_;
+}
+
 void Server::GetStatsInfo(std::string *info) {
   std::ostringstream string_stream;
   string_stream << "# Stats\r\n";
@@ -1074,7 +1079,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
-    string_stream << "last_bgsave_time:" << last_bgsave_time_ << "\r\n";
+    string_stream << "last_bgsave_time:" << (last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_) << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
     string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
   }

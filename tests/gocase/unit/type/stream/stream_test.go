@@ -867,6 +867,7 @@ func TestStreamOffset(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIESREAD").Err())
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "MKSTREAM", "ENTRIESREAD").Err())
 		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "MKSTREAM").Err())
+		require.NoError(t, rdb.XInfoStream(ctx, streamName).Err())
 		// Invalid syntax
 		groupName = "test-group-b"
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREAT", streamName, groupName, "$").Err())

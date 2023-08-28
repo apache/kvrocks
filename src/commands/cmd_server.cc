@@ -1029,7 +1029,7 @@ class CommandRestore : public Commander {
     }
     if (absttl_) {
       auto now = util::GetTimeStampMS();
-      if (ttl_ms_ < now) {
+      if (ttl_ms_ <= now) {
         // return ok if the ttl is already expired
         *output = redis::SimpleString("OK");
         return Status::OK();

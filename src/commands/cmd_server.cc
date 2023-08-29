@@ -1093,7 +1093,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0), )

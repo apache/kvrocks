@@ -32,6 +32,7 @@ constexpr const int RDBTypeSet = 2;
 constexpr const int RDBTypeZSet = 3;
 constexpr const int RDBTypeHash = 4;
 constexpr const int RDBTypeZSet2 = 5;
+// NOTE: when adding new Redis object type, update LoadObjectType.
 
 // Redis object encoding
 constexpr const int RDBTypeHashZipMap = 9;
@@ -46,6 +47,7 @@ constexpr const int RDBTypeZSetListPack = 17;
 constexpr const int RDBTypeListQuickList2 = 18;
 constexpr const int RDBTypeStreamListPack2 = 19;
 constexpr const int RDBTypeSetListPack = 20;
+// NOTE: when adding new Redis object encoding type, update LoadObjectType.
 
 // Quick list node encoding
 constexpr const int QuickListNodeContainerPlain = 1;

@@ -120,6 +120,17 @@ func TestRestore_ZSet(t *testing.T) {
 		}, rdb.ZRangeWithScores(ctx, key, 0, -1).Val())
 	})
 
+	t.Run("ZSet2 object encoding", func(t *testing.T) {
+		key := util.RandString(32, 64, util.Alpha)
+		value := "\x05\x03\x01cffffff\n@\x01b\x9a\x99\x99\x99\x99\x99\x01@\x01a\x9a\x99\x99\x99\x99\x99\xf1?\x0b\x00\x15\xae\xd7&\xda\x10\xe1\x03"
+		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+		require.EqualValues(t, []redis.Z{
+			{Member: "a", Score: 1.1},
+			{Member: "b", Score: 2.2},
+			{Member: "c", Score: 3.3},
+		}, rdb.ZRangeWithScores(ctx, key, 0, -1).Val())
+	})
+
 	t.Run("List pack encoding", func(t *testing.T) {
 		key := util.RandString(32, 64, util.Alpha)
 		value := "\x11''\x00\x00\x00\x06\x00\x81a\x02\x831.2\x04\x81b\x02\x861234.5\a\x81c\x02\xf4\xd8Y`\xe0\x02\x00\x00\x00\t\xff\n\x00\xce\xfdp\xbdHN\xdbG"

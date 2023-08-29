@@ -302,7 +302,7 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::ExpireAt(uint64_t expired_ts) const {
-  if (Type() != kRedisString && Type() != kRedisStream && size == 0) {
+  if (Type() != kRedisString && Type() != kRedisStream && Type() != kRedisBloomFilter && size == 0) {
     return true;
   }
   if (expire == 0) {
@@ -397,4 +397,58 @@ rocksdb::Status StreamMetadata::Decode(Slice input) {
   GetFixed64(&input, &entries_added);
 
   return rocksdb::Status::OK();
+}
+
+void BloomChainMetadata::Encode(std::string *dst) {
+  Metadata::Encode(dst);
+
+  PutFixed16(dst, n_filters);
+  PutFixed16(dst, expansion);
+
+  PutFixed32(dst, base_capacity);
+  PutDouble(dst, error_rate);
+  PutFixed32(dst, bloom_bytes);
+}
+
+rocksdb::Status BloomChainMetadata::Decode(Slice bytes) {
+  Slice input(bytes);
+  if (!GetFixed8(&input, &flags)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetExpire(&input)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  if (input.size() < 8 + CommonEncodedSize()) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(&input, &version);
+  GetFixedCommon(&input, &size);
+
+  if (input.size() < 20) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed16(&input, &n_filters);
+  GetFixed16(&input, &expansion);
+
+  GetFixed32(&input, &base_capacity);
+  GetDouble(&input, &error_rate);
+  GetFixed32(&input, &bloom_bytes);
+
+  return rocksdb::Status::OK();
+}
+
+uint32_t BloomChainMetadata::GetCapacity() const {
+  // non-scaling
+  if (expansion == 0) {
+    return base_capacity;
+  }
+
+  // the sum of Geometric progression
+  if (expansion == 1) {
+    return base_capacity * n_filters;
+  }
+  return static_cast<uint32_t>(base_capacity * (1 - pow(expansion, n_filters)) / 1 - expansion);
 }

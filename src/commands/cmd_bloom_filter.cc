@@ -111,7 +111,59 @@ class CommandBFExists : public Commander {
   }
 };
 
+class CommandBFInfo : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("capacity")) {
+        type_ = CAPACITY;
+      } else if (parser.EatEqICase("size")) {
+        type_ = SIZE;
+      } else if (parser.EatEqICase("filters")) {
+        type_ = FILTERS;
+      } else if (parser.EatEqICase("items")) {
+        type_ = ITEMS;
+      } else if (parser.EatEqICase("expansion")) {
+        type_ = EXPANSION;
+      } else {
+        return {Status::RedisParseErr, "Invalid info argument"};
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<int> rets;
+    rets.reserve(all_nums_);
+    auto s = bloom_db.Info(args_[1], type_, &rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (type_ == ALL) {
+      *output = "*" + std::to_string(2 * all_nums_) +
+                CRLF;  // todo: this reply only used in here, whether should I place it in redis_reply.h
+      for (int i = 0; i < all_nums_; ++i) {
+        *output += redis::SimpleString(all_info_rets_[i]);
+        *output += redis::Integer(rets[i]);
+      }
+    } else {
+      *output = redis::Integer(rets[0]);
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  BloomInfoType type_ = ALL;
+  const int all_nums_ = 5;
+  const std::vector<std::string> all_info_rets_ = {"Capacity", "Size", "Number of filters", "Number of items inserted",
+                                                   "Expansion rate"};
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1), )
 }  // namespace redis

@@ -195,4 +195,44 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
 
   return rocksdb::Status::OK();
 }
+
+rocksdb::Status BloomChain::Info(const Slice &user_key, const BloomInfoType &type, std::vector<int> *rets) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  BloomChainMetadata metadata;
+  rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
+  if (s.IsNotFound()) return rocksdb::Status::NotFound("key is not found");
+  if (!s.ok()) return s;
+
+  switch (type) {
+    case ALL:
+      rets->push_back(static_cast<int>(metadata.GetCapacity()));
+      rets->push_back(static_cast<int>(metadata.bloom_bytes));
+      rets->push_back(static_cast<int>(metadata.n_filters));
+      rets->push_back(static_cast<int>(metadata.size));
+      rets->push_back(static_cast<int>(metadata.expansion));
+      break;
+    case CAPACITY:
+      rets->push_back(static_cast<int>(metadata.GetCapacity()));
+      break;
+    case SIZE:
+      rets->push_back(static_cast<int>(metadata.bloom_bytes));
+      break;
+    case FILTERS:
+      rets->push_back(static_cast<int>(metadata.n_filters));
+      break;
+    case ITEMS:
+      rets->push_back(static_cast<int>(metadata.size));
+      break;
+    case EXPANSION:
+      rets->push_back(static_cast<int>(metadata.expansion));
+      break;
+    default:
+      LOG(ERROR) << "Failed to parse the type of BF.INFO command";
+  }
+
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

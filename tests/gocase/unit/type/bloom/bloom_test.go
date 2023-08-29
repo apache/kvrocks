@@ -82,7 +82,7 @@ func TestBloom(t *testing.T) {
 	})
 
 	t.Run("Check no exists key", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 		require.ErrorContains(t, rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Err(), "ERR NotFound: key is not found")
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 	})
@@ -116,4 +116,44 @@ func TestBloom(t *testing.T) {
 		}
 		require.LessOrEqual(t, float64(exist), fpp*float64(totalCount))
 	})
+
+	t.Run("Get info of no exists key ", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.info", "no_exist_key").Err(), "ERR NotFound: key is not found")
+		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
+	})
+
+	t.Run("Get all info of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "3").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(1000), "Size", int64(2048), "Number of filters", int64(1), "Number of items inserted", int64(0), "Expansion rate", int64(3)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
+	t.Run("Get capacity of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "2000").Err())
+		require.Equal(t, int64(2000), rdb.Do(ctx, "bf.info", key, "capacity").Val())
+	})
+
+	t.Run("Get expansion of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "2000", "expansion", "1").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "expansion").Val())
+	})
+
+	t.Run("Get size of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "1").Err())
+		require.Equal(t, int64(2048), rdb.Do(ctx, "bf.info", key, "size").Val())
+	})
+
+	t.Run("Get items of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "1").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.info", key, "items").Val())
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "item").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
+	})
+
+	// TODO: Add the testcase of get filters of bloom filter after complete the scaling.
 }

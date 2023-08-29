@@ -48,11 +48,13 @@ class CommandBFReserve : public Commander {
     }
 
     CommandParser parser(args, 4);
-    bool nonscaling = false;
+    bool is_nonscaling = false;
+    bool has_expansion = false;
     while (parser.Good()) {
       if (parser.EatEqICase("nonscaling")) {
-        nonscaling = true;
+        is_nonscaling = true;
       } else if (parser.EatEqICase("expansion")) {
+        has_expansion = true;
         expansion_ = GET_OR_RET(parser.TakeInt<uint16_t>());
         if (expansion_ < 1) {
           return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
@@ -62,8 +64,7 @@ class CommandBFReserve : public Commander {
       }
     }
 
-    // if nonscaling is true, expansion should be 0
-    if (nonscaling && expansion_ != 0) {
+    if (is_nonscaling && has_expansion) {
       return {Status::RedisParseErr, "nonscaling filters cannot expand"};
     }
 
@@ -82,7 +83,7 @@ class CommandBFReserve : public Commander {
  private:
   double error_rate_;
   uint32_t capacity_;
-  uint16_t expansion_ = 0;
+  uint16_t expansion_ = kBFDefaultExpansion;
 };
 
 class CommandBFAdd : public Commander {

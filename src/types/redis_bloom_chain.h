@@ -30,7 +30,7 @@ const uint32_t kBFDefaultInitCapacity = 100;
 const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;
 
-enum BloomInfoType {
+enum class BloomInfoType {
   ALL,
   CAPACITY,
   SIZE,
@@ -39,13 +39,21 @@ enum BloomInfoType {
   EXPANSION,
 };
 
+struct BloomFilterInfo {
+  uint32_t capacity;
+  uint32_t bloom_bytes;
+  uint16_t n_filters;
+  uint64_t size;
+  uint16_t expansion;
+};
+
 class BloomChain : public Database {
  public:
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
   rocksdb::Status Add(const Slice &user_key, const Slice &item, int *ret);
   rocksdb::Status Exist(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status Info(const Slice &user_key, const BloomInfoType &type, std::vector<int> *rets);
+  rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);
 
  private:
   std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);

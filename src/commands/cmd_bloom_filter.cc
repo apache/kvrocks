@@ -118,15 +118,15 @@ class CommandBFInfo : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("capacity")) {
-        type_ = CAPACITY;
+        type_ = BloomInfoType::CAPACITY;
       } else if (parser.EatEqICase("size")) {
-        type_ = SIZE;
+        type_ = BloomInfoType::SIZE;
       } else if (parser.EatEqICase("filters")) {
-        type_ = FILTERS;
+        type_ = BloomInfoType::FILTERS;
       } else if (parser.EatEqICase("items")) {
-        type_ = ITEMS;
+        type_ = BloomInfoType::ITEMS;
       } else if (parser.EatEqICase("expansion")) {
-        type_ = EXPANSION;
+        type_ = BloomInfoType::EXPANSION;
       } else {
         return {Status::RedisParseErr, "Invalid info argument"};
       }
@@ -137,30 +137,48 @@ class CommandBFInfo : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    std::vector<int> rets;
-    rets.reserve(all_nums_);
-    auto s = bloom_db.Info(args_[1], type_, &rets);
+    BloomFilterInfo info;
+    auto s = bloom_db.Info(args_[1], &info);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (type_ == ALL) {
-      *output = "*" + std::to_string(2 * all_nums_) +
-                CRLF;  // todo: this reply only used in here, whether should I place it in redis_reply.h
-      for (int i = 0; i < all_nums_; ++i) {
-        *output += redis::SimpleString(all_info_rets_[i]);
-        *output += redis::Integer(rets[i]);
-      }
-    } else {
-      *output = redis::Integer(rets[0]);
+    switch (type_) {
+      case BloomInfoType::ALL:
+        *output = "*" + std::to_string(2 * 5) + CRLF;
+        *output += redis::SimpleString("Capacity");
+        *output += redis::Integer(info.capacity);
+        *output += redis::SimpleString("Size");
+        *output += redis::Integer(info.bloom_bytes);
+        *output += redis::SimpleString("Number of filters");
+        *output += redis::Integer(info.n_filters);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.size);
+        *output += redis::SimpleString("Expansion rate");
+        *output += redis::Integer(info.expansion);
+        break;
+      case BloomInfoType::CAPACITY:
+        *output = redis::Integer(info.capacity);
+        break;
+      case BloomInfoType::SIZE:
+        *output = redis::Integer(info.bloom_bytes);
+        break;
+      case BloomInfoType::FILTERS:
+        *output = redis::Integer(info.n_filters);
+        break;
+      case BloomInfoType::ITEMS:
+        *output = redis::Integer(info.size);
+        break;
+      case BloomInfoType::EXPANSION:
+        *output = redis::Integer(info.expansion);
+        break;
+      default:
+        LOG(ERROR) << "Failed to parse the type of BF.INFO command";
     }
 
     return Status::OK();
   }
 
  private:
-  BloomInfoType type_ = ALL;
-  const int all_nums_ = 5;
-  const std::vector<std::string> all_info_rets_ = {"Capacity", "Size", "Number of filters", "Number of items inserted",
-                                                   "Expansion rate"};
+  BloomInfoType type_ = BloomInfoType::ALL;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),

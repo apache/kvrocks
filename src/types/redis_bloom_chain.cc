@@ -183,10 +183,10 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
     s = bloomCheck(bf_key_list[i], item_string, &exist);
     if (!s.ok()) return s;
     if (exist) {
-      *ret = 1;
       break;
     }
   }
+  *ret = exist ? 1 : 0;
 
   return rocksdb::Status::OK();
 }

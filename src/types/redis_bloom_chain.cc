@@ -151,6 +151,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
     s = bloomCheck(bf_key_list[check_index], item_string, ret);
     if (!s.ok()) return s;
     if (*ret == 1) {
+      *ret = 0;  // if "check" ret = 1, "add" should ret = 0. It means items already exists.
       break;
     }
   }

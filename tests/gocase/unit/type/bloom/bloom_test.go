@@ -87,34 +87,57 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 	})
 
+	t.Run("Add the same value", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, "xxx").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
+		// Add the same value would return 0
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.add", key, "xxx").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
+		// Add the distinct value would return 1
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, "yyy").Val())
+		require.Equal(t, int64(2), rdb.Do(ctx, "bf.info", key, "items").Val())
+	})
+
 	t.Run("BasicAddAndCheck", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		var totalCount = 10000
 		var fpp = 0.01
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, fpp, totalCount).Err())
 
+		// insert items
 		var insertItems []string
+		var falseExist = 0
 		for i := 0; i < totalCount; i++ {
-			buf := util.RandString(1, 5, util.Alpha)
-			insertItems = append(insertItems, buf)
-			require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, buf).Val())
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.add", key, buf)
+			require.NoError(t, Add.Err())
+			if Add.Val() == int64(0) {
+				falseExist += 1
+			} else {
+				insertItems = append(insertItems, buf)
+			}
 		}
+		require.Equal(t, int64(totalCount-falseExist), rdb.Do(ctx, "bf.info", key, "items").Val())
+		require.LessOrEqual(t, float64(falseExist), fpp*float64(totalCount))
 
+		// check exist items
 		for i := 0; i < totalCount; i++ {
-			index := util.RandomInt(int64(totalCount))
+			index := util.RandomInt(int64(totalCount - falseExist))
 			require.Equal(t, int64(1), rdb.Do(ctx, "bf.exists", key, insertItems[index]).Val())
 		}
 
-		var exist = 0
+		// check no exist items
+		falseExist = 0
 		for i := 0; i < totalCount; i++ {
-			buf := util.RandString(5, 10, util.Alpha)
+			buf := util.RandString(9, 10, util.Alpha)
 			check := rdb.Do(ctx, "bf.exists", key, buf)
 			require.NoError(t, check.Err())
 			if check.Val() == int64(1) {
-				exist += 1
+				falseExist += 1
 			}
 		}
-		require.LessOrEqual(t, float64(exist), fpp*float64(totalCount))
+		require.LessOrEqual(t, float64(falseExist), fpp*float64(totalCount))
 	})
 
 	t.Run("Get info of no exists key ", func(t *testing.T) {
@@ -139,6 +162,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "2000", "expansion", "1").Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "expansion").Val())
+	})
+
+	t.Run("Get reserve default expansion", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
+		// if not specified expansion, the default expansion value is 2.
+		require.Equal(t, int64(2), rdb.Do(ctx, "bf.info", key, "expansion").Val())
 	})
 
 	t.Run("Get size of bloom filter", func(t *testing.T) {

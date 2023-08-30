@@ -121,6 +121,39 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
+rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
+
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys.size());
+  for (const auto &key : keys) {
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisNone);
+  batch->PutLogData(log_data.Encode());
+
+  for (const auto &ns_key : lock_keys) {
+    std::string value;
+    rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
+    if (!s.ok()) continue;
+
+    Metadata metadata(kRedisNone, false);
+    metadata.Decode(value);
+    if (metadata.Expired()) continue;
+
+    batch->Delete(metadata_cf_handle_, ns_key);
+    *deleted_cnt += 1;
+  }
+
+  if (*deleted_cnt == 0) return rocksdb::Status::OK();
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   LatestSnapShot ss(storage_);

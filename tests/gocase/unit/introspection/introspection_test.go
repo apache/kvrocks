@@ -40,6 +40,56 @@ func TestIntrospection(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	for _, command := range []string{"DEL", "UNLINK"} {
+		t.Run(fmt.Sprintf("%s can remove the specified keys", command), func(t *testing.T) {
+			// string type
+			rdb.Do(ctx, "mset", "string_key1", "v1", "string_key2", "v2", "string_key3", "v3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "string_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "string_key2", "string_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "string_key1", "string_key2", "string_key3").Val())
+
+			// list type
+			rdb.Do(ctx, "lpush", "list_key1", "v1")
+			rdb.Do(ctx, "lpush", "list_key2", "v1", "v2")
+			rdb.Do(ctx, "lpush", "list_key3", "v1", "v2", "v3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "list_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "list_key2", "list_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "list_key1", "list_key2", "list_key3").Val())
+
+			// set type
+			rdb.Do(ctx, "sadd", "set_key1", "v1")
+			rdb.Do(ctx, "sadd", "set_key2", "v2", "v2")
+			rdb.Do(ctx, "sadd", "set_key3", "v3", "v3", "v3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "set_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "set_key2", "set_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "set_key1", "set_key2", "set_key3").Val())
+
+			// hash type
+			rdb.Do(ctx, "hset", "hash_key1", "k1", "v1")
+			rdb.Do(ctx, "hset", "hash_key2", "k1", "v1", "k2", "v2")
+			rdb.Do(ctx, "hset", "hash_key3", "k1", "v1", "k2", "v2", "k3", "v3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "hash_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "hash_key2", "hash_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "hash_key1", "hash_key2", "hash_key3").Val())
+
+			// zset type
+			rdb.Do(ctx, "zadd", "zset_key1", "10", "m1")
+			rdb.Do(ctx, "zadd", "zset_key2", "10", "m1", "20", "m2")
+			rdb.Do(ctx, "zadd", "zset_key3", "10", "m1", "20", "m2", "30", "m3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "zset_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "zset_key2", "zset_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "zset_key1", "zset_key2", "zset_key3").Val())
+
+			// sortint type
+			rdb.Do(ctx, "siadd", "si_key1", "1")
+			rdb.Do(ctx, "siadd", "si_key2", "1", "2")
+			rdb.Do(ctx, "siadd", "si_key3", "1", "2", "3")
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "si_key1").Val())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "si_key2", "si_key3").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, "exists", "si_key1", "si_key2", "si_key3").Val())
+		})
+	}
+
 	t.Run("TIME", func(t *testing.T) {
 		nowUnix := int(time.Now().Unix())
 

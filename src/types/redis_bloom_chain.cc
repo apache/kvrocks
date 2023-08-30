@@ -143,21 +143,21 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   WriteBatchLogData log_data(kRedisBloomFilter, {"insert"});
   batch->PutLogData(log_data.Encode());
 
-  int check_index = metadata.n_filters - 1;
   std::string item_string = item.ToString();
 
   // check
-  for (; check_index >= 0; --check_index) {  // TODO: to test which direction for searching is better
-    s = bloomCheck(bf_key_list[check_index], item_string, ret);
+  int check_ret = 0;
+  for (int i = metadata.n_filters - 1; i >= 0; --i) {  // TODO: to test which direction for searching is better
+    s = bloomCheck(bf_key_list[i], item_string, &check_ret);
     if (!s.ok()) return s;
-    if (*ret == 1) {
-      *ret = 0;  // if "check" ret = 1, "add" should ret = 0. It means items already exists.
+    if (check_ret == 1) {
+      *ret = 0;
       break;
     }
   }
 
   // insert
-  if (check_index < 0) {
+  if (check_ret == 0) {
     if (metadata.size + 1 > metadata.GetCapacity()) {  // TODO: scaling would be supported later
       return rocksdb::Status::Aborted("filter is full");
     }

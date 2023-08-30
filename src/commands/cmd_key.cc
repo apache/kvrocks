@@ -99,6 +99,7 @@ class CommandExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
@@ -237,6 +238,7 @@ class CommandDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }

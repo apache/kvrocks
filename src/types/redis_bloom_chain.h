@@ -31,12 +31,12 @@ const double kBFDefaultErrorRate = 0.01;
 const uint16_t kBFDefaultExpansion = 2;
 
 enum class BloomInfoType {
-  ALL,
-  CAPACITY,
-  SIZE,
-  FILTERS,
-  ITEMS,
-  EXPANSION,
+  kAll,
+  kCapacity,
+  kSize,
+  kFilters,
+  kItems,
+  kExpansion,
 };
 
 struct BloomFilterInfo {

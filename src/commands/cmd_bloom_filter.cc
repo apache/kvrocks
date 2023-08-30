@@ -119,15 +119,15 @@ class CommandBFInfo : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("capacity")) {
-        type_ = BloomInfoType::CAPACITY;
+        type_ = BloomInfoType::kCapacity;
       } else if (parser.EatEqICase("size")) {
-        type_ = BloomInfoType::SIZE;
+        type_ = BloomInfoType::kSize;
       } else if (parser.EatEqICase("filters")) {
-        type_ = BloomInfoType::FILTERS;
+        type_ = BloomInfoType::kFilters;
       } else if (parser.EatEqICase("items")) {
-        type_ = BloomInfoType::ITEMS;
+        type_ = BloomInfoType::kItems;
       } else if (parser.EatEqICase("expansion")) {
-        type_ = BloomInfoType::EXPANSION;
+        type_ = BloomInfoType::kExpansion;
       } else {
         return {Status::RedisParseErr, "Invalid info argument"};
       }
@@ -144,7 +144,7 @@ class CommandBFInfo : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     switch (type_) {
-      case BloomInfoType::ALL:
+      case BloomInfoType::kAll:
         *output = "*" + std::to_string(2 * 5) + CRLF;
         *output += redis::SimpleString("Capacity");
         *output += redis::Integer(info.capacity);
@@ -157,19 +157,19 @@ class CommandBFInfo : public Commander {
         *output += redis::SimpleString("Expansion rate");
         *output += redis::Integer(info.expansion);
         break;
-      case BloomInfoType::CAPACITY:
+      case BloomInfoType::kCapacity:
         *output = redis::Integer(info.capacity);
         break;
-      case BloomInfoType::SIZE:
+      case BloomInfoType::kSize:
         *output = redis::Integer(info.bloom_bytes);
         break;
-      case BloomInfoType::FILTERS:
+      case BloomInfoType::kFilters:
         *output = redis::Integer(info.n_filters);
         break;
-      case BloomInfoType::ITEMS:
+      case BloomInfoType::kItems:
         *output = redis::Integer(info.size);
         break;
-      case BloomInfoType::EXPANSION:
+      case BloomInfoType::kExpansion:
         *output = redis::Integer(info.expansion);
         break;
       default:
@@ -180,7 +180,7 @@ class CommandBFInfo : public Commander {
   }
 
  private:
-  BloomInfoType type_ = BloomInfoType::ALL;
+  BloomInfoType type_ = BloomInfoType::kAll;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),

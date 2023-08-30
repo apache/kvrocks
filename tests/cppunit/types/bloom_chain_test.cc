@@ -57,7 +57,6 @@ TEST_F(RedisBloomChainTest, BasicAddAndTest) {
 
   auto s = sb_chain_->Exist("no_exist_key", "test_item", &ret);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.ToString(), "NotFound: key is not found");
   sb_chain_->Del("no_exist_key");
 
   std::string insert_items[] = {"item1", "item2", "item3", "item101", "item202", "303"};

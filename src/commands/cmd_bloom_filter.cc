@@ -105,6 +105,7 @@ class CommandBFExists : public Commander {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
     int ret = 0;
     auto s = bloom_db.Exist(args_[1], args_[2], &ret);
+    if (s.IsNotFound()) return {Status::RedisExecErr, "key is not found"};
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
@@ -139,6 +140,7 @@ class CommandBFInfo : public Commander {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
     BloomFilterInfo info;
     auto s = bloom_db.Info(args_[1], &info);
+    if (s.IsNotFound()) return {Status::RedisExecErr, "key is not found"};
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     switch (type_) {

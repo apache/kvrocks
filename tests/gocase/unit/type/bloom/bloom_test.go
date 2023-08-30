@@ -83,7 +83,7 @@ func TestBloom(t *testing.T) {
 
 	t.Run("Check no exists key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Err(), "ERR NotFound: key is not found")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Err(), "ERR key is not found")
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 	})
 
@@ -142,7 +142,7 @@ func TestBloom(t *testing.T) {
 
 	t.Run("Get info of no exists key ", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.info", "no_exist_key").Err(), "ERR NotFound: key is not found")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.info", "no_exist_key").Err(), "ERR key is not found")
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 	})
 

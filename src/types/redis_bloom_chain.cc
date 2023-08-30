@@ -123,9 +123,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   if (s.IsNotFound()) {
     s = createBloomChain(ns_key, kBFDefaultErrorRate, kBFDefaultInitCapacity, kBFDefaultExpansion, &metadata);
   }
-  if (!s.ok()) {
-    return s;
-  }
+  if (!s.ok()) return s;
 
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
@@ -170,7 +168,6 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
-  if (s.IsNotFound()) return rocksdb::Status::NotFound("key is not found");
   if (!s.ok()) return s;
 
   std::vector<std::string> bf_key_list;
@@ -197,7 +194,6 @@ rocksdb::Status BloomChain::Info(const Slice &user_key, BloomFilterInfo *info) {
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
-  if (s.IsNotFound()) return rocksdb::Status::NotFound("key is not found");
   if (!s.ok()) return s;
 
   info->capacity = metadata.GetCapacity();

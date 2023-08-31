@@ -168,6 +168,10 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
+  if (s.IsNotFound()) {
+    *ret = 0;
+    return rocksdb::Status::OK();
+  }
   if (!s.ok()) return s;
 
   std::vector<std::string> bf_key_list;

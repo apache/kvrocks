@@ -82,10 +82,14 @@ func TestBloom(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "nonscaling", "expansion", "1").Err(), "ERR nonscaling filters cannot expand")
 	})
 
-	t.Run("Check no exists key", func(t *testing.T) {
+	t.Run("Check no exist key and no exist item", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Err(), "ERR key is not found")
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.exists", "no_exist_key", "item1").Val())
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.exists", key, "item1").Val())
 	})
 
 	t.Run("Add the same value", func(t *testing.T) {

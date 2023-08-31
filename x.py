@@ -262,9 +262,9 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
     run(gpg, '--detach-sign', '--armor', tarball)
 
     # 4. Generate sha512 checksum
-    sha512sum = find_command('sha512sum', msg='sha512sum is required for source packaging')
+    shasum = find_command('shasum', msg='shasum is required for source packaging')
     with open(f'{tarball}.sha512', 'w+') as f:
-        run(sha512sum, tarball, stdout=f)
+        run(shasum, '-a', '512', tarball, stdout=f)
 
 
 def test_cpp(dir: str, rest: List[str]) -> None:

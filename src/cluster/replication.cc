@@ -372,9 +372,7 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev) {
   return CBState::NEXT;
 }
 
-inline bool ResponseLineIsOK(const char *line) {
-  return strncmp(line, "+OK", 3) == 0;
-}
+inline bool ResponseLineIsOK(const char *line) { return strncmp(line, "+OK", 3) == 0; }
 
 ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev) {  // NOLINT
   auto input = bufferevent_get_input(bev);

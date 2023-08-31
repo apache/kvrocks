@@ -190,7 +190,6 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
 
 rocksdb::Status BloomChain::Info(const Slice &user_key, BloomFilterInfo *info) {
   std::string ns_key = AppendNamespacePrefix(user_key);
-  LockGuard guard(storage_->GetLockManager(), ns_key);
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);

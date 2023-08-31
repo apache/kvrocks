@@ -53,6 +53,7 @@ class CommandBFReserve : public Commander {
     while (parser.Good()) {
       if (parser.EatEqICase("nonscaling")) {
         is_nonscaling = true;
+        expansion_ = 0;
       } else if (parser.EatEqICase("expansion")) {
         has_expansion = true;
         expansion_ = GET_OR_RET(parser.TakeInt<uint16_t>());
@@ -116,8 +117,11 @@ class CommandBFExists : public Commander {
 class CommandBFInfo : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
     CommandParser parser(args, 2);
-    while (parser.Good()) {
+    if (parser.Good()) {
       if (parser.EatEqICase("capacity")) {
         type_ = BloomInfoType::kCapacity;
       } else if (parser.EatEqICase("size")) {
@@ -155,7 +159,7 @@ class CommandBFInfo : public Commander {
         *output += redis::SimpleString("Number of items inserted");
         *output += redis::Integer(info.size);
         *output += redis::SimpleString("Expansion rate");
-        *output += redis::Integer(info.expansion);
+        *output += info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
         break;
       case BloomInfoType::kCapacity:
         *output = redis::Integer(info.capacity);
@@ -170,10 +174,8 @@ class CommandBFInfo : public Commander {
         *output = redis::Integer(info.size);
         break;
       case BloomInfoType::kExpansion:
-        *output = redis::Integer(info.expansion);
+        *output = info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
         break;
-      default:
-        LOG(ERROR) << "Failed to parse the type of BF.INFO command";
     }
 
     return Status::OK();

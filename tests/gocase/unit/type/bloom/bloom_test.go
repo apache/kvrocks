@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -146,6 +147,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 	})
 
+	t.Run("Get info but wrong arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "2000", "nonscaling").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.info", key, "xxx").Err(), "Invalid info argument")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.info", key, "capacity", "items").Err(), "wrong number of arguments")
+	})
+
 	t.Run("Get all info of bloom filter", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "3").Err())
@@ -169,6 +177,12 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
 		// if not specified expansion, the default expansion value is 2.
 		require.Equal(t, int64(2), rdb.Do(ctx, "bf.info", key, "expansion").Val())
+	})
+
+	t.Run("Get expansion of nonscaling bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "2000", "nonscaling").Err())
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "bf.info", key, "expansion").Err())
 	})
 
 	t.Run("Get size of bloom filter", func(t *testing.T) {

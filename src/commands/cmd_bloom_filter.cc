@@ -145,7 +145,7 @@ class CommandBFInfo : public Commander {
 
     switch (type_) {
       case BloomInfoType::kAll:
-        *output = "*" + std::to_string(2 * 5) + CRLF;
+        *output = redis::MultiLen(2 * 5);
         *output += redis::SimpleString("Capacity");
         *output += redis::Integer(info.capacity);
         *output += redis::SimpleString("Size");

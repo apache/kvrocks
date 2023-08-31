@@ -30,6 +30,7 @@
 
 namespace redis {
 
+constexpr const char *consumerGroupMetadataDelimiter = "METADATA";
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
 const char *errEntriesAddedSmallerThanStreamSize =
@@ -168,17 +169,20 @@ std::string Stream::internalKeyFromGroupName(const std::string &ns_key, const St
   std::string sub_key;
   PutFixed64(&sub_key, group_name.size());
   sub_key += group_name;
-  sub_key += "METADATA";
+  sub_key += consumerGroupMetadataDelimiter;
   std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   return entry_key;
 }
 
-std::string Stream::groupNameFromInternalKey(const rocksdb::Slice &key) const {
+std::string Stream::groupNameFromInternalKey(rocksdb::Slice key) const {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice group_name_metadata = ikey.GetSubKey();
   uint64_t len = 0;
   GetFixed64(&group_name_metadata, &len);
-  std::string group_name = group_name_metadata.ToString().substr(0, len);
+  std::string group_name;
+  if (len <= group_name_metadata.size() - strlen(consumerGroupMetadataDelimiter)) {
+    group_name = group_name_metadata.ToString().substr(0, len);
+  }
   return group_name;
 }
 
@@ -241,6 +245,16 @@ rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroup
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
+
+  std::string get_entry_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
+  if (!s.IsNotFound()) {
+    if (!s.ok()) {
+      return s;
+    }
+    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
+  }
+
   batch->Put(stream_cf_handle_, entry_key, entry_value);
   metadata.group_number += 1;
   std::string metadata_bytes;

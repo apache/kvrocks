@@ -66,7 +66,7 @@ class Stream : public SubKeyScanner {
                 rocksdb::WriteBatch *batch);
   std::string internalKeyFromGroupName(const std::string &ns_key, const StreamMetadata &metadata,
                                        const std::string &group_name) const;
-  std::string groupNameFromInternalKey(const rocksdb::Slice &key) const;
+  std::string groupNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerGroupMetadataValue(const StreamConsumerGroupMetadata &consumer_group_metadata);
   static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
 };

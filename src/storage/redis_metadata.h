@@ -245,4 +245,9 @@ class BloomChainMetadata : public Metadata {
   ///
   /// @return the total capacity value
   uint32_t GetCapacity() const;
+
+  /// Check the bloom chain is scaling or not
+  ///
+  /// @return true if scaling, false if nonscaling
+  bool IsScaling() const;
 };

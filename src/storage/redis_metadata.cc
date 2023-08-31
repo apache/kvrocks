@@ -452,3 +452,5 @@ uint32_t BloomChainMetadata::GetCapacity() const {
   }
   return static_cast<uint32_t>(base_capacity * (1 - pow(expansion, n_filters)) / (1 - expansion));
 }
+
+bool BloomChainMetadata::IsScaling() const { return expansion != 0; }

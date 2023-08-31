@@ -56,12 +56,36 @@ rocksdb::Status BloomChain::createBloomChain(const Slice &ns_key, double error_r
   block_split_bloom_filter.Init(metadata->bloom_bytes);
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisBloomFilter, {"createSBChain"});
+  WriteBatchLogData log_data(kRedisBloomFilter, {"createBloomChain"});
   batch->PutLogData(log_data.Encode());
 
-  std::string sb_chain_meta_bytes;
-  metadata->Encode(&sb_chain_meta_bytes);
-  batch->Put(metadata_cf_handle_, ns_key, sb_chain_meta_bytes);
+  std::string bloom_chain_meta_bytes;
+  metadata->Encode(&bloom_chain_meta_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
+
+  std::string bf_key = getBFKey(ns_key, *metadata, metadata->n_filters - 1);
+  batch->Put(bf_key, block_split_bloom_filter.GetData());
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status BloomChain::createBloomFilter(const Slice &ns_key, BloomChainMetadata *metadata) {
+  uint32_t bloom_filter_bytes = BlockSplitBloomFilter::OptimalNumOfBytes(
+      static_cast<uint32_t>(metadata->base_capacity * pow(metadata->expansion, metadata->n_filters)),
+      metadata->error_rate);
+  metadata->n_filters += 1;
+  metadata->bloom_bytes += bloom_filter_bytes;
+
+  BlockSplitBloomFilter block_split_bloom_filter;
+  block_split_bloom_filter.Init(bloom_filter_bytes);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisBloomFilter, {"createBloomFilter"});
+  batch->PutLogData(log_data.Encode());
+
+  std::string bloom_chain_meta_bytes;
+  metadata->Encode(&bloom_chain_meta_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 
   std::string bf_key = getBFKey(ns_key, *metadata, metadata->n_filters - 1);
   batch->Put(bf_key, block_split_bloom_filter.GetData());
@@ -147,8 +171,12 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
 
   // insert
   if (!exist) {
-    if (metadata.size + 1 > metadata.GetCapacity()) {  // TODO: scaling would be supported later
-      return rocksdb::Status::Aborted("filter is full");
+    if (metadata.size + 1 > metadata.GetCapacity()) {
+      if (metadata.IsScaling()) {
+        s = createBloomFilter(ns_key, &metadata);
+      } else {
+        return rocksdb::Status::Aborted("filter is full and is nonscaling");
+      }
     }
     s = bloomAdd(bf_key_list.back(), item_string);
     if (!s.ok()) return s;
@@ -156,9 +184,9 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
     metadata.size += 1;
   }
 
-  std::string sb_chain_metadata_bytes;
-  metadata.Encode(&sb_chain_metadata_bytes);
-  batch->Put(metadata_cf_handle_, ns_key, sb_chain_metadata_bytes);
+  std::string bloom_chain_metadata_bytes;
+  metadata.Encode(&bloom_chain_metadata_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

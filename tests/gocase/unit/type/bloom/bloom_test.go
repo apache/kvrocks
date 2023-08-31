@@ -203,5 +203,47 @@ func TestBloom(t *testing.T) {
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
 	})
 
-	// TODO: Add the testcase of get filters of bloom filter after complete the scaling.
+	t.Run("Bloom filter full and nonscaling", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "nonscaling").Err())
+
+		// insert items, suppose false positives is 0
+		for i := 0; i < 50; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.add", key, buf)
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, int64(50), rdb.Do(ctx, "bf.info", key, "items").Val())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.add", key, "xxx").Err(), "filter is full and is nonscaling")
+		require.Equal(t, int64(50), rdb.Do(ctx, "bf.info", key, "items").Val())
+	})
+
+	t.Run("Bloom filter full and scaling", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "expansion", "2").Err())
+
+		// insert items, suppose false positives is 0
+		for i := 0; i < 50; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.add", key, buf)
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, []interface{}{"Capacity", int64(50), "Size", int64(256), "Number of filters", int64(1), "Number of items inserted", int64(50), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+
+		// bloom filter is full and scaling
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxx").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(150), "Size", int64(768), "Number of filters", int64(2), "Number of items inserted", int64(51), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+
+		// insert items, suppose false positives is 0
+		for i := 0; i < 99; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.add", key, buf)
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, []interface{}{"Capacity", int64(150), "Size", int64(768), "Number of filters", int64(2), "Number of items inserted", int64(150), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+
+		// bloom filter is full and scaling
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxxx").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(350), "Size", int64(1792), "Number of filters", int64(3), "Number of items inserted", int64(151), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
 }

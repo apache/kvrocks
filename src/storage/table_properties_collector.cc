@@ -60,17 +60,17 @@ rocksdb::Status CompactOnExpiredCollector::AddUserKey(const rocksdb::Slice &key,
 }
 
 rocksdb::Status CompactOnExpiredCollector::Finish(rocksdb::UserCollectedProperties *properties) {
-  properties->insert(std::pair<std::string, std::string>{"total_keys", std::to_string(total_keys_)});
-  properties->insert(std::pair<std::string, std::string>{"deleted_keys", std::to_string(deleted_keys_)});
-  properties->insert(std::pair<std::string, std::string>{"start_key", start_key_});
-  properties->insert(std::pair<std::string, std::string>{"stop_key", stop_key_});
+  properties->emplace("total_keys", std::to_string(total_keys_));
+  properties->emplace("deleted_keys", std::to_string(deleted_keys_));
+  properties->emplace("start_key", start_key_);
+  properties->emplace("stop_key", stop_key_);
   return rocksdb::Status::OK();
 }
 
 rocksdb::UserCollectedProperties CompactOnExpiredCollector::GetReadableProperties() const {
   rocksdb::UserCollectedProperties properties;
-  properties.insert(std::pair<std::string, std::string>{"total_keys", std::to_string(total_keys_)});
-  properties.insert(std::pair<std::string, std::string>{"deleted_keys", std::to_string(deleted_keys_)});
+  properties.emplace("total_keys", std::to_string(total_keys_));
+  properties.emplace("deleted_keys", std::to_string(deleted_keys_));
   return properties;
 }
 

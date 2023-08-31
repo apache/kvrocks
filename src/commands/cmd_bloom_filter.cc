@@ -48,11 +48,14 @@ class CommandBFReserve : public Commander {
     }
 
     CommandParser parser(args, 4);
-    bool nonscaling = false;
+    bool is_nonscaling = false;
+    bool has_expansion = false;
     while (parser.Good()) {
       if (parser.EatEqICase("nonscaling")) {
-        nonscaling = true;
+        is_nonscaling = true;
+        expansion_ = 0;
       } else if (parser.EatEqICase("expansion")) {
+        has_expansion = true;
         expansion_ = GET_OR_RET(parser.TakeInt<uint16_t>());
         if (expansion_ < 1) {
           return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
@@ -62,8 +65,7 @@ class CommandBFReserve : public Commander {
       }
     }
 
-    // if nonscaling is true, expansion should be 0
-    if (nonscaling && expansion_ != 0) {
+    if (is_nonscaling && has_expansion) {
       return {Status::RedisParseErr, "nonscaling filters cannot expand"};
     }
 
@@ -82,7 +84,7 @@ class CommandBFReserve : public Commander {
  private:
   double error_rate_;
   uint32_t capacity_;
-  uint16_t expansion_ = 0;
+  uint16_t expansion_ = kBFDefaultExpansion;
 };
 
 class CommandBFAdd : public Commander {
@@ -111,7 +113,79 @@ class CommandBFExists : public Commander {
   }
 };
 
+class CommandBFInfo : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    CommandParser parser(args, 2);
+    if (parser.Good()) {
+      if (parser.EatEqICase("capacity")) {
+        type_ = BloomInfoType::kCapacity;
+      } else if (parser.EatEqICase("size")) {
+        type_ = BloomInfoType::kSize;
+      } else if (parser.EatEqICase("filters")) {
+        type_ = BloomInfoType::kFilters;
+      } else if (parser.EatEqICase("items")) {
+        type_ = BloomInfoType::kItems;
+      } else if (parser.EatEqICase("expansion")) {
+        type_ = BloomInfoType::kExpansion;
+      } else {
+        return {Status::RedisParseErr, "Invalid info argument"};
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    BloomFilterInfo info;
+    auto s = bloom_db.Info(args_[1], &info);
+    if (s.IsNotFound()) return {Status::RedisExecErr, "key is not found"};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    switch (type_) {
+      case BloomInfoType::kAll:
+        *output = redis::MultiLen(2 * 5);
+        *output += redis::SimpleString("Capacity");
+        *output += redis::Integer(info.capacity);
+        *output += redis::SimpleString("Size");
+        *output += redis::Integer(info.bloom_bytes);
+        *output += redis::SimpleString("Number of filters");
+        *output += redis::Integer(info.n_filters);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.size);
+        *output += redis::SimpleString("Expansion rate");
+        *output += info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
+        break;
+      case BloomInfoType::kCapacity:
+        *output = redis::Integer(info.capacity);
+        break;
+      case BloomInfoType::kSize:
+        *output = redis::Integer(info.bloom_bytes);
+        break;
+      case BloomInfoType::kFilters:
+        *output = redis::Integer(info.n_filters);
+        break;
+      case BloomInfoType::kItems:
+        *output = redis::Integer(info.size);
+        break;
+      case BloomInfoType::kExpansion:
+        *output = info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
+        break;
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  BloomInfoType type_ = BloomInfoType::kAll;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1), )
 }  // namespace redis

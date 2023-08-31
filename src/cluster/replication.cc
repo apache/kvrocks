@@ -54,7 +54,7 @@ Status FeedSlaveThread::Start() {
     sigaddset(&mask, SIGHUP);
     sigaddset(&mask, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &mask, &omask);
-    auto s = util::SockSend(conn_->GetFD(), "+OK\r\n");
+    auto s = util::SockSend(conn_->GetFD(), redis::SimpleString("OK"));
     if (!s.IsOK()) {
       LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
       return;
@@ -372,11 +372,15 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev) {
   return CBState::NEXT;
 }
 
+inline bool ResponseLineIsOK(const char *line) {
+  return strncmp(line, "+OK", 3) == 0;
+}
+
 ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev) {  // NOLINT
   auto input = bufferevent_get_input(bev);
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
-  if (strncmp(line.get(), "+OK", 3) != 0) {
+  if (!ResponseLineIsOK(line.get())) {
     // Auth failed
     LOG(ERROR) << "[replication] Auth failed: " << line.get();
     return CBState::RESTART;
@@ -447,7 +451,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
-  if (strncmp(line.get(), "+OK", 3) != 0) {
+  if (!ResponseLineIsOK(line.get())) {
     LOG(WARNING) << "[replication] Failed to replconf: " << line.get() + 1;
     //  backward compatible with old version that doesn't support replconf cmd
     return CBState::NEXT;
@@ -511,7 +515,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
     return CBState::PREV;
   }
 
-  if (strncmp(line.get(), "+OK", 3) != 0) {
+  if (!ResponseLineIsOK(line.get())) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     fullsync_steps_.Start();
@@ -802,7 +806,7 @@ Status ReplicationThread::sendAuth(int sock_fd) {
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
-      if (strncmp(line.get(), "+OK", 3) != 0) {
+      if (!ResponseLineIsOK(line.get())) {
         return {Status::NotOK, "auth got invalid response"};
       }
       break;

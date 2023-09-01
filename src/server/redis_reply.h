@@ -43,8 +43,8 @@ std::string Integer(T data) {
 std::string BulkString(const std::string &data);
 std::string NilString();
 
-template <typename IntegerType>
-std::string MultiLen(IntegerType len) {
+template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+std::string MultiLen(T len) {
   return "*" + std::to_string(len) + CRLF;
 }
 

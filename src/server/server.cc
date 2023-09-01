@@ -339,19 +339,17 @@ void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::st
   if (monitor_clients_ <= 0) return;
 
   auto now = util::GetTimeStampUS();
-  std::string output = "+";
-  output += std::to_string(now / 1000000) + "." + std::to_string(now % 1000000);
-  output += " [" + conn->GetNamespace() + " " + conn->GetAddr() + "]";
+  std::string output =
+      fmt::format("{}.{} [{} {}]", now / 1000000, now % 1000000, conn->GetNamespace(), conn->GetAddr());
   for (const auto &token : tokens) {
     output += " \"";
     output += util::EscapeString(token);
     output += "\"";
   }
-  output += CRLF;
 
   for (const auto &worker_thread : worker_threads_) {
     auto worker = worker_thread->GetWorker();
-    worker->FeedMonitorConns(conn, output);
+    worker->FeedMonitorConns(conn, redis::SimpleString(output));
   }
 }
 

@@ -174,6 +174,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
     if (metadata.size + 1 > metadata.GetCapacity()) {
       if (metadata.IsScaling()) {
         s = createBloomFilter(ns_key, &metadata);
+        if (!s.ok()) return s;
       } else {
         return rocksdb::Status::Aborted("filter is full and is nonscaling");
       }

@@ -207,7 +207,7 @@ func TestIntrospection(t *testing.T) {
 	t.Run("MOVE dummy coverage", func(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "MOVE", "key", "dbid").Err())
 
-		// key dose not exist, return 0
+		// key does not exist, return 0
 		require.NoError(t, rdb.Do(ctx, "DEL", "key").Err())
 		require.EqualValues(t, 0, rdb.Do(ctx, "MOVE", "key", "0").Val())
 

@@ -2512,3 +2512,17 @@ TEST_F(RedisStreamTest, StreamSetIdLastIdGreaterThanExisting) {
   EXPECT_EQ(info.entries_added, added);
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
 }
+
+TEST_F(RedisStreamTest, StreamConsumerGroupCreateAndDestroy) {
+  redis::StreamXGroupCreateOptions create_options = {true, 0, "$"};
+  std::string stream_name = "TestStream";
+  std::string group_name = "TestGroup";
+  auto s = stream_->CreateGroup(stream_name, create_options, group_name);
+  EXPECT_TRUE(s.ok());
+  uint64_t delete_cnt = 0;
+  s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
+  EXPECT_TRUE(delete_cnt != 0);
+  delete_cnt = 0;
+  s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
+  EXPECT_TRUE(delete_cnt == 0);
+}

@@ -30,6 +30,7 @@
 
 namespace redis {
 
+constexpr const char *consumerGroupMetadataDelimiter = "METADATA";
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
 const char *errEntriesAddedSmallerThanStreamSize =
@@ -38,6 +39,9 @@ const char *errMaxDeletedIdGreaterThanLastGenerated =
     "The ID specified in XSETID is smaller than the provided max_deleted_entry_id";
 const char *errEntriesAddedNotSpecifiedForEmptyStream = "an empty stream should have non-zero value of ENTRIESADDED";
 const char *errMaxDeletedIdNotSpecifiedForEmptyStream = "an empty stream should have MAXDELETEDID";
+const char *errXGroupSubcommandRequiresKeyExist =
+    "The XGROUP subcommand requires the key to exist.\
+Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically.";
 
 rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
   return Database::GetMetadata(kRedisStream, stream_name, metadata);
@@ -156,6 +160,155 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
   batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
 
   *id = next_entry_id;
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+std::string Stream::internalKeyFromGroupName(const std::string &ns_key, const StreamMetadata &metadata,
+                                             const std::string &group_name) const {
+  std::string sub_key;
+  PutFixed64(&sub_key, group_name.size());
+  sub_key += group_name;
+  sub_key += consumerGroupMetadataDelimiter;
+  std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return entry_key;
+}
+
+std::string Stream::groupNameFromInternalKey(rocksdb::Slice key) const {
+  InternalKey ikey(key, storage_->IsSlotIdEncoded());
+  Slice group_name_metadata = ikey.GetSubKey();
+  uint64_t len = 0;
+  GetFixed64(&group_name_metadata, &len);
+  std::string group_name;
+  if (len <= group_name_metadata.size() - strlen(consumerGroupMetadataDelimiter)) {
+    group_name = group_name_metadata.ToString().substr(0, len);
+  }
+  return group_name;
+}
+
+std::string Stream::encodeStreamConsumerGroupMetadataValue(const StreamConsumerGroupMetadata &consumer_group_metadata) {
+  std::string dst;
+  PutFixed64(&dst, consumer_group_metadata.consumer_number);
+  PutFixed64(&dst, consumer_group_metadata.pending_number);
+  PutFixed64(&dst, consumer_group_metadata.last_delivered_id.ms);
+  PutFixed64(&dst, consumer_group_metadata.last_delivered_id.seq);
+  PutFixed64(&dst, static_cast<uint64_t>(consumer_group_metadata.entries_read));
+  PutFixed64(&dst, consumer_group_metadata.lag);
+  return dst;
+}
+
+StreamConsumerGroupMetadata Stream::decodeStreamConsumerGroupMetadataValue(const std::string &value) {
+  StreamConsumerGroupMetadata consumer_group_metadata;
+  rocksdb::Slice input(value);
+  GetFixed64(&input, &consumer_group_metadata.consumer_number);
+  GetFixed64(&input, &consumer_group_metadata.pending_number);
+  GetFixed64(&input, &consumer_group_metadata.last_delivered_id.ms);
+  GetFixed64(&input, &consumer_group_metadata.last_delivered_id.seq);
+  uint64_t entries_read = 0;
+  GetFixed64(&input, &entries_read);
+  consumer_group_metadata.entries_read = static_cast<int64_t>(entries_read);
+  GetFixed64(&input, &consumer_group_metadata.lag);
+  return consumer_group_metadata;
+}
+
+rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
+                                    const std::string &group_name) {
+  if (std::isdigit(group_name[0])) {
+    return rocksdb::Status::InvalidArgument("group name cannot start with number");
+  }
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound() && !options.mkstream) {
+    return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
+  }
+
+  StreamConsumerGroupMetadata consumer_group_metadata;
+  if (options.last_id == "$") {
+    consumer_group_metadata.last_delivered_id = metadata.last_entry_id;
+  } else {
+    auto s = ParseStreamEntryID(options.last_id, &consumer_group_metadata.last_delivered_id);
+    if (!s.IsOK()) {
+      return rocksdb::Status::InvalidArgument(s.Msg());
+    }
+  }
+  consumer_group_metadata.entries_read = options.entries_read;
+  std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string entry_value = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  std::string get_entry_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
+  if (!s.IsNotFound()) {
+    if (!s.ok()) {
+      return s;
+    }
+    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
+  }
+
+  batch->Put(stream_cf_handle_, entry_key, entry_value);
+  metadata.group_number += 1;
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string &group_name, uint64_t *delete_cnt) {
+  *delete_cnt = 0;
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound()) {
+    return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  std::string sub_key_prefix;
+  PutFixed64(&sub_key_prefix, group_name.size());
+  sub_key_prefix += group_name;
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, sub_key_prefix, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, sub_key_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    batch->Delete(stream_cf_handle_, iter->key());
+    *delete_cnt += 1;
+  }
+
+  if (*delete_cnt != 0) {
+    metadata.group_number -= 1;
+    std::string metadata_bytes;
+    metadata.Encode(&metadata_bytes);
+    batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  }
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

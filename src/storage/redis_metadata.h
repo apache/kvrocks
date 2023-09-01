@@ -196,6 +196,7 @@ class StreamMetadata : public Metadata {
   redis::StreamEntryID first_entry_id;
   redis::StreamEntryID last_entry_id;
   uint64_t entries_added = 0;
+  uint64_t group_number = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 

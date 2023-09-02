@@ -626,6 +626,16 @@ rocksdb::Status ZSet::Overwrite(const Slice &user_key, const MemberScores &mscor
 
 rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
+  *saved_cnt = 0;
+  std::vector<MemberScore> members;
+  auto s = Inter(keys_weights, aggregate_method, saved_cnt, &members);
+  if (!s.ok()) return s;
+  *saved_cnt = members.size();
+  return Overwrite(dst, members);
+}
+
+rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
+                            uint64_t *saved_cnt, std::vector<MemberScore> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys_weights.size());
   for (const auto &key_weight : keys_weights) {
@@ -680,14 +690,13 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
       }
     }
   }
-  if (!dst_zset.empty()) {
-    std::vector<MemberScore> mscores;
+  if (members && !dst_zset.empty()) {
+    members->reserve(dst_zset.size());
     for (const auto &iter : dst_zset) {
       if (member_counters[iter.first] != keys_weights.size()) continue;
-      mscores.emplace_back(MemberScore{iter.first, iter.second});
+      members->emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = mscores.size();
-    Overwrite(dst, mscores);
+    if (saved_cnt) *saved_cnt = members->size();
   }
 
   return rocksdb::Status::OK();

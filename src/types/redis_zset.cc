@@ -628,7 +628,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<MemberScore> members;
-  auto s = Inter(keys_weights, aggregate_method, saved_cnt, &members);
+  auto s = Inter(keys_weights, aggregate_method, &members);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
   return Overwrite(dst, members);

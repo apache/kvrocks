@@ -1040,7 +1040,7 @@ class CommandRestore : public Commander {
         return {Status::RedisExecErr, db_status.ToString()};
       }
     }
-    if (absttl_) {
+    if (ttl_ms_ && absttl_) {
       auto now = util::GetTimeStampMS();
       if (ttl_ms_ <= now) {
         // return ok if the ttl is already expired

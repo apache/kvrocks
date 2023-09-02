@@ -504,6 +504,9 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         if (op_flag == kBitOpNot) {
           if (frag_index == stop_index) {
             if (max_size == (frag_index + 1) * kBitmapSegmentBytes) {
+              // If the last fragment is full, `max_size % kBitmapSegmentBytes`
+              // would be 0. In this case, we should set `frag_maxlen` to
+              // `kBitmapSegmentBytes` to avoid writing an empty fragment.
               frag_maxlen = kBitmapSegmentBytes;
             } else {
               frag_maxlen = max_size % kBitmapSegmentBytes;

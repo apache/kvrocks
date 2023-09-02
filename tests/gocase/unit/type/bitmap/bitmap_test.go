@@ -234,7 +234,7 @@ func TestBitmap(t *testing.T) {
 		}
 	})
 
-	t.Run("GH-1714", func(t *testing.T) {
+	t.Run("BITOP Boundary Check", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "str").Err())
 		str := util.RandStringWithSeed(0, 1000, util.Binary, 2701)
 		Set2SetBit(t, rdb, ctx, "str", []byte(str))

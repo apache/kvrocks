@@ -315,7 +315,7 @@ Status Worker::AddConnection(redis::Connection *c) {
     return {Status::NotOK, "max number of clients reached"};
   }
 
-  conns_.insert(std::pair<int, redis::Connection *>(c->GetFD(), c));
+  conns_.emplace(c->GetFD(), c);
   uint64_t id = svr->GetClientID();
   c->SetID(id);
 

@@ -47,6 +47,7 @@
 #include "string_util.h"
 #include "time_util.h"
 #include "unique_fd.h"
+#include "vendor/crc64.h"
 #include "version.h"
 
 namespace google {
@@ -309,8 +310,12 @@ static void Daemonize() {
 
 int main(int argc, char *argv[]) {
   srand(static_cast<unsigned>(util::GetTimeStamp()));
+
   google::InitGoogleLogging("kvrocks");
+  auto glog_exit = MakeScopeExit(google::ShutdownGoogleLogging);
+
   evthread_use_pthreads();
+  auto event_exit = MakeScopeExit(libevent_global_shutdown);
 
   signal(SIGPIPE, SIG_IGN);
   SetupSigSegvAction();
@@ -324,6 +329,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  crc64_init();
   InitGoogleLog(&config);
   LOG(INFO) << PrintVersion;
   // Tricky: We don't expect that different instances running on the same port,
@@ -369,6 +375,5 @@ int main(int argc, char *argv[]) {
   }
   srv->Join();
 
-  google::ShutdownGoogleLogging();
   return 0;
 }

@@ -45,6 +45,24 @@ class CommandType : public Commander {
   }
 };
 
+class CommandMove : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    int count = 0;
+    redis::Database redis(svr->storage, conn->GetNamespace());
+    rocksdb::Status s = redis.Exists({args_[1]}, &count);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = count ? redis::Integer(1) : redis::Integer(0);
+    return Status::OK();
+  }
+};
+
 class CommandObject : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -250,6 +268,7 @@ class CommandDel : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),

@@ -130,6 +130,12 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, 1, len(rdb.GeoRadius(ctx, "users", 0, 0, &redis.GeoRadiusQuery{Radius: 50000, Unit: "km", WithCoord: true}).Val()))
 	})
 
+	t.Run("GEORADIUSBYMEMBER against non existing src key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEORADIUSBYMEMBER", "points", "member", "1", "km").Val())
+		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEORADIUSBYMEMBER_RO", "points", "member", "1", "km").Val())
+	})
+
 	t.Run("GEORADIUSBYMEMBER simple (sorted)", func(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})

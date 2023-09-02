@@ -40,7 +40,7 @@ Status SockSend(int fd, const std::string &data);
 StatusOr<std::string> SockReadLine(int fd);
 Status SockSendFile(int out_fd, int in_fd, size_t size);
 Status SockSetBlocking(int fd, int blocking);
-int GetPeerAddr(int fd, std::string *addr, uint32_t *port);
+StatusOr<std::tuple<std::string, uint32_t>> GetPeerAddr(int fd);
 int GetLocalPort(int fd);
 bool IsPortInUse(uint32_t port);
 

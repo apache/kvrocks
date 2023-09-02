@@ -129,7 +129,7 @@ Config::Config() {
       {"log-dir", true, new StringField(&log_dir, "")},
       {"log-level", false, new EnumField(&log_level, log_levels, google::INFO)},
       {"pidfile", true, new StringField(&pidfile, "")},
-      {"max-io-mb", false, new IntField(&max_io_mb, 500, 0, INT_MAX)},
+      {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},

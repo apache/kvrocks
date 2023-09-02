@@ -210,7 +210,8 @@ class Server {
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
 
-  static int GetCachedUnixTime();
+  static int64_t GetCachedUnixTime();
+  int64_t GetLastBgsaveTime();
   void GetStatsInfo(std::string *info);
   void GetServerInfo(std::string *info);
   void GetMemoryInfo(std::string *info);
@@ -271,7 +272,7 @@ class Server {
   Stats stats;
   engine::Storage *storage;
   std::unique_ptr<Cluster> cluster;
-  static inline std::atomic<int> unix_time = 0;
+  static inline std::atomic<int64_t> unix_time = 0;
   std::unique_ptr<SlotMigrator> slot_migrator;
   std::unique_ptr<SlotImport> slot_import;
 
@@ -323,9 +324,9 @@ class Server {
   std::mutex db_job_mu_;
   bool db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
-  int last_bgsave_time_ = -1;
+  int64_t last_bgsave_time_ = -1;
   std::string last_bgsave_status_ = "ok";
-  int last_bgsave_time_sec_ = -1;
+  int64_t last_bgsave_time_sec_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
 

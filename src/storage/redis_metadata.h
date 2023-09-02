@@ -31,16 +31,19 @@
 
 constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
+// We write enum integer value of every datatype
+// explicitly since it cannot be changed once confirmed
 enum RedisType {
-  kRedisNone,
-  kRedisString,
-  kRedisHash,
-  kRedisList,
-  kRedisSet,
-  kRedisZSet,
-  kRedisBitmap,
-  kRedisSortedint,
-  kRedisStream,
+  kRedisNone = 0,
+  kRedisString = 1,
+  kRedisHash = 2,
+  kRedisList = 3,
+  kRedisSet = 4,
+  kRedisZSet = 5,
+  kRedisBitmap = 6,
+  kRedisSortedint = 7,
+  kRedisStream = 8,
+  kRedisBloomFilter = 9,
 };
 
 enum RedisCommand {
@@ -142,8 +145,9 @@ class Metadata {
   bool Expired() const;
   bool ExpireAt(uint64_t expired_ts) const;
   virtual void Encode(std::string *dst);
-  virtual rocksdb::Status Decode(const std::string &bytes);
+  virtual rocksdb::Status Decode(Slice input);
   bool operator==(const Metadata &that) const;
+  virtual ~Metadata() = default;
 
  private:
   static uint64_t generateVersion();
@@ -181,7 +185,7 @@ class ListMetadata : public Metadata {
   explicit ListMetadata(bool generate_version = true);
 
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  rocksdb::Status Decode(Slice input) override;
 };
 
 class StreamMetadata : public Metadata {
@@ -192,9 +196,54 @@ class StreamMetadata : public Metadata {
   redis::StreamEntryID first_entry_id;
   redis::StreamEntryID last_entry_id;
   uint64_t entries_added = 0;
+  uint64_t group_number = 0;
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 
   void Encode(std::string *dst) override;
-  rocksdb::Status Decode(const std::string &bytes) override;
+  rocksdb::Status Decode(Slice input) override;
+};
+
+class BloomChainMetadata : public Metadata {
+ public:
+  /// The number of sub-filters
+  uint16_t n_filters;
+
+  /// Adding an element to a Bloom filter never fails due to the data structure "filling up". Instead the error rate
+  /// starts to grow. To keep the error close to the one set on filter initialisation - the bloom filter will
+  /// auto-scale, meaning when capacity is reached an additional sub-filter will be created.
+  ///
+  /// The capacity of the new sub-filter is the capacity of the last sub-filter multiplied by expansion.
+  ///
+  /// The default expansion value is 2.
+  ///
+  /// For non-scaling, expansion should be set to 0
+  uint16_t expansion;
+
+  /// The number of entries intended to be added to the filter. If your filter allows scaling, the capacity of the last
+  /// sub-filter should be: base_capacity -> base_capacity * expansion -> base_capacity * expansion^2...
+  ///
+  /// The default base_capacity value is 100.
+  uint32_t base_capacity;
+
+  /// The desired probability for false positives.
+  ///
+  /// The rate is a decimal value between 0 and 1. For example, for a desired false positive rate of 0.1% (1 in 1000),
+  /// error_rate should be set to 0.001.
+  ///
+  /// The default error_rate value is 0.01.
+  double error_rate;
+
+  /// The total number of bytes allocated for all sub-filters.
+  uint32_t bloom_bytes;
+
+  explicit BloomChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
+
+  void Encode(std::string *dst) override;
+  rocksdb::Status Decode(Slice bytes) override;
+
+  /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
+  ///
+  /// @return the total capacity value
+  uint32_t GetCapacity() const;
 };

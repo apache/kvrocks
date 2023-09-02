@@ -131,6 +131,7 @@ include(cmake/rocksdb.cmake)
 include(cmake/libevent.cmake)
 include(cmake/fmt.cmake)
 include(cmake/jsoncons.cmake)
+include(cmake/xxhash.cmake)
 
 if (ENABLE_LUAJIT)
 include(cmake/luajit.cmake)
@@ -160,6 +161,7 @@ list(APPEND EXTERNAL_LIBS tbb)
 list(APPEND EXTERNAL_LIBS jsoncons)
 list(APPEND EXTERNAL_LIBS Threads::Threads)
 list(APPEND EXTERNAL_LIBS ${Backtrace_LIBRARY})
+list(APPEND EXTERNAL_LIBS xxhash)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
@@ -196,7 +198,7 @@ list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/main.cc)
 
 add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
 
-target_include_directories(kvrocks_objs PUBLIC src src/common ${PROJECT_BINARY_DIR} ${Backtrace_INCLUDE_DIR})
+target_include_directories(kvrocks_objs PUBLIC src src/common src/vendor ${PROJECT_BINARY_DIR} ${Backtrace_INCLUDE_DIR})
 target_compile_features(kvrocks_objs PUBLIC cxx_std_17)
 target_compile_options(kvrocks_objs PUBLIC -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer -Werror=unused-result)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

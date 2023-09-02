@@ -168,6 +168,46 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   bitmap->Del(key_);
 }
 
+TEST_F(RedisDiskTest, BitmapDisk2) {
+  const int64_t kGroupSize = 8192;
+  for (size_t num_bits : {8192, 16384}) {
+    for (bool set_op : {false, true}) {
+      std::unique_ptr<redis::Bitmap> bitmap = std::make_unique<redis::Bitmap>(storage_, "disk_ns_bitmap2");
+      std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_bitmap2");
+      key_ = "bitmapdisk_key2";
+      bitmap->Del(key_);
+      bool bit = false;
+
+      for (size_t i = 0; i < num_bits; i += kGroupSize) {
+        // Set all first bit of group to `!set_op`
+        EXPECT_TRUE(bitmap->SetBit(key_, i, !set_op, &bit).ok());
+        // Set all last bit of group to `set_op`.
+        EXPECT_TRUE(bitmap->SetBit(key_, i + kGroupSize - 1, set_op, &bit).ok());
+      }
+
+      auto bit_not_dest_key = "bit_op_not_dest_key";
+
+      int64_t len = 0;
+      EXPECT_TRUE(bitmap->BitOp(BitOpFlags::kBitOpNot, "NOT", bit_not_dest_key, {key_}, &len).ok());
+
+      for (size_t i = 0; i < num_bits; i += kGroupSize) {
+        bool result = false;
+        // Check all first bit of group is `set_op`
+        EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, i, &result).ok());
+        EXPECT_EQ(set_op, result);
+        // Check all last bit of group is `!set_op`
+        EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, i + kGroupSize - 1, &result).ok());
+        EXPECT_EQ(!set_op, result);
+        // Check bit in group between (first, last) is "1".
+        for (size_t j = i + 1; j < i + kGroupSize - 1; ++j) {
+          EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, j, &result).ok());
+          EXPECT_TRUE(result) << j << " is not true";
+        }
+      }
+    }
+  }
+}
+
 TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<redis::Sortedint> sortedint = std::make_unique<redis::Sortedint>(storage_, "disk_ns_sortedint");
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_sortedint");

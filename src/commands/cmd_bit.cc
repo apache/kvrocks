@@ -203,6 +203,7 @@ class CommandBitOp : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<Slice> op_keys;
+    op_keys.reserve(args_.size() - 2);
     for (uint64_t i = 3; i < args_.size(); i++) {
       op_keys.emplace_back(args_[i]);
     }

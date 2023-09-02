@@ -635,7 +635,7 @@ rocksdb::Status ZSet::InterStore(const Slice &dst, const std::vector<KeyWeight> 
 }
 
 rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
-                            uint64_t *saved_cnt, std::vector<MemberScore> *members) {
+                            std::vector<MemberScore> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys_weights.size());
   for (const auto &key_weight : keys_weights) {
@@ -643,8 +643,6 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
     lock_keys.emplace_back(std::move(ns_key));
   }
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
-
-  if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
   std::map<std::string, size_t> member_counters;
@@ -696,7 +694,6 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
       if (member_counters[iter.first] != keys_weights.size()) continue;
       members->emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = members->size();
   }
 
   return rocksdb::Status::OK();
@@ -706,14 +703,14 @@ rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> 
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<MemberScore> members;
-  auto s = Union(keys_weights, aggregate_method, saved_cnt, &members);
+  auto s = Union(keys_weights, aggregate_method, &members);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
   return Overwrite(dst, members);
 }
 
 rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
-                            uint64_t *saved_cnt, std::vector<MemberScore> *members) {
+                            std::vector<MemberScore> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys_weights.size());
   for (const auto &key_weight : keys_weights) {
@@ -721,8 +718,6 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, Aggregat
     lock_keys.emplace_back(std::move(ns_key));
   }
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
-
-  if (saved_cnt) *saved_cnt = 0;
 
   std::map<std::string, double> dst_zset;
   std::vector<MemberScore> target_mscores;
@@ -762,7 +757,6 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, Aggregat
     for (const auto &iter : dst_zset) {
       members->emplace_back(MemberScore{iter.first, iter.second});
     }
-    if (saved_cnt) *saved_cnt = members->size();
   }
   return rocksdb::Status::OK();
 }

@@ -21,6 +21,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
 #include "event_util.h"
@@ -203,6 +204,88 @@ class CommandXDel : public Commander {
 
  private:
   std::vector<redis::StreamEntryID> ids_;
+};
+
+class CommandXGroup : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    subcommand_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
+
+    if (subcommand_ == "create") {
+      if (args.size() < 5 || args.size() > 8) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      xgroup_create_options_.last_id = GET_OR_RET(parser.TakeStr());
+
+      while (parser.Good()) {
+        if (parser.EatEqICase("mkstream")) {
+          xgroup_create_options_.mkstream = true;
+        } else if (parser.EatEqICase("entriesread")) {
+          auto parse_result = parser.TakeInt<int64_t>();
+          if (!parse_result.IsOK()) {
+            return {Status::RedisParseErr, errValueNotInteger};
+          }
+          if (parse_result.GetValue() < 0 && parse_result.GetValue() != -1) {
+            return {Status::RedisParseErr, "value for ENTRIESREAD must be positive or -1"};
+          }
+          xgroup_create_options_.entries_read = parse_result.GetValue();
+        } else {
+          return parser.InvalidSyntax();
+        }
+      }
+
+      return Status::OK();
+    }
+
+    if (subcommand_ == "destroy") {
+      if (args.size() != 4) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr, "unknown subcommand"};
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+
+    if (subcommand_ == "create") {
+      auto s = stream_db.CreateGroup(stream_name_, xgroup_create_options_, group_name_);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::SimpleString("OK");
+    }
+
+    if (subcommand_ == "destroy") {
+      uint64_t delete_cnt = 0;
+      auto s = stream_db.DestroyGroup(stream_name_, group_name_, &delete_cnt);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      if (delete_cnt > 0) {
+        *output = redis::Integer(1);
+      } else {
+        *output = redis::Integer(0);
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string subcommand_;
+  std::string stream_name_;
+  std::string group_name_;
+  StreamXGroupCreateOptions xgroup_create_options_;
 };
 
 class CommandXLen : public Commander {
@@ -969,6 +1052,7 @@ class CommandXSetId : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),

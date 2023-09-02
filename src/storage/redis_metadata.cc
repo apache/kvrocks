@@ -358,6 +358,7 @@ void StreamMetadata::Encode(std::string *dst) {
   PutFixed64(dst, last_entry_id.seq);
 
   PutFixed64(dst, entries_added);
+  PutFixed64(dst, group_number);
 }
 
 rocksdb::Status StreamMetadata::Decode(Slice input) {
@@ -395,6 +396,10 @@ rocksdb::Status StreamMetadata::Decode(Slice input) {
   GetFixed64(&input, &last_entry_id.seq);
 
   GetFixed64(&input, &entries_added);
+
+  if (input.size() >= 8) {
+    GetFixed64(&input, &group_number);
+  }
 
   return rocksdb::Status::OK();
 }

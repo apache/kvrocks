@@ -168,6 +168,34 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   bitmap->Del(key_);
 }
 
+TEST_F(RedisDiskTest, BitmapDisk2) {
+  for (bool set_op : {false, true}) {
+    std::unique_ptr<redis::Bitmap> bitmap = std::make_unique<redis::Bitmap>(storage_, "disk_ns_bitmap2");
+    std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_bitmap2");
+    key_ = "bitmapdisk_key2";
+    bool bit = false;
+    EXPECT_TRUE(bitmap->SetBit(key_, 0, !set_op, &bit).ok());
+    EXPECT_TRUE(bitmap->SetBit(key_, 8191, set_op, &bit).ok());
+    bool result = false;
+    EXPECT_TRUE(bitmap->GetBit(key_, 8191, &result).ok());
+    EXPECT_EQ(set_op, result);
+    auto not_dest_key = "bit_op_not_dest_key";
+
+    int64_t len = 0;
+    bitmap->BitOp(BitOpFlags::kBitOpNot, "NOT", not_dest_key, {key_}, &len);
+
+    EXPECT_TRUE(bitmap->GetBit(not_dest_key, 8191, &result).ok());
+    EXPECT_EQ(!set_op, result);
+    EXPECT_TRUE(bitmap->GetBit(not_dest_key, 0, &result).ok());
+    EXPECT_EQ(set_op, result);
+
+    for (int i = 1; i < 8191; ++i) {
+      EXPECT_TRUE(bitmap->GetBit(not_dest_key, i, &result).ok());
+      EXPECT_TRUE(result);
+    }
+  }
+}
+
 TEST_F(RedisDiskTest, SortedintDisk) {
   std::unique_ptr<redis::Sortedint> sortedint = std::make_unique<redis::Sortedint>(storage_, "disk_ns_sortedint");
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_sortedint");

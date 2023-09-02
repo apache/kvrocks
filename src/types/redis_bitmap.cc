@@ -359,7 +359,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
       return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
     }
     if (metadata.size > max_size) max_size = metadata.size;
-    meta_pairs.emplace_back(ns_op_key, metadata);
+    meta_pairs.emplace_back(std::move(ns_op_key), metadata);
   }
 
   auto batch = storage_->GetWriteBatchBase();
@@ -376,7 +376,8 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
   BitmapMetadata res_metadata;
   if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
-    uint64_t frag_numkeys = num_keys, stop_index = (max_size - 1) / kBitmapSegmentBytes;
+    uint64_t frag_numkeys = num_keys;
+    uint64_t stop_index = (max_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
     uint16_t frag_maxlen = 0, frag_minlen = 0;
     std::string fragment;
@@ -404,7 +405,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         } else {
           if (frag_maxlen < fragment.size()) frag_maxlen = fragment.size();
           if (fragment.size() < frag_minlen || frag_minlen == 0) frag_minlen = fragment.size();
-          fragments.emplace_back(fragment);
+          fragments.emplace_back(std::move(fragment));
         }
       }
 
@@ -502,7 +503,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
         if (op_flag == kBitOpNot) {
           if (frag_index == stop_index) {
-            frag_maxlen = max_size % kBitmapSegmentBytes;
+            if (max_size == (frag_index + 1) * kBitmapSegmentBytes) {
+              frag_maxlen = kBitmapSegmentBytes;
+            } else {
+              frag_maxlen = max_size % kBitmapSegmentBytes;
+            }
           } else {
             frag_maxlen = kBitmapSegmentBytes;
           }

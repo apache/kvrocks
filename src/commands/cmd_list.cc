@@ -154,6 +154,92 @@ class CommandRPop : public CommandPop {
   CommandRPop() : CommandPop(false) {}
 };
 
+class CommandLMPop : public Commander {
+ public:
+  /// format: LMPOP #numkeys key0 [key1 ...] <LEFT | RIGHT> [COUNT count]
+  Status Parse(const std::vector<std::string> &args) override {
+    auto v = ParseInt<int32_t>(args[1], 10);
+    if (!v) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*v <= 0) {
+      return {Status::RedisParseErr, errValueMustBePositive};
+    }
+    num_keys_ = *v;
+
+    if ((args.size() != 3 + num_keys_) && (args.size() != 5 + num_keys_)) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    std::string left_or_right = util::ToLower(args[1 + num_keys_]);
+    if (left_or_right == "left") {
+      left_ = true;
+    }
+    else if (left_or_right == "right") {
+      left_ = false;
+    }
+    else {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    if (args.size() == 5 + num_keys_) {
+      if (util::ToLower(args[3 + num_keys_]) != "count") {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      auto c = ParseInt<int32_t>(args[4 + num_keys_]);
+      if (!c) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      if (*c < 0) {
+        return {Status::RedisParseErr, errValueMustBePositive};
+      }
+      count_ = *c;
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::List list_db(svr->storage, conn->GetNamespace());
+
+    std::vector<std::string> elems;
+    int key_id = 0;
+    for (; key_id < num_keys_; ++key_id) {
+      auto s = list_db.PopMulti(args_[key_id + 2], left_, count_, &elems);
+      if (!s.ok() && !s.IsNotFound()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      if (!elems.empty()) {
+        break;
+      }
+    }
+
+    if (elems.empty()) {
+      *output = redis::NilString();
+    }
+    else {
+      std::string elems_bulk = redis::MultiBulkString(elems);
+      *output = redis::MultiBulkString({args_[key_id + 2], elems_bulk});
+    }
+
+    return Status::OK();
+  }
+
+  static const inline CommandKeyRangeGen keyRangeGen = [](const std::vector<std::string> &args) {
+    CommandKeyRange range;
+    range.first_key = 2;
+    range.key_step = 1;
+    auto v = ParseInt<int32_t>(args[1], 10);
+    range.last_key = range.first_key + (*v) - 1;
+    return range;
+  };
+
+ private:
+  bool left_;
+  uint32_t num_keys_ = 1;
+  uint32_t count_ = 1;
+};
+
 class CommandBPop : public Commander,
                     private EvbufCallbackBase<CommandBPop, false>,
                     private EventCallbackBase<CommandBPop> {
@@ -766,6 +852,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLMPop>("lmpop", -4, "write", CommandLMPop::keyRangeGen),
                         MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),

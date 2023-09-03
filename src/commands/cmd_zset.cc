@@ -1228,7 +1228,7 @@ class CommandZUnion : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(svr->storage, conn->GetNamespace());
     std::vector<MemberScore> member_scores;
-    auto s = zset_db.Union(keys_weights_, aggregate_method_, nullptr, &member_scores);
+    auto s = zset_db.Union(keys_weights_, aggregate_method_, &member_scores);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

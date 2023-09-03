@@ -74,7 +74,6 @@ func RandStringWithSeed(min, max int, typ RandStringType, seed int64) string {
 
 	var sb strings.Builder
 	for ; length > 0; length-- {
-		// use global rand to avoid collision
 		s := fmt.Sprintf("%c", minVal+r.Intn(maxVal-minVal+1))
 		sb.WriteString(s)
 	}

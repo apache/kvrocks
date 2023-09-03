@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 )
 
 func RandPath[T any](f ...func() T) T {
@@ -58,7 +57,7 @@ const (
 )
 
 func RandString(min, max int, typ RandStringType) string {
-	return RandStringWithSeed(min, max, typ, time.Now().UnixNano())
+	return RandStringWithSeed(min, max, typ, rand.Int63())
 }
 
 func RandStringWithSeed(min, max int, typ RandStringType, seed int64) string {
@@ -75,7 +74,7 @@ func RandStringWithSeed(min, max int, typ RandStringType, seed int64) string {
 
 	var sb strings.Builder
 	for ; length > 0; length-- {
-		s := fmt.Sprintf("%c", minVal+int(r.Int31n(int32(maxVal-minVal+1))))
+		s := fmt.Sprintf("%c", minVal+r.Intn(maxVal-minVal+1))
 		sb.WriteString(s)
 	}
 	return sb.String()

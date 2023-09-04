@@ -178,6 +178,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   for (const auto &key : keys) {
     std::string ns_key = AppendNamespacePrefix(key);
     s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       Metadata metadata(kRedisNone, false);
       metadata.Decode(value);

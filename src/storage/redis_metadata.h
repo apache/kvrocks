@@ -144,8 +144,11 @@ class Metadata {
   timeval Time() const;
   bool Expired() const;
   bool ExpireAt(uint64_t expired_ts) const;
-  virtual void Encode(std::string *dst);
-  virtual rocksdb::Status Decode(Slice input);
+
+  virtual void Encode(std::string *dst) const;
+  virtual rocksdb::Status Decode(Slice *input);
+  rocksdb::Status Decode(Slice input);
+
   bool operator==(const Metadata &that) const;
   virtual ~Metadata() = default;
 
@@ -184,8 +187,9 @@ class ListMetadata : public Metadata {
   uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice input) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 };
 
 class StreamMetadata : public Metadata {
@@ -200,8 +204,9 @@ class StreamMetadata : public Metadata {
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice input) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 };
 
 class BloomChainMetadata : public Metadata {
@@ -239,8 +244,9 @@ class BloomChainMetadata : public Metadata {
 
   explicit BloomChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice bytes) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *bytes) override;
 
   /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
   ///

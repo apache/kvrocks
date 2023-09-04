@@ -39,7 +39,7 @@ class CommandGetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = GetBitOffsetFromArgument(args[2], &offset_);
-    if (!s.IsOK()) return {Status::RedisParseErr, "bit offset is not an integer or out of range"};;
+    if (!s.IsOK()) return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
 
     return Commander::Parse(args);
   }

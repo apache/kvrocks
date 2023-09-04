@@ -152,12 +152,16 @@ class CommandBitPos : public Commander {
       stop_ = *parse_stop;
     }
 
+    auto parse_arg = ParseInt<int64_t>(args[2], 10);
+    if (!parse_arg) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
     if (args[2] == "0") {
       bit_ = false;
     } else if (args[2] == "1") {
       bit_ = true;
     } else {
-      return {Status::RedisParseErr, errValueNotInteger};
+      return {Status::RedisParseErr, "The bit argument must be 1 or 0."};
     }
 
     return Commander::Parse(args);

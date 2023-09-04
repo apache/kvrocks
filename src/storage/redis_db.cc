@@ -136,16 +136,28 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
   WriteBatchLogData log_data(kRedisNone);
   batch->PutLogData(log_data.Encode());
 
+  std::vector<Slice> slice_keys;
+  slice_keys.reserve(lock_keys.size());
   for (const auto &ns_key : lock_keys) {
-    std::string value;
-    rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
-    if (!s.ok()) continue;
+    slice_keys.emplace_back(ns_key);
+  }
+
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
+  read_options.snapshot = ss.GetSnapShot();
+  std::vector<rocksdb::Status> statuses(slice_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
+  storage_->MultiGet(read_options, metadata_cf_handle_, slice_keys.size(), slice_keys.data(), pin_values.data(),
+                     statuses.data());
+
+  for (size_t i = 0; i < slice_keys.size(); i++) {
+    if (!statuses[i].ok()) continue;
 
     Metadata metadata(kRedisNone, false);
-    metadata.Decode(value);
+    metadata.Decode(pin_values[i].ToString());
     if (metadata.Expired()) continue;
 
-    batch->Delete(metadata_cf_handle_, ns_key);
+    batch->Delete(metadata_cf_handle_, lock_keys[i]);
     *deleted_cnt += 1;
   }
 

@@ -39,7 +39,7 @@ class CommandGetBit : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = GetBitOffsetFromArgument(args[2], &offset_);
-    if (!s.IsOK()) return s;
+    if (!s.IsOK()) return {Status::RedisParseErr, "bit offset is not an integer or out of range"};;
 
     return Commander::Parse(args);
   }
@@ -157,7 +157,7 @@ class CommandBitPos : public Commander {
     } else if (args[2] == "1") {
       bit_ = true;
     } else {
-      return {Status::RedisParseErr, "bit should be 0 or 1"};
+      return {Status::RedisParseErr, errValueNotInteger};
     }
 
     return Commander::Parse(args);
@@ -193,7 +193,7 @@ class CommandBitOp : public Commander {
     else if (opname == "not")
       op_flag_ = kBitOpNot;
     else
-      return {Status::RedisInvalidCmd, "Unknown bit operation"};
+      return {Status::RedisInvalidCmd, errInvalidSyntax};
     if (op_flag_ == kBitOpNot && args.size() != 4) {
       return {Status::RedisInvalidCmd, "BITOP NOT must be called with a single source key."};
     }

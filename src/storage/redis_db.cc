@@ -151,10 +151,11 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
                      statuses.data());
 
   for (size_t i = 0; i < slice_keys.size(); i++) {
-    if (!statuses[i].ok()) continue;
+    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+    if (!statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
-    metadata.Decode(pin_values[i].ToString());
+    metadata.Decode(pin_values[i]);
     if (metadata.Expired()) continue;
 
     batch->Delete(metadata_cf_handle_, lock_keys[i]);

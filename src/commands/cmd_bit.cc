@@ -69,7 +69,7 @@ class CommandSetBit : public Commander {
     } else if (args[3] == "1") {
       bit_ = true;
     } else {
-      return {Status::RedisParseErr, "bit is out of range"};
+      return {Status::RedisParseErr, "bit is not an integer or out of range"};
     }
 
     return Commander::Parse(args);

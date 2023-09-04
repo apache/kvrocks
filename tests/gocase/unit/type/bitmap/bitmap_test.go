@@ -234,6 +234,14 @@ func TestBitmap(t *testing.T) {
 		}
 	})
 
+	t.Run("BITOP Boundary Check", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "str").Err())
+		str := util.RandStringWithSeed(0, 1000, util.Binary, 2701)
+		Set2SetBit(t, rdb, ctx, "str", []byte(str))
+		require.NoError(t, rdb.BitOpNot(ctx, "target", "str").Err())
+		require.EqualValues(t, SimulateBitOp(NOT, []byte(str)), rdb.Get(ctx, "target").Val())
+	})
+
 	t.Run("BITOP with non string source key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "c").Err())
 		Set2SetBit(t, rdb, ctx, "a", []byte("\xaa\x00\xff\x55"))

@@ -167,11 +167,11 @@ class CommandLMPop : public Commander {
     }
     num_keys_ = *v;
 
-    if ((args.size() != 3 + num_keys_) && (args.size() != 5 + num_keys_)) {
+    if ((args.size() != num_keys_ + 3) && (args.size() != num_keys_ + 5)) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    std::string left_or_right = util::ToLower(args[1 + num_keys_]);
+    std::string left_or_right = util::ToLower(args[num_keys_ + 2]);
     if (left_or_right == "left") {
       left_ = true;
     }
@@ -182,11 +182,11 @@ class CommandLMPop : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (args.size() == 5 + num_keys_) {
-      if (util::ToLower(args[3 + num_keys_]) != "count") {
+    if (args.size() == num_keys_ + 5) {
+      if (util::ToLower(args[num_keys_ + 3]) != "count") {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
-      auto c = ParseInt<int32_t>(args[4 + num_keys_]);
+      auto c = ParseInt<int32_t>(args[num_keys_ + 4]);
       if (!c) {
         return {Status::RedisParseErr, errValueNotInteger};
       }
@@ -219,7 +219,7 @@ class CommandLMPop : public Commander {
     }
     else {
       std::string elems_bulk = redis::MultiBulkString(elems);
-      *output = redis::MultiBulkString({args_[key_id + 2], elems_bulk});
+      *output = redis::Array({redis::BulkString(args_[key_id + 2]), elems_bulk});
     }
 
     return Status::OK();

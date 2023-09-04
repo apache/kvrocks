@@ -1000,4 +1000,100 @@ func TestList(t *testing.T) {
 			require.Empty(t, rdb.LPosCount(ctx, "mylist", "b", 10, redis.LPosArgs{Rank: 5}).Val())
 		})
 	}
+
+	for _, direction := range []string{"LEFT", "RIGHT"} {
+		key1 := "lmpop-list1"
+		key2 := "lmpop-list2"
+		rdb.Del(ctx, key1, key2)
+		require.EqualValues(t, 5, rdb.LPush(ctx, key1, "one", "two", "three", "four", "five").Val())
+		require.EqualValues(t, 5, rdb.LPush(ctx, key2, "ONE", "TWO", "THREE", "FOUR", "FIVE").Val())
+		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countSingle-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 1, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"five"}, resultVal)
+			} else {
+				require.Equal(t, []string{"one"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countMulti-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 2, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"four", "three"}, resultVal)
+			} else {
+				require.Equal(t, []string{"two", "three"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countTooMuch-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 10, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"two", "one"}, resultVal)
+			} else {
+				require.Equal(t, []string{"four", "five"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-oneKey-empty-%s", direction), func(t *testing.T) {
+			require.EqualError(t, rdb.LMPop(ctx, direction, 1, key1).Err(), redis.Nil.Error())
+		})
+
+		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "six", "seven").Val())
+		t.Run(fmt.Sprintf("LMPOP-test-firstKey-countTooMuch-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 10, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"seven", "six"}, resultVal)
+			} else {
+				require.Equal(t, []string{"six", "seven"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countSingle-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 1, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"FIVE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"ONE"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countMulti-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 2, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"FOUR", "THREE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"TWO", "THREE"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countTooMuch-%s", direction), func(t *testing.T) {
+			result := rdb.LMPop(ctx, direction, 10, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"TWO", "ONE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"FOUR", "FIVE"}, resultVal)
+			}
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-bothKey-empty-%s", direction), func(t *testing.T) {
+			require.EqualError(t, rdb.LMPop(ctx, direction, 1, key1, key2).Err(), redis.Nil.Error())
+		})
+		t.Run(fmt.Sprintf("LMPOP-test-dummyKey-empty-%s", direction), func(t *testing.T) {
+			require.EqualError(t, rdb.LMPop(ctx, direction, 1, "dummy1", "dummy2").Err(), redis.Nil.Error())
+		})
+	}
 }

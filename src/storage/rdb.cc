@@ -59,9 +59,9 @@ Status RDB::VerifyPayloadChecksum() {
   }
   auto footer = input_.substr(input_.size() - 10);
   auto rdb_version = (footer[1] << 8) | footer[0];
-  // For now, the max redis rdb version is 10
+  // For now, the max redis rdb version is 11
   if (rdb_version > 11) {
-    return {Status::NotOK, fmt::format("invalid version: {}", rdb_version)};
+    return {Status::NotOK, fmt::format("invalid or unsupported rdb version: {}", rdb_version)};
   }
   uint64_t crc = crc64(0, reinterpret_cast<const unsigned char *>(input_.data()), input_.size() - 8);
   memrev64ifbe(&crc);
@@ -76,10 +76,10 @@ StatusOr<int> RDB::LoadObjectType() {
   auto type = input_[pos_++] & 0xFF;
   // 0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
   // Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.
-  if ((type >= 0 && type < 5) || (type >= 9 && type <= 21)) {
+  if ((type >= 0 && type <= 5) || (type >= 9 && type <= 21)) {
     return type;
   }
-  return {Status::NotOK, fmt::format("invalid object type: {}", type)};
+  return {Status::NotOK, fmt::format("invalid or unsupported object type: {}", type)};
 }
 
 StatusOr<uint64_t> RDB::loadObjectLen(bool *is_encoded) {

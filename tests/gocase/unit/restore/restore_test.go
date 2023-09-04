@@ -120,6 +120,17 @@ func TestRestore_ZSet(t *testing.T) {
 		}, rdb.ZRangeWithScores(ctx, key, 0, -1).Val())
 	})
 
+	t.Run("ZSet2 object encoding", func(t *testing.T) {
+		key := util.RandString(32, 64, util.Alpha)
+		value := "\x05\x03\x01cffffff\n@\x01b\x9a\x99\x99\x99\x99\x99\x01@\x01a\x9a\x99\x99\x99\x99\x99\xf1?\x0b\x00\x15\xae\xd7&\xda\x10\xe1\x03"
+		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+		require.EqualValues(t, []redis.Z{
+			{Member: "a", Score: 1.1},
+			{Member: "b", Score: 2.2},
+			{Member: "c", Score: 3.3},
+		}, rdb.ZRangeWithScores(ctx, key, 0, -1).Val())
+	})
+
 	t.Run("List pack encoding", func(t *testing.T) {
 		key := util.RandString(32, 64, util.Alpha)
 		value := "\x11''\x00\x00\x00\x06\x00\x81a\x02\x831.2\x04\x81b\x02\x861234.5\a\x81c\x02\xf4\xd8Y`\xe0\x02\x00\x00\x00\t\xff\n\x00\xce\xfdp\xbdHN\xdbG"
@@ -240,7 +251,16 @@ func TestRestoreWithTTL(t *testing.T) {
 
 	key := util.RandString(32, 64, util.Alpha)
 	value := "\x02\x05\x02ab\xc1\xd2\x04\x01a\x15012345678901234567890\x03abc\x06\x00s\xf8_\x01\xf3\xf56\xd8"
+
+	// TTL is 0, key is created without any expire.
 	require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
+	require.EqualValues(t, -1, rdb.TTL(ctx, key).Val())
+	require.EqualValues(t, []string{
+		"012345678901234567890", "1234", "a", "ab", "abc",
+	}, rdb.SMembers(ctx, key).Val())
+
+	// TTL is 0 with ABSTTL, key is created without any expire.
+	require.NoError(t, rdb.Do(ctx, "RESTORE", key, 0, value, "REPLACE", "ABSTTL").Err())
 	require.EqualValues(t, -1, rdb.TTL(ctx, key).Val())
 	require.EqualValues(t, []string{
 		"012345678901234567890", "1234", "a", "ab", "abc",
@@ -273,6 +293,7 @@ func TestRestoreWithExpiredTTL(t *testing.T) {
 	require.EqualError(t, rdb.Do(ctx, "RESTORE", key, -1, value).Err(), "ERR out of numeric range")
 	require.NoError(t, rdb.Do(ctx, "RESTORE", key, 0, value).Err())
 	require.Equal(t, "bar", rdb.Get(ctx, key).Val())
+	// Expired TTL with ABSTTL, will not actually restore the key.
 	require.NoError(t, rdb.Do(ctx, "RESTORE", key, 1111, value, "REPLACE", "ABSTTL").Err())
 	require.EqualError(t, rdb.Get(ctx, key).Err(), redis.Nil.Error())
 }

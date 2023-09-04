@@ -152,7 +152,7 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
 
   for (size_t i = 0; i < slice_keys.size(); i++) {
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
-    if (!statuses[i].IsNotFound()) continue;
+    if (statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
     metadata.Decode(pin_values[i]);

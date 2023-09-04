@@ -39,6 +39,7 @@ class Database {
   rocksdb::Status GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes);
   rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   rocksdb::Status Del(const Slice &user_key);
+  rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
   rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
   rocksdb::Status Type(const Slice &user_key, RedisType *type);

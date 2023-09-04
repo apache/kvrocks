@@ -117,6 +117,7 @@ class CommandExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
       keys.emplace_back(args_[i]);
     }
@@ -254,12 +255,17 @@ class CommandPersist : public Commander {
 class CommandDel : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    int cnt = 0;
-    redis::Database redis(svr->storage, conn->GetNamespace());
+    std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
-      auto s = redis.Del(args_[i]);
-      if (s.ok()) cnt++;
+      keys.emplace_back(args_[i]);
     }
+
+    uint64_t cnt = 0;
+    redis::Database redis(svr->storage, conn->GetNamespace());
+    auto s = redis.MDel(keys, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     *output = redis::Integer(cnt);
     return Status::OK();
   }

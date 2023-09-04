@@ -156,9 +156,9 @@ class CommandBitPos : public Commander {
     if (!parse_arg) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
-    if (args[2] == "0") {
+    if (*parse_arg == 0) {
       bit_ = false;
-    } else if (args[2] == "1") {
+    } else if (*parse_arg == 1) {
       bit_ = true;
     } else {
       return {Status::RedisParseErr, "The bit argument must be 1 or 0."};

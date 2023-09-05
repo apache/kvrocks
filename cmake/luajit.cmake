@@ -40,8 +40,8 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET
 endif ()
 
 FetchContent_DeclareGitHubWithMirror(luajit
-        RocksLabs/LuaJIT c0a8e68325ec261a77bde1c8eabad398168ffe74
-        MD5=7ff3e5ca4ddec59be2c2f97c5ff881d0)
+        RocksLabs/LuaJIT 53882a19639337861988c892149ee2ae57ec3246
+        MD5=57e02b5ceedebaffb495a504276c4bea)
 
 FetchContent_GetProperties(luajit)
 if (NOT lua_POPULATED)
@@ -67,6 +67,6 @@ if (NOT lua_POPULATED)
 endif()
 
 add_library(luajit INTERFACE)
-target_include_directories(luajit INTERFACE ${luajit_BINARY_DIR}/include)
+target_include_directories(luajit INTERFACE ${luajit_BINARY_DIR}/include ${luajit_SOURCE_DIR}/src)
 target_link_libraries(luajit INTERFACE ${luajit_SOURCE_DIR}/src/libluajit.a dl)
 add_dependencies(luajit make_luajit)

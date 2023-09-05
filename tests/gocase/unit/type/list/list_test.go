@@ -1045,7 +1045,7 @@ func TestList(t *testing.T) {
 		})
 
 		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "six", "seven").Val())
-		t.Run(fmt.Sprintf("LMPOP-test-firstKey-countTooMuch-%s", direction), func(t *testing.T) {
+		t.Run(fmt.Sprintf("LMPOP-test-firstKey-countOver-%s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 10, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1078,7 +1078,7 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"TWO", "THREE"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countTooMuch-%s", direction), func(t *testing.T) {
+		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countOver-%s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 10, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())

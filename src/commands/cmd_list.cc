@@ -174,11 +174,9 @@ class CommandLMPop : public Commander {
     std::string left_or_right = util::ToLower(args[num_keys_ + 2]);
     if (left_or_right == "left") {
       left_ = true;
-    }
-    else if (left_or_right == "right") {
+    } else if (left_or_right == "right") {
       left_ = false;
-    }
-    else {
+    } else {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
@@ -216,8 +214,7 @@ class CommandLMPop : public Commander {
 
     if (elems.empty()) {
       *output = redis::NilString();
-    }
-    else {
+    } else {
       std::string elems_bulk = redis::MultiBulkString(elems);
       *output = redis::Array({redis::BulkString(args_[key_id + 2]), elems_bulk});
     }

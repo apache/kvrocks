@@ -121,6 +121,52 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
+rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
+
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys.size());
+  for (const auto &key : keys) {
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisNone);
+  batch->PutLogData(log_data.Encode());
+
+  std::vector<Slice> slice_keys;
+  slice_keys.reserve(lock_keys.size());
+  for (const auto &ns_key : lock_keys) {
+    slice_keys.emplace_back(ns_key);
+  }
+
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
+  read_options.snapshot = ss.GetSnapShot();
+  std::vector<rocksdb::Status> statuses(slice_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
+  storage_->MultiGet(read_options, metadata_cf_handle_, slice_keys.size(), slice_keys.data(), pin_values.data(),
+                     statuses.data());
+
+  for (size_t i = 0; i < slice_keys.size(); i++) {
+    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+    if (statuses[i].IsNotFound()) continue;
+
+    Metadata metadata(kRedisNone, false);
+    metadata.Decode(pin_values[i]);
+    if (metadata.Expired()) continue;
+
+    batch->Delete(metadata_cf_handle_, lock_keys[i]);
+    *deleted_cnt += 1;
+  }
+
+  if (*deleted_cnt == 0) return rocksdb::Status::OK();
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   LatestSnapShot ss(storage_);
@@ -132,6 +178,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   for (const auto &key : keys) {
     std::string ns_key = AppendNamespacePrefix(key);
     s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       Metadata metadata(kRedisNone, false);
       metadata.Decode(value);

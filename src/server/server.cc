@@ -1407,7 +1407,8 @@ time_t Server::GetLastScanTime(const std::string &ns) {
   return 0;
 }
 
-void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration) {
+void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration, std::string client_name,
+                                      std::string ip, uint32_t port) {
   int64_t threshold = config_->slowlog_log_slower_than;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
 
@@ -1428,6 +1429,9 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   }
 
   entry->duration = duration;
+  entry->client_name = std::move(client_name);
+  entry->ip = std::move(ip);
+  entry->port = port;
   slow_log_.PushEntry(std::move(entry));
 }
 

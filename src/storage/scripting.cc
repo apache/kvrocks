@@ -406,7 +406,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) conn->RecordProfilingSampleIfNeed(cmd_name, duration);
-  srv->SlowlogPushEntryIfNeeded(&args, duration);
+  srv->SlowlogPushEntryIfNeeded(&args, duration, conn->GetName(), conn->GetIP(), conn->GetPort());
   srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   srv->FeedMonitorConns(conn, args);
   if (!s) {

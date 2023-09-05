@@ -416,7 +416,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
 
-    svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration);
+    svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this->name_, this->ip_, this->port_);
     svr_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
     svr_->FeedMonitorConns(this, cmd_tokens);
 

@@ -158,20 +158,16 @@ class CommandLMPop : public Commander {
  public:
   /// format: LMPOP #numkeys key0 [key1 ...] <LEFT | RIGHT> [COUNT count]
   Status Parse(const std::vector<std::string> &args) override {
-    auto v = ParseInt<int32_t>(args[1], 10);
-    if (!v) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (*v <= 0) {
-      return {Status::RedisParseErr, errValueMustBePositive};
-    }
-    num_keys_ = *v;
+    CommandParser parser(args, 1);
 
-    if ((args.size() != num_keys_ + 3) && (args.size() != num_keys_ + 5)) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
+    auto num_keys = GET_OR_RET(parser.TakeInt<uint32_t>());
+    keys_.clear();
+    keys_.reserve(num_keys);
+    for (uint32_t i = 0; i < num_keys; ++i) {
+      keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
     }
 
-    std::string left_or_right = util::ToLower(args[num_keys_ + 2]);
+    auto left_or_right = util::ToLower(GET_OR_RET(parser.TakeStr()));
     if (left_or_right == "left") {
       left_ = true;
     } else if (left_or_right == "right") {
@@ -180,34 +176,28 @@ class CommandLMPop : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (args.size() == num_keys_ + 5) {
-      if (util::ToLower(args[num_keys_ + 3]) != "count") {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-      auto c = ParseInt<int32_t>(args[num_keys_ + 4]);
-      if (!c) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
-      if (*c < 0) {
-        return {Status::RedisParseErr, errValueMustBePositive};
-      }
-      count_ = *c;
+    if (parser.Good()) {
+      if (parser.EatEqICase("count")) {
+        count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+      } else
+        return parser.InvalidSyntax();
     }
 
-    return Status::OK();
+    return parser.Good() ? parser.InvalidSyntax() : Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::List list_db(svr->storage, conn->GetNamespace());
 
     std::vector<std::string> elems;
-    int key_id = 0;
-    for (; key_id < num_keys_; ++key_id) {
-      auto s = list_db.PopMulti(args_[key_id + 2], left_, count_, &elems);
+    std::string chosen_key;
+    for (auto &key : keys_) {
+      auto s = list_db.PopMulti(key, left_, count_, &elems);
       if (!s.ok() && !s.IsNotFound()) {
         return {Status::RedisExecErr, s.ToString()};
       }
       if (!elems.empty()) {
+        chosen_key = key;
         break;
       }
     }
@@ -216,7 +206,7 @@ class CommandLMPop : public Commander {
       *output = redis::NilString();
     } else {
       std::string elems_bulk = redis::MultiBulkString(elems);
-      *output = redis::Array({redis::BulkString(args_[key_id + 2]), elems_bulk});
+      *output = redis::Array({redis::BulkString(chosen_key), elems_bulk});
     }
 
     return Status::OK();
@@ -233,8 +223,8 @@ class CommandLMPop : public Commander {
 
  private:
   bool left_;
-  uint32_t num_keys_ = 1;
   uint32_t count_ = 1;
+  std::vector<std::string> keys_;
 };
 
 class CommandBPop : public Commander,

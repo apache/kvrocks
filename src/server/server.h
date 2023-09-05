@@ -264,8 +264,7 @@ class Server {
 
   LogCollector<PerfEntry> *GetPerfLog() { return &perf_log_; }
   LogCollector<SlowEntry> *GetSlowLog() { return &slow_log_; }
-  void SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration, std::string client_name,
-                                std::string ip, uint32_t port);
+  void SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration, const Connection *conn);
 
   std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();

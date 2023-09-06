@@ -217,8 +217,9 @@ class CommandLMPop : public Commander {
     CommandKeyRange range;
     range.first_key = 2;
     range.key_step = 1;
-    auto v = ParseInt<int32_t>(args[1], 10);
-    range.last_key = range.first_key + (*v) - 1;
+    // This parsing would always succeed as this cmd has been parsed before.
+    auto num_key = *ParseInt<int32_t>(args[1], 10);
+    range.last_key = range.first_key + num_key - 1;
     return range;
   };
 

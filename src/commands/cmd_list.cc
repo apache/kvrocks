@@ -176,15 +176,18 @@ class CommandLMPop : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (parser.Good()) {
-      if (parser.EatEqICase("count")) {
+    while (parser.Good()) {
+      if (parser.EatEqICase("count") && count_ == -1) {
         count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
       } else {
         return parser.InvalidSyntax();
       }
     }
+    if (count_ == -1) {
+      count_ = 1;
+    }
 
-    return parser.Good() ? parser.InvalidSyntax() : Status::OK();
+    return Status::OK();
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -225,7 +228,7 @@ class CommandLMPop : public Commander {
 
  private:
   bool left_;
-  uint32_t count_ = 1;
+  uint32_t count_ = -1;
   std::vector<std::string> keys_;
 };
 

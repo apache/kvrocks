@@ -21,17 +21,20 @@
 #include "log_collector.h"
 
 #include <algorithm>
+#include <string>
 
 #include "server/redis_reply.h"
 #include "time_util.h"
 
 std::string SlowEntry::ToRedisString() const {
   std::string output;
-  output.append(redis::MultiLen(4));
+  output.append(redis::MultiLen(6));
   output.append(redis::Integer(id));
   output.append(redis::Integer(time));
   output.append(redis::Integer(duration));
   output.append(redis::MultiBulkString(args));
+  output.append(redis::BulkString(ip + ":" + std::to_string(port)));
+  output.append(redis::BulkString(client_name));
   return output;
 }
 

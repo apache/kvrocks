@@ -156,7 +156,7 @@ class CommandRPop : public CommandPop {
 
 class CommandLMPop : public Commander {
  public:
-  /// format: LMPOP #numkeys key0 [key1 ...] <LEFT | RIGHT> [COUNT count]
+  // format: LMPOP #numkeys key0 [key1 ...] <LEFT | RIGHT> [COUNT count]
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
 

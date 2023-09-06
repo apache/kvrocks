@@ -1007,7 +1007,8 @@ func TestList(t *testing.T) {
 		rdb.Del(ctx, key1, key2)
 		require.EqualValues(t, 5, rdb.LPush(ctx, key1, "one", "two", "three", "four", "five").Val())
 		require.EqualValues(t, 5, rdb.LPush(ctx, key2, "ONE", "TWO", "THREE", "FOUR", "FIVE").Val())
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countSingle-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey countSingle %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 1, key1)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1018,7 +1019,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"one"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countMulti-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey countMulti %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 2, key1)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1029,7 +1031,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"two", "three"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-countTooMuch-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey countTooMuch %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 10, key1)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1040,12 +1043,13 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"four", "five"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-empty-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey empty %s", direction), func(t *testing.T) {
 			require.EqualError(t, rdb.LMPop(ctx, direction, 1, key1).Err(), redis.Nil.Error())
 		})
 
 		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "six", "seven").Val())
-		t.Run(fmt.Sprintf("LMPOP-test-firstKey-countOver-%s", direction), func(t *testing.T) {
+		t.Run(fmt.Sprintf("LMPOP test firstKey countOver %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 10, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1056,7 +1060,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"six", "seven"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countSingle-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test secondKey countSingle %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 1, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1067,7 +1072,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"ONE"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countMulti-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test secondKey countMulti %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 2, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1078,7 +1084,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"TWO", "THREE"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-countOver-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test secondKey countOver %s", direction), func(t *testing.T) {
 			result := rdb.LMPop(ctx, direction, 10, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1089,10 +1096,12 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"FOUR", "FIVE"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-bothKey-empty-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test bothKey empty %s", direction), func(t *testing.T) {
 			require.EqualError(t, rdb.LMPop(ctx, direction, 1, key1, key2).Err(), redis.Nil.Error())
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-dummyKey-empty-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test dummyKey empty %s", direction), func(t *testing.T) {
 			require.EqualError(t, rdb.LMPop(ctx, direction, 1, "dummy1", "dummy2").Err(), redis.Nil.Error())
 		})
 
@@ -1111,7 +1120,8 @@ func TestList(t *testing.T) {
 		rdb.Del(ctx, key1, key2)
 		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "one", "two").Val())
 		require.EqualValues(t, 2, rdb.LPush(ctx, key2, "ONE", "TWO").Val())
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-noCount-one-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey noCount one %s", direction), func(t *testing.T) {
 			result := lmpopNoCount(rdb, ctx, direction, key1)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1122,7 +1132,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"one"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-firstKey-noCount-one-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test firstKey noCount one %s", direction), func(t *testing.T) {
 			result := lmpopNoCount(rdb, ctx, direction, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1133,10 +1144,12 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"two"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-oneKey-noCount-empty-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test oneKey noCount empty %s", direction), func(t *testing.T) {
 			require.EqualError(t, lmpopNoCount(rdb, ctx, direction, key1).Err(), redis.Nil.Error())
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-noCount-one-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test secondKey noCount one %s", direction), func(t *testing.T) {
 			result := lmpopNoCount(rdb, ctx, direction, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1147,7 +1160,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"ONE"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-secondKey-noCount-one-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test secondKey noCount one %s", direction), func(t *testing.T) {
 			result := lmpopNoCount(rdb, ctx, direction, key1, key2)
 			resultKey, resultVal := result.Val()
 			require.NoError(t, result.Err())
@@ -1158,7 +1172,8 @@ func TestList(t *testing.T) {
 				require.Equal(t, []string{"TWO"}, resultVal)
 			}
 		})
-		t.Run(fmt.Sprintf("LMPOP-test-bothKey-noCount-empty-%s", direction), func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("LMPOP test bothKey noCount empty %s", direction), func(t *testing.T) {
 			require.EqualError(t, lmpopNoCount(rdb, ctx, direction, key1, key2).Err(), redis.Nil.Error())
 		})
 	}

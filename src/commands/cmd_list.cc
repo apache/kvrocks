@@ -206,7 +206,7 @@ class CommandLMPop : public Commander {
       *output = redis::NilString();
     } else {
       std::string elems_bulk = redis::MultiBulkString(elems);
-      *output = redis::Array({redis::BulkString(chosen_key), elems_bulk});
+      *output = redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)});
     }
 
     return Status::OK();

@@ -161,4 +161,15 @@ func TestSlowlog(t *testing.T) {
 		require.EqualValues(t, 0, len(rdb.SlowLogGet(ctx, -1).Val()))
 	})
 
+	t.Run("SLOWLOG - slowlog get output client name and ipport", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "slowlog-log-slower-than", "0").Err())
+		require.NoError(t, rdb.Do(ctx, "client", "setname", "foobar").Err())
+		require.NoError(t, rdb.SAdd(ctx, "set", "foo", "bar").Err())
+		
+		val, err := rdb.SlowLogGet(ctx, -1).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "foobar" , val[0].ClientName)
+		require.NotEmpty(t, val[0].ClientAddr)
+	})
+
 }

@@ -179,8 +179,9 @@ class CommandLMPop : public Commander {
     if (parser.Good()) {
       if (parser.EatEqICase("count")) {
         count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
-      } else
+      } else {
         return parser.InvalidSyntax();
+      }
     }
 
     return parser.Good() ? parser.InvalidSyntax() : Status::OK();

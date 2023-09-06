@@ -58,13 +58,14 @@ class ConfigField {
  public:
   ConfigField() = default;
   virtual ~ConfigField() = default;
-  virtual std::string ToString() = 0;
+  virtual std::string ToString() const = 0;
   virtual Status Set(const std::string &v) = 0;
-  virtual Status ToNumber(int64_t *n) { return {Status::NotOK, "not supported"}; }
-  virtual Status ToBool(bool *b) { return {Status::NotOK, "not supported"}; }
-  virtual ConfigType GetConfigType() { return config_type; }
-  virtual bool IsMultiConfig() { return config_type == ConfigType::MultiConfig; }
-  virtual bool IsSingleConfig() { return config_type == ConfigType::SingleConfig; }
+  virtual Status ToNumber(int64_t *n) const { return {Status::NotOK, "not supported"}; }
+  virtual Status ToBool(bool *b) const { return {Status::NotOK, "not supported"}; }
+
+  ConfigType GetConfigType() const { return config_type; }
+  bool IsMultiConfig() const { return config_type == ConfigType::MultiConfig; }
+  bool IsSingleConfig() const { return config_type == ConfigType::SingleConfig; }
 
   int line_number = 0;
   bool readonly = true;
@@ -77,7 +78,7 @@ class StringField : public ConfigField {
  public:
   StringField(std::string *receiver, std::string s) : receiver_(receiver) { *receiver_ = std::move(s); }
   ~StringField() override = default;
-  std::string ToString() override { return *receiver_; }
+  std::string ToString() const override { return *receiver_; }
   Status Set(const std::string &v) override {
     *receiver_ = v;
     return Status::OK();
@@ -94,7 +95,7 @@ class MultiStringField : public ConfigField {
     this->config_type = ConfigType::MultiConfig;
   }
   ~MultiStringField() override = default;
-  std::string ToString() override {
+  std::string ToString() const override {
     std::string tmp;
     for (auto &p : *receiver_) {
       tmp += p + "\n";
@@ -118,8 +119,8 @@ class IntegerField : public ConfigField {
     *receiver_ = n;
   }
   ~IntegerField() override = default;
-  std::string ToString() override { return std::to_string(*receiver_); }
-  Status ToNumber(int64_t *n) override {
+  std::string ToString() const override { return std::to_string(*receiver_); }
+  Status ToNumber(int64_t *n) const override {
     *n = *receiver_;
     return Status::OK();
   }
@@ -140,8 +141,8 @@ class OctalField : public ConfigField {
  public:
   OctalField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
   ~OctalField() override = default;
-  std::string ToString() override { return fmt::format("{:o}", *receiver_); }
-  Status ToNumber(int64_t *n) override {
+  std::string ToString() const override { return fmt::format("{:o}", *receiver_); }
+  Status ToNumber(int64_t *n) const override {
     *n = *receiver_;
     return Status::OK();
   }
@@ -162,8 +163,8 @@ class YesNoField : public ConfigField {
  public:
   YesNoField(bool *receiver, bool b) : receiver_(receiver) { *receiver_ = b; }
   ~YesNoField() override = default;
-  std::string ToString() override { return *receiver_ ? "yes" : "no"; }
-  Status ToBool(bool *b) override {
+  std::string ToString() const override { return *receiver_ ? "yes" : "no"; }
+  Status ToBool(bool *b) const override {
     *b = *receiver_;
     return Status::OK();
   }
@@ -189,14 +190,14 @@ class EnumField : public ConfigField {
   }
   ~EnumField() override = default;
 
-  std::string ToString() override {
+  std::string ToString() const override {
     for (const auto &e : enums_) {
       if (e.val == *receiver_) return e.name;
     }
     return {};
   }
 
-  Status ToNumber(int64_t *n) override {
+  Status ToNumber(int64_t *n) const override {
     *n = *receiver_;
     return Status::OK();
   }

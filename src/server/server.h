@@ -148,9 +148,9 @@ class ServerLogData {
   ServerLogData() = default;
   explicit ServerLogData(ServerLogType type, std::string content) : type_(type), content_(std::move(content)) {}
 
-  ServerLogType GetType() { return type_; }
-  std::string GetContent() { return content_; }
-  std::string Encode();
+  ServerLogType GetType() const { return type_; }
+  std::string GetContent() const { return content_; }
+  std::string Encode() const;
   Status Decode(const rocksdb::Slice &blob);
 
  private:
@@ -172,8 +172,8 @@ class Server {
   Status Start();
   void Stop();
   void Join();
-  bool IsStopped() { return stop_; }
-  bool IsLoading() { return is_loading_; }
+  bool IsStopped() const { return stop_; }
+  bool IsLoading() const { return is_loading_; }
   Config *GetConfig() { return config_; }
   static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
@@ -183,11 +183,11 @@ class Server {
   Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
   void CleanupExitedSlaves();
-  bool IsSlave() { return !master_host_.empty(); }
+  bool IsSlave() const { return !master_host_.empty(); }
   void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
   void IncrFetchFileThread() { fetch_file_threads_num_++; }
   void DecrFetchFileThread() { fetch_file_threads_num_--; }
-  int GetFetchFileThreadNum() { return fetch_file_threads_num_; }
+  int GetFetchFileThreadNum() const { return fetch_file_threads_num_; }
 
   int PublishMessage(const std::string &channel, const std::string &msg);
   void SubscribeChannel(const std::string &channel, redis::Connection *conn);
@@ -197,7 +197,7 @@ class Server {
                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
   void PSubscribeChannel(const std::string &pattern, redis::Connection *conn);
   void PUnsubscribeChannel(const std::string &pattern, redis::Connection *conn);
-  int GetPubSubPatternSize() { return static_cast<int>(pubsub_patterns_.size()); }
+  size_t GetPubSubPatternSize() const { return pubsub_patterns_.size(); }
 
   void BlockOnKey(const std::string &key, redis::Connection *conn);
   void UnblockOnKey(const std::string &key, redis::Connection *conn);

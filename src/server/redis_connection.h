@@ -75,16 +75,16 @@ class Connection : public EvbufCallbackBase<Connection> {
   uint64_t GetAge() const;
   uint64_t GetIdleTime() const;
   void SetLastInteraction();
-  std::string GetFlags();
+  std::string GetFlags() const;
   void EnableFlag(Flag flag);
   void DisableFlag(Flag flag);
-  bool IsFlagEnabled(Flag flag);
+  bool IsFlagEnabled(Flag flag) const;
 
   uint64_t GetID() const { return id_; }
   void SetID(uint64_t id) { id_ = id; }
   std::string GetName() { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
-  std::string GetAddr() { return addr_; }
+  std::string GetAddr() const { return addr_; }
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() { return ip_; }
@@ -92,15 +92,15 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() const { return listening_port_; }
   void SetAnnounceIP(std::string ip) { announce_ip_ = std::move(ip); }
-  std::string GetAnnounceIP() { return !announce_ip_.empty() ? announce_ip_ : ip_; }
-  std::string GetAnnounceAddr() { return GetAnnounceIP() + ":" + std::to_string(listening_port_); }
-  uint64_t GetClientType();
+  std::string GetAnnounceIP() const { return !announce_ip_.empty() ? announce_ip_ : ip_; }
+  std::string GetAnnounceAddr() const { return GetAnnounceIP() + ":" + std::to_string(listening_port_); }
+  uint64_t GetClientType() const;
   Server *GetServer() { return svr_; }
 
   bool IsAdmin() const { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
-  std::string GetNamespace() { return ns_; }
+  std::string GetNamespace() const { return ns_; }
   void SetNamespace(std::string ns) { ns_ = std::move(ns); }
 
   void NeedFreeBufferEvent(bool need_free = true) { need_free_bev_ = need_free; }

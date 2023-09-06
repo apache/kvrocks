@@ -32,7 +32,7 @@ RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttr
   }
 }
 
-int GetCommandNum() { return (int)command_details::redis_command_table.size(); }
+size_t GetCommandNum() { return command_details::redis_command_table.size(); }
 
 const CommandMap *GetOriginalCommands() { return &command_details::original_commands; }
 

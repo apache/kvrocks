@@ -209,11 +209,11 @@ struct Config {
   std::string NodesFilePath() const;
   Status Rewrite();
   Status Load(const CLIOptions &path);
-  void Get(const std::string &key, std::vector<std::string> *values);
+  void Get(const std::string &key, std::vector<std::string> *values) const;
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
-  Status GetNamespace(const std::string &ns, std::string *token);
+  Status GetNamespace(const std::string &ns, std::string *token) const;
   Status AddNamespace(const std::string &ns, const std::string &token);
   Status SetNamespace(const std::string &ns, const std::string &token);
   Status DelNamespace(const std::string &ns);

@@ -65,11 +65,11 @@ uint16_t GetSlotIdFromKey(std::string_view key) {
 
 std::string_view GetTagFromKey(std::string_view key) {
   auto left_pos = key.find('{');
-  if (left_pos == std::string::npos) return {};
+  if (left_pos == std::string_view::npos) return {};
 
   auto right_pos = key.find('}', left_pos + 1);
   // Note that we hash the whole key if there is nothing between {}.
-  if (right_pos == std::string::npos || right_pos <= left_pos + 1) {
+  if (right_pos == std::string_view::npos || right_pos <= left_pos + 1) {
     return {};
   }
 

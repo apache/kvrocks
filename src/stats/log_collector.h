@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <sys/types.h>
 #include <time.h>
 
 #include <cstdint>
@@ -36,7 +37,9 @@ class SlowEntry {
   time_t time;
   uint64_t duration;
   std::vector<std::string> args;
-
+  std::string client_name;
+  std::string ip;
+  uint32_t port;
   std::string ToRedisString() const;
 };
 

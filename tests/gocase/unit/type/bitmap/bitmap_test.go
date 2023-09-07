@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -137,6 +138,52 @@ func TestBitmap(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "config", "set", "max-bitmap-to-string-mb", 1).Err())
 		require.NoError(t, rdb.SetBit(ctx, "b0", 8388609, 0).Err())
 		util.ErrorRegexp(t, rdb.Get(ctx, "b0").Err(), "ERR Operation aborted: The size of the bitmap .*")
+	})
+
+	t.Run("GETEX bitmap no option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.Equal(t, "\x00", rdb.GetEx(ctx, "foo", 0).Val())
+
+		// Make sure the expiration time is not erased by plain GETEX.
+		require.NoError(t, rdb.Expire(ctx, "foo", 10*time.Second).Err())
+		require.Equal(t, "\x00", rdb.Do(ctx, "getex", "foo").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("GETEX bitmap EX/EXAT/PX/PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "ex", 10).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "exat", time.Now().Add(10*time.Second).Unix()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "px", 10*1000).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "pxat", time.Now().Add(10*time.Second).UnixMilli()).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("GETEX bitmap PERSIST option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.SetBit(ctx, "foo", 0, 0).Err())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "foo").Val())
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "persist").Err())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "foo").Val())
+
+		require.NoError(t, rdb.Expire(ctx, "foo", 10*time.Second).Err())
+		util.BetweenValues(t, rdb.TTL(ctx, "foo").Val(), 5*time.Second, 10*time.Second)
+		require.NoError(t, rdb.Do(ctx, "getex", "foo", "persist").Err())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "foo").Val())
 	})
 
 	t.Run("SETBIT/GETBIT/BITCOUNT/BITPOS boundary check (type bitmap)", func(t *testing.T) {

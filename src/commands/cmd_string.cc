@@ -25,6 +25,7 @@
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
+#include "storage/redis_db.h"
 #include "time_util.h"
 #include "ttl_util.h"
 #include "types/redis_bitmap.h"
@@ -86,6 +87,13 @@ class CommandGetEx : public Commander {
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
+      if (s.ok()) {
+        if (ttl_ > 0) {
+          s = bitmap_db.Expire(args_[1], ttl_ + util::GetTimeStampMS());
+        } else if (persist_) {
+          s = bitmap_db.Expire(args_[1], 0);
+        }
+      }
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};

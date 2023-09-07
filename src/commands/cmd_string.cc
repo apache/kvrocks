@@ -88,13 +88,11 @@ class CommandGetEx : public Commander {
       redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
       if (s.ok()) {
-        auto s = rocksdb::Status();
         if (ttl_ > 0) {
           s = bitmap_db.Expire(args_[1], ttl_ + util::GetTimeStampMS());
         } else if (persist_) {
           s = bitmap_db.Expire(args_[1], 0);
         }
-        if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
       }
     }
     if (!s.ok() && !s.IsNotFound()) {

@@ -152,7 +152,7 @@ uint64_t Connection::GetIdleTime() const { return static_cast<uint64_t>(util::Ge
 //  kTypeSlave  -> Slave
 //  kTypeNormal -> Normal client
 //  kTypePubsub -> Client subscribed to Pub/Sub channels
-uint64_t Connection::GetClientType() {
+uint64_t Connection::GetClientType() const {
   if (IsFlagEnabled(kSlave)) return kTypeSlave;
 
   if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) return kTypePubsub;
@@ -160,7 +160,7 @@ uint64_t Connection::GetClientType() {
   return kTypeNormal;
 }
 
-std::string Connection::GetFlags() {
+std::string Connection::GetFlags() const {
   std::string flags;
   if (IsFlagEnabled(kSlave)) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
@@ -174,7 +174,7 @@ void Connection::EnableFlag(Flag flag) { flags_ |= flag; }
 
 void Connection::DisableFlag(Flag flag) { flags_ &= (~flag); }
 
-bool Connection::IsFlagEnabled(Flag flag) { return (flags_ & flag) > 0; }
+bool Connection::IsFlagEnabled(Flag flag) const { return (flags_ & flag) > 0; }
 
 void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {

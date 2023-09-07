@@ -44,8 +44,8 @@ class Cron {
 
   Status SetScheduleTime(const std::vector<std::string> &args);
   bool IsTimeMatch(struct tm *tm);
-  std::string ToString();
-  bool IsEnabled();
+  std::string ToString() const;
+  bool IsEnabled() const;
 
  private:
   std::vector<Scheduler> schedulers_;

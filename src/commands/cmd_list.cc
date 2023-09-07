@@ -177,13 +177,13 @@ class CommandLMPop : public Commander {
     }
 
     while (parser.Good()) {
-      if (parser.EatEqICase("count") && count_ == -1) {
+      if (parser.EatEqICase("count") && count_ == static_cast<uint32_t>(-1)) {
         count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
       } else {
         return parser.InvalidSyntax();
       }
     }
-    if (count_ == -1) {
+    if (count_ == static_cast<uint32_t>(-1)) {
       count_ = 1;
     }
 

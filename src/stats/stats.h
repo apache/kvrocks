@@ -76,5 +76,5 @@ class Stats {
   void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
   static int64_t GetMemoryRSS();
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
-  uint64_t GetInstantaneousMetric(int metric);
+  uint64_t GetInstantaneousMetric(int metric) const;
 };

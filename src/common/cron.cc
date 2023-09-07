@@ -68,9 +68,9 @@ bool Cron::IsTimeMatch(struct tm *tm) {
   return false;
 }
 
-bool Cron::IsEnabled() { return !schedulers_.empty(); }
+bool Cron::IsEnabled() const { return !schedulers_.empty(); }
 
-std::string Cron::ToString() {
+std::string Cron::ToString() const {
   std::string ret;
   for (size_t i = 0; i < schedulers_.size(); i++) {
     ret += schedulers_[i].ToString();

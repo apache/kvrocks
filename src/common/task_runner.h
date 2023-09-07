@@ -64,7 +64,7 @@ class TaskRunner {
     return Status::OK();
   }
 
-  size_t Size() { return task_queue_.size(); }
+  size_t Size() const { return task_queue_.size(); }
   void Cancel() {
     state_ = Stopping;
     task_queue_.abort();

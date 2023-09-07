@@ -103,7 +103,7 @@ void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
   inst_metrics[metric].last_sample_count = current_reading;
 }
 
-uint64_t Stats::GetInstantaneousMetric(int metric) {
+uint64_t Stats::GetInstantaneousMetric(int metric) const {
   uint64_t sum = 0;
   for (uint64_t sample : inst_metrics[metric].samples) sum += sample;
   return sum / STATS_METRIC_SAMPLES;

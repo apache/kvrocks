@@ -1081,7 +1081,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandCommand>("command", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandEcho>("echo", 2, "read-only", 0, 0, 0),

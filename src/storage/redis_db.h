@@ -69,7 +69,7 @@ class Database {
     explicit LatestSnapShot(engine::Storage *storage)
         : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
     ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
-    const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
+    const rocksdb::Snapshot *GetSnapShot() const { return snapshot_; }
 
     LatestSnapShot(const LatestSnapShot &) = delete;
     LatestSnapShot &operator=(const LatestSnapShot &) = delete;
@@ -94,9 +94,9 @@ class WriteBatchLogData {
   explicit WriteBatchLogData(RedisType type) : type_(type) {}
   explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) : type_(type), args_(std::move(args)) {}
 
-  RedisType GetRedisType();
+  RedisType GetRedisType() const;
   std::vector<std::string> *GetArguments();
-  std::string Encode();
+  std::string Encode() const;
   Status Decode(const rocksdb::Slice &blob);
 
  private:

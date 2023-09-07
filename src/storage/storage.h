@@ -125,7 +125,7 @@ class Storage {
   rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
-  std::string GetName() { return config_->db_name; }
+  std::string GetName() const { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
@@ -137,12 +137,12 @@ class Storage {
   std::shared_lock<std::shared_mutex> ReadLockGuard();
   std::unique_lock<std::shared_mutex> WriteLockGuard();
 
-  uint64_t GetFlushCount() { return flush_count_; }
+  uint64_t GetFlushCount() const { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
-  uint64_t GetCompactionCount() { return compaction_count_; }
+  uint64_t GetCompactionCount() const { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
-  bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
-  const Config *GetConfig() { return config_; }
+  bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
+  const Config *GetConfig() const { return config_; }
 
   Status BeginTxn();
   Status CommitTxn();
@@ -182,11 +182,11 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
+  time_t GetCheckpointCreateTime() const { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }
+  time_t GetCheckpointAccessTime() const { return checkpoint_info_.access_time; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
-  bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
+  bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
   Status ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);

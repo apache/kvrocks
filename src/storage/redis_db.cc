@@ -640,11 +640,11 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   return rocksdb::Status::OK();
 }
 
-RedisType WriteBatchLogData::GetRedisType() { return type_; }
+RedisType WriteBatchLogData::GetRedisType() const { return type_; }
 
 std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
 
-std::string WriteBatchLogData::Encode() {
+std::string WriteBatchLogData::Encode() const {
   std::string ret = std::to_string(type_);
   for (const auto &arg : args_) {
     ret += " " + arg;

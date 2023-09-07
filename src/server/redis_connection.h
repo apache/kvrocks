@@ -82,12 +82,12 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   uint64_t GetID() const { return id_; }
   void SetID(uint64_t id) { id_ = id; }
-  std::string GetName() { return name_; }
+  std::string GetName() const { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
   std::string GetAddr() const { return addr_; }
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
-  std::string GetIP() { return ip_; }
+  std::string GetIP() const { return ip_; }
   uint32_t GetPort() const { return port_; }
   void SetListeningPort(int port) { listening_port_ = port; }
   int GetListeningPort() const { return listening_port_; }

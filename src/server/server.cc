@@ -1635,7 +1635,7 @@ void Server::AdjustOpenFilesLimit() {
   }
 }
 
-std::string ServerLogData::Encode() {
+std::string ServerLogData::Encode() const {
   if (type_ == kReplIdLog) {
     return std::string(1, kReplIdTag) + " " + content_;
   }

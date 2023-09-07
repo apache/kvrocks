@@ -68,7 +68,7 @@ enum CommandFlags : uint64_t {
 class Commander {
  public:
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
-  const CommandAttributes *GetAttributes() { return attributes_; }
+  const CommandAttributes *GetAttributes() const { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
@@ -268,7 +268,7 @@ inline CommandMap commands;
 #define REDIS_REGISTER_COMMANDS(...) \
   static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__){__VA_ARGS__};
 
-int GetCommandNum();
+size_t GetCommandNum();
 CommandMap *GetCommands();
 void ResetCommands();
 const CommandMap *GetOriginalCommands();

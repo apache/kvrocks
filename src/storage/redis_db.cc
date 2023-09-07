@@ -210,7 +210,7 @@ void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) { K
 
 void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   uint16_t slot_id = 0;
-  std::string ns_prefix, value;
+  std::string ns_prefix;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {
     if (storage_->IsSlotIdEncoded()) {
       ns_prefix = ComposeNamespaceKey(namespace_, "", false);
@@ -236,8 +236,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
         break;
       }
       Metadata metadata(kRedisNone, false);
-      value = iter->value().ToString();
-      metadata.Decode(value);
+      metadata.Decode(iter->value());
       if (metadata.Expired()) {
         if (stats) stats->n_expired++;
         continue;
@@ -313,8 +312,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
         break;
       }
       Metadata metadata(kRedisNone, false);
-      std::string value = iter->value().ToString();
-      metadata.Decode(value);
+      metadata.Decode(iter->value());
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);

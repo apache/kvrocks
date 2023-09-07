@@ -58,7 +58,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     }
 
     Metadata metadata(kRedisNone);
-    metadata.Decode(value.ToString());
+    metadata.Decode(value);
 
     if (metadata.Type() == kRedisString) {
       command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
@@ -92,7 +92,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       }
 
       StreamMetadata stream_metadata;
-      auto s = stream_metadata.Decode(value.ToString());
+      auto s = stream_metadata.Decode(value);
       if (!s.ok()) return s;
 
       command_args = {"XSETID",

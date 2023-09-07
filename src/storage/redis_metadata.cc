@@ -127,7 +127,7 @@ std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_
   ns_key.append(ns.data(), ns.size());
 
   if (slot_id_encoded) {
-    auto slot_id = GetSlotIdFromKey(key.ToString());
+    auto slot_id = GetSlotIdFromKey(key.ToStringView());
     PutFixed16(&ns_key, slot_id);
   }
 

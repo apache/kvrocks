@@ -44,7 +44,7 @@ Status Parser::ParseFullDB() {
 
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Metadata metadata(kRedisNone);
-    metadata.Decode(iter->value().ToString());
+    metadata.Decode(iter->value());
     if (metadata.Expired()) {  // ignore the expired key
       continue;
     }

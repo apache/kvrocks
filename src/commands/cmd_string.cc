@@ -30,6 +30,7 @@
 #include "ttl_util.h"
 #include "types/redis_bitmap.h"
 #include "types/redis_string.h"
+
 namespace redis {
 
 class CommandGet : public Commander {
@@ -86,8 +87,15 @@ class CommandGetEx : public Commander {
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
-      if (ttl_ > 0) bitmap_db.Expire(args_[1], ttl_ + util::GetTimeStampMS());
-      if (persist_) bitmap_db.Expire(args_[1], 0);
+      if (s.ok()) {
+        auto s = rocksdb::Status();
+        if (ttl_ > 0) {
+          s = bitmap_db.Expire(args_[1], ttl_ + util::GetTimeStampMS());
+        } else if (persist_) {
+          s = bitmap_db.Expire(args_[1], 0);
+        }
+        if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+      }
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};

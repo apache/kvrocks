@@ -59,6 +59,79 @@ std::string CompressType2String(const rocksdb::CompressionType type) {
   return "unknown";
 }
 
+std::string CompactionReason2String(const rocksdb::CompactionReason compression_reason) {
+  std::string result;
+  switch (compression_reason) {
+    case rocksdb::CompactionReason::kUnknown:
+      result = "Unknown";
+      break;
+    case rocksdb::CompactionReason::kLevelL0FilesNum:
+      result = "LevelL0FilesNum";
+      break;
+    case rocksdb::CompactionReason::kLevelMaxLevelSize:
+      result = "LevelMaxLevelSize";
+      break;
+    case rocksdb::CompactionReason::kUniversalSizeAmplification:
+      result = "UniversalSizeAmplification";
+      break;
+    case rocksdb::CompactionReason::kUniversalSizeRatio:
+      result = "UniversalSizeRatio";
+      break;
+    case rocksdb::CompactionReason::kUniversalSortedRunNum:
+      result = "UniversalSortedRunNum";
+      break;
+    case rocksdb::CompactionReason::kFIFOMaxSize:
+      result = "FIFOMaxSize";
+      break;
+    case rocksdb::CompactionReason::kFIFOReduceNumFiles:
+      result = "FIFOReduceNumFiles";
+      break;
+    case rocksdb::CompactionReason::kFIFOTtl:
+      result = "FIFOTtl";
+      break;
+    case rocksdb::CompactionReason::kManualCompaction:
+      result = "ManualCompaction";
+      break;
+    case rocksdb::CompactionReason::kFilesMarkedForCompaction:
+      result = "FilesMarkedForCompaction";
+      break;
+    case rocksdb::CompactionReason::kBottommostFiles:
+      result = "BottommostFiles";
+      break;
+    case rocksdb::CompactionReason::kTtl:
+      result = "Ttl";
+      break;
+    case rocksdb::CompactionReason::kFlush:
+      result = "Flush";
+      break;
+    case rocksdb::CompactionReason::kExternalSstIngestion:
+      result = "ExternalSstIngestion";
+      break;
+    case rocksdb::CompactionReason::kPeriodicCompaction:
+      result = "PeriodicCompaction";
+      break;
+    case rocksdb::CompactionReason::kChangeTemperature:
+      result = "ChangeTemperature";
+      break;
+    case rocksdb::CompactionReason::kForcedBlobGC:
+      result = "ForcedBlobGC";
+      break;
+    case rocksdb::CompactionReason::kRoundRobinTtl:
+      result = "RoundRobinTtl";
+      break;
+    case rocksdb::CompactionReason::kRefitLevel:
+      result = "RefitLevel";
+      break;
+    case rocksdb::CompactionReason::kNumOfReasons:
+      result = "NumOfReasons";
+      break;
+    default:
+      result = "UnSupport";
+      break;
+  }
+  return result;
+}
+
 std::string ExtractSSTFileNameFromError(const std::string &error) {
   auto match_results = util::RegexMatch(error, ".*(/\\w*\\.sst).*");
   if (match_results.size() == 2) {
@@ -75,9 +148,15 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
   return err_msg.find(exceeded_quota_str) != std::string::npos;
 }
 
+void EventListener::OnCompactionBegin(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+  LOG(INFO) << "[event_listener/compaction_begin] column family: " << ci.cf_name << ", job_id: " << ci.job_id
+            << ", compaction reason: " << CompactionReason2String(ci.compaction_reason)
+            << ", output compression type: " << CompressType2String(ci.compression);
+}
+
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name << ", job_id: " << ci.job_id
-            << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
+            << ", compaction reason: " << CompactionReason2String(ci.compaction_reason)
             << ", output compression type: " << CompressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
@@ -86,6 +165,23 @@ void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::Compac
             << ", elapsed(micro): " << ci.stats.elapsed_micros;
   storage_->IncrCompactionCount(1);
   storage_->CheckDBSizeLimit();
+}
+
+void EventListener::OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si) {
+  LOG(INFO) << "[event_listener/subcompaction_begin] column family: " << si.cf_name << ", job_id: " << si.job_id
+            << ", compaction reason: " << CompactionReason2String(si.compaction_reason)
+            << ", output compression type: " << CompressType2String(si.compression);
+}
+
+void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) {
+  LOG(INFO) << "[event_listener/subcompaction_begin] column family: " << si.cf_name << ", job_id: " << si.job_id
+            << ", compaction reason: " << CompactionReason2String(si.compaction_reason)
+            << ", output compression type: " << CompressType2String(si.compression)
+            << ", base input level(files): " << si.base_input_level << ", output level(files): " << si.output_level
+            << ", input bytes: " << si.stats.total_input_bytes << ", output bytes:" << si.stats.total_output_bytes
+            << ", is_manual_compaction:" << (si.stats.is_manual_compaction ? "yes" : "no")
+            << ", elapsed(micro): " << si.stats.elapsed_micros;
+  storage_->IncrSubCompactionCount(1);
 }
 
 void EventListener::OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {

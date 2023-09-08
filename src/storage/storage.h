@@ -142,6 +142,8 @@ class Storage {
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
   uint64_t GetCompactionCount() const { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
+  uint64_t GetSubCompactionCount() { return subcompaction_count_; }
+  void IncrSubCompactionCount(uint64_t n) { subcompaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
   const Config *GetConfig() const { return config_; }
 
@@ -209,6 +211,7 @@ class Storage {
   bool db_size_limit_reached_ = false;
   std::atomic<uint64_t> flush_count_{0};
   std::atomic<uint64_t> compaction_count_{0};
+  std::atomic<uint64_t> subcompaction_count_{0};
 
   std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;

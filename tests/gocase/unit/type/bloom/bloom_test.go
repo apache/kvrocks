@@ -203,5 +203,11 @@ func TestBloom(t *testing.T) {
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
 	})
 
+	t.Run("Get type of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
+		require.Equal(t, "MBbloom--", rdb.Type(ctx, key).Val())
+	})
+
 	// TODO: Add the testcase of get filters of bloom filter after complete the scaling.
 }

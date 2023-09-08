@@ -61,7 +61,7 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",  "set",
+const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",   "set",
                                                  "zset", "bitmap", "sortedint", "stream", "MBbloom--"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";

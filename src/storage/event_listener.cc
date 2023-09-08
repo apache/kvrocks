@@ -126,7 +126,7 @@ std::string CompactionReason2String(const rocksdb::CompactionReason compression_
       result = "NumOfReasons";
       break;
     default:
-      result = "UnSupport";
+      result = "UnexpectedReasonValue";
       break;
   }
   return result;

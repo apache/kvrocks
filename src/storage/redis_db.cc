@@ -121,6 +121,52 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   return storage_->Delete(storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
 }
 
+rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
+
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys.size());
+  for (const auto &key : keys) {
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisNone);
+  batch->PutLogData(log_data.Encode());
+
+  std::vector<Slice> slice_keys;
+  slice_keys.reserve(lock_keys.size());
+  for (const auto &ns_key : lock_keys) {
+    slice_keys.emplace_back(ns_key);
+  }
+
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
+  read_options.snapshot = ss.GetSnapShot();
+  std::vector<rocksdb::Status> statuses(slice_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
+  storage_->MultiGet(read_options, metadata_cf_handle_, slice_keys.size(), slice_keys.data(), pin_values.data(),
+                     statuses.data());
+
+  for (size_t i = 0; i < slice_keys.size(); i++) {
+    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+    if (statuses[i].IsNotFound()) continue;
+
+    Metadata metadata(kRedisNone, false);
+    metadata.Decode(pin_values[i]);
+    if (metadata.Expired()) continue;
+
+    batch->Delete(metadata_cf_handle_, lock_keys[i]);
+    *deleted_cnt += 1;
+  }
+
+  if (*deleted_cnt == 0) return rocksdb::Status::OK();
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   *ret = 0;
   LatestSnapShot ss(storage_);
@@ -132,6 +178,7 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   for (const auto &key : keys) {
     std::string ns_key = AppendNamespacePrefix(key);
     s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       Metadata metadata(kRedisNone, false);
       metadata.Decode(value);
@@ -163,7 +210,7 @@ void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) { K
 
 void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   uint16_t slot_id = 0;
-  std::string ns_prefix, value;
+  std::string ns_prefix;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {
     if (storage_->IsSlotIdEncoded()) {
       ns_prefix = ComposeNamespaceKey(namespace_, "", false);
@@ -189,8 +236,7 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
         break;
       }
       Metadata metadata(kRedisNone, false);
-      value = iter->value().ToString();
-      metadata.Decode(value);
+      metadata.Decode(iter->value());
       if (metadata.Expired()) {
         if (stats) stats->n_expired++;
         continue;
@@ -266,8 +312,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
         break;
       }
       Metadata metadata(kRedisNone, false);
-      std::string value = iter->value().ToString();
-      metadata.Decode(value);
+      metadata.Decode(iter->value());
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);
@@ -595,11 +640,11 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   return rocksdb::Status::OK();
 }
 
-RedisType WriteBatchLogData::GetRedisType() { return type_; }
+RedisType WriteBatchLogData::GetRedisType() const { return type_; }
 
 std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
 
-std::string WriteBatchLogData::Encode() {
+std::string WriteBatchLogData::Encode() const {
   std::string ret = std::to_string(type_);
   for (const auto &arg : args_) {
     ret += " " + arg;

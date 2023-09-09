@@ -154,6 +154,84 @@ class CommandRPop : public CommandPop {
   CommandRPop() : CommandPop(false) {}
 };
 
+class CommandLMPop : public Commander {
+ public:
+  // format: LMPOP #numkeys key0 [key1 ...] <LEFT | RIGHT> [COUNT count]
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+
+    auto num_keys = GET_OR_RET(parser.TakeInt<uint32_t>());
+    keys_.clear();
+    keys_.reserve(num_keys);
+    for (uint32_t i = 0; i < num_keys; ++i) {
+      keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    auto left_or_right = util::ToLower(GET_OR_RET(parser.TakeStr()));
+    if (left_or_right == "left") {
+      left_ = true;
+    } else if (left_or_right == "right") {
+      left_ = false;
+    } else {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("count") && count_ == static_cast<uint32_t>(-1)) {
+        count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    if (count_ == static_cast<uint32_t>(-1)) {
+      count_ = 1;
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::List list_db(svr->storage, conn->GetNamespace());
+
+    std::vector<std::string> elems;
+    std::string chosen_key;
+    for (auto &key : keys_) {
+      auto s = list_db.PopMulti(key, left_, count_, &elems);
+      if (!s.ok() && !s.IsNotFound()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      if (!elems.empty()) {
+        chosen_key = key;
+        break;
+      }
+    }
+
+    if (elems.empty()) {
+      *output = redis::NilString();
+    } else {
+      std::string elems_bulk = redis::MultiBulkString(elems);
+      *output = redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)});
+    }
+
+    return Status::OK();
+  }
+
+  static const inline CommandKeyRangeGen keyRangeGen = [](const std::vector<std::string> &args) {
+    CommandKeyRange range;
+    range.first_key = 2;
+    range.key_step = 1;
+    // This parsing would always succeed as this cmd has been parsed before.
+    auto num_key = *ParseInt<int32_t>(args[1], 10);
+    range.last_key = range.first_key + num_key - 1;
+    return range;
+  };
+
+ private:
+  bool left_;
+  uint32_t count_ = -1;
+  std::vector<std::string> keys_;
+};
+
 class CommandBPop : public Commander,
                     private EvbufCallbackBase<CommandBPop, false>,
                     private EventCallbackBase<CommandBPop> {
@@ -766,6 +844,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script"
                         MakeCmdAttr<CommandLRem>("lrem", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLTrim>("ltrim", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandLMPop>("lmpop", -4, "write", CommandLMPop::keyRangeGen),
                         MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRPush>("rpush", -3, "write", 1, 1, 1),

@@ -140,6 +140,15 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})
 
+	t.Run("GEORADIUSBYMEMBER store option", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+
+		require.EqualValues(t, 2, rdb.Do(ctx, "GEOADD", "src", "13", "14", "Shenzhen", "25", "30", "Guangzhou").Val())
+		require.EqualValues(t, 2, rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen", "5000", "km", "store", "dst").Val())
+		require.EqualValues(t, []interface {}([]interface {}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen", "5000", "km").Val())
+		require.EqualValues(t, []interface {}([]interface {}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "ZRANGE", "dst", 0, -1).Val())
+	})
+
 	t.Run("GEOHASH errors", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 
@@ -152,7 +161,7 @@ func TestGeo(t *testing.T) {
 	})
 
 	t.Run("GEOSEARCH against non existing src key", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.NoError(t, rdb.Del(ctx, "src").Err())
 		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEOSEARCH", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
 	})
 
@@ -216,7 +225,7 @@ func TestGeo(t *testing.T) {
 	})
 
 	t.Run("GEOSEARCHSTORE against non existing src key", func(t *testing.T) {
-		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.NoError(t, rdb.Del(ctx, "src").Err())
 		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
 	})
 

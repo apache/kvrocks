@@ -33,6 +33,8 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
 // We write enum integer value of every datatype
 // explicitly since it cannot be changed once confirmed
+// Note that if you want to add a new redis type in `RedisType`
+// you should also add a type name to the `RedisTypeNames` below
 enum RedisType {
   kRedisNone = 0,
   kRedisString = 1,

@@ -102,27 +102,28 @@ class Storage {
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
-  rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
-  rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
-                      const rocksdb::Slice &key, std::string *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                                    const rocksdb::Slice &key, std::string *value);
   void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
                 const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
-  rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
-  rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
-                         const rocksdb::Slice &key);
-  rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
-  rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
+  [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
+                                       const rocksdb::Slice &key);
+  [[nodiscard]] rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
+  [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
+                                             rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
   Status InWALBoundary(rocksdb::SequenceNumber seq);
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
-  rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
+  [[nodiscard]] rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }

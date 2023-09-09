@@ -37,6 +37,7 @@ class CommandType : public Commander {
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
+      if (type >= RedisTypeNames.size()) return {Status::RedisExecErr, "Invalid type"};
       *output = redis::SimpleString(RedisTypeNames[type]);
       return Status::OK();
     }

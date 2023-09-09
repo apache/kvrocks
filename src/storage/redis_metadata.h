@@ -33,6 +33,8 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
 // We write enum integer value of every datatype
 // explicitly since it cannot be changed once confirmed
+// Note that if you want to add a new redis type in `RedisType`
+// you should also add a type name to the `RedisTypeNames` below
 enum RedisType {
   kRedisNone = 0,
   kRedisString = 1,
@@ -61,8 +63,8 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",  "set",
-                                                 "zset", "bitmap", "sortedint", "stream"};
+const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",   "set",
+                                                 "zset", "bitmap", "sortedint", "stream", "MBbloom--"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";

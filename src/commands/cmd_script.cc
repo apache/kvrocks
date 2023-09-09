@@ -72,9 +72,13 @@ class CommandScript : public Commander {
     }
 
     if (args_.size() == 2 && subcommand_ == "flush") {
-      svr->ScriptFlush();
-      auto s = svr->Propagate(engine::kPropagateScriptCommand, args_);
-      if (!s.IsOK()) {
+      auto s = svr->ScriptFlush();
+      if (!s) {
+        LOG(ERROR) << "Failed to flush scripts: " << s.Msg();
+        return s;
+      }
+      s = svr->Propagate(engine::kPropagateScriptCommand, args_);
+      if (!s) {
         LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
         return s;
       }

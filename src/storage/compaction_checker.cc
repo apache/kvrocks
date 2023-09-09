@@ -135,6 +135,9 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
     LOG(INFO) << "[compaction checker] Going to compact the key in file: " << best_filename
               << ", delete ratio: " << best_delete_ratio;
-    storage_->Compact(&best_start_key, &best_stop_key);
+    auto s = storage_->Compact(&best_start_key, &best_stop_key);
+    if (!s.ok()) {
+      LOG(ERROR) << "[compaction checker] Failed to do compaction: " << s.ToString();
+    }
   }
 }

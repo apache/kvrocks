@@ -148,8 +148,8 @@ class Metadata {
   bool ExpireAt(uint64_t expired_ts) const;
 
   virtual void Encode(std::string *dst) const;
-  virtual rocksdb::Status Decode(Slice *input);
-  rocksdb::Status Decode(Slice input);
+  [[nodiscard]] virtual rocksdb::Status Decode(Slice *input);
+  [[nodiscard]] rocksdb::Status Decode(Slice input);
 
   bool operator==(const Metadata &that) const;
   virtual ~Metadata() = default;

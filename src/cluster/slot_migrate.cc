@@ -584,7 +584,9 @@ StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &k
                                                          std::string *restore_cmds) {
   std::string bytes = encoded_metadata.ToString();
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(bytes);
+  if (auto s = metadata.Decode(bytes); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
 
   if (metadata.Type() != kRedisString && metadata.Type() != kRedisStream && metadata.size == 0) {
     return KeyMigrationResult::kUnderlyingStructEmpty;
@@ -617,7 +619,9 @@ StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &k
     }
     case kRedisStream: {
       StreamMetadata stream_md(false);
-      stream_md.Decode(bytes);
+      if (auto s = stream_md.Decode(bytes); !s.ok()) {
+        return {Status::NotOK, s.ToString()};
+      }
 
       auto s = migrateStream(key, stream_md, restore_cmds);
       if (!s.IsOK()) {

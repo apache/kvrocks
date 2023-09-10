@@ -55,9 +55,10 @@ StatusOr<std::unique_ptr<T>> WrapOutPtrToUnique(Args&&... args) {
   return ptr;
 }
 
-inline rocksdb::Status DBOpenForReadOnly(const rocksdb::DBOptions& db_options, const std::string& dbname,
-                                         const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
-                                         std::vector<rocksdb::ColumnFamilyHandle*>* handles, rocksdb::DB** dbptr) {
+[[nodiscard]] inline rocksdb::Status DBOpenForReadOnly(
+    const rocksdb::DBOptions& db_options, const std::string& dbname,
+    const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
+    std::vector<rocksdb::ColumnFamilyHandle*>* handles, rocksdb::DB** dbptr) {
   return rocksdb::DB::OpenForReadOnly(db_options, dbname, column_families, handles, dbptr);
 }
 

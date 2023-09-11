@@ -641,7 +641,12 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = GenerateOutput(geo_points);
+    if (store_key_.size() != 0) {
+      *output = redis::Integer(geo_points.size());
+    } else {
+      *output = GenerateOutput(geo_points);
+    }
+
     return Status::OK();
   }
 };

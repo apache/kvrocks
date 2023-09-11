@@ -79,7 +79,7 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
 
   BlockSplitBloomFilter block_split_bloom_filter;
   block_split_bloom_filter.Init(bloom_filter_bytes);
-  *bf_data = block_split_bloom_filter.GetData();
+  *bf_data = std::move(block_split_bloom_filter).GetData();
 
   std::string bloom_chain_meta_bytes;
   metadata->Encode(&bloom_chain_meta_bytes);
@@ -92,7 +92,7 @@ void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
 
   uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
   block_split_bloom_filter.InsertHash(h);
-  *bf_data = block_split_bloom_filter.GetData();
+  *bf_data = std::move(block_split_bloom_filter).GetData();
 }
 
 rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::string &item, bool *exist) {

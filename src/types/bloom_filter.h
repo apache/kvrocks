@@ -154,7 +154,9 @@ class BlockSplitBloomFilter {
   /// Get the plain bitset value from the Bloom filter bitset.
   ///
   /// @return bitset value;
-  const std::string& GetData() { return data_; }
+  const std::string& GetData() & { return data_; }
+
+  std::string GetData() && { return data_; }
 
   /// Compute hash for string value by using its plain encoding result.
   ///

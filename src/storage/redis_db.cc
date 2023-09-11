@@ -75,8 +75,7 @@ rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes
 }
 
 rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-  return GetRawMetadata(ns_key, bytes);
+  return GetRawMetadata(AppendNamespacePrefix(user_key), bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
@@ -479,7 +478,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
 
   if (metadata.Type() == kRedisList) {
     ListMetadata list_metadata(false);
-    GetMetadata(kRedisList, ns_key, &list_metadata);
+    s = GetMetadata(kRedisList, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
     infos->emplace_back(std::to_string(list_metadata.head));

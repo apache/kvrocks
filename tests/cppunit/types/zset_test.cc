@@ -56,7 +56,7 @@ TEST_F(RedisZSetTest, Add) {
   }
   zset_->Add(key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_EQ(ret, 0);
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, IncrBy) {
@@ -73,7 +73,7 @@ TEST_F(RedisZSetTest, IncrBy) {
     zset_->IncrBy(key_, fields_[i], increment, &score);
     EXPECT_EQ(scores_[i] + increment, score);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, Remove) {
@@ -91,7 +91,7 @@ TEST_F(RedisZSetTest, Remove) {
     rocksdb::Status s = zset_->Score(key_, field, &score);
     EXPECT_TRUE(s.IsNotFound());
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, AddAndRemoveRepeated) {
@@ -120,7 +120,7 @@ TEST_F(RedisZSetTest, AddAndRemoveRepeated) {
   zset_->Score(key_, members[3], &score);
   EXPECT_EQ(scores[3], score);
 
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, Range) {
@@ -141,7 +141,7 @@ TEST_F(RedisZSetTest, Range) {
     EXPECT_EQ(mscores[i].member, fields_[i].ToString());
     EXPECT_EQ(mscores[i].score, scores_[i]);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, RevRange) {
@@ -163,7 +163,7 @@ TEST_F(RedisZSetTest, RevRange) {
     EXPECT_EQ(mscores[i].member, fields_[count - i].ToString());
     EXPECT_EQ(mscores[i].score, scores_[count - i]);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, PopMin) {
@@ -260,7 +260,7 @@ TEST_F(RedisZSetTest, RangeByLex) {
     EXPECT_EQ(mscores[i].score, scores_[count - i - 1]);
   }
 
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, RangeByScore) {
@@ -308,7 +308,7 @@ TEST_F(RedisZSetTest, RangeByScore) {
     EXPECT_EQ(mscores[i].member, fields_[i + 2].ToString());
     EXPECT_EQ(mscores[i].score, scores_[i + 2]);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
@@ -329,7 +329,7 @@ TEST_F(RedisZSetTest, RangeByScoreWithLimit) {
     EXPECT_EQ(mscores[i].member, fields_[i + 1].ToString());
     EXPECT_EQ(mscores[i].score, scores_[i + 1]);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }
 
 TEST_F(RedisZSetTest, RemRangeByScore) {
@@ -431,5 +431,5 @@ TEST_F(RedisZSetTest, Rank) {
     EXPECT_EQ(-1, rank);
     EXPECT_EQ(0.0, score);
   }
-  zset_->Del(key_);
+  auto s = zset_->Del(key_);
 }

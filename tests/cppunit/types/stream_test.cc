@@ -44,9 +44,9 @@ class RedisStreamTest : public TestBase {  // NOLINT
 
   ~RedisStreamTest() override { delete stream_; }
 
-  void SetUp() override { stream_->Del(name_); }
+  void SetUp() override { auto s = stream_->Del(name_); }
 
-  void TearDown() override { stream_->Del(name_); }
+  void TearDown() override { auto s = stream_->Del(name_); }
 
   std::string name_;
   redis::Stream *stream_;

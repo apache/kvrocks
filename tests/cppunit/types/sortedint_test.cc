@@ -49,7 +49,7 @@ TEST_F(RedisSortedintTest, AddAndRemove) {
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
   s = sortedint_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  sortedint_->Del(key_);
+  s = sortedint_->Del(key_);
 }
 
 TEST_F(RedisSortedintTest, Range) {
@@ -64,5 +64,5 @@ TEST_F(RedisSortedintTest, Range) {
   }
   s = sortedint_->Remove(key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
-  sortedint_->Del(key_);
+  s = sortedint_->Del(key_);
 }

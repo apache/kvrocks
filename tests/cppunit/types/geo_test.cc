@@ -62,7 +62,7 @@ TEST_F(RedisGeoTest, Add) {
   }
   geo_->Add(key_, &geo_points, &ret);
   EXPECT_EQ(ret, 0);
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }
 
 TEST_F(RedisGeoTest, Dist) {
@@ -76,7 +76,7 @@ TEST_F(RedisGeoTest, Dist) {
   double dist = 0.0;
   geo_->Dist(key_, fields_[2], fields_[3], &dist);
   EXPECT_EQ(ceilf(dist), 194102);
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }
 
 TEST_F(RedisGeoTest, Hash) {
@@ -92,7 +92,7 @@ TEST_F(RedisGeoTest, Hash) {
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(geo_hashes[i], geo_hashes_[i]);
   }
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }
 
 TEST_F(RedisGeoTest, Pos) {
@@ -110,7 +110,7 @@ TEST_F(RedisGeoTest, Pos) {
     EXPECT_EQ(geo_->EncodeGeoHash(gps[fields_[i].ToString()].longitude, gps[fields_[i].ToString()].latitude),
               geo_hashes_[i]);
   }
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }
 
 TEST_F(RedisGeoTest, Radius) {
@@ -128,7 +128,7 @@ TEST_F(RedisGeoTest, Radius) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
     EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }
 
 TEST_F(RedisGeoTest, RadiusByMember) {
@@ -146,5 +146,5 @@ TEST_F(RedisGeoTest, RadiusByMember) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
     EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
-  geo_->Del(key_);
+  auto s = geo_->Del(key_);
 }

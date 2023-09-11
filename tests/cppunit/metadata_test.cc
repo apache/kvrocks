@@ -90,7 +90,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   HashMetadata metadata;
   std::string ns_key = redis_->AppendNamespacePrefix(key_);
-  redis_->GetMetadata(kRedisHash, ns_key, &metadata);
+  s = redis_->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis_->Del(key_);
   EXPECT_TRUE(s.ok());
@@ -106,12 +106,12 @@ TEST_F(RedisTypeTest, Expire) {
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  redis_->Expire(key_, now * 1000 + 2000);
+  s = redis_->Expire(key_, now * 1000 + 2000);
   int64_t ttl = 0;
-  redis_->TTL(key_, &ttl);
+  s = redis_->TTL(key_, &ttl);
   ASSERT_GT(ttl, 0);
   ASSERT_LE(ttl, 2000);
-  redis_->Del(key_);
+  s = redis_->Del(key_);
 }
 
 TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {

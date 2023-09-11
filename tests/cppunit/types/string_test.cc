@@ -50,7 +50,7 @@ TEST_F(RedisStringTest, Append) {
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(static_cast<uint64_t>(i + 1), ret);
   }
-  string_->Del(key_);
+  auto s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, GetAndSet) {
@@ -63,7 +63,7 @@ TEST_F(RedisStringTest, GetAndSet) {
     EXPECT_EQ(pair.value, got_value);
   }
   for (auto &pair : pairs_) {
-    string_->Del(pair.key);
+    auto s = string_->Del(pair.key);
   }
 }
 
@@ -80,7 +80,7 @@ TEST_F(RedisStringTest, MGetAndMSet) {
     EXPECT_EQ(pairs_[i].value, values[i]);
   }
   for (auto &pair : pairs_) {
-    string_->Del(pair.key);
+    auto s = string_->Del(pair.key);
   }
 }
 
@@ -103,7 +103,7 @@ TEST_F(RedisStringTest, IncrByFloat) {
   string_->Set(key_, "abc");
   rocksdb::Status s = string_->IncrByFloat(key_, 1.2, &f);
   EXPECT_TRUE(s.IsInvalidArgument());
-  string_->Del(key_);
+  s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, IncrBy) {
@@ -124,7 +124,7 @@ TEST_F(RedisStringTest, IncrBy) {
   string_->Set(key_, "abc");
   s = string_->IncrBy(key_, 1, &ret);
   EXPECT_TRUE(s.IsInvalidArgument());
-  string_->Del(key_);
+  s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, GetEmptyValue) {
@@ -143,17 +143,17 @@ TEST_F(RedisStringTest, GetSet) {
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for (size_t i = 0; i < values.size(); i++) {
     std::string old_value;
-    string_->Expire(key_, now * 1000 + 100000);
+    auto s = string_->Expire(key_, now * 1000 + 100000);
     string_->GetSet(key_, values[i], &old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
-      string_->TTL(key_, &ttl);
+      auto s = string_->TTL(key_, &ttl);
       EXPECT_TRUE(ttl == -1);
     } else {
       EXPECT_TRUE(old_value.empty());
     }
   }
-  string_->Del(key_);
+  auto s = string_->Del(key_);
 }
 TEST_F(RedisStringTest, GetDel) {
   for (auto &pair : pairs_) {
@@ -178,9 +178,9 @@ TEST_F(RedisStringTest, MSetXX) {
   string_->SetXX(key_, "test-value", 3000, &flag);
   EXPECT_TRUE(flag);
   int64_t ttl = 0;
-  string_->TTL(key_, &ttl);
+  auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string_->Del(key_);
+  s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, MSetNX) {
@@ -205,7 +205,7 @@ TEST_F(RedisStringTest, MSetNX) {
   EXPECT_FALSE(flag);
 
   for (auto &pair : pairs_) {
-    string_->Del(pair.key);
+    auto s = string_->Del(pair.key);
   }
 }
 
@@ -213,17 +213,17 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
   bool flag = false;
   string_->SetNX(key_, "test-value", 3000, &flag);
   int64_t ttl = 0;
-  string_->TTL(key_, &ttl);
+  auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string_->Del(key_);
+  s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetEX) {
   string_->SetEX(key_, "test-value", 3000);
   int64_t ttl = 0;
-  string_->TTL(key_, &ttl);
+  auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
-  string_->Del(key_);
+  s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, SetRange) {
@@ -248,7 +248,7 @@ TEST_F(RedisStringTest, SetRange) {
   EXPECT_EQ(16, ret);
   string_->Get(key_, &value);
   EXPECT_EQ(16, value.size());
-  string_->Del(key_);
+  auto s = string_->Del(key_);
 }
 
 TEST_F(RedisStringTest, CAS) {
@@ -276,10 +276,10 @@ TEST_F(RedisStringTest, CAS) {
   EXPECT_EQ(new_value, current_value);
 
   int64_t ttl = 0;
-  string_->TTL(key, &ttl);
+  status = string_->TTL(key, &ttl);
   EXPECT_TRUE(ttl >= 9000 && ttl <= 11000);
 
-  string_->Del(key);
+  status = string_->Del(key);
 }
 
 TEST_F(RedisStringTest, CAD) {
@@ -305,5 +305,5 @@ TEST_F(RedisStringTest, CAD) {
   status = string_->Get(key, &current_value);
   ASSERT_TRUE(status.IsNotFound());
 
-  string_->Del(key);
+  status = string_->Del(key);
 }

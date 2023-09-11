@@ -44,7 +44,7 @@ TEST(Compact, Filter) {
   std::string live_hash_key = "live_hash_key";
   hash->Set(expired_hash_key, "f1", "v1", &ret);
   hash->Set(expired_hash_key, "f2", "v2", &ret);
-  hash->Expire(expired_hash_key, 1);  // expired
+  auto st = hash->Expire(expired_hash_key, 1);  // expired
   usleep(10000);
   hash->Set(live_hash_key, "f1", "v1", &ret);
   hash->Set(live_hash_key, "f2", "v2", &ret);
@@ -75,7 +75,7 @@ TEST(Compact, Filter) {
   std::string expired_zset_key = "expire_zset_key";
   std::vector<MemberScore> member_scores = {MemberScore{"z1", 1.1}, MemberScore{"z2", 0.4}};
   zset->Add(expired_zset_key, ZAddFlags::Default(), &member_scores, &ret);
-  zset->Expire(expired_zset_key, 1);  // expired
+  st = zset->Expire(expired_zset_key, 1);  // expired
   usleep(10000);
 
   status = storage->Compact(nullptr, nullptr);

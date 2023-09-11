@@ -40,15 +40,19 @@ Status Parser::ParseFullDB() {
   read_options.snapshot = latest_snapshot_->GetSnapShot();
   read_options.fill_cache = false;
   std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_options, metadata_cf_handle));
-  Status s;
 
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Metadata metadata(kRedisNone);
-    metadata.Decode(iter->value());
+    auto ds = metadata.Decode(iter->value());
+    if (!ds.ok()) {
+      continue;
+    }
+
     if (metadata.Expired()) {  // ignore the expired key
       continue;
     }
 
+    Status s;
     if (metadata.Type() == kRedisString) {
       s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
     } else {

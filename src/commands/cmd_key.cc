@@ -37,6 +37,7 @@ class CommandType : public Commander {
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
+      if (type >= RedisTypeNames.size()) return {Status::RedisExecErr, "Invalid type"};
       *output = redis::SimpleString(RedisTypeNames[type]);
       return Status::OK();
     }
@@ -124,7 +125,8 @@ class CommandExists : public Commander {
 
     int cnt = 0;
     redis::Database redis(svr->storage, conn->GetNamespace());
-    redis.Exists(keys, &cnt);
+    auto s = redis.Exists(keys, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::Integer(cnt);
 
     return Status::OK();

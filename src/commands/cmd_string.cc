@@ -296,14 +296,17 @@ class CommandSet : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     bool ret = false;
     redis::String string_db(svr->storage, conn->GetNamespace());
-    rocksdb::Status s;
 
     if (ttl_ < 0) {
-      string_db.Del(args_[1]);
+      auto s = string_db.Del(args_[1]);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
       *output = redis::SimpleString("OK");
       return Status::OK();
     }
 
+    rocksdb::Status s;
     if (set_flag_ == NX) {
       s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
     } else if (set_flag_ == XX) {

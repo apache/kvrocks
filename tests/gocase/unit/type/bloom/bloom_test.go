@@ -203,6 +203,7 @@ func TestBloom(t *testing.T) {
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
 	})
 
+
 	t.Run("Bloom filter full and nonscaling", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "nonscaling").Err())
@@ -246,4 +247,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxxx").Err())
 		require.Equal(t, []interface{}{"Capacity", int64(350), "Size", int64(1792), "Number of filters", int64(3), "Number of items inserted", int64(151), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 	})
+
+	t.Run("Get type of bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
+		require.Equal(t, "MBbloom--", rdb.Type(ctx, key).Val())
+	})
+
+	// TODO: Add the testcase of get filters of bloom filter after complete the scaling.
+
 }

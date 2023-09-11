@@ -46,7 +46,7 @@ TEST_F(RedisBitmapTest, GetAndSetBit) {
     bitmap_->GetBit(key_, offset, &bit);
     EXPECT_TRUE(bit);
   }
-  bitmap_->Del(key_);
+  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitCount) {
@@ -60,7 +60,7 @@ TEST_F(RedisBitmapTest, BitCount) {
   EXPECT_EQ(cnt, 6);
   bitmap_->BitCount(key_, 0, -1, &cnt);
   EXPECT_EQ(cnt, 6);
-  bitmap_->Del(key_);
+  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitPosClearBit) {
@@ -72,7 +72,7 @@ TEST_F(RedisBitmapTest, BitPosClearBit) {
     bitmap_->SetBit(key_, i, true, &old_bit);
     EXPECT_FALSE(old_bit);
   }
-  bitmap_->Del(key_);
+  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitPosSetBit) {
@@ -87,5 +87,5 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
     bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
     EXPECT_EQ(pos, offsets[i]);
   }
-  bitmap_->Del(key_);
+  auto s = bitmap_->Del(key_);
 }

@@ -48,7 +48,7 @@ TEST(Metadata, EncodeAndDecode) {
   string_md.expire = 123000;
   string_md.Encode(&string_bytes);
   Metadata string_md1(kRedisNone);
-  string_md1.Decode(string_bytes);
+  ASSERT_TRUE(string_md1.Decode(string_bytes).ok());
   ASSERT_EQ(string_md, string_md1);
   ListMetadata list_md;
   list_md.flags = 13;
@@ -60,7 +60,7 @@ TEST(Metadata, EncodeAndDecode) {
   ListMetadata list_md1;
   std::string list_bytes;
   list_md.Encode(&list_bytes);
-  list_md1.Decode(list_bytes);
+  ASSERT_TRUE(list_md1.Decode(list_bytes).ok());
   ASSERT_EQ(list_md, list_md1);
 }
 
@@ -90,7 +90,7 @@ TEST_F(RedisTypeTest, GetMetadata) {
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   HashMetadata metadata;
   std::string ns_key = redis_->AppendNamespacePrefix(key_);
-  redis_->GetMetadata(kRedisHash, ns_key, &metadata);
+  s = redis_->GetMetadata(kRedisHash, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
   s = redis_->Del(key_);
   EXPECT_TRUE(s.ok());
@@ -106,12 +106,12 @@ TEST_F(RedisTypeTest, Expire) {
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  redis_->Expire(key_, now * 1000 + 2000);
+  s = redis_->Expire(key_, now * 1000 + 2000);
   int64_t ttl = 0;
-  redis_->TTL(key_, &ttl);
+  s = redis_->TTL(key_, &ttl);
   ASSERT_GT(ttl, 0);
   ASSERT_LE(ttl, 2000);
-  redis_->Del(key_);
+  s = redis_->Del(key_);
 }
 
 TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {
@@ -124,7 +124,7 @@ TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {
   EXPECT_EQ(encoded_bytes.size(), 5);
 
   Metadata md_new(kRedisNone, false, true);  // decoding existing metadata with 64-bit feature activated
-  md_new.Decode(encoded_bytes);
+  ASSERT_TRUE(md_new.Decode(encoded_bytes).ok());
   EXPECT_FALSE(md_new.Is64BitEncoded());
   EXPECT_EQ(md_new.Type(), kRedisString);
   EXPECT_EQ(md_new.expire, expire_at);
@@ -151,7 +151,7 @@ TEST(Metadata, MetadataDecodingBackwardCompatibleComplexKey) {
   md_old.Encode(&encoded_bytes);
 
   Metadata md_new(kRedisHash, false, true);
-  md_new.Decode(encoded_bytes);
+  ASSERT_TRUE(md_new.Decode(encoded_bytes).ok());
   EXPECT_FALSE(md_new.Is64BitEncoded());
   EXPECT_EQ(md_new.Type(), kRedisHash);
   EXPECT_EQ(md_new.expire, expire_at);
@@ -167,7 +167,7 @@ TEST(Metadata, Metadata64bitExpiration) {
   md_src.Encode(&encoded_bytes);
 
   Metadata md_decoded(kRedisNone, false, true);
-  md_decoded.Decode(encoded_bytes);
+  ASSERT_TRUE(md_decoded.Decode(encoded_bytes).ok());
   EXPECT_TRUE(md_decoded.Is64BitEncoded());
   EXPECT_EQ(md_decoded.Type(), kRedisString);
   EXPECT_EQ(md_decoded.expire, expire_at);
@@ -182,7 +182,7 @@ TEST(Metadata, Metadata64bitSize) {
   md_src.Encode(&encoded_bytes);
 
   Metadata md_decoded(kRedisNone, false, true);
-  md_decoded.Decode(encoded_bytes);
+  ASSERT_TRUE(md_decoded.Decode(encoded_bytes).ok());
   EXPECT_TRUE(md_decoded.Is64BitEncoded());
   EXPECT_EQ(md_decoded.Type(), kRedisHash);
   EXPECT_EQ(md_decoded.size, big_size);

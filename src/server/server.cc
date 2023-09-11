@@ -1251,7 +1251,11 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     std::unique_ptr<Slice> begin = nullptr, end = nullptr;
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
-    storage->Compact(begin.get(), end.get());
+
+    auto s = storage->Compact(begin.get(), end.get());
+    if (!s.ok()) {
+      LOG(ERROR) << "[task runner] Failed to do compaction: " << s.ToString();
+    }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
@@ -1300,8 +1304,12 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
   return task_runner_.TryPublish([ns, this] {
     redis::Database db(storage, ns);
+
     KeyNumStats stats;
-    db.GetKeyNumStats("", &stats);
+    auto s = db.GetKeyNumStats("", &stats);
+    if (!s.ok()) {
+      LOG(ERROR) << "failed to retrieve key num stats: " << s.ToString();
+    }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
@@ -1538,10 +1546,12 @@ void Server::ScriptReset() {
   lua::DestroyState(lua);
 }
 
-void Server::ScriptFlush() {
+Status Server::ScriptFlush() {
   auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
-  storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
+  return Status::OK();
 }
 
 // Generally, we store data into RocksDB and just replicate WAL instead of propagating

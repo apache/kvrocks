@@ -59,7 +59,7 @@ TEST_F(RedisHashTest, GetAndSet) {
   }
   auto s = hash_->Delete(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, MGetAndMSet) {
@@ -83,7 +83,7 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   s = hash_->Delete(key_, fields_, &ret);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
@@ -135,7 +135,7 @@ TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(initial_value, final_value);
 
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, MSetMultipleFieldsAndNX) {
@@ -159,7 +159,7 @@ TEST_F(RedisHashTest, MSetMultipleFieldsAndNX) {
   s = hash_->Get(key_, "field-three", &value);
   EXPECT_TRUE(s.ok() && value == "value-three");
 
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HGetAll) {
@@ -173,7 +173,7 @@ TEST_F(RedisHashTest, HGetAll) {
   EXPECT_TRUE(s.ok() && fvs.size() == fields_.size());
   s = hash_->Delete(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HIncr) {
@@ -190,7 +190,7 @@ TEST_F(RedisHashTest, HIncr) {
     FAIL();
   }
   EXPECT_EQ(32, *parse_result);
-  hash_->Del(key_);
+  auto s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HIncrInvalid) {
@@ -212,7 +212,7 @@ TEST_F(RedisHashTest, HIncrInvalid) {
   s = hash_->IncrBy(key_, field, LLONG_MIN, &value);
   EXPECT_TRUE(s.IsInvalidArgument());
 
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HIncrByFloat) {
@@ -226,7 +226,7 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   hash_->Get(key_, field, &bytes);
   value = std::stof(bytes);
   EXPECT_FLOAT_EQ(32 * 1.2, value);
-  hash_->Del(key_);
+  auto s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HRangeByLex) {
@@ -262,7 +262,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
     EXPECT_EQ("key1", result[1].field);
     EXPECT_EQ("key2", result[2].field);
     EXPECT_EQ("key3", result[3].field);
-    hash_->Del(key_);
+    s = hash_->Del(key_);
   }
 
   auto s = hash_->MSet(key_, tmp, false, &ret);
@@ -346,7 +346,7 @@ TEST_F(RedisHashTest, HRangeByLex) {
   EXPECT_EQ("key2", result[1].field);
   EXPECT_EQ("key1", result[2].field);
   EXPECT_EQ("key0", result[3].field);
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }
 
 TEST_F(RedisHashTest, HRangeByLexNonExistingKey) {
@@ -389,5 +389,5 @@ TEST_F(RedisHashTest, HRandField) {
   s = hash_->RandField(key_, 0, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == 0);
 
-  hash_->Del(key_);
+  s = hash_->Del(key_);
 }

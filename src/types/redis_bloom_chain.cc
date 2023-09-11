@@ -88,8 +88,7 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
 
 void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
   BlockSplitBloomFilter block_split_bloom_filter;
-  std::string in_data = *bf_data;
-  block_split_bloom_filter.Init(std::move(in_data));
+  block_split_bloom_filter.Init(std::move(*bf_data));
 
   uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
   block_split_bloom_filter.InsertHash(h);

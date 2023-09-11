@@ -145,8 +145,8 @@ func TestGeo(t *testing.T) {
 
 		require.EqualValues(t, 2, rdb.Do(ctx, "GEOADD", "src", "13", "14", "Shenzhen", "25", "30", "Guangzhou").Val())
 		require.EqualValues(t, 2, rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen", "5000", "km", "store", "dst").Val())
-		require.EqualValues(t, []interface {}([]interface {}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen", "5000", "km").Val())
-		require.EqualValues(t, []interface {}([]interface {}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "ZRANGE", "dst", 0, -1).Val())
+		require.EqualValues(t, []interface{}([]interface{}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen", "5000", "km").Val())
+		require.EqualValues(t, []interface{}([]interface{}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "ZRANGE", "dst", 0, -1).Val())
 	})
 
 	t.Run("GEOHASH errors", func(t *testing.T) {

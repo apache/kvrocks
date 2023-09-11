@@ -125,7 +125,8 @@ class CommandExists : public Commander {
 
     int cnt = 0;
     redis::Database redis(svr->storage, conn->GetNamespace());
-    redis.Exists(keys, &cnt);
+    auto s = redis.Exists(keys, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::Integer(cnt);
 
     return Status::OK();

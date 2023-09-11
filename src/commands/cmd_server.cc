@@ -136,14 +136,19 @@ class CommandKeys : public Commander {
     std::string prefix = args_[1];
     std::vector<std::string> keys;
     redis::Database redis(svr->storage, conn->GetNamespace());
+
+    rocksdb::Status s;
     if (prefix == "*") {
-      redis.Keys(std::string(), &keys);
+      s = redis.Keys(std::string(), &keys);
     } else {
       if (prefix[prefix.size() - 1] != '*') {
         return {Status::RedisExecErr, "only keys prefix match was supported"};
       }
 
-      redis.Keys(prefix.substr(0, prefix.size() - 1), &keys);
+      s = redis.Keys(prefix.substr(0, prefix.size() - 1), &keys);
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
     }
     *output = redis::MultiBulkString(keys);
     return Status::OK();
@@ -802,7 +807,10 @@ class CommandRandomKey : public Commander {
     std::string key;
     auto cursor = svr->GetLastRandomKeyCursor();
     redis::Database redis(svr->storage, conn->GetNamespace());
-    redis.RandomKey(cursor, &key);
+    auto s = redis.RandomKey(cursor, &key);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
     svr->SetLastRandomKeyCursor(key);
     *output = redis::BulkString(key);
     return Status::OK();

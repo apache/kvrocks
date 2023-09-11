@@ -44,21 +44,25 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
   std::string bytes;
   auto s = GetRawMetadata(ns_key, &bytes);
   if (!s.ok()) return s;
-  metadata->Decode(bytes);
+  s = metadata->Decode(bytes);
+  if (!s.ok()) return s;
 
   if (metadata->Expired()) {
-    metadata->Decode(old_metadata);
+    // error discarded here since it already failed
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata->Type() != type &&
       (metadata->size > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
-    metadata->Decode(old_metadata);
+    // error discarded here since it already failed
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   if (metadata->size == 0 && type != kRedisStream &&
       type != kRedisBloomFilter) {  // stream and bloom is allowed to be empty
-    metadata->Decode(old_metadata);
-    return rocksdb::Status::NotFound("no elements");
+    // error discarded here since it already failed
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
+    return rocksdb::Status::NotFound("no element found");
   }
   return s;
 }
@@ -83,7 +87,9 @@ rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   LockGuard guard(storage_->GetLockManager(), ns_key);
   rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
-  metadata.Decode(value);
+
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
@@ -114,7 +120,8 @@ rocksdb::Status Database::Del(const Slice &user_key) {
   rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, ns_key, &value);
   if (!s.ok()) return s;
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(value);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
@@ -155,7 +162,8 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
     if (statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
-    metadata.Decode(pin_values[i]);
+    auto s = metadata.Decode(pin_values[i]);
+    if (!s.ok()) continue;
     if (metadata.Expired()) continue;
 
     batch->Delete(metadata_cf_handle_, lock_keys[i]);
@@ -181,7 +189,8 @@ rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       Metadata metadata(kRedisNone, false);
-      metadata.Decode(value);
+      s = metadata.Decode(value);
+      if (!s.ok()) return s;
       if (!metadata.Expired()) *ret += 1;
     }
   }
@@ -200,15 +209,18 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(value);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
   *ttl = metadata.TTL();
 
   return rocksdb::Status::OK();
 }
 
-void Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) { Keys(prefix, nullptr, stats); }
+rocksdb::Status Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
+  return Keys(prefix, nullptr, stats);
+}
 
-void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
+rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::string> *keys, KeyNumStats *stats) {
   uint16_t slot_id = 0;
   std::string ns_prefix;
   if (namespace_ != kDefaultNamespace || keys != nullptr) {
@@ -236,7 +248,8 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
         break;
       }
       Metadata metadata(kRedisNone, false);
-      metadata.Decode(iter->value());
+      auto s = metadata.Decode(iter->value());
+      if (!s.ok()) continue;
       if (metadata.Expired()) {
         if (stats) stats->n_expired++;
         continue;
@@ -267,6 +280,8 @@ void Database::Keys(const std::string &prefix, std::vector<std::string> *keys, K
   if (stats && stats->n_expires > 0) {
     stats->avg_ttl = ttl_sum / stats->n_expires / 1000;
   }
+
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
@@ -312,7 +327,9 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
         break;
       }
       Metadata metadata(kRedisNone, false);
-      metadata.Decode(iter->value());
+      auto s = metadata.Decode(iter->value());
+      if (!s.ok()) continue;
+
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);
@@ -432,7 +449,8 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(value);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
 
   infos->emplace_back("namespace");
   infos->emplace_back(namespace_);
@@ -484,7 +502,8 @@ rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   Metadata metadata(kRedisNone, false);
-  metadata.Decode(value);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
   if (metadata.Expired()) {
     *type = kRedisNone;
   } else {

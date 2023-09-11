@@ -238,7 +238,8 @@ rocksdb::Status String::SetXX(const std::string &user_key, const std::string &va
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  Exists({user_key}, &exists);
+  auto s = Exists({user_key}, &exists);
+  if (!s.ok()) return s;
   if (exists != 1) return rocksdb::Status::OK();
 
   *flag = true;

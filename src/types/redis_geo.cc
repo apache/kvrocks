@@ -149,7 +149,8 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
-      ZSet::Del(user_key);
+      auto s = ZSet::Del(user_key);
+      if (!s.ok()) return s;
     } else {
       std::vector<MemberScore> member_scores;
       for (const auto &geo_point : *geo_points) {

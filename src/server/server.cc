@@ -1304,8 +1304,12 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
   return task_runner_.TryPublish([ns, this] {
     redis::Database db(storage, ns);
+
     KeyNumStats stats;
-    db.GetKeyNumStats("", &stats);
+    auto s = db.GetKeyNumStats("", &stats);
+    if (!s.ok()) {
+      LOG(ERROR) << "failed to retrieve key num stats: " << s.ToString();
+    }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
 

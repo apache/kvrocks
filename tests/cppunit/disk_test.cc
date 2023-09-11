@@ -54,7 +54,7 @@ TEST_F(RedisDiskTest, StringDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
   EXPECT_GE(result, value_size[0] * estimation_factor_);
   EXPECT_LE(result, value_size[0] / estimation_factor_);
-  string->Del(key_);
+  auto s = string->Del(key_);
 }
 
 TEST_F(RedisDiskTest, HashDisk) {
@@ -78,7 +78,7 @@ TEST_F(RedisDiskTest, HashDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisHash, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  hash->Del(key_);
+  auto s = hash->Del(key_);
 }
 
 TEST_F(RedisDiskTest, SetDisk) {
@@ -103,7 +103,7 @@ TEST_F(RedisDiskTest, SetDisk) {
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
 
-  set->Del(key_);
+  s = set->Del(key_);
 }
 
 TEST_F(RedisDiskTest, ListDisk) {
@@ -126,7 +126,7 @@ TEST_F(RedisDiskTest, ListDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisList, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  list->Del(key_);
+  s = list->Del(key_);
 }
 
 TEST_F(RedisDiskTest, ZsetDisk) {
@@ -148,7 +148,7 @@ TEST_F(RedisDiskTest, ZsetDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisZSet, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  zset->Del(key_);
+  s = zset->Del(key_);
 }
 
 TEST_F(RedisDiskTest, BitmapDisk) {
@@ -165,7 +165,7 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisBitmap, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  bitmap->Del(key_);
+  auto s = bitmap->Del(key_);
 }
 
 TEST_F(RedisDiskTest, BitmapDisk2) {
@@ -175,7 +175,7 @@ TEST_F(RedisDiskTest, BitmapDisk2) {
       std::unique_ptr<redis::Bitmap> bitmap = std::make_unique<redis::Bitmap>(storage_, "disk_ns_bitmap2");
       std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_, "disk_ns_bitmap2");
       key_ = "bitmapdisk_key2";
-      bitmap->Del(key_);
+      auto s = bitmap->Del(key_);
       bool bit = false;
 
       for (size_t i = 0; i < num_bits; i += kGroupSize) {
@@ -222,7 +222,7 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisSortedint, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  sortedint->Del(key_);
+  auto s = sortedint->Del(key_);
 }
 
 TEST_F(RedisDiskTest, StreamDisk) {
@@ -243,5 +243,5 @@ TEST_F(RedisDiskTest, StreamDisk) {
   EXPECT_TRUE(disk->GetKeySize(key_, kRedisStream, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  stream->Del(key_);
+  auto s = stream->Del(key_);
 }

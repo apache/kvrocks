@@ -48,7 +48,7 @@ TEST_F(RedisSetTest, AddAndRemove) {
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, AddAndRemoveRepeated) {
@@ -66,7 +66,7 @@ TEST_F(RedisSetTest, AddAndRemoveRepeated) {
   set_->Card(key_, &card);
   EXPECT_EQ(card, allmembers.size() - 1 - ret);
 
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Members) {
@@ -82,7 +82,7 @@ TEST_F(RedisSetTest, Members) {
   }
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, IsMember) {
@@ -98,7 +98,7 @@ TEST_F(RedisSetTest, IsMember) {
   EXPECT_TRUE(s.ok() && !flag);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, MIsMember) {
@@ -118,7 +118,7 @@ TEST_F(RedisSetTest, MIsMember) {
   for (size_t i = 1; i < fields_.size(); i++) {
     EXPECT_TRUE(exists[i] == 1);
   }
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Move) {
@@ -139,8 +139,8 @@ TEST_F(RedisSetTest, Move) {
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Remove(dst, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  set_->Del(key_);
-  set_->Del(dst);
+  s = set_->Del(key_);
+  s = set_->Del(dst);
 }
 
 TEST_F(RedisSetTest, TakeWithPop) {
@@ -157,7 +157,7 @@ TEST_F(RedisSetTest, TakeWithPop) {
   s = set_->Take(key_, &members, 1, true);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(s.ok() && members.size() == 0);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Diff) {
@@ -172,9 +172,9 @@ TEST_F(RedisSetTest, Diff) {
   std::vector<std::string> members;
   set_->Diff({k1, k2, k3}, &members);
   EXPECT_EQ(2, members.size());
-  set_->Del(k1);
-  set_->Del(k2);
-  set_->Del(k3);
+  s = set_->Del(k1);
+  s = set_->Del(k2);
+  s = set_->Del(k3);
 }
 
 TEST_F(RedisSetTest, Union) {
@@ -189,9 +189,9 @@ TEST_F(RedisSetTest, Union) {
   std::vector<std::string> members;
   set_->Union({k1, k2, k3}, &members);
   EXPECT_EQ(5, members.size());
-  set_->Del(k1);
-  set_->Del(k2);
-  set_->Del(k3);
+  s = set_->Del(k1);
+  s = set_->Del(k2);
+  s = set_->Del(k3);
 }
 
 TEST_F(RedisSetTest, Inter) {
@@ -213,11 +213,11 @@ TEST_F(RedisSetTest, Inter) {
   EXPECT_EQ(0, members.size());
   set_->Inter({k1, k4, k5}, &members);
   EXPECT_EQ(0, members.size());
-  set_->Del(k1);
-  set_->Del(k2);
-  set_->Del(k3);
-  set_->Del(k4);
-  set_->Del(k5);
+  s = set_->Del(k1);
+  s = set_->Del(k2);
+  s = set_->Del(k3);
+  s = set_->Del(k4);
+  s = set_->Del(k5);
 }
 
 TEST_F(RedisSetTest, InterCard) {
@@ -248,10 +248,10 @@ TEST_F(RedisSetTest, InterCard) {
     uint64_t val = (i >= 4) ? 4 : i;
     EXPECT_EQ(ret, val);
   }
-  set_->Del(k1);
-  set_->Del(k2);
-  set_->Del(k3);
-  set_->Del(k4);
+  s = set_->Del(k1);
+  s = set_->Del(k2);
+  s = set_->Del(k3);
+  s = set_->Del(k4);
 }
 
 TEST_F(RedisSetTest, Overwrite) {
@@ -261,7 +261,7 @@ TEST_F(RedisSetTest, Overwrite) {
   set_->Overwrite(key_, {"a"});
   set_->Card(key_, &ret);
   EXPECT_EQ(ret, 1);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, TakeWithoutPop) {
@@ -277,5 +277,5 @@ TEST_F(RedisSetTest, TakeWithoutPop) {
   EXPECT_EQ(members.size(), fields_.size() - 1);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  set_->Del(key_);
+  s = set_->Del(key_);
 }

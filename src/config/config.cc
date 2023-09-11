@@ -796,7 +796,7 @@ Status Config::Load(const CLIOptions &opts) {
   return finish();
 }
 
-void Config::Get(const std::string &key, std::vector<std::string> *values) {
+void Config::Get(const std::string &key, std::vector<std::string> *values) const {
   values->clear();
   for (const auto &iter : fields_) {
     if (key == "*" || util::ToLower(key) == iter.first) {
@@ -901,7 +901,7 @@ Status Config::Rewrite() {
   return Status::OK();
 }
 
-Status Config::GetNamespace(const std::string &ns, std::string *token) {
+Status Config::GetNamespace(const std::string &ns, std::string *token) const {
   token->clear();
   for (const auto &iter : tokens) {
     if (iter.second == ns) {

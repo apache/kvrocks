@@ -102,30 +102,31 @@ class Storage {
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
-  rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
-  rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
-                      const rocksdb::Slice &key, std::string *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                                    const rocksdb::Slice &key, std::string *value);
   void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
                 const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
-  rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
-  rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
-                         const rocksdb::Slice &key);
-  rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
-  rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle);
+  [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
+                                       const rocksdb::Slice &key);
+  [[nodiscard]] rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
+  [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
+                                             rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
   Status InWALBoundary(rocksdb::SequenceNumber seq);
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
-  rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
+  [[nodiscard]] rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
-  std::string GetName() { return config_->db_name; }
+  std::string GetName() const { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
@@ -137,12 +138,12 @@ class Storage {
   std::shared_lock<std::shared_mutex> ReadLockGuard();
   std::unique_lock<std::shared_mutex> WriteLockGuard();
 
-  uint64_t GetFlushCount() { return flush_count_; }
+  uint64_t GetFlushCount() const { return flush_count_; }
   void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
-  uint64_t GetCompactionCount() { return compaction_count_; }
+  uint64_t GetCompactionCount() const { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
-  bool IsSlotIdEncoded() { return config_->slot_id_encoded; }
-  const Config *GetConfig() { return config_; }
+  bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
+  const Config *GetConfig() const { return config_; }
 
   Status BeginTxn();
   Status CommitTxn();
@@ -182,11 +183,11 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  time_t GetCheckpointCreateTime() { return checkpoint_info_.create_time; }
+  time_t GetCheckpointCreateTime() const { return checkpoint_info_.create_time; }
   void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime() { return checkpoint_info_.access_time; }
+  time_t GetCheckpointAccessTime() const { return checkpoint_info_.access_time; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
-  bool IsDBInRetryableIOError() { return db_in_retryable_io_error_; }
+  bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
   Status ShiftReplId();
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);

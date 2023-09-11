@@ -43,19 +43,21 @@ rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadat
   metadata->Encode(&old_metadata);
   auto s = GetRawMetadata(ns_key, raw_value);
   if (!s.ok()) return s;
-  metadata->Decode(*raw_value);
+  s = metadata->Decode(*raw_value);
+  if (!s.ok()) return s;
 
   if (metadata->Expired()) {
-    metadata->Decode(old_metadata);
+    // error discarded here since it already failed
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
   if (metadata->Type() == kRedisString) return s;
   if (metadata->Type() != kRedisBitmap && metadata->size > 0) {
-    metadata->Decode(old_metadata);
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   if (metadata->size == 0) {
-    metadata->Decode(old_metadata);
+    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no elements");
   }
   return s;

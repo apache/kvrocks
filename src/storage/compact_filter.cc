@@ -35,9 +35,8 @@ using rocksdb::Slice;
 
 bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
                             bool *modified) const {
-  std::string bytes = value.ToString();
   Metadata metadata(kRedisNone, false);
-  rocksdb::Status s = metadata.Decode(bytes);
+  rocksdb::Status s = metadata.Decode(value);
   auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
   if (!s.ok()) {
     LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
@@ -106,8 +105,7 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, con
   }
   if (!s.IsOK()) {
     LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
-               << ", namespace: " << ikey.GetNamespace().ToString() << ", key: " << ikey.GetKey().ToString()
-               << ", err: " << s.Msg();
+               << ", namespace: " << ikey.GetNamespace() << ", key: " << ikey.GetKey() << ", err: " << s.Msg();
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
   // bitmap will be checked in Filter
@@ -129,8 +127,7 @@ bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::
   }
   if (!s.IsOK()) {
     LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
-               << ", namespace: " << ikey.GetNamespace().ToString() << ", key: " << ikey.GetKey().ToString()
-               << ", err: " << s.Msg();
+               << ", namespace: " << ikey.GetNamespace() << ", key: " << ikey.GetKey() << ", err: " << s.Msg();
     return false;
   }
 

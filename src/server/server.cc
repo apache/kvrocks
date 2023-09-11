@@ -1251,7 +1251,11 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     std::unique_ptr<Slice> begin = nullptr, end = nullptr;
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
-    storage->Compact(begin.get(), end.get());
+
+    auto s = storage->Compact(begin.get(), end.get());
+    if (!s.ok()) {
+      LOG(ERROR) << "[task runner] Failed to do compaction: " << s.ToString();
+    }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     db_compacting_ = false;
@@ -1407,7 +1411,8 @@ time_t Server::GetLastScanTime(const std::string &ns) {
   return 0;
 }
 
-void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration) {
+void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration,
+                                      const redis::Connection *conn) {
   int64_t threshold = config_->slowlog_log_slower_than;
   if (threshold < 0 || static_cast<int64_t>(duration) < threshold) return;
 
@@ -1428,6 +1433,9 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   }
 
   entry->duration = duration;
+  entry->client_name = conn->GetName();
+  entry->ip = conn->GetIP();
+  entry->port = conn->GetPort();
   slow_log_.PushEntry(std::move(entry));
 }
 
@@ -1534,10 +1542,12 @@ void Server::ScriptReset() {
   lua::DestroyState(lua);
 }
 
-void Server::ScriptFlush() {
+Status Server::ScriptFlush() {
   auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
-  storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
+  return Status::OK();
 }
 
 // Generally, we store data into RocksDB and just replicate WAL instead of propagating
@@ -1631,7 +1641,7 @@ void Server::AdjustOpenFilesLimit() {
   }
 }
 
-std::string ServerLogData::Encode() {
+std::string ServerLogData::Encode() const {
   if (type_ == kReplIdLog) {
     return std::string(1, kReplIdTag) + " " + content_;
   }

@@ -33,6 +33,8 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
 // We write enum integer value of every datatype
 // explicitly since it cannot be changed once confirmed
+// Note that if you want to add a new redis type in `RedisType`
+// you should also add a type name to the `RedisTypeNames` below
 enum RedisType {
   kRedisNone = 0,
   kRedisString = 1,
@@ -61,8 +63,8 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",  "set",
-                                                 "zset", "bitmap", "sortedint", "stream"};
+const std::vector<std::string> RedisTypeNames = {"none", "string", "hash",      "list",   "set",
+                                                 "zset", "bitmap", "sortedint", "stream", "MBbloom--"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -144,8 +146,11 @@ class Metadata {
   timeval Time() const;
   bool Expired() const;
   bool ExpireAt(uint64_t expired_ts) const;
-  virtual void Encode(std::string *dst);
-  virtual rocksdb::Status Decode(Slice input);
+
+  virtual void Encode(std::string *dst) const;
+  [[nodiscard]] virtual rocksdb::Status Decode(Slice *input);
+  [[nodiscard]] rocksdb::Status Decode(Slice input);
+
   bool operator==(const Metadata &that) const;
   virtual ~Metadata() = default;
 
@@ -184,8 +189,9 @@ class ListMetadata : public Metadata {
   uint64_t tail;
   explicit ListMetadata(bool generate_version = true);
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice input) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 };
 
 class StreamMetadata : public Metadata {
@@ -200,8 +206,9 @@ class StreamMetadata : public Metadata {
 
   explicit StreamMetadata(bool generate_version = true) : Metadata(kRedisStream, generate_version) {}
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice input) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 };
 
 class BloomChainMetadata : public Metadata {
@@ -239,8 +246,9 @@ class BloomChainMetadata : public Metadata {
 
   explicit BloomChainMetadata(bool generate_version = true) : Metadata(kRedisBloomFilter, generate_version) {}
 
-  void Encode(std::string *dst) override;
-  rocksdb::Status Decode(Slice bytes) override;
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *bytes) override;
 
   /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
   ///

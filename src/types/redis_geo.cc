@@ -115,7 +115,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
   if (point_type == kMember) {
     GeoPoint geo_point;
     auto s = Get(user_key, member, &geo_point);
-    // store key is not emtpy, try to remove it before returning.
+    // store key is not empty, try to remove it before returning.
     if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
       auto del_s = ZSet::Del(store_key);
       if (!del_s.ok()) return s;
@@ -129,7 +129,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
-  // store key is not emtpy, try to remove it before returning.
+  // store key is not empty, try to remove it before returning.
   if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
     auto del_s = ZSet::Del(store_key);
     if (!del_s.ok()) return s;
@@ -144,7 +144,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
 
   // if no matching results, give empty reply
   if (geo_points->empty()) {
-    // store key is not emtpy, try to remove it before returning.
+    // store key is not empty, try to remove it before returning.
     if (!store_key.empty()) {
       auto del_s = ZSet::Del(store_key);
       if (!del_s.ok()) return s;

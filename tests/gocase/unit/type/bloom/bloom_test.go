@@ -145,6 +145,21 @@ func TestBloom(t *testing.T) {
 		require.LessOrEqual(t, float64(falseExist), fpp*float64(totalCount))
 	})
 
+	t.Run("MGet Basic Test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, "xxx").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.card", key).Val())
+		require.Equal(t, []interface{}{int64(1), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy").Val())
+
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, "zzz").Val())
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.add", key, "yyy").Val())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+	})
+
 	t.Run("Get info of no exists key ", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 		require.ErrorContains(t, rdb.Do(ctx, "bf.info", "no_exist_key").Err(), "ERR key is not found")
@@ -253,6 +268,18 @@ func TestBloom(t *testing.T) {
 		require.Equal(t, "MBbloom--", rdb.Type(ctx, key).Val())
 	})
 
-	// TODO: Add the testcase of get filters of bloom filter after complete the scaling.
+	t.Run("Get Card of bloom filter", func(t *testing.T) {
+		// if bf.card no exist key, it will return 0
+		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.card", "no_exist_key").Val())
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "1").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.card", key).Val())
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "item1").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.card", key).Val())
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "item2").Err())
+		require.Equal(t, int64(2), rdb.Do(ctx, "bf.card", key).Val())
+	})
 
 }

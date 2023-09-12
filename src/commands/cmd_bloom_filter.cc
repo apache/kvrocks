@@ -105,12 +105,35 @@ class CommandBFExists : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
     int ret = 0;
-    auto s = bloom_db.Exist(args_[1], args_[2], &ret);
+    auto s = bloom_db.Exists(args_[1], args_[2], &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
     return Status::OK();
   }
+};
+
+class CommandBFMExists : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    for (size_t i = 2; i < args_.size(); ++i) {
+      items_.emplace_back(args_[i]);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<int> rets(items_.size(), 0);
+    auto s = bloom_db.MExists(args_[1], items_, &rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiInteger(rets);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> items_;
 };
 
 class CommandBFInfo : public Commander {
@@ -184,8 +207,26 @@ class CommandBFInfo : public Commander {
   BloomInfoType type_ = BloomInfoType::kAll;
 };
 
+class CommandBFCard : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    BloomFilterInfo info;
+    auto s = bloom_db.Info(args_[1], &info);
+    if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::Integer(0);
+    } else {
+      *output = redis::Integer(info.size);
+    }
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandBFMExists>("bf.mexists", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandBFCard>("bf.card", 2, "read-only", 1, 1, 1), )
 }  // namespace redis

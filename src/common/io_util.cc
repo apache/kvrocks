@@ -29,8 +29,17 @@
 #include <poll.h>
 #include <sys/types.h>
 
+#include "fmt/ostream.h"
+#include "server/tls_util.h"
+
 #ifdef __linux__
 #include <sys/sendfile.h>
+#endif
+
+#ifdef ENABLE_OPENSSL
+#include <openssl/ssl.h>
+
+#include "event2/bufferevent_ssl.h"
 #endif
 
 #include "event_util.h"
@@ -194,7 +203,7 @@ StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeo
 // NOTE: fd should be blocking here
 Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 
-// Implements SockSendFileCore to transfer data between file descriptors and
+// Implements SockSendFileImpl to transfer data between file descriptors and
 // avoid transferring data to and from user space.
 //
 // The function prototype is just like sendfile(2) on Linux. in_fd is a file
@@ -204,7 +213,7 @@ Status SockSend(int fd, const std::string &data) { return Write(fd, data); }
 //
 // The return value is the number of bytes written to out_fd, if the transfer
 // was successful. On error, -1 is returned, and errno is set appropriately.
-ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
+ssize_t SendFileImpl(int out_fd, int in_fd, off_t offset, size_t count) {
 #if defined(__linux__)
   return sendfile(out_fd, in_fd, &offset, count);
 
@@ -215,18 +224,37 @@ ssize_t SockSendFileCore(int out_fd, int in_fd, off_t offset, size_t count) {
   else
     return (ssize_t)len;
 
-#endif
+#else
   errno = ENOSYS;
   return -1;
+
+#endif
 }
 
-// Send file by sendfile actually according to different operation systems,
-// please note that, the out socket fd should be in blocking mode.
-Status SockSendFile(int out_fd, int in_fd, size_t size) {
+#ifdef ENABLE_OPENSSL
+ssize_t SendFileSSLImpl(ssl_st *ssl, int in_fd, off_t offset, size_t count) {
+  constexpr size_t BUFFER_SIZE = 16 * 1024;
+  char buf[BUFFER_SIZE];
+  if (off_t ret = lseek(in_fd, offset, SEEK_SET); ret == -1) {
+    return -1;
+  }
+  count = count <= BUFFER_SIZE ? count : BUFFER_SIZE;
+  if (ssize_t ret = read(in_fd, buf, count); ret == -1) {
+    return -1;
+  } else {
+    count = ret;
+  }
+  return SSL_write(ssl, buf, (int)count);
+}
+#endif
+
+template <auto F, typename FD, typename... Args>
+Status SockSendFileImpl(FD out_fd, int in_fd, size_t size, Args... args) {
+  constexpr size_t BUFFER_SIZE = 16 * 1024;
   off_t offset = 0;
   while (size != 0) {
-    size_t n = size <= 16 * 1024 ? size : 16 * 1024;
-    ssize_t nwritten = SockSendFileCore(out_fd, in_fd, offset, n);
+    size_t n = size <= BUFFER_SIZE ? size : BUFFER_SIZE;
+    ssize_t nwritten = F(out_fd, in_fd, offset, n, args...);
     if (nwritten == -1) {
       if (errno == EINTR)
         continue;
@@ -237,6 +265,27 @@ Status SockSendFile(int out_fd, int in_fd, size_t size) {
     offset += nwritten;
   }
   return Status::OK();
+}
+
+// Send file by sendfile actually according to different operation systems,
+// please note that, the out socket fd should be in blocking mode.
+Status SockSendFile(int out_fd, int in_fd, size_t size) { return SockSendFileImpl<SendFileImpl>(out_fd, in_fd, size); }
+
+Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    return SockSendFileImpl<SendFileSSLImpl>(ssl, in_fd, size);
+  }
+#endif
+  return SockSendFile(out_fd, in_fd, size);
+}
+
+Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev) {
+#ifdef ENABLE_OPENSSL
+  return SockSendFile(out_fd, in_fd, size, bufferevent_openssl_get_ssl(bev));
+#else
+  return SockSendFile(out_fd, in_fd, size);
+#endif
 }
 
 Status SockSetBlocking(int fd, int blocking) {
@@ -384,8 +433,8 @@ std::vector<std::string> GetLocalIPAddresses() {
   return ip_addresses;
 }
 
-template <auto syscall, typename... Args>
-Status WriteImpl(int fd, std::string_view data, Args &&...args) {
+template <auto syscall, typename FD, typename... Args>
+Status WriteImpl(FD fd, std::string_view data, Args &&...args) {
   ssize_t n = 0;
   while (n < static_cast<ssize_t>(data.size())) {
     ssize_t nwritten = syscall(fd, data.data() + n, data.size() - n, std::forward<Args>(args)...);
@@ -400,5 +449,69 @@ Status WriteImpl(int fd, std::string_view data, Args &&...args) {
 Status Write(int fd, const std::string &data) { return WriteImpl<write>(fd, data); }
 
 Status Pwrite(int fd, const std::string &data, off_t offset) { return WriteImpl<pwrite>(fd, data, offset); }
+
+Status SockSend(int fd, const std::string &data, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    return WriteImpl<SSL_write>(ssl, data);
+  }
+#endif
+  return SockSend(fd, data);
+}
+
+Status SockSend(int fd, const std::string &data, bufferevent *bev) {
+#ifdef ENABLE_OPENSSL
+  return SockSend(fd, data, bufferevent_openssl_get_ssl(bev));
+#else
+  return SockSend(fd, data);
+#endif
+}
+
+StatusOr<int> SockConnect(const std::string &host, uint32_t port, ssl_st *ssl, int conn_timeout, int timeout) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    auto fd = GET_OR_RET(SockConnect(host, port, conn_timeout, timeout));
+    SSL_set_fd(ssl, fd);
+
+    auto bio = BIO_new_socket(fd, BIO_NOCLOSE);
+    SSL_set_bio(ssl, bio, bio);
+
+    if (int err = SSL_connect(ssl); err != 1) {
+      BIO_free(bio);
+      return {Status::NotOK, fmt::format("socket failed to do SSL handshake: {}", fmt::streamed(SSLError(err)))};
+    }
+
+    return fd;
+  }
+#endif
+  return SockConnect(host, port, conn_timeout, timeout);
+}
+
+StatusOr<int> EvbufferRead(evbuffer *buf, evutil_socket_t fd, int howmuch, ssl_st *ssl) {
+#ifdef ENABLE_OPENSSL
+  if (ssl) {
+    constexpr int BUFFER_SIZE = 4096;
+    char tmp[BUFFER_SIZE];
+
+    if (howmuch <= 0 || howmuch > BUFFER_SIZE) {
+      howmuch = BUFFER_SIZE;
+    }
+    if (howmuch = SSL_read(ssl, tmp, howmuch); howmuch <= 0) {
+      return {Status::NotOK, fmt::format("failed to read from SSL connection: {}", fmt::streamed(SSLError(howmuch)))};
+    }
+
+    if (int ret = evbuffer_add(buf, tmp, howmuch); ret == -1) {
+      return {Status::NotOK, fmt::format("failed to add buffer: {}", strerror(errno))};
+    }
+
+    return howmuch;
+  }
+#endif
+  if (int ret = evbuffer_read(buf, fd, howmuch); ret > 0) {
+    return ret;
+  } else {
+    return {Status::NotOK, fmt::format("failed to read from socket: {}", strerror(errno))};
+  }
+}
 
 }  // namespace util

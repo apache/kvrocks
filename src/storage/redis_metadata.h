@@ -250,8 +250,7 @@ class BloomChainMetadata : public Metadata {
   using Metadata::Decode;
   rocksdb::Status Decode(Slice *bytes) override;
 
-  /// Get the total capacity of the bloom chain (the sum capacity of all sub-filters)
-  ///
-  /// @return the total capacity value
   uint32_t GetCapacity() const;
+
+  bool IsScaling() const { return expansion != 0; };
 };

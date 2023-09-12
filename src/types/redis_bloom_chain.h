@@ -61,7 +61,9 @@ class BloomChain : public Database {
   rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                    BloomChainMetadata *metadata);
-  rocksdb::Status bloomAdd(const Slice &bf_key, const std::string &item);
+  void createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadata *metadata,
+                                ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data);
+  static void bloomAdd(const std::string &item, std::string *bf_data);
   rocksdb::Status bloomCheck(const Slice &bf_key, const std::string &item, bool *exist);
 };
 }  // namespace redis

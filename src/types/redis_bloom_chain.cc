@@ -56,12 +56,12 @@ rocksdb::Status BloomChain::createBloomChain(const Slice &ns_key, double error_r
   block_split_bloom_filter.Init(metadata->bloom_bytes);
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisBloomFilter, {"createSBChain"});
+  WriteBatchLogData log_data(kRedisBloomFilter, {"createBloomChain"});
   batch->PutLogData(log_data.Encode());
 
-  std::string sb_chain_meta_bytes;
-  metadata->Encode(&sb_chain_meta_bytes);
-  batch->Put(metadata_cf_handle_, ns_key, sb_chain_meta_bytes);
+  std::string bloom_chain_meta_bytes;
+  metadata->Encode(&bloom_chain_meta_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 
   std::string bf_key = getBFKey(ns_key, *metadata, metadata->n_filters - 1);
   batch->Put(bf_key, block_split_bloom_filter.GetData());
@@ -69,18 +69,30 @@ rocksdb::Status BloomChain::createBloomChain(const Slice &ns_key, double error_r
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BloomChain::bloomAdd(const Slice &bf_key, const std::string &item) {
-  std::string bf_data;
-  rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), bf_key, &bf_data);
-  if (!s.ok()) return s;
+void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadata *metadata,
+                                          ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data) {
+  uint32_t bloom_filter_bytes = BlockSplitBloomFilter::OptimalNumOfBytes(
+      static_cast<uint32_t>(metadata->base_capacity * pow(metadata->expansion, metadata->n_filters)),
+      metadata->error_rate);
+  metadata->n_filters += 1;
+  metadata->bloom_bytes += bloom_filter_bytes;
+
   BlockSplitBloomFilter block_split_bloom_filter;
-  block_split_bloom_filter.Init(std::move(bf_data));
+  block_split_bloom_filter.Init(bloom_filter_bytes);
+  *bf_data = std::move(block_split_bloom_filter).GetData();
+
+  std::string bloom_chain_meta_bytes;
+  metadata->Encode(&bloom_chain_meta_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
+}
+
+void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
+  BlockSplitBloomFilter block_split_bloom_filter;
+  block_split_bloom_filter.Init(std::move(*bf_data));
 
   uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
   block_split_bloom_filter.InsertHash(h);
-  auto batch = storage_->GetWriteBatchBase();
-  batch->Put(bf_key, block_split_bloom_filter.GetData());
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  *bf_data = std::move(block_split_bloom_filter).GetData();
 }
 
 rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::string &item, bool *exist) {
@@ -147,18 +159,28 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
 
   // insert
   if (!exist) {
-    if (metadata.size + 1 > metadata.GetCapacity()) {  // TODO: scaling would be supported later
-      return rocksdb::Status::Aborted("filter is full");
-    }
-    s = bloomAdd(bf_key_list.back(), item_string);
+    std::string bf_data;
+    s = storage_->Get(rocksdb::ReadOptions(), bf_key_list.back(), &bf_data);
     if (!s.ok()) return s;
+
+    if (metadata.size + 1 > metadata.GetCapacity()) {
+      if (metadata.IsScaling()) {
+        batch->Put(bf_key_list.back(), bf_data);
+        createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
+        bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
+      } else {
+        return rocksdb::Status::Aborted("filter is full and is nonscaling");
+      }
+    }
+    bloomAdd(item_string, &bf_data);
+    batch->Put(bf_key_list.back(), bf_data);
     *ret = 1;
     metadata.size += 1;
   }
 
-  std::string sb_chain_metadata_bytes;
-  metadata.Encode(&sb_chain_metadata_bytes);
-  batch->Put(metadata_cf_handle_, ns_key, sb_chain_metadata_bytes);
+  std::string bloom_chain_metadata_bytes;
+  metadata.Encode(&bloom_chain_metadata_bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

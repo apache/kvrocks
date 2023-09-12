@@ -34,22 +34,25 @@ class BlockingCommander : public Commander,
   virtual std::string NoopReply() = 0;
 
   // method to block keys
-  virtual void Block() = 0;
+  virtual void BlockKeys() = 0;
 
   // method to unblock keys
-  virtual void Unblock() = 0;
+  virtual void UnblockKeys() = 0;
 
   // method to access database in write callback
   // the return value indicates if the real database operation happens
+  // in other words, returning true indicates ending the blocking
   virtual bool OnBlockingWrite() = 0;
 
-  Status FinishExecute(int64_t timeout, std::string *output) {
+  // to start the blocking process
+  // usually put to the end of the Execute method
+  Status StartBlocking(int64_t timeout, std::string *output) {
     if (conn_->IsInExec()) {
       *output = NoopReply();
       return Status::OK();  // no blocking in multi-exec
     }
 
-    Block();
+    BlockKeys();
     SetCB(conn_->GetBufferEvent());
 
     if (timeout) {
@@ -64,12 +67,10 @@ class BlockingCommander : public Commander,
 
     if (!done) {
       // The connection may be waked up but can't pop from the datatype.
-      // For example, connection A is blocked on it and
-      // connection B added a new element; then connection A was unblocked,
-      // but this element may be taken by
+      // For example, connection A is blocked on it and connection B added a new element;
+      // then connection A was unblocked, but this element may be taken by
       // another connection C. So we need to block connection A again
-      // and wait for the element being added
-      // by disabling the WRITE event.
+      // and wait for the element being added by disabling the WRITE event.
       bufferevent_disable(bev, EV_WRITE);
       return;
     }
@@ -78,7 +79,7 @@ class BlockingCommander : public Commander,
       timer_.reset();
     }
 
-    Unblock();
+    UnblockKeys();
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
@@ -92,11 +93,12 @@ class BlockingCommander : public Commander,
       if (timer_ != nullptr) {
         timer_.reset();
       }
-      Unblock();
+      UnblockKeys();
     }
     conn_->OnEvent(bev, events);
   }
 
+  // Usually put to the top of the Execute method
   void InitConnection(Connection *conn) { conn_ = conn; }
 
   void InitTimer(int64_t timeout) {
@@ -111,7 +113,7 @@ class BlockingCommander : public Commander,
   void TimerCB(int, int16_t) {
     conn_->Reply(NoopReply());
     timer_.reset();
-    Unblock();
+    UnblockKeys();
     auto bev = conn_->GetBufferEvent();
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);

@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "event_util.h"
+#include "io_util.h"
 #include "server/redis_connection.h"
 #include "status.h"
 #include "storage/storage.h"
@@ -197,11 +198,11 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   CBState fullSyncReadCB(bufferevent *bev);
 
   // Synchronized-Blocking ops
-  Status sendAuth(int sock_fd);
+  Status sendAuth(int sock_fd, ssl_st *ssl);
   Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file, uint32_t crc,
-                   const FetchFileCallback &fn);
+                   const FetchFileCallback &fn, ssl_st *ssl);
   Status fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
-                    const std::vector<uint32_t> &crcs, const FetchFileCallback &fn);
+                    const std::vector<uint32_t> &crcs, const FetchFileCallback &fn, ssl_st *ssl);
   Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
   static bool isRestoringError(const char *err);
   static bool isWrongPsyncNum(const char *err);

@@ -37,6 +37,7 @@
 #include "fmt/format.h"
 #include "io_util.h"
 #include "rocksdb_crc32c.h"
+#include "scope_exit.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
@@ -44,6 +45,12 @@
 #include "thread_util.h"
 #include "time_util.h"
 #include "unique_fd.h"
+
+#ifdef ENABLE_OPENSSL
+#include <event2/bufferevent_ssl.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+#endif
 
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
@@ -54,7 +61,7 @@ Status FeedSlaveThread::Start() {
     sigaddset(&mask, SIGHUP);
     sigaddset(&mask, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &mask, &omask);
-    auto s = util::SockSend(conn_->GetFD(), redis::SimpleString("OK"));
+    auto s = util::SockSend(conn_->GetFD(), redis::SimpleString("OK"), conn_->GetBufferEvent());
     if (!s.IsOK()) {
       LOG(ERROR) << "failed to send OK response to the replica: " << s.Msg();
       return;
@@ -85,7 +92,7 @@ void FeedSlaveThread::Join() {
 void FeedSlaveThread::checkLivenessIfNeed() {
   if (++interval_ % 1000) return;
   const auto ping_command = redis::BulkString("ping");
-  auto s = util::SockSend(conn_->GetFD(), ping_command);
+  auto s = util::SockSend(conn_->GetFD(), ping_command, conn_->GetBufferEvent());
   if (!s.IsOK()) {
     LOG(ERROR) << "Ping slave[" << conn_->GetAddr() << "] err: " << s.Msg() << ", would stop the thread";
     Stop();
@@ -134,7 +141,7 @@ void FeedSlaveThread::loop() {
     if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
         srv_->storage->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
       // Send entire bulk which contain multiple batches
-      auto s = util::SockSend(conn_->GetFD(), batches_bulk);
+      auto s = util::SockSend(conn_->GetFD(), batches_bulk, conn_->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(ERROR) << "Write error while sending batch to slave: " << s.Msg() << ". batches: 0x"
                    << util::StringToHex(batches_bulk);
@@ -257,12 +264,35 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       LOG(ERROR) << "[replication] Failed to connect the master, err: " << cfd.Msg();
       continue;
     }
+#ifdef ENABLE_OPENSSL
+    SSL *ssl = nullptr;
+    if (repl_->srv_->GetConfig()->tls_replication) {
+      ssl = SSL_new(repl_->srv_->ssl_ctx.get());
+      if (!ssl) {
+        LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
+        evutil_closesocket(*cfd);
+        return;
+      }
+      bev = bufferevent_openssl_socket_new(repl_->base_, *cfd, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+    } else {
+      bev = bufferevent_socket_new(repl_->base_, *cfd, BEV_OPT_CLOSE_ON_FREE);
+    }
+#else
     bev = bufferevent_socket_new(repl_->base_, *cfd, BEV_OPT_CLOSE_ON_FREE);
+#endif
     if (bev == nullptr) {
+#ifdef ENABLE_OPENSSL
+      if (ssl) SSL_free(ssl);
+#endif
       close(*cfd);
       LOG(ERROR) << "[replication] Failed to create the event socket";
       continue;
     }
+#ifdef ENABLE_OPENSSL
+    if (repl_->srv_->GetConfig()->tls_replication) {
+      bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
+    }
+#endif
   }
   if (bev == nullptr) {  // failed to connect the master and received the stop signal
     return;
@@ -728,9 +758,19 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           if (this->stop_flag_) {
             return {Status::NotOK, "replication thread was stopped"};
           }
-          int sock_fd = GET_OR_RET(util::SockConnect(this->host_, this->port_).Prefixed("connect the server err"));
+          ssl_st *ssl = nullptr;
+#ifdef ENABLE_OPENSSL
+          if (this->srv_->GetConfig()->tls_replication) {
+            ssl = SSL_new(this->srv_->ssl_ctx.get());
+          }
+          auto exit = MakeScopeExit([ssl] { SSL_free(ssl); });
+#endif
+          int sock_fd = GET_OR_RET(util::SockConnect(this->host_, this->port_, ssl).Prefixed("connect the server err"));
+#ifdef ENABLE_OPENSSL
+          exit.Disable();
+#endif
           UniqueFD unique_fd{sock_fd};
-          auto s = this->sendAuth(sock_fd);
+          auto s = this->sendAuth(sock_fd, ssl);
           if (!s.IsOK()) {
             return s.Prefixed("send the auth command err");
           }
@@ -770,12 +810,12 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
           // command, so we need to fetch all files by multiple command interactions.
           if (srv_->GetConfig()->master_use_repl_port) {
             for (unsigned i = 0; i < fetch_files.size(); i++) {
-              s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn);
+              s = this->fetchFiles(sock_fd, dir, {fetch_files[i]}, {crcs[i]}, fn, ssl);
               if (!s.IsOK()) break;
             }
           } else {
             if (!fetch_files.empty()) {
-              s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn);
+              s = this->fetchFiles(sock_fd, dir, fetch_files, crcs, fn, ssl);
             }
           }
           return s;
@@ -790,13 +830,13 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
   return Status::OK();
 }
 
-Status ReplicationThread::sendAuth(int sock_fd) {
+Status ReplicationThread::sendAuth(int sock_fd, ssl_st *ssl) {
   // Send auth when needed
   std::string auth = srv_->GetConfig()->masterauth;
   if (!auth.empty()) {
     UniqueEvbuf evbuf;
     const auto auth_command = redis::MultiBulkString({"AUTH", auth});
-    auto s = util::SockSend(sock_fd, auth_command);
+    auto s = util::SockSend(sock_fd, auth_command, ssl);
     if (!s.IsOK()) return s.Prefixed("send auth command err");
     while (true) {
       if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
@@ -814,15 +854,15 @@ Status ReplicationThread::sendAuth(int sock_fd) {
 }
 
 Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file,
-                                    uint32_t crc, const FetchFileCallback &fn) {
+                                    uint32_t crc, const FetchFileCallback &fn, ssl_st *ssl) {
   size_t file_size = 0;
 
   // Read file size line
   while (true) {
     UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
     if (!line) {
-      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return {Status::NotOK, fmt::format("read size: {}", strerror(errno))};
+      if (auto s = util::EvbufferRead(evbuf, sock_fd, -1, ssl); !s) {
+        return std::move(s).Prefixed("read size");
       }
       continue;
     }
@@ -854,8 +894,8 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
       tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
       remain -= data_len;
     } else {
-      if (evbuffer_read(evbuf, sock_fd, -1) <= 0) {
-        return {Status::NotOK, fmt::format("read sst file: {}", strerror(errno))};
+      if (auto s = util::EvbufferRead(evbuf, sock_fd, -1, ssl); !s) {
+        return std::move(s).Prefixed("read sst file");
       }
     }
   }
@@ -873,7 +913,7 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
 }
 
 Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
-                                     const std::vector<uint32_t> &crcs, const FetchFileCallback &fn) {
+                                     const std::vector<uint32_t> &crcs, const FetchFileCallback &fn, ssl_st *ssl) {
   std::string files_str;
   for (const auto &file : files) {
     files_str += file;
@@ -882,13 +922,13 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
   files_str.pop_back();
 
   const auto fetch_command = redis::MultiBulkString({"_fetch_file", files_str});
-  auto s = util::SockSend(sock_fd, fetch_command);
+  auto s = util::SockSend(sock_fd, fetch_command, ssl);
   if (!s.IsOK()) return s.Prefixed("send fetch file command");
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {
     DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
-    s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn);
+    s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn, ssl);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
       LOG(WARNING) << "[fetch] Fail to fetch file " << files[i] << ", err: " << s.Msg();

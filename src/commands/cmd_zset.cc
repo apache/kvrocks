@@ -535,6 +535,10 @@ class CommandBZMPop : public BlockingCommander {
     }
   }
 
+  std::string NoopReply() override {
+    return redis::NilString();
+  }
+
   bool OnBlockingWrite() override {
     std::string user_key;
     std::vector<MemberScore> member_scores;

@@ -66,7 +66,7 @@ Server::Server(engine::Storage *storage, Config *config)
 
 #ifdef ENABLE_OPENSSL
   // init ssl context
-  if (config->tls_port) {
+  if (config->tls_port || config->tls_replication) {
     ssl_ctx = CreateSSLContext(config);
     if (!ssl_ctx) {
       exit(1);

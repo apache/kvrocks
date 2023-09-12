@@ -74,6 +74,7 @@ struct Config {
   Config();
   ~Config() = default;
   uint32_t port = 0;
+
   uint32_t tls_port = 0;
   std::string tls_cert_file;
   std::string tls_key_file;
@@ -88,6 +89,8 @@ struct Config {
   bool tls_session_caching = true;
   int tls_session_cache_size = 1024 * 20;
   int tls_session_cache_timeout = 300;
+  bool tls_replication = false;
+
   int workers = 0;
   int timeout = 0;
   int log_level = 0;

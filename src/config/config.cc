@@ -103,6 +103,7 @@ Config::Config() {
       {"tls-session-caching", false, new YesNoField(&tls_session_caching, true)},
       {"tls-session-cache-size", false, new IntField(&tls_session_cache_size, 1024 * 20, 0, INT_MAX)},
       {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
+      {"tls-replication", true, new YesNoField(&tls_replication, false)},
 #endif
       {"workers", true, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},

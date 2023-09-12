@@ -102,7 +102,7 @@ class CommandPSync : public Commander {
     s = svr->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
-      s = util::SockSend(conn->GetFD(), err);
+      s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
       }
@@ -229,7 +229,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(svr->storage, &files);
       if (!s.IsOK()) {
-        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint");
+        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint", bev);
         if (!s.IsOK()) {
           LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
         }
@@ -237,7 +237,7 @@ class CommandFetchMeta : public Commander {
         return;
       }
       // Send full data file info
-      if (util::SockSend(repl_fd, files + CRLF).IsOK()) {
+      if (util::SockSend(repl_fd, files + CRLF, bev).IsOK()) {
         LOG(INFO) << "[replication] Succeed sending full data file info to " << ip;
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
@@ -291,8 +291,8 @@ class CommandFetchFile : public Commander {
         if (!fd) break;
 
         // Send file size and content
-        if (util::SockSend(repl_fd, std::to_string(file_size) + CRLF).IsOK() &&
-            util::SockSendFile(repl_fd, *fd, file_size).IsOK()) {
+        if (util::SockSend(repl_fd, std::to_string(file_size) + CRLF, bev).IsOK() &&
+            util::SockSendFile(repl_fd, *fd, file_size, bev).IsOK()) {
           LOG(INFO) << "[replication] Succeed sending file " << file << " to " << ip;
         } else {
           LOG(WARNING) << "[replication] Fail to send file " << file << " to " << ip << ", error: " << strerror(errno);

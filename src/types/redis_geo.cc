@@ -118,7 +118,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     // store key is not empty, try to remove it before returning.
     if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
       auto del_s = ZSet::Del(store_key);
-      if (!del_s.ok()) return s;
+      if (!del_s.ok()) return del_s;
     }
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -132,7 +132,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
   // store key is not empty, try to remove it before returning.
   if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
     auto del_s = ZSet::Del(store_key);
-    if (!del_s.ok()) return s;
+    if (!del_s.ok()) return del_s;
   }
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -147,7 +147,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     // store key is not empty, try to remove it before returning.
     if (!store_key.empty()) {
       auto del_s = ZSet::Del(store_key);
-      if (!del_s.ok()) return s;
+      if (!del_s.ok()) return del_s;
     }
     return rocksdb::Status::OK();
   }

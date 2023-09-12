@@ -145,7 +145,7 @@ func TestBloom(t *testing.T) {
 		require.LessOrEqual(t, float64(falseExist), fpp*float64(totalCount))
 	})
 
-	t.Run("MGet Basic Test", func(t *testing.T) {
+	t.Run("MExists Basic Test", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
 

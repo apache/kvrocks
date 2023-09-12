@@ -116,6 +116,7 @@ class CommandBFExists : public Commander {
 class CommandBFMExists : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    items_.reserve(args_.size() - 2);
     for (size_t i = 2; i < args_.size(); ++i) {
       items_.emplace_back(args_[i]);
     }

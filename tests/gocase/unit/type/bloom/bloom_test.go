@@ -203,7 +203,6 @@ func TestBloom(t *testing.T) {
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.info", key, "items").Val())
 	})
 
-
 	t.Run("Bloom filter full and nonscaling", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "nonscaling").Err())

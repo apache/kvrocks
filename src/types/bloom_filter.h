@@ -156,7 +156,7 @@ class BlockSplitBloomFilter {
   /// @return bitset value;
   const std::string& GetData() const& { return data_; }
 
-  std::string GetData() const&& { return data_; }
+  std::string&& GetData() && { return std::move(data_); }
 
   /// Compute hash for string value by using its plain encoding result.
   ///

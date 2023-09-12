@@ -136,6 +136,21 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEORADIUSBYMEMBER_RO", "points", "member", "1", "km").Val())
 	})
 
+	t.Run("GEORADIUSBYMEMBER store: remove the dst key when there is no result set", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+
+		// Against non-existing src key.
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "10", "10", "Shenzhen").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEORADIUS", "src", 15, 37, 88, "m", "store", "dst").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+
+		// The search result set is empty.
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "src", "10", "10", "Shenzhen").Err())
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "20", "20", "Guangzhou").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEORADIUS", "src", 15, 37, 88, "m", "store", "dst").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+	})
+
 	t.Run("GEORADIUSBYMEMBER simple (sorted)", func(t *testing.T) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "nyc", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km"}).Val())
 	})
@@ -229,6 +244,26 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
 	})
 
+	t.Run("GEOSEARCHSTORE remove the dst key when there is no result set", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "del", "src", "dst").Err())
+
+		// FROMMEMBER against non-existing src key.
+		require.NoError(t, rdb.Do(ctx, "geoadd", "dst", "10", "10", "Shenzhen").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+
+		// FROMLONLAT against non-existing src key.
+		require.NoError(t, rdb.Do(ctx, "geoadd", "dst", "10", "10", "Shenzhen").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMLONLAT", 15, 37, "BYBOX", 88, 88, "m").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+
+		// FROMLONLAT the search result set is empty.
+		require.NoError(t, rdb.Do(ctx, "geoadd", "src", "10", "10", "Shenzhen").Err())
+		require.NoError(t, rdb.Do(ctx, "geoadd", "dst", "20", "20", "Guangzhou").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMLONLAT", 15, 37, "BYBOX", 88, 88, "m").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+	})
+
 	t.Run("GEOSEARCHSTORE with BYRADIUS", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points",
@@ -310,6 +345,21 @@ func TestGeo(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "Palermo", Longitude: 13.361389, Latitude: 38.115556}, &redis.GeoLocation{Name: "Catania", Longitude: 15.087269, Latitude: 37.502669}).Err())
 		require.ErrorContains(t, rdb.Do(ctx, "georadius", "points", 13.361389, 38.115556, 50, "km", "store").Err(), "syntax")
+	})
+
+	t.Run("GEORADIUS STORE option: remove the dst key when there is no result set", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+
+		// Against non-existing src key.
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "10", "10", "Shenzhen").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEORADIUS", "src", 15, 37, 88, "m", "store", "dst").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+
+		// The search result set is empty.
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "src", "10", "10", "Shenzhen").Err())
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "20", "20", "Guangzhou").Err())
+		require.EqualValues(t, 0, rdb.Do(ctx, "GEORADIUS", "src", 15, 37, 88, "m", "store", "dst").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
 	})
 
 	t.Run("GEORADIUS missing key", func(t *testing.T) {

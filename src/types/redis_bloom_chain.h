@@ -69,6 +69,8 @@ class BloomChain : public Database {
   static void bloomAdd(const Slice &item, std::string *bf_data);
 
   /// exists: [in/out] The items exist in bloomfilter already or not.
+  /// exists[i] is true means items[i] exists in other bloomfilter already, and it's not necessary to check in this
+  /// bloomfilter.
   rocksdb::Status bloomCheck(const Slice &bf_key, const std::vector<Slice> &items, std::vector<bool> *exists);
 };
 }  // namespace redis

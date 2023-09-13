@@ -107,6 +107,7 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Sl
   block_split_bloom_filter.Init(std::move(bf_data));
 
   for (size_t i = 0; i < items.size(); ++i) {
+    // this item exists in other bloomfilter already, and it's not necessary to check in this bloomfilter.
     if (exists->at(i)) {
       continue;
     }

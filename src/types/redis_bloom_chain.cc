@@ -108,7 +108,7 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Sl
 
   for (size_t i = 0; i < items.size(); ++i) {
     // this item exists in other bloomfilter already, and it's not necessary to check in this bloomfilter.
-    if (exists->at(i)) {
+    if ((*exists)[i]) {
       continue;
     }
     uint64_t h = BlockSplitBloomFilter::Hash(items[i].data(), items[i].size());

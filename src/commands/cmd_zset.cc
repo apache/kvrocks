@@ -22,6 +22,7 @@
 
 #include "command_parser.h"
 #include "commander.h"
+#include "commands/blocking_commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
@@ -293,9 +294,7 @@ static rocksdb::Status PopFromMultipleZsets(redis::ZSet *zset_db, const std::vec
   return rocksdb::Status::OK();
 }
 
-class CommandBZPop : public Commander,
-                     private EvbufCallbackBase<CommandBZPop, false>,
-                     private EventCallbackBase<CommandBZPop> {
+class CommandBZPop : public BlockingCommander {
  public:
   explicit CommandBZPop(bool min) : min_(min) {}
 
@@ -315,7 +314,7 @@ class CommandBZPop : public Commander,
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     svr_ = svr;
-    conn_ = conn;
+    InitConnection(conn);
 
     std::string user_key;
     std::vector<MemberScore> member_scores;
@@ -331,28 +330,21 @@ class CommandBZPop : public Commander,
       return Status::OK();
     }
 
-    // all sorted sets are empty
-    if (conn->IsInExec()) {
-      *output = redis::MultiLen(-1);
-      return Status::OK();  // no blocking in multi-exec
-    }
+    return StartBlocking(timeout_, output);
+  }
 
+  std::string NoopReply() override { return redis::MultiLen(-1); }
+
+  void BlockKeys() override {
     for (const auto &key : keys_) {
       svr_->BlockOnKey(key, conn_);
     }
+  }
 
-    auto bev = conn->GetBufferEvent();
-    SetCB(bev);
-
-    if (timeout_) {
-      timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      int64_t timeout_second = timeout_ / 1000 / 1000;
-      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
-      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
-      evtimer_add(timer_.get(), &tm);
+  void UnblockKeys() override {
+    for (const auto &key : keys_) {
+      svr_->UnblockOnKey(key, conn_);
     }
-
-    return {Status::BlockingCmd};
   }
 
   void SendMembersWithScores(const std::vector<MemberScore> &member_scores, const std::string &user_key) {
@@ -366,7 +358,7 @@ class CommandBZPop : public Commander,
     conn_->Reply(output);
   }
 
-  void OnWrite(bufferevent *bev) {
+  bool OnBlockingWrite() override {
     std::string user_key;
     std::vector<MemberScore> member_scores;
 
@@ -374,50 +366,15 @@ class CommandBZPop : public Commander,
     auto s = PopFromMultipleZsets(&zset_db, keys_, min_, 1, &user_key, &member_scores);
     if (!s.ok()) {
       conn_->Reply(redis::Error("ERR " + s.ToString()));
-      return;
+      return true;
     }
 
-    if (member_scores.empty()) {
-      // The connection may be waked up but can't pop from a zset. For example, connection A is blocked on zset and
-      // connection B added a new element; then connection A was unblocked, but this element may be taken by
-      // another connection C. So we need to block connection A again and wait for the element being added
-      // by disabling the WRITE event.
-      bufferevent_disable(bev, EV_WRITE);
-      return;
+    bool empty = member_scores.empty();
+    if (!empty) {
+      SendMembersWithScores(member_scores, user_key);
     }
 
-    SendMembersWithScores(member_scores, user_key);
-
-    if (timer_) {
-      timer_.reset();
-    }
-
-    unblockOnAllKeys();
-    conn_->SetCB(bev);
-    bufferevent_enable(bev, EV_READ);
-    // We need to manually trigger the read event since we will stop processing commands
-    // in connection after the blocking command, so there may have some commands to be processed.
-    // Related issue: https://github.com/apache/kvrocks/issues/831
-    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
-  }
-
-  void OnEvent(bufferevent *bev, int16_t events) {
-    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      if (timer_ != nullptr) {
-        timer_.reset();
-      }
-      unblockOnAllKeys();
-    }
-    conn_->OnEvent(bev, events);
-  }
-
-  void TimerCB(int, int16_t) {
-    conn_->Reply(redis::MultiLen(-1));
-    timer_.reset();
-    unblockOnAllKeys();
-    auto bev = conn_->GetBufferEvent();
-    conn_->SetCB(bev);
-    bufferevent_enable(bev, EV_READ);
+    return !empty;
   }
 
  private:
@@ -425,14 +382,6 @@ class CommandBZPop : public Commander,
   int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
   Server *svr_ = nullptr;
-  Connection *conn_ = nullptr;
-  UniqueEvent timer_;
-
-  void unblockOnAllKeys() {
-    for (const auto &key : keys_) {
-      svr_->UnblockOnKey(key, conn_);
-    }
-  }
 };
 
 class CommandBZPopMin : public CommandBZPop {
@@ -518,9 +467,7 @@ class CommandZMPop : public Commander {
   int count_ = 0;
 };
 
-class CommandBZMPop : public Commander,
-                      private EvbufCallbackBase<CommandBZMPop, false>,
-                      private EventCallbackBase<CommandBZMPop> {
+class CommandBZMPop : public BlockingCommander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
@@ -557,7 +504,7 @@ class CommandBZMPop : public Commander,
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     svr_ = svr;
-    conn_ = conn;
+    InitConnection(conn);
 
     std::string user_key;
     std::vector<MemberScore> member_scores;
@@ -573,31 +520,24 @@ class CommandBZMPop : public Commander,
       return Status::OK();
     }
 
-    // all sorted sets are empty
-    if (conn->IsInExec()) {
-      *output = redis::MultiLen(-1);
-      return Status::OK();  // no blocking in multi-exec
-    }
+    return StartBlocking(timeout_, output);
+  }
 
+  void BlockKeys() override {
     for (const auto &key : keys_) {
       svr_->BlockOnKey(key, conn_);
     }
-
-    auto bev = conn->GetBufferEvent();
-    SetCB(bev);
-
-    if (timeout_) {
-      timer_.reset(NewTimer(bufferevent_get_base(bev)));
-      int64_t timeout_second = timeout_ / 1000 / 1000;
-      int64_t timeout_microsecond = timeout_ % (1000 * 1000);
-      timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
-      evtimer_add(timer_.get(), &tm);
-    }
-
-    return {Status::BlockingCmd};
   }
 
-  void OnWrite(bufferevent *bev) {
+  void UnblockKeys() override {
+    for (const auto &key : keys_) {
+      svr_->UnblockOnKey(key, conn_);
+    }
+  }
+
+  std::string NoopReply() override { return redis::NilString(); }
+
+  bool OnBlockingWrite() override {
     std::string user_key;
     std::vector<MemberScore> member_scores;
 
@@ -605,50 +545,15 @@ class CommandBZMPop : public Commander,
     auto s = PopFromMultipleZsets(&zset_db, keys_, flag_ == ZSET_MIN, count_, &user_key, &member_scores);
     if (!s.ok()) {
       conn_->Reply(redis::Error("ERR " + s.ToString()));
-      return;
+      return true;
     }
 
-    if (member_scores.empty()) {
-      // The connection may be waked up but can't pop from a zset. For example, connection A is blocked on zset and
-      // connection B added a new element; then connection A was unblocked, but this element may be taken by
-      // another connection C. So we need to block connection A again and wait for the element being added
-      // by disabling the WRITE event.
-      bufferevent_disable(bev, EV_WRITE);
-      return;
+    bool empty = member_scores.empty();
+    if (!empty) {
+      SendMembersWithScoresForZMpop(conn_, user_key, member_scores);
     }
 
-    SendMembersWithScoresForZMpop(conn_, user_key, member_scores);
-
-    if (timer_) {
-      timer_.reset();
-    }
-
-    unblockOnAllKeys();
-    conn_->SetCB(bev);
-    bufferevent_enable(bev, EV_READ);
-    // We need to manually trigger the read event since we will stop processing commands
-    // in connection after the blocking command, so there may have some commands to be processed.
-    // Related issue: https://github.com/apache/kvrocks/issues/831
-    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
-  }
-
-  void OnEvent(bufferevent *bev, int16_t events) {
-    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-      if (timer_ != nullptr) {
-        timer_.reset();
-      }
-      unblockOnAllKeys();
-    }
-    conn_->OnEvent(bev, events);
-  }
-
-  void TimerCB(int, int16_t events) {
-    conn_->Reply(redis::NilString());
-    timer_.reset();
-    unblockOnAllKeys();
-    auto bev = conn_->GetBufferEvent();
-    conn_->SetCB(bev);
-    bufferevent_enable(bev, EV_READ);
+    return !empty;
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
@@ -663,14 +568,6 @@ class CommandBZMPop : public Commander,
   enum { ZSET_MIN, ZSET_MAX, ZSET_NONE } flag_ = ZSET_NONE;
   int count_ = 0;
   Server *svr_ = nullptr;
-  Connection *conn_ = nullptr;
-  UniqueEvent timer_;
-
-  void unblockOnAllKeys() {
-    for (const auto &key : keys_) {
-      svr_->UnblockOnKey(key, conn_);
-    }
-  }
 };
 
 class CommandZRangeStore : public Commander {

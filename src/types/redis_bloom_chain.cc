@@ -86,7 +86,7 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
   batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 }
 
-void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
+void BloomChain::bloomAdd(const Slice &item, std::string *bf_data) {
   BlockSplitBloomFilter block_split_bloom_filter;
   block_split_bloom_filter.Init(std::move(*bf_data));
 
@@ -110,8 +110,7 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Sl
     if (exists->at(i)) {
       continue;
     }
-    std::string item = items[i].ToString();
-    uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
+    uint64_t h = BlockSplitBloomFilter::Hash(items[i].data(), items[i].size());
     exists->at(i) = block_split_bloom_filter.FindHash(h);
   }
   return rocksdb::Status::OK();
@@ -176,7 +175,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
         return rocksdb::Status::Aborted("filter is full and is nonscaling");
       }
     }
-    bloomAdd(item.ToString(), &bf_data);
+    bloomAdd(item, &bf_data);
     batch->Put(bf_key_list.back(), bf_data);
     *ret = 1;
     metadata.size += 1;

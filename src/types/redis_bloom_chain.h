@@ -66,7 +66,7 @@ class BloomChain : public Database {
                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data);
 
   /// bf_data: [in/out] The content string of bloomfilter.
-  static void bloomAdd(const std::string &item, std::string *bf_data);
+  static void bloomAdd(const Slice &item, std::string *bf_data);
 
   /// exists: [in/out] The items exist in bloomfilter already or not.
   rocksdb::Status bloomCheck(const Slice &bf_key, const std::vector<Slice> &items, std::vector<bool> *exists);

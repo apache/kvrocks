@@ -269,7 +269,7 @@ func TestBloom(t *testing.T) {
 	})
 
 	t.Run("Get Card of bloom filter", func(t *testing.T) {
-		// if bf.card no exist key, it will return 0
+		// if bf.card no exist key, it would return 0
 		require.NoError(t, rdb.Del(ctx, "no_exist_key").Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "bf.card", "no_exist_key").Val())
 
@@ -277,6 +277,9 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "1").Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "bf.card", key).Val())
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "item1").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "bf.card", key).Val())
+		// insert the duplicate key, insert would return 0 and the card of bloom filter would not change
+		require.Equal(t, int64(0), rdb.Do(ctx, "bf.add", key, "item1").Val())
 		require.Equal(t, int64(1), rdb.Do(ctx, "bf.card", key).Val())
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "item2").Err())
 		require.Equal(t, int64(2), rdb.Do(ctx, "bf.card", key).Val())

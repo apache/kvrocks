@@ -218,7 +218,7 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<Sli
   }
 
   for (size_t i = 0; i < items.size(); ++i) {
-    rets->at(i) = exists[i] ? 1 : 0;
+    (*rets)[i] = exists[i] ? 1 : 0;
   }
 
   return rocksdb::Status::OK();

@@ -112,7 +112,7 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Sl
       continue;
     }
     uint64_t h = BlockSplitBloomFilter::Hash(items[i].data(), items[i].size());
-    exists->at(i) = block_split_bloom_filter.FindHash(h);
+    (*exists)[i] = block_split_bloom_filter.FindHash(h);
   }
   return rocksdb::Status::OK();
 }
@@ -151,7 +151,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   batch->PutLogData(log_data.Encode());
 
   // check
-  std::vector<bool> exist(1, false);                   // TODO: to refine in BF.MADD
+  std::vector<bool> exist{false};                      // TODO: to refine in BF.MADD
   for (int i = metadata.n_filters - 1; i >= 0; --i) {  // TODO: to test which direction for searching is better
     s = bloomCheck(bf_key_list[i], {item}, &exist);
     if (!s.ok()) return s;
@@ -190,7 +190,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
 }
 
 rocksdb::Status BloomChain::Exists(const Slice &user_key, const Slice &item, int *ret) {
-  std::vector<int> tmp(1, 0);
+  std::vector<int> tmp{0};
   rocksdb::Status s = MExists(user_key, {item}, &tmp);
   *ret = tmp[0];
   return s;

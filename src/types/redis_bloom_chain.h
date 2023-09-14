@@ -52,7 +52,8 @@ class BloomChain : public Database {
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
   rocksdb::Status Add(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status Exist(const Slice &user_key, const Slice &item, int *ret);
+  rocksdb::Status Exists(const Slice &user_key, const Slice &item, int *ret);
+  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> *rets);
   rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);
 
  private:
@@ -63,7 +64,13 @@ class BloomChain : public Database {
                                    BloomChainMetadata *metadata);
   void createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadata *metadata,
                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data);
-  static void bloomAdd(const std::string &item, std::string *bf_data);
-  rocksdb::Status bloomCheck(const Slice &bf_key, const std::string &item, bool *exist);
+
+  /// bf_data: [in/out] The content string of bloomfilter.
+  static void bloomAdd(const Slice &item, std::string *bf_data);
+
+  /// exists: [in/out] The items exist in bloomfilter already or not.
+  /// exists[i] is true means items[i] exists in other bloomfilter already, and it's not necessary to check in this
+  /// bloomfilter.
+  rocksdb::Status bloomCheck(const Slice &bf_key, const std::vector<Slice> &items, std::vector<bool> *exists);
 };
 }  // namespace redis

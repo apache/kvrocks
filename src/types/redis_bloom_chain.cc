@@ -86,7 +86,7 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
   batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 }
 
-void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
+void BloomChain::bloomAdd(const Slice &item, std::string *bf_data) {
   BlockSplitBloomFilter block_split_bloom_filter;
   block_split_bloom_filter.Init(std::move(*bf_data));
 
@@ -95,7 +95,8 @@ void BloomChain::bloomAdd(const std::string &item, std::string *bf_data) {
   *bf_data = std::move(block_split_bloom_filter).GetData();
 }
 
-rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::string &item, bool *exist) {
+rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Slice> &items,
+                                       std::vector<bool> *exists) {
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -105,9 +106,14 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::string &i
   BlockSplitBloomFilter block_split_bloom_filter;
   block_split_bloom_filter.Init(std::move(bf_data));
 
-  uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
-  *exist = block_split_bloom_filter.FindHash(h);
-
+  for (size_t i = 0; i < items.size(); ++i) {
+    // this item exists in other bloomfilter already, and it's not necessary to check in this bloomfilter.
+    if ((*exists)[i]) {
+      continue;
+    }
+    uint64_t h = BlockSplitBloomFilter::Hash(items[i].data(), items[i].size());
+    (*exists)[i] = block_split_bloom_filter.FindHash(h);
+  }
   return rocksdb::Status::OK();
 }
 
@@ -144,21 +150,19 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   WriteBatchLogData log_data(kRedisBloomFilter, {"insert"});
   batch->PutLogData(log_data.Encode());
 
-  std::string item_string = item.ToString();
-
   // check
-  bool exist = false;
+  std::vector<bool> exist{false};                      // TODO: to refine in BF.MADD
   for (int i = metadata.n_filters - 1; i >= 0; --i) {  // TODO: to test which direction for searching is better
-    s = bloomCheck(bf_key_list[i], item_string, &exist);
+    s = bloomCheck(bf_key_list[i], {item}, &exist);
     if (!s.ok()) return s;
-    if (exist) {
+    if (exist[0]) {
       *ret = 0;
       break;
     }
   }
 
   // insert
-  if (!exist) {
+  if (!exist[0]) {  // TODO: to refine in BF.MADD
     std::string bf_data;
     s = storage_->Get(rocksdb::ReadOptions(), bf_key_list.back(), &bf_data);
     if (!s.ok()) return s;
@@ -172,7 +176,7 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
         return rocksdb::Status::Aborted("filter is full and is nonscaling");
       }
     }
-    bloomAdd(item_string, &bf_data);
+    bloomAdd(item, &bf_data);
     batch->Put(bf_key_list.back(), bf_data);
     *ret = 1;
     metadata.size += 1;
@@ -185,13 +189,20 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, int *r
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int *ret) {
+rocksdb::Status BloomChain::Exists(const Slice &user_key, const Slice &item, int *ret) {
+  std::vector<int> tmp{0};
+  rocksdb::Status s = MExists(user_key, {item}, &tmp);
+  *ret = tmp[0];
+  return s;
+}
+
+rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> *rets) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
   if (s.IsNotFound()) {
-    *ret = 0;
+    std::fill(rets->begin(), rets->end(), 0);
     return rocksdb::Status::OK();
   }
   if (!s.ok()) return s;
@@ -199,17 +210,16 @@ rocksdb::Status BloomChain::Exist(const Slice &user_key, const Slice &item, int 
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
 
-  std::string item_string = item.ToString();
   // check
-  bool exist = false;
+  std::vector<bool> exists(items.size(), false);
   for (int i = metadata.n_filters - 1; i >= 0; --i) {  // TODO: to test which direction for searching is better
-    s = bloomCheck(bf_key_list[i], item_string, &exist);
+    s = bloomCheck(bf_key_list[i], items, &exists);
     if (!s.ok()) return s;
-    if (exist) {
-      break;
-    }
   }
-  *ret = exist ? 1 : 0;
+
+  for (size_t i = 0; i < items.size(); ++i) {
+    (*rets)[i] = exists[i] ? 1 : 0;
+  }
 
   return rocksdb::Status::OK();
 }

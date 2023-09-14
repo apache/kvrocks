@@ -40,6 +40,15 @@ std::string Integer(T data) {
   return ":" + std::to_string(data) + CRLF;
 }
 
+template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+std::string MultiInteger(const std::vector<T> &multi_data) {
+  std::string result = "*" + std::to_string(multi_data.size()) + CRLF;
+  for (const auto &data : multi_data) {
+    result += Integer(data);
+  }
+  return result;
+}
+
 std::string BulkString(const std::string &data);
 std::string NilString();
 

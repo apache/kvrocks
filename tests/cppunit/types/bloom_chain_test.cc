@@ -55,7 +55,7 @@ TEST_F(RedisBloomChainTest, Reserve) {
 TEST_F(RedisBloomChainTest, BasicAddAndTest) {
   int ret = 0;
 
-  auto s = sb_chain_->Exist("no_exist_key", "test_item", &ret);
+  auto s = sb_chain_->Exists("no_exist_key", "test_item", &ret);
   EXPECT_EQ(ret, 0);
   s = sb_chain_->Del("no_exist_key");
 
@@ -67,14 +67,14 @@ TEST_F(RedisBloomChainTest, BasicAddAndTest) {
   }
 
   for (const auto& insert_item : insert_items) {
-    s = sb_chain_->Exist(key_, insert_item, &ret);
+    s = sb_chain_->Exists(key_, insert_item, &ret);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(ret, 1);
   }
 
   std::string no_insert_items[] = {"item303", "item404", "1", "2", "3"};
   for (const auto& no_insert_item : no_insert_items) {
-    s = sb_chain_->Exist(key_, no_insert_item, &ret);
+    s = sb_chain_->Exists(key_, no_insert_item, &ret);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(ret, 0);
   }

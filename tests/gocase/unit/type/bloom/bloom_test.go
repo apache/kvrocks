@@ -25,6 +25,7 @@ import (
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -175,7 +176,18 @@ func TestBloom(t *testing.T) {
 		}
 		require.Equal(t, int64(24), rdb.Do(ctx, "bf.card", key).Val())
 
-		require.Equal(t, []interface{}{int64(1), int64(0), "ERR nonscaling filter is full", int64(0), int64(0)}, rdb.Do(ctx, "bf.madd", key, "a", "x", "xxx", "y", "z").Val())
+		Add := rdb.Do(ctx, "bf.madd", key, "a", "x", "xxx", "y", "z").Val()
+		ret := make([]interface{}, 0, 5)
+		for _, value := range Add.([]interface{}) {
+			switch v := value.(type) {
+			case int64:
+				ret = append(ret, v)
+			case error:
+				ret = append(ret, v.Error())
+			default:
+			}
+		}
+		assert.Equal(t, []interface{}{int64(1), int64(0), "ERR nonscaling filter is full", int64(0), int64(0)}, ret)
 		require.Equal(t, int64(25), rdb.Do(ctx, "bf.card", key).Val())
 	})
 

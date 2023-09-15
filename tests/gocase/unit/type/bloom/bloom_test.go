@@ -145,6 +145,71 @@ func TestBloom(t *testing.T) {
 		require.LessOrEqual(t, float64(falseExist), fpp*float64(totalCount))
 	})
 
+	t.Run("MAdd Basic Test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		require.Equal(t, []interface{}{int64(1), int64(1)}, rdb.Do(ctx, "bf.madd", key, "xxx", "zzz").Val())
+		require.Equal(t, int64(2), rdb.Do(ctx, "bf.card", key).Val())
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		// add the existed value
+		require.Equal(t, []interface{}{int64(0)}, rdb.Do(ctx, "bf.madd", key, "zzz").Val())
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		// add the same value
+		require.Equal(t, []interface{}{int64(1), int64(0)}, rdb.Do(ctx, "bf.madd", key, "yyy", "yyy").Val())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+	})
+
+	t.Run("MAdd nonscaling Test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "25", "nonscaling").Err())
+
+		// insert items, suppose false positives is 0
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1)}, rdb.Do(ctx, "bf.madd", key, "x", "y", "z", "k").Val())
+		for i := 0; i < 10; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.madd", key, buf, buf+"xx")
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, int64(24), rdb.Do(ctx, "bf.card", key).Val())
+
+		require.Equal(t, []interface{}{int64(1), int64(0), "ERR nonscaling filter is full", int64(0), int64(0)}, rdb.Do(ctx, "bf.madd", key, "a", "x", "xxx", "y", "z").Val())
+		require.Equal(t, int64(25), rdb.Do(ctx, "bf.card", key).Val())
+	})
+
+	t.Run("MAdd scaling Test", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "30", "expansion", "2").Err())
+
+		// insert items, suppose false positives is 0
+		for i := 0; i < 10; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.madd", key, buf, buf+"xx", buf+"yy")
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, []interface{}{"Capacity", int64(30), "Size", int64(128), "Number of filters", int64(1), "Number of items inserted", int64(30), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+
+		// bloom filter is full and scaling
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxx").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(31), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+
+		// insert items, suppose false positives is 0
+		for i := 0; i < 59; i++ {
+			buf := util.RandString(7, 8, util.Alpha)
+			Add := rdb.Do(ctx, "bf.add", key, buf)
+			require.NoError(t, Add.Err())
+		}
+		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(90), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+		// add the existed value would not scaling
+		require.NoError(t, rdb.Do(ctx, "bf.madd", key, "xxx").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(90), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+		// bloom filter is full and scaling
+		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxxx").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(210), "Size", int64(896), "Number of filters", int64(3), "Number of items inserted", int64(91), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
 	t.Run("MExists Basic Test", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
@@ -229,7 +294,7 @@ func TestBloom(t *testing.T) {
 			require.NoError(t, Add.Err())
 		}
 		require.Equal(t, int64(50), rdb.Do(ctx, "bf.info", key, "items").Val())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.add", key, "xxx").Err(), "filter is full and is nonscaling")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.add", key, "xxx").Err(), "ERR nonscaling filter is full")
 		require.Equal(t, int64(50), rdb.Do(ctx, "bf.info", key, "items").Val())
 	})
 

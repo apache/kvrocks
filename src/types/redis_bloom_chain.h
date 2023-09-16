@@ -39,6 +39,12 @@ enum class BloomInfoType {
   kExpansion,
 };
 
+enum class AddRetType {
+  kFailure,
+  kOk,
+  kFull,
+};
+
 struct BloomFilterInfo {
   uint32_t capacity;
   uint32_t bloom_bytes;
@@ -51,10 +57,10 @@ class BloomChain : public Database {
  public:
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
-  rocksdb::Status Add(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> *rets);
-  rocksdb::Status Exists(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> *rets);
+  rocksdb::Status Add(const Slice &user_key, const Slice &item, AddRetType *ret);
+  rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<AddRetType> *rets);
+  rocksdb::Status Exists(const Slice &user_key, const Slice &item, bool *exist);
+  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<bool> *exists);
   rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);
 
  private:

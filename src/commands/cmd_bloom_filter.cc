@@ -91,14 +91,14 @@ class CommandBFAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    AddRetType ret = AddRetType::kFailure;
     auto s = bloom_db.Add(args_[1], args_[2], &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret == -1) {
+    if (ret == AddRetType::kFull) {
       *output = redis::Error("ERR nonscaling filter is full");
     } else {
-      *output = redis::Integer(ret);
+      *output = redis::Integer(ret == AddRetType::kOk ? 1 : 0);
     }
     return Status::OK();
   }
@@ -116,16 +116,16 @@ class CommandBFMAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    std::vector<int> rets(items_.size(), 0);
+    std::vector<AddRetType> rets(items_.size(), AddRetType::kFailure);
     auto s = bloom_db.MAdd(args_[1], items_, &rets);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(items_.size());
     for (size_t i = 0; i < items_.size(); ++i) {
-      if (rets[i] == -1) {
+      if (rets[i] == AddRetType::kFull) {
         *output += Error("ERR nonscaling filter is full");
       } else {
-        *output += Integer(rets[i]);
+        *output += Integer(rets[i] == AddRetType::kOk ? 1 : 0);
       }
     }
     return Status::OK();
@@ -139,11 +139,11 @@ class CommandBFExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
-    auto s = bloom_db.Exists(args_[1], args_[2], &ret);
+    bool exist = false;
+    auto s = bloom_db.Exists(args_[1], args_[2], &exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(exist ? 1 : 0);
     return Status::OK();
   }
 };
@@ -160,11 +160,14 @@ class CommandBFMExists : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    std::vector<int> rets(items_.size(), 0);
-    auto s = bloom_db.MExists(args_[1], items_, &rets);
+    std::vector<bool> exists(items_.size(), false);
+    auto s = bloom_db.MExists(args_[1], items_, &exists);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::MultiInteger(rets);
+    *output = redis::MultiLen(items_.size());
+    for (size_t i = 0; i < items_.size(); ++i) {
+      *output += Integer(exists[i] ? 1 : 0);
+    }
     return Status::OK();
   }
 

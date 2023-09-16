@@ -53,30 +53,31 @@ TEST_F(RedisBloomChainTest, Reserve) {
 }
 
 TEST_F(RedisBloomChainTest, BasicAddAndTest) {
-  int ret = 0;
+  redis::AddRetType ret = redis::AddRetType::kFailure;
+  bool exist = false;
 
-  auto s = sb_chain_->Exists("no_exist_key", "test_item", &ret);
-  EXPECT_EQ(ret, 0);
+  auto s = sb_chain_->Exists("no_exist_key", "test_item", &exist);
+  EXPECT_EQ(exist, 0);
   s = sb_chain_->Del("no_exist_key");
 
   std::string insert_items[] = {"item1", "item2", "item3", "item101", "item202", "303"};
   for (const auto& insert_item : insert_items) {
     s = sb_chain_->Add(key_, insert_item, &ret);
     EXPECT_TRUE(s.ok());
-    EXPECT_EQ(ret, 1);
+    EXPECT_EQ(ret, redis::AddRetType::kOk);
   }
 
   for (const auto& insert_item : insert_items) {
-    s = sb_chain_->Exists(key_, insert_item, &ret);
+    s = sb_chain_->Exists(key_, insert_item, &exist);
     EXPECT_TRUE(s.ok());
-    EXPECT_EQ(ret, 1);
+    EXPECT_EQ(exist, true);
   }
 
   std::string no_insert_items[] = {"item303", "item404", "1", "2", "3"};
   for (const auto& no_insert_item : no_insert_items) {
-    s = sb_chain_->Exists(key_, no_insert_item, &ret);
+    s = sb_chain_->Exists(key_, no_insert_item, &exist);
     EXPECT_TRUE(s.ok());
-    EXPECT_EQ(ret, 0);
+    EXPECT_EQ(exist, false);
   }
   s = sb_chain_->Del(key_);
 }

@@ -53,7 +53,7 @@ TEST_F(RedisBloomChainTest, Reserve) {
 }
 
 TEST_F(RedisBloomChainTest, BasicAddAndTest) {
-  redis::AddRetType ret = redis::AddRetType::kFailure;
+  redis::BloomFilterAddResult ret = redis::BloomFilterAddResult::kOk;
   bool exist = false;
 
   auto s = sb_chain_->Exists("no_exist_key", "test_item", &exist);
@@ -64,7 +64,7 @@ TEST_F(RedisBloomChainTest, BasicAddAndTest) {
   for (const auto& insert_item : insert_items) {
     s = sb_chain_->Add(key_, insert_item, &ret);
     EXPECT_TRUE(s.ok());
-    EXPECT_EQ(ret, redis::AddRetType::kOk);
+    EXPECT_EQ(ret, redis::BloomFilterAddResult::kOk);
   }
 
   for (const auto& insert_item : insert_items) {

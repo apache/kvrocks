@@ -133,15 +133,15 @@ rocksdb::Status BloomChain::Reserve(const Slice &user_key, uint32_t capacity, do
   return createBloomChain(ns_key, error_rate, capacity, expansion, &bloom_chain_metadata);
 }
 
-rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, AddRetType *ret) {
-  std::vector<AddRetType> tmp{AddRetType::kFailure};
+rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, BloomFilterAddResult *ret) {
+  std::vector<BloomFilterAddResult> tmp{BloomFilterAddResult::kOk};
   rocksdb::Status s = MAdd(user_key, {item}, &tmp);
   *ret = tmp[0];
   return s;
 }
 
 rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice> &items,
-                                 std::vector<AddRetType> *rets) {
+                                 std::vector<BloomFilterAddResult> *rets) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
@@ -175,7 +175,7 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
 
     // insert
     if (exist) {
-      (*rets)[i] = AddRetType::kFailure;
+      (*rets)[i] = BloomFilterAddResult::kExist;
     } else {
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
@@ -185,12 +185,12 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
           bf_data_list.push_back(std::move(bf_data));
           bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
         } else {
-          (*rets)[i] = AddRetType::kFull;
+          (*rets)[i] = BloomFilterAddResult::kFull;
           continue;
         }
       }
       bloomAdd(items[i], &bf_data_list.back());
-      (*rets)[i] = AddRetType::kOk;
+      (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }
   }

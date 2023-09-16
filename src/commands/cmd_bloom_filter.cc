@@ -91,14 +91,14 @@ class CommandBFAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    AddRetType ret = AddRetType::kFailure;
+    BloomFilterAddResult ret = BloomFilterAddResult::kOk;
     auto s = bloom_db.Add(args_[1], args_[2], &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret == AddRetType::kFull) {
+    if (ret == BloomFilterAddResult::kFull) {
       *output = redis::Error("ERR nonscaling filter is full");
     } else {
-      *output = redis::Integer(ret == AddRetType::kOk ? 1 : 0);
+      *output = redis::Integer(ret == BloomFilterAddResult::kOk ? 1 : 0);
     }
     return Status::OK();
   }
@@ -116,16 +116,16 @@ class CommandBFMAdd : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    std::vector<AddRetType> rets(items_.size(), AddRetType::kFailure);
+    std::vector<BloomFilterAddResult> rets(items_.size(), BloomFilterAddResult::kOk);
     auto s = bloom_db.MAdd(args_[1], items_, &rets);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(items_.size());
     for (size_t i = 0; i < items_.size(); ++i) {
-      if (rets[i] == AddRetType::kFull) {
+      if (rets[i] == BloomFilterAddResult::kFull) {
         *output += Error("ERR nonscaling filter is full");
       } else {
-        *output += Integer(rets[i] == AddRetType::kOk ? 1 : 0);
+        *output += Integer(rets[i] == BloomFilterAddResult::kOk ? 1 : 0);
       }
     }
     return Status::OK();

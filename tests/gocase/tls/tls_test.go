@@ -163,6 +163,7 @@ func TestTLSReplica(t *testing.T) {
 
 	rc := replica.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig, Addr: replica.TLSAddr()})
 	defer func() { require.NoError(t, rc.Close()) }()
+	util.WaitForSync(t, rc)
 
 	t.Run("TLS: Replication (incremental)", func(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
@@ -185,6 +186,7 @@ func TestTLSReplica(t *testing.T) {
 
 	rc2 := replica2.NewClientWithOption(&redis.Options{TLSConfig: defaultTLSConfig, Addr: replica2.TLSAddr()})
 	defer func() { require.NoError(t, rc2.Close()) }()
+	util.WaitForSync(t, rc2)
 
 	t.Run("TLS: Replication (full)", func(t *testing.T) {
 		util.WaitForOffsetSync(t, sc, rc2)

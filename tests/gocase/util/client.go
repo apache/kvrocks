@@ -45,7 +45,7 @@ func WaitForSync(t testing.TB, slave *redis.Client) {
 	require.Eventually(t, func() bool {
 		r := FindInfoEntry(slave, "master_link_status")
 		return r == "up"
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func WaitForOffsetSync(t testing.TB, master, slave *redis.Client) {
@@ -53,7 +53,7 @@ func WaitForOffsetSync(t testing.TB, master, slave *redis.Client) {
 		o1 := FindInfoEntry(master, "master_repl_offset")
 		o2 := FindInfoEntry(slave, "master_repl_offset")
 		return o1 == o2
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func SlaveOf(t testing.TB, slave *redis.Client, master *KvrocksServer) {

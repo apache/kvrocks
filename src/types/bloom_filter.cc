@@ -67,7 +67,7 @@ bool BlockSplitBloomFilter::Init(std::string bitset) {
   return true;
 }
 
-std::unique_ptr<const BlockSplitBloomFilter> BlockSplitBloomFilter::CreateNonOwned(const std::string& bitset) {
+std::unique_ptr<const BlockSplitBloomFilter> BlockSplitBloomFilter::CreateReadOnlyBloomFilter(const std::string& bitset) {
   return std::unique_ptr<const BlockSplitBloomFilter>(new BlockSplitBloomFilter(bitset));
 }
 

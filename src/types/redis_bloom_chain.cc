@@ -112,11 +112,11 @@ void BloomChain::bloomAdd(const Slice &item, std::string *bf_data) {
 }
 
 bool BloomChain::bloomCheck(const Slice &item, std::string &bf_data) {
-  std::unique_ptr<const BlockSplitBloomFilter> block_split_bloom_filter_non_owned =
-      BlockSplitBloomFilter::CreateNonOwned(bf_data);
+  std::unique_ptr<const BlockSplitBloomFilter> bloom_filter_read_only =
+      BlockSplitBloomFilter::CreateReadOnlyBloomFilter(bf_data);
 
   uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
-  return block_split_bloom_filter_non_owned->FindHash(h);
+  return bloom_filter_read_only->FindHash(h);
 }
 
 rocksdb::Status BloomChain::Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion) {

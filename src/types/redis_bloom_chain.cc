@@ -19,6 +19,7 @@
  */
 
 #include "redis_bloom_chain.h"
+#include "types/bloom_filter.h"
 
 namespace redis {
 
@@ -52,8 +53,7 @@ rocksdb::Status BloomChain::createBloomChain(const Slice &ns_key, double error_r
   metadata->base_capacity = capacity;
   metadata->bloom_bytes = BlockSplitBloomFilter::OptimalNumOfBytes(capacity, error_rate);
 
-  BlockSplitBloomFilter block_split_bloom_filter;
-  block_split_bloom_filter.Init(metadata->bloom_bytes);
+  auto [block_split_bloom_filter, _] = CreateBlockSplitBloomFilter(metadata->bloom_bytes);
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBloomFilter, {"createBloomChain"});
@@ -77,9 +77,7 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
   metadata->n_filters += 1;
   metadata->bloom_bytes += bloom_filter_bytes;
 
-  BlockSplitBloomFilter block_split_bloom_filter;
-  block_split_bloom_filter.Init(bloom_filter_bytes);
-  *bf_data = std::move(block_split_bloom_filter).GetData();
+  std::tie(std::ignore, *bf_data) = CreateBlockSplitBloomFilter(bloom_filter_bytes);
 
   std::string bloom_chain_meta_bytes;
   metadata->Encode(&bloom_chain_meta_bytes);
@@ -87,12 +85,10 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
 }
 
 void BloomChain::bloomAdd(const Slice &item, std::string *bf_data) {
-  BlockSplitBloomFilter block_split_bloom_filter;
-  block_split_bloom_filter.Init(std::move(*bf_data));
+  BlockSplitBloomFilter block_split_bloom_filter(*bf_data);
 
   uint64_t h = BlockSplitBloomFilter::Hash(item.data(), item.size());
   block_split_bloom_filter.InsertHash(h);
-  *bf_data = std::move(block_split_bloom_filter).GetData();
 }
 
 rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Slice> &items,
@@ -103,8 +99,7 @@ rocksdb::Status BloomChain::bloomCheck(const Slice &bf_key, const std::vector<Sl
   std::string bf_data;
   rocksdb::Status s = storage_->Get(read_options, bf_key, &bf_data);
   if (!s.ok()) return s;
-  BlockSplitBloomFilter block_split_bloom_filter;
-  block_split_bloom_filter.Init(std::move(bf_data));
+  BlockSplitBloomFilter block_split_bloom_filter(bf_data);
 
   for (size_t i = 0; i < items.size(); ++i) {
     // this item exists in other bloomfilter already, and it's not necessary to check in this bloomfilter.

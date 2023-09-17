@@ -22,9 +22,7 @@
 
 #include "xxh3.h"
 
-BlockSplitBloomFilter::BlockSplitBloomFilter() = default;
-
-void BlockSplitBloomFilter::Init(uint32_t num_bytes) {
+OwnedBlockSplitBloomFilter CreateBlockSplitBloomFilter(uint32_t num_bytes) {
   if (num_bytes < kMinimumBloomFilterBytes) {
     num_bytes = kMinimumBloomFilterBytes;
   }
@@ -38,36 +36,30 @@ void BlockSplitBloomFilter::Init(uint32_t num_bytes) {
     num_bytes = kMaximumBloomFilterBytes;
   }
 
-  num_bytes_ = num_bytes;
-  data_.resize(num_bytes_, 0);
+  std::string data(num_bytes, 0);
+  return {BlockSplitBloomFilter(data), data};
 }
 
-bool BlockSplitBloomFilter::Init(const uint8_t* bitset, uint32_t num_bytes) {
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(uint8_t* bitset, uint32_t num_bytes) {
   if (num_bytes < kMinimumBloomFilterBytes || num_bytes > kMaximumBloomFilterBytes ||
       (num_bytes & (num_bytes - 1)) != 0) {
-    return false;
+    return {Status::NotOK, "invalid input bitset length"};
   }
 
-  num_bytes_ = num_bytes;
-  data_ = {reinterpret_cast<const char*>(bitset), num_bytes};
-  return true;
+  return BlockSplitBloomFilter({reinterpret_cast<char*>(bitset), num_bytes});
 }
 
-bool BlockSplitBloomFilter::Init(std::string bitset) {
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string &bitset) {
   if (bitset.size() < kMinimumBloomFilterBytes || bitset.size() > kMaximumBloomFilterBytes ||
       (bitset.size() & (bitset.size() - 1)) != 0) {
-    return false;
+    return {Status::NotOK, "invalid input bitset length"};
   }
 
-  num_bytes_ = bitset.size();
-  data_ = std::move(bitset);
-  return true;
+  return BlockSplitBloomFilter(bitset);
 }
 
-static constexpr uint32_t kBloomFilterHeaderSizeGuess = 256;
-
 bool BlockSplitBloomFilter::FindHash(uint64_t hash) const {
-  const auto bucket_index = static_cast<uint32_t>(((hash >> 32) * (num_bytes_ / kBytesPerFilterBlock)) >> 32);
+  const auto bucket_index = static_cast<uint32_t>(((hash >> 32) * (data_.size() / kBytesPerFilterBlock)) >> 32);
   const auto key = static_cast<uint32_t>(hash);
   const auto* bitset32 = reinterpret_cast<const uint32_t*>(data_.data());
 
@@ -82,7 +74,7 @@ bool BlockSplitBloomFilter::FindHash(uint64_t hash) const {
 }
 
 void BlockSplitBloomFilter::InsertHash(uint64_t hash) {
-  const auto bucket_index = static_cast<uint32_t>(((hash >> 32) * (num_bytes_ / kBytesPerFilterBlock)) >> 32);
+  const auto bucket_index = static_cast<uint32_t>(((hash >> 32) * (data_.size() / kBytesPerFilterBlock)) >> 32);
   const auto key = static_cast<uint32_t>(hash);
   auto* bitset32 = reinterpret_cast<uint32_t*>(data_.data());
 

@@ -64,6 +64,10 @@ bool BlockSplitBloomFilter::Init(std::string bitset) {
   return true;
 }
 
+std::unique_ptr<const BlockSplitBloomFilter> BlockSplitBloomFilter::CreateNonOwned(const std::string& bitset) {
+  return std::unique_ptr<const BlockSplitBloomFilter>(new BlockSplitBloomFilter(bitset));
+}
+
 static constexpr uint32_t kBloomFilterHeaderSizeGuess = 256;
 
 bool BlockSplitBloomFilter::FindHash(uint64_t hash) const {
@@ -94,3 +98,5 @@ void BlockSplitBloomFilter::InsertHash(uint64_t hash) {
 }
 
 uint64_t BlockSplitBloomFilter::Hash(const char* data, size_t length) { return XXH64(data, length, /*seed=*/0); }
+
+BlockSplitBloomFilter::BlockSplitBloomFilter(const std::string& bitset) : data_(bitset), num_bytes_(bitset.size()) {}

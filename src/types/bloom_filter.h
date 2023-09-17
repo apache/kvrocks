@@ -84,6 +84,13 @@ class BlockSplitBloomFilter {
   /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
   bool Init(std::string bitset);
 
+  /// Create the non-owned BlockSplitBloomFilter. It use the bitset as underlying bitset. It is the caller's
+  /// responsibility to ensure the bitset would not to change.
+  ///
+  /// @param bitset The given bitset for the Bloom filter underlying bitset.
+  /// @return the unique_ptr of the const non-owned BlockSplitBloomFilter
+  static std::unique_ptr<const BlockSplitBloomFilter> CreateNonOwned(const std::string& bitset);
+
   /// Minimum Bloom filter size, it sets to 32 bytes to fit a tiny Bloom filter.
   static constexpr uint32_t kMinimumBloomFilterBytes = 32;
 
@@ -166,6 +173,9 @@ class BlockSplitBloomFilter {
   static uint64_t Hash(const char* data, size_t length);
 
  private:
+  // The private constructor of BlockSplitBloomFilter. It's only used for CreateNonOwned
+  explicit BlockSplitBloomFilter(const std::string& bitset);
+
   // Bytes in a tiny Bloom filter block.
   static constexpr int kBytesPerFilterBlock = 32;
 

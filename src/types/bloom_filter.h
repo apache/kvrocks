@@ -190,6 +190,9 @@ class BlockSplitBloomFilter {
   // The underlying buffer of bitset.
   std::string data_;
 
+  // The view of data_
+  std::string_view data_view_;
+
   // The number of bytes of Bloom filter bitset.
   uint32_t num_bytes_;
 };

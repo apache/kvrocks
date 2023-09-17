@@ -331,7 +331,7 @@ uint8_t GeoHashHelper::EstimateStepsByRadius(double range_meters, double lat) {
  * and maximum longitude, while bounds[1] - bounds[3] is the minimum and
  * maximum latitude. */
 int GeoHashHelper::BoundingBox(GeoShape *geo_shape) {
-  if (!geo_shape->bounds) return 0;
+  if (!geo_shape) return 0;
   double longitude = geo_shape->xy[0];
   double latitude = geo_shape->xy[1];
   double height =

@@ -162,6 +162,7 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
   std::vector<uint64_t> item_hash_list;
   getItemHashList(items, &item_hash_list);
 
+  uint64_t origin_size = metadata.size;
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBloomFilter, {"insert"});
   batch->PutLogData(log_data.Encode());
@@ -197,10 +198,12 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
     }
   }
 
-  std::string bloom_chain_metadata_bytes;
-  metadata.Encode(&bloom_chain_metadata_bytes);
-  batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
-  batch->Put(bf_key_list.back(), bf_data_list.back());
+  if (metadata.size != origin_size) {
+    std::string bloom_chain_metadata_bytes;
+    metadata.Encode(&bloom_chain_metadata_bytes);
+    batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
+    batch->Put(bf_key_list.back(), bf_data_list.back());
+  }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

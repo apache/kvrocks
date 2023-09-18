@@ -136,6 +136,18 @@ func TestGeo(t *testing.T) {
 		require.EqualValues(t, []interface{}([]interface{}{}), rdb.Do(ctx, "GEORADIUSBYMEMBER_RO", "points", "member", "1", "km").Val())
 	})
 
+	t.Run("GEORADIUSBYMEMBER against non existing member", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "src", "10", "10", "Shenzhen").Err())
+		require.Error(t, rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen_2", 20, "M").Err())
+
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "20", "20", "Guangzhou").Err())
+		require.Error(t, rdb.Do(ctx, "GEORADIUSBYMEMBER", "src", "Shenzhen_2", 20, "M", "STORE", "dst").Err())
+		// Verify command does not affect dst
+		require.EqualValues(t, 1, rdb.Exists(ctx, "dst").Val())
+	})
+
 	t.Run("GEORADIUSBYMEMBER store: remove the dst key when there is no result set", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
 
@@ -242,6 +254,18 @@ func TestGeo(t *testing.T) {
 	t.Run("GEOSEARCHSTORE against non existing src key", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "src").Err())
 		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen", "BYBOX", 88, 88, "m").Val())
+	})
+
+	t.Run("GEOSEARCH / GEOSEARCHSTORE FROMMEMBER against non existing member", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "src", "10", "10", "Shenzhen").Err())
+		require.Error(t, rdb.Do(ctx, "GEOSEARCH", "src", "FROMMEMBER", "Shenzhen_2", "BYBOX", 88, 88, "M").Err())
+
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "20", "20", "Guangzhou").Err())
+		require.Error(t, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMMEMBER", "Shenzhen_2", "BYBOX", 88, 88, "M").Err())
+		// Verify command does not affect dst
+		require.EqualValues(t, 1, rdb.Exists(ctx, "dst").Val())
 	})
 
 	t.Run("GEOSEARCHSTORE remove the dst key when there is no result set", func(t *testing.T) {

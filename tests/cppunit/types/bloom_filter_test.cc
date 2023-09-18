@@ -30,15 +30,13 @@
 namespace test {
 
 TEST(ConstructorTest, TestBloomFilter) {
-  BlockSplitBloomFilter bloom_filter;
-
   // It return false because the number of bytes of Bloom filter bitset must be a power of 2.
   std::unique_ptr<uint8_t[]> bitset1(new uint8_t[1024]());
-  EXPECT_FALSE(bloom_filter.Init(bitset1.get(), 1023));
+  EXPECT_FALSE(CreateBlockSplitBloomFilter(bitset1.get(), 1023));
 
   // It return false because the number of bytes of Bloom filter bitset must be a power of 2.
   std::string bitset2(1022, 's');
-  EXPECT_FALSE(bloom_filter.Init(bitset2));
+  EXPECT_FALSE(CreateBlockSplitBloomFilter(bitset2));
 }
 
 // The BasicTest is used to test basic operations including InsertHash, FindHash and
@@ -51,8 +49,7 @@ TEST(BasicTest, TestBloomFilter) {
                                                    "-8", "b",  "acb", "tyuio", "trewq"};
 
   for (const auto bloom_filter_bytes : kBloomFilterSizes) {
-    BlockSplitBloomFilter bloom_filter;
-    bloom_filter.Init(bloom_filter_bytes);
+    auto [bloom_filter, data] = CreateBlockSplitBloomFilter(bloom_filter_bytes);
 
     // Empty bloom filter deterministically returns false
     for (const auto& v : kStringInserts) {
@@ -77,11 +74,8 @@ TEST(BasicTest, TestBloomFilter) {
     // (this is a crude check, see FPPTest below for a more rigorous formula)
     EXPECT_LE(false_positives, 2);
 
-    // Serialize Bloom filter to string bitset
-    std::string data_saved = bloom_filter.GetData();
     // ReBuild Bloom filter from string bitset
-    BlockSplitBloomFilter bloom_filter_new;
-    bloom_filter_new.Init(data_saved);
+    BlockSplitBloomFilter bloom_filter_new(data);
 
     // Lookup previously inserted values
     for (const auto& v : kStringInserts) {
@@ -120,8 +114,7 @@ TEST(FPPTest, TestBloomFilter) {
   const double fpp = 0.01;
 
   std::vector<std::string> members;
-  BlockSplitBloomFilter bloom_filter;
-  bloom_filter.Init(BlockSplitBloomFilter::OptimalNumOfBytes(total_count, fpp));
+  auto [bloom_filter, _] = CreateBlockSplitBloomFilter(BlockSplitBloomFilter::OptimalNumOfBytes(total_count, fpp));
 
   // Insert elements into the Bloom filter
   for (int i = 0; i < total_count; i++) {
@@ -177,8 +170,8 @@ TEST(OptimalValueTest, TestBloomFilter) {
   test_optimal_num_estimation(1500, 0.05, UINT32_C(16384));
 
   // Boundary check
-  test_optimal_num_estimation(4, 0.01, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
-  test_optimal_num_estimation(4, 0.25, BlockSplitBloomFilter::kMinimumBloomFilterBytes * 8);
+  test_optimal_num_estimation(4, 0.01, kMinimumBloomFilterBytes * 8);
+  test_optimal_num_estimation(4, 0.25, kMinimumBloomFilterBytes * 8);
 
   test_optimal_num_estimation(std::numeric_limits<uint32_t>::max(), 0.01, kMaximumBloomFilterBytes * 8);
   test_optimal_num_estimation(std::numeric_limits<uint32_t>::max(), 0.25, kMaximumBloomFilterBytes * 8);

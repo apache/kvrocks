@@ -19,6 +19,7 @@
  */
 
 #include "redis_bloom_chain.h"
+
 #include "types/bloom_filter.h"
 
 namespace redis {

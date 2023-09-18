@@ -37,7 +37,7 @@ OwnedBlockSplitBloomFilter CreateBlockSplitBloomFilter(uint32_t num_bytes) {
   }
 
   std::string data(num_bytes, 0);
-  return {BlockSplitBloomFilter(data), data};
+  return {BlockSplitBloomFilter(data), std::move(data)};
 }
 
 StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(uint8_t* bitset, uint32_t num_bytes) {
@@ -49,7 +49,7 @@ StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(uint8_t* bitset, uin
   return BlockSplitBloomFilter({reinterpret_cast<char*>(bitset), num_bytes});
 }
 
-StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string &bitset) {
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string& bitset) {
   if (bitset.size() < kMinimumBloomFilterBytes || bitset.size() > kMaximumBloomFilterBytes ||
       (bitset.size() & (bitset.size() - 1)) != 0) {
     return {Status::NotOK, "invalid input bitset length"};

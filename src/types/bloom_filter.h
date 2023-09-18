@@ -22,6 +22,7 @@
 #include <memory>
 #include <nonstd/span.hpp>
 #include <string>
+
 #include "status.h"
 
 // Returns the smallest power of two that contains v.  If v is already a
@@ -80,7 +81,7 @@ StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(uint8_t* bitset, uin
 ///
 /// @param bitset The given bitset to initialize the Bloom filter.
 /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
-StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string &bitset);
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string& bitset);
 
 /// The BlockSplitBloomFilter is implemented using block-based Bloom filters from
 /// Putze et al.'s "Cache-,Hash- and Space-Efficient Bloom filters". The basic idea is to
@@ -91,7 +92,7 @@ StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string &bitset)
 class BlockSplitBloomFilter {
  public:
   /// The constructor of BlockSplitBloomFilter. It uses XXH64 as hash function.
-  explicit BlockSplitBloomFilter(nonstd::span<char> data) : data_(data) {};
+  explicit BlockSplitBloomFilter(nonstd::span<char> data) : data_(data){};
 
   /// Calculate optimal size according to the number of distinct values and false
   /// positive probability.

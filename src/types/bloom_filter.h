@@ -65,7 +65,7 @@ using OwnedBlockSplitBloomFilter = std::tuple<BlockSplitBloomFilter, std::string
 OwnedBlockSplitBloomFilter CreateBlockSplitBloomFilter(uint32_t num_bytes);
 
 /// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
-/// bitset because the given bitset may not satisfy the 32-byte alignment requirement
+/// bitset when the given bitset may not satisfy the 32-byte alignment requirement
 /// which may lead to segfault when performing SIMD instructions. It is the caller's
 /// responsibility to free the bitset passed in.
 ///

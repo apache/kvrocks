@@ -171,9 +171,6 @@ class BlockSplitBloomFilter {
   static uint64_t Hash(const char* data, size_t length);
 
  private:
-  // The private constructor of BlockSplitBloomFilter. It's only used for CreateReadOnlyBloomFilter
-  explicit BlockSplitBloomFilter(const std::string& bitset);
-
   // Bytes in a tiny Bloom filter block.
   static constexpr int kBytesPerFilterBlock = 32;
 

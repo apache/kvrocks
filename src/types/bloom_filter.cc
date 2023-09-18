@@ -61,7 +61,7 @@ StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string& bitset)
 bool BlockSplitBloomFilter::FindHash(uint64_t hash) const {
   const auto bucket_index = static_cast<uint32_t>(((hash >> 32) * (data_.size() / kBytesPerFilterBlock)) >> 32);
   const auto key = static_cast<uint32_t>(hash);
-  const auto* bitset32 = reinterpret_cast<const uint32_t*>(data_view_.data());
+  const auto* bitset32 = reinterpret_cast<const uint32_t*>(data_.data());
 
   for (int i = 0; i < kBitsSetPerBlock; ++i) {
     // Calculate mask for key in the given bitset.
@@ -83,10 +83,6 @@ void BlockSplitBloomFilter::InsertHash(uint64_t hash) {
     const uint32_t mask = UINT32_C(0x1) << ((key * SALT[i]) >> 27);
     bitset32[bucket_index * kBitsSetPerBlock + i] |= mask;
   }
-  data_view_ = data_;
 }
 
 uint64_t BlockSplitBloomFilter::Hash(const char* data, size_t length) { return XXH64(data, length, /*seed=*/0); }
-
-BlockSplitBloomFilter::BlockSplitBloomFilter(const std::string& bitset)
-    : data_view_(bitset), num_bytes_(bitset.size()) {}

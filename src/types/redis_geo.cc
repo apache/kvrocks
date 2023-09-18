@@ -188,7 +188,7 @@ rocksdb::Status Geo::Get(const Slice &user_key, const Slice &member, GeoPoint *g
 
   auto iter = geo_points.find(member.ToString());
   if (iter == geo_points.end()) {
-    return rocksdb::Status::NotFound();
+    return rocksdb::Status::InvalidArgument("could not decode requested zset member");
   }
   *geo_point = iter->second;
   return rocksdb::Status::OK();

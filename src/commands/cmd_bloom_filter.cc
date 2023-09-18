@@ -104,6 +104,7 @@ class CommandBFAdd : public Commander {
         break;
       case BloomFilterAddResult::kFull:
         *output = redis::Error("ERR nonscaling filter is full");
+        break;
     }
     return Status::OK();
   }
@@ -136,6 +137,7 @@ class CommandBFMAdd : public Commander {
           break;
         case BloomFilterAddResult::kFull:
           *output += redis::Error("ERR nonscaling filter is full");
+          break;
       }
     }
     return Status::OK();

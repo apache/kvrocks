@@ -108,12 +108,12 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
   batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 }
 
-void BloomChain::bloomAdd(const uint64_t &item_hash, std::string *bf_data) {
+void BloomChain::bloomAdd(uint64_t item_hash, std::string *bf_data) {
   BlockSplitBloomFilter block_split_bloom_filter(*bf_data);
   block_split_bloom_filter.InsertHash(item_hash);
 }
 
-bool BloomChain::bloomCheck(const uint64_t &item_hash, std::string &bf_data) {
+bool BloomChain::bloomCheck(uint64_t item_hash, std::string &bf_data) {
   const BlockSplitBloomFilter block_split_bloom_filter(bf_data);
   return block_split_bloom_filter.FindHash(item_hash);
 }

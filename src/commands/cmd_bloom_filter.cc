@@ -95,10 +95,15 @@ class CommandBFAdd : public Commander {
     auto s = bloom_db.Add(args_[1], args_[2], &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret == BloomFilterAddResult::kFull) {
-      *output = redis::Error("ERR nonscaling filter is full");
-    } else {
-      *output = redis::Integer(ret == BloomFilterAddResult::kOk ? 1 : 0);
+    switch (ret) {
+      case BloomFilterAddResult::kOk:
+        *output = redis::Integer(1);
+        break;
+      case BloomFilterAddResult::kExist:
+        *output = redis::Integer(0);
+        break;
+      case BloomFilterAddResult::kFull:
+        *output = redis::Error("ERR nonscaling filter is full");
     }
     return Status::OK();
   }
@@ -122,10 +127,15 @@ class CommandBFMAdd : public Commander {
 
     *output = redis::MultiLen(items_.size());
     for (size_t i = 0; i < items_.size(); ++i) {
-      if (rets[i] == BloomFilterAddResult::kFull) {
-        *output += Error("ERR nonscaling filter is full");
-      } else {
-        *output += Integer(rets[i] == BloomFilterAddResult::kOk ? 1 : 0);
+      switch (rets[i]) {
+        case BloomFilterAddResult::kOk:
+          *output += redis::Integer(1);
+          break;
+        case BloomFilterAddResult::kExist:
+          *output += redis::Integer(0);
+          break;
+        case BloomFilterAddResult::kFull:
+          *output += redis::Error("ERR nonscaling filter is full");
       }
     }
     return Status::OK();

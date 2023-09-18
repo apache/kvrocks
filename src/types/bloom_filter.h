@@ -20,7 +20,10 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <nonstd/span.hpp>
 #include <string>
+
+#include "status.h"
 
 // Returns the smallest power of two that contains v.  If v is already a
 // power of two, it is returned as is.
@@ -46,6 +49,40 @@ constexpr bool IsMultipleOf8(int64_t n) { return (n & 7) == 0; }
 // This value will be reconsidered when implementing Bloom filter producer.
 static constexpr uint32_t kMaximumBloomFilterBytes = 128 * 1024 * 1024;
 
+/// Minimum Bloom filter size, it sets to 32 bytes to fit a tiny Bloom filter.
+static constexpr uint32_t kMinimumBloomFilterBytes = 32;
+
+class BlockSplitBloomFilter;
+
+using OwnedBlockSplitBloomFilter = std::tuple<BlockSplitBloomFilter, std::string>;
+
+/// Initialize the BlockSplitBloomFilter. The range of num_bytes should be within
+/// [kMinimumBloomFilterBytes, kMaximumBloomFilterBytes], it will be
+/// rounded up/down to lower/upper bound if num_bytes is out of range and also
+/// will be rounded up to a power of 2.
+///
+/// @param num_bytes The number of bytes to store Bloom filter bitset.
+OwnedBlockSplitBloomFilter CreateBlockSplitBloomFilter(uint32_t num_bytes);
+
+/// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
+/// bitset when the given bitset may not satisfy the 32-byte alignment requirement
+/// which may lead to segfault when performing SIMD instructions. It is the caller's
+/// responsibility to free the bitset passed in.
+///
+/// @param bitset The given bitset to initialize the Bloom filter.
+/// @param num_bytes  The number of bytes of given bitset.
+/// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(uint8_t* bitset, uint32_t num_bytes);
+
+/// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
+/// bitset because the given bitset may not satisfy the 32-byte alignment requirement
+/// which may lead to segfault when performing SIMD instructions. It is the caller's
+/// responsibility to free the bitset passed in.
+///
+/// @param bitset The given bitset to initialize the Bloom filter.
+/// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
+StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string& bitset);
+
 /// The BlockSplitBloomFilter is implemented using block-based Bloom filters from
 /// Putze et al.'s "Cache-,Hash- and Space-Efficient Bloom filters". The basic idea is to
 /// hash the item to a tiny Bloom filter which size fit a single cache line or smaller.
@@ -55,44 +92,7 @@ static constexpr uint32_t kMaximumBloomFilterBytes = 128 * 1024 * 1024;
 class BlockSplitBloomFilter {
  public:
   /// The constructor of BlockSplitBloomFilter. It uses XXH64 as hash function.
-  BlockSplitBloomFilter();
-
-  /// Initialize the BlockSplitBloomFilter. The range of num_bytes should be within
-  /// [kMinimumBloomFilterBytes, kMaximumBloomFilterBytes], it will be
-  /// rounded up/down to lower/upper bound if num_bytes is out of range and also
-  /// will be rounded up to a power of 2.
-  ///
-  /// @param num_bytes The number of bytes to store Bloom filter bitset.
-  void Init(uint32_t num_bytes);
-
-  /// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
-  /// bitset because the given bitset may not satisfy the 32-byte alignment requirement
-  /// which may lead to segfault when performing SIMD instructions. It is the caller's
-  /// responsibility to free the bitset passed in.
-  ///
-  /// @param bitset The given bitset to initialize the Bloom filter.
-  /// @param num_bytes  The number of bytes of given bitset.
-  /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
-  bool Init(const uint8_t* bitset, uint32_t num_bytes);
-
-  /// Initialize the BlockSplitBloomFilter. It copies the bitset as underlying
-  /// bitset because the given bitset may not satisfy the 32-byte alignment requirement
-  /// which may lead to segfault when performing SIMD instructions. It is the caller's
-  /// responsibility to free the bitset passed in.
-  ///
-  /// @param bitset The given bitset to initialize the Bloom filter.
-  /// @return false if the number of bytes of Bloom filter bitset is not a power of 2, and true means successfully init
-  bool Init(std::string bitset);
-
-  /// Create the read-only BlockSplitBloomFilter. It use the caller's bitset as underlying bitset. It is the caller's
-  /// responsibility to ensure the bitset would not to change.
-  ///
-  /// @param bitset The given bitset for the Bloom filter underlying bitset.
-  /// @return the unique_ptr of the const non-owned BlockSplitBloomFilter
-  static std::unique_ptr<const BlockSplitBloomFilter> CreateReadOnlyBloomFilter(const std::string& bitset);
-
-  /// Minimum Bloom filter size, it sets to 32 bytes to fit a tiny Bloom filter.
-  static constexpr uint32_t kMinimumBloomFilterBytes = 32;
+  explicit BlockSplitBloomFilter(nonstd::span<char> data) : data_(data){};
 
   /// Calculate optimal size according to the number of distinct values and false
   /// positive probability.
@@ -156,14 +156,12 @@ class BlockSplitBloomFilter {
   /// @param hash the hash of value to insert into Bloom filter.
   void InsertHash(uint64_t hash);
 
-  uint32_t GetBitsetSize() const { return num_bytes_; }
+  uint32_t GetBitsetSize() const { return data_.size(); }
 
   /// Get the plain bitset value from the Bloom filter bitset.
   ///
   /// @return bitset value;
-  const std::string& GetData() const& { return data_; }
-
-  std::string&& GetData() && { return std::move(data_); }
+  std::string_view GetData() const { return {data_.data(), data_.size()}; }
 
   /// Compute hash for string value by using its plain encoding result.
   ///
@@ -188,11 +186,5 @@ class BlockSplitBloomFilter {
                                                       0x705495c7U, 0x2df1424bU, 0x9efc4947U, 0x5c6bfb31U};
 
   // The underlying buffer of bitset.
-  std::string data_;
-
-  // The view of data_
-  std::string_view data_view_;
-
-  // The number of bytes of Bloom filter bitset.
-  uint32_t num_bytes_;
+  nonstd::span<char> data_;
 };

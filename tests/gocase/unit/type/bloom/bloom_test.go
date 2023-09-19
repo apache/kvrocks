@@ -167,12 +167,14 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "25", "nonscaling").Err())
 
-		// insert items, suppose false positives is 0
+		// insert items
+		var insertNum int64 = 0
 		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1)}, rdb.Do(ctx, "bf.madd", key, "x", "y", "z", "k").Val())
-		for i := 0; i < 10; i++ {
+		for insertNum < 24 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.madd", key, buf, buf+"xx")
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, int64(24), rdb.Do(ctx, "bf.card", key).Val())
 
@@ -195,11 +197,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "30", "expansion", "2").Err())
 
-		// insert items, suppose false positives is 0
-		for i := 0; i < 10; i++ {
+		// insert items
+		var insertNum int64 = 0
+		for insertNum < 30 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.madd", key, buf, buf+"xx", buf+"yy")
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, []interface{}{"Capacity", int64(30), "Size", int64(128), "Number of filters", int64(1), "Number of items inserted", int64(30), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
@@ -207,11 +211,12 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxx").Err())
 		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(31), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
-		// insert items, suppose false positives is 0
-		for i := 0; i < 59; i++ {
+		// insert items
+		for insertNum < 90 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.add", key, buf)
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(90), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 		// add the existed value would not scaling
@@ -299,11 +304,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "nonscaling").Err())
 
-		// insert items, suppose false positives is 0
-		for i := 0; i < 50; i++ {
+		// insert items
+		var insertNum int64 = 0
+		for insertNum < 50 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.add", key, buf)
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, int64(50), rdb.Do(ctx, "bf.info", key, "items").Val())
 		require.ErrorContains(t, rdb.Do(ctx, "bf.add", key, "xxx").Err(), "ERR nonscaling filter is full")
@@ -314,11 +321,13 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "50", "expansion", "2").Err())
 
-		// insert items, suppose false positives is 0
-		for i := 0; i < 50; i++ {
+		// insert items
+		var insertNum int64 = 0
+		for insertNum < 50 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.add", key, buf)
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, []interface{}{"Capacity", int64(50), "Size", int64(256), "Number of filters", int64(1), "Number of items inserted", int64(50), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
@@ -326,11 +335,12 @@ func TestBloom(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxx").Err())
 		require.Equal(t, []interface{}{"Capacity", int64(150), "Size", int64(768), "Number of filters", int64(2), "Number of items inserted", int64(51), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
-		// insert items, suppose false positives is 0
-		for i := 0; i < 99; i++ {
+		// insert items
+		for insertNum < 150 {
 			buf := util.RandString(7, 8, util.Alpha)
 			Add := rdb.Do(ctx, "bf.add", key, buf)
 			require.NoError(t, Add.Err())
+			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
 		}
 		require.Equal(t, []interface{}{"Capacity", int64(150), "Size", int64(768), "Number of filters", int64(2), "Number of items inserted", int64(150), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 

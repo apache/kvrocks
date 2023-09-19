@@ -891,7 +891,40 @@ void Server::GetReplicationInfo(std::string *info) {
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
-    string_stream << "master_link_status:" << (state == kReplConnected ? "up" : "down") << "\r\n";
+    std::string master_link_status;
+    switch (state) {
+      case kReplConnected:
+        master_link_status = "up";
+        break;
+      case kReplFetchMeta:
+        master_link_status = "fetch_meta";
+        break;
+      case kReplFetchSST:
+        master_link_status = "fetch_sst";
+        break;
+      case kReplError:
+        master_link_status = "error";
+        break;
+      case kReplConnecting:
+        master_link_status = "connecting";
+        break;
+      case kReplCheckDBName:
+        master_link_status = "check_db_name";
+        break;
+      case kReplSendAuth:
+        master_link_status = "send_auth";
+        break;
+      case kReplSendPSync:
+        master_link_status = "send_psync";
+        break;
+      case kReplReplConf:
+        master_link_status = "repl_conf";
+        break;
+      default:
+        master_link_status = "unknown";
+        break;
+    }
+    string_stream << "master_link_status:" << master_link_status << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
     string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";

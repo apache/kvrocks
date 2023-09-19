@@ -39,6 +39,12 @@ enum class BloomInfoType {
   kExpansion,
 };
 
+enum class BloomFilterAddResult {
+  kOk,
+  kExist,
+  kFull,
+};
+
 struct BloomFilterInfo {
   uint32_t capacity;
   uint32_t bloom_bytes;
@@ -51,26 +57,27 @@ class BloomChain : public Database {
  public:
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
-  rocksdb::Status Add(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status Exists(const Slice &user_key, const Slice &item, int *ret);
-  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<int> *rets);
+  rocksdb::Status Add(const Slice &user_key, const Slice &item, BloomFilterAddResult *ret);
+  rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<BloomFilterAddResult> *rets);
+  rocksdb::Status Exists(const Slice &user_key, const Slice &item, bool *exist);
+  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<bool> *exists);
   rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);
 
  private:
+  rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
   std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);
   void getBFKeyList(const Slice &ns_key, const BloomChainMetadata &metadata, std::vector<std::string> *bf_key_list);
-  rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
+  rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list, std::vector<std::string> *bf_data_list);
+  static void getItemHashList(const std::vector<Slice> &items, std::vector<uint64_t> *item_hash_list);
+
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                    BloomChainMetadata *metadata);
   void createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadata *metadata,
                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data);
 
   /// bf_data: [in/out] The content string of bloomfilter.
-  static void bloomAdd(const Slice &item, std::string *bf_data);
+  static void bloomAdd(uint64_t item_hash, std::string &bf_data);
 
-  /// exists: [in/out] The items exist in bloomfilter already or not.
-  /// exists[i] is true means items[i] exists in other bloomfilter already, and it's not necessary to check in this
-  /// bloomfilter.
-  rocksdb::Status bloomCheck(const Slice &bf_key, const std::vector<Slice> &items, std::vector<bool> *exists);
+  static bool bloomCheck(uint64_t item_hash, std::string &bf_data);
 };
 }  // namespace redis

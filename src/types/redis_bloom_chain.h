@@ -45,6 +45,13 @@ enum class BloomFilterAddResult {
   kFull,
 };
 
+struct BloomFilterInsertOptions {
+  double error_rate = kBFDefaultErrorRate;
+  uint32_t capacity = kBFDefaultInitCapacity;
+  uint16_t expansion = kBFDefaultExpansion;
+  bool auto_create = true;
+};
+
 struct BloomFilterInfo {
   uint32_t capacity;
   uint32_t bloom_bytes;
@@ -59,6 +66,8 @@ class BloomChain : public Database {
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
   rocksdb::Status Add(const Slice &user_key, const Slice &item, BloomFilterAddResult *ret);
   rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<BloomFilterAddResult> *rets);
+  rocksdb::Status InsertCommon(const Slice &user_key, const std::vector<Slice> &items,
+                               const BloomFilterInsertOptions &insert_options, std::vector<BloomFilterAddResult> *rets);
   rocksdb::Status Exists(const Slice &user_key, const Slice &item, bool *exist);
   rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<bool> *exists);
   rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);

@@ -141,14 +141,22 @@ rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, BloomF
 
 rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice> &items,
                                  std::vector<BloomFilterAddResult> *rets) {
+  BloomFilterInsertOptions insert_options;
+  return InsertCommon(user_key, items, insert_options, rets);
+}
+
+rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vector<Slice> &items,
+                                         const BloomFilterInsertOptions &insert_options,
+                                         std::vector<BloomFilterAddResult> *rets) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
 
-  if (s.IsNotFound()) {
-    s = createBloomChain(ns_key, kBFDefaultErrorRate, kBFDefaultInitCapacity, kBFDefaultExpansion, &metadata);
+  if (s.IsNotFound() && insert_options.auto_create) {
+    s = createBloomChain(ns_key, insert_options.error_rate, insert_options.capacity, insert_options.expansion,
+                         &metadata);
   }
   if (!s.ok()) return s;
 

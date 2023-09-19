@@ -31,7 +31,7 @@ class CommandBFReserve : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_error_rate = ParseFloat<double>(args[2]);
     if (!parse_error_rate) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
+      return {Status::RedisParseErr, "Bad error rate"};
     }
     error_rate_ = *parse_error_rate;
     if (error_rate_ >= 1 || error_rate_ <= 0) {
@@ -40,7 +40,7 @@ class CommandBFReserve : public Commander {
 
     auto parse_capacity = ParseInt<uint32_t>(args[3], 10);
     if (!parse_capacity) {
-      return {Status::RedisParseErr, errValueNotInteger};
+      return {Status::RedisParseErr, "Bad capacity"};
     }
     capacity_ = *parse_capacity;
     if (capacity_ <= 0) {
@@ -56,7 +56,11 @@ class CommandBFReserve : public Commander {
         expansion_ = 0;
       } else if (parser.EatEqICase("expansion")) {
         has_expansion = true;
-        expansion_ = GET_OR_RET(parser.TakeInt<uint16_t>());
+        auto parse_expansion = parser.TakeInt<uint16_t>();
+        if (!parse_expansion.IsOK()) {
+          return {Status::RedisParseErr, "Bad expansion"};
+        }
+        expansion_ = parse_expansion.GetValue();
         if (expansion_ < 1) {
           return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
         }
@@ -145,6 +149,103 @@ class CommandBFMAdd : public Commander {
 
  private:
   std::vector<Slice> items_;
+};
+
+class CommandBFInsert : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    bool is_nonscaling = false;
+    bool has_expansion = false;
+    while (parser.Good()) {
+      if (parser.EatEqICase("capacity")) {
+        auto parse_capacity = parser.TakeInt<uint32_t>();
+        if (!parse_capacity.IsOK()) {
+          return {Status::RedisParseErr, "Bad capacity"};
+        }
+        insert_options_.capacity = parse_capacity.GetValue();
+        if (insert_options_.capacity <= 0) {
+          return {Status::RedisParseErr, "capacity should be larger than 0"};
+        }
+      } else if (parser.EatEqICase("error")) {
+        auto parse_error_rate = parser.TakeFloat<double>();
+        if (!parse_error_rate.IsOK()) {
+          return {Status::RedisParseErr, "Bad error rate"};
+        }
+        insert_options_.error_rate = parse_error_rate.GetValue();
+        if (insert_options_.error_rate >= 1 || insert_options_.error_rate <= 0) {
+          return {Status::RedisParseErr, "error rate should be between 0 and 1"};
+        }
+      } else if (parser.EatEqICase("nocreate")) {
+        insert_options_.auto_create = false;
+      } else if (parser.EatEqICase("nonscaling")) {
+        is_nonscaling = true;
+        insert_options_.expansion = 0;
+      } else if (parser.EatEqICase("expansion")) {
+        has_expansion = true;
+        auto parse_expansion = parser.TakeInt<uint16_t>();
+        if (!parse_expansion.IsOK()) {
+          return {Status::RedisParseErr, "Bad expansion"};
+        }
+        insert_options_.expansion = parse_expansion.GetValue();
+        if (insert_options_.expansion < 1) {
+          return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
+        }
+      } else if (parser.EatEqICase("items")) {
+        break;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (is_nonscaling && has_expansion) {
+      return {Status::RedisParseErr, "nonscaling filters cannot expand"};
+    }
+
+    auto items_begin =
+        find_if(args.begin(), args.end(), [](std::string_view lhs) { return lhs == "items" || lhs == "ITEMS"; });
+
+    if (items_begin == args.end()) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+    items_.reserve(args_.end() - items_begin);
+    for (auto item_iter = items_begin + 1; item_iter < args.end(); ++item_iter) {
+      items_.emplace_back(*item_iter);
+    }
+    if (items_.size() == 0) {
+      return {Status::RedisParseErr, "num of items should be greater than 0"};
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<BloomFilterAddResult> rets(items_.size(), BloomFilterAddResult::kOk);
+    auto s = bloom_db.InsertCommon(args_[1], items_, insert_options_, &rets);
+    if (s.IsNotFound()) return {Status::RedisExecErr, "key is not found"};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(items_.size());
+    for (size_t i = 0; i < items_.size(); ++i) {
+      switch (rets[i]) {
+        case BloomFilterAddResult::kOk:
+          *output += redis::Integer(1);
+          break;
+        case BloomFilterAddResult::kExist:
+          *output += redis::Integer(0);
+          break;
+        case BloomFilterAddResult::kFull:
+          *output += redis::Error("ERR nonscaling filter is full");
+          break;
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> items_;
+  BloomFilterInsertOptions insert_options_;
 };
 
 class CommandBFExists : public Commander {
@@ -277,6 +378,7 @@ class CommandBFCard : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFMAdd>("bf.madd", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBFInsert>("bf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBFMExists>("bf.mexists", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1),

@@ -108,8 +108,8 @@ void BloomChain::createBloomFilterInBatch(const Slice &ns_key, BloomChainMetadat
   batch->Put(metadata_cf_handle_, ns_key, bloom_chain_meta_bytes);
 }
 
-void BloomChain::bloomAdd(uint64_t item_hash, std::string *bf_data) {
-  BlockSplitBloomFilter block_split_bloom_filter(*bf_data);
+void BloomChain::bloomAdd(uint64_t item_hash, std::string &bf_data) {
+  BlockSplitBloomFilter block_split_bloom_filter(bf_data);
   block_split_bloom_filter.InsertHash(item_hash);
 }
 
@@ -192,7 +192,7 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
           continue;
         }
       }
-      bloomAdd(item_hash_list[i], &bf_data_list.back());
+      bloomAdd(item_hash_list[i], bf_data_list.back());
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }

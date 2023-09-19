@@ -76,7 +76,7 @@ class BloomChain : public Database {
                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch, std::string *bf_data);
 
   /// bf_data: [in/out] The content string of bloomfilter.
-  static void bloomAdd(uint64_t item_hash, std::string *bf_data);
+  static void bloomAdd(uint64_t item_hash, std::string &bf_data);
 
   static bool bloomCheck(uint64_t item_hash, std::string &bf_data);
 };

@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,17 +43,16 @@ func FindInfoEntry(rdb *redis.Client, key string, section ...string) string {
 }
 
 func WaitForSync(t testing.TB, slave *redis.Client) {
-	require.Eventually(t, func() bool {
-		r := FindInfoEntry(slave, "master_link_status")
-		return r == "up"
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, "up", FindInfoEntry(slave, "master_link_status"))
 	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func WaitForOffsetSync(t testing.TB, master, slave *redis.Client) {
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		o1 := FindInfoEntry(master, "master_repl_offset")
 		o2 := FindInfoEntry(slave, "master_repl_offset")
-		return o1 == o2
+		assert.Equal(c, o1, o2)
 	}, 10*time.Second, 100*time.Millisecond)
 }
 

@@ -85,8 +85,8 @@ class Commander {
 };
 
 class BlockedPopCommander : public Commander,
-                          private EvbufCallbackBase<BlockedPopCommander, false>,
-                          private EventCallbackBase<BlockedPopCommander> {
+                            private EvbufCallbackBase<BlockedPopCommander, false>,
+                            private EventCallbackBase<BlockedPopCommander> {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) final;
 
@@ -105,9 +105,7 @@ class BlockedPopCommander : public Commander,
 
   virtual std::string emptyOutput() = 0;
 
-  void setTimeout(int64_t timeout) {
-    timeout_ = timeout;
-  }
+  void setTimeout(int64_t timeout) { timeout_ = timeout; }
 
   Server *svr_ = nullptr;
   Connection *conn_ = nullptr;

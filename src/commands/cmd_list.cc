@@ -426,9 +426,7 @@ class CommandBLMPop : public BlockedPopCommander {
     return s;
   }
 
-  std::string emptyOutput() override {
-    return redis::NilString();
-  }
+  std::string emptyOutput() override { return redis::NilString(); }
 
   void blockAllKeys() override {
     for (const auto &key : keys_) {

@@ -87,7 +87,6 @@ void BlockedPopCommander::OnWrite(bufferevent *bev) {
   bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
 }
 
-
 void BlockedPopCommander::OnEvent(bufferevent *bev, int16_t events) {
   if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
     if (timer_ != nullptr) {

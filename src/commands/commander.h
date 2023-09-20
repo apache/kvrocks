@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "event_util.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "status.h"
@@ -81,6 +82,39 @@ class Commander {
  protected:
   std::vector<std::string> args_;
   const CommandAttributes *attributes_ = nullptr;
+};
+
+class BlockedPopCommander : public Commander,
+                          private EvbufCallbackBase<BlockedPopCommander, false>,
+                          private EventCallbackBase<BlockedPopCommander> {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) final;
+
+  void OnWrite(bufferevent *bev);
+
+  void OnEvent(bufferevent *bev, int16_t events);
+
+  void TimerCB(int, int16_t events);
+
+ protected:
+  virtual rocksdb::Status executeUnblocked() = 0;
+
+  virtual void blockAllKeys() = 0;
+
+  virtual void unblockAllKeys() = 0;
+
+  virtual std::string emptyOutput() = 0;
+
+  void setTimeout(int64_t timeout) {
+    timeout_ = timeout;
+  }
+
+  Server *svr_ = nullptr;
+  Connection *conn_ = nullptr;
+
+ private:
+  int64_t timeout_ = 0;  // microseconds
+  UniqueEvent timer_;
 };
 
 class CommanderWithParseMove : Commander {

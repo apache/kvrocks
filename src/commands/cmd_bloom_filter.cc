@@ -91,24 +91,71 @@ class CommandBFAdd : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
+    BloomFilterAddResult ret = BloomFilterAddResult::kOk;
     auto s = bloom_db.Add(args_[1], args_[2], &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::Integer(ret);
+    switch (ret) {
+      case BloomFilterAddResult::kOk:
+        *output = redis::Integer(1);
+        break;
+      case BloomFilterAddResult::kExist:
+        *output = redis::Integer(0);
+        break;
+      case BloomFilterAddResult::kFull:
+        *output = redis::Error("ERR nonscaling filter is full");
+        break;
+    }
     return Status::OK();
   }
+};
+
+class CommandBFMAdd : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    items_.reserve(args_.size() - 2);
+    for (size_t i = 2; i < args_.size(); ++i) {
+      items_.emplace_back(args_[i]);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
+    std::vector<BloomFilterAddResult> rets(items_.size(), BloomFilterAddResult::kOk);
+    auto s = bloom_db.MAdd(args_[1], items_, &rets);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(items_.size());
+    for (size_t i = 0; i < items_.size(); ++i) {
+      switch (rets[i]) {
+        case BloomFilterAddResult::kOk:
+          *output += redis::Integer(1);
+          break;
+        case BloomFilterAddResult::kExist:
+          *output += redis::Integer(0);
+          break;
+        case BloomFilterAddResult::kFull:
+          *output += redis::Error("ERR nonscaling filter is full");
+          break;
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> items_;
 };
 
 class CommandBFExists : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    int ret = 0;
-    auto s = bloom_db.Exists(args_[1], args_[2], &ret);
+    bool exist = false;
+    auto s = bloom_db.Exists(args_[1], args_[2], &exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::Integer(ret);
+    *output = redis::Integer(exist ? 1 : 0);
     return Status::OK();
   }
 };
@@ -125,11 +172,14 @@ class CommandBFMExists : public Commander {
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::BloomChain bloom_db(svr->storage, conn->GetNamespace());
-    std::vector<int> rets(items_.size(), 0);
-    auto s = bloom_db.MExists(args_[1], items_, &rets);
+    std::vector<bool> exists(items_.size(), false);
+    auto s = bloom_db.MExists(args_[1], items_, &exists);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::MultiInteger(rets);
+    *output = redis::MultiLen(items_.size());
+    for (size_t i = 0; i < items_.size(); ++i) {
+      *output += Integer(exists[i] ? 1 : 0);
+    }
     return Status::OK();
   }
 
@@ -226,6 +276,7 @@ class CommandBFCard : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBFMAdd>("bf.madd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFExists>("bf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBFMExists>("bf.mexists", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBFInfo>("bf.info", -2, "read-only", 1, 1, 1),

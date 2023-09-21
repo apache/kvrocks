@@ -64,12 +64,13 @@ class BloomChain : public Database {
  public:
   BloomChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Reserve(const Slice &user_key, uint32_t capacity, double error_rate, uint16_t expansion);
-  rocksdb::Status Add(const Slice &user_key, const Slice &item, BloomFilterAddResult *ret);
-  rocksdb::Status MAdd(const Slice &user_key, const std::vector<Slice> &items, std::vector<BloomFilterAddResult> *rets);
-  rocksdb::Status InsertCommon(const Slice &user_key, const std::vector<Slice> &items,
+  rocksdb::Status Add(const Slice &user_key, const std::string &item, BloomFilterAddResult *ret);
+  rocksdb::Status MAdd(const Slice &user_key, const std::vector<std::string> &items,
+                       std::vector<BloomFilterAddResult> *rets);
+  rocksdb::Status InsertCommon(const Slice &user_key, const std::vector<std::string> &items,
                                const BloomFilterInsertOptions &insert_options, std::vector<BloomFilterAddResult> *rets);
-  rocksdb::Status Exists(const Slice &user_key, const Slice &item, bool *exist);
-  rocksdb::Status MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<bool> *exists);
+  rocksdb::Status Exists(const Slice &user_key, const std::string &item, bool *exist);
+  rocksdb::Status MExists(const Slice &user_key, const std::vector<std::string> &items, std::vector<bool> *exists);
   rocksdb::Status Info(const Slice &user_key, BloomFilterInfo *info);
 
  private:
@@ -77,7 +78,7 @@ class BloomChain : public Database {
   std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);
   void getBFKeyList(const Slice &ns_key, const BloomChainMetadata &metadata, std::vector<std::string> *bf_key_list);
   rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list, std::vector<std::string> *bf_data_list);
-  static void getItemHashList(const std::vector<Slice> &items, std::vector<uint64_t> *item_hash_list);
+  static void getItemHashList(const std::vector<std::string> &items, std::vector<uint64_t> *item_hash_list);
 
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
                                    BloomChainMetadata *metadata);

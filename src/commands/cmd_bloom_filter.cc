@@ -160,7 +160,7 @@ class CommandBFMAdd : public Commander {
   }
 
  private:
-  std::vector<Slice> items_;
+  std::vector<std::string> items_;
 };
 
 class CommandBFInsert : public Commander {
@@ -222,7 +222,7 @@ class CommandBFInsert : public Commander {
 
     items_.reserve(args_.size() - 3);
     while (parser.Good()) {
-      items_.emplace_back(parser.RawTake());
+      items_.emplace_back(GET_OR_RET(parser.TakeStr()));
     }
 
     if (items_.size() == 0) {
@@ -257,7 +257,7 @@ class CommandBFInsert : public Commander {
   }
 
  private:
-  std::vector<Slice> items_;
+  std::vector<std::string> items_;
   BloomFilterInsertOptions insert_options_;
 };
 
@@ -298,7 +298,7 @@ class CommandBFMExists : public Commander {
   }
 
  private:
-  std::vector<Slice> items_;
+  std::vector<std::string> items_;
 };
 
 class CommandBFInfo : public Commander {

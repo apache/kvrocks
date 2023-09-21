@@ -24,6 +24,18 @@
 #include "server/server.h"
 #include "types/redis_bloom_chain.h"
 
+namespace {
+
+constexpr const char *errBadErrorRate = "Bad error rate";
+constexpr const char *errBadCapacity = "Bad capacity";
+constexpr const char *errBadExpansion = "Bad expansion";
+constexpr const char *errInvalidErrorRate = "error rate should be between 0 and 1";
+constexpr const char *errInvalidCapacity = "capacity should be larger than 0";
+constexpr const char *errInvalidExpansion = "expansion should be greater or equal to 1";
+constexpr const char *errNonscalingButExpand = "nonscaling filters cannot expand";
+constexpr const char *errFilterFull = "ERR nonscaling filter is full";
+}  // namespace
+
 namespace redis {
 
 class CommandBFReserve : public Commander {
@@ -31,20 +43,20 @@ class CommandBFReserve : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_error_rate = ParseFloat<double>(args[2]);
     if (!parse_error_rate) {
-      return {Status::RedisParseErr, "Bad error rate"};
+      return {Status::RedisParseErr, errBadErrorRate};
     }
     error_rate_ = *parse_error_rate;
     if (error_rate_ >= 1 || error_rate_ <= 0) {
-      return {Status::RedisParseErr, "error rate should be between 0 and 1"};
+      return {Status::RedisParseErr, errInvalidErrorRate};
     }
 
     auto parse_capacity = ParseInt<uint32_t>(args[3], 10);
     if (!parse_capacity) {
-      return {Status::RedisParseErr, "Bad capacity"};
+      return {Status::RedisParseErr, errBadCapacity};
     }
     capacity_ = *parse_capacity;
     if (capacity_ <= 0) {
-      return {Status::RedisParseErr, "capacity should be larger than 0"};
+      return {Status::RedisParseErr, errInvalidCapacity};
     }
 
     CommandParser parser(args, 4);
@@ -58,11 +70,11 @@ class CommandBFReserve : public Commander {
         has_expansion = true;
         auto parse_expansion = parser.TakeInt<uint16_t>();
         if (!parse_expansion.IsOK()) {
-          return {Status::RedisParseErr, "Bad expansion"};
+          return {Status::RedisParseErr, errBadExpansion};
         }
         expansion_ = parse_expansion.GetValue();
         if (expansion_ < 1) {
-          return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
+          return {Status::RedisParseErr, errInvalidExpansion};
         }
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -70,7 +82,7 @@ class CommandBFReserve : public Commander {
     }
 
     if (is_nonscaling && has_expansion) {
-      return {Status::RedisParseErr, "nonscaling filters cannot expand"};
+      return {Status::RedisParseErr, errNonscalingButExpand};
     }
 
     return Commander::Parse(args);
@@ -107,7 +119,7 @@ class CommandBFAdd : public Commander {
         *output = redis::Integer(0);
         break;
       case BloomFilterAddResult::kFull:
-        *output = redis::Error("ERR nonscaling filter is full");
+        *output = redis::Error(errFilterFull);
         break;
     }
     return Status::OK();
@@ -140,7 +152,7 @@ class CommandBFMAdd : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error("ERR nonscaling filter is full");
+          *output += redis::Error(errFilterFull);
           break;
       }
     }
@@ -157,24 +169,25 @@ class CommandBFInsert : public Commander {
     CommandParser parser(args, 2);
     bool is_nonscaling = false;
     bool has_expansion = false;
+    bool has_items = false;
     while (parser.Good()) {
       if (parser.EatEqICase("capacity")) {
         auto parse_capacity = parser.TakeInt<uint32_t>();
         if (!parse_capacity.IsOK()) {
-          return {Status::RedisParseErr, "Bad capacity"};
+          return {Status::RedisParseErr, errBadCapacity};
         }
         insert_options_.capacity = parse_capacity.GetValue();
         if (insert_options_.capacity <= 0) {
-          return {Status::RedisParseErr, "capacity should be larger than 0"};
+          return {Status::RedisParseErr, errInvalidCapacity};
         }
       } else if (parser.EatEqICase("error")) {
         auto parse_error_rate = parser.TakeFloat<double>();
         if (!parse_error_rate.IsOK()) {
-          return {Status::RedisParseErr, "Bad error rate"};
+          return {Status::RedisParseErr, errBadErrorRate};
         }
         insert_options_.error_rate = parse_error_rate.GetValue();
         if (insert_options_.error_rate >= 1 || insert_options_.error_rate <= 0) {
-          return {Status::RedisParseErr, "error rate should be between 0 and 1"};
+          return {Status::RedisParseErr, errInvalidErrorRate};
         }
       } else if (parser.EatEqICase("nocreate")) {
         insert_options_.auto_create = false;
@@ -185,13 +198,14 @@ class CommandBFInsert : public Commander {
         has_expansion = true;
         auto parse_expansion = parser.TakeInt<uint16_t>();
         if (!parse_expansion.IsOK()) {
-          return {Status::RedisParseErr, "Bad expansion"};
+          return {Status::RedisParseErr, errBadExpansion};
         }
         insert_options_.expansion = parse_expansion.GetValue();
         if (insert_options_.expansion < 1) {
-          return {Status::RedisParseErr, "expansion should be greater or equal to 1"};
+          return {Status::RedisParseErr, errInvalidExpansion};
         }
       } else if (parser.EatEqICase("items")) {
+        has_items = true;
         break;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -199,19 +213,18 @@ class CommandBFInsert : public Commander {
     }
 
     if (is_nonscaling && has_expansion) {
-      return {Status::RedisParseErr, "nonscaling filters cannot expand"};
+      return {Status::RedisParseErr, errNonscalingButExpand};
     }
 
-    auto items_begin =
-        find_if(args.begin(), args.end(), [](std::string_view lhs) { return lhs == "items" || lhs == "ITEMS"; });
-
-    if (items_begin == args.end()) {
+    if (not has_items) {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
-    items_.reserve(args_.end() - items_begin);
-    for (auto item_iter = items_begin + 1; item_iter < args.end(); ++item_iter) {
-      items_.emplace_back(*item_iter);
+
+    items_.reserve(args_.size() - 3);
+    while (parser.Good()) {
+      items_.emplace_back(parser.RawTake());
     }
+
     if (items_.size() == 0) {
       return {Status::RedisParseErr, "num of items should be greater than 0"};
     }
@@ -236,7 +249,7 @@ class CommandBFInsert : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error("ERR nonscaling filter is full");
+          *output += redis::Error(errFilterFull);
           break;
       }
     }

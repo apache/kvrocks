@@ -18,7 +18,9 @@
 # under the License.
 
 # Settings
-BIN_PATH="../../build/"
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+BIN_PATH="$SCRIPT_DIR/../../build/"
+DEFAULT_CONF_PATH="$SCRIPT_DIR/default.conf"
 HOST=127.0.0.1
 PORT=30000
 NODES=6
@@ -60,7 +62,7 @@ then
         echo "Starting $PORT"
         mkdir node_${PORT}
         conf_file="node_${PORT}.conf"
-        cp ./default.conf ${conf_file}
+        cp ${DEFAULT_CONF_PATH} ${conf_file}
         sed -i.bak "s|pidfile.*|pidfile  node_${PORT}.pid|g" ${conf_file} && rm ${conf_file}.bak
         sed -i.bak "s|port.*|port ${PORT}|g" ${conf_file} && rm ${conf_file}.bak
         sed -i.bak "s|dir.*|dir "node_${PORT}"|g" ${conf_file} && rm ${conf_file}.bak

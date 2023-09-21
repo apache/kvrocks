@@ -839,8 +839,8 @@ Status ReplicationThread::sendAuth(int sock_fd, ssl_st *ssl) {
     auto s = util::SockSend(sock_fd, auth_command, ssl);
     if (!s.IsOK()) return s.Prefixed("send auth command err");
     while (true) {
-      if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
-        return Status::FromErrno("read auth response err");
+      if (auto s = util::EvbufferRead(evbuf.get(), sock_fd, -1, ssl); !s) {
+        return std::move(s).Prefixed("read auth response err");
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;

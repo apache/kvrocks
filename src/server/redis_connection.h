@@ -93,7 +93,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   int GetListeningPort() const { return listening_port_; }
   void SetAnnounceIP(std::string ip) { announce_ip_ = std::move(ip); }
   std::string GetAnnounceIP() const { return !announce_ip_.empty() ? announce_ip_ : ip_; }
-  std::string GetAnnounceAddr() const { return GetAnnounceIP() + ":" + std::to_string(listening_port_); }
+  uint32_t GetAnnouncePort() const { return listening_port_ != 0 ? listening_port_ : port_; }
+  std::string GetAnnounceAddr() const { return GetAnnounceIP() + ":" + std::to_string(GetAnnouncePort()); }
   uint64_t GetClientType() const;
   Server *GetServer() { return svr_; }
 

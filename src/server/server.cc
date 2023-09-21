@@ -908,7 +908,7 @@ void Server::GetReplicationInfo(std::string *info) {
     if (slave->IsStopped()) continue;
 
     string_stream << "slave" << std::to_string(idx) << ":";
-    string_stream << "ip=" << slave->GetConn()->GetAnnounceIP() << ",port=" << slave->GetConn()->GetListeningPort()
+    string_stream << "ip=" << slave->GetConn()->GetAnnounceIP() << ",port=" << slave->GetConn()->GetAnnouncePort()
                   << ",offset=" << slave->GetCurrentReplSeq() << ",lag=" << latest_seq - slave->GetCurrentReplSeq()
                   << "\r\n";
     ++idx;

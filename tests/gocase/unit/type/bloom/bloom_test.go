@@ -44,16 +44,16 @@ func TestBloom(t *testing.T) {
 
 	t.Run("Reserve a bloom filter with wrong error_rate", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "abc", "1000").Err(), "ERR value is not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "abc", "1000").Err(), "ERR Bad error rate")
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "-0.03", "1000").Err(), "ERR error rate should be between 0 and 1")
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "1", "1000").Err(), "ERR error rate should be between 0 and 1")
 	})
 
 	t.Run("Reserve a bloom filter with wrong capacity", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "qwe").Err(), "ERR value is not an integer")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "qwe").Err(), "ERR Bad capacity")
 		// capacity stored in uint32_t, if input is negative, the parser will make an error.
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "-1000").Err(), "ERR value is not an integer or out of range")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "-1000").Err(), "ERR Bad capacity")
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "0").Err(), "ERR capacity should be larger than 0")
 	})
 
@@ -69,12 +69,12 @@ func TestBloom(t *testing.T) {
 
 	t.Run("Reserve a bloom filter with wrong expansion", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion").Err(), "ERR no more item to parse")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion").Err(), "Bad expansion")
 		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "0").Err(), "ERR expansion should be greater or equal to 1")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "asd").Err(), "ERR not started as an integer")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "-1").Err(), "ERR out of range of integer type")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "1.5").Err(), "ERR encounter non-integer characters")
-		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "123asd").Err(), "ERR encounter non-integer characters")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "asd").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "-1").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "1.5").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.reserve", key, "0.01", "1000", "expansion", "123asd").Err(), "ERR Bad expansion")
 	})
 
 	t.Run("Reserve a bloom filter with nonscaling and expansion", func(t *testing.T) {
@@ -225,6 +225,84 @@ func TestBloom(t *testing.T) {
 		// bloom filter is full and scaling
 		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxxx").Err())
 		require.Equal(t, []interface{}{"Capacity", int64(210), "Size", int64(896), "Number of filters", int64(3), "Number of items inserted", int64(91), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
+	t.Run("Insert but not create", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "nocreate", "items", "items1").Err(), "key is not found")
+
+	})
+
+	t.Run("Insert with error_rate", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "error", "abc", "items", "items1").Err(), "ERR Bad error rate")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "error", "-0.03", "items", "items1").Err(), "ERR error rate should be between 0 and 1")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "error", "1", "items", "items1").Err(), "ERR error rate should be between 0 and 1")
+
+		require.NoError(t, rdb.Do(ctx, "bf.insert", key, "error", "0.0001", "items", "items1").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(100), "Size", int64(512), "Number of filters", int64(1), "Number of items inserted", int64(1), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
+	t.Run("Insert with capacity", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "capacity", "qwe", "items", "items1").Err(), "ERR Bad capacity")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "capacity", "-1000", "items", "items1").Err(), "ERR Bad capacity")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "capacity", "0", "items", "items1").Err(), "ERR capacity should be larger than 0")
+
+		require.NoError(t, rdb.Do(ctx, "bf.insert", key, "capacity", "200", "items", "items1").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(200), "Size", int64(256), "Number of filters", int64(1), "Number of items inserted", int64(1), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
+	t.Run("Insert with nonscaling", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.insert", key, "nonscaling", "items", "items1").Err())
+
+		require.Equal(t, redis.Nil, rdb.Do(ctx, "bf.info", key, "expansion").Err())
+	})
+
+	t.Run("Insert with expansion", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "items", "items1").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "0", "items", "items1").Err(), "ERR expansion should be greater or equal to 1")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "asd", "items", "items1").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "-1", "items", "items1").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "1.5", "items", "items1").Err(), "ERR Bad expansion")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "123asd", "items", "items1").Err(), "ERR Bad expansion")
+
+		require.NoError(t, rdb.Do(ctx, "bf.insert", key, "expansion", "3", "items", "items1").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(100), "Size", int64(128), "Number of filters", int64(1), "Number of items inserted", int64(1), "Expansion rate", int64(3)}, rdb.Do(ctx, "bf.info", key).Val())
+	})
+
+	t.Run("Insert with nonscaling and expansion", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "expansion", "1", "nonscaling", "items", "items1").Err(), "ERR nonscaling filters cannot expand")
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "nonscaling", "expansion", "1", "items", "items1").Err(), "ERR nonscaling filters cannot expand")
+	})
+
+	t.Run("Insert items", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "bf.insert", key, "capacity", "100", "items").Err(), "ERR num of items should be greater than 0")
+
+		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		require.Equal(t, []interface{}{int64(1), int64(1)}, rdb.Do(ctx, "bf.insert", key, "items", "xxx", "zzz").Val())
+		require.Equal(t, int64(2), rdb.Do(ctx, "bf.card", key).Val())
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		// add the existed value
+		require.Equal(t, []interface{}{int64(0)}, rdb.Do(ctx, "bf.insert", key, "items", "zzz").Val())
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+
+		// add the same value
+		require.Equal(t, []interface{}{int64(1), int64(0)}, rdb.Do(ctx, "bf.insert", key, "items", "yyy", "yyy").Val())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, rdb.Do(ctx, "bf.mexists", key, "xxx", "yyy", "zzz").Val())
+	})
+
+	t.Run("Insert would not change existed bloom filter", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000", "expansion", "3").Err())
+		require.NoError(t, rdb.Do(ctx, "bf.insert", key, "error", "0.01", "capacity", "2000", "expansion", "4", "items", "xxx", "zzz").Err())
+		require.Equal(t, []interface{}{"Capacity", int64(1000), "Size", int64(2048), "Number of filters", int64(1), "Number of items inserted", int64(2), "Expansion rate", int64(3)}, rdb.Do(ctx, "bf.info", key).Val())
 	})
 
 	t.Run("MExists Basic Test", func(t *testing.T) {

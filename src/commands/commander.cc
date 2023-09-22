@@ -98,7 +98,7 @@ void BlockedPopCommander::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void BlockedPopCommander::TimerCB(int, int16_t events) {
-  conn_->Reply(redis::NilString());
+  conn_->Reply(emptyOutput());
   timer_.reset();
   unblockAllKeys();
   auto bev = conn_->GetBufferEvent();

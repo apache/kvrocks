@@ -87,6 +87,21 @@ func (c *TCPClient) MustReadStrings(t testing.TB, s []string) {
 	}
 }
 
+func (c *TCPClient) MustReadStringsWithKey(t testing.TB, key string, s []string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.EqualValues(t, '*', r[0])
+	n, err := strconv.Atoi(r[1:])
+	require.NoError(t, err)
+	require.Equal(t, n, 2)
+
+	_, err = c.ReadLine()
+	require.NoError(t, err)
+	c.MustRead(t, key)
+
+	c.MustReadStrings(t, s)
+}
+
 func (c *TCPClient) MustMatch(t testing.TB, rx string) {
 	r, err := c.ReadLine()
 	require.NoError(t, err)

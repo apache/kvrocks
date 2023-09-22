@@ -1177,4 +1177,276 @@ func TestList(t *testing.T) {
 			require.EqualError(t, lmpopNoCount(rdb, ctx, direction, key1, key2).Err(), redis.Nil.Error())
 		})
 	}
+
+	// test cases for BLMPOP:
+	// overall: consider both directions; consider poped from first / second list;
+	// case 1: has data already; todo: what if has data but not enough number of data?
+	// case 2: no data, but served within the timeout; todo: served with non-enough key and served with enough key?
+	// case 3: no data, and timeout ends;
+	// case 3: no data, timeout=0, should block infinitely.
+	for _, direction := range []string{"LEFT", "RIGHT"} {
+		key1 := "blmpop-list1"
+		key2 := "blmpop-list2"
+		rdb.Del(ctx, key1, key2)
+		require.EqualValues(t, 5, rdb.LPush(ctx, key1, "one", "two", "three", "four", "five").Val())
+		require.EqualValues(t, 5, rdb.LPush(ctx, key2, "ONE", "TWO", "THREE", "FOUR", "FIVE").Val())
+
+		zeroTimeout := time.Second * 0
+
+		// TEST SUIT #1: non-blocking scenario (at least one queried list is not empty).
+		// In these cases, the behavior should be the same to LMPOP.
+		t.Run(fmt.Sprintf("BLMPOP test unblocked oneKey countSingle %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 1, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"five"}, resultVal)
+			} else {
+				require.Equal(t, []string{"one"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked oneKey countMulti %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 2, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"four", "three"}, resultVal)
+			} else {
+				require.Equal(t, []string{"two", "three"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked oneKey countTooMuch %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 10, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"two", "one"}, resultVal)
+			} else {
+				require.Equal(t, []string{"four", "five"}, resultVal)
+			}
+		})
+
+		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "six", "seven").Val())
+		t.Run(fmt.Sprintf("BLMPOP test unblocked firstKey countOver %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 10, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"seven", "six"}, resultVal)
+			} else {
+				require.Equal(t, []string{"six", "seven"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked secondKey countSingle %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 1, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"FIVE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"ONE"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked secondKey countMulti %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 2, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"FOUR", "THREE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"TWO", "THREE"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked secondKey countOver %s", direction), func(t *testing.T) {
+			result := rdb.BLMPop(ctx, zeroTimeout, direction, 10, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"TWO", "ONE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"FOUR", "FIVE"}, resultVal)
+			}
+		})
+
+		blmpopNoCount := func(c *redis.Client, ctx context.Context, timeout string, direction string, keys ...string) *redis.KeyValuesCmd {
+			args := make([]interface{}, 3+len(keys), 6+len(keys))
+			args[0] = "blmpop"
+			args[1] = timeout
+			args[2] = len(keys)
+			for i, key := range keys {
+				args[3+i] = key
+			}
+			args = append(args, strings.ToLower(direction))
+			cmd := redis.NewKeyValuesCmd(ctx, args...)
+			_ = c.Process(ctx, cmd)
+			return cmd
+		}
+		rdb.Del(ctx, key1, key2)
+		require.EqualValues(t, 2, rdb.LPush(ctx, key1, "one", "two").Val())
+		require.EqualValues(t, 2, rdb.LPush(ctx, key2, "ONE", "TWO").Val())
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked oneKey noCount one %s", direction), func(t *testing.T) {
+			result := blmpopNoCount(rdb, ctx, "0", direction, key1)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"two"}, resultVal)
+			} else {
+				require.Equal(t, []string{"one"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked firstKey noCount one %s", direction), func(t *testing.T) {
+			result := blmpopNoCount(rdb, ctx, "0", direction, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key1, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"one"}, resultVal)
+			} else {
+				require.Equal(t, []string{"two"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked secondKey noCount one %s", direction), func(t *testing.T) {
+			result := blmpopNoCount(rdb, ctx, "0", direction, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"TWO"}, resultVal)
+			} else {
+				require.Equal(t, []string{"ONE"}, resultVal)
+			}
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test unblocked secondKey noCount one %s", direction), func(t *testing.T) {
+			result := blmpopNoCount(rdb, ctx, "0", direction, key1, key2)
+			resultKey, resultVal := result.Val()
+			require.NoError(t, result.Err())
+			require.EqualValues(t, key2, resultKey)
+			if direction == "LEFT" {
+				require.Equal(t, []string{"ONE"}, resultVal)
+			} else {
+				require.Equal(t, []string{"TWO"}, resultVal)
+			}
+		})
+
+		// TEST SUIT #2: blocking scenario, but data reaches within timeout.
+		t.Run(fmt.Sprintf("BLMPOP test blocked served oneKey countSingle %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "1"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key1, []string{"ONE"})
+			} else {
+				rd.MustReadStringsWithKey(t, key1, []string{"TWO"})
+			}
+			require.EqualValues(t, 1, rdb.Exists(ctx, key1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served oneKey countMulti %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "2"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
+			} else {
+				rd.MustReadStringsWithKey(t, key1, []string{"TWO", "ONE"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served oneKey countOver %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "10"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
+			} else {
+				rd.MustReadStringsWithKey(t, key1, []string{"TWO", "ONE"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served firstKey countOver %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
+			} else {
+				rd.MustReadStringsWithKey(t, key1, []string{"TWO", "ONE"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served secondKey countOver %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
+			} else {
+				rd.MustReadStringsWithKey(t, key2, []string{"two", "one"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served bothKey FIFO countOver %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
+			} else {
+				rd.MustReadStringsWithKey(t, key2, []string{"two", "one"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
+			require.EqualValues(t, 2, rdb.Exists(ctx, key1).Val())
+		})
+
+		// TEST SUIT #3: blocking scenario, and timeout is triggered.
+
+		// TEST SUIT #4: blocking scenario, and timeout is 0 (permanently blocked).
+	}
 }

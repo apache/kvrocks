@@ -220,7 +220,6 @@ class CommandBFInsert : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    items_.reserve(args_.size() - 3);
     while (parser.Good()) {
       items_.emplace_back(GET_OR_RET(parser.TakeStr()));
     }

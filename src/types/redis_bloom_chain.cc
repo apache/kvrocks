@@ -60,7 +60,7 @@ rocksdb::Status BloomChain::getBFDataList(const std::vector<std::string> &bf_key
   return rocksdb::Status::OK();
 }
 
-void BloomChain::getItemHashList(const std::vector<Slice> &items, std::vector<uint64_t> *item_hash_list) {
+void BloomChain::getItemHashList(const std::vector<std::string> &items, std::vector<uint64_t> *item_hash_list) {
   item_hash_list->reserve(items.size());
   for (const auto &item : items) {
     item_hash_list->push_back(BlockSplitBloomFilter::Hash(item.data(), item.size()));
@@ -132,23 +132,31 @@ rocksdb::Status BloomChain::Reserve(const Slice &user_key, uint32_t capacity, do
   return createBloomChain(ns_key, error_rate, capacity, expansion, &bloom_chain_metadata);
 }
 
-rocksdb::Status BloomChain::Add(const Slice &user_key, const Slice &item, BloomFilterAddResult *ret) {
+rocksdb::Status BloomChain::Add(const Slice &user_key, const std::string &item, BloomFilterAddResult *ret) {
   std::vector<BloomFilterAddResult> tmp{BloomFilterAddResult::kOk};
   rocksdb::Status s = MAdd(user_key, {item}, &tmp);
   *ret = tmp[0];
   return s;
 }
 
-rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice> &items,
+rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<std::string> &items,
                                  std::vector<BloomFilterAddResult> *rets) {
+  BloomFilterInsertOptions insert_options;
+  return InsertCommon(user_key, items, insert_options, rets);
+}
+
+rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vector<std::string> &items,
+                                         const BloomFilterInsertOptions &insert_options,
+                                         std::vector<BloomFilterAddResult> *rets) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   BloomChainMetadata metadata;
   rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
 
-  if (s.IsNotFound()) {
-    s = createBloomChain(ns_key, kBFDefaultErrorRate, kBFDefaultInitCapacity, kBFDefaultExpansion, &metadata);
+  if (s.IsNotFound() && insert_options.auto_create) {
+    s = createBloomChain(ns_key, insert_options.error_rate, insert_options.capacity, insert_options.expansion,
+                         &metadata);
   }
   if (!s.ok()) return s;
 
@@ -207,14 +215,15 @@ rocksdb::Status BloomChain::MAdd(const Slice &user_key, const std::vector<Slice>
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BloomChain::Exists(const Slice &user_key, const Slice &item, bool *exist) {
+rocksdb::Status BloomChain::Exists(const Slice &user_key, const std::string &item, bool *exist) {
   std::vector<bool> tmp{false};
   rocksdb::Status s = MExists(user_key, {item}, &tmp);
   *exist = tmp[0];
   return s;
 }
 
-rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<Slice> &items, std::vector<bool> *exists) {
+rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std::string> &items,
+                                    std::vector<bool> *exists) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BloomChainMetadata metadata;

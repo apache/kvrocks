@@ -1178,12 +1178,6 @@ func TestList(t *testing.T) {
 		})
 	}
 
-	// test cases for BLMPOP:
-	// overall: consider both directions; consider poped from first / second list;
-	// case 1: has data already; todo: what if has data but not enough number of data?
-	// case 2: no data, but served within the timeout; todo: served with non-enough key and served with enough key?
-	// case 3: no data, and timeout ends;
-	// case 3: no data, timeout=0, should block infinitely.
 	for _, direction := range []string{"LEFT", "RIGHT"} {
 		key1 := "blmpop-list1"
 		key2 := "blmpop-list2"
@@ -1350,7 +1344,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "1"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "1"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1366,7 +1360,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "2"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1382,7 +1376,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "1", key1, direction, "count", "10"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "10"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1398,7 +1392,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1414,7 +1408,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1430,7 +1424,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
 			time.Sleep(time.Millisecond * 100)
@@ -1442,11 +1436,50 @@ func TestList(t *testing.T) {
 				rd.MustReadStringsWithKey(t, key2, []string{"two", "one"})
 			}
 			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
-			require.EqualValues(t, 2, rdb.Exists(ctx, key1).Val())
+			require.EqualValues(t, 2, rdb.LLen(ctx, key1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BLMPOP test blocked served secondKey noCount %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction))
+			time.Sleep(time.Millisecond * 100)
+			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key2, []string{"one"})
+			} else {
+				rd.MustReadStringsWithKey(t, key2, []string{"two"})
+			}
+			require.EqualValues(t, 1, rdb.LLen(ctx, key2).Val())
 		})
 
 		// TEST SUIT #3: blocking scenario, and timeout is triggered.
+		t.Run(fmt.Sprintf("BLMPOP test blocked timeout %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction))
+			time.Sleep(time.Millisecond * 1200)
+			rd.MustMatch(t, "")
+		})
 
 		// TEST SUIT #4: blocking scenario, and timeout is 0 (permanently blocked).
+		t.Run(fmt.Sprintf("BLMPOP test blocked infinitely served secondKey countOver %s", direction), func(t *testing.T) {
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
+			time.Sleep(time.Millisecond * 1200)
+			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
+			time.Sleep(time.Millisecond * 100)
+			if direction == "LEFT" {
+				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
+			} else {
+				rd.MustReadStringsWithKey(t, key2, []string{"two", "one"})
+			}
+			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
+		})
 	}
 }

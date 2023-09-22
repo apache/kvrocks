@@ -334,13 +334,6 @@ class CommandBRPop : public CommandBPop {
   CommandBRPop() : CommandBPop(false) {}
 };
 
-// todo: implement the BLMPOP command here.
-//  the method is:
-//     1. copy the code structure of BPOP here;
-//     2. replace the logic with the LMPOP's logic;
-//     3. handle the error returning, cancellation, etc.
-//     4. add test...
-//  when implementing, try to separate the code to prepare for further abstraction.
 class CommandBLMPop : public BlockedPopCommander {
  public:
   CommandBLMPop() = default;

@@ -334,7 +334,7 @@ class CommandBRPop : public CommandBPop {
   CommandBRPop() : CommandBPop(false) {}
 };
 
-class CommandBLMPop : public BlockedPopCommander {
+class CommandBLMPop : public BlockingCommander {
  public:
   CommandBLMPop() = default;
   CommandBLMPop(const CommandBLMPop &) = delete;
@@ -347,7 +347,7 @@ class CommandBLMPop : public BlockedPopCommander {
     CommandParser parser(args, 1);
 
     auto timeout = GET_OR_RET(parser.TakeFloat());
-    setTimeout(static_cast<int64_t>(timeout * 1000 * 1000));
+    timeout_ = static_cast<int64_t>(timeout * 1000 * 1000);
 
     auto num_keys = GET_OR_RET(parser.TakeInt<uint32_t>());
     keys_.clear();
@@ -379,18 +379,19 @@ class CommandBLMPop : public BlockedPopCommander {
     return Status::OK();
   }
 
-  static const inline CommandKeyRangeGen keyRangeGen = [](const std::vector<std::string> &args) {
-    CommandKeyRange range;
-    range.first_key = 3;
-    range.key_step = 1;
-    // This parsing would always succeed as this cmd has been parsed before.
-    auto num_key = *ParseInt<int32_t>(args[2], 10);
-    range.last_key = range.first_key + num_key - 1;
-    return range;
-  };
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    svr_ = svr;
+    InitConnection(conn);
 
- private:
-  rocksdb::Status executeUnblocked() override {
+    auto s = ExecuteUnblocked();
+    if (s.ok() || !s.IsNotFound()) {
+      return Status::OK();  // error has already been output
+    }
+
+    return StartBlocking(timeout_, output);
+  }
+
+  rocksdb::Status ExecuteUnblocked() {
     redis::List list_db(svr_->storage, conn_->GetNamespace());
     std::vector<std::string> elems;
     std::string chosen_key;
@@ -419,23 +420,41 @@ class CommandBLMPop : public BlockedPopCommander {
     return s;
   }
 
-  std::string emptyOutput() override { return redis::NilString(); }
-
-  void blockAllKeys() override {
+  void BlockKeys() override {
     for (const auto &key : keys_) {
       svr_->BlockOnKey(key, conn_);
     }
   }
 
-  void unblockAllKeys() override {
+  void UnblockKeys() override {
     for (const auto &key : keys_) {
       svr_->UnblockOnKey(key, conn_);
     }
   }
 
+  bool OnBlockingWrite() override {
+    auto s = ExecuteUnblocked();
+    return !s.IsNotFound();
+  }
+
+  std::string NoopReply() override { return redis::NilString(); }
+
+  static const inline CommandKeyRangeGen keyRangeGen = [](const std::vector<std::string> &args) {
+    CommandKeyRange range;
+    range.first_key = 3;
+    range.key_step = 1;
+    // This parsing would always succeed as this cmd has been parsed before.
+    auto num_key = *ParseInt<int32_t>(args[2], 10);
+    range.last_key = range.first_key + num_key - 1;
+    return range;
+  };
+
+ private:
   bool left_;
   uint32_t count_ = -1;
+  int64_t timeout_ = 0;  // microseconds
   std::vector<std::string> keys_;
+  Server *svr_ = nullptr;
 };
 
 class CommandLRem : public Commander {

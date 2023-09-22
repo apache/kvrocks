@@ -21,7 +21,6 @@
 #include "commander.h"
 
 #include "cluster/cluster_defs.h"
-#include "server/redis_connection.h"
 
 namespace redis {
 
@@ -31,79 +30,6 @@ RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttr
     command_details::original_commands[attr.name] = &command_details::redis_command_table.back();
     command_details::commands[attr.name] = &command_details::redis_command_table.back();
   }
-}
-
-Status BlockedPopCommander::Execute(Server *svr, Connection *conn, std::string *output) {
-  svr_ = svr;
-  conn_ = conn;
-
-  auto bev = conn->GetBufferEvent();
-  auto s = executeUnblocked();
-  if (s.ok() || !s.IsNotFound()) {
-    return Status::OK();  // error has already output in executeUnblocked
-  }
-
-  if (conn->IsInExec()) {
-    *output = emptyOutput();
-    return Status::OK();  // No blocking in multi-exec
-  }
-
-  blockAllKeys();
-
-  SetCB(bev);
-
-  if (timeout_) {
-    timer_.reset(NewTimer(bufferevent_get_base(bev)));
-    int64_t timeout_second = timeout_ / 1000 / 1000;
-    int64_t timeout_microsecond = timeout_ % (1000 * 1000);
-    timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
-    evtimer_add(timer_.get(), &tm);
-  }
-
-  return {Status::BlockingCmd};
-}
-
-void BlockedPopCommander::OnWrite(bufferevent *bev) {
-  auto s = executeUnblocked();
-  if (s.IsNotFound()) {
-    // The connection may be waked up but can't pop from list. For example,
-    // connection A is blocking on list and connection B push a new element
-    // then wake up the connection A, but this element may be token by other connection C.
-    // So we need to wait for the wake event again by disabling the WRITE event.
-    bufferevent_disable(bev, EV_WRITE);
-    return;
-  }
-
-  if (timer_) {
-    timer_.reset();
-  }
-
-  unblockAllKeys();
-  conn_->SetCB(bev);
-  bufferevent_enable(bev, EV_READ);
-  // We need to manually trigger the read event since we will stop processing commands
-  // in connection after the blocking command, so there may have some commands to be processed.
-  // Related issue: https://github.com/apache/kvrocks/issues/831
-  bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
-}
-
-void BlockedPopCommander::OnEvent(bufferevent *bev, int16_t events) {
-  if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-    if (timer_ != nullptr) {
-      timer_.reset();
-    }
-    unblockAllKeys();
-  }
-  conn_->OnEvent(bev, events);
-}
-
-void BlockedPopCommander::TimerCB(int, int16_t events) {
-  conn_->Reply(emptyOutput());
-  timer_.reset();
-  unblockAllKeys();
-  auto bev = conn_->GetBufferEvent();
-  conn_->SetCB(bev);
-  bufferevent_enable(bev, EV_READ);
 }
 
 size_t GetCommandNum() { return command_details::redis_command_table.size(); }

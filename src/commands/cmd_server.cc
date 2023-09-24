@@ -39,15 +39,15 @@ enum class AuthResult {
   NO_REQUIRE_PASS,
 };
 
-AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string &user_password) {
-  auto iter = config->tokens.find(user_password);
-  if (iter != config->tokens.end()) {
-    conn->SetNamespace(iter->second);
+AuthResult AuthenticateUser(Server *srv, Connection *conn, const std::string &user_password) {
+  auto ns = srv->GetNamespace()->GetByToken(user_password);
+  if (ns.IsOK()) {
+    conn->SetNamespace(ns.GetValue());
     conn->BecomeUser();
     return AuthResult::OK;
   }
 
-  const auto &requirepass = config->requirepass;
+  const auto &requirepass = srv->GetConfig()->requirepass;
   if (!requirepass.empty() && user_password != requirepass) {
     return AuthResult::INVALID_PASSWORD;
   }
@@ -64,9 +64,8 @@ AuthResult AuthenticateUser(Connection *conn, Config *config, const std::string 
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    Config *config = svr->GetConfig();
     auto &user_password = args_[1];
-    AuthResult result = AuthenticateUser(conn, config, user_password);
+    AuthResult result = AuthenticateUser(svr, conn, user_password);
     switch (result) {
       case AuthResult::OK:
         *output = redis::SimpleString("OK");
@@ -92,7 +91,7 @@ class CommandNamespace : public Commander {
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
-        auto tokens = config->tokens;
+        auto tokens = svr->GetNamespace()->List();
         for (auto &token : tokens) {
           namespaces.emplace_back(token.second);  // namespace
           namespaces.emplace_back(token.first);   // token
@@ -101,26 +100,25 @@ class CommandNamespace : public Commander {
         namespaces.emplace_back(config->requirepass);
         *output = redis::MultiBulkString(namespaces, false);
       } else {
-        std::string token;
-        auto s = config->GetNamespace(args_[2], &token);
-        if (s.Is<Status::NotFound>()) {
+        auto token = svr->GetNamespace()->Get(args_[2]);
+        if (token.Is<Status::NotFound>()) {
           *output = redis::NilString();
         } else {
-          *output = redis::BulkString(token);
+          *output = redis::BulkString(token.GetValue());
         }
       }
     } else if (args_.size() == 4 && sub_command == "set") {
-      Status s = config->SetNamespace(args_[2], args_[3]);
+      Status s = svr->GetNamespace()->Set(args_[2], args_[3]);
       *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 4 && sub_command == "add") {
-      Status s = config->AddNamespace(args_[2], args_[3]);
+      Status s = svr->GetNamespace()->Add(args_[2], args_[3]);
       *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 3 && sub_command == "del") {
-      Status s = config->DelNamespace(args_[2]);
+      Status s = svr->GetNamespace()->Del(args_[2]);
       *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
       LOG(WARNING) << "Deleted namespace: " << args_[2] << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else {
@@ -239,7 +237,7 @@ class CommandConfig : public Commander {
     }
 
     if (args_.size() == 2 && sub_command == "rewrite") {
-      Status s = config->Rewrite();
+      Status s = config->Rewrite(svr->GetNamespace()->List());
       if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
 
       *output = redis::SimpleString("OK");
@@ -709,7 +707,7 @@ class CommandHello final : public Commander {
           next_arg++;
         }
         const auto &user_password = args_[next_arg + 1];
-        auto auth_result = AuthenticateUser(conn, svr->GetConfig(), user_password);
+        auto auth_result = AuthenticateUser(svr, conn, user_password);
         switch (auth_result) {
           case AuthResult::INVALID_PASSWORD:
             return {Status::NotOK, "invalid password"};

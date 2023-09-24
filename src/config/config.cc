@@ -159,6 +159,7 @@ Config::Config() {
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
+      {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -233,17 +234,17 @@ void Config::initFieldValidator() {
   std::map<std::string, ValidateFn> validators = {
       {"requirepass",
        [this](const std::string &k, const std::string &v) -> Status {
-         if (v.empty() && !tokens.empty()) {
+         if (v.empty() && !load_tokens.empty()) {
            return {Status::NotOK, "requirepass empty not allowed while the namespace exists"};
          }
-         if (tokens.find(v) != tokens.end()) {
+         if (load_tokens.find(v) != load_tokens.end()) {
            return {Status::NotOK, "requirepass is duplicated with namespace tokens"};
          }
          return Status::OK();
        }},
       {"masterauth",
        [this](const std::string &k, const std::string &v) -> Status {
-         if (tokens.find(v) != tokens.end()) {
+         if (load_tokens.find(v) != load_tokens.end()) {
            return {Status::NotOK, "masterauth is duplicated with namespace tokens"};
          }
          return Status::OK();
@@ -515,6 +516,12 @@ void Config::initFieldCallback() {
          remove(nodes_file_path.data());
          return Status::OK();
        }},
+      {"repl-namespace-enabled",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+         if (!srv || !cluster_enabled) return Status::OK();
+
+         return Status::OK();
+       }},
       {"rocksdb.target_file_size_base",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv) return Status::OK();
@@ -682,7 +689,7 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
   if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
     // namespace should keep key case-sensitive
     field_key = input.first;
-    tokens[input.second] = input.first.substr(ns_str_size);
+    load_tokens[input.second] = input.first.substr(ns_str_size);
     return Status::OK();
   }
 
@@ -711,10 +718,10 @@ Status Config::parseConfigFromString(const std::string &input, int line_number) 
 }
 
 Status Config::finish() {
-  if (requirepass.empty() && !tokens.empty()) {
+  if (requirepass.empty() && !load_tokens.empty()) {
     return {Status::NotOK, "requirepass empty wasn't allowed while the namespace exists"};
   }
-  if ((cluster_enabled) && !tokens.empty()) {
+  if ((cluster_enabled) && !load_tokens.empty()) {
     return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
   }
   if (unixsocket.empty() && binds.size() == 0) {
@@ -836,7 +843,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
   return Status::OK();
 }
 
-Status Config::Rewrite() {
+Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
   if (path_.empty()) {
     return {Status::NotOK, "the server is running without a config file"};
   }
@@ -853,8 +860,10 @@ Status Config::Rewrite() {
   }
 
   std::string namespace_prefix = "namespace.";
-  for (const auto &iter : tokens) {
-    new_config[namespace_prefix + iter.second] = iter.first;
+  if (!repl_namespace_enabled) {  // need to rewrite to the configuration if we don't replicate namespaces
+    for (const auto &iter : tokens) {
+      new_config[namespace_prefix + iter.second] = iter.first;
+    }
   }
 
   std::ifstream file(path_);
@@ -897,107 +906,6 @@ Status Config::Rewrite() {
   output_file.close();
   if (rename(tmp_path.data(), path_.data()) < 0) {
     return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
-  }
-  return Status::OK();
-}
-
-Status Config::GetNamespace(const std::string &ns, std::string *token) const {
-  token->clear();
-  for (const auto &iter : tokens) {
-    if (iter.second == ns) {
-      *token = iter.first;
-      return Status::OK();
-    }
-  }
-  return {Status::NotFound};
-}
-
-Status Config::SetNamespace(const std::string &ns, const std::string &token) {
-  if (ns == kDefaultNamespace) {
-    return {Status::NotOK, "forbidden to update the default namespace"};
-  }
-  if (tokens.find(token) != tokens.end()) {
-    return {Status::NotOK, "the token has already exists"};
-  }
-
-  if (token == requirepass || token == masterauth) {
-    return {Status::NotOK, "the token is duplicated with requirepass or masterauth"};
-  }
-
-  for (const auto &iter : tokens) {
-    if (iter.second == ns) {
-      tokens.erase(iter.first);
-      tokens[token] = ns;
-      auto s = Rewrite();
-      if (!s.IsOK()) {
-        // Need to roll back the old token if fails to rewrite the config
-        tokens.erase(token);
-        tokens[iter.first] = ns;
-      }
-      return s;
-    }
-  }
-  return {Status::NotOK, "the namespace was not found"};
-}
-
-Status Config::AddNamespace(const std::string &ns, const std::string &token) {
-  if (requirepass.empty()) {
-    return {Status::NotOK, "forbidden to add namespace when requirepass was empty"};
-  }
-  if (cluster_enabled) {
-    return {Status::NotOK, "forbidden to add namespace when cluster mode was enabled"};
-  }
-  if (ns == kDefaultNamespace) {
-    return {Status::NotOK, "forbidden to add the default namespace"};
-  }
-  auto s = isNamespaceLegal(ns);
-  if (!s.IsOK()) return s;
-  if (tokens.find(token) != tokens.end()) {
-    return {Status::NotOK, "the token has already exists"};
-  }
-
-  if (token == requirepass || token == masterauth) {
-    return {Status::NotOK, "the token is duplicated with requirepass or masterauth"};
-  }
-
-  for (const auto &iter : tokens) {
-    if (iter.second == ns) {
-      return {Status::NotOK, "the namespace has already exists"};
-    }
-  }
-  tokens[token] = ns;
-
-  s = Rewrite();
-  if (!s.IsOK()) {
-    tokens.erase(token);
-  }
-  return s;
-}
-
-Status Config::DelNamespace(const std::string &ns) {
-  if (ns == kDefaultNamespace) {
-    return {Status::NotOK, "forbidden to delete the default namespace"};
-  }
-  for (const auto &iter : tokens) {
-    if (iter.second == ns) {
-      tokens.erase(iter.first);
-      auto s = Rewrite();
-      if (!s.IsOK()) {
-        tokens[iter.first] = ns;
-      }
-      return s;
-    }
-  }
-  return {Status::NotOK, "the namespace was not found"};
-}
-
-Status Config::isNamespaceLegal(const std::string &ns) {
-  if (ns.size() > UINT8_MAX) {
-    return {Status::NotOK, fmt::format("size exceed limit {}", UINT8_MAX)};
-  }
-  char last_char = ns.back();
-  if (last_char == std::numeric_limits<char>::max()) {
-    return {Status::NotOK, "namespace contain illegal letter"};
   }
   return Status::OK();
 }

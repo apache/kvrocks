@@ -56,8 +56,8 @@ func TestNamespace(t *testing.T) {
 		}
 		// duplicate add the same namespace
 		for ns, token := range nsTokens {
-			r := rdb.Do(ctx, "NAMESPACE", "ADD", ns, token)
-			util.ErrorRegexp(t, r.Err(), ".*ERR the token has already exists.*")
+			r := rdb.Do(ctx, "NAMESPACE", "ADD", ns, "new"+token)
+			util.ErrorRegexp(t, r.Err(), ".*ERR the namespace already exists.*")
 		}
 		for ns, token := range nsTokens {
 			r := rdb.Do(ctx, "NAMESPACE", "GET", ns)

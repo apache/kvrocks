@@ -54,7 +54,7 @@
 constexpr const char *REDIS_VERSION = "4.0.0";
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_(util::GetTimeStamp()), config_(config) {
+    : storage(storage), start_time_(util::GetTimeStamp()), config_(config), namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::GetOriginalCommands();
   for (const auto &iter : *commands) {
@@ -132,12 +132,16 @@ Server::~Server() {
 //     - feed-replica-data-info: generate checkpoint and send files list when full sync
 //     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
+  auto s = namespace_.Load();
+  if (!s.IsOK()) {
+    return s;
+  }
   if (!config_->master_host.empty()) {
-    Status s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
+    s = AddMaster(config_->master_host, static_cast<uint32_t>(config_->master_port), false);
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    auto s = storage->ShiftReplId();
+    s = storage->ShiftReplId();
     if (!s.IsOK()) {
       return s.Prefixed("failed to shift replication id");
     }
@@ -1394,7 +1398,7 @@ Status Server::autoResizeBlockAndSST() {
     config_->rocks_db.block_size = block_size;
   }
 
-  auto s = config_->Rewrite();
+  auto s = config_->Rewrite(namespace_.List());
   LOG(INFO) << "[server] Rewrite config, result: " << s.Msg();
 
   return Status::OK();

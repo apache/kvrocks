@@ -136,7 +136,7 @@ struct Config {
   CompactionCheckerRange compaction_checker_range{-1, -1};
   int64_t force_compact_file_age;
   int force_compact_file_min_deleted_percentage;
-  std::map<std::string, std::string> tokens;
+  bool repl_namespace_enabled = false;
   std::string replica_announce_ip;
   uint32_t replica_announce_port = 0;
 
@@ -149,6 +149,11 @@ struct Config {
 
   bool redis_cursor_compatible = false;
   int log_retention_days;
+
+  // load_tokens is used to buffer the tokens when loading,
+  // don't use it to authenticate or rewrite the configuration file.
+  std::map<std::string, std::string> load_tokens;
+
   // profiling
   int profiling_sample_ratio = 0;
   int profiling_sample_record_threshold_ms = 0;
@@ -210,16 +215,12 @@ struct Config {
   mutable std::mutex backup_mu;
 
   std::string NodesFilePath() const;
-  Status Rewrite();
+  Status Rewrite(const std::map<std::string, std::string> &tokens);
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values) const;
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
-  Status GetNamespace(const std::string &ns, std::string *token) const;
-  Status AddNamespace(const std::string &ns, const std::string &token);
-  Status SetNamespace(const std::string &ns, const std::string &token);
-  Status DelNamespace(const std::string &ns);
 
  private:
   std::string path_;
@@ -237,5 +238,4 @@ struct Config {
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
-  static Status isNamespaceLegal(const std::string &ns);
 };

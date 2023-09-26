@@ -147,7 +147,7 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
           - name: Ubuntu GCC TSan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc

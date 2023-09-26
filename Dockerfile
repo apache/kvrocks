@@ -28,7 +28,7 @@ RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j 
 FROM alpine:3.16
 
 RUN apk upgrade && apk add libexecinfo
-RUN mkdir /var/run/kvrocks 
+RUN mkdir /var/run/kvrocks
 
 VOLUME /var/lib/kvrocks
 
@@ -43,4 +43,4 @@ COPY ./kvrocks.conf /var/lib/kvrocks/
 
 EXPOSE 6666:6666
 
-ENTRYPOINT ["kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid"]
+ENTRYPOINT ["kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid", "--bind", "0.0.0.0"]

@@ -168,10 +168,10 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 
 ## Tools
 
-* To manage Kvrocks clusters for failover, scaling up/down and more, use [kvrocks_controller](https://github.com/RocksLabs/kvrocks_controller)
+* To manage Kvrocks clusters for failover, scaling up/down and more, use [kvrocks-controller](https://github.com/apache/kvrocks-controller)
 * To export the Kvrocks monitor metrics, use [kvrocks_exporter](https://github.com/RocksLabs/kvrocks_exporter)
 * To migrate from Redis to Kvrocks, use [RedisShake](https://github.com/tair-opensource/RedisShake)
-* To migrate from Kvrocks to Redis, use `kvrocks2redis` in the build directory
+* To migrate from Kvrocks to Redis, use `kvrocks2redis` built via `./x.py build`
 
 ## Contributing
 

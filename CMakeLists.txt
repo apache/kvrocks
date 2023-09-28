@@ -196,7 +196,7 @@ endif()
 
 # kvrocks objects target
 file(GLOB_RECURSE KVROCKS_SRCS src/*.cc)
-list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/main.cc)
+list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/cli/main.cc)
 
 add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
 
@@ -239,7 +239,7 @@ if(ENABLE_IPO)
 endif()
 
 # kvrocks main target
-add_executable(kvrocks src/main.cc)
+add_executable(kvrocks src/cli/main.cc)
 target_link_libraries(kvrocks PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 
 # kvrocks2redis sync tool

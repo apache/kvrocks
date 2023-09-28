@@ -26,6 +26,9 @@
 
 #include <csignal>
 
+#include "cli/daemon_util.h"
+#include "cli/pid_util.h"
+#include "cli/version_util.h"
 #include "config.h"
 #include "config/config.h"
 #include "io_util.h"
@@ -42,22 +45,6 @@ std::function<void()> hup_handler;
 struct Options {
   std::string conf_file = kDefaultConfPath;
 };
-
-std::ostream &PrintVersion(std::ostream &os) {
-  os << "kvrocks2redis ";
-
-  if (VERSION != "unstable") {
-    os << "version ";
-  }
-
-  os << VERSION;
-
-  if (!GIT_COMMIT.empty()) {
-    os << " (commit " << GIT_COMMIT << ")";
-  }
-
-  return os;
-}
 
 extern "C" void SignalHandler(int sig) {
   if (hup_handler) hup_handler();
@@ -81,7 +68,7 @@ static Options ParseCommandLineOptions(int argc, char **argv) {
         break;
       }
       case 'v':
-        std::cout << PrintVersion << std::endl;
+        std::cout << "kvrocks2redis " << PrintVersion << std::endl;
         exit(0);
       case 'h':
       default:
@@ -96,44 +83,6 @@ static void InitGoogleLog(const kvrocks2redis::Config *config) {
   FLAGS_max_log_size = 100;
   FLAGS_logbufsecs = 0;
   FLAGS_log_dir = config->output_dir;
-}
-
-static Status CreatePidFile(const std::string &path) {
-  int fd = open(path.data(), O_RDWR | O_CREAT | O_EXCL, 0660);
-  if (fd < 0) {
-    return {Status::NotOK, strerror(errno)};
-  }
-
-  std::string pid_str = std::to_string(getpid());
-  auto s = util::Write(fd, pid_str);
-  if (!s.IsOK()) {
-    return s.Prefixed("failed to write to PID-file");
-  }
-
-  close(fd);
-  return Status::OK();
-}
-
-static void RemovePidFile(const std::string &path) { std::remove(path.data()); }
-
-static void Daemonize() {
-  pid_t pid = fork();
-  if (pid < 0) {
-    LOG(ERROR) << "Failed to fork the process. Error: " << strerror(errno);
-    exit(1);
-  }
-
-  if (pid > 0) exit(EXIT_SUCCESS);  // parent process
-  // change the file mode
-  umask(0);
-  if (setsid() < 0) {
-    LOG(ERROR) << "Failed to setsid. Error: " << strerror(errno);
-    exit(1);
-  }
-
-  close(STDIN_FILENO);
-  close(STDOUT_FILENO);
-  close(STDERR_FILENO);
 }
 
 Server *GetServer() { return nullptr; }
@@ -157,7 +106,7 @@ int main(int argc, char *argv[]) {
   }
 
   InitGoogleLog(&config);
-  LOG(INFO) << PrintVersion;
+  LOG(INFO) << "kvrocks2redis " << PrintVersion;
 
   if (config.daemonize) Daemonize();
 

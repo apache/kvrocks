@@ -284,23 +284,23 @@ Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, 
   static constexpr const char *shebang_prefix = "#!lua";
   static constexpr const char *shebang_libname_prefix = "name=";
 
-  auto first_line_splitted = util::Split(first_line, " \r\t");
-  if (first_line_splitted.empty() || first_line_splitted[0] != shebang_prefix) {
+  auto first_line_split = util::Split(first_line, " \r\t");
+  if (first_line_split.empty() || first_line_split[0] != shebang_prefix) {
     return {Status::NotOK, "Expect a Shebang statement in the first line, e.g. `#!lua name=mylib`"};
   }
 
   size_t libname_pos = 1;
-  for (; libname_pos < first_line_splitted.size(); ++libname_pos) {
-    if (util::HasPrefix(first_line_splitted[libname_pos], shebang_libname_prefix)) {
+  for (; libname_pos < first_line_split.size(); ++libname_pos) {
+    if (util::HasPrefix(first_line_split[libname_pos], shebang_libname_prefix)) {
       break;
     }
   }
 
-  if (libname_pos >= first_line_splitted.size()) {
+  if (libname_pos >= first_line_split.size()) {
     return {Status::NotOK, "Expect library name in the Shebang statement, e.g. `#!lua name=mylib`"};
   }
 
-  auto libname = first_line_splitted[libname_pos].substr(strlen(shebang_libname_prefix));
+  auto libname = first_line_split[libname_pos].substr(strlen(shebang_libname_prefix));
   *lib_name = libname;
   if (libname.empty() ||
       std::any_of(libname.begin(), libname.end(), [](char v) { return !std::isalnum(v) && v != '_'; })) {

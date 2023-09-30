@@ -66,6 +66,7 @@ Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, 
 Status FunctionCall(Server *srv, const std::string &name, const std::vector<std::string> &keys,
                     const std::vector<std::string> &argv, std::string *output);
 Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output);
+Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output);
 Status FunctionDelete(Server *srv, const std::string &name);
 bool FunctionIsLibExist(Server *srv, const std::string &libname, bool need_check_storage = true);
 

@@ -54,6 +54,13 @@ struct CommandFunction : Commander {
       }
 
       return lua::FunctionList(srv, libname, with_code, output);
+    } else if (parser.EatEqICase("listfunc")) {
+      std::string funcname;
+      if (parser.EatEqICase("funcname")) {
+        funcname = GET_OR_RET(parser.TakeStr());
+      }
+
+      return lua::FunctionListFunc(srv, funcname, output);
     } else if (parser.EatEqICase("delete")) {
       auto libname = GET_OR_RET(parser.TakeStr());
       if (!lua::FunctionIsLibExist(srv, libname)) {
@@ -63,7 +70,7 @@ struct CommandFunction : Commander {
       auto s = lua::FunctionDelete(srv, libname);
       if (!s) return s;
 
-      *output = NilString();
+      *output = SimpleString("OK");
       return Status::OK();
     } else {
       return {Status::NotOK, "no such subcommand"};

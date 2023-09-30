@@ -451,6 +451,37 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
   return Status::OK();
 }
 
+Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output) {
+  std::string start_key = engine::kLuaFuncLibPrefix + funcname;
+  std::string end_key = start_key;
+  end_key.back()++;
+
+  rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
+  redis::LatestSnapShot ss(srv->storage);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(end_key);
+  read_options.iterate_upper_bound = &upper_bound;
+
+  auto *cf = srv->storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto iter = util::UniqueIterator(srv->storage, read_options, cf);
+  std::vector<std::pair<std::string, std::string>> result;
+  for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
+    Slice func = iter->key();
+    func.remove_prefix(strlen(engine::kLuaLibCodePrefix));
+    result.emplace_back(func.ToString(), iter->value().ToString());
+  }
+
+  output->append(redis::MultiLen(result.size() * 4));
+  for (const auto &[func, lib] : result) {
+    output->append(redis::SimpleString("function_name"));
+    output->append(redis::SimpleString(func));
+    output->append(redis::SimpleString("from_library"));
+    output->append(redis::SimpleString(lib));
+  }
+
+  return Status::OK();
+}
+
 Status FunctionDelete(Server *srv, const std::string &name) {
   auto lua = srv->Lua();
 

@@ -47,16 +47,19 @@ Status IsNamespaceLegal(const std::string& ns) {
 
 Status Namespace::Load() {
   auto config = storage_->GetConfig();
-
+  // Load from the configuration file first
   tokens_ = config->load_tokens;
-  if (!config->repl_namespace_enabled) {
-    return Status::OK();
-  }
+
+  // Don't need to load from db if repl_namespace_enabled is false
+  if (!config->repl_namespace_enabled) return Status::OK();
 
   std::string value;
   auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
-  if (!s.ok() && s.IsNotFound()) {
+  if (!s.ok() && !s.IsNotFound()) {
     return {Status::NotOK, s.ToString()};
+  }
+  if (s.IsNotFound()) {
+    return Status::OK();
   }
   jsoncons::json j = jsoncons::json::parse(value);
   for (const auto& iter : j.object_range()) {
@@ -154,8 +157,14 @@ Status Namespace::Del(const std::string& ns) {
 
 Status Namespace::rewriteOrWriteDB() {
   auto config = storage_->GetConfig();
-  if (config->repl_namespace_enabled) {
-    return config->Rewrite(tokens_);
+  auto s = config->Rewrite(tokens_);
+  if (!s.IsOK()) {
+    return s;
+  }
+
+  // Don't need to write to db if repl_namespace_enabled is false
+  if (!config->repl_namespace_enabled) {
+    return Status::OK();
   }
   jsoncons::json json;
   for (const auto& iter : tokens_) {

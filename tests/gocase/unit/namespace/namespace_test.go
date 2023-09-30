@@ -71,6 +71,39 @@ func TestNamespace(t *testing.T) {
 		}
 	})
 
+	t.Run("Namespace exists after restart", func(t *testing.T) {
+		for _, enableNamespaceReplication := range []string{"no", "yes"} {
+			require.NoError(t, rdb.ConfigSet(ctx,
+				"repl-namespace-enabled",
+				enableNamespaceReplication,
+			).Err())
+			require.NoError(t, rdb.ConfigRewrite(ctx).Err())
+			nsTokens := map[string]string{
+				"n1": "t1",
+				"n2": "t2",
+				"n3": "t3",
+				"n4": "t4",
+			}
+			for ns, token := range nsTokens {
+				r := rdb.Do(ctx, "NAMESPACE", "ADD", ns, token)
+				require.NoError(t, r.Err())
+				require.Equal(t, "OK", r.Val())
+			}
+
+			srv.Restart()
+			for ns, token := range nsTokens {
+				r := rdb.Do(ctx, "NAMESPACE", "GET", ns)
+				require.NoError(t, r.Err())
+				require.Equal(t, token, r.Val())
+			}
+			for ns := range nsTokens {
+				r := rdb.Do(ctx, "NAMESPACE", "DEL", ns)
+				require.NoError(t, r.Err())
+				require.Equal(t, "OK", r.Val())
+			}
+		}
+	})
+
 	t.Run("Concurrent creating namespaces", func(t *testing.T) {
 		threads := 4
 		countPerThread := 10

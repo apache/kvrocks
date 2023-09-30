@@ -519,7 +519,11 @@ void Config::initFieldCallback() {
       {"repl-namespace-enabled",
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          if (!srv || !cluster_enabled) return Status::OK();
-
+         auto new_value = util::ToLower(v);
+         // If the namespace replication is enabled/disabled, need to reload.
+         if ((repl_namespace_enabled && new_value == "no") || (!repl_namespace_enabled && new_value == "yes")) {
+           return srv->GetNamespace()->Load();
+         }
          return Status::OK();
        }},
       {"rocksdb.target_file_size_base",

@@ -17,51 +17,55 @@
  * under the License.
  *
  */
+#include "server/namespace.h"
+
 #include <gtest/gtest.h>
 
 #include <fstream>
 
 #include "config/config.h"
-#include "server/server.h"
 #include "test_base.h"
 
 class NamespaceTest : public TestBase {
  protected:
   explicit NamespaceTest() { config_->requirepass = "123"; }
 
-  void SetUp() override { srv_ = std::make_unique<Server>(storage_, storage_->GetConfig()); }
+  void SetUp() override {}
   void TearDown() override {}
-
-  std::unique_ptr<Server> srv_;
 };
 
 TEST_F(NamespaceTest, AddAndDelete) {
-  std::map<std::string, std::string> tokens = {{"tokens2", "test_ns"}, {"tokens", "test_ns2"}, {"tokens3", "test_ns3"}};
-  for (const auto &iter : tokens) {
-    ASSERT_TRUE(srv_->GetNamespace()->Add(iter.second, iter.first).IsOK());
-  }
+  for (const auto &v : {true, false}) {
+    auto ns = std::make_unique<Namespace>(storage_);
+    std::map<std::string, std::string> tokens = {
+        {"tokens2", "test_ns"}, {"tokens", "test_ns2"}, {"tokens3", "test_ns3"}};
+    config_->repl_namespace_enabled = v;
+    for (const auto &iter : tokens) {
+      ASSERT_TRUE(ns->Add(iter.second, iter.first).IsOK());
+    }
 
-  // test add duplicate namespace
-  for (const auto &iter : tokens) {
-    ASSERT_FALSE(srv_->GetNamespace()->Add(iter.second, "new_" + iter.first).IsOK());
-  }
+    // test add duplicate namespace
+    for (const auto &iter : tokens) {
+      ASSERT_FALSE(ns->Add(iter.second, "new_" + iter.first).IsOK());
+    }
 
-  for (const auto &iter : tokens) {
-    ASSERT_EQ(iter.first, srv_->GetNamespace()->Get(iter.second).GetValue());
-  }
+    for (const auto &iter : tokens) {
+      ASSERT_EQ(iter.first, ns->Get(iter.second).GetValue());
+    }
 
-  for (const auto &iter : tokens) {
-    ASSERT_TRUE(srv_->GetNamespace()->Set(iter.second, "new_" + iter.first).IsOK());
-  }
+    for (const auto &iter : tokens) {
+      ASSERT_TRUE(ns->Set(iter.second, "new_" + iter.first).IsOK());
+    }
 
-  auto list_tokens = srv_->GetNamespace()->List();
-  ASSERT_EQ(list_tokens.size(), tokens.size());
-  for (const auto &iter : tokens) {
-    ASSERT_EQ(iter.second, list_tokens["new_" + iter.first]);
-  }
+    auto list_tokens = ns->List();
+    ASSERT_EQ(list_tokens.size(), tokens.size());
+    for (const auto &iter : tokens) {
+      ASSERT_EQ(iter.second, list_tokens["new_" + iter.first]);
+    }
 
-  for (const auto &iter : tokens) {
-    ASSERT_TRUE(srv_->GetNamespace()->Del(iter.second).IsOK());
+    for (const auto &iter : tokens) {
+      ASSERT_TRUE(ns->Del(iter.second).IsOK());
+    }
+    ASSERT_EQ(0, ns->List().size());
   }
-  ASSERT_EQ(0, srv_->GetNamespace()->List().size());
 }

@@ -22,8 +22,6 @@
 
 #include "jsoncons/json.hpp"
 
-constexpr const char* kNamespaceDBKey = "__namespace_keys__";
-
 // Error messages
 constexpr const char* kErrNamespaceExists = "the namespace already exists";
 constexpr const char* kErrTokenExists = "the token already exists";
@@ -50,16 +48,13 @@ Status Namespace::Load() {
   // Load from the configuration file first
   tokens_ = config->load_tokens;
 
-  // Don't need to load from db if repl_namespace_enabled is false
-  if (!config->repl_namespace_enabled) return Status::OK();
-
+  // We would like to load namespaces from db even if repl_namespace_enabled is false,
+  // this can avoid missing some namespaces when turn on/off repl_namespace_enabled.
   std::string value;
   auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
-  if (!s.ok() && !s.IsNotFound()) {
+  if (!s.ok()) {
+    if (s.IsNotFound()) return Status::OK();
     return {Status::NotOK, s.ToString()};
-  }
-  if (s.IsNotFound()) {
-    return Status::OK();
   }
   jsoncons::json j = jsoncons::json::parse(value);
   for (const auto& iter : j.object_range()) {
@@ -160,6 +155,12 @@ Status Namespace::rewriteOrWriteDB() {
   auto s = config->Rewrite(tokens_);
   if (!s.IsOK()) {
     return s;
+  }
+
+  // Don't propagate write to DB if its role is slave to prevent from
+  // increasing the DB sequence number.
+  if (config->IsSlave()) {
+    return Status::OK();
   }
 
   // Don't need to write to db if repl_namespace_enabled is false

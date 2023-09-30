@@ -21,6 +21,9 @@
 #pragma once
 
 #include "storage/storage.h"
+
+constexpr const char *kNamespaceDBKey = "__namespace_keys__";
+
 class Namespace {
  public:
   explicit Namespace(engine::Storage *storage) : storage_(storage) {

@@ -975,6 +975,11 @@ Status ReplicationThread::parseWriteBatch(const std::string &batch_string) {
             return s.Prefixed("failed to execute propagate command");
           }
         }
+      } else if (write_batch_handler.Key() == kNamespaceDBKey) {
+        auto s = srv_->GetNamespace()->Load();
+        if (!s.IsOK()) {
+          return s.Prefixed("failed to load namespaces");
+        }
       }
       break;
     case kBatchTypeStream: {

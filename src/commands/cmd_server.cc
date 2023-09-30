@@ -88,6 +88,9 @@ class CommandNamespace : public Commander {
 
     Config *config = svr->GetConfig();
     std::string sub_command = util::ToLower(args_[1]);
+    if (config->repl_namespace_enabled && config->IsSlave() && sub_command != "get") {
+      return {Status::RedisExecErr, "namespace is read-only for slave"};
+    }
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;

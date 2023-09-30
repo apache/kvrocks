@@ -221,6 +221,7 @@ struct Config {
   Status Set(Server *svr, std::string key, const std::string &value);
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
+  bool IsSlave() const { return !master_host.empty(); }
 
  private:
   std::string path_;

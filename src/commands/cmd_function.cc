@@ -37,7 +37,7 @@ struct CommandFunction : Commander {
       }
 
       std::string libname;
-      auto s = lua::FunctionLoad(srv, GET_OR_RET(parser.TakeStr()), true, replace, &libname);
+      auto s = lua::FunctionLoad(conn, GET_OR_RET(parser.TakeStr()), true, replace, &libname);
       if (!s) return s;
 
       *output = SimpleString(libname);
@@ -63,7 +63,7 @@ struct CommandFunction : Commander {
       return lua::FunctionListFunc(srv, funcname, output);
     } else if (parser.EatEqICase("delete")) {
       auto libname = GET_OR_RET(parser.TakeStr());
-      if (!lua::FunctionIsLibExist(srv, libname)) {
+      if (!lua::FunctionIsLibExist(conn, libname)) {
         return {Status::NotOK, "no such library"};
       }
 
@@ -78,6 +78,7 @@ struct CommandFunction : Commander {
   }
 };
 
+template <bool read_only = false>
 struct CommandFCall : Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
@@ -87,14 +88,16 @@ struct CommandFCall : Commander {
       return {Status::NotOK, "Number of keys can't be negative"};
     }
 
-    return lua::FunctionCall(srv, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
-                             std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), output);
+    return lua::FunctionCall(conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
+                             std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), output, read_only);
   }
 };
 
 CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args);
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFunction>("function", -2, "exclusive no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandFCall>("fcall", -3, "exclusive write no-script", GetScriptEvalKeyRange));
+                        MakeCmdAttr<CommandFCall<>>("fcall", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+                        MakeCmdAttr<CommandFCall<true>>("fcall_ro", -3, "read-only ro-script no-script",
+                                                        GetScriptEvalKeyRange));
 
 }  // namespace redis

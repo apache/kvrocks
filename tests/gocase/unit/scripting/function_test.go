@@ -43,6 +43,17 @@ func TestFunction(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("FUNCTION LOAD errors", func(t *testing.T) {
+		code := strings.Join(strings.Split(luaMylib1, "\n")[1:], "\n")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err(), ".*Shebang statement.*")
+
+		code2 := "#!lua\n" + code
+		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), ".*Expect library name.*")
+
+		code2 = "#!lua name=$$$\n" + code
+		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), ".*valid library name.*")
+	})
+
 	t.Run("FUNCTION LOAD and FCALL mylib1", func(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", 0, 1).Err(), ".*No such function name.*")
 		require.NoError(t, rdb.Do(ctx, "FUNCTION", "LOAD", luaMylib1).Err())

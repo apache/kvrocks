@@ -27,12 +27,12 @@
 #include "server/redis_connection.h"
 #include "status.h"
 
-constexpr const char *REDIS_LUA_FUNC_SHA_PREFIX = "f_";
-constexpr const char *REDIS_LUA_REGISTER_FUNC_PREFIX = "__redis_registered_";
-constexpr const char *REDIS_LUA_SERVER_PTR = "__server_ptr";
-constexpr const char *REDIS_FUNCTION_LIBNAME = "REDIS_FUNCTION_LIBNAME";
-constexpr const char *REDIS_FUNCTION_NEEDSTORE = "REDIS_FUNCTION_NEEDSTORE";
-constexpr const char *REDIS_FUNCTION_LIBRARIES = "REDIS_FUNCTION_LIBRARIES";
+inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
+inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";
+inline constexpr const char REDIS_LUA_SERVER_PTR[] = "__server_ptr";
+inline constexpr const char REDIS_FUNCTION_LIBNAME[] = "REDIS_FUNCTION_LIBNAME";
+inline constexpr const char REDIS_FUNCTION_NEEDSTORE[] = "REDIS_FUNCTION_NEEDSTORE";
+inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LIBRARIES";
 
 namespace lua {
 

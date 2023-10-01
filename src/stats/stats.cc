@@ -21,6 +21,7 @@
 #include "stats.h"
 
 #include <chrono>
+#include <mutex>
 
 #include "fmt/format.h"
 #include "time_util.h"

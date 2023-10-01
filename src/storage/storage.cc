@@ -597,7 +597,7 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
-  std::string begin_key = kLuaFunctionPrefix, end_key = begin_key;
+  std::string begin_key = kLuaFuncSHAPrefix, end_key = begin_key;
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
   end_key[end_key.size() - 1] += 1;

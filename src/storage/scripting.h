@@ -62,13 +62,15 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
 
 bool ScriptExists(lua_State *lua, const std::string &sha);
 
-Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, bool replace, std::string *lib_name);
-Status FunctionCall(Server *srv, const std::string &name, const std::vector<std::string> &keys,
-                    const std::vector<std::string> &argv, std::string *output);
+Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
+                    std::string *lib_name, bool read_only = false);
+Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
+                    const std::vector<std::string> &argv, std::string *output, bool read_only = false);
 Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output);
 Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output);
 Status FunctionDelete(Server *srv, const std::string &name);
-bool FunctionIsLibExist(Server *srv, const std::string &libname, bool need_check_storage = true);
+bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage = true,
+                        bool read_only = false);
 
 const char *RedisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply);

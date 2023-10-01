@@ -255,6 +255,11 @@ class Server {
   void ScriptReset();
   Status ScriptFlush();
 
+  Status FunctionGetCode(const std::string &lib, std::string *code) const;
+  Status FunctionGetLib(const std::string &func, std::string *lib) const;
+  Status FunctionSetCode(const std::string &lib, const std::string &code) const;
+  Status FunctionSetLib(const std::string &func, const std::string &lib) const;
+
   Status Propagate(const std::string &channel, const std::vector<std::string> &tokens) const;
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);

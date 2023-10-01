@@ -27,12 +27,18 @@
 #include "server/redis_connection.h"
 #include "status.h"
 
-#define REDIS_LUA_FUNC_SHA_PREFIX "f_"  // NOLINT
+inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
+inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";
+inline constexpr const char REDIS_LUA_SERVER_PTR[] = "__server_ptr";
+inline constexpr const char REDIS_FUNCTION_LIBNAME[] = "REDIS_FUNCTION_LIBNAME";
+inline constexpr const char REDIS_FUNCTION_NEEDSTORE[] = "REDIS_FUNCTION_NEEDSTORE";
+inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LIBRARIES";
 
 namespace lua {
 
 lua_State *CreateState(Server *svr, bool read_only = false);
 void DestroyState(lua_State *lua);
+Server *GetServer(lua_State *lua);
 
 void LoadFuncs(lua_State *lua, bool read_only = false);
 void LoadLibraries(lua_State *lua);
@@ -46,6 +52,7 @@ int RedisSha1hexCommand(lua_State *lua);
 int RedisStatusReplyCommand(lua_State *lua);
 int RedisErrorReplyCommand(lua_State *lua);
 int RedisLogCommand(lua_State *lua);
+int RedisRegisterFunction(lua_State *lua);
 
 Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
@@ -54,6 +61,14 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
                           bool read_only = false);
 
 bool ScriptExists(lua_State *lua, const std::string &sha);
+
+Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, bool replace, std::string *lib_name);
+Status FunctionCall(Server *srv, const std::string &name, const std::vector<std::string> &keys,
+                    const std::vector<std::string> &argv, std::string *output);
+Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output);
+Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output);
+Status FunctionDelete(Server *srv, const std::string &name);
+bool FunctionIsLibExist(Server *srv, const std::string &libname, bool need_check_storage = true);
 
 const char *RedisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply);
@@ -72,6 +87,7 @@ void PushError(lua_State *lua, const char *err);
 
 void SortArray(lua_State *lua);
 void SetGlobalArray(lua_State *lua, const std::string &var, const std::vector<std::string> &elems);
+void PushArray(lua_State *lua, const std::vector<std::string> &elems);
 
 void SHA1Hex(char *digest, const char *script, size_t len);
 

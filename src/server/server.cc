@@ -44,6 +44,7 @@
 #include "storage/compaction_checker.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
+#include "storage/storage.h"
 #include "string_util.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -1527,7 +1528,7 @@ Status Server::ScriptExists(const std::string &sha) {
 }
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
-  std::string func_name = engine::kLuaFunctionPrefix + sha;
+  std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
@@ -1537,8 +1538,38 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
 }
 
 Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
-  std::string func_name = engine::kLuaFunctionPrefix + sha;
+  std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   return storage->WriteToPropagateCF(func_name, body);
+}
+
+Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
+  std::string func_name = engine::kLuaLibCodePrefix + lib;
+  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
+  if (!s.ok()) {
+    return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
+}
+
+Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
+  std::string func_name = engine::kLuaFuncLibPrefix + func;
+  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
+  if (!s.ok()) {
+    return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
+}
+
+Status Server::FunctionSetCode(const std::string &lib, const std::string &code) const {
+  std::string func_name = engine::kLuaLibCodePrefix + lib;
+  return storage->WriteToPropagateCF(func_name, code);
+}
+
+Status Server::FunctionSetLib(const std::string &func, const std::string &lib) const {
+  std::string func_name = engine::kLuaFuncLibPrefix + func;
+  return storage->WriteToPropagateCF(func_name, lib);
 }
 
 void Server::ScriptReset() {

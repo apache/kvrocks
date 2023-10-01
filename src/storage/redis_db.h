@@ -66,20 +66,20 @@ class Database {
   std::string namespace_;
 
   friend class LatestSnapShot;
-  class LatestSnapShot {
-   public:
-    explicit LatestSnapShot(engine::Storage *storage)
-        : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
-    ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
-    const rocksdb::Snapshot *GetSnapShot() const { return snapshot_; }
+};
 
-    LatestSnapShot(const LatestSnapShot &) = delete;
-    LatestSnapShot &operator=(const LatestSnapShot &) = delete;
+class LatestSnapShot {
+ public:
+  explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
+  ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
+  const rocksdb::Snapshot *GetSnapShot() const { return snapshot_; }
 
-   private:
-    engine::Storage *storage_ = nullptr;
-    const rocksdb::Snapshot *snapshot_ = nullptr;
-  };
+  LatestSnapShot(const LatestSnapShot &) = delete;
+  LatestSnapShot &operator=(const LatestSnapShot &) = delete;
+
+ private:
+  engine::Storage *storage_ = nullptr;
+  const rocksdb::Snapshot *snapshot_ = nullptr;
 };
 
 class SubKeyScanner : public redis::Database {

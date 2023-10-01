@@ -35,6 +35,9 @@ var luaMylib1 string
 //go:embed mylib2.lua
 var luaMylib2 string
 
+//go:embed mylib3.lua
+var luaMylib3 string
+
 func TestFunction(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -143,5 +146,18 @@ func TestFunction(t *testing.T) {
 		require.Equal(t, list[5].(string), "reverse")
 		require.Equal(t, list[7].(string), "mylib1")
 		require.Equal(t, len(list), 8)
+	})
+
+	t.Run("FCALL_RO", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FUNCTION", "LOAD", luaMylib3).Err())
+
+		require.NoError(t, rdb.Set(ctx, "x", 1, 0).Err())
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myget", 1, "x").Val(), "1")
+		require.Equal(t, rdb.Do(ctx, "FCALL_RO", "myget", 1, "x").Val(), "1")
+
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myset", 1, "x", 2).Val(), "OK")
+		require.Equal(t, rdb.Get(ctx, "x").Val(), "2")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL_RO", "myset", 1, "x", 3).Err(), ".*Write commands are not allowed.*")
 	})
 }

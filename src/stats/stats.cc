@@ -93,6 +93,7 @@ void Stats::IncrLatency(uint64_t latency, const std::string &command_name) {
 
 void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
   uint64_t curr_time = util::GetTimeStampMS();
+  std::unique_lock<std::shared_mutex> lock(inst_metrics_mutex);
   uint64_t t = curr_time - inst_metrics[metric].last_sample_time;
   uint64_t ops = current_reading - inst_metrics[metric].last_sample_count;
   uint64_t ops_sec = t > 0 ? (ops * 1000 / t) : 0;
@@ -104,6 +105,7 @@ void Stats::TrackInstantaneousMetric(int metric, uint64_t current_reading) {
 }
 
 uint64_t Stats::GetInstantaneousMetric(int metric) const {
+  std::shared_lock<std::shared_mutex> lock(inst_metrics_mutex);
   uint64_t sum = 0;
   for (uint64_t sample : inst_metrics[metric].samples) sum += sample;
   return sum / STATS_METRIC_SAMPLES;

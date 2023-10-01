@@ -132,7 +132,7 @@ Server::~Server() {
 //     - feed-replica-data-info: generate checkpoint and send files list when full sync
 //     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
-  auto s = namespace_.Load();
+  auto s = namespace_.LoadAndRewrite();
   if (!s.IsOK()) {
     return s;
   }

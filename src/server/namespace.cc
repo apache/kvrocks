@@ -43,7 +43,7 @@ Status IsNamespaceLegal(const std::string& ns) {
   return Status::OK();
 }
 
-Status Namespace::Load() {
+Status Namespace::LoadAndRewrite() {
   auto config = storage_->GetConfig();
   // Load from the configuration file first
   tokens_ = config->load_tokens;
@@ -52,18 +52,25 @@ Status Namespace::Load() {
   // this can avoid missing some namespaces when turn on/off repl_namespace_enabled.
   std::string value;
   auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
-  if (!s.ok()) {
-    if (s.IsNotFound()) return Status::OK();
+  if (!s.ok() && !s.IsNotFound()) {
     return {Status::NotOK, s.ToString()};
   }
-  jsoncons::json j = jsoncons::json::parse(value);
-  for (const auto& iter : j.object_range()) {
-    if (tokens_.find(iter.key()) == tokens_.end()) {
-      // merge the namespace from db
-      tokens_[iter.key()] = iter.value().as<std::string>();
+  if (s.ok()) {
+    // The namespace db key is existed, so it doesn't allow to switch off repl_namespace_enabled
+    if (!config->repl_namespace_enabled) {
+      return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
+    }
+
+    jsoncons::json j = jsoncons::json::parse(value);
+    for (const auto& iter : j.object_range()) {
+      if (tokens_.find(iter.key()) == tokens_.end()) {
+        // merge the namespace from db
+        tokens_[iter.key()] = iter.value().as<std::string>();
+      }
     }
   }
-  return rewriteOrWriteDB();
+
+  return Rewrite();
 }
 
 StatusOr<std::string> Namespace::Get(const std::string& ns) const {
@@ -108,7 +115,7 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
   }
   tokens_[token] = ns;
 
-  s = rewriteOrWriteDB();
+  s = Rewrite();
   if (!s.IsOK()) {
     tokens_.erase(token);
     return s;
@@ -139,7 +146,7 @@ Status Namespace::Del(const std::string& ns) {
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {
       tokens_.erase(iter.first);
-      auto s = rewriteOrWriteDB();
+      auto s = Rewrite();
       if (!s.IsOK()) {
         tokens_[iter.first] = iter.second;
         return s;
@@ -150,7 +157,7 @@ Status Namespace::Del(const std::string& ns) {
   return {Status::NotOK, kErrNamespaceNotFound};
 }
 
-Status Namespace::rewriteOrWriteDB() {
+Status Namespace::Rewrite() {
   auto config = storage_->GetConfig();
   auto s = config->Rewrite(tokens_);
   if (!s.IsOK()) {

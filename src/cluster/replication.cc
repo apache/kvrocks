@@ -976,7 +976,7 @@ Status ReplicationThread::parseWriteBatch(const std::string &batch_string) {
           }
         }
       } else if (write_batch_handler.Key() == kNamespaceDBKey) {
-        auto s = srv_->GetNamespace()->Load();
+        auto s = srv_->GetNamespace()->LoadAndRewrite();
         if (!s.IsOK()) {
           return s.Prefixed("failed to load namespaces");
         }

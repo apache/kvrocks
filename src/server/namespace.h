@@ -34,18 +34,17 @@ class Namespace {
   Namespace(const Namespace &) = delete;
   Namespace &operator=(const Namespace &) = delete;
 
-  Status Load();
+  Status LoadAndRewrite();
   StatusOr<std::string> Get(const std::string &ns) const;
   StatusOr<std::string> GetByToken(const std::string &token) const;
   Status Set(const std::string &ns, const std::string &token);
   Status Add(const std::string &ns, const std::string &token);
   Status Del(const std::string &ns);
   const std::map<std::string, std::string> &List() const { return tokens_; }
+  Status Rewrite();
 
  private:
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *cf_ = nullptr;
   std::map<std::string, std::string> tokens_;
-
-  Status rewriteOrWriteDB();
 };

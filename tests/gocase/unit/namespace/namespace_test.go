@@ -89,6 +89,11 @@ func TestNamespace(t *testing.T) {
 				require.NoError(t, r.Err())
 				require.Equal(t, "OK", r.Val())
 			}
+			for ns, token := range nsTokens {
+				r := rdb.Do(ctx, "NAMESPACE", "GET", ns)
+				require.NoError(t, r.Err())
+				require.Equal(t, token, r.Val())
+			}
 
 			srv.Restart()
 			for ns, token := range nsTokens {
@@ -167,7 +172,37 @@ func TestNamespaceReplicate(t *testing.T) {
 		"n4": "t4",
 	}
 
-	t.Run("Replicate namespaces", func(t *testing.T) {
+	t.Run("Disable Replicate namespces", func(t *testing.T) {
+		require.NoError(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
+		require.NoError(t, slaveRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
+
+		for ns, token := range nsTokens {
+			r := masterRdb.Do(ctx, "NAMESPACE", "ADD", ns, token)
+			require.NoError(t, r.Err())
+			require.Equal(t, "OK", r.Val())
+		}
+		util.WaitForOffsetSync(t, slaveRdb, masterRdb)
+
+		// Can read namespaces on master
+		for ns, token := range nsTokens {
+			r := masterRdb.Do(ctx, "NAMESPACE", "GET", ns)
+			require.NoError(t, r.Err())
+			require.Equal(t, token, r.Val())
+		}
+		// Can't read namespaces on slave
+		for ns := range nsTokens {
+			r := slaveRdb.Do(ctx, "NAMESPACE", "GET", ns)
+			require.EqualError(t, r.Err(), redis.Nil.Error())
+		}
+
+		for ns := range nsTokens {
+			r := masterRdb.Do(ctx, "NAMESPACE", "DEL", ns)
+			require.NoError(t, r.Err())
+			require.Equal(t, "OK", r.Val())
+		}
+	})
+
+	t.Run("Enable Replicate namespaces", func(t *testing.T) {
 		require.NoError(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "yes").Err())
 		require.NoError(t, slaveRdb.ConfigSet(ctx, "repl-namespace-enabled", "yes").Err())
 
@@ -202,29 +237,7 @@ func TestNamespaceReplicate(t *testing.T) {
 		util.ErrorRegexp(t, r.Err(), ".*ERR namespace is read-only for slave.*")
 	})
 
-	t.Run("Turn off namespace replication", func(t *testing.T) {
-		require.NoError(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
-		require.NoError(t, slaveRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
-		for ns, token := range nsTokens {
-			r := masterRdb.Do(ctx, "NAMESPACE", "ADD", ns, token)
-			require.NoError(t, r.Err())
-			require.Equal(t, "OK", r.Val())
-		}
-		for ns, token := range nsTokens {
-			r := masterRdb.Do(ctx, "NAMESPACE", "GET", ns)
-			require.NoError(t, r.Err())
-			require.Equal(t, token, r.Val())
-		}
-		util.WaitForOffsetSync(t, slaveRdb, masterRdb)
-		for ns := range nsTokens {
-			r := slaveRdb.Do(ctx, "NAMESPACE", "GET", ns)
-			require.EqualError(t, r.Err(), redis.Nil.Error())
-		}
-	})
-
-	t.Run("Allow to operate slave's namespace if replication is disabled", func(t *testing.T) {
-		r := slaveRdb.Do(ctx, "NAMESPACE", "ADD", "ns_xxxx", "token_xxxx")
-		require.NoError(t, r.Err())
-		require.Equal(t, "OK", r.Val())
+	t.Run("Turn off namespace replication is not allowed", func(t *testing.T) {
+		util.ErrorRegexp(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err(), ".*cannot switch off repl_namespace_enabled when namespaces exist in db.*")
 	})
 }

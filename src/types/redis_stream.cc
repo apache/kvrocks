@@ -257,12 +257,7 @@ rocksdb::Status Stream::ReadGroup(const Slice &stream_name, const std::string &g
 
   std::string get_entry_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.IsNotFound()) {
-    if (!s.ok()) {
-      return s;
-    }
-    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
-  }
+ 
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
 
   StreamRangeOptions options;

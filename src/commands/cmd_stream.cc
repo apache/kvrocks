@@ -27,6 +27,7 @@
 #include "event_util.h"
 #include "server/server.h"
 #include "types/redis_stream.h"
+#include "types/redis_stream_base.h"
 
 namespace redis {
 
@@ -341,6 +342,48 @@ class CommandXGroup : public Commander {
   StreamXGroupCreateOptions xgroup_create_options_;
 };
 
+class CommandXReadGroup : public Commander {
+  public:
+    Status Parse(const std::vector<std::string> &args) override {
+      CommandParser parser(args, 1);
+      keyword_group_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
+      group_name_ = GET_OR_RET(parser.TakeStr());
+      consumer_name_ = GET_OR_RET(parser.TakeStr());
+      keyword_stream_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
+      stream_name_ = GET_OR_RET(parser.TakeStr());
+      std::cout<< group_name_ << " " << stream_name_ << "\n";
+      if (keyword_group_ != "group" || keyword_stream_ != "streams") {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
+
+    Status Execute(Server *svr, Connection *conn, std::string *output) override {
+      redis::Stream stream_db(svr->storage, conn->GetNamespace());
+      std::vector<StreamEntry> entries;
+
+      auto s = stream_db.ReadGroup(stream_name_, 
+        group_name_, consumer_name_, entries);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      if (entries.size() < 1) {
+        return Status::OK();
+      }
+    output->append(redis::MultiLen(2));
+    output->append(redis::BulkString("key"));
+    output->append(redis::BulkString(entries[0].key));
+    output->append(redis::MultiBulkString(entries[0].values));
+
+    return Status::OK();
+    }
+  private:
+    std::string keyword_group_;
+    std::string keyword_stream_;
+    std::string consumer_name_;
+    std::string stream_name_;
+    std::string group_name_;
+};
 class CommandXLen : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -400,6 +443,8 @@ class CommandXInfo : public Commander {
 
         count_ = *parse_result;
       }
+    } else if(val == "groups" && args.size() >= 3) {
+      stream_ = false;
     }
     return Status::OK();
   }
@@ -1112,6 +1157,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
+                        MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXReadGroup>("xreadgroup", -3, "write", 1, 1, 1));
+
 
 }  // namespace redis

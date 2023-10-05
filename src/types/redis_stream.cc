@@ -28,6 +28,8 @@
 
 #include "db_util.h"
 #include "time_util.h"
+#include "status.h"
+#include "types/redis_stream_base.h"
 
 namespace redis {
 
@@ -230,6 +232,53 @@ std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetada
   PutFixed64(&dst, consumer_metadata.last_idle);
   PutFixed64(&dst, consumer_metadata.last_active);
   return dst;
+}
+
+rocksdb::Status Stream::ReadGroup(const Slice &stream_name, const std::string &group_name, 
+                            const std::string& consumer_namej, std::vector<StreamEntry>& entries){
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
+  if (s.IsNotFound()) {
+    return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
+  }
+
+  std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  std::string get_entry_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
+  if (!s.IsNotFound()) {
+    if (!s.ok()) {
+      return s;
+    }
+    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
+  }
+  StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
+
+  StreamRangeOptions options;
+  options.start = consumer_group_metadata.last_delivered_id;
+  options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+  options.with_count = true;
+  options.count = 1;
+  options.reverse = false;
+  options.exclude_start = false;
+  options.exclude_end = false;
+
+  s = range(ns_key, metadata, options, &entries);
+  if (!s.ok()) {
+      return s;
+  }
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
@@ -665,6 +714,7 @@ rocksdb::Status Stream::getEntryRawValue(const std::string &ns_key, const Stream
   std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
   return storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, value);
 }
+
 
 rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full, uint64_t count, StreamInfo *info) {
   std::string ns_key = AppendNamespacePrefix(stream_name);

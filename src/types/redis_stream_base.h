@@ -186,6 +186,15 @@ struct StreamInfo {
   std::vector<StreamEntry> entries;
 };
 
+struct GroupInfo {
+  std::string name;
+  uint64_t consumers;
+  uint64_t pending;
+  StreamEntryID last_delivered_id;
+  uint64_t entries_read;
+  uint64_t lag;
+};
+
 struct StreamReadResult {
   std::string name;
   std::vector<StreamEntry> entries;

@@ -18,6 +18,7 @@
  *
  */
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 
@@ -345,16 +346,92 @@ class CommandXGroup : public Commander {
 class CommandXReadGroup : public Commander {
   public:
     Status Parse(const std::vector<std::string> &args) override {
-      CommandParser parser(args, 1);
-      keyword_group_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
-      group_name_ = GET_OR_RET(parser.TakeStr());
-      consumer_name_ = GET_OR_RET(parser.TakeStr());
-      keyword_stream_ = util::ToLower(GET_OR_RET(parser.TakeStr()));
-      stream_name_ = GET_OR_RET(parser.TakeStr());
-      std::cout<< group_name_ << " " << stream_name_ << "\n";
-      if (keyword_group_ != "group" || keyword_stream_ != "streams") {
+      size_t streams_word_idx = 0;
+
+      for(size_t i = 1; i< args.size();) {
+        auto arg = util::ToLower(args[i]);
+
+        if (arg == "group") {
+          if (i + 2 >= args.size()) {
+            return {Status::RedisParseErr, errInvalidSyntax};
+          }
+          group_name_ = args[i + 1];
+          consumer_name_ = args[i + 2];
+          i += 3;
+          continue;
+        }
+
+        if (arg == "streams") {
+          streams_word_idx = i;
+          break;
+        }
+
+        if(arg == "count") {
+          if (i + 1 >= args.size()) {
+            return {Status::RedisParseErr, errInvalidSyntax};
+          }
+
+          with_count_ = true;
+
+          auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
+          if (!parse_result) {
+            return {Status::RedisParseErr, errValueNotInteger};
+          }
+
+          count_ = *parse_result;
+          i += 2;
+          continue;
+        }
+
+        if (arg == "block") {
+          if (i + 1 >= args.size()) {
+            return {Status::RedisParseErr, errInvalidSyntax};
+          }
+
+          block_ = true;
+
+          auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
+          if (!parse_result) {
+            return {Status::RedisParseErr, errValueNotInteger};
+          }
+
+          if (*parse_result < 0) {
+            return {Status::RedisParseErr, errTimeoutIsNegative};
+          }
+
+          block_timeout_ = *parse_result;
+          i += 2;
+          continue;
+        }
+
+        ++i;
+      }
+
+      if (streams_word_idx == 0) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
+
+      if ((args.size() - streams_word_idx - 1) % 2 != 0) {
+        return {Status::RedisParseErr, errUnbalancedStreamList};
+      }
+
+      size_t number_of_streams = (args.size() - streams_word_idx - 1) / 2;
+
+      for (size_t i = streams_word_idx + 1; i <= streams_word_idx + number_of_streams; ++i) {
+        streams_.push_back(args[i]);
+        const auto &id_str = args[i + number_of_streams];
+        bool get_latest = id_str == ">";
+        latest_marks_.push_back(get_latest);
+        StreamEntryID id;
+        if (!get_latest) {
+          auto s = ParseStreamEntryID(id_str, &id);
+          if (!s.IsOK()) {
+            return s;
+          }
+        }
+        ids_.push_back(id);
+      }
+
       return Status::OK();
     }
 
@@ -370,19 +447,23 @@ class CommandXReadGroup : public Commander {
       if (entries.size() < 1) {
         return Status::OK();
       }
-    output->append(redis::MultiLen(2));
-    output->append(redis::BulkString("key"));
-    output->append(redis::BulkString(entries[0].key));
-    output->append(redis::MultiBulkString(entries[0].values));
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString("key"));
+      output->append(redis::BulkString(entries[0].key));
+      output->append(redis::MultiBulkString(entries[0].values));
 
-    return Status::OK();
+      return Status::OK();
     }
   private:
-    std::string keyword_group_;
-    std::string keyword_stream_;
+    bool with_count_{false};
+    bool block_{false};
+    uint64_t block_timeout_{0};
+    uint64_t count_{0};
     std::string consumer_name_;
-    std::string stream_name_;
     std::string group_name_;
+    std::vector<std::string> streams_;
+    std::vector<StreamEntryID> ids_;
+    std::vector<bool> latest_marks_;
 };
 class CommandXLen : public Commander {
  public:

@@ -375,7 +375,7 @@ Status RDB::Restore(const std::string &key, std::string_view payload, uint64_t t
 
   auto value = GET_OR_RET(loadRdbObject(type, key));
 
-  return saveRdbOject(type, key, value, ttl_ms); // NOLINT
+  return saveRdbObject(type, key, value, ttl_ms); // NOLINT
 }
 
 StatusOr<int> RDB::loadRdbType() {
@@ -439,7 +439,7 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, const std::string &key) {
   return Status::OK();
 }
 
-Status RDB::saveRdbOject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms) {
+Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms) {
   rocksdb::Status db_status;
   if (type == RDBTypeString) {
     const auto &value = std::get<std::string>(obj);
@@ -498,14 +498,14 @@ Status RDB::saveRdbOject(int type, const std::string &key, const RedisObjValue &
   return db_status.ok() ? Status::OK() : Status{Status::RedisExecErr, db_status.ToString()};
 }
 
-StatusOr<int32_t> RDB::loadTime() {
-  int32_t t32 = 0;
+StatusOr<uint32_t> RDB::loadTime() {
+  uint32_t t32 = 0;
   GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&t32), 4));
   return t32;
 }
 
-StatusOr<int64_t> RDB::loadMillisecondTime(int rdb_version) {
-  int64_t t64 = 0;
+StatusOr<uint64_t> RDB::loadMillisecondTime(int rdb_version) {
+  uint64_t t64 = 0;
   GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&t64), 8));
   /* before Redis 5 (RDB version 9), the function
  * failed to convert data to/from little endian, so RDB files with keys having
@@ -531,7 +531,7 @@ bool RDB::isEmptyRedisObject(const RedisObjValue &value) {
   return false;
 }
 
-// Load RDB file: copy from redis/src/rdb.c£¨branch 7.0, 76b9c13d£©
+// Load RDB file: copy from redis/src/rdb.c:branch 7.0, 76b9c13d.
 Status RDB::LoadRdb() {
   char buf[1024] = {0};
   GET_OR_RETWITHLOG(stream_->Read(buf, 9));
@@ -548,17 +548,16 @@ Status RDB::LoadRdb() {
     return {Status::NotOK};
   }
 
-  int64_t expire_time = -1;
+  uint64_t expire_time = 0;
   int64_t expire_keys = 0;
   int64_t load_keys = 0;
   int64_t empty_keys_skipped = 0;
-  auto now = static_cast<int64_t>(util::GetTimeStampMS());
-  std::string cur_ns = ns_;  // current namespace, when select db, will change this value to ns + "_" + db_id
-
+  auto now = util::GetTimeStampMS();
+  std::string origin_ns = ns_;  // current namespace, when select db, will change ns  to origin_ns + "_" + db_id
   while (true) {
     auto type = GET_OR_RETWITHLOG(loadRdbType());
     if (type == RDBOpcodeExpireTime) {
-      expire_time = GET_OR_RETWITHLOG(loadTime());
+      expire_time = static_cast<uint64_t>(GET_OR_RETWITHLOG(loadTime()));
       expire_time *= 1000;
       continue;
     } else if (type == RDBOpcodeExpireTimeMs) {
@@ -576,11 +575,13 @@ Status RDB::LoadRdb() {
     } else if (type == RDBOpcodeSelectDB) {
       auto db_id = GET_OR_RETWITHLOG(loadObjectLen(nullptr));
       if (db_id != 0) {  // change namespace to ns + "_" + db_id
-        cur_ns = ns_ + "_" + std::to_string(db_id);
+        ns_ = origin_ns + "_" + std::to_string(db_id);
       } else {  // use origin namespace
-        cur_ns = ns_;
+        ns_ = origin_ns;
       }
-      LOG(INFO) << "select db: " << db_id << ", change to namespace: " << cur_ns;
+      LOG(INFO) << "select db: " << db_id << ", change to namespace: " << ns_;
+      //add namespace, password is the same as the namespace(expect the default namespace)
+      GET_OR_RET(addNamespace(ns_, ns_));
       continue;
     } else if (type == RDBOpcodeResizeDB) {       // not use in kvrocks, hint redis for hash table resize
       GET_OR_RETWITHLOG(loadObjectLen(nullptr));  // db_size
@@ -620,12 +621,12 @@ Status RDB::LoadRdb() {
         LOG(WARNING) << "skipping empty key: " << key;
       }
       continue;
-    } else if (expire_time != -1 && expire_time < now) { // in redis this used to feed this deletion to any connected replicas
+    } else if (expire_time != 0 && expire_time < now) { // in redis this used to feed this deletion to any connected replicas
       expire_keys++;
       continue;
     }
 
-    auto ret = saveRdbOject(type, key, value, expire_time);
+    auto ret = saveRdbObject(type, key, value, expire_time);
     load_keys++;
     if (!ret.IsOK()) {
       LOG(WARNING) << "save rdb object key " << key << " failed: " << ret.Msg();
@@ -653,4 +654,19 @@ Status RDB::LoadRdb() {
   }
 
   return Status::OK();
+}
+
+Status RDB::addNamespace(const std::string &ns, const std::string &token) {
+  if(ns == kDefaultNamespace) {
+    return Status::OK();
+  }
+
+  std::string oldToken;
+  auto s = config_->GetNamespace(ns, &oldToken);
+  if(s.IsOK()) { // namespace exist, use old token
+    return s;
+  }
+
+  // add new namespace 
+  return config_->AddNamespace(ns, token);
 }

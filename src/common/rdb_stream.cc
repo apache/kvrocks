@@ -43,18 +43,17 @@ StatusOr<uint64_t> RdbStringStream::GetCheckSum() const {
 }
 
 Status RdbFileStream::Open() {
-  ifs_.open(filename_, std::ifstream::in | std::ifstream::binary);
+  ifs_.open(file_name_, std::ifstream::in | std::ifstream::binary);
   if (!ifs_.is_open()) {
-    return {Status::NotOK, fmt::format("failed to open rdb file: '{}': {}", filename_, strerror(errno))};
+    return {Status::NotOK, fmt::format("failed to open rdb file: '{}': {}", file_name_, strerror(errno))};
   }
 
   return Status::OK();
 }
 
 StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
-  const size_t max_len = 1024 * 1024;
   while (len) {
-    size_t read_bytes = max_len < len ? max_len : len;
+    size_t read_bytes = max_read_chunk_size_ < len ? max_read_chunk_size_ : len;
     ifs_.read(buf, static_cast<std::streamsize>(read_bytes));
     if (!ifs_.good()) {
       return Status(Status::NotOK, fmt::format("read failed: {}:", strerror(errno)));

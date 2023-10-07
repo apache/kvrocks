@@ -1060,7 +1060,7 @@ class CommandRestore : public Commander {
     }
 
     auto stream_ptr = std::make_shared<RdbStringStream>(args_[3]);
-    RDB rdb(svr->storage, conn->GetNamespace(), stream_ptr);
+    RDB rdb(svr->storage, svr->GetConfig(), conn->GetNamespace(), stream_ptr);
     auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");

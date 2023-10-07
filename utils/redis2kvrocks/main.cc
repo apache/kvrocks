@@ -20,27 +20,18 @@
 
 #include <execinfo.h>
 #include <glog/logging.h>
-#include <rocksdb/convenience.h>
 
 #include <iomanip>
 #include <ostream>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <ucontext.h>
 
-#include "common/io_util.h"
 #include "common/rdb_stream.h"
 #include "config.h"
 #include "scope_exit.h"
-#include "server/server.h"
 #include "storage/rdb.h"
 #include "storage/storage.h"
-#include "string_util.h"
-#include "time_util.h"
-#include "unique_fd.h"
 #include "vendor/crc64.h"
 #include "version.h"
 
@@ -248,14 +239,14 @@ int main(int argc, char *argv[]) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
     return 1;
   }
-  RDB rdb(&storage, opts.namespace_, stream_ptr);
+  RDB rdb(&storage, &config, opts.namespace_, stream_ptr);
   s = rdb.LoadRdb();
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to load rdb: " << s.Msg();
     return 1;
   }
   LOG(INFO) << "Load rdb file success!";
-  rocksdb::CancelAllBackgroundWork(storage.GetDB(), true);
-  LOG(INFO) << "redis2kvrocks exit!";
+  storage.CloseDB();
+  LOG(INFO) << "Close DB success, redis2kvrocks exit!";
   return 0;
 }

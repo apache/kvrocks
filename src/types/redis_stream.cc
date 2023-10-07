@@ -234,8 +234,10 @@ std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetada
   return dst;
 }
 
-rocksdb::Status Stream::ReadGroup(const Slice &stream_name, const std::string &group_name, 
-                            const std::string& consumer_namej, std::vector<StreamEntry>& entries){
+rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<StreamEntry>& entries, redis::StreamRangeOptions& options, bool read_last_delivered_id){
+  const auto& stream_name = context.stream_name;
+  const auto& group_name = context.group_name;
+
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -260,15 +262,13 @@ rocksdb::Status Stream::ReadGroup(const Slice &stream_name, const std::string &g
  
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
 
-  StreamRangeOptions options;
-  options.start = consumer_group_metadata.last_delivered_id;
-  options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
-  options.with_count = true;
-  options.count = 1;
-  options.reverse = false;
-  options.exclude_start = false;
-  options.exclude_end = false;
-
+  if(read_last_delivered_id) {
+    options.start = consumer_group_metadata.last_delivered_id;
+    options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+    options.exclude_start = false;
+    options.exclude_end = false;
+  }
+  
   s = range(ns_key, metadata, options, &entries);
   if (!s.ok()) {
       return s;

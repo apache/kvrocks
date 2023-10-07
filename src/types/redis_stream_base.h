@@ -149,6 +149,12 @@ struct StreamRangeOptions {
   bool exclude_end = false;
 };
 
+struct StreamXReadGroupContext {
+  rocksdb::Slice stream_name;
+  std::string group_name;
+  std::string consumer_name;
+};
+
 struct StreamLenOptions {
   StreamEntryID entry_id;
   bool with_entry_id = false;

@@ -52,6 +52,7 @@ Status RdbFileStream::Open() {
 }
 
 StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
+  size_t n = 0;
   while (len) {
     size_t read_bytes = max_read_chunk_size_ < len ? max_read_chunk_size_ : len;
     ifs_.read(buf, static_cast<std::streamsize>(read_bytes));
@@ -62,7 +63,8 @@ StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
     buf = (char *)buf + read_bytes;
     len -= read_bytes;
     total_read_bytes_ += read_bytes;
+    n += read_bytes;
   }
 
-  return ifs_.gcount();
+  return n;
 }

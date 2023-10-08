@@ -23,45 +23,63 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
-#include <iostream>
+#include <fstream>
 
 TEST(RdbFileStreamOpenTest, FileNotExist) {
-  RdbFileStream reader("../../tests/testdata/not_exist.rdb");
+  RdbFileStream reader("../tests/testdata/not_exist.rdb");
   ASSERT_FALSE(reader.Open().IsOK());
-  std::filesystem::path current_path = std::filesystem::current_path();
-  std::cout << "cur path " << current_path.string() << std::endl;
-  EXPECT_EQ(current_path.string(), "/home/runner/work/kvrocks/kvrocks");
+  ;
 }
 
-TEST(RdbFileStreamReadTest, FileExist) {
-  RdbFileStream reader("../../tests/testdata/empty.rdb");
+TEST(RdbFileStreamOpenTest, FileExist) {
+  RdbFileStream reader("../tests/testdata/encodings.rdb");
   ASSERT_TRUE(reader.Open().IsOK());
 }
 
-TEST(RdbFileStreamReadTest, EmptyFile) {
-  RdbFileStream reader("tests/testdata/empty.rdb");
+TEST(RdbFileStreamReadTest, ReadRdb) {
+  const std::string file_path = "../tests/testdata/encodings.rdb";
+
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::streamsize size = file.tellg();
+  file.close();
+
+  RdbFileStream reader(file_path);
   ASSERT_TRUE(reader.Open().IsOK());
+
   char buf[16] = {0};
-  ASSERT_EQ(reader.Read(buf, 16).GetValue(), 0);
+  ASSERT_EQ(reader.Read(buf, 5).GetValue(), 5);
+  ASSERT_EQ(strncmp(buf, "REDIS", 5), 0);
+  size -= 5;
+
+  auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
+  while (size >= len) {
+    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    size -= len;
+  }
+
+  if (size > 0) {
+    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+  }
 }
 
-TEST(RdbFileStreamReadTest, LenLessThanMaxLen) {
-  RdbFileStream reader("tests/testdata/version4.rdb");
-  ASSERT_TRUE(reader.Open().IsOK());
-  char buf[16] = {0};
-  ASSERT_EQ(reader.Read(buf, 16).GetValue(), 0);
-}
+TEST(RdbFileStreamReadTest, ReadRdbLittleChunk) {
+  const std::string file_path = "../tests/testdata/encodings.rdb";
 
-TEST(RdbFileStreamReadTest, LenLargeThanMaxLen) {
-  RdbFileStream reader("tests/testdata/version4.rdb");
-  ASSERT_TRUE(reader.Open().IsOK());
-  char buf[16] = {0};
-  ASSERT_EQ(reader.Read(buf, 16).GetValue(), 0);
-}
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::streamsize size = file.tellg();
+  file.close();
 
-TEST(RdbFileStreamReadTest, ExceedFileLen) {
-  RdbFileStream reader("tests/testdata/version4.rdb");
+  RdbFileStream reader(file_path, 16);
   ASSERT_TRUE(reader.Open().IsOK());
-  char buf[16] = {0};
-  ASSERT_EQ(reader.Read(buf, 16).GetValue(), 0);
+  char buf[32] = {0};
+  auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
+
+  while (size >= len) {
+    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    size -= len;
+  }
+
+  if (size > 0) {
+    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+  }
 }

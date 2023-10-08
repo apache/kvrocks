@@ -20,12 +20,12 @@
 
 #include <execinfo.h>
 #include <glog/logging.h>
-
-#include <iomanip>
-#include <ostream>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <iomanip>
+#include <ostream>
 
 #include "common/rdb_stream.h"
 #include "config.h"

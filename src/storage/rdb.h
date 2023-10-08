@@ -77,7 +77,7 @@ class RDB {
   // String
   StatusOr<std::string> LoadStringObject();
 
-  // List
+  // Hash
   StatusOr<std::map<std::string, std::string>> LoadHashObject();
   StatusOr<std::map<std::string, std::string>> LoadHashWithZipMap();
   StatusOr<std::map<std::string, std::string>> LoadHashWithListPack();

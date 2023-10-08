@@ -191,9 +191,10 @@ StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
         return {Status::NotOK, fmt::format("Unknown quicklist node container type {}", container)};
       }
     }
-    auto list_pack_string = GET_OR_RET(loadEncodedString());
-    ListPack lp(list_pack_string);
-    auto elements = GET_OR_RET(lp.Entries());
+    auto encoded_string = GET_OR_RET(loadEncodedString());
+    ZipList zip_list(encoded_string);
+
+    auto elements = GET_OR_RET(zip_list.Entries());
     list.insert(list.end(), elements.begin(), elements.end());
   }
   return list;
@@ -375,7 +376,7 @@ Status RDB::Restore(const std::string &key, std::string_view payload, uint64_t t
 
   auto value = GET_OR_RET(loadRdbObject(type, key));
 
-  return saveRdbObject(type, key, value, ttl_ms); // NOLINT
+  return saveRdbObject(type, key, value, ttl_ms);  // NOLINT
 }
 
 StatusOr<int> RDB::loadRdbType() {
@@ -508,10 +509,10 @@ StatusOr<uint64_t> RDB::loadMillisecondTime(int rdb_version) {
   uint64_t t64 = 0;
   GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&t64), 8));
   /* before Redis 5 (RDB version 9), the function
- * failed to convert data to/from little endian, so RDB files with keys having
- * expires could not be shared between big endian and little endian systems
- * (because the expire time will be totally wrong). comment from src/rdb.c: rdbLoadMillisecondTime*/
-  if (rdb_version >= 9) { 
+   * failed to convert data to/from little endian, so RDB files with keys having
+   * expires could not be shared between big endian and little endian systems
+   * (because the expire time will be totally wrong). comment from src/rdb.c: rdbLoadMillisecondTime*/
+  if (rdb_version >= 9) {
     memrev64ifbe(&t64);
   }
   return t64;
@@ -580,7 +581,7 @@ Status RDB::LoadRdb() {
         ns_ = origin_ns;
       }
       LOG(INFO) << "select db: " << db_id << ", change to namespace: " << ns_;
-      //add namespace, password is the same as the namespace(expect the default namespace)
+      // add namespace, password is the same as the namespace(expect the default namespace)
       GET_OR_RET(addNamespace(ns_, ns_));
       continue;
     } else if (type == RDBOpcodeResizeDB) {       // not use in kvrocks, hint redis for hash table resize
@@ -621,7 +622,8 @@ Status RDB::LoadRdb() {
         LOG(WARNING) << "skipping empty key: " << key;
       }
       continue;
-    } else if (expire_time != 0 && expire_time < now) { // in redis this used to feed this deletion to any connected replicas
+    } else if (expire_time != 0 &&
+               expire_time < now) {  // in redis this used to feed this deletion to any connected replicas
       expire_keys++;
       continue;
     }
@@ -657,16 +659,16 @@ Status RDB::LoadRdb() {
 }
 
 Status RDB::addNamespace(const std::string &ns, const std::string &token) {
-  if(ns == kDefaultNamespace) {
+  if (ns == kDefaultNamespace) {
     return Status::OK();
   }
 
-  std::string oldToken;
-  auto s = config_->GetNamespace(ns, &oldToken);
-  if(s.IsOK()) { // namespace exist, use old token
+  std::string old_token;
+  auto s = config_->GetNamespace(ns, &old_token);
+  if (s.IsOK()) {  // namespace exist, use old token
     return s;
   }
 
-  // add new namespace 
+  // add new namespace
   return config_->AddNamespace(ns, token);
 }

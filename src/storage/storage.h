@@ -62,7 +62,9 @@ constexpr const char *kStreamColumnFamilyName = "stream";
 
 constexpr const char *kPropagateScriptCommand = "script";
 
-constexpr const char *kLuaFunctionPrefix = "lua_f_";
+constexpr const char *kLuaFuncSHAPrefix = "lua_f_";
+constexpr const char *kLuaFuncLibPrefix = "lua_func_lib_";
+constexpr const char *kLuaLibCodePrefix = "lua_lib_code_";
 
 struct CompressionOption {
   rocksdb::CompressionType type;

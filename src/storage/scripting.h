@@ -68,6 +68,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
                     const std::vector<std::string> &argv, std::string *output, bool read_only = false);
 Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output);
 Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output);
+Status FunctionListLib(Server *srv, const std::string &libname, std::string *output);
 Status FunctionDelete(Server *srv, const std::string &name);
 bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage = true,
                         bool read_only = false);

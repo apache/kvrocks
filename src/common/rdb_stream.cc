@@ -25,12 +25,12 @@
 #include "vendor/endianconv.h"
 
 StatusOr<size_t> RdbStringStream::Read(char *buf, size_t n) {
-  if (pos_ + n > input_.size()) {  // TODO why not >= ?
+  if (pos_ + n > input_.size()) {
     return {Status::NotOK, "unexpected EOF"};
   }
   memcpy(buf, input_.data() + pos_, n);
   pos_ += n;
-  return Status::OK();
+  return n;
 }
 
 StatusOr<uint64_t> RdbStringStream::GetCheckSum() const {

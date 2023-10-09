@@ -191,11 +191,23 @@ StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
         return {Status::NotOK, fmt::format("Unknown quicklist node container type {}", container)};
       }
     }
-    auto encoded_string = GET_OR_RET(loadEncodedString());
-    ZipList zip_list(encoded_string);
 
-    auto elements = GET_OR_RET(zip_list.Entries());
-    list.insert(list.end(), elements.begin(), elements.end());
+    if (container == QuickListNodeContainerPlain) {
+      auto element = GET_OR_RET(loadEncodedString());
+      list.push_back(element);
+      continue;
+    }
+
+    auto encoded_string = GET_OR_RET(loadEncodedString());
+    if (type == RDBTypeListQuickList2) {
+      ListPack lp(encoded_string);
+      auto elements = GET_OR_RET(lp.Entries());
+      list.insert(list.end(), elements.begin(), elements.end());
+    } else {
+      ZipList zip_list(encoded_string);
+      auto elements = GET_OR_RET(zip_list.Entries());
+      list.insert(list.end(), elements.begin(), elements.end());
+    }
   }
   return list;
 }

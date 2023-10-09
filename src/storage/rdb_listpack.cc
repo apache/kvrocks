@@ -168,7 +168,7 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += value_len + encodeBackLen(value_len + 1);
   } else if ((c & ListPack13BitIntMask) == ListPack13BitInt) {  // 13bit int
     GET_OR_RET(peekOK(3));
-    int_value = ((c & 0x1F) << 8) | data[pos_];
+    int_value = ((c & 0x1F) << 8) | data[pos_ + 1];
     value = std::to_string(int_value);
     pos_ += ListPack13BitIntEntrySize;
   } else if ((c & ListPack16BitIntMask) == ListPack16BitInt) {  // 16bit int

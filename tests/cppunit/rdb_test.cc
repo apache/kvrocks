@@ -153,6 +153,14 @@ class RDBTest : public testing::Test {
     return rocksdb::Status::OK();
   }
 
+  void flushDB() {
+    redis::Database redis(storage_, ns_);
+    auto s = redis.FlushDB();
+    ASSERT_TRUE(s.ok());
+  }
+
+  void encodingDataCheck();
+
   engine::Storage *storage_;
   std::string ns_;
   Config config_;
@@ -168,10 +176,7 @@ class RDBTest : public testing::Test {
   }
 };
 
-TEST_F(RDBTest, LoadEncodings) {
-  auto full_path = getRdbFullPath("encodings.rdb");
-  loadRdb(full_path);
-
+void RDBTest::encodingDataCheck() {
   // string
   stringCheck("compressible",
               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -227,6 +232,19 @@ TEST_F(RDBTest, LoadEncodings) {
       {"c", 3},
   };
   zsetCheck("zset_zipped", zset_zipped_expect);
+}
+
+TEST_F(RDBTest, LoadEncodings) {
+  for (const auto &entry : std::filesystem::directory_iterator(test_data_path)) {
+    std::string filename = entry.path().filename().string();
+    if (filename.rfind("encodings", 0) != 0) {
+      continue;
+    }
+    auto full_path = getRdbFullPath(filename);
+    loadRdb(full_path);
+    encodingDataCheck();
+    flushDB();
+  }
 }
 
 TEST_F(RDBTest, LoadHashZipMap) {

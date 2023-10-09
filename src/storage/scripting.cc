@@ -272,7 +272,8 @@ int RedisRegisterFunction(lua_State *lua) {
   return 0;
 }
 
-Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, bool replace, std::string *lib_name) {
+Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
+                    std::string *lib_name, bool read_only) {
   std::string first_line, lua_code;
   if (auto pos = script.find('\n'); pos != std::string::npos) {
     first_line = script.substr(0, pos);
@@ -306,10 +307,10 @@ Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, 
       std::any_of(libname.begin(), libname.end(), [](char v) { return !std::isalnum(v) && v != '_'; })) {
     return {Status::NotOK, "Expect a valid library name in the Shebang statement"};
   }
+  auto srv = conn->GetServer();
+  auto lua = read_only ? conn->Owner()->Lua() : srv->Lua();
 
-  auto lua = srv->Lua();
-
-  if (FunctionIsLibExist(srv, libname, need_to_store)) {
+  if (FunctionIsLibExist(conn, libname, need_to_store, read_only)) {
     if (!replace) {
       return {Status::NotOK, "library already exists, please specify REPLACE to force load"};
     }
@@ -344,15 +345,17 @@ Status FunctionLoad(Server *srv, const std::string &script, bool need_to_store, 
     return {Status::NotOK, "Error while running new function lib: " + err_msg};
   }
 
-  if (!FunctionIsLibExist(srv, libname, false)) {
+  if (!FunctionIsLibExist(conn, libname, false, read_only)) {
     return {Status::NotOK, "Please register some function in FUNCTION LOAD"};
   }
 
   return need_to_store ? srv->FunctionSetCode(libname, script) : Status::OK();
 }
 
-bool FunctionIsLibExist(Server *srv, const std::string &libname, bool need_check_storage) {
-  auto lua = srv->Lua();
+bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage, bool read_only) {
+  auto srv = conn->GetServer();
+  auto lua = read_only ? conn->Owner()->Lua() : srv->Lua();
+
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
 
   if (lua_isnil(lua, -1)) {
@@ -376,13 +379,16 @@ bool FunctionIsLibExist(Server *srv, const std::string &libname, bool need_check
   if (!s) return false;
 
   std::string lib_name;
-  s = FunctionLoad(srv, code, false, false, &lib_name);
+  s = FunctionLoad(conn, code, false, false, &lib_name, read_only);
   return static_cast<bool>(s);
 }
 
-Status FunctionCall(Server *srv, const std::string &name, const std::vector<std::string> &keys,
-                    const std::vector<std::string> &argv, std::string *output) {
-  auto lua = srv->Lua();
+// FunctionCall will firstly find the function in the lua runtime,
+// if it is not found, it will try to load the library where the function is located from storage
+Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
+                    const std::vector<std::string> &argv, std::string *output, bool read_only) {
+  auto srv = conn->GetServer();
+  auto lua = read_only ? conn->Owner()->Lua() : srv->Lua();
 
   lua_getglobal(lua, "__redis__err__handler");
 
@@ -398,7 +404,7 @@ Status FunctionCall(Server *srv, const std::string &name, const std::vector<std:
     s = srv->FunctionGetCode(libname, &libcode);
     if (!s) return s;
 
-    s = FunctionLoad(srv, libcode, false, false, &libname);
+    s = FunctionLoad(conn, libcode, false, false, &libname, read_only);
     if (!s) return s;
 
     lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
@@ -418,6 +424,7 @@ Status FunctionCall(Server *srv, const std::string &name, const std::vector<std:
   return Status::OK();
 }
 
+// list all library names and their code (enabled via `with_code`)
 Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output) {
   std::string start_key = engine::kLuaLibCodePrefix + libname;
   std::string end_key = start_key;
@@ -451,6 +458,8 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
   return Status::OK();
 }
 
+// extension to Redis Function
+// list all function names and their corresponding library names
 Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output) {
   std::string start_key = engine::kLuaFuncLibPrefix + funcname;
   std::string end_key = start_key;
@@ -479,6 +488,47 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
     output->append(redis::SimpleString(lib));
   }
 
+  return Status::OK();
+}
+
+// extension to Redis Function
+// list detailed informantion of a specific library
+// NOTE: it is required to load the library to lua runtime before listing (calling this function)
+// i.e. it will output nothing if the library is only in storage but not loaded
+Status FunctionListLib(Server *srv, const std::string &libname, std::string *output) {
+  auto lua = srv->Lua();
+
+  lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
+  if (lua_isnil(lua, -1)) {
+    lua_pop(lua, 1);
+    lua_newtable(lua);
+  }
+
+  lua_getfield(lua, -1, libname.c_str());
+  if (lua_isnil(lua, -1)) {
+    lua_pop(lua, 2);
+
+    return {Status::NotOK, "The library is not found or not loaded from storage"};
+  }
+
+  output->append(redis::MultiLen(6));
+  output->append(redis::SimpleString("library_name"));
+  output->append(redis::SimpleString(libname));
+  output->append(redis::SimpleString("engine"));
+  output->append(redis::SimpleString("lua"));
+
+  auto count = lua_objlen(lua, -1);
+  output->append(redis::SimpleString("functions"));
+  output->append(redis::MultiLen(count));
+
+  for (size_t i = 1; i <= count; ++i) {
+    lua_rawgeti(lua, -1, static_cast<int>(i));
+    auto func = lua_tostring(lua, -1);
+    output->append(redis::SimpleString(func));
+    lua_pop(lua, 1);
+  }
+
+  lua_pop(lua, 2);
   return Status::OK();
 }
 

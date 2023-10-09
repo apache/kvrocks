@@ -35,6 +35,9 @@ var luaMylib1 string
 //go:embed mylib2.lua
 var luaMylib2 string
 
+//go:embed mylib3.lua
+var luaMylib3 string
+
 func TestFunction(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -143,5 +146,40 @@ func TestFunction(t *testing.T) {
 		require.Equal(t, list[5].(string), "reverse")
 		require.Equal(t, list[7].(string), "mylib1")
 		require.Equal(t, len(list), 8)
+	})
+
+	t.Run("FCALL_RO", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FUNCTION", "LOAD", luaMylib3).Err())
+
+		require.NoError(t, rdb.Set(ctx, "x", 1, 0).Err())
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myget", 1, "x").Val(), "1")
+		require.Equal(t, rdb.Do(ctx, "FCALL_RO", "myget", 1, "x").Val(), "1")
+
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myset", 1, "x", 2).Val(), "OK")
+		require.Equal(t, rdb.Get(ctx, "x").Val(), "2")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL_RO", "myset", 1, "x", 3).Err(), ".*Write commands are not allowed.*")
+	})
+
+	t.Run("Restart server and test again", func(t *testing.T) {
+		srv.Restart()
+
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myget", 1, "x").Val(), "2")
+		require.Equal(t, rdb.Do(ctx, "FCALL", "hello", 0, "xxx").Val(), "Hello, xxx!")
+
+		list := rdb.Do(ctx, "FUNCTION", "LIST").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib1")
+		require.Equal(t, list[3].(string), "mylib3")
+		require.Equal(t, len(list), 4)
+	})
+
+	t.Run("FUNCTION LISTLIB", func(t *testing.T) {
+		list := rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib1").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib1")
+		require.Equal(t, list[5].([]interface{}), []interface{}{"hello", "reverse"})
+
+		list = rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib3").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib3")
+		require.Equal(t, list[5].([]interface{}), []interface{}{"myget", "myset"})
 	})
 }

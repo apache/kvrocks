@@ -42,6 +42,7 @@
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
 #include "lua.hpp"
+#include "namespace.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
@@ -287,6 +288,7 @@ class Server {
   static bool IsWatchedKeysModified(redis::Connection *conn);
   void ResetWatchedKeys(redis::Connection *conn);
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
+  Namespace *GetNamespace() { return &namespace_; }
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
@@ -324,6 +326,9 @@ class Server {
   std::mutex slave_threads_mu_;
   std::list<std::unique_ptr<FeedSlaveThread>> slave_threads_;
   std::atomic<int> fetch_file_threads_num_ = 0;
+
+  // namespace
+  Namespace namespace_;
 
   // Some jobs to operate DB should be unique
   std::mutex db_job_mu_;

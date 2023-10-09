@@ -91,7 +91,7 @@ TEST(Config, GetAndSet) {
     EXPECT_EQ(values[0], iter.first);
     EXPECT_EQ(values[1], iter.second);
   }
-  ASSERT_TRUE(config.Rewrite().IsOK());
+  ASSERT_TRUE(config.Rewrite({}).IsOK());
   s = config.Load(CLIOptions(path));
   EXPECT_TRUE(s.IsOK());
   for (const auto &iter : mutable_cases) {
@@ -174,149 +174,11 @@ TEST(Config, Rewrite) {
   redis::ResetCommands();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
-  ASSERT_TRUE(config.Rewrite().IsOK());
+  ASSERT_TRUE(config.Rewrite({}).IsOK());
   // Need to re-populate the command table since it has renamed by the previous
   redis::ResetCommands();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
-  unlink(path);
-}
-
-TEST(Namespace, Add) {
-  const char *path = "test.conf";
-  unlink(path);
-
-  Config config;
-  auto s = config.Load(CLIOptions(path));
-  EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded = false;
-  EXPECT_TRUE(!config.AddNamespace("ns", "t0").IsOK());
-  config.requirepass = "foobared";
-
-  std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
-  std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    std::string token;
-    s = config.GetNamespace(namespaces[i], &token);
-    EXPECT_TRUE(s.IsOK());
-    EXPECT_EQ(token, tokens[i]);
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    s = config.AddNamespace(namespaces[i], tokens[i]);
-    EXPECT_FALSE(s.IsOK());
-    EXPECT_EQ(s.Msg(), "the token has already exists");
-  }
-  s = config.AddNamespace("n1", "t0");
-  EXPECT_FALSE(s.IsOK());
-  EXPECT_EQ(s.Msg(), "the namespace has already exists");
-
-  s = config.AddNamespace(kDefaultNamespace, "mytoken");
-  EXPECT_FALSE(s.IsOK());
-  EXPECT_EQ(s.Msg(), "forbidden to add the default namespace");
-  unlink(path);
-}
-
-TEST(Namespace, Set) {
-  const char *path = "test.conf";
-  unlink(path);
-
-  Config config;
-  auto s = config.Load(CLIOptions(path));
-  EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded = false;
-  config.requirepass = "foobared";
-  std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
-  std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
-  std::vector<std::string> new_tokens = {"nt1", "nt2'", "nt3", "nt4"};
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    s = config.SetNamespace(namespaces[i], tokens[i]);
-    EXPECT_FALSE(s.IsOK());
-    EXPECT_EQ(s.Msg(), "the namespace was not found");
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    std::string token;
-    s = config.GetNamespace(namespaces[i], &token);
-    EXPECT_TRUE(s.IsOK());
-    EXPECT_EQ(token, tokens[i]);
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.SetNamespace(namespaces[i], new_tokens[i]).IsOK());
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    std::string token;
-    s = config.GetNamespace(namespaces[i], &token);
-    EXPECT_TRUE(s.IsOK());
-    EXPECT_EQ(token, new_tokens[i]);
-  }
-  unlink(path);
-}
-
-TEST(Namespace, Delete) {
-  const char *path = "test.conf";
-  unlink(path);
-
-  Config config;
-  auto s = config.Load(CLIOptions(path));
-  EXPECT_FALSE(s.IsOK());
-  config.slot_id_encoded = false;
-  config.requirepass = "foobared";
-  std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
-  std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
-  }
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    std::string token;
-    s = config.GetNamespace(namespaces[i], &token);
-    EXPECT_TRUE(s.IsOK());
-    EXPECT_EQ(token, tokens[i]);
-  }
-  for (const auto &ns : namespaces) {
-    s = config.DelNamespace(ns);
-    EXPECT_TRUE(s.IsOK());
-    std::string token;
-    s = config.GetNamespace(ns, &token);
-    EXPECT_FALSE(s.IsOK());
-    EXPECT_TRUE(token.empty());
-  }
-  unlink(path);
-}
-
-TEST(Namespace, RewriteNamespaces) {
-  const char *path = "test.conf";
-  unlink(path);
-  Config config;
-  auto s = config.Load(CLIOptions(path));
-  EXPECT_FALSE(s.IsOK());
-  config.requirepass = "test";
-  config.backup_dir = "test";
-  config.slot_id_encoded = false;
-  std::vector<std::string> namespaces = {"n1", "n2", "n3", "n4"};
-  std::vector<std::string> tokens = {"t1", "t2", "t3", "t4"};
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    EXPECT_TRUE(config.AddNamespace(namespaces[i], tokens[i]).IsOK());
-  }
-  EXPECT_TRUE(config.AddNamespace("to-be-deleted-ns", "to-be-deleted-token").IsOK());
-  EXPECT_TRUE(config.DelNamespace("to-be-deleted-ns").IsOK());
-
-  Config new_config;
-  s = new_config.Load(CLIOptions(path));
-  EXPECT_TRUE(s.IsOK());
-  for (size_t i = 0; i < namespaces.size(); i++) {
-    std::string token;
-    s = new_config.GetNamespace(namespaces[i], &token);
-    EXPECT_TRUE(s.IsOK());
-    EXPECT_EQ(token, tokens[i]);
-  }
-
-  std::string token;
-  EXPECT_FALSE(new_config.GetNamespace("to-be-deleted-ns", &token).IsOK());
   unlink(path);
 }
 

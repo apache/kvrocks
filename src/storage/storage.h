@@ -145,7 +145,7 @@ class Storage {
   uint64_t GetCompactionCount() const { return compaction_count_; }
   void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
-  const Config *GetConfig() const { return config_; }
+  Config *GetConfig() const { return config_; }
 
   Status BeginTxn();
   Status CommitTxn();

@@ -22,6 +22,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
+#include "common/rdb_stream.h"
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
@@ -1058,8 +1059,9 @@ class CommandRestore : public Commander {
       ttl_ms_ -= now;
     }
 
-    RDB rdb(svr->storage, conn->GetNamespace(), args_[3]);
-    auto s = rdb.Restore(args_[1], ttl_ms_);
+    auto stream_ptr = std::make_shared<RdbStringStream>(args_[3]);
+    RDB rdb(svr->storage, svr->GetConfig(), conn->GetNamespace(), stream_ptr);
+    auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
     return Status::OK();

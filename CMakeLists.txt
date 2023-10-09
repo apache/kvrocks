@@ -254,3 +254,9 @@ add_executable(unittest ${TESTS_SRCS})
 target_include_directories(unittest PRIVATE tests/cppunit)
 
 target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main ${EXTERNAL_LIBS})
+
+# redis2kvrocks tool
+file(GLOB_RECURSE REDIS2KVROCKS_SRCS utils/redis2kvrocks/*.cc)
+add_executable(redis2kvrocks ${REDIS2KVROCKS_SRCS})
+
+target_link_libraries(redis2kvrocks PRIVATE kvrocks_objs ${EXTERNAL_LIBS})

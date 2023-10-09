@@ -1,0 +1,85 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ */
+
+#include "common/rdb_stream.h"
+
+#include <gtest/gtest.h>
+
+#include <filesystem>
+#include <fstream>
+
+TEST(RdbFileStreamOpenTest, FileNotExist) {
+  RdbFileStream reader("../tests/testdata/not_exist.rdb");
+  ASSERT_FALSE(reader.Open().IsOK());
+  ;
+}
+
+TEST(RdbFileStreamOpenTest, FileExist) {
+  RdbFileStream reader("../tests/testdata/encodings.rdb");
+  ASSERT_TRUE(reader.Open().IsOK());
+}
+
+TEST(RdbFileStreamReadTest, ReadRdb) {
+  const std::string file_path = "../tests/testdata/encodings.rdb";
+
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::streamsize size = file.tellg();
+  file.close();
+
+  RdbFileStream reader(file_path);
+  ASSERT_TRUE(reader.Open().IsOK());
+
+  char buf[16] = {0};
+  ASSERT_EQ(reader.Read(buf, 5).GetValue(), 5);
+  ASSERT_EQ(strncmp(buf, "REDIS", 5), 0);
+  size -= 5;
+
+  auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
+  while (size >= len) {
+    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    size -= len;
+  }
+
+  if (size > 0) {
+    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+  }
+}
+
+TEST(RdbFileStreamReadTest, ReadRdbLittleChunk) {
+  const std::string file_path = "../tests/testdata/encodings.rdb";
+
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::streamsize size = file.tellg();
+  file.close();
+
+  RdbFileStream reader(file_path, 16);
+  ASSERT_TRUE(reader.Open().IsOK());
+  char buf[32] = {0};
+  auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
+
+  while (size >= len) {
+    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    size -= len;
+  }
+
+  if (size > 0) {
+    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+  }
+}

@@ -186,6 +186,10 @@ jobs:
             os: ubuntu-20.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=TRUE
+          - name: Ubuntu GCC with speedb enabled
+            os: ubuntu-20.04
+            compiler: gcc
+            with_speedb: -DENABLE_SPEEDB=ON
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -228,7 +232,7 @@ jobs:
       - name: Build Kvrocks
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
-            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}

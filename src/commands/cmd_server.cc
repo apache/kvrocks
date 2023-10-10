@@ -1061,7 +1061,7 @@ class CommandRestore : public Commander {
     }
 
     auto stream_ptr = std::make_shared<RdbStringStream>(args_[3]);
-    RDB rdb(svr->storage, svr->GetConfig(), conn->GetNamespace(), stream_ptr);
+    RDB rdb(svr->storage, conn->GetNamespace(), stream_ptr);
     auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
@@ -1072,6 +1072,46 @@ class CommandRestore : public Commander {
   bool replace_ = false;
   bool absttl_ = false;
   uint64_t ttl_ms_ = 0;
+};
+
+// command format: rdb load <path> [NX]  [DB index]
+class CommandRdb : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 3);
+    std::string_view ttl_flag, set_flag;
+    while (parser.Good()) {
+      if (parser.EatEqICase("NX")) {
+        is_nx_ = true;
+      } else if (parser.EatEqICase("DB")) {
+        db_index_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    rocksdb::Status db_status;
+    redis::Database redis(svr->storage, conn->GetNamespace());
+    auto type = args_[1];
+    auto path = args_[2];
+
+    auto stream_ptr = std::make_shared<RdbFileStream>(path);
+    GET_OR_RET(stream_ptr->Open());
+
+    RDB rdb(svr->storage, conn->GetNamespace(), stream_ptr);
+    GET_OR_RET(rdb.LoadRdb(db_index_, is_nx_));
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  bool is_nx_ = false;
+  uint32_t db_index_ = 0;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
@@ -1107,6 +1147,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0), )
+                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0), )
 
 }  // namespace redis

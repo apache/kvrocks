@@ -27,7 +27,6 @@
 #include <variant>
 #include <vector>
 
-#include "config/config.h"
 #include "status.h"
 #include "types/redis_zset.h"
 
@@ -66,8 +65,8 @@ using RedisObjValue =
 
 class RDB {
  public:
-  explicit RDB(engine::Storage *storage, Config *config, std::string ns, std::shared_ptr<RdbStream> stream)
-      : storage_(storage), config_(config), ns_(std::move(ns)), stream_(std::move(stream)){};
+  explicit RDB(engine::Storage *storage, std::string ns, std::shared_ptr<RdbStream> stream)
+      : storage_(storage), ns_(std::move(ns)), stream_(std::move(stream)){};
   ~RDB() = default;
 
   Status VerifyPayloadChecksum(const std::string_view &payload);
@@ -99,11 +98,10 @@ class RDB {
   StatusOr<std::vector<std::string>> LoadListWithQuickList(int type);
 
   // Load rdb
-  Status LoadRdb();
+  Status LoadRdb(uint32_t db_index, bool is_nx = false);
 
  private:
   engine::Storage *storage_;
-  Config *config_;
   std::string ns_;
   std::shared_ptr<RdbStream> stream_;
 
@@ -118,7 +116,7 @@ class RDB {
   Status saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms);
   StatusOr<uint32_t> loadTime();
   StatusOr<uint64_t> loadMillisecondTime(int rdb_version);
-  Status addNamespace(const std::string &ns, const std::string &token);
+  rocksdb::Status exist(const std::string &key);
 
   /*0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
    Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.*/

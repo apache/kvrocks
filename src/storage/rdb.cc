@@ -545,7 +545,7 @@ bool RDB::isEmptyRedisObject(const RedisObjValue &value) {
 }
 
 // Load RDB file: copy from redis/src/rdb.c:branch 7.0, 76b9c13d.
-Status RDB::LoadRdb() {
+Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
   char buf[1024] = {0};
   GET_OR_RETWITHLOG(stream_->Read(buf, 9));
   buf[9] = '\0';
@@ -566,7 +566,8 @@ Status RDB::LoadRdb() {
   int64_t load_keys = 0;
   int64_t empty_keys_skipped = 0;
   auto now = util::GetTimeStampMS();
-  std::string origin_ns = ns_;  // current namespace, when select db, will change ns  to origin_ns + "_" + db_id
+  uint32_t db_id = 0;
+  uint64_t skip_exist_keys = 0;
   while (true) {
     auto type = GET_OR_RETWITHLOG(loadRdbType());
     if (type == RDBOpcodeExpireTime) {
@@ -586,15 +587,7 @@ Status RDB::LoadRdb() {
     } else if (type == RDBOpcodeEof) {
       break;
     } else if (type == RDBOpcodeSelectDB) {
-      auto db_id = GET_OR_RETWITHLOG(loadObjectLen(nullptr));
-      if (db_id != 0) {  // change namespace to ns + "_" + db_id
-        ns_ = origin_ns + "_" + std::to_string(db_id);
-      } else {  // use origin namespace
-        ns_ = origin_ns;
-      }
-      LOG(INFO) << "select db: " << db_id << ", change to namespace: " << ns_;
-      // add namespace, password is the same as the namespace(expect the default namespace)
-      GET_OR_RET(addNamespace(ns_, ns_));
+      db_id = GET_OR_RETWITHLOG(loadObjectLen(nullptr));
       continue;
     } else if (type == RDBOpcodeResizeDB) {       // not use in kvrocks, hint redis for hash table resize
       GET_OR_RETWITHLOG(loadObjectLen(nullptr));  // db_size
@@ -625,6 +618,10 @@ Status RDB::LoadRdb() {
     auto key = GET_OR_RETWITHLOG(LoadStringObject());
     auto value = GET_OR_RETWITHLOG(loadRdbObject(type, key));
 
+    if (db_index != db_id) {  // skip db not match
+      continue;
+    }
+
     if (isEmptyRedisObject(value)) {  // compatible with empty value
       /* Since we used to have bug that could lead to empty keys
        * (See #8453), we rather not fail when empty key is encountered
@@ -640,10 +637,22 @@ Status RDB::LoadRdb() {
       continue;
     }
 
+    if (is_nx) {  // only load not exist key
+      auto s = exist(key);
+      if (!s.IsNotFound()) {
+        skip_exist_keys++;  // skip it even it's not okay
+        if (!s.ok()) {
+          LOG(ERROR) << "check key " << key << " exist failed: " << s.ToString();
+        }
+        continue;
+      }
+    }
+
     auto ret = saveRdbObject(type, key, value, expire_time);
-    load_keys++;
     if (!ret.IsOK()) {
       LOG(WARNING) << "save rdb object key " << key << " failed: " << ret.Msg();
+    } else {
+      load_keys++;
     }
   }
 
@@ -660,27 +669,29 @@ Status RDB::LoadRdb() {
     }
   }
 
+  std::string skip_info = (is_nx ? ", exist keys skipped: " + std::to_string(skip_exist_keys) : "");
+
   if (empty_keys_skipped > 0) {
     LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys
-              << ", empty keys skipped: " << empty_keys_skipped;
+              << ", empty keys skipped: " << empty_keys_skipped << skip_info;
   } else {
-    LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys;
+    LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys << skip_info;
   }
 
   return Status::OK();
 }
 
-Status RDB::addNamespace(const std::string &ns, const std::string &token) {
-  if (ns == kDefaultNamespace) {
-    return Status::OK();
-  }
-
-  std::string old_token;
-  auto s = config_->GetNamespace(ns, &old_token);
-  if (s.IsOK()) {  // namespace exist, use old token
+rocksdb::Status RDB::exist(const std::string &key) {
+  int cnt = 0;
+  std::vector<rocksdb::Slice> keys;
+  keys.emplace_back(key);
+  redis::Database redis(storage_, ns_);
+  auto s = redis.Exists(keys, &cnt);
+  if (!s.ok()) {
     return s;
   }
-
-  // add new namespace
-  return config_->AddNamespace(ns, token);
+  if (cnt == 0) {
+    return rocksdb::Status::NotFound();
+  }
+  return rocksdb::Status::OK();
 }

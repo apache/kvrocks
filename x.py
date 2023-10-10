@@ -125,7 +125,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     if skip_build:
         return
 
-    target = ["kvrocks", "kvrocks2redis", "redis2kvrocks"]
+    target = ["kvrocks", "kvrocks2redis"]
     if unittest:
         target.append("unittest")
 
@@ -145,7 +145,6 @@ def get_source_files(dir: Path) -> List[str]:
         *glob(str(dir / "tests/cppunit/**/*.cc"), recursive=True),
         *glob(str(dir / "utils/kvrocks2redis/**/*.h"), recursive=True),
         *glob(str(dir / "utils/kvrocks2redis/**/*.cc"), recursive=True),
-        *glob(str(dir / "utils/redis2kvrocks/**/*.cc"), recursive=True),
     ]
 
 

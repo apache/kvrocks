@@ -383,6 +383,8 @@ bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, boo
   return static_cast<bool>(s);
 }
 
+// FunctionCall will firstly find the function in the lua runtime,
+// if it is not found, it will try to load the library where the function is located from storage
 Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
                     const std::vector<std::string> &argv, std::string *output, bool read_only) {
   auto srv = conn->GetServer();
@@ -422,6 +424,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
   return Status::OK();
 }
 
+// list all library names and their code (enabled via `with_code`)
 Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output) {
   std::string start_key = engine::kLuaLibCodePrefix + libname;
   std::string end_key = start_key;
@@ -455,6 +458,8 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
   return Status::OK();
 }
 
+// extension to Redis Function
+// list all function names and their corresponding library names
 Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output) {
   std::string start_key = engine::kLuaFuncLibPrefix + funcname;
   std::string end_key = start_key;
@@ -483,6 +488,47 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
     output->append(redis::SimpleString(lib));
   }
 
+  return Status::OK();
+}
+
+// extension to Redis Function
+// list detailed informantion of a specific library
+// NOTE: it is required to load the library to lua runtime before listing (calling this function)
+// i.e. it will output nothing if the library is only in storage but not loaded
+Status FunctionListLib(Server *srv, const std::string &libname, std::string *output) {
+  auto lua = srv->Lua();
+
+  lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
+  if (lua_isnil(lua, -1)) {
+    lua_pop(lua, 1);
+    lua_newtable(lua);
+  }
+
+  lua_getfield(lua, -1, libname.c_str());
+  if (lua_isnil(lua, -1)) {
+    lua_pop(lua, 2);
+
+    return {Status::NotOK, "The library is not found or not loaded from storage"};
+  }
+
+  output->append(redis::MultiLen(6));
+  output->append(redis::SimpleString("library_name"));
+  output->append(redis::SimpleString(libname));
+  output->append(redis::SimpleString("engine"));
+  output->append(redis::SimpleString("lua"));
+
+  auto count = lua_objlen(lua, -1);
+  output->append(redis::SimpleString("functions"));
+  output->append(redis::MultiLen(count));
+
+  for (size_t i = 1; i <= count; ++i) {
+    lua_rawgeti(lua, -1, static_cast<int>(i));
+    auto func = lua_tostring(lua, -1);
+    output->append(redis::SimpleString(func));
+    lua_pop(lua, 1);
+  }
+
+  lua_pop(lua, 2);
   return Status::OK();
 }
 

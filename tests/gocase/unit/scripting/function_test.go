@@ -160,4 +160,26 @@ func TestFunction(t *testing.T) {
 
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL_RO", "myset", 1, "x", 3).Err(), ".*Write commands are not allowed.*")
 	})
+
+	t.Run("Restart server and test again", func(t *testing.T) {
+		srv.Restart()
+
+		require.Equal(t, rdb.Do(ctx, "FCALL", "myget", 1, "x").Val(), "2")
+		require.Equal(t, rdb.Do(ctx, "FCALL", "hello", 0, "xxx").Val(), "Hello, xxx!")
+
+		list := rdb.Do(ctx, "FUNCTION", "LIST").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib1")
+		require.Equal(t, list[3].(string), "mylib3")
+		require.Equal(t, len(list), 4)
+	})
+
+	t.Run("FUNCTION LISTLIB", func(t *testing.T) {
+		list := rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib1").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib1")
+		require.Equal(t, list[5].([]interface{}), []interface{}{"hello", "reverse"})
+
+		list = rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib3").Val().([]interface{})
+		require.Equal(t, list[1].(string), "mylib3")
+		require.Equal(t, list[5].([]interface{}), []interface{}{"myget", "myset"})
+	})
 }

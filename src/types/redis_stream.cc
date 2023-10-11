@@ -353,10 +353,10 @@ rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::stri
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_entry_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.IsNotFound()) {
-    if (!s.ok()) {
-      return s;
-    }
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+  if (s.IsNotFound()) {
     return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group" + group_name + "for key name" +
                                             stream_name.ToString());
   }

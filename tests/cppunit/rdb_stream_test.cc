@@ -17,7 +17,6 @@
  * under the License.
  *
  */
-
 #include "common/rdb_stream.h"
 
 #include <gtest/gtest.h>
@@ -25,25 +24,30 @@
 #include <filesystem>
 #include <fstream>
 
+#include "rdb_util.h"
+
 TEST(RdbFileStreamOpenTest, FileNotExist) {
-  RdbFileStream reader("../tests/testdata/not_exist.rdb");
+  RdbFileStream reader("not_exist.rdb");
   ASSERT_FALSE(reader.Open().IsOK());
   ;
 }
 
 TEST(RdbFileStreamOpenTest, FileExist) {
-  RdbFileStream reader("../tests/testdata/encodings.rdb");
+  std::string test_file = "hash-zipmap.rdb";
+  ScopedTestRDBFile temp(test_file, hash_zipmap_payload, sizeof(hash_zipmap_payload) - 1);
+  RdbFileStream reader(test_file);
   ASSERT_TRUE(reader.Open().IsOK());
 }
 
 TEST(RdbFileStreamReadTest, ReadRdb) {
-  const std::string file_path = "../tests/testdata/encodings.rdb";
+  const std::string test_file = "encodings.rdb";
+  ScopedTestRDBFile temp(test_file, encodings_rdb_payload, sizeof(encodings_rdb_payload) - 1);
 
-  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::ifstream file(test_file, std::ios::binary | std::ios::ate);
   std::streamsize size = file.tellg();
   file.close();
 
-  RdbFileStream reader(file_path);
+  RdbFileStream reader(test_file);
   ASSERT_TRUE(reader.Open().IsOK());
 
   char buf[16] = {0};
@@ -63,13 +67,14 @@ TEST(RdbFileStreamReadTest, ReadRdb) {
 }
 
 TEST(RdbFileStreamReadTest, ReadRdbLittleChunk) {
-  const std::string file_path = "../tests/testdata/encodings.rdb";
+  const std::string test_file = "encodings.rdb";
+  ScopedTestRDBFile temp(test_file, encodings_rdb_payload, sizeof(encodings_rdb_payload) - 1);
 
-  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  std::ifstream file(test_file, std::ios::binary | std::ios::ate);
   std::streamsize size = file.tellg();
   file.close();
 
-  RdbFileStream reader(file_path, 16);
+  RdbFileStream reader(test_file, 16);
   ASSERT_TRUE(reader.Open().IsOK());
   char buf[32] = {0};
   auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));

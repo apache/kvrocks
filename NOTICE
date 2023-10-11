@@ -24,6 +24,7 @@ NB: RocksDB is dual-licensed under both the GPLv2 and Apache 2.0 License.
 This product uses it under the Apache 2.0 License.
 
 * oneTBB(https://github.com/oneapi-src/oneTBB)
+* speedb(https://github.com/speedb-io/speedb, an optional dependency)
 
 Files src/common/rocksdb_crc32c.h and src/storage/batch_debugger.h are modified from RocksDB.
 Files src/types/bloom_filter.* are modified from Apache Arrow.
@@ -62,7 +63,7 @@ The following components are provided under the MIT License. See project link fo
 The text of each license is also included in licenses/LICENSE-[project].txt
 
 * fmt(https://github.com/fmtlib/fmt)
-* lua(https://github.com/KvrocksLabs/lua)
+* lua(https://github.com/KvrocksLabs/lua, an optional dependency)
 * LuaJIT(https://github.com/KvrocksLabs/LuaJIT)
 
 ================================================================

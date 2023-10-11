@@ -370,10 +370,7 @@ rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::stri
   std::string get_consumer_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
   if (!s.IsNotFound()) {
-    if (!s.ok()) {
-      return s;
-    }
-    return rocksdb::Status::OK();
+    return s;
   }
 
   auto batch = storage_->GetWriteBatchBase();

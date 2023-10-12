@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "db_util.h"
+#include "encoding.h"
 #include "time_util.h"
 #include "status.h"
 #include "types/redis_stream_base.h"
@@ -231,12 +232,28 @@ std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetada
   PutFixed64(&dst, consumer_metadata.pending_number);
   PutFixed64(&dst, consumer_metadata.last_idle);
   PutFixed64(&dst, consumer_metadata.last_active);
+  PutFixed64(&dst, consumer_metadata.max_pending_entry_id.ms);
+  PutFixed64(&dst, consumer_metadata.max_pending_entry_id.seq);
   return dst;
 }
 
-rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<StreamEntry>& entries, redis::StreamRangeOptions& options, bool read_last_delivered_id){
+
+StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::string &value) {
+  StreamConsumerMetadata consumer_metadata;
+  rocksdb::Slice input(value);
+  GetFixed64(&input, &consumer_metadata.pending_number);
+  GetFixed64(&input, &consumer_metadata.pending_number);
+  GetFixed64(&input, &consumer_metadata.last_idle);
+  GetFixed64(&input, &consumer_metadata.last_active);
+  GetFixed64(&input, &consumer_metadata.max_pending_entry_id.ms);
+  GetFixed64(&input, &consumer_metadata.max_pending_entry_id.seq);
+  return consumer_metadata;
+}
+
+rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<StreamEntry>& entries, redis::StreamRangeOptions& options, bool read_pending_entry_list){
   const auto& stream_name = context.stream_name;
   const auto& group_name = context.group_name;
+  const auto& consumer_name = context.consumer_name;
 
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
@@ -261,11 +278,24 @@ rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
  
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
+ 
+  std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+  std::string get_consumer_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+  if (!s.IsNotFound()) {
+    return s;
+  }
 
-  if(read_last_delivered_id) {
-    options.start = consumer_group_metadata.last_delivered_id;
-    options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+  StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
+
+  if(read_pending_entry_list) {
+    options.end = consumer_metadata.max_pending_entry_id;
     options.exclude_start = false;
+    options.exclude_end = false;
+  } else {
+    options.start = consumer_group_metadata.max_pending_entry_id;
+    options.end =  StreamEntryID{UINT64_MAX, UINT64_MAX};
+    options.exclude_start = true;
     options.exclude_end = false;
   }
   

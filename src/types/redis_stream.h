@@ -77,6 +77,7 @@ class Stream : public SubKeyScanner {
   std::string internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
                                           const std::string &group_name, const std::string &consumer_name) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
+  StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &consumer_metadata_value);
 };
 
 }  // namespace redis

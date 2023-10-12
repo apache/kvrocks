@@ -904,9 +904,9 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 
 		r := rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Val()
-		require.Equal(t, 1, r)
+		require.Equal(t, int64(1), r)
 		r = rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Val()
-		require.Equal(t, 0, r)
+		require.Equal(t, int64(0), r)
 	})
 }
 

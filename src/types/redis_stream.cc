@@ -357,7 +357,7 @@ rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::stri
     return s;
   }
   if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group" + group_name + "for key name" +
+    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
                                             stream_name.ToString());
   }
 

@@ -886,6 +886,28 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(0), result)
 	})
+
+	t.Run("XGROUP CREATECONSUMER with different kinds of commands", func(t *testing.T) {
+		streamName := "test-stream"
+		groupName := "test-group"
+		consumerName := "test-consumer"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		//No such stream
+		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"data", "a"},
+		}).Err())
+		//no such group
+		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
+
+		r := rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Val()
+		require.Equal(t, int64(1), r)
+		r = rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Val()
+		require.Equal(t, int64(0), r)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

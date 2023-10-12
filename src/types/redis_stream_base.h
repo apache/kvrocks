@@ -169,6 +169,12 @@ struct StreamConsumerGroupMetadata {
   uint64_t lag = 0;
 };
 
+struct StreamConsumerMetadata {
+  uint64_t pending_number = 0;
+  uint64_t last_idle;
+  uint64_t last_active;
+};
+
 struct StreamInfo {
   uint64_t size;
   uint64_t entries_added;

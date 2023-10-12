@@ -42,6 +42,8 @@ class Stream : public SubKeyScanner {
   rocksdb::Status CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
                               const std::string &group_name);
   rocksdb::Status DestroyGroup(const Slice &stream_name, const std::string &group_name, uint64_t *delete_cnt);
+  rocksdb::Status CreateConsumer(const Slice &stream_name, const std::string &group_name,
+                                 const std::string &consumer_name, int *created_number);
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);
   rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
@@ -69,6 +71,9 @@ class Stream : public SubKeyScanner {
   std::string groupNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerGroupMetadataValue(const StreamConsumerGroupMetadata &consumer_group_metadata);
   static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
+  std::string internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
+                                          const std::string &group_name, const std::string &consumer_name) const;
+  static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
 };
 
 }  // namespace redis

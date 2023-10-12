@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "db_util.h"
+#include "time_util.h"
 
 namespace redis {
 
@@ -211,6 +212,26 @@ StreamConsumerGroupMetadata Stream::decodeStreamConsumerGroupMetadataValue(const
   return consumer_group_metadata;
 }
 
+std::string Stream::internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
+                                                const std::string &group_name, const std::string &consumer_name) const {
+  std::string sub_key;
+  PutFixed64(&sub_key, group_name.size());
+  sub_key += group_name;
+  PutFixed64(&sub_key, consumer_name.size());
+  sub_key += consumer_name;
+  sub_key += consumerGroupMetadataDelimiter;
+  std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return entry_key;
+}
+
+std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata) {
+  std::string dst;
+  PutFixed64(&dst, consumer_metadata.pending_number);
+  PutFixed64(&dst, consumer_metadata.last_idle);
+  PutFixed64(&dst, consumer_metadata.last_active);
+  return dst;
+}
+
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
                                     const std::string &group_name) {
   if (std::isdigit(group_name[0])) {
@@ -311,6 +332,59 @@ rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string
   }
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::string &group_name,
+                                       const std::string &consumer_name, int *created_number) {
+  if (std::isdigit(consumer_name[0])) {
+    return rocksdb::Status::InvalidArgument("consumer name cannot start with number");
+  }
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata;
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+  if (s.IsNotFound()) {
+    return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
+  }
+
+  std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string get_entry_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+  if (s.IsNotFound()) {
+    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
+                                            stream_name.ToString());
+  }
+
+  StreamConsumerMetadata consumer_metadata;
+  auto now = util::GetTimeStampMS();
+  consumer_metadata.last_idle = now;
+  consumer_metadata.last_active = now;
+  std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+  std::string consumer_value = encodeStreamConsumerMetadataValue(consumer_metadata);
+  std::string get_consumer_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+  if (!s.IsNotFound()) {
+    return s;
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  batch->Put(stream_cf_handle_, consumer_key, consumer_value);
+  StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
+  consumer_group_metadata.consumer_number += 1;
+  std::string consumer_group_metadata_bytes = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
+  batch->Put(stream_cf_handle_, entry_key, consumer_group_metadata_bytes);
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (s.ok()) *created_number = 1;
+  return s;
 }
 
 rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids,

@@ -22,4 +22,5 @@ if(jemalloc_SOURCE_DIR)
 
   add_library(JeMalloc::JeMalloc ALIAS jemalloc) # rocksdb use it
   install(TARGETS jemalloc EXPORT RocksDBTargets) # export for install(...)
+  install(TARGETS jemalloc EXPORT SpeedbTargets) # export for install(...)
 endif()

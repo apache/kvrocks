@@ -43,12 +43,21 @@ struct JsonValue {
     return JsonValue(std::move(val));
   }
 
-  std::string Dump() const { return value.to_string(); }
+  std::string Dump() const {
+    std::string res;
+    Dump(&res);
+    return res;
+  }
+
+  void Dump(std::string *buffer) const {
+    jsoncons::compact_json_string_encoder encoder{*buffer};
+    value.dump(encoder);
+  }
 
   Status Set(std::string_view path, JsonValue &&new_value) {
     try {
       jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = std::move(new_value.value);
+        origin = new_value.value;
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};

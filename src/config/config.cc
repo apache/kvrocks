@@ -844,7 +844,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
 }
 
 Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
-  if (path_.empty()) {
+  if (!HasConfigFile()) {
     return {Status::NotOK, "the server is running without a config file"};
   }
 

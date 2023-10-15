@@ -194,10 +194,16 @@ func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
 }
 
 func StartServer(t testing.TB, configs map[string]string) *KvrocksServer {
-	return StartServerWithCLIOptions(t, configs, []string{})
+	return StartServerWithCLIOptions(t, true, configs, []string{})
 }
 
-func StartServerWithCLIOptions(t testing.TB, configs map[string]string, options []string) *KvrocksServer {
+func StartServerWithCLIOptions(
+	t testing.TB,
+	withConfigFile bool,
+	configs map[string]string,
+	options []string,
+) *KvrocksServer {
+
 	b := *binPath
 	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
@@ -215,16 +221,21 @@ func StartServerWithCLIOptions(t testing.TB, configs map[string]string, options 
 	require.NoError(t, err)
 	configs["dir"] = dir
 
-	f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
-	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
-
-	for k := range configs {
-		_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))
+	if withConfigFile {
+		f, err := os.Create(filepath.Join(dir, "kvrocks.conf"))
 		require.NoError(t, err)
-	}
+		defer func() { require.NoError(t, f.Close()) }()
 
-	cmd.Args = append(cmd.Args, "-c", f.Name())
+		for k := range configs {
+			_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))
+			require.NoError(t, err)
+		}
+		cmd.Args = append(cmd.Args, "-c", f.Name())
+	} else {
+		for k := range configs {
+			cmd.Args = append(cmd.Args, fmt.Sprintf("--%s", k), configs[k])
+		}
+	}
 	cmd.Args = append(cmd.Args, options...)
 
 	stdout, err := os.Create(filepath.Join(dir, "stdout"))

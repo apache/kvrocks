@@ -28,7 +28,7 @@ import (
 )
 
 func TestCLIOptions(t *testing.T) {
-	srv := util.StartServerWithCLIOptions(t, map[string]string{}, []string{"--maxclients", "23333"})
+	srv := util.StartServerWithCLIOptions(t, true, map[string]string{}, []string{"--maxclients", "23333"})
 	defer srv.Close()
 
 	ctx := context.Background()

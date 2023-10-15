@@ -129,3 +129,15 @@ func TestConfigSetCompression(t *testing.T) {
 	}
 	require.ErrorContains(t, rdb.ConfigSet(ctx, configKey, "unsupported").Err(), "invalid enum option")
 }
+
+func TestStartWithoutConfigurationFile(t *testing.T) {
+	srv := util.StartServerWithCLIOptions(t, false, map[string]string{}, []string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
+	require.Equal(t, "bar", rdb.Do(ctx, "GET", "foo").Val())
+}

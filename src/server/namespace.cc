@@ -31,6 +31,8 @@ constexpr const char* kErrClusterModeEnabled = "forbidden to add namespace when 
 constexpr const char* kErrDeleteDefaultNamespace = "forbidden to delete the default namespace";
 constexpr const char* kErrAddDefaultNamespace = "forbidden to add the default namespace";
 constexpr const char* kErrInvalidToken = "the token is duplicated with requirepass or masterauth";
+constexpr const char* kErrCantModifyNamespace =
+    "modify namespace requires the server is running with a configuration file or enabled namespace replication";
 
 Status IsNamespaceLegal(const std::string& ns) {
   if (ns.size() > UINT8_MAX) {
@@ -41,6 +43,12 @@ Status IsNamespaceLegal(const std::string& ns) {
     return {Status::NotOK, "namespace contain illegal letter"};
   }
   return Status::OK();
+}
+
+bool Namespace::IsAllowModify() const {
+  auto config = storage_->GetConfig();
+
+  return config->HasConfigFile() || config->repl_namespace_enabled;
 }
 
 Status Namespace::LoadAndRewrite() {
@@ -100,6 +108,9 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
   if (config->cluster_enabled) {
     return {Status::NotOK, kErrClusterModeEnabled};
   }
+  if (!IsAllowModify()) {
+    return {Status::NotOK, kErrCantModifyNamespace};
+  }
   if (ns == kDefaultNamespace) {
     return {Status::NotOK, kErrAddDefaultNamespace};
   }
@@ -142,6 +153,9 @@ Status Namespace::Del(const std::string& ns) {
   if (ns == kDefaultNamespace) {
     return {Status::NotOK, kErrDeleteDefaultNamespace};
   }
+  if (!IsAllowModify()) {
+    return {Status::NotOK, kErrCantModifyNamespace};
+  }
 
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {
@@ -159,9 +173,12 @@ Status Namespace::Del(const std::string& ns) {
 
 Status Namespace::Rewrite() {
   auto config = storage_->GetConfig();
-  auto s = config->Rewrite(tokens_);
-  if (!s.IsOK()) {
-    return s;
+  // Rewrite the configuration file only if it's running with the configuration file
+  if (config->HasConfigFile()) {
+    auto s = config->Rewrite(tokens_);
+    if (!s.IsOK()) {
+      return s;
+    }
   }
 
   // Don't propagate write to DB if its role is slave to prevent from

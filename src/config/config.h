@@ -222,6 +222,7 @@ struct Config {
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }
+  bool HasConfigFile() const { return !path_.empty(); }
 
  private:
   std::string path_;

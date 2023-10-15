@@ -162,7 +162,7 @@ rocksdb::Status Metadata::Decode(Slice *input) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
-  if (Type() != kRedisString) {
+  if (!IsSingleKVType()) {
     if (input->size() < 8 + CommonEncodedSize()) {
       return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
     }
@@ -178,7 +178,7 @@ rocksdb::Status Metadata::Decode(Slice input) { return Decode(&input); }
 void Metadata::Encode(std::string *dst) const {
   PutFixed8(dst, flags);
   PutExpire(dst);
-  if (Type() != kRedisString) {
+  if (!IsSingleKVType()) {
     PutFixed64(dst, version);
     PutFixedCommon(dst, size);
   }
@@ -199,7 +199,7 @@ uint64_t Metadata::generateVersion() {
 bool Metadata::operator==(const Metadata &that) const {
   if (flags != that.flags) return false;
   if (expire != that.expire) return false;
-  if (Type() != kRedisString) {
+  if (!IsSingleKVType()) {
     if (size != that.size) return false;
     if (version != that.version) return false;
   }
@@ -304,7 +304,7 @@ timeval Metadata::Time() const {
 }
 
 bool Metadata::ExpireAt(uint64_t expired_ts) const {
-  if (Type() != kRedisString && Type() != kRedisStream && Type() != kRedisBloomFilter && size == 0) {
+  if (!IsEmptyableType() && size == 0) {
     return true;
   }
   if (expire == 0) {
@@ -312,6 +312,12 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
   }
 
   return expire < expired_ts;
+}
+
+bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() == kRedisJson; }
+
+bool Metadata::IsEmptyableType() const {
+  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -435,4 +441,22 @@ uint32_t BloomChainMetadata::GetCapacity() const {
     return base_capacity * n_filters;
   }
   return static_cast<uint32_t>(base_capacity * (1 - pow(expansion, n_filters)) / (1 - expansion));
+}
+
+void JsonMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+
+  PutFixed8(dst, uint8_t(format));
+}
+
+rocksdb::Status JsonMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+
+  if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&format))) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  return rocksdb::Status::OK();
 }

@@ -46,6 +46,7 @@ enum RedisType {
   kRedisSortedint = 7,
   kRedisStream = 8,
   kRedisBloomFilter = 9,
+  kRedisJson = 10,
 };
 
 enum RedisCommand {
@@ -128,6 +129,7 @@ class Metadata {
 
   explicit Metadata(RedisType type, bool generate_version = true,
                     bool use_64bit_common_field = USE_64BIT_COMMON_FIELD_DEFAULT);
+
   static void InitVersionCounter();
 
   static size_t GetOffsetAfterExpire(uint8_t flags);
@@ -146,6 +148,19 @@ class Metadata {
   timeval Time() const;
   bool Expired() const;
   bool ExpireAt(uint64_t expired_ts) const;
+
+  // return whether for this type, the metadata itself is the whole data,
+  // no other key-values.
+  // this means that the metadata of these types do NOT have
+  // `version` and `size` field.
+  // e.g. RedisString, RedisJson
+  bool IsSingleKVType() const;
+
+  // return whether the `size` field of this type can be zero.
+  // if a type is NOT an emptyable type,
+  // any key of this type is regarded as expired if `size` equals to 0.
+  // e.g. any SingleKVType, RedisStream, RedisBloomFilter
+  bool IsEmptyableType() const;
 
   virtual void Encode(std::string *dst) const;
   [[nodiscard]] virtual rocksdb::Status Decode(Slice *input);
@@ -253,4 +268,20 @@ class BloomChainMetadata : public Metadata {
   uint32_t GetCapacity() const;
 
   bool IsScaling() const { return expansion != 0; };
+};
+
+enum class JsonStorageFormat : uint8_t {
+  JSON = 0,
+};
+
+class JsonMetadata : public Metadata {
+ public:
+  // to make JSON type more extensible,
+  // we add a field to indicate the format of stored data
+  JsonStorageFormat format = JsonStorageFormat::JSON;
+
+  explicit JsonMetadata(bool generate_version = true) : Metadata(kRedisJson, generate_version) {}
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
 };

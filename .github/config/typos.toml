@@ -30,3 +30,6 @@ ignore-hidden = false
 
 # random strings
 "ue" = "ue"
+
+# jsoncons
+"ser" = "ser"

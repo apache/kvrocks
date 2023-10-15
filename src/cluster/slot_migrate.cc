@@ -588,7 +588,7 @@ StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &k
     return {Status::NotOK, s.ToString()};
   }
 
-  if (metadata.Type() != kRedisString && metadata.Type() != kRedisStream && metadata.size == 0) {
+  if (!metadata.IsEmptyableType() && metadata.size == 0) {
     return KeyMigrationResult::kUnderlyingStructEmpty;
   }
 

@@ -38,13 +38,11 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
   metadata_cf_handle_ = storage->GetCFHandle("metadata");
 }
 
-rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
+rocksdb::Status Database::ParseMetadata(RedisType type, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
-  std::string bytes;
-  auto s = GetRawMetadata(ns_key, &bytes);
-  if (!s.ok()) return s;
-  s = metadata->Decode(bytes);
+
+  auto s = metadata->Decode(bytes);
   if (!s.ok()) return s;
 
   if (metadata->Expired()) {
@@ -52,19 +50,33 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metad
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata->Type() != type &&
-      (metadata->size > 0 || metadata->Type() == kRedisString || metadata->Type() == kRedisStream)) {
+  if (metadata->Type() != type && (metadata->size > 0 || metadata->IsEmptyableType())) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
-  if (metadata->size == 0 && type != kRedisStream &&
-      type != kRedisBloomFilter) {  // stream and bloom is allowed to be empty
+  if (metadata->size == 0 && !metadata->IsEmptyableType()) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no element found");
   }
   return s;
+}
+
+rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
+  std::string bytes;
+  auto s = GetRawMetadata(ns_key, &bytes);
+  if (!s.ok()) return s;
+  Slice bytes_slice(bytes);
+  return ParseMetadata(type, &bytes_slice, metadata);
+}
+
+rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
+                                      Slice *rest) {
+  auto s = GetRawMetadata(ns_key, raw_value);
+  *rest = *raw_value;
+  if (!s.ok()) return s;
+  return ParseMetadata(type, rest, metadata);
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
@@ -92,7 +104,7 @@ rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   if (metadata.Expired()) {
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata.Type() != kRedisString && metadata.size == 0) {
+  if (!metadata.IsEmptyableType() && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
   }
   if (metadata.expire == timestamp) return rocksdb::Status::OK();

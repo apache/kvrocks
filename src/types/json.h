@@ -24,6 +24,7 @@
 #include <jsoncons/json_error.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 
+#include "json_path.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
 
@@ -54,20 +55,34 @@ struct JsonValue {
   }
 
   Status Set(std::string_view path, JsonValue &&new_value) {
+    auto path_express_status = JsonPath::BuildJsonPath(path);
+    if (!path_express_status) {
+      return path_express_status.ToStatus();
+    }
+    return Set(path_express_status.GetValue(), std::move(new_value));
+  }
+
+  Status Set(const JsonPath &path, JsonValue &&new_value) {
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = new_value.value;
-      });
+      path.EvalReplaceExpression(
+          value, [&new_value](const std::string_view & /*path*/, jsoncons::json &origin) { origin = new_value.value; });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-
     return Status::OK();
   }
 
   StatusOr<JsonValue> Get(std::string_view path) const {
+    auto path_express_status = JsonPath::BuildJsonPath(path);
+    if (!path_express_status) {
+      return path_express_status.ToStatus();
+    }
+    return Get(path_express_status.GetValue());
+  }
+
+  StatusOr<JsonValue> Get(const JsonPath &json_path) const {
     try {
-      return jsoncons::jsonpath::json_query(value, path);
+      return json_path.EvalQueryExpression(value);
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
@@ -84,12 +99,3 @@ struct JsonValue {
   jsoncons::json value;
 };
 
-// https://redis.io/docs/data-types/json/path/#legacy-path-syntax
-inline std::optional<std::string_view> TryConvertLegacyToJsonPath(std::string_view path) {
-  // TODO(mwish): currently I only handling the simplest logic,
-  //  port from RedisJson JsonPathParser::parse later.
-  if (path == ".") {
-    return "$";
-  }
-  return std::nullopt;
-}

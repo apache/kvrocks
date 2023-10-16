@@ -21,6 +21,7 @@
 #include "redis_json.h"
 
 #include "json.h"
+#include "json_path.h"
 #include "lock_manager.h"
 #include "storage/redis_metadata.h"
 
@@ -52,13 +53,14 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   Slice rest;
   auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
 
-  std::string_view real_path = path;
-  if (auto legacy_path = TryConvertLegacyToJsonPath(path); legacy_path.has_value()) {
-    real_path = legacy_path.value();
+  auto json_path_opt = JsonPath::BuildJsonPath(path);
+  if (!json_path_opt) {
+    return rocksdb::Status::InvalidArgument(json_path_opt.Msg());
   }
+  const auto &json_path = json_path_opt.GetValue();
 
   if (s.IsNotFound()) {
-    if (real_path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+    if (!json_path.IsRootPath()) return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
     auto json_res = JsonValue::FromString(value);
     if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
@@ -80,7 +82,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
   auto origin = *std::move(origin_res);
 
-  auto set_res = origin.Set(real_path, std::move(new_val));
+  auto set_res = origin.Set(json_path, std::move(new_val));
   if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
 
   return write(ns_key, &metadata, origin);
@@ -107,22 +109,18 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
   if (paths.empty()) {
     res = std::move(json_val);
   } else if (paths.size() == 1) {
-    std::string_view real_path = paths[0];
-    if (auto legacy_path = TryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
-      real_path = legacy_path.value();
-    }
-    auto get_res = json_val.Get(real_path);
+    auto json_path_result = JsonPath::BuildJsonPath(paths[0]);
+    if (!json_path_result) return rocksdb::Status::InvalidArgument(json_path_result.Msg());
+    auto get_res = json_val.Get(json_path_result.GetValue());
     if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
     res = *std::move(get_res);
   } else {
     for (const auto &path : paths) {
-      std::string_view real_path = path;
-      if (auto legacy_path = TryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
-        real_path = legacy_path.value();
-      }
-      auto get_res = json_val.Get(real_path);
+      auto json_path_result = JsonPath::BuildJsonPath(path);
+      if (!json_path_result) return rocksdb::Status::InvalidArgument(json_path_result.Msg());
+      auto get_res = json_val.Get(json_path_result.GetValue());
       if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
-      res.value.insert_or_assign(real_path, std::move(get_res->value));
+      res.value.insert_or_assign(json_path_result->Path(), std::move(get_res->value));
     }
   }
 

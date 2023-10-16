@@ -20,12 +20,12 @@
 
 #pragma once
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <fstream>
 #include <string>
 
 #include "status.h"
+#include "vendor/endianconv.h"
 
 class RdbStream {
  public:
@@ -69,7 +69,11 @@ class RdbFileStream : public RdbStream {
 
   Status Open();
   StatusOr<size_t> Read(char *buf, size_t len) override;
-  StatusOr<uint64_t> GetCheckSum() const override { return check_sum_; }
+  StatusOr<uint64_t> GetCheckSum() const override {
+    uint64_t crc = check_sum_;
+    memrev64ifbe(&crc);
+    return crc;
+  }
 
  private:
   std::ifstream ifs_;

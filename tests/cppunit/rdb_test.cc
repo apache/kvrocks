@@ -51,11 +51,11 @@ class RDBTest : public TestBase {
   void TearDown() override { ASSERT_TRUE(clearDBDir(config_->db_dir)); }
 
   void loadRdb(const std::string &path) {
-    auto stream_ptr = std::make_shared<RdbFileStream>(path);
+    auto stream_ptr = std::make_unique<RdbFileStream>(path);
     auto s = stream_ptr->Open();
     ASSERT_TRUE(s.IsOK());
 
-    RDB rdb(storage_, ns_, stream_ptr);
+    RDB rdb(storage_, ns_, std::move(stream_ptr));
     s = rdb.LoadRdb(0);
     ASSERT_TRUE(s.IsOK());
   }
@@ -116,19 +116,9 @@ class RDBTest : public TestBase {
     }
   }
 
-  rocksdb::Status exists(const std::string &key) {
-    int cnt = 0;
-    std::vector<rocksdb::Slice> keys;
-    keys.emplace_back(key);
+  rocksdb::Status keyExist(const std::string &key) {
     redis::Database redis(storage_, ns_);
-    auto s = redis.Exists(keys, &cnt);
-    if (!s.ok()) {
-      return s;
-    }
-    if (cnt == 0) {
-      return rocksdb::Status::NotFound();
-    }
-    return rocksdb::Status::OK();
+    return redis.KeyExist(key);
   }
 
   void flushDB() {
@@ -287,36 +277,36 @@ TEST_F(RDBTest, LoadEmptyKeys) {
   */
 
   // string
-  rocksdb::Status s = exists("empty_string");  // empty_string not exist in rdb file
+  rocksdb::Status s = keyExist("empty_string");  // empty_string not exist in rdb file
   ASSERT_TRUE(s.IsNotFound());
 
   // list
-  s = exists("list_ziplist");
+  s = keyExist("list_ziplist");
   ASSERT_TRUE(s.IsNotFound());
 
-  s = exists("list_quicklist");
+  s = keyExist("list_quicklist");
   ASSERT_TRUE(s.IsNotFound());
 
-  s = exists("list_quicklist_empty_ziplist");
+  s = keyExist("list_quicklist_empty_ziplist");
 
   // set
-  s = exists("set");
+  s = keyExist("set");
   ASSERT_TRUE(s.IsNotFound());
 
   // hash
-  s = exists("hash");
+  s = keyExist("hash");
   ASSERT_TRUE(s.IsNotFound());
 
-  s = exists("hash_ziplist");
+  s = keyExist("hash_ziplist");
   ASSERT_TRUE(s.IsNotFound());
 
   // zset
-  s = exists("zset");
+  s = keyExist("zset");
   ASSERT_TRUE(s.IsNotFound());
 
-  s = exists("zset_ziplist");
+  s = keyExist("zset_ziplist");
   ASSERT_TRUE(s.IsNotFound());
 
-  s = exists("zset_listpack");
+  s = keyExist("zset_listpack");
   ASSERT_TRUE(s.IsNotFound());
 }

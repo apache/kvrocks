@@ -614,6 +614,20 @@ rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slo
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Database::KeyExist(const std::string &key) {
+  int cnt = 0;
+  std::vector<rocksdb::Slice> keys;
+  keys.emplace_back(key);
+  auto s = Exists(keys, &cnt);
+  if (!s.ok()) {
+    return s;
+  }
+  if (cnt == 0) {
+    return rocksdb::Status::NotFound();
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
                                     const std::string &subkey_prefix, std::vector<std::string> *keys,
                                     std::vector<std::string> *values) {

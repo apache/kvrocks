@@ -65,7 +65,7 @@ using RedisObjValue =
 
 class RDB {
  public:
-  explicit RDB(engine::Storage *storage, std::string ns, std::shared_ptr<RdbStream> stream)
+  explicit RDB(engine::Storage *storage, std::string ns, std::unique_ptr<RdbStream> stream)
       : storage_(storage), ns_(std::move(ns)), stream_(std::move(stream)){};
   ~RDB() = default;
 
@@ -98,12 +98,12 @@ class RDB {
   StatusOr<std::vector<std::string>> LoadListWithQuickList(int type);
 
   // Load rdb
-  Status LoadRdb(uint32_t db_index, bool is_nx = false);
+  Status LoadRdb(uint32_t db_index, bool overwrite_exist_key = true);
 
  private:
   engine::Storage *storage_;
   std::string ns_;
-  std::shared_ptr<RdbStream> stream_;
+  std::unique_ptr<RdbStream> stream_;
 
   StatusOr<std::string> loadLzfString();
   StatusOr<std::string> loadEncodedString();
@@ -114,9 +114,8 @@ class RDB {
   StatusOr<int> loadRdbType();
   StatusOr<RedisObjValue> loadRdbObject(int rdbtype, const std::string &key);
   Status saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms);
-  StatusOr<uint32_t> loadTime();
-  StatusOr<uint64_t> loadMillisecondTime(int rdb_version);
-  rocksdb::Status exist(const std::string &key);
+  StatusOr<uint32_t> loadExpiredTimeSeconds();
+  StatusOr<uint64_t> loadExpiredTimeMilliseconds(int rdb_version);
 
   /*0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
    Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.*/

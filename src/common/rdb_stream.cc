@@ -22,7 +22,6 @@
 
 #include "fmt/format.h"
 #include "vendor/crc64.h"
-#include "vendor/endianconv.h"
 
 StatusOr<size_t> RdbStringStream::Read(char *buf, size_t n) {
   if (pos_ + n > input_.size()) {
@@ -54,12 +53,12 @@ Status RdbFileStream::Open() {
 StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
   size_t n = 0;
   while (len) {
-    size_t read_bytes = max_read_chunk_size_ < len ? max_read_chunk_size_ : len;
+    size_t read_bytes = std::min(max_read_chunk_size_, len);
     ifs_.read(buf, static_cast<std::streamsize>(read_bytes));
     if (!ifs_.good()) {
       return Status(Status::NotOK, fmt::format("read failed: {}:", strerror(errno)));
     }
-    check_sum_ = crc64(check_sum_, (const unsigned char *)buf, read_bytes);
+    check_sum_ = crc64(check_sum_, reinterpret_cast<const unsigned char *>(buf), read_bytes);
     buf = (char *)buf + read_bytes;
     len -= read_bytes;
     total_read_bytes_ += read_bytes;

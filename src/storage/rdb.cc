@@ -63,33 +63,35 @@ constexpr const int RDBOpcodeExpireTime = 253;   /* Old expire time in seconds. 
 constexpr const int RDBOpcodeSelectDB = 254;     /* DB number of the following keys. */
 constexpr const int RDBOpcodeEof = 255;          /* End of the RDB file. */
 
-// The current support RDB version
-constexpr const int RDBVersion = 10;
+constexpr const int SupportedRDBVersion = 10;  // not been tested for version 11, so use this version with caution.
+constexpr const int MaxRDBVersion = 11;        // The current max rdb version supported by redis.
 
-// NOLINTNEXTLINE
-#define GET_OR_RETWITHLOG(...)                                                                         \
-  ({                                                                                                   \
-    auto &&status = (__VA_ARGS__);                                                                     \
-    if (!status) {                                                                                     \
-      LOG(WARNING) << "Short read or unsupported type loading DB. Unrecoverable error, aborting now."; \
-      LOG(ERROR) << "Unexpected EOF reading RDB file";                                                 \
-      return std::forward<decltype(status)>(status);                                                   \
-    }                                                                                                  \
-    std::forward<decltype(status)>(status);                                                            \
-  }).GetValue()
+constexpr const int RDBCheckSumLen = 8;                                        // rdb check sum length
+constexpr const int RestoreRdbVersionLen = 2;                                  // rdb version len in restore string
+constexpr const int RestoreFooterLen = RestoreRdbVersionLen + RDBCheckSumLen;  // 10 = ver len  + checksum len
+constexpr const int MinRdbVersionToVerifyChecksum = 5;
+
+template <typename T>
+T LogWhenError(T &&s) {
+  if (!s) {
+    LOG(WARNING) << "Short read or unsupported type loading DB. Unrecoverable error, aborting now.";
+    LOG(ERROR) << "Unexpected EOF reading RDB file";
+  }
+  return std::forward<T>(s);
+}
 
 Status RDB::VerifyPayloadChecksum(const std::string_view &payload) {
-  if (payload.size() < 10) {
+  if (payload.size() < RestoreFooterLen) {  // at least has rdb version and checksum
     return {Status::NotOK, "invalid payload length"};
   }
-  auto footer = payload.substr(payload.size() - 10);
+  auto footer = payload.substr(payload.size() - RestoreFooterLen);
   auto rdb_version = (footer[1] << 8) | footer[0];
   // For now, the max redis rdb version is 11
-  if (rdb_version > 11) {
+  if (rdb_version > MaxRDBVersion) {
     return {Status::NotOK, fmt::format("invalid or unsupported rdb version: {}", rdb_version)};
   }
   auto crc = GET_OR_RET(stream_->GetCheckSum());
-  if (memcmp(&crc, footer.data() + 2, 8)) {
+  if (memcmp(&crc, footer.data() + RestoreRdbVersionLen, RDBCheckSumLen)) {
     return {Status::NotOK, "incorrect checksum"};
   }
   return Status::OK();
@@ -118,10 +120,10 @@ StatusOr<uint64_t> RDB::loadObjectLen(bool *is_encoded) {
       return (len << 8) | GET_OR_RET(stream_->ReadByte());
     default:
       if (c == RDB32BitLen) {
-        GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&len), 4));
+        GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&len), sizeof(uint32_t)));
         return ntohl(len);
       } else if (c == RDB64BitLen) {
-        GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&len), 8));
+        GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&len), sizeof(uint64_t)));
         return ntohu64(len);
       } else {
         return {Status::NotOK, fmt::format("Unknown RDB string encoding type {} byte {}", type, c)};
@@ -444,12 +446,9 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, const std::string &key) {
       elements = GET_OR_RET(LoadListWithQuickList(type));
     }
     return elements;
-  } else {
-    return {Status::RedisParseErr, fmt::format("unsupported type: {}", type)};
   }
 
-  // can't be here
-  return Status::OK();
+  return {Status::RedisParseErr, fmt::format("unsupported type: {}", type)};
 }
 
 Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms) {
@@ -511,13 +510,13 @@ Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue 
   return db_status.ok() ? Status::OK() : Status{Status::RedisExecErr, db_status.ToString()};
 }
 
-StatusOr<uint32_t> RDB::loadTime() {
+StatusOr<uint32_t> RDB::loadExpiredTimeSeconds() {
   uint32_t t32 = 0;
   GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&t32), 4));
   return t32;
 }
 
-StatusOr<uint64_t> RDB::loadMillisecondTime(int rdb_version) {
+StatusOr<uint64_t> RDB::loadExpiredTimeMilliseconds(int rdb_version) {
   uint64_t t64 = 0;
   GET_OR_RET(stream_->Read(reinterpret_cast<char *>(&t64), 8));
   /* before Redis 5 (RDB version 9), the function
@@ -545,20 +544,20 @@ bool RDB::isEmptyRedisObject(const RedisObjValue &value) {
 }
 
 // Load RDB file: copy from redis/src/rdb.c:branch 7.0, 76b9c13d.
-Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
+Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
   char buf[1024] = {0};
-  GET_OR_RETWITHLOG(stream_->Read(buf, 9));
+  GET_OR_RET(LogWhenError(stream_->Read(buf, 9)));
   buf[9] = '\0';
 
   if (memcmp(buf, "REDIS", 5) != 0) {
     LOG(WARNING) << "Wrong signature trying to load DB from file";
-    return {Status::NotOK};
+    return {Status::NotOK, "Wrong signature trying to load DB from file"};
   }
 
   auto rdb_ver = std::atoi(buf + 5);
-  if (rdb_ver < 1 || rdb_ver > RDBVersion) {
+  if (rdb_ver < 1 || rdb_ver > SupportedRDBVersion) {
     LOG(WARNING) << "Can't handle RDB format version " << rdb_ver;
-    return {Status::NotOK};
+    return {Status::NotOK, fmt::format("Can't handle RDB format version {}", rdb_ver)};
   }
 
   uint64_t expire_time = 0;
@@ -569,29 +568,29 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
   uint32_t db_id = 0;
   uint64_t skip_exist_keys = 0;
   while (true) {
-    auto type = GET_OR_RETWITHLOG(loadRdbType());
+    auto type = GET_OR_RET(LogWhenError(loadRdbType()));
     if (type == RDBOpcodeExpireTime) {
-      expire_time = static_cast<uint64_t>(GET_OR_RETWITHLOG(loadTime()));
+      expire_time = static_cast<uint64_t>(GET_OR_RET(LogWhenError(loadExpiredTimeSeconds())));
       expire_time *= 1000;
       continue;
     } else if (type == RDBOpcodeExpireTimeMs) {
-      expire_time = GET_OR_RETWITHLOG(loadMillisecondTime(rdb_ver));
+      expire_time = GET_OR_RET(LogWhenError(loadExpiredTimeMilliseconds(rdb_ver)));
       continue;
-    } else if (type == RDBOpcodeFreq) {        // LFU frequency: not use in kvrocks
-      GET_OR_RETWITHLOG(stream_->ReadByte());  // discard the value
+    } else if (type == RDBOpcodeFreq) {               // LFU frequency: not use in kvrocks
+      GET_OR_RET(LogWhenError(stream_->ReadByte()));  // discard the value
       continue;
     } else if (type == RDBOpcodeIdle) {  // LRU idle time: not use in kvrocks
       uint64_t discard = 0;
-      GET_OR_RETWITHLOG(stream_->Read(reinterpret_cast<char *>(&discard), 8));
+      GET_OR_RET(LogWhenError(stream_->Read(reinterpret_cast<char *>(&discard), sizeof(uint64_t))));
       continue;
     } else if (type == RDBOpcodeEof) {
       break;
     } else if (type == RDBOpcodeSelectDB) {
-      db_id = GET_OR_RETWITHLOG(loadObjectLen(nullptr));
+      db_id = GET_OR_RET(LogWhenError(loadObjectLen(nullptr)));
       continue;
-    } else if (type == RDBOpcodeResizeDB) {       // not use in kvrocks, hint redis for hash table resize
-      GET_OR_RETWITHLOG(loadObjectLen(nullptr));  // db_size
-      GET_OR_RETWITHLOG(loadObjectLen(nullptr));  // expires_size
+    } else if (type == RDBOpcodeResizeDB) {              // not use in kvrocks, hint redis for hash table resize
+      GET_OR_RET(LogWhenError(loadObjectLen(nullptr)));  // db_size
+      GET_OR_RET(LogWhenError(loadObjectLen(nullptr)));  // expires_size
       continue;
     } else if (type == RDBOpcodeAux) {
       /* AUX: generic string-string fields. Use to add state to RDB
@@ -599,8 +598,8 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
        * are required to skip AUX fields they don't understand.
        *
        * An AUX field is composed of two strings: key and value. */
-      auto key = GET_OR_RETWITHLOG(LoadStringObject());
-      auto value = GET_OR_RETWITHLOG(LoadStringObject());
+      auto key = GET_OR_RET(LogWhenError(LoadStringObject()));
+      auto value = GET_OR_RET(LogWhenError(LoadStringObject()));
       continue;
     } else if (type == RDBOpcodeModuleAux) {
       LOG(WARNING) << "RDB module not supported";
@@ -611,12 +610,12 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
     } else {
       if (!isObjectType(type)) {
         LOG(WARNING) << "Invalid or Not supported object type: " << type;
-        return {Status::NotOK, "Invalid or Not supported object type"};
+        return {Status::NotOK, fmt::format("Invalid or Not supported object type {}", type)};
       }
     }
 
-    auto key = GET_OR_RETWITHLOG(LoadStringObject());
-    auto value = GET_OR_RETWITHLOG(loadRdbObject(type, key));
+    auto key = GET_OR_RET(LogWhenError(LoadStringObject()));
+    auto value = GET_OR_RET(LogWhenError(loadRdbObject(type, key)));
 
     if (db_index != db_id) {  // skip db not match
       continue;
@@ -627,7 +626,7 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
        * (See #8453), we rather not fail when empty key is encountered
        * in an RDB file, instead we will silently discard it and
        * continue loading. */
-      if (empty_keys_skipped++ < 10) {
+      if (empty_keys_skipped++ < 10) {  // only log 10 empty keys, just as redis does.
         LOG(WARNING) << "skipping empty key: " << key;
       }
       continue;
@@ -637,8 +636,9 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
       continue;
     }
 
-    if (is_nx) {  // only load not exist key
-      auto s = exist(key);
+    if (!overwrite_exist_key) {  // only load not exist key
+      redis::Database redis(storage_, ns_);
+      auto s = redis.KeyExist(key);
       if (!s.IsNotFound()) {
         skip_exist_keys++;  // skip it even it's not okay
         if (!s.ok()) {
@@ -657,41 +657,22 @@ Status RDB::LoadRdb(uint32_t db_index, bool is_nx) {
   }
 
   // Verify the checksum if RDB version is >= 5
-  if (rdb_ver >= 5) {
+  if (rdb_ver >= MinRdbVersionToVerifyChecksum) {
     uint64_t chk_sum = 0;
-    auto expected = GET_OR_RETWITHLOG(stream_->GetCheckSum());
-    GET_OR_RETWITHLOG(stream_->Read(reinterpret_cast<char *>(&chk_sum), 8));
+    auto expected = GET_OR_RET(LogWhenError(stream_->GetCheckSum()));
+    GET_OR_RET(LogWhenError(stream_->Read(reinterpret_cast<char *>(&chk_sum), RDBCheckSumLen)));
     if (chk_sum == 0) {
       LOG(WARNING) << "RDB file was saved with checksum disabled: no check performed.";
     } else if (chk_sum != expected) {
       LOG(WARNING) << "Wrong RDB checksum expected: " << chk_sum << " got: " << expected;
-      return {Status::NotOK, "Wrong RDB checksum"};
+      return {Status::NotOK, "All objects were processed and loaded but the checksum is unexpected!"};
     }
   }
 
-  std::string skip_info = (is_nx ? ", exist keys skipped: " + std::to_string(skip_exist_keys) : "");
+  std::string skip_info = (overwrite_exist_key ? ", exist keys skipped: " + std::to_string(skip_exist_keys) : "");
 
-  if (empty_keys_skipped > 0) {
-    LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys
-              << ", empty keys skipped: " << empty_keys_skipped << skip_info;
-  } else {
-    LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys << skip_info;
-  }
+  LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys
+            << ", empty keys skipped: " << empty_keys_skipped << skip_info;
 
   return Status::OK();
-}
-
-rocksdb::Status RDB::exist(const std::string &key) {
-  int cnt = 0;
-  std::vector<rocksdb::Slice> keys;
-  keys.emplace_back(key);
-  redis::Database redis(storage_, ns_);
-  auto s = redis.Exists(keys, &cnt);
-  if (!s.ok()) {
-    return s;
-  }
-  if (cnt == 0) {
-    return rocksdb::Status::NotFound();
-  }
-  return rocksdb::Status::OK();
 }

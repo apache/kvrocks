@@ -1060,8 +1060,8 @@ class CommandRestore : public Commander {
       ttl_ms_ -= now;
     }
 
-    auto stream_ptr = std::make_shared<RdbStringStream>(args_[3]);
-    RDB rdb(svr->storage, conn->GetNamespace(), stream_ptr);
+    auto stream_ptr = std::make_unique<RdbStringStream>(args_[3]);
+    RDB rdb(svr->storage, conn->GetNamespace(), std::move(stream_ptr));
     auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
@@ -1079,10 +1079,9 @@ class CommandRdb : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 3);
-    std::string_view ttl_flag, set_flag;
     while (parser.Good()) {
       if (parser.EatEqICase("NX")) {
-        is_nx_ = true;
+        overwrite_exist_key_ = false;
       } else if (parser.EatEqICase("DB")) {
         db_index_ = GET_OR_RET(parser.TakeInt<uint32_t>());
       } else {
@@ -1099,18 +1098,18 @@ class CommandRdb : public Commander {
     auto type = args_[1];
     auto path = args_[2];
 
-    auto stream_ptr = std::make_shared<RdbFileStream>(path);
+    auto stream_ptr = std::make_unique<RdbFileStream>(path);
     GET_OR_RET(stream_ptr->Open());
 
-    RDB rdb(svr->storage, conn->GetNamespace(), stream_ptr);
-    GET_OR_RET(rdb.LoadRdb(db_index_, is_nx_));
+    RDB rdb(svr->storage, conn->GetNamespace(), std::move(stream_ptr));
+    GET_OR_RET(rdb.LoadRdb(db_index_, overwrite_exist_key_));
 
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
-  bool is_nx_ = false;
+  bool overwrite_exist_key_ = true;  // default overwrite exist key
   uint32_t db_index_ = 0;
 };
 

@@ -40,10 +40,10 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
   uint32_t encoding = 0, len = 0;
   memcpy(&encoding, input_.data() + pos_, sizeof(uint32_t));
   pos_ += sizeof(uint32_t);
-  intrev32ifbe(&encoding);
+  memrev32ifbe(&encoding);
   memcpy(&len, input_.data() + pos_, sizeof(uint32_t));
   pos_ += sizeof(uint32_t);
-  intrev32ifbe(&len);
+  memrev32ifbe(&len);
 
   uint32_t record_size = encoding;
   if (record_size == 0) {
@@ -60,7 +60,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         uint16_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint16_t));
         pos_ += sizeof(uint16_t);
-        intrev16ifbe(&v);
+        memrev32ifbe(&v);
         entries.emplace_back(std::to_string(v));
         break;
       }
@@ -68,7 +68,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         uint32_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint32_t));
         pos_ += sizeof(uint32_t);
-        intrev32ifbe(&v);
+        memrev32ifbe(&v);
         entries.emplace_back(std::to_string(v));
         break;
       }
@@ -76,7 +76,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         uint64_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint64_t));
         pos_ += sizeof(uint64_t);
-        intrev64ifbe(&v);
+        memrev32ifbe(&v);
         entries.emplace_back(std::to_string(v));
         break;
       }

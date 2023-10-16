@@ -42,11 +42,24 @@ StatusOr<JsonPath> JsonPath::BuildJsonPath(std::string_view path) {
 }
 
 // https://redis.io/docs/data-types/json/path/#legacy-path-syntax
-std::optional<std::string_view> JsonPath::tryConvertLegacyToJsonPath(std::string_view path) {
-  // TODO(mwish): currently I just handle the simplest logic,
-  //  port from RedisJson JsonPathParser::parse later.
-  if (path == ".") {
-    return "$";
+// The logic here is port from RedisJson `Path::new`.
+std::optional<std::string> JsonPath::tryConvertLegacyToJsonPath(std::string_view path) {
+  if (path.empty()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  if (path[0] == '$') {
+    if (path.size() == 1) {
+      return std::nullopt;
+    }
+    if (path[1] == '.' || path[1] == '[') {
+      return std::nullopt;
+    }
+  }
+  if (path[0] == '.') {
+    if (path.size() == 1) {
+      return "$";
+    }
+    return std::string("$") + std::string(path);
+  }
+  return std::string("$.") + std::string(path);
 }

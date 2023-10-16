@@ -120,7 +120,7 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
       if (!json_path_result) return rocksdb::Status::InvalidArgument(json_path_result.Msg());
       auto get_res = json_val.Get(json_path_result.GetValue());
       if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
-      res.value.insert_or_assign(json_path_result->Path(), std::move(get_res->value));
+      res.value.insert_or_assign(json_path_result->OriginPath(), std::move(get_res->value));
     }
   }
 

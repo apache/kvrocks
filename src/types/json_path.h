@@ -47,6 +47,8 @@ class JsonPath {
     return origin_;
   }
 
+  std::string_view OriginPath() const { return origin_; }
+
   bool IsRootPath() const { return Path() == ROOT_PATH; }
 
   JsonType EvalQueryExpression(const JsonType& json_value) const {
@@ -63,12 +65,13 @@ class JsonPath {
   }
 
  private:
-  static std::optional<std::string_view> tryConvertLegacyToJsonPath(std::string_view path);
+  static std::optional<std::string> tryConvertLegacyToJsonPath(std::string_view path);
 
   JsonPath(std::string path, std::string fixed_path, JsonPathExpression path_expression)
       : origin_(std::move(path)), fixed_path_(std::move(fixed_path)), expression_(std::move(path_expression)) {}
 
   std::string origin_;
   std::string fixed_path_;
+  // Pre-build the expression to avoid built it multiple times.
   JsonPathExpression expression_;
 };

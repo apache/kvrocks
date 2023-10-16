@@ -83,3 +83,13 @@ struct JsonValue {
 
   jsoncons::json value;
 };
+
+// https://redis.io/docs/data-types/json/path/#legacy-path-syntax
+inline std::optional<std::string_view> tryConvertLegacyToJsonPath(std::string_view path) {
+  // TODO(mwish): currently I just handle the simplest logic,
+  //  port from RedisJson JsonPathParser::parse later.
+  if (path == ".") {
+    return "$";
+  }
+  return std::nullopt;
+}

@@ -33,7 +33,6 @@ struct JsonValue {
 
   static StatusOr<JsonValue> FromString(std::string_view str) {
     jsoncons::json val;
-
     try {
       val = jsoncons::json::parse(str);
     } catch (const jsoncons::ser_error &e) {
@@ -48,7 +47,7 @@ struct JsonValue {
   Status Set(std::string_view path, JsonValue &&new_value) {
     try {
       jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = std::move(new_value.value);
+        origin = new_value.value;
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};

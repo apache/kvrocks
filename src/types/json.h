@@ -98,4 +98,3 @@ struct JsonValue {
 
   jsoncons::json value;
 };
-

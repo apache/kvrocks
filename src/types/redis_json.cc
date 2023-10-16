@@ -53,7 +53,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
 
   std::string_view real_path = path;
-  if (auto legacy_path = tryConvertLegacyToJsonPath(path); legacy_path.has_value()) {
+  if (auto legacy_path = TryConvertLegacyToJsonPath(path); legacy_path.has_value()) {
     real_path = legacy_path.value();
   }
 
@@ -108,7 +108,7 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
     res = std::move(json_val);
   } else if (paths.size() == 1) {
     std::string_view real_path = paths[0];
-    if (auto legacy_path = tryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
+    if (auto legacy_path = TryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
       real_path = legacy_path.value();
     }
     auto get_res = json_val.Get(real_path);
@@ -117,7 +117,7 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
   } else {
     for (const auto &path : paths) {
       std::string_view real_path = path;
-      if (auto legacy_path = tryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
+      if (auto legacy_path = TryConvertLegacyToJsonPath(paths[0]); legacy_path.has_value()) {
         real_path = legacy_path.value();
       }
       auto get_res = json_val.Get(real_path);

@@ -60,7 +60,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         uint16_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint16_t));
         pos_ += sizeof(uint16_t);
-        memrev32ifbe(&v);
+        memrev16ifbe(&v);
         entries.emplace_back(std::to_string(v));
         break;
       }
@@ -76,7 +76,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         uint64_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint64_t));
         pos_ += sizeof(uint64_t);
-        memrev32ifbe(&v);
+        memrev64ifbe(&v);
         entries.emplace_back(std::to_string(v));
         break;
       }

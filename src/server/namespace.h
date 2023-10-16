@@ -42,6 +42,7 @@ class Namespace {
   Status Del(const std::string &ns);
   const std::map<std::string, std::string> &List() const { return tokens_; }
   Status Rewrite();
+  bool IsAllowModify() const;
 
  private:
   engine::Storage *storage_;

@@ -33,7 +33,6 @@ struct JsonValue {
 
   static StatusOr<JsonValue> FromString(std::string_view str) {
     jsoncons::json val;
-
     try {
       val = jsoncons::json::parse(str);
     } catch (const jsoncons::ser_error &e) {

@@ -241,3 +241,33 @@ func TestNamespaceReplicate(t *testing.T) {
 		util.ErrorRegexp(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err(), ".*cannot switch off repl_namespace_enabled when namespaces exist in db.*")
 	})
 }
+
+func TestNamespaceRewrite(t *testing.T) {
+	password := "pwd"
+	srv := util.StartServerWithCLIOptions(t, false, map[string]string{
+		"requirepass": password,
+	}, []string{})
+	defer srv.Close()
+
+	rdb := srv.NewClientWithOption(&redis.Options{
+		Password: password,
+	})
+	defer func() { require.NoError(t, rdb.Close()) }()
+	ctx := context.Background()
+
+	t.Run("Cannot modify namespace if running without the configuration", func(t *testing.T) {
+		errMsg := ".*ERR modify namespace requires the server is running with a configuration file or enabled namespace replication.*"
+		r := rdb.Do(ctx, "NAMESPACE", "ADD", "ns1", "token1")
+		util.ErrorRegexp(t, r.Err(), errMsg)
+		r = rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "token1")
+		util.ErrorRegexp(t, r.Err(), errMsg)
+		r = rdb.Do(ctx, "NAMESPACE", "DEL", "ns1")
+		util.ErrorRegexp(t, r.Err(), errMsg)
+
+		// Good to go after enabling namespace replication
+		require.NoError(t, rdb.ConfigSet(ctx, "repl-namespace-enabled", "yes").Err())
+		require.NoError(t, rdb.Do(ctx, "NAMESPACE", "ADD", "ns1", "token1").Err())
+		require.NoError(t, rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "token2").Err())
+		require.NoError(t, rdb.Do(ctx, "NAMESPACE", "DEL", "ns1").Err())
+	})
+}

@@ -35,7 +35,7 @@ rocksdb::Status Json::write(Slice ns_key, JsonMetadata *metadata, const JsonValu
 
   std::string val;
   metadata->Encode(&val);
-  val.append(json_val.Dump());
+  json_val.Dump(&val);
 
   batch->Put(metadata_cf_handle_, ns_key, val);
 
@@ -67,13 +67,13 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (metadata.format != JsonStorageFormat::JSON)
     return rocksdb::Status::NotSupported("JSON storage format not supported");
 
-  auto origin_res = JsonValue::FromString(rest.ToStringView());
-  if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
-  auto origin = *std::move(origin_res);
-
   auto new_res = JsonValue::FromString(value);
   if (!new_res) return rocksdb::Status::InvalidArgument(new_res.Msg());
   auto new_val = *std::move(new_res);
+
+  auto origin_res = JsonValue::FromString(rest.ToStringView());
+  if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
+  auto origin = *std::move(origin_res);
 
   auto set_res = origin.Set(path, std::move(new_val));
   if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
@@ -107,7 +107,7 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
     res = *std::move(get_res);
   } else {
     for (const auto &path : paths) {
-      auto get_res = json_val.Get(paths[0]);
+      auto get_res = json_val.Get(path);
       if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
       res.value.insert_or_assign(path, std::move(get_res->value));
     }

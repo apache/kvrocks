@@ -48,8 +48,14 @@ TEST(Compact, Filter) {
   usleep(10000);
   hash->Set(live_hash_key, "f1", "v1", &ret);
   hash->Set(live_hash_key, "f2", "v2", &ret);
+
   auto status = storage->Compact(nullptr, nullptr);
   assert(status.ok());
+  // Compact twice to workaround issue fixed by: https://github.com/facebook/rocksdb/pull/11468
+  // before rocksdb/speedb 8.1.1. This line can be removed after speedb upgraded above 8.1.1.
+  status = storage->Compact(nullptr, nullptr);
+  assert(status.ok());
+
   rocksdb::DB* db = storage->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = db->GetSnapshot();
@@ -78,6 +84,9 @@ TEST(Compact, Filter) {
   st = zset->Expire(expired_zset_key, 1);  // expired
   usleep(10000);
 
+  // Same as the above compact, need to compact twice here
+  status = storage->Compact(nullptr, nullptr);
+  assert(status.ok());
   status = storage->Compact(nullptr, nullptr);
   assert(status.ok());
 

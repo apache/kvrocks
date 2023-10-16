@@ -25,6 +25,6 @@ FetchContent_DeclareGitHubWithMirror(gtest
 )
 
 FetchContent_MakeAvailableWithArgs(gtest
-  BUILD_GMOCK=OFF
+  BUILD_GMOCK=ON
   INSTALL_GTEST=OFF
 )

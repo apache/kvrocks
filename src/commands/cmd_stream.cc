@@ -249,6 +249,15 @@ class CommandXGroup : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "createconsumer") {
+      if (args.size() != 5) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      consumer_name_ = GET_OR_RET(parser.TakeStr());
+
+      return Status::OK();
+    }
+
     return {Status::RedisParseErr, "unknown subcommand"};
   }
 
@@ -278,6 +287,16 @@ class CommandXGroup : public Commander {
       }
     }
 
+    if (subcommand_ == "createconsumer") {
+      int created_number = 0;
+      auto s = stream_db.CreateConsumer(stream_name_, group_name_, consumer_name_, &created_number);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::Integer(created_number);
+    }
+
     return Status::OK();
   }
 
@@ -285,6 +304,7 @@ class CommandXGroup : public Commander {
   std::string subcommand_;
   std::string stream_name_;
   std::string group_name_;
+  std::string consumer_name_;
   StreamXGroupCreateOptions xgroup_create_options_;
 };
 

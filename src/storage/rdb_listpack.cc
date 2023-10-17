@@ -108,10 +108,12 @@ StatusOr<uint32_t> ListPack::Length() {
     return {Status::NotOK, "invalid listpack length"};
   }
 
+  auto data = reinterpret_cast<const uint8_t*>(
+      input_.data());  // to avoid the sign extension in static_cast<uint32_t>(input_[n]))
   // total bytes and number of elements are encoded in little endian
-  uint32_t total_bytes = (static_cast<uint32_t>(input_[0])) | (static_cast<uint32_t>(input_[1]) << 8) |
-                         (static_cast<uint32_t>(input_[2]) << 16) | (static_cast<uint32_t>(input_[3]) << 24);
-  uint32_t len = (static_cast<uint32_t>(input_[4])) | (static_cast<uint32_t>(input_[5]) << 8);
+  uint32_t total_bytes = (static_cast<uint32_t>(data[0])) | (static_cast<uint32_t>(data[1]) << 8) |
+                         (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+  uint32_t len = (static_cast<uint32_t>(data[4])) | (static_cast<uint32_t>(data[5]) << 8);
   pos_ += listPackHeaderSize;
 
   if (total_bytes != input_.size()) {
@@ -166,7 +168,7 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += value_len + encodeBackLen(value_len + 1);
   } else if ((c & ListPack13BitIntMask) == ListPack13BitInt) {  // 13bit int
     GET_OR_RET(peekOK(3));
-    int_value = ((c & 0x1F) << 8) | data[pos_];
+    int_value = ((c & 0x1F) << 8) | data[pos_ + 1];
     value = std::to_string(int_value);
     pos_ += ListPack13BitIntEntrySize;
   } else if ((c & ListPack16BitIntMask) == ListPack16BitInt) {  // 16bit int
@@ -188,7 +190,7 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += ListPack32BitIntEntrySize;
   } else if ((c & ListPack64BitIntMask) == ListPack64BitInt) {  // 64bit int
     GET_OR_RET(peekOK(10));
-    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(input_[pos_ + 2]) << 8) |
+    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
                 (static_cast<uint64_t>(data[pos_ + 3]) << 16) | (static_cast<uint64_t>(data[pos_ + 4]) << 24) |
                 (static_cast<uint64_t>(data[pos_ + 5]) << 32) | (static_cast<uint64_t>(data[pos_ + 6]) << 40) |
                 (static_cast<uint64_t>(data[pos_ + 7]) << 48) | (static_cast<uint64_t>(data[pos_ + 8]) << 56);

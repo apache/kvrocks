@@ -59,11 +59,12 @@ StatusOr<std::pair<std::string, std::string>> ZipMap::Next() {
   auto key_len = GET_OR_RET(decodeLength());
   GET_OR_RET(peekOK(key_len));
   auto key = input_.substr(pos_, key_len);
-  pos_ += key_len + getEncodedLengthSize(key_len);
+  pos_ += key_len;  // decodeLength already process as getEncodedLengthSize(key_len);
   auto val_len = GET_OR_RET(decodeLength());
   GET_OR_RET(peekOK(val_len + 1 /* free byte */));
+  pos_ += 1;
   auto value = input_.substr(pos_, val_len);
-  pos_ += val_len + getEncodedLengthSize(val_len) + 1 /* free byte */;
+  pos_ += val_len;  // + getEncodedLengthSize(val_len) + 1 /* free byte */;
   return std::make_pair(key, value);
 }
 

@@ -22,6 +22,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
+#include "common/rdb_stream.h"
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
@@ -1059,8 +1060,9 @@ class CommandRestore : public Commander {
       ttl_ms_ -= now;
     }
 
-    RDB rdb(svr->storage, conn->GetNamespace(), args_[3]);
-    auto s = rdb.Restore(args_[1], ttl_ms_);
+    auto stream_ptr = std::make_unique<RdbStringStream>(args_[3]);
+    RDB rdb(svr->storage, conn->GetNamespace(), std::move(stream_ptr));
+    auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -1070,6 +1072,45 @@ class CommandRestore : public Commander {
   bool replace_ = false;
   bool absttl_ = false;
   uint64_t ttl_ms_ = 0;
+};
+
+// command format: rdb load <path> [NX]  [DB index]
+class CommandRdb : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("NX")) {
+        overwrite_exist_key_ = false;
+      } else if (parser.EatEqICase("DB")) {
+        db_index_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    rocksdb::Status db_status;
+    redis::Database redis(svr->storage, conn->GetNamespace());
+    auto type = args_[1];
+    auto path = args_[2];
+
+    auto stream_ptr = std::make_unique<RdbFileStream>(path);
+    GET_OR_RET(stream_ptr->Open());
+
+    RDB rdb(svr->storage, conn->GetNamespace(), std::move(stream_ptr));
+    GET_OR_RET(rdb.LoadRdb(db_index_, overwrite_exist_key_));
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  bool overwrite_exist_key_ = true;  // default overwrite exist key
+  uint32_t db_index_ = 0;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
@@ -1105,6 +1146,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0), )
+                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0), )
 
 }  // namespace redis

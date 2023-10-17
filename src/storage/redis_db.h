@@ -62,6 +62,7 @@ class Database {
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys,
                                                 std::vector<std::string> *keys, int count);
+  [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
 
  protected:
   engine::Storage *storage_;

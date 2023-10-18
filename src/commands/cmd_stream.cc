@@ -258,6 +258,30 @@ class CommandXGroup : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "setid") {
+      if (args.size() != 5 || args.size() != 7) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      xgroup_create_options_.last_id = GET_OR_RET(parser.TakeStr());
+      if (args.size() == 7) {
+        if (parser.EatEqICase("entriesread")) {
+          auto parse_result = parser.TakeInt<int64_t>();
+          if (!parse_result.IsOK()) {
+            return {Status::RedisParseErr, errValueNotInteger};
+          }
+          if (parse_result.GetValue() < 0 && parse_result.GetValue() != -1) {
+            return {Status::RedisParseErr, "value for ENTRIESREAD must be positive or -1"};
+          }
+          xgroup_create_options_.entries_read = parse_result.GetValue();
+        } else {
+          return parser.InvalidSyntax();
+        }
+      }
+
+      return Status::OK();
+    }
+
     return {Status::RedisParseErr, "unknown subcommand"};
   }
 
@@ -295,6 +319,15 @@ class CommandXGroup : public Commander {
       }
 
       *output = redis::Integer(created_number);
+    }
+
+    if (subcommand_ == "setid") {
+      auto s = stream_db.GroupSetId(stream_name_, group_name_, xgroup_create_options_);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::SimpleString("OK");
     }
 
     return Status::OK();

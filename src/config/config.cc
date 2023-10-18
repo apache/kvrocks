@@ -105,7 +105,7 @@ Config::Config() {
       {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
       {"tls-replication", true, new YesNoField(&tls_replication, false)},
 #endif
-      {"workers", true, new IntField(&workers, 8, 1, 256)},
+      {"workers", false, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
@@ -301,6 +301,19 @@ void Config::initFieldValidator() {
          }
          return Status::OK();
        }},
+      {"workers",
+       [](const std::string &k, const std::string &v) -> Status{
+         auto result_parse = ParseInt<int>(v, 10);
+         if (!result_parse) {
+           return {Status::NotOK, "Invalid arg type, need Integer"};
+         }
+         int new_workers = *result_parse;
+
+         if (new_workers < 1) {
+           return {Status::NotOK, "workers number must more than 1"};
+         }
+         return Status::OK();
+       }},
   };
   for (const auto &iter : validators) {
     auto field_iter = fields_.find(iter.first);
@@ -399,6 +412,21 @@ void Config::initFieldCallback() {
        [this](Server *srv, const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = util::Split(v, " \t");
          binds = std::move(args);
+         return Status::OK();
+       }},
+      {"workers",
+       [this](Server *srv, const std::string &k, const std::string &v) -> Status{
+         // for Config::load()
+         if (!srv) return Status::OK();
+
+         auto result_parse = ParseInt<int>(v, 10);
+         if (!result_parse) {
+           return {Status::NotOK, "Invalid arg type, need Integer"};
+         }
+         int new_workers = *result_parse;
+         Status s = srv->AdjustWorkerThreadNum(new_workers);
+         if (!s.IsOK()) return s;
+
          return Status::OK();
        }},
       {"maxclients",

@@ -232,8 +232,12 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  for (const auto &worker : worker_threads_) {
-    worker->Join();
+//  for (const auto &worker : worker_threads_) {
+//    worker->Join();
+//    LOG(INFO) << "worker_threads_ len: " <<worker_threads_.size();
+//  }
+  for (int i = 0; i < (int )worker_threads_.size(); ++i) {
+    worker_threads_[i]->Join();
   }
 
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
@@ -1862,4 +1866,78 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
 
   return {};
+}
+
+Status Server::AdjustWorkerThreadNum(int new_num) {
+  int now_num = (int)worker_threads_.size();
+  LOG(INFO) << __func__ << ", now_num: " << now_num << ", new_num: " << new_num;
+
+  if (now_num == new_num) {
+    return Status::OK();
+  } else if (now_num < new_num) {
+    // increase workers num
+    int increase = new_num - now_num;
+    for (int i = 0; i < increase; ++i) {
+      auto worker = std::make_unique<Worker>(this, config_);
+      auto worker_thread = std::make_unique<WorkerThread>(std::move(worker));
+      worker_thread->Start();
+
+      // one unix socket just need one worker listen - worker_threads_[0],
+      // so there's no need listen
+      worker_threads_.emplace_back(std::move(worker_thread));
+    }
+  } else {
+    // reduce workers num
+    int reduce = now_num - new_num;
+    auto local_tid = std::this_thread::get_id();
+    auto alive_thread = worker_threads_.begin();
+    bool need_listen_unix_socket = false;
+
+    if (new_num == 1 and !config_->unixsocket.empty()) need_listen_unix_socket = true;
+
+    auto p = worker_threads_.begin();
+    if (!need_listen_unix_socket) {
+      ++p;
+    } else {
+      // because first threads will delete, so find this_thread instead
+      for (;alive_thread != worker_threads_.end();++alive_thread) {
+        if (alive_thread->get()->GetWorker()->GetThreadId() == local_tid) {
+          break;
+        }
+      }
+    }
+
+    for (int i = 0; i < reduce; ++i) {
+      if (p == worker_threads_.end()) break;
+
+      auto tid = p->get()->GetWorker()->GetThreadId();
+      if (tid == local_tid) {
+        if (need_listen_unix_socket and p != worker_threads_.begin()) {
+          Status s = p->get()->GetWorker()->ListenUnixSocket(config_->unixsocket, config_->unixsocketperm, config_->backlog);
+          if (!s.IsOK()) {
+            LOG(ERROR) << "[server] Failed to listen on unix socket: " << config_->unixsocket << ". Error: " << s.Msg();
+            return {Status::NotOK, "Failed to listen on unix socket"};
+          }
+          LOG(INFO) << "[server] Listening on unix socket: " << config_->unixsocket;
+        }
+        ++p;
+      }
+      if (p == worker_threads_.end()) break;
+
+      p->get()->Stop();
+      
+      // long connection
+      std::map<int, redis::Connection *> connections = p->get()->GetWorker()->GetConnection();
+      for (auto q : connections) {
+        alive_thread->get()->GetWorker()->newTCPConnection(nullptr, q.second->GetFD(), nullptr, 0);
+        LOG(INFO) << "transferred one connect: " << q.second->ToString();
+      }
+
+      // release resource
+      p->get()->Detach();
+      p = worker_threads_.erase(p);
+    }
+  }
+  LOG(INFO) << __func__ << " execute success worker_threads_ len: " << worker_threads_.size();
+  return Status::OK();
 }

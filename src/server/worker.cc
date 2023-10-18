@@ -123,8 +123,13 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     evutil_closesocket(fd);
     return;
   }
-
-  event_base *base = evconnlistener_get_base(listener);
+  event_base *base = nullptr;
+  if (listener == nullptr){
+    base = base_;
+  } else {
+    base = evconnlistener_get_base(listener);
+  }
+//  event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
 
@@ -320,6 +325,10 @@ Status Worker::AddConnection(redis::Connection *c) {
   c->SetID(id);
 
   return Status::OK();
+}
+
+std::map<int, redis::Connection *> Worker::GetConnection() {
+  return std::move(conns_);
 }
 
 redis::Connection *Worker::removeConnection(int fd) {
@@ -519,6 +528,13 @@ void WorkerThread::Stop() { worker_->Stop(); }
 
 void WorkerThread::Join() {
   if (auto s = util::ThreadJoin(t_); !s) {
+    LOG(WARNING) << "[worker] " << s.Msg();
+  }
+}
+
+void WorkerThread::Detach() {
+  // release resource
+  if (auto s = util::ThreadDetach(t_); !s) {
     LOG(WARNING) << "[worker] " << s.Msg();
   }
 }

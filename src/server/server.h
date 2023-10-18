@@ -290,6 +290,8 @@ class Server {
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
   Namespace *GetNamespace() { return &namespace_; }
 
+  Status AdjustWorkerThreadNum(int new_num);
+
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
 #endif

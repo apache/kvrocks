@@ -57,6 +57,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void FreeConnection(redis::Connection *conn);
   void FreeConnectionByID(int fd, uint64_t id);
   Status AddConnection(redis::Connection *c);
+  std::map<int, redis::Connection *> GetConnection();
   Status EnableWriteEvent(int fd);
   Status Reply(int fd, const std::string &reply);
   void BecomeMonitorConn(redis::Connection *conn);
@@ -70,13 +71,14 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   Status ListenUnixSocket(const std::string &path, int perm, int backlog);
 
   void TimerCB(int, int16_t events);
+  void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
 
+  std::thread::id GetThreadId() { return tid_; }
   lua_State *Lua() { return lua_; }
   Server *svr;
 
  private:
   Status listenTCP(const std::string &host, uint32_t port, int backlog);
-  void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   redis::Connection *removeConnection(int fd);
 
@@ -106,6 +108,7 @@ class WorkerThread {
   void Start();
   void Stop();
   void Join();
+  void Detach();
 
  private:
   std::thread t_;

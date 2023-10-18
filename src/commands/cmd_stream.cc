@@ -259,7 +259,7 @@ class CommandXGroup : public Commander {
     }
 
     if (subcommand_ == "setid") {
-      if (args.size() != 5 || args.size() != 7) {
+      if (args.size() != 5 && args.size() != 7) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
 

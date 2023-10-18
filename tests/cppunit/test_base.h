@@ -59,6 +59,8 @@ class TestBase : public testing::Test {  // NOLINT
     if (ec) {
       std::cout << "Encounter filesystem error: " << ec << std::endl;
     }
+    const char *path = "test.conf";
+    unlink(path);
   }
 
   engine::Storage *storage_;

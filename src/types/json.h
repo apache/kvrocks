@@ -23,10 +23,57 @@
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
+#include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
 
-#include "json_path.h"
-#include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
+
+class JsonPath {
+ public:
+  using JsonType = jsoncons::json;
+  using JsonPathExpression = jsoncons::jsonpath::jsonpath_expression<JsonType, const JsonType &>;
+  using JsonReplaceCallback = std::function<void(const std::string_view &, JsonType &)>;
+
+  static constexpr std::string_view ROOT_PATH = "$";
+
+  static StatusOr<JsonPath> BuildJsonPath(std::string_view path);
+
+  bool IsLegacy() const noexcept { return !fixed_path_.empty(); }
+
+  std::string_view Path() const {
+    if (IsLegacy()) {
+      return fixed_path_;
+    }
+    return origin_;
+  }
+
+  std::string_view OriginPath() const { return origin_; }
+
+  bool IsRootPath() const { return Path() == ROOT_PATH; }
+
+  JsonType EvalQueryExpression(const JsonType &json_value) const {
+    return expression_.evaluate(const_cast<JsonType &>(json_value));
+  }
+
+  void EvalReplaceExpression(JsonType &json_value, const JsonReplaceCallback &callback) const {
+    auto wrapped_cb = [&callback](const std::string_view &path, const JsonType &json) {
+      // Though JsonPath supports mutable reference, `jsoncons::make_expression`
+      // only supports const reference, so const_cast is used as a workaround.
+      callback(path, const_cast<JsonType &>(json));
+    };
+    expression_.evaluate(json_value, wrapped_cb);
+  }
+
+ private:
+  static std::optional<std::string> tryConvertLegacyToJsonPath(std::string_view path);
+
+  JsonPath(std::string path, std::string fixed_path, JsonPathExpression path_expression)
+      : origin_(std::move(path)), fixed_path_(std::move(fixed_path)), expression_(std::move(path_expression)) {}
+
+  std::string origin_;
+  std::string fixed_path_;
+  // Pre-build the expression to avoid built it multiple times.
+  JsonPathExpression expression_;
+};
 
 struct JsonValue {
   JsonValue() = default;
@@ -55,11 +102,8 @@ struct JsonValue {
   }
 
   Status Set(std::string_view path, JsonValue &&new_value) {
-    auto path_express_status = JsonPath::BuildJsonPath(path);
-    if (!path_express_status) {
-      return path_express_status.ToStatus();
-    }
-    return Set(path_express_status.GetValue(), std::move(new_value));
+    auto path_expression = GET_OR_RET(JsonPath::BuildJsonPath(path));
+    return Set(path_expression, std::move(new_value));
   }
 
   Status Set(const JsonPath &path, JsonValue &&new_value) {
@@ -73,11 +117,8 @@ struct JsonValue {
   }
 
   StatusOr<JsonValue> Get(std::string_view path) const {
-    auto path_express_status = JsonPath::BuildJsonPath(path);
-    if (!path_express_status) {
-      return path_express_status.ToStatus();
-    }
-    return Get(path_express_status.GetValue());
+    auto path_expression = GET_OR_RET(JsonPath::BuildJsonPath(path));
+    return Get(path_expression);
   }
 
   StatusOr<JsonValue> Get(const JsonPath &json_path) const {

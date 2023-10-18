@@ -18,7 +18,7 @@
  *
  */
 
-#include "json_path.h"
+#include "json.h"
 
 StatusOr<JsonPath> JsonPath::BuildJsonPath(std::string_view path) {
   std::string fixed_path;
@@ -42,7 +42,8 @@ StatusOr<JsonPath> JsonPath::BuildJsonPath(std::string_view path) {
 }
 
 // https://redis.io/docs/data-types/json/path/#legacy-path-syntax
-// The logic here is port from RedisJson `Path::new`.
+// The logic here is port from RedisJson `Path::new`, see
+// https://github.com/RedisJSON/RedisJSON/blob/d4ba815fb13412c879b2cd3cd29ab60aee3c211b/redis_json/src/redisjson.rs#L109
 std::optional<std::string> JsonPath::tryConvertLegacyToJsonPath(std::string_view path) {
   if (path.empty()) {
     return std::nullopt;

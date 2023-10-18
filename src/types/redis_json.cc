@@ -21,7 +21,6 @@
 #include "redis_json.h"
 
 #include "json.h"
-#include "json_path.h"
 #include "lock_manager.h"
 #include "storage/redis_metadata.h"
 

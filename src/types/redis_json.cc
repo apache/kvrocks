@@ -127,7 +127,7 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
     auto value_res = JsonValue::FromString(v);
     if (!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
     auto value = *std::move(value_res);
-    append_values.emplace_back(value.value);
+    append_values.emplace_back(std::move(value.value));
   }
 
   LockGuard guard(storage_->GetLockManager(), ns_key);

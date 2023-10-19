@@ -123,6 +123,8 @@ TEST_F(RedisJsonTest, Get) {
 TEST_F(RedisJsonTest, ArrAppend) {
   std::vector<uint64_t> res;
 
+  ASSERT_FALSE(json_->ArrAppend(key_, "$", {"1"}, &res).ok());
+
   ASSERT_TRUE(json_->Set(key_, "$", R"({"x":1,"y":[]})").ok());
   ASSERT_TRUE(json_->ArrAppend(key_, "$.x", {"1"}, &res).ok());
   ASSERT_EQ(res.size(), 1);

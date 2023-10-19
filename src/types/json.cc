@@ -38,7 +38,7 @@ StatusOr<JsonPath> JsonPath::BuildJsonPath(std::string_view path) {
   if (json_parse_error) {
     return {Status::NotOK, json_parse_error.message()};
   }
-  return JsonPath(std::string(path), std::move(fixed_path), std::move(path_expression));
+  return JsonPath(std::string(json_string), !fixed_path.empty(), std::move(path_expression));
 }
 
 // https://redis.io/docs/data-types/json/path/#legacy-path-syntax

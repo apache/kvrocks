@@ -36,25 +36,18 @@ class JsonPath {
 
   static StatusOr<JsonPath> BuildJsonPath(std::string_view path);
 
-  bool IsLegacy() const noexcept { return !fixed_path_.empty(); }
+  bool IsLegacy() const noexcept { return is_legacy_; }
 
-  std::string_view Path() const {
-    if (IsLegacy()) {
-      return fixed_path_;
-    }
-    return origin_;
-  }
-
-  std::string_view OriginPath() const { return origin_; }
+  std::string_view Path() const { return path_; }
 
   bool IsRootPath() const { return Path() == ROOT_PATH; }
 
-  JsonType EvalQueryExpression(const JsonType &json_value) const {
+  JsonType EvalJsonQuery(const JsonType &json_value) const {
     return expression_.evaluate(const_cast<JsonType &>(json_value));
   }
 
   template <typename BinaryJsonFunction>
-  void EvalReplaceExpression(JsonType &json_value, const BinaryJsonFunction &callback) const {
+  void EvalJsonReplace(JsonType &json_value, const BinaryJsonFunction &callback) const {
     auto wrapped_cb = [&callback](const std::string_view &path, const JsonType &json) {
       // Though JsonPath supports mutable reference, `jsoncons::make_expression`
       // only supports const reference, so const_cast is used as a workaround.
@@ -66,11 +59,11 @@ class JsonPath {
  private:
   static std::optional<std::string> tryConvertLegacyToJsonPath(std::string_view path);
 
-  JsonPath(std::string path, std::string fixed_path, JsonPathExpression path_expression)
-      : origin_(std::move(path)), fixed_path_(std::move(fixed_path)), expression_(std::move(path_expression)) {}
+  JsonPath(std::string path, bool is_legacy, JsonPathExpression path_expression)
+      : path_(std::move(path)), is_legacy_(is_legacy), expression_(std::move(path_expression)) {}
 
-  std::string origin_;
-  std::string fixed_path_;
+  std::string path_;
+  bool is_legacy_;
   // Pre-build the expression to avoid built it multiple times.
   JsonPathExpression expression_;
 };
@@ -108,7 +101,7 @@ struct JsonValue {
 
   Status Set(const JsonPath &path, JsonValue &&new_value) {
     try {
-      path.EvalReplaceExpression(
+      path.EvalJsonReplace(
           value, [&new_value](const std::string_view & /*path*/, jsoncons::json &origin) { origin = new_value.value; });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
@@ -123,7 +116,7 @@ struct JsonValue {
 
   StatusOr<JsonValue> Get(const JsonPath &json_path) const {
     try {
-      return json_path.EvalQueryExpression(value);
+      return json_path.EvalJsonQuery(value);
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }

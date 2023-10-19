@@ -124,7 +124,7 @@ TEST_F(RedisJsonTest, ArrAppend) {
   std::vector<uint64_t> res;
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"x":1,"y":[]})").ok());
-  ASSERT_TRUE(json_->ArrAppend(key_, "$.x", {"1"}, res).ok());
+  ASSERT_TRUE(json_->ArrAppend(key_, "$.x", {"1"}, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 0);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
@@ -132,14 +132,14 @@ TEST_F(RedisJsonTest, ArrAppend) {
   res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"x":[1,2,{"z":3}],"y":[]})").ok());
-  ASSERT_TRUE(json_->ArrAppend(key_, "$.x", {"1"}, res).ok());
+  ASSERT_TRUE(json_->ArrAppend(key_, "$.x", {"1"}, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 4);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump(), R"({"x":[1,2,{"z":3},1],"y":[]})");
   res.clear();
 
-  ASSERT_TRUE(json_->ArrAppend(key_, "$..y", {"1", "2", "3"}, res).ok());
+  ASSERT_TRUE(json_->ArrAppend(key_, "$..y", {"1", "2", "3"}, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 3);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
@@ -147,7 +147,7 @@ TEST_F(RedisJsonTest, ArrAppend) {
   res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$.x[2]", R"({"x":[1,2,{"z":3,"y":[]}],"y":[{"y":1}]})").ok());
-  ASSERT_TRUE(json_->ArrAppend(key_, "$..y", {"1", "2", "3"}, res).ok());
+  ASSERT_TRUE(json_->ArrAppend(key_, "$..y", {"1", "2", "3"}, &res).ok());
   ASSERT_EQ(res.size(), 4);
   std::sort(res.begin(), res.end());
   ASSERT_EQ(res[0], 0);

@@ -118,14 +118,14 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
 }
 
 rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &path,
-                                const std::vector<std::string> &values,
-                                std::vector<uint64_t> &result_count) {
+                                const std::vector<std::string> &values, std::vector<uint64_t> *result_count) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   std::vector<jsoncons::json> append_values;
-  for(auto &v : values) {
+  append_values.reserve(values.size());
+  for (auto &v : values) {
     auto value_res = JsonValue::FromString(v);
-    if(!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
+    if (!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
     auto value = *std::move(value_res);
     append_values.emplace_back(value.value);
   }
@@ -142,11 +142,14 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
     return rocksdb::Status::NotSupported("JSON storage format not supported");
 
   auto value_res = JsonValue::FromString(rest.ToStringView());
-  if(!value_res) return rocksdb::Status::Corruption(value_res.Msg());
+  if (!value_res) return rocksdb::Status::Corruption(value_res.Msg());
   auto value = *std::move(value_res);
 
   auto append_res = value.ArrAppend(path, append_values, result_count);
-  if(!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
+  if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
+
+  bool is_write = std::any_of(result_count->begin(), result_count->end(), [](uint64_t c) { return c > 0; });
+  if (!is_write) return rocksdb::Status::OK();
 
   return write(ns_key, &metadata, value);
 }

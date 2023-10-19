@@ -59,24 +59,22 @@ class CommandJsonArrAppend : public Commander {
 
     std::vector<uint64_t> result_count;
 
-    auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, result_count);
+    auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, &result_count);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if(result_count.empty()) {
+    if (result_count.empty()) {
       result_count.emplace_back(0);
     }
 
-    std::vector<std::string> result_values;
-    result_values.reserve(result_count.size());
-    for(auto c : result_count) {
-      if(c != 0) {
-        result_values.emplace_back("(integer) " + std::to_string(c));
+    *output = redis::MultiLen(result_count.size());
+    for (uint64_t c : result_count) {
+      if (c != 0) {
+        *output += redis::Integer(c);
       } else {
-        result_values.emplace_back();
+        *output += redis::NilString();
       }
     }
 
-    *output = redis::MultiBulkString(result_values, true);
     return Status::OK();
   }
 };

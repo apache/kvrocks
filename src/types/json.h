@@ -74,18 +74,17 @@ struct JsonValue {
   }
 
   Status ArrAppend(std::string_view path, const std::vector<jsoncons::json> &append_values,
-                   std::vector<uint64_t> &result_count) {
+                   std::vector<uint64_t> *result_count) {
     try {
-      std::vector<std::string> paths;
-      jsoncons::jsonpath::json_replace(value, path, [&append_values, &result_count]
-                                       (const std::string &path, jsoncons::json &val) {
-        if(val.is_array()) {
-          val.insert(val.array_range().end(), append_values.begin(), append_values.end());
-          result_count.emplace_back(val.size());
-        } else {
-          result_count.emplace_back(0);
-        }
-      });
+      jsoncons::jsonpath::json_replace(
+          value, path, [&append_values, result_count](const std::string &path, jsoncons::json &val) {
+            if (val.is_array()) {
+              val.insert(val.array_range().end(), append_values.begin(), append_values.end());
+              result_count->emplace_back(val.size());
+            } else {
+              result_count->emplace_back(0);
+            }
+          });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }

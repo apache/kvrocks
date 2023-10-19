@@ -50,19 +50,18 @@ Status RdbFileStream::Open() {
   return Status::OK();
 }
 
-StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
-  size_t n = 0;
+Status RdbFileStream::Read(char *buf, size_t len) {
   while (len) {
     size_t read_bytes = std::min(max_read_chunk_size_, len);
     ifs_.read(buf, static_cast<std::streamsize>(read_bytes));
     if (!ifs_.good()) {
-      return Status(Status::NotOK, fmt::format("read failed: {}:", strerror(errno)));
+      return {Status::NotOK, fmt::format("read failed: {}:", strerror(errno))};
     }
     check_sum_ = crc64(check_sum_, reinterpret_cast<const unsigned char *>(buf), read_bytes);
     buf = buf + read_bytes;
+    DCHECK(len >= read_bytes);
     len -= read_bytes;
     total_read_bytes_ += read_bytes;
-    n += read_bytes;
   }
   return Status::OK();
 }

@@ -52,7 +52,37 @@ class CommandJsonGet : public Commander {
   }
 };
 
+class CommandJsonArrAppend : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<uint64_t> result_count;
+
+    auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, result_count);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if(result_count.empty()) {
+      result_count.emplace_back(0);
+    }
+
+    std::vector<std::string> result_values;
+    result_values.reserve(result_count.size());
+    for(auto c : result_count) {
+      if(c != 0) {
+        result_values.emplace_back("(integer) " + std::to_string(c));
+      } else {
+        result_values.emplace_back();
+      }
+    }
+
+    *output = redis::MultiBulkString(result_values, true);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

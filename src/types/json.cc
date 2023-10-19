@@ -22,11 +22,11 @@
 
 StatusOr<JsonPath> JsonPath::BuildJsonPath(std::string_view path) {
   std::string fixed_path;
-  std::string_view json_string;
-  auto converted = tryConvertLegacyToJsonPath(path);
+  std::optional<std::string> converted = tryConvertLegacyToJsonPath(path);
   if (converted.has_value()) {
     fixed_path = std::move(converted.value());
   }
+  std::string_view json_string;
   if (fixed_path.empty()) {
     json_string = path;
   } else {

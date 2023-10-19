@@ -84,6 +84,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   auto set_res = origin.Set(json_path, std::move(new_val));
   if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
 
+  std::cout << "Value after set: " << origin.Dump() << std::endl;
   return write(ns_key, &metadata, origin);
 }
 
@@ -108,18 +109,14 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
   if (paths.empty()) {
     res = std::move(json_val);
   } else if (paths.size() == 1) {
-    auto json_path_result = JsonPath::BuildJsonPath(paths[0]);
-    if (!json_path_result) return rocksdb::Status::InvalidArgument(json_path_result.Msg());
-    auto get_res = json_val.Get(json_path_result.GetValue());
+    auto get_res = json_val.Get(paths[0]);
     if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
     res = *std::move(get_res);
   } else {
     for (const auto &path : paths) {
-      auto json_path_result = JsonPath::BuildJsonPath(path);
-      if (!json_path_result) return rocksdb::Status::InvalidArgument(json_path_result.Msg());
-      auto get_res = json_val.Get(json_path_result.GetValue());
+      auto get_res = json_val.Get(path);
       if (!get_res) return rocksdb::Status::InvalidArgument(get_res.Msg());
-      res.value.insert_or_assign(json_path_result->OriginPath(), std::move(get_res->value));
+      res.value.insert_or_assign(path, std::move(get_res->value));
     }
   }
 

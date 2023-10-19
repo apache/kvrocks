@@ -31,7 +31,6 @@ class JsonPath {
  public:
   using JsonType = jsoncons::json;
   using JsonPathExpression = jsoncons::jsonpath::jsonpath_expression<JsonType, const JsonType &>;
-  using JsonReplaceCallback = std::function<void(const std::string_view &, JsonType &)>;
 
   static constexpr std::string_view ROOT_PATH = "$";
 
@@ -54,7 +53,8 @@ class JsonPath {
     return expression_.evaluate(const_cast<JsonType &>(json_value));
   }
 
-  void EvalReplaceExpression(JsonType &json_value, const JsonReplaceCallback &callback) const {
+  template <typename BinaryJsonFunction>
+  void EvalReplaceExpression(JsonType &json_value, const BinaryJsonFunction &callback) const {
     auto wrapped_cb = [&callback](const std::string_view &path, const JsonType &json) {
       // Though JsonPath supports mutable reference, `jsoncons::make_expression`
       // only supports const reference, so const_cast is used as a workaround.

@@ -173,9 +173,13 @@ StatusOr<std::string> RDB::loadEncodedString() {
   }
 
   // Normal string
-  std::vector<char> vec(len);
-  GET_OR_RET(stream_->Read(vec.data(), len));
-  return std::string(vec.data(), len);
+  if (len == 0) {
+    return "";
+  }
+  std::string read_string;
+  read_string.resize(len);
+  GET_OR_RET(stream_->Read(read_string.data(), len));
+  return read_string;
 }
 
 StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
@@ -196,7 +200,7 @@ StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
 
     if (container == QuickListNodeContainerPlain) {
       auto element = GET_OR_RET(loadEncodedString());
-      list.push_back(element);
+      list.push_back(std::move(element));
       continue;
     }
 
@@ -204,11 +208,11 @@ StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
     if (type == RDBTypeListQuickList2) {
       ListPack lp(encoded_string);
       auto elements = GET_OR_RET(lp.Entries());
-      list.insert(list.end(), elements.begin(), elements.end());
+      list.insert(list.end(), std::make_move_iterator(elements.begin()), std::make_move_iterator(elements.end()));
     } else {
       ZipList zip_list(encoded_string);
       auto elements = GET_OR_RET(zip_list.Entries());
-      list.insert(list.end(), elements.begin(), elements.end());
+      list.insert(list.end(), std::make_move_iterator(elements.begin()), std::make_move_iterator(elements.end()));
     }
   }
   return list;
@@ -222,7 +226,7 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   }
   for (size_t i = 0; i < len; i++) {
     auto element = GET_OR_RET(loadEncodedString());
-    list.push_back(element);
+    list.push_back(std::move(element));
   }
   return list;
 }
@@ -241,7 +245,7 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
   }
   for (size_t i = 0; i < len; i++) {
     auto element = GET_OR_RET(LoadStringObject());
-    set.push_back(element);
+    set.push_back(std::move(element));
   }
   return set;
 }
@@ -268,7 +272,7 @@ StatusOr<std::map<std::string, std::string>> RDB::LoadHashObject() {
   for (size_t i = 0; i < len; i++) {
     auto field = GET_OR_RET(LoadStringObject());
     auto value = GET_OR_RET(LoadStringObject());
-    hash[field] = value;
+    hash[field] = std::move(value);
   }
   return hash;
 }
@@ -471,7 +475,7 @@ Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue 
     const auto &member_scores = std::get<std::vector<MemberScore>>(obj);
     redis::ZSet zset_db(storage_, ns_);
     uint64_t count = 0;
-    db_status = zset_db.Add(key, ZAddFlags(0), (redis::ZSet::MemberScores *)&member_scores, &count);
+    db_status = zset_db.Add(key, ZAddFlags(0), const_cast<std::vector<MemberScore> *>(&member_scores), &count);
   } else if (type == RDBTypeHash || type == RDBTypeHashListPack || type == RDBTypeHashZipList ||
              type == RDBTypeHashZipMap) {
     const auto &entries = std::get<std::map<std::string, std::string>>(obj);

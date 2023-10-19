@@ -23,13 +23,13 @@
 #include "fmt/format.h"
 #include "vendor/crc64.h"
 
-StatusOr<size_t> RdbStringStream::Read(char *buf, size_t n) {
+Status RdbStringStream::Read(char *buf, size_t n) {
   if (pos_ + n > input_.size()) {
     return {Status::NotOK, "unexpected EOF"};
   }
   memcpy(buf, input_.data() + pos_, n);
   pos_ += n;
-  return n;
+  return Status::OK();
 }
 
 StatusOr<uint64_t> RdbStringStream::GetCheckSum() const {
@@ -59,11 +59,10 @@ StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
       return Status(Status::NotOK, fmt::format("read failed: {}:", strerror(errno)));
     }
     check_sum_ = crc64(check_sum_, reinterpret_cast<const unsigned char *>(buf), read_bytes);
-    buf = (char *)buf + read_bytes;
+    buf = buf + read_bytes;
     len -= read_bytes;
     total_read_bytes_ += read_bytes;
     n += read_bytes;
   }
-
-  return n;
+  return Status::OK();
 }

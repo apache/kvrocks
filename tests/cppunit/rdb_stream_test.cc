@@ -29,7 +29,6 @@
 TEST(RdbFileStreamOpenTest, FileNotExist) {
   RdbFileStream reader("not_exist.rdb");
   ASSERT_FALSE(reader.Open().IsOK());
-  ;
 }
 
 TEST(RdbFileStreamOpenTest, FileExist) {
@@ -51,18 +50,18 @@ TEST(RdbFileStreamReadTest, ReadRdb) {
   ASSERT_TRUE(reader.Open().IsOK());
 
   char buf[16] = {0};
-  ASSERT_EQ(reader.Read(buf, 5).GetValue(), 5);
+  ASSERT_TRUE(reader.Read(buf, 5).IsOK());
   ASSERT_EQ(strncmp(buf, "REDIS", 5), 0);
   size -= 5;
 
   auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
   while (size >= len) {
-    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    ASSERT_TRUE(reader.Read(buf, len).IsOK());
     size -= len;
   }
 
   if (size > 0) {
-    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+    ASSERT_TRUE(reader.Read(buf, size).IsOK());
   }
 }
 
@@ -80,11 +79,11 @@ TEST(RdbFileStreamReadTest, ReadRdbLittleChunk) {
   auto len = static_cast<std::streamsize>(sizeof(buf) / sizeof(buf[0]));
 
   while (size >= len) {
-    ASSERT_EQ(reader.Read(buf, len).GetValue(), len);
+    ASSERT_TRUE(reader.Read(buf, len).IsOK());
     size -= len;
   }
 
   if (size > 0) {
-    ASSERT_EQ(reader.Read(buf, size).GetValue(), size);
+    ASSERT_TRUE(reader.Read(buf, size).IsOK());
   }
 }

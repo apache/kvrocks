@@ -46,7 +46,7 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   std::string bytes;
   Slice rest;
 
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, (Metadata *)&metadata, &rest);
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, metadata, &rest);
   if (!s.ok()) return s;
 
   if (metadata->format != JsonStorageFormat::JSON)

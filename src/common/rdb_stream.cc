@@ -23,13 +23,13 @@
 #include "fmt/format.h"
 #include "vendor/crc64.h"
 
-StatusOr<size_t> RdbStringStream::Read(char *buf, size_t n) {
+Status RdbStringStream::Read(char *buf, size_t n) {
   if (pos_ + n > input_.size()) {
     return {Status::NotOK, "unexpected EOF"};
   }
   memcpy(buf, input_.data() + pos_, n);
   pos_ += n;
-  return n;
+  return Status::OK();
 }
 
 StatusOr<uint64_t> RdbStringStream::GetCheckSum() const {
@@ -50,20 +50,24 @@ Status RdbFileStream::Open() {
   return Status::OK();
 }
 
-StatusOr<size_t> RdbFileStream::Read(char *buf, size_t len) {
-  size_t n = 0;
+Status RdbFileStream::Read(char *buf, size_t len) {
   while (len) {
     size_t read_bytes = std::min(max_read_chunk_size_, len);
     ifs_.read(buf, static_cast<std::streamsize>(read_bytes));
     if (!ifs_.good()) {
-      return Status(Status::NotOK, fmt::format("read failed: {}:", strerror(errno)));
+      if (!ifs_.eof()) {
+        return {Status::NotOK, fmt::format("read failed: {}:", strerror(errno))};
+      }
+      auto eof_read_bytes = static_cast<size_t>(ifs_.gcount());
+      if (read_bytes != eof_read_bytes) {
+        return {Status::NotOK, fmt::format("read failed: {}:", strerror(errno))};
+      }
     }
     check_sum_ = crc64(check_sum_, reinterpret_cast<const unsigned char *>(buf), read_bytes);
-    buf = (char *)buf + read_bytes;
+    buf = buf + read_bytes;
+    DCHECK(len >= read_bytes);
     len -= read_bytes;
     total_read_bytes_ += read_bytes;
-    n += read_bytes;
   }
-
-  return n;
+  return Status::OK();
 }

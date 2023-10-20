@@ -96,7 +96,31 @@ class CommandJsonGet : public Commander {
   std::vector<std::string> paths_;
 };
 
+class CommandJsonArrAppend : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<uint64_t> result_count;
+
+    auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, &result_count);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(result_count.size());
+    for (uint64_t c : result_count) {
+      if (c != 0) {
+        *output += redis::Integer(c);
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

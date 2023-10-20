@@ -120,4 +120,41 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &path,
+                                const std::vector<std::string> &values, std::vector<uint64_t> *result_count) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  std::vector<jsoncons::json> append_values;
+  append_values.reserve(values.size());
+  for (auto &v : values) {
+    auto value_res = JsonValue::FromString(v);
+    if (!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
+    auto value = *std::move(value_res);
+    append_values.emplace_back(std::move(value.value));
+  }
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  std::string bytes;
+  JsonMetadata metadata;
+  Slice rest;
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  if (!s.ok()) return s;
+
+  if (metadata.format != JsonStorageFormat::JSON)
+    return rocksdb::Status::NotSupported("JSON storage format not supported");
+
+  auto value_res = JsonValue::FromString(rest.ToStringView());
+  if (!value_res) return rocksdb::Status::Corruption(value_res.Msg());
+  auto value = *std::move(value_res);
+
+  auto append_res = value.ArrAppend(path, append_values, result_count);
+  if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
+
+  bool is_write = std::any_of(result_count->begin(), result_count->end(), [](uint64_t c) { return c > 0; });
+  if (!is_write) return rocksdb::Status::OK();
+
+  return write(ns_key, &metadata, value);
+}
+
 }  // namespace redis

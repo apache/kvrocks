@@ -148,7 +148,7 @@ TEST_F(RedisJsonTest, ArrAppend) {
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 0);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump(), R"({"x":1,"y":[]})");
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"x":1,"y":[]})");
   res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"x":[1,2,{"z":3}],"y":[]})").ok());
@@ -156,14 +156,14 @@ TEST_F(RedisJsonTest, ArrAppend) {
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 4);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump(), R"({"x":[1,2,{"z":3},1],"y":[]})");
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"x":[1,2,{"z":3},1],"y":[]})");
   res.clear();
 
   ASSERT_TRUE(json_->ArrAppend(key_, "$..y", {"1", "2", "3"}, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 3);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump(), R"({"x":[1,2,{"z":3},1],"y":[1,2,3]})");
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"x":[1,2,{"z":3},1],"y":[1,2,3]})");
   res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$.x[2]", R"({"x":[1,2,{"z":3,"y":[]}],"y":[{"y":1}]})").ok());
@@ -175,6 +175,6 @@ TEST_F(RedisJsonTest, ArrAppend) {
   ASSERT_EQ(res[2], 4);
   ASSERT_EQ(res[3], 6);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump(), R"({"x":[1,2,{"x":[1,2,{"y":[1,2,3],"z":3}],"y":[{"y":1},1,2,3]},1],"y":[1,2,3,1,2,3]})");
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"x":[1,2,{"x":[1,2,{"y":[1,2,3],"z":3}],"y":[{"y":1},1,2,3]},1],"y":[1,2,3,1,2,3]})");
   res.clear();
 }

@@ -42,15 +42,31 @@ rocksdb::Status Json::write(Slice ns_key, JsonMetadata *metadata, const JsonValu
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value) {
+  std::string bytes;
+  Slice rest;
+
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, (Metadata *)&metadata, &rest);
+  if (!s.ok()) return s;
+
+  if (metadata->format != JsonStorageFormat::JSON)
+    return rocksdb::Status::NotSupported("JSON storage format not supported");
+
+  auto origin_res = JsonValue::FromString(rest.ToStringView());
+  if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
+  *value = *std::move(origin_res);
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, const std::string &value) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
-  std::string bytes;
   JsonMetadata metadata;
-  Slice rest;
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  JsonValue origin;
+  auto s = read(ns_key, &metadata, &origin);
 
   if (s.IsNotFound()) {
     if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
@@ -64,16 +80,9 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
 
   if (!s.ok()) return s;
 
-  if (metadata.format != JsonStorageFormat::JSON)
-    return rocksdb::Status::NotSupported("JSON storage format not supported");
-
   auto new_res = JsonValue::FromString(value);
   if (!new_res) return rocksdb::Status::InvalidArgument(new_res.Msg());
   auto new_val = *std::move(new_res);
-
-  auto origin_res = JsonValue::FromString(rest.ToStringView());
-  if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
-  auto origin = *std::move(origin_res);
 
   auto set_res = origin.Set(path, std::move(new_val));
   if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
@@ -84,18 +93,10 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
 rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::string> &paths, JsonValue *result) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
-  std::string bytes;
   JsonMetadata metadata;
-  Slice rest;
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
-
-  if (metadata.format != JsonStorageFormat::JSON)
-    return rocksdb::Status::NotSupported("JSON storage format not supported");
-
-  auto json_res = JsonValue::FromString(rest.ToStringView());
-  if (!json_res) return rocksdb::Status::Corruption(json_res.Msg());
-  auto json_val = *std::move(json_res);
 
   JsonValue res;
 
@@ -134,16 +135,9 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
 
   std::string bytes;
   JsonMetadata metadata;
-  Slice rest;
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  JsonValue value;
+  auto s = read(ns_key, &metadata, &value);
   if (!s.ok()) return s;
-
-  if (metadata.format != JsonStorageFormat::JSON)
-    return rocksdb::Status::NotSupported("JSON storage format not supported");
-
-  auto value_res = JsonValue::FromString(rest.ToStringView());
-  if (!value_res) return rocksdb::Status::Corruption(value_res.Msg());
-  auto value = *std::move(value_res);
 
   auto append_res = value.ArrAppend(path, append_values, result_count);
   if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());

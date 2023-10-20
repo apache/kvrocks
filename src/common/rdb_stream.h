@@ -32,7 +32,7 @@ class RdbStream {
   RdbStream() = default;
   virtual ~RdbStream() = default;
 
-  virtual StatusOr<size_t> Read(char *buf, size_t len) = 0;
+  virtual Status Read(char *buf, size_t len) = 0;
   virtual StatusOr<uint64_t> GetCheckSum() const = 0;
   StatusOr<uint8_t> ReadByte() {
     uint8_t value = 0;
@@ -51,7 +51,7 @@ class RdbStringStream : public RdbStream {
   RdbStringStream &operator=(const RdbStringStream &) = delete;
   ~RdbStringStream() override = default;
 
-  StatusOr<size_t> Read(char *buf, size_t len) override;
+  Status Read(char *buf, size_t len) override;
   StatusOr<uint64_t> GetCheckSum() const override;
 
  private:
@@ -68,7 +68,7 @@ class RdbFileStream : public RdbStream {
   ~RdbFileStream() override = default;
 
   Status Open();
-  StatusOr<size_t> Read(char *buf, size_t len) override;
+  Status Read(char *buf, size_t len) override;
   StatusOr<uint64_t> GetCheckSum() const override {
     uint64_t crc = check_sum_;
     memrev64ifbe(&crc);

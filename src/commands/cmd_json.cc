@@ -535,6 +535,32 @@ class CommandJsonNumMultBy : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
+class CommandJsonStrAppend : public Commander {
+public:
+    Status Execute(Server *svr, Connection *conn, std::string *output) override {
+      redis::Json json(svr->storage, conn->GetNamespace());
+
+      JsonValue result;
+      std::vector<std::string> paths;
+      std::vector<std::string> values;
+      for (int i=2;i<(int)args_.size();++i) {
+        auto val = args_[i];
+        if (val.substr(0, 1) == "$") {
+          paths.push_back(val);
+        } else{
+          values.push_back(val);
+        }
+      }
+
+      auto s = json.StrAppend(args_[1], {args_.begin() + 2, args_.end() - 1}, args_.back());
+      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+      *output = redis::SimpleString("OK");
+      return Status::OK();
+    }
+};
+
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
@@ -553,5 +579,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

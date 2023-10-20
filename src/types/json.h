@@ -35,6 +35,7 @@
 #include <limits>
 #include <string>
 
+#include "common/string_util.h"
 #include "status.h"
 
 constexpr ssize_t NOT_FOUND_INDEX = -1;
@@ -149,6 +150,26 @@ struct JsonValue {
     try {
       jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
         origin = new_value.value;
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return Status::OK();
+  }
+
+  Status Append(std::string_view path, const std::string &append_value) {
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&append_value](const std::string & /*path*/, jsoncons::json &origin) {
+        if (origin.is_string()) {
+          auto origin_str = origin.to_string();
+          // need trim "
+          auto origin_trimmed = util::Trim(origin_str, "\"");
+          auto append_trimmed = util::Trim(append_value, "\"");
+          std::string new_value;
+          new_value.append("\"").append(origin_trimmed).append(append_trimmed).append("\"");
+          origin = jsoncons::json::parse(new_value);
+        }
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};

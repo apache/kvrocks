@@ -458,4 +458,30 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
   return write(ns_key, &metadata, json_val);
 }
 
+
+rocksdb::Status Json::StrAppend(const std::string &user_key, const std::vector<std::string> &paths, const std::string &value) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  std::string bytes;
+  JsonMetadata metadata;
+  Slice rest;
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  if (!s.ok()) return s;
+
+  if (metadata.format != JsonStorageFormat::JSON)
+    return rocksdb::Status::NotSupported("JSON storage format not supported");
+
+  auto json_res = JsonValue::FromString(rest.ToStringView());
+  if (!json_res) return rocksdb::Status::Corruption(json_res.Msg());
+  auto json_val = *std::move(json_res);
+
+  for (const auto &path : paths) {
+    auto append_res = json_val.Append(path, value);
+    if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
+  }
+  return write(ns_key, &metadata, json_val);
+}
+
 }  // namespace redis

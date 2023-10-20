@@ -165,7 +165,7 @@ struct StreamConsumerGroupMetadata {
   uint64_t consumer_number = 0;
   uint64_t pending_number = 0;
   StreamEntryID last_delivered_id;
-  int64_t entries_read = 0;
+  int64_t entries_read = -1;
   uint64_t lag = 0;
 };
 

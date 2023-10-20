@@ -1078,7 +1078,14 @@ class CommandRestore : public Commander {
 class CommandRdb : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 3);
+    CommandParser parser(args, 1);
+
+    type_ = GET_OR_RET(parser.TakeStr());
+    if (!util::EqualICase(type_, "load")) {
+      return {Status::RedisParseErr, "unknown subcommand"};
+    }
+
+    path_ = GET_OR_RET(parser.TakeStr());
     while (parser.Good()) {
       if (parser.EatEqICase("NX")) {
         overwrite_exist_key_ = false;
@@ -1093,12 +1100,13 @@ class CommandRdb : public Commander {
   }
 
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    rocksdb::Status db_status;
-    redis::Database redis(svr->storage, conn->GetNamespace());
-    auto type = args_[1];
-    auto path = args_[2];
+    if (!conn->IsAdmin()) {
+      return {Status::RedisExecErr, errAdminPermissionRequired};
+    }
 
-    auto stream_ptr = std::make_unique<RdbFileStream>(path);
+    redis::Database redis(svr->storage, conn->GetNamespace());
+
+    auto stream_ptr = std::make_unique<RdbFileStream>(path_);
     GET_OR_RET(stream_ptr->Open());
 
     RDB rdb(svr->storage, conn->GetNamespace(), std::move(stream_ptr));
@@ -1109,6 +1117,8 @@ class CommandRdb : public Commander {
   }
 
  private:
+  std::string type_;
+  std::string path_;
   bool overwrite_exist_key_ = true;  // default overwrite exist key
   uint32_t db_index_ = 0;
 };

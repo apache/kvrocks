@@ -158,9 +158,9 @@ struct JsonValue {
     return Status::OK();
   }
 
-  Status Append(std::string_view path, const std::string &append_value) {
+  Status Append(std::string_view path, const std::string &append_value, uint64_t &deleted_cnt) {
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&append_value](const std::string & /*path*/, jsoncons::json &origin) {
+      jsoncons::jsonpath::json_replace(value, path, [&append_value, &deleted_cnt](const std::string & /*path*/, jsoncons::json &origin) {
         if (origin.is_string()) {
           auto origin_str = origin.to_string();
           // need trim "
@@ -169,6 +169,7 @@ struct JsonValue {
           std::string new_value;
           new_value.append("\"").append(origin_trimmed).append(append_trimmed).append("\"");
           origin = jsoncons::json::parse(new_value);
+          deleted_cnt += 1;
         }
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

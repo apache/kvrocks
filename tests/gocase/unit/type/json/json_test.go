@@ -22,6 +22,7 @@ package json
 import (
 	"context"
 	"testing"
+	"fmt"
 
 	"github.com/redis/go-redis/v9"
 
@@ -153,6 +154,14 @@ func TestJson(t *testing.T) {
 
 		_, err = rdb.Do(ctx, "JSON.TYPE", "not_exists", "$").StringSlice()
 		require.EqualError(t, err, redis.Nil.Error())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "ba").Val(), int64(1))
+        require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+        require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "ba").Val(), int64(2))
+        require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}, "nested3": {"a": [1, 2]}}`).Err())
+        require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "ba").Val(), int64(2))
+        fmt.Printf("success")
 	})
 
 	t.Run("Merge basics", func(t *testing.T) {

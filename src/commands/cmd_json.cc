@@ -551,11 +551,11 @@ public:
           values.push_back(val);
         }
       }
-
-      auto s = json.StrAppend(args_[1], {args_.begin() + 2, args_.end() - 1}, args_.back());
+      uint64_t cnt = 0;
+      auto s = json.StrAppend(args_[1], {args_.begin() + 2, args_.end() - 1}, args_.back(), cnt);
       if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-      *output = redis::SimpleString("OK");
+      *output = redis::Integer(cnt);
       return Status::OK();
     }
 };

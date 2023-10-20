@@ -458,8 +458,7 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
   return write(ns_key, &metadata, json_val);
 }
 
-rocksdb::Status Json::StrAppend(const std::string &user_key, const std::vector<std::string> &paths, const std::string &value, uint64_t &deleted_cnt) {
-  deleted_cnt = 0;
+rocksdb::Status Json::StrAppend(const std::string &user_key, const std::vector<std::string> &paths, const std::string &value, std::vector<uint64_t> &append_cnt) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -478,9 +477,19 @@ rocksdb::Status Json::StrAppend(const std::string &user_key, const std::vector<s
   auto json_val = *std::move(json_res);
 
   for (const auto &path : paths) {
-    auto append_res = json_val.Append(path, value, deleted_cnt);
+    auto append_res = json_val.Append(path, value, append_cnt);
     if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
   }
+  bool need_overwrite = false;
+  for (auto append : append_cnt) {
+    if (append != 0) {
+      need_overwrite = true;
+    }
+  }
+  if (!need_overwrite) {
+    return rocksdb::Status::OK();
+  }
+
   return write(ns_key, &metadata, json_val);
 }
 

@@ -36,7 +36,7 @@ class RedisJsonTest : public TestBase {
 
   std::unique_ptr<redis::Json> json_;
   JsonValue json_val_;
-  uint64_t cnt_;
+  std::vector<uint64_t> append_cnt_;
 };
 
 using ::testing::MatchesRegex;
@@ -656,14 +656,25 @@ TEST_F(RedisJsonTest, NumMultBy) {
 
 TEST_F(RedisJsonTest, StrAppend) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$.a"}, "ba", cnt_).ok());
-  ASSERT_EQ(cnt_, 1);
+  ASSERT_TRUE(json_->StrAppend(key_, {"$.a"}, "ba", append_cnt_).ok());
+  ASSERT_EQ(append_cnt_.size(), 1);
+  ASSERT_EQ(append_cnt_[0], 5);
 
+  append_cnt_.clear();
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", cnt_).ok());
-  ASSERT_EQ(cnt_, 2);
+  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", append_cnt_).ok());
+  ASSERT_EQ(append_cnt_.size(), 3);
+  uint64_t result1[] = {0, 7, 5};
+  for (int i=0; i<3;++i) {
+    ASSERT_EQ(append_cnt_[i], result1[i]);
+  }
 
+  append_cnt_.clear();
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}, "nested3": {"a": [1, 2]}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", cnt_).ok());
-  ASSERT_EQ(cnt_, 2);
+  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", append_cnt_).ok());
+  ASSERT_EQ(append_cnt_.size(), 4);
+  uint64_t result2[] = {0, 0, 7, 5};
+  for (int i=0; i<4;++i) {
+    ASSERT_EQ(append_cnt_[i], result2[i]);
+  }
 }

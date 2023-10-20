@@ -540,22 +540,13 @@ public:
     Status Execute(Server *svr, Connection *conn, std::string *output) override {
       redis::Json json(svr->storage, conn->GetNamespace());
 
-      JsonValue result;
-      std::vector<std::string> paths;
-      std::vector<std::string> values;
-      for (int i=2;i<(int)args_.size();++i) {
-        auto val = args_[i];
-        if (val.substr(0, 1) == "$") {
-          paths.push_back(val);
-        } else{
-          values.push_back(val);
-        }
-      }
-      uint64_t cnt = 0;
+      std::vector<uint64_t> cnt;
       auto s = json.StrAppend(args_[1], {args_.begin() + 2, args_.end() - 1}, args_.back(), cnt);
       if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-      *output = redis::Integer(cnt);
+      // need Reverse order
+      std::reverse(cnt.begin(), cnt.end());
+      *output = redis::IntegerArray(cnt);
       return Status::OK();
     }
 };
@@ -580,6 +571,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1), );
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

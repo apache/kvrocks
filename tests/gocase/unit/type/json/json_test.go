@@ -167,7 +167,7 @@ func TestJson(t *testing.T) {
         require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "ba").Val(), result2)
 	})
 
-	t.Run("JSON.STRAPPEND basics", func(t *testing.T) {
+	t.Run("JSON.STRLEN basics", func(t *testing.T) {
 	    var result1 = make([]interface{}, 0)
         result1 = append(result1, int64(3))
         require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())

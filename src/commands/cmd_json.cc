@@ -536,31 +536,31 @@ class CommandJsonNumMultBy : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
 class CommandJsonStrAppend : public Commander {
-public:
-    Status Execute(Server *svr, Connection *conn, std::string *output) override {
-      redis::Json json(svr->storage, conn->GetNamespace());
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
 
-      std::vector<uint64_t> results;
-      auto s = json.StrAppend(args_[1], args_[2], args_[3], results);
-      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<uint64_t> results;
+    auto s = json.StrAppend(args_[1], args_[2], args_[3], results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-      *output = redis::IntegerArray(results);
-      return Status::OK();
-    }
+    *output = redis::IntegerArray(results);
+    return Status::OK();
+  }
 };
 
 class CommandJsonStrLen : public Commander {
-public:
-    Status Execute(Server *svr, Connection *conn, std::string *output) override {
-      redis::Json json(svr->storage, conn->GetNamespace());
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
 
-      std::vector<uint64_t> results;
-      auto s = json.StrLen(args_[1], args_[2], results);
-      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<uint64_t> results;
+    auto s = json.StrLen(args_[1], args_[2], results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-      *output = redis::IntegerArray(results);
-      return Status::OK();
-    }
+    *output = redis::IntegerArray(results);
+    return Status::OK();
+  }
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),

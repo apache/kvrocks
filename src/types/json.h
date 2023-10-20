@@ -158,26 +158,42 @@ struct JsonValue {
     return Status::OK();
   }
 
-  Status Append(std::string_view path, const std::string &append_value, std::vector<uint64_t> &append_cnt) {
+  Status StrAppend(std::string_view path, const std::string &append_value, std::vector<uint64_t> &append_cnt) {
     try {
       auto append_trimmed = util::Trim(append_value, "\"");
       jsoncons::jsonpath::json_replace(value, path, [&append_trimmed, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
-        uint64_t len = 0;
         if (origin.is_string()) {
           auto origin_str = origin.to_string();
           // need trim "
           auto origin_trimmed = util::Trim(origin_str, "\"");
-          len = origin_trimmed.length() + append_trimmed.length();
+          append_cnt.push_back(origin_trimmed.length() + append_trimmed.length());
           std::string new_value;
           new_value.append("\"").append(origin_trimmed).append(append_trimmed).append("\"");
           origin = jsoncons::json::parse(new_value);
+        } else {
+          append_cnt.push_back(0);
         }
-        append_cnt.push_back(len);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
 
+    return Status::OK();
+  }
+
+  Status StrLen(std::string_view path, std::vector<uint64_t> &str_lens) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&str_lens](const std::string & /*path*/, const jsoncons::json &origin) {
+        if (origin.is_string()) {
+          // need subtraction "
+          str_lens.push_back(origin.to_string().length() - 2);
+        } else {
+          str_lens.push_back(0);
+        }
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
     return Status::OK();
   }
 

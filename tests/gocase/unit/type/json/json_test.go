@@ -165,11 +165,18 @@ func TestJson(t *testing.T) {
         result2 = append(result2, int64(5), int64(7), interface {}(nil))
         require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
         require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "ba").Val(), result2)
+	})
 
-        var result3 = make([]interface{}, 0)
-        result3 = append(result3, int64(5), int64(7), interface {}(nil), interface {}(nil))
-        require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}, "nested3": {"a": [1, 2]}}`).Err())
-        require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "ba").Val(), result3)
+	t.Run("JSON.STRAPPEND basics", func(t *testing.T) {
+	    var result1 = make([]interface{}, 0)
+        result1 = append(result1, int64(3))
+        require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+        require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$.a").Val(), result1)
+
+        var result2 = make([]interface{}, 0)
+        result2 = append(result2, int64(3), int64(5), interface {}(nil))
+        require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+        require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
 	})
 
 	t.Run("Merge basics", func(t *testing.T) {

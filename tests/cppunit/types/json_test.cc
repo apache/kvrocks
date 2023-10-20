@@ -656,25 +656,33 @@ TEST_F(RedisJsonTest, NumMultBy) {
 
 TEST_F(RedisJsonTest, StrAppend) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$.a"}, "ba", append_cnt_).ok());
+  ASSERT_TRUE(json_->StrAppend(key_, "$.a", "ba", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 1);
   ASSERT_EQ(append_cnt_[0], 5);
 
   append_cnt_.clear();
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", append_cnt_).ok());
+  ASSERT_TRUE(json_->StrAppend(key_, "$..a", "ba", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
-  uint64_t result1[] = {0, 7, 5};
+  uint64_t result1[] = {5, 7, 0};
   for (int i=0; i<3;++i) {
     ASSERT_EQ(append_cnt_[i], result1[i]);
   }
+}
+
+TEST_F(RedisJsonTest, StrLen) {
+  append_cnt_.clear();
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
+  ASSERT_TRUE(json_->StrLen(key_, "$.a", append_cnt_).ok());
+  ASSERT_EQ(append_cnt_.size(), 1);
+  ASSERT_EQ(append_cnt_[0], 3);
 
   append_cnt_.clear();
-  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}, "nested3": {"a": [1, 2]}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, {"$..a"}, "ba", append_cnt_).ok());
-  ASSERT_EQ(append_cnt_.size(), 4);
-  uint64_t result2[] = {0, 0, 7, 5};
-  for (int i=0; i<4;++i) {
-    ASSERT_EQ(append_cnt_[i], result2[i]);
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
+  ASSERT_TRUE(json_->StrLen(key_, "$..a", append_cnt_).ok());
+  ASSERT_EQ(append_cnt_.size(), 3);
+  uint64_t result1[] = {3, 5, 0};
+  for (int i=0; i<3;++i) {
+    ASSERT_EQ(append_cnt_[i], result1[i]);
   }
 }

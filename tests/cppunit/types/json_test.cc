@@ -175,6 +175,7 @@ TEST_F(RedisJsonTest, ArrAppend) {
   ASSERT_EQ(res[2], 4);
   ASSERT_EQ(res[3], 6);
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"x":[1,2,{"x":[1,2,{"y":[1,2,3],"z":3}],"y":[{"y":1},1,2,3]},1],"y":[1,2,3,1,2,3]})");
+  ASSERT_EQ(json_val_.Dump().GetValue(),
+            R"({"x":[1,2,{"x":[1,2,{"y":[1,2,3],"z":3}],"y":[{"y":1},1,2,3]},1],"y":[1,2,3,1,2,3]})");
   res.clear();
 }

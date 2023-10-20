@@ -119,3 +119,39 @@ TEST_F(RedisJsonTest, Get) {
   ASSERT_TRUE(json_->Get(key_, {"$..x", "$..y", "$..z"}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump(), R"({"$..x":[{"y":1},4],"$..y":[[2,{"z":3}],1],"$..z":[{"a":{"x":4}},3]})");
 }
+
+TEST_F(RedisJsonTest, LegacyPath) {
+  ASSERT_THAT(json_->Set(key_, ".", "invalid").ToString(), MatchesRegex(".*syntax_error.*"));
+  ASSERT_THAT(json_->Set(key_, ".", "{").ToString(), MatchesRegex(".*Unexpected end of file.*"));
+
+  // Get and Set using "."
+  {
+    ASSERT_TRUE(json_->Set(key_, ".", "  \t{\n  }  ").ok());
+    ASSERT_TRUE(json_->Get(key_, {"."}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[{}]");
+
+    auto s = json_->Set(key_, ".", "1");
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(json_->Get(key_, {"."}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[1]");
+
+    ASSERT_TRUE(json_->Set(key_, ".", "[1, 2, 3]").ok());
+    ASSERT_TRUE(json_->Get(key_, {"."}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[[1,2,3]]");
+  }
+
+  // NOTE: RedisJson support legacy path like "$a", but currently
+  // we didn't support that.
+  {
+    ASSERT_TRUE(json_->Set(key_, ".", R"({"a":"xxx","x":2})").ok());
+    ASSERT_TRUE(json_->Get(key_, {"."}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), R"([{"a":"xxx","x":2}])");
+    EXPECT_TRUE(json_->Set(key_, "a", "12").ok());
+    EXPECT_TRUE(json_->Get(key_, {"a"}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[12]");
+    ASSERT_TRUE(json_->Get(key_, {".a"}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[12]");
+    ASSERT_TRUE(json_->Get(key_, {"$.a"}, &json_val_).ok());
+    ASSERT_EQ(json_val_.Dump(), "[12]");
+  }
+}

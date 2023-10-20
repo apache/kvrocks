@@ -23,9 +23,50 @@
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
+#include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
 
-#include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
+
+class JsonPath {
+ public:
+  using JsonType = jsoncons::json;
+  using JsonPathExpression = jsoncons::jsonpath::jsonpath_expression<JsonType, const JsonType &>;
+
+  static constexpr std::string_view ROOT_PATH = "$";
+
+  static StatusOr<JsonPath> BuildJsonPath(std::string_view path);
+
+  bool IsLegacy() const noexcept { return is_legacy_; }
+
+  std::string_view Path() const { return path_; }
+
+  bool IsRootPath() const { return Path() == ROOT_PATH; }
+
+  JsonType EvalJsonQuery(const JsonType &json_value) const {
+    return expression_.evaluate(const_cast<JsonType &>(json_value));
+  }
+
+  template <typename BinaryJsonFunction>
+  void EvalJsonReplace(JsonType &json_value, const BinaryJsonFunction &callback) const {
+    auto wrapped_cb = [&callback](const std::string_view &path, const JsonType &json) {
+      // Though JsonPath supports mutable reference, `jsoncons::make_expression`
+      // only supports const reference, so const_cast is used as a workaround.
+      callback(path, const_cast<JsonType &>(json));
+    };
+    expression_.evaluate(json_value, wrapped_cb);
+  }
+
+ private:
+  static std::optional<std::string> tryConvertLegacyToJsonPath(std::string_view path);
+
+  JsonPath(std::string path, bool is_legacy, JsonPathExpression path_expression)
+      : path_(std::move(path)), is_legacy_(is_legacy), expression_(std::move(path_expression)) {}
+
+  std::string path_;
+  bool is_legacy_;
+  // Pre-build the expression to avoid built it multiple times.
+  JsonPathExpression expression_;
+};
 
 struct JsonValue {
   JsonValue() = default;
@@ -54,20 +95,28 @@ struct JsonValue {
   }
 
   Status Set(std::string_view path, JsonValue &&new_value) {
+    auto path_expression = GET_OR_RET(JsonPath::BuildJsonPath(path));
+    return Set(path_expression, std::move(new_value));
+  }
+
+  Status Set(const JsonPath &path, JsonValue &&new_value) {
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = new_value.value;
-      });
+      path.EvalJsonReplace(
+          value, [&new_value](const std::string_view & /*path*/, jsoncons::json &origin) { origin = new_value.value; });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-
     return Status::OK();
   }
 
   StatusOr<JsonValue> Get(std::string_view path) const {
+    auto path_expression = GET_OR_RET(JsonPath::BuildJsonPath(path));
+    return Get(path_expression);
+  }
+
+  StatusOr<JsonValue> Get(const JsonPath &json_path) const {
     try {
-      return jsoncons::jsonpath::json_query(value, path);
+      return json_path.EvalJsonQuery(value);
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }

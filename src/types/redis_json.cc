@@ -52,8 +52,14 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   Slice rest;
   auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
 
+  auto json_path_opt = JsonPath::BuildJsonPath(path);
+  if (!json_path_opt) {
+    return rocksdb::Status::InvalidArgument(json_path_opt.Msg());
+  }
+  const auto &json_path = json_path_opt.GetValue();
+
   if (s.IsNotFound()) {
-    if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+    if (!json_path.IsRootPath()) return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
     auto json_res = JsonValue::FromString(value);
     if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
@@ -75,9 +81,10 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
   auto origin = *std::move(origin_res);
 
-  auto set_res = origin.Set(path, std::move(new_val));
+  auto set_res = origin.Set(json_path, std::move(new_val));
   if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
 
+  std::cout << "Value after set: " << origin.Dump() << std::endl;
   return write(ns_key, &metadata, origin);
 }
 

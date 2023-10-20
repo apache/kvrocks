@@ -57,9 +57,9 @@ func TestJson(t *testing.T) {
 	})
 
 	t.Run("JSON.ARRAPPEND basics", func(t *testing.T) {
-	    require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
-        require.Error(t, rdb.Do(ctx, "JSON.ARRAPPEND", "a", "$", `1`).Err())
-        require.NoError(t, rdb.Do(ctx, "DEL", "a").Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRAPPEND", "a", "$", `1`).Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "a").Err())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y": {"x":1} } `).Err())
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.ARRAPPEND", "a", "$..k", `1`).Val())

@@ -160,6 +160,7 @@ Config::Config() {
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
+      {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,

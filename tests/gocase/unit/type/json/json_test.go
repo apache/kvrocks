@@ -56,6 +56,15 @@ func TestJson(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$..x", "$..y").Val(), `{"$..x":[1,{"y":2}],"$..y":[{"x":{"y":2},"y":3},3,2]}`)
 	})
 
+	t.Run("JSON.GET with options", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y":2} `).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ").Val(), `{ "x":1, "y":2}`)
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "SPACE", " ").Val(), `{ "x": 1, "y": 2}`)
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n").Val(), "{\n\"x\":1,\n\"y\":2\n}")
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n", "INDENT", " ", "SPACE", " ").Val(), "{\n \"x\": 1,\n \"y\": 2\n}")
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "$").Val(), `[ {  "x":1,  "y":2 }]`)
+	})
+
 	t.Run("JSON.ARRAPPEND basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
 		require.Error(t, rdb.Do(ctx, "JSON.ARRAPPEND", "a", "$", `1`).Err())

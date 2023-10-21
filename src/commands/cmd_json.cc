@@ -18,7 +18,10 @@
  *
  */
 
+#include <algorithm>
+
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_json.h"
@@ -40,16 +43,57 @@ class CommandJsonSet : public Commander {
 
 class CommandJsonGet : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("INDENT")) {
+        auto indent = GET_OR_RET(parser.TakeStr());
+
+        if (std::any_of(indent.begin(), indent.end(), [](char v) { return v != ' '; })) {
+          return {Status::RedisParseErr, "Currently only all-space INDENT is supported"};
+        }
+
+        indent_size_ = indent.size();
+      } else if (parser.EatEqICase("NEWLINE")) {
+        new_line_chars_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICase("SPACE")) {
+        auto space = GET_OR_RET(parser.TakeStr());
+
+        if (space != "" && space != " ") {
+          return {Status::RedisParseErr, "Currently only SPACE ' ' is supported"};
+        }
+
+        spaces_after_colon_ = !space.empty();
+      } else {
+        break;
+      }
+    }
+
+    while (parser.Good()) {
+      paths_.push_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    return Status::OK();
+  }
+
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Json json(svr->storage, conn->GetNamespace());
 
     JsonValue result;
-    auto s = json.Get(args_[1], {args_.begin() + 2, args_.end()}, &result);
+    auto s = json.Get(args_[1], paths_, &result);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::BulkString(result.Dump());
+    *output = redis::BulkString(GET_OR_RET(result.Print(indent_size_, spaces_after_colon_, new_line_chars_)));
     return Status::OK();
   }
+
+ private:
+  uint8_t indent_size_ = 0;
+  bool spaces_after_colon_ = false;
+  std::string new_line_chars_;
+
+  std::vector<std::string> paths_;
 };
 
 class CommandJsonArrAppend : public Commander {

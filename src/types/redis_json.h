@@ -25,6 +25,7 @@
 #include <string>
 
 #include "json.h"
+#include "storage/redis_metadata.h"
 
 namespace redis {
 
@@ -39,6 +40,7 @@ class Json : public Database {
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
+  rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
 };
 
 }  // namespace redis

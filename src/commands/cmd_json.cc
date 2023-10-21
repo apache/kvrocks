@@ -105,13 +105,13 @@ class CommandJsonArrAppend : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Json json(svr->storage, conn->GetNamespace());
 
-    std::vector<uint64_t> result_count;
+    std::vector<size_t> result_count;
 
     auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, &result_count);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(result_count.size());
-    for (uint64_t c : result_count) {
+    for (size_t c : result_count) {
       if (c != 0) {
         *output += redis::Integer(c);
       } else {

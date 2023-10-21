@@ -122,7 +122,7 @@ rocksdb::Status Json::Get(const std::string &user_key, const std::vector<std::st
 }
 
 rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &path,
-                                const std::vector<std::string> &values, std::vector<uint64_t> *result_count) {
+                                const std::vector<std::string> &values, std::vector<size_t> *result_count) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   std::vector<jsoncons::json> append_values;
@@ -141,8 +141,9 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
   auto s = read(ns_key, &metadata, &value);
   if (!s.ok()) return s;
 
-  auto append_res = value.ArrAppend(path, append_values, result_count);
+  auto append_res = value.ArrAppend(path, append_values);
   if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
+  *result_count = *append_res;
 
   bool is_write = std::any_of(result_count->begin(), result_count->end(), [](uint64_t c) { return c > 0; });
   if (!is_write) return rocksdb::Status::OK();

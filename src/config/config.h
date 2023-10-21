@@ -161,6 +161,9 @@ struct Config {
   std::set<std::string> profiling_sample_commands;
   bool profiling_sample_all_commands = false;
 
+  // json
+  int json_max_nesting_depth = 1024;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;

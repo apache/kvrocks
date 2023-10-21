@@ -22,19 +22,25 @@
 
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
+#include <jsoncons/json_options.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
+#include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
+#include <limits>
 
-#include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
 
 struct JsonValue {
   JsonValue() = default;
   explicit JsonValue(jsoncons::basic_json<char> value) : value(std::move(value)) {}
 
-  static StatusOr<JsonValue> FromString(std::string_view str) {
+  static StatusOr<JsonValue> FromString(std::string_view str, int max_nesting_depth = std::numeric_limits<int>::max()) {
     jsoncons::json val;
+
+    jsoncons::json_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
     try {
-      val = jsoncons::json::parse(str);
+      val = jsoncons::json::parse(str, options);
     } catch (const jsoncons::ser_error &e) {
       return {Status::NotOK, e.what()};
     }
@@ -42,15 +48,50 @@ struct JsonValue {
     return JsonValue(std::move(val));
   }
 
-  std::string Dump() const {
+  StatusOr<std::string> Dump(int max_nesting_depth = std::numeric_limits<int>::max()) const {
     std::string res;
-    Dump(&res);
+    GET_OR_RET(Dump(&res, max_nesting_depth));
     return res;
   }
 
-  void Dump(std::string *buffer) const {
-    jsoncons::compact_json_string_encoder encoder{*buffer};
-    value.dump(encoder);
+  Status Dump(std::string *buffer, int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    jsoncons::json_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
+    jsoncons::compact_json_string_encoder encoder{*buffer, options};
+    std::error_code ec;
+    value.dump(encoder, ec);
+    if (ec) {
+      return {Status::NotOK, ec.message()};
+    }
+
+    return Status::OK();
+  }
+
+  StatusOr<std::string> Print(uint8_t indent_size = 0, bool spaces_after_colon = false,
+                              const std::string &new_line_chars = "") const {
+    std::string res;
+    GET_OR_RET(Print(&res, indent_size, spaces_after_colon, new_line_chars));
+    return res;
+  }
+
+  Status Print(std::string *buffer, uint8_t indent_size = 0, bool spaces_after_colon = false,
+               const std::string &new_line_chars = "") const {
+    jsoncons::json_options options;
+    options.indent_size(indent_size);
+    options.spaces_around_colon(spaces_after_colon ? jsoncons::spaces_option::space_after
+                                                   : jsoncons::spaces_option::no_spaces);
+    options.spaces_around_comma(jsoncons::spaces_option::no_spaces);
+    options.new_line_chars(new_line_chars);
+
+    jsoncons::json_string_encoder encoder{*buffer, options};
+    std::error_code ec;
+    value.dump(encoder, ec);
+    if (ec) {
+      return {Status::NotOK, ec.message()};
+    }
+
+    return Status::OK();
   }
 
   Status Set(std::string_view path, JsonValue &&new_value) {

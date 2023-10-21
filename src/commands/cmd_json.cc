@@ -131,8 +131,10 @@ class CommandJsonType : public Commander {
     std::vector<std::string> types;
 
     std::string path = "$";
-    if (args_.size() > 2) {
+    if (args_.size() == 2) {
       path = args_[2];
+    } else if (args_.size() > 2) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
     auto s = json.Type(args_[1], path, &types);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};

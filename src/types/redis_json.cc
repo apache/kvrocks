@@ -128,7 +128,7 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
   std::vector<jsoncons::json> append_values;
   append_values.reserve(values.size());
   for (auto &v : values) {
-    auto value_res = JsonValue::FromString(v);
+    auto value_res = JsonValue::FromString(v, storage_->GetConfig()->json_max_nesting_depth);
     if (!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
     auto value = *std::move(value_res);
     append_values.emplace_back(std::move(value.value));
@@ -136,7 +136,6 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
-  std::string bytes;
   JsonMetadata metadata;
   JsonValue value;
   auto s = read(ns_key, &metadata, &value);

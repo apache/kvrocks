@@ -23,6 +23,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
@@ -95,5 +97,36 @@ func TestJson(t *testing.T) {
 		require.Equal(t, `[[1,2]]`, rdb.Do(ctx, "JSON.GET", "a", "$.y[0].x").Val())
 		require.Equal(t, `[]`, rdb.Do(ctx, "JSON.GET", "a", "$.x.x").Val())
 		require.Equal(t, `[{"x":[1,1,2,3,1,2],"y":[{"x":[1,2],"y":[]}]}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+	})
+
+	t.Run("JSON.TYPE basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"}}`).Err())
+
+		types, err := rdb.Do(ctx, "JSON.TYPE", "a").StringSlice()
+		require.NoError(t, err)
+		require.Equal(t, []string{"object"}, types)
+
+		types, err = rdb.Do(ctx, "JSON.TYPE", "a", "$").StringSlice()
+		require.NoError(t, err)
+		require.Equal(t, []string{"object"}, types)
+
+		types, err = rdb.Do(ctx, "JSON.TYPE", "a", "$..x").StringSlice()
+		require.NoError(t, err)
+		require.EqualValues(t, []string{"integer", "string", "array"}, types)
+
+		types, err = rdb.Do(ctx, "JSON.TYPE", "a", "$..y").StringSlice()
+		require.NoError(t, err)
+		require.EqualValues(t, []string{"number", "null"}, types)
+
+		types, err = rdb.Do(ctx, "JSON.TYPE", "a", "$.b").StringSlice()
+		require.NoError(t, err)
+		require.EqualValues(t, []string{"boolean"}, types)
+
+		types, err = rdb.Do(ctx, "JSON.TYPE", "a", "$.no_exists").StringSlice()
+		require.NoError(t, err)
+		require.EqualValues(t, []string{}, types)
+
+		_, err = rdb.Do(ctx, "JSON.TYPE", "not_exists", "$").StringSlice()
+		require.EqualError(t, err, redis.Nil.Error())
 	})
 }

@@ -132,6 +132,46 @@ struct JsonValue {
     return Status::OK();
   }
 
+  Status Type(std::string_view path, std::vector<std::string> *types) const {
+    types->clear();
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&types](const std::string & /*path*/, const jsoncons::json &val) {
+        switch (val.type()) {
+          case jsoncons::json_type::null_value:
+            types->emplace_back("null");
+            break;
+          case jsoncons::json_type::bool_value:
+            types->emplace_back("boolean");
+            break;
+          case jsoncons::json_type::int64_value:
+            types->emplace_back("integer");
+            break;
+          case jsoncons::json_type::uint64_value:
+            types->emplace_back("integer");
+            break;
+          case jsoncons::json_type::double_value:
+            types->emplace_back("number");
+            break;
+          case jsoncons::json_type::string_value:
+            types->emplace_back("string");
+            break;
+          case jsoncons::json_type::array_value:
+            types->emplace_back("array");
+            break;
+          case jsoncons::json_type::object_value:
+            types->emplace_back("object");
+            break;
+          default:
+            types->emplace_back("unknown");
+            break;
+        }
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
   JsonValue(const JsonValue &) = default;
   JsonValue(JsonValue &&) = default;
 

@@ -123,8 +123,32 @@ class CommandJsonArrAppend : public Commander {
   }
 };
 
+class CommandJsonType : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<std::string> types;
+
+    std::string path = "$";
+    if (args_.size() > 2) {
+      path = args_[2];
+    }
+    auto s = json.Type(args_[1], path, &types);
+    if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    *output = redis::MultiBulkString(types);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

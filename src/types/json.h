@@ -144,8 +144,6 @@ struct JsonValue {
             types->emplace_back("boolean");
             break;
           case jsoncons::json_type::int64_value:
-            types->emplace_back("integer");
-            break;
           case jsoncons::json_type::uint64_value:
             types->emplace_back("integer");
             break;

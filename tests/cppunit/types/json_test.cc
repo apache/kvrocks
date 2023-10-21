@@ -21,6 +21,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <types/redis_json.h>
+#include <cstddef>
 
 #include "test_base.h"
 
@@ -139,7 +140,7 @@ TEST_F(RedisJsonTest, Print) {
 }
 
 TEST_F(RedisJsonTest, ArrAppend) {
-  std::vector<uint64_t> res;
+  std::vector<size_t> res;
 
   ASSERT_FALSE(json_->ArrAppend(key_, "$", {"1"}, &res).ok());
 

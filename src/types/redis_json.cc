@@ -150,4 +150,16 @@ rocksdb::Status Json::ArrAppend(const std::string &user_key, const std::string &
   return write(ns_key, &metadata, value);
 }
 
+rocksdb::Status Json::Type(const std::string &user_key, const std::string &path, std::vector<std::string> *results) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  auto res = json_val.Type(path, results);
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

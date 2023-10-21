@@ -54,6 +54,8 @@ func TestJson(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$").Val(), `[{"x":1,"y":{"x":{"y":2},"y":3}}]`)
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$..x").Val(), `[1,{"y":2}]`)
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$..x", "$..y").Val(), `{"$..x":[1,{"y":2}],"$..y":[{"x":{"y":2},"y":3},3,2]}`)
+
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "no-such-key").Val(), nil)
 	})
 
 	t.Run("JSON.GET with options", func(t *testing.T) {

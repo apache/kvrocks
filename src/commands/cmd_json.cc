@@ -82,6 +82,10 @@ class CommandJsonGet : public Commander {
 
     JsonValue result;
     auto s = json.Get(args_[1], paths_, &result);
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::BulkString(GET_OR_RET(result.Print(indent_size_, spaces_after_colon_, new_line_chars_)));

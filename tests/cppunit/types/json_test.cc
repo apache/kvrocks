@@ -21,6 +21,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <types/redis_json.h>
+
 #include <cstddef>
 
 #include "test_base.h"

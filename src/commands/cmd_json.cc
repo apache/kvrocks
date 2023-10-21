@@ -111,7 +111,7 @@ class CommandJsonArrAppend : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(result_count.size());
-    for (auto c : result_count) {
+    for (size_t c : result_count) {
       if (c != 0) {
         *output += redis::Integer(c);
       } else {

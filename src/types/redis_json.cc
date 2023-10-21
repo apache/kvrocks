@@ -35,7 +35,10 @@ rocksdb::Status Json::write(Slice ns_key, JsonMetadata *metadata, const JsonValu
 
   std::string val;
   metadata->Encode(&val);
-  json_val.Dump(&val);
+  auto s = json_val.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
+  if (!s) {
+    return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + s.Msg());
+  }
 
   batch->Put(metadata_cf_handle_, ns_key, val);
 
@@ -71,7 +74,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (s.IsNotFound()) {
     if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
-    auto json_res = JsonValue::FromString(value);
+    auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
     if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
     auto json_val = *std::move(json_res);
 
@@ -80,7 +83,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
 
   if (!s.ok()) return s;
 
-  auto new_res = JsonValue::FromString(value);
+  auto new_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
   if (!new_res) return rocksdb::Status::InvalidArgument(new_res.Msg());
   auto new_val = *std::move(new_res);
 

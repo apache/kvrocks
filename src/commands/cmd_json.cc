@@ -19,11 +19,14 @@
  */
 
 #include <algorithm>
+#include <string>
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "status.h"
 #include "types/redis_json.h"
 
 namespace redis {
@@ -98,6 +101,20 @@ class CommandJsonGet : public Commander {
   std::string new_line_chars_;
 
   std::vector<std::string> paths_;
+};
+
+
+class CommandJsonClear : public Commander {
+public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    std::cout << "Server parameter: " << svr << std::endl;
+    std::cout << "Connection parameter: " << conn << std::endl;
+    std::cout << "Output parameter: " << *output << std::endl;
+
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    return Status::OK();
+  }
 };
 
 class CommandJsonArrAppend : public Commander {

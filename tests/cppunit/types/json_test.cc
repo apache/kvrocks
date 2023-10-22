@@ -185,14 +185,22 @@ TEST_F(RedisJsonTest, ArrAppend) {
 TEST_F(RedisJsonTest, Clear) {
   int result = 0;
 
-  ASSERT_TRUE(json_->Set(key_, "$", R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})").ok());
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
 
   ASSERT_TRUE(json_->Clear(key_, "$", &result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "{}");
   ASSERT_EQ(result, 1);
 
-  ASSERT_TRUE(json_->Set(key_, "$", R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})").ok());
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
 
   ASSERT_TRUE(json_->Clear(key_, "$.obj", &result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
@@ -204,7 +212,11 @@ TEST_F(RedisJsonTest, Clear) {
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[],"bool":true,"float":3.14,"int":42,"obj":{},"str":"foo"})");
   ASSERT_EQ(result, 1);
 
-  ASSERT_TRUE(json_->Set(key_, "$", R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})").ok());
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
   ASSERT_TRUE(json_->Clear(key_, "$.*", &result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[],"bool":true,"float":0,"int":0,"obj":{},"str":"foo"})");

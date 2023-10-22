@@ -175,22 +175,23 @@ struct JsonValue {
   Status Clear(std::string_view path, int *result) {
     try {
       int cleared_count = 0;
-      jsoncons::jsonpath::json_replace(
-        value, path, [&cleared_count](const std::string &
-         /*path*/, jsoncons::json &val) {
-         bool is_array = val.is_array() && !val.empty();
-         bool is_object = val.is_object() && !val.empty();
-         bool is_number = val.is_number() && val.as<double>() != 0;
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&cleared_count](const std::string &
+                                                        /*path*/,
+                                                        jsoncons::json &val) {
+                                         bool is_array = val.is_array() && !val.empty();
+                                         bool is_object = val.is_object() && !val.empty();
+                                         bool is_number = val.is_number() && val.as<double>() != 0;
 
-         if (!is_number && !is_array && !is_object) {
-           return;
-         }
+                                         if (!is_number && !is_array && !is_object) {
+                                           return;
+                                         }
 
-         if (is_array) val = jsoncons::json::array();
-         if (is_object) val = jsoncons::json::object();
-         if (is_number) val = 0;
-         cleared_count++;
-      });
+                                         if (is_array) val = jsoncons::json::array();
+                                         if (is_object) val = jsoncons::json::object();
+                                         if (is_number) val = 0;
+                                         cleared_count++;
+                                       });
 
       *result = cleared_count;
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

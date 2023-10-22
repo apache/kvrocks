@@ -62,8 +62,8 @@ class Json : public Database {
                           std::vector<std::optional<uint64_t>> &results);
   rocksdb::Status Del(const std::string &user_key, const std::string &path, size_t *result);
   rocksdb::Status StrAppend(const std::string &user_key, const std::string &path, const std::string &value,
-                            std::vector<uint64_t> &append_cnt);
-  rocksdb::Status StrLen(const std::string &user_key, const std::string &path, std::vector<uint64_t> &lens);
+                            std::vector<int64_t> &append_cnt);
+  rocksdb::Status StrLen(const std::string &user_key, const std::string &path, std::vector<int64_t> &lens);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

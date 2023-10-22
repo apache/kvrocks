@@ -540,8 +540,13 @@ class CommandJsonStrAppend : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Json json(svr->storage, conn->GetNamespace());
 
-    std::vector<uint64_t> results;
-    auto s = json.StrAppend(args_[1], args_[2], args_[3], results);
+    // path default, if not provided
+    std::string path = "$";
+    if (args_.size() == 4) {
+      path = args_[2];
+    }
+    std::vector<int64_t> results;
+    auto s = json.StrAppend(args_[1], path, args_[3], results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::IntegerArray(results);
@@ -554,8 +559,12 @@ class CommandJsonStrLen : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Json json(svr->storage, conn->GetNamespace());
 
-    std::vector<uint64_t> results;
-    auto s = json.StrLen(args_[1], args_[2], results);
+    std::string path = "$";
+    if (args_.size() == 3) {
+      path = args_[2];
+    }
+    std::vector<int64_t> results;
+    auto s = json.StrLen(args_[1], path, results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::IntegerArray(results);
@@ -581,9 +590,9 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 
                         // JSON.FORGET is an alias for JSON.DEL, refer: https://redis.io/commands/json.forget/
                         MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonStrLen>("json.strlen", -3, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

@@ -36,7 +36,7 @@ class RedisJsonTest : public TestBase {
 
   std::unique_ptr<redis::Json> json_;
   JsonValue json_val_;
-  std::vector<uint64_t> append_cnt_;
+  std::vector<int64_t> append_cnt_;
 };
 
 using ::testing::MatchesRegex;
@@ -664,7 +664,7 @@ TEST_F(RedisJsonTest, StrAppend) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
   ASSERT_TRUE(json_->StrAppend(key_, "$..a", "ba", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
-  uint64_t result1[] = {5, 7, 0};
+  int64_t result1[] = {5, 7, -1};
   for (int i = 0; i < 3; ++i) {
     ASSERT_EQ(append_cnt_[i], result1[i]);
   }
@@ -681,7 +681,7 @@ TEST_F(RedisJsonTest, StrLen) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
   ASSERT_TRUE(json_->StrLen(key_, "$..a", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
-  uint64_t result1[] = {3, 5, 0};
+  int64_t result1[] = {3, 5, -1};
   for (int i = 0; i < 3; ++i) {
     ASSERT_EQ(append_cnt_[i], result1[i]);
   }

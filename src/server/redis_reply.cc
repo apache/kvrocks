@@ -34,10 +34,10 @@ std::string BulkString(const std::string &data) { return "$" + std::to_string(da
 
 std::string NilString() { return "$-1" CRLF; }
 
-std::string IntegerArray(const std::vector<uint64_t> &values) {
+std::string IntegerArray(const std::vector<int64_t> &values, bool output_nil_for_negative) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (const auto &value : values) {
-    if (value == 0) {
+    if (value < 0 and output_nil_for_negative) {
       result += NilString();
     } else {
       result += Integer(value);

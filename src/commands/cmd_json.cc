@@ -19,14 +19,11 @@
  */
 
 #include <algorithm>
-#include <string>
 
 #include "commander.h"
 #include "commands/command_parser.h"
-#include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
-#include "status.h"
 #include "types/redis_json.h"
 
 namespace redis {

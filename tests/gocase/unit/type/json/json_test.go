@@ -37,6 +37,7 @@ func TestJson(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("JSON.SET and JSON.GET basics", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "JSON.SET", "a").Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y":2} `).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"x":1,"y":2}`)
 

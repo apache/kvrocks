@@ -183,13 +183,15 @@ struct JsonValue {
                                          bool is_object = val.is_object() && !val.empty();
                                          bool is_number = val.is_number() && val.as<double>() != 0;
 
-                                         if (!is_number && !is_array && !is_object) {
+                                         if (is_array)
+                                           val = jsoncons::json::array();
+                                         else if (is_object)
+                                           val = jsoncons::json::object();
+                                         else if (is_number)
+                                           val = 0;
+                                         else
                                            return;
-                                         }
 
-                                         if (is_array) val = jsoncons::json::array();
-                                         if (is_object) val = jsoncons::json::object();
-                                         if (is_number) val = 0;
                                          cleared_count++;
                                        });
 

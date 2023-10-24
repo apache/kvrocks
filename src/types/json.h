@@ -20,11 +20,13 @@
 
 #pragma once
 
+#include <iostream>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
+#include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
 
 #include "status.h"
@@ -168,6 +170,30 @@ struct JsonValue {
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
+  Status Merge(const std::string_view path, const std::string &value_str) {
+    try {
+        jsoncons::json patch_value = jsoncons::json::parse(value_str);
+
+        std::cout<<"patch_value\t"<<patch_value<<"\n";
+
+        // TODO:: Add support for the specific patch
+
+        auto patch =jsoncons::mergepatch::from_diff(this->value, patch_value);
+
+        std::cout << "patch\t" << patch<< "\n";
+
+        jsoncons::mergepatch::apply_merge_patch(this->value, patch);
+        std::cout << "updated value\t" << this->value << "\n";
+    }
+    catch (const jsoncons::jsonpath::jsonpath_error &e) {
+        return {Status::NotOK, e.what()};
+    }
+    catch (const jsoncons::ser_error &e) {
+        return {Status::NotOK, e.what()};
     }
     return Status::OK();
   }

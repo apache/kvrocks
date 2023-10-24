@@ -656,13 +656,13 @@ TEST_F(RedisJsonTest, NumMultBy) {
 
 TEST_F(RedisJsonTest, StrAppend) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, "$.a", "ba", append_cnt_).ok());
+  ASSERT_TRUE(json_->StrAppend(key_, "$.a", "be", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 1);
   ASSERT_EQ(append_cnt_[0], 5);
 
   append_cnt_.clear();
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
-  ASSERT_TRUE(json_->StrAppend(key_, "$..a", "ba", append_cnt_).ok());
+  ASSERT_TRUE(json_->StrAppend(key_, "$..a", "be", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
   int64_t result1[] = {5, 7, -1};
   for (int i = 0; i < 3; ++i) {

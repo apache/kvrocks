@@ -163,4 +163,22 @@ rocksdb::Status Json::Type(const std::string &user_key, const std::string &path,
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path, const std::string &value) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonMetadata metadata;
+  JsonValue json_val;
+
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  std::cout<<*json_val.Dump()<<"\n";
+  auto res = json_val.Merge(path, value);
+  if (!res.OK()) return s;
+
+  return write(ns_key, &metadata, json_val);
+}
+
 }  // namespace redis

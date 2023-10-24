@@ -153,7 +153,7 @@ class CommandJsonClear : public Commander {
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     redis::Json json(svr->storage, conn->GetNamespace());
 
-    int result = 0;
+    size_t result = 0;
 
     // If path not specified set it to $
     std::string path = (args_.size() > 2) ? args_[2] : "$";

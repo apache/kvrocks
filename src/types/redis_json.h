@@ -48,6 +48,8 @@ class Json : public Database {
                           std::vector<std::optional<std::vector<std::string>>> &keys);
   rocksdb::Status ArrPop(const std::string &user_key, const std::string &path, int64_t index,
                          std::vector<std::optional<JsonValue>> *results);
+  rocksdb::Status ArrIndex(const std::string &user_key, const std::string &path, const std::string &needle,
+                           ssize_t start, ssize_t end, std::vector<ssize_t> *result);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

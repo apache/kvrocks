@@ -320,6 +320,64 @@ class CommandJsonArrPop : public Commander {
   int64_t index_ = -1;
 };
 
+class CommanderJsonArrIndex : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4 || args.size() > 6) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+    start_ = 0;
+    end_ = std::numeric_limits<ssize_t>::max();
+
+    if (args.size() > 4) {
+      auto parse_start = ParseInt<ssize_t>(args[4], 10);
+      if (parse_start.IsOK()) {
+        start_ = parse_start.GetValue();
+      } else {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+    }
+    if (args.size() > 5) {
+      auto parse_end = ParseInt<ssize_t>(args[5], 10);
+      if (parse_end.IsOK()) {
+        end_ = parse_end.GetValue();
+      } else {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<ssize_t> result;
+
+    auto s = json.ArrIndex(args_[1], args_[2], args_[3], start_, end_, &result);
+
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(result.size());
+    for (const auto &found_index : result) {
+      if (found_index == NOT_ARRAY) {
+        *output += redis::NilString();
+        continue;
+      }
+      *output += redis::Integer(found_index);
+    }
+    return Status::OK();
+  }
+
+ private:
+  ssize_t start_;
+  ssize_t end_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -329,5 +387,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1), );
+
 }  // namespace redis

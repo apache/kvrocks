@@ -38,6 +38,7 @@ class Json : public Database {
   rocksdb::Status Type(const std::string &user_key, const std::string &path, std::vector<std::string> *results);
   rocksdb::Status ArrAppend(const std::string &user_key, const std::string &path,
                             const std::vector<std::string> &values, std::vector<size_t> *result_count);
+  rocksdb::Status Merge(const std::string &user_key, const std::string &path, const std::string &value);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

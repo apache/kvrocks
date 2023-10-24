@@ -169,7 +169,8 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return Status::OK();
+    
+    return types;
   }
 
   StatusOr<size_t> Clear(std::string_view path) {

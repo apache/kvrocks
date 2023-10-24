@@ -34,18 +34,6 @@ std::string BulkString(const std::string &data) { return "$" + std::to_string(da
 
 std::string NilString() { return "$-1" CRLF; }
 
-std::string IntegerArray(const std::vector<int64_t> &values, bool output_nil_for_negative) {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
-  for (const auto &value : values) {
-    if (value < 0 and output_nil_for_negative) {
-      result += NilString();
-    } else {
-      result += Integer(value);
-    }
-  }
-  return result;
-}
-
 std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (const auto &value : values) {

@@ -36,7 +36,7 @@ class RedisJsonTest : public TestBase {
 
   std::unique_ptr<redis::Json> json_;
   JsonValue json_val_;
-  std::vector<int64_t> append_cnt_;
+  std::vector<uint64_t> append_cnt_;
 };
 
 using ::testing::MatchesRegex;

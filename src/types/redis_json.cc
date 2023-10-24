@@ -459,7 +459,7 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
 }
 
 rocksdb::Status Json::StrAppend(const std::string &user_key, const std::string &path, const std::string &value,
-                                std::vector<int64_t> &append_cnt) {
+                                std::vector<uint64_t> &append_cnt) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -495,7 +495,7 @@ rocksdb::Status Json::StrAppend(const std::string &user_key, const std::string &
   return write(ns_key, &metadata, json_val);
 }
 
-rocksdb::Status Json::StrLen(const std::string &user_key, const std::string &path, std::vector<int64_t> &str_lens) {
+rocksdb::Status Json::StrLen(const std::string &user_key, const std::string &path, std::vector<uint64_t> &str_lens) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   std::string bytes;

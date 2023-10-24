@@ -545,12 +545,24 @@ class CommandJsonStrAppend : public Commander {
     if (args_.size() == 4) {
       path = args_[2];
     }
-    std::vector<int64_t> results;
+    std::vector<uint64_t> results;
     auto s = json.StrAppend(args_[1], path, args_[3], results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::IntegerArray(results);
+    *output = IntegerArray(results);
     return Status::OK();
+  }
+
+  static std::string IntegerArray(const std::vector<uint64_t> &values, bool output_nil_for_negative = true) {
+    std::string result = "*" + std::to_string(values.size()) + CRLF;
+    for (const auto &value : values) {
+      if (value == (uint64_t)-1 and output_nil_for_negative) {
+        result += NilString();
+      } else {
+        result += Integer(value);
+      }
+    }
+    return result;
   }
 };
 
@@ -563,16 +575,16 @@ class CommandJsonStrLen : public Commander {
     if (args_.size() == 3) {
       path = args_[2];
     }
-    std::vector<int64_t> results;
+    std::vector<uint64_t> results;
     auto s = json.StrLen(args_[1], path, results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::IntegerArray(results);
+    *output = CommandJsonStrAppend::IntegerArray(results);
     return Status::OK();
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", -3, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),

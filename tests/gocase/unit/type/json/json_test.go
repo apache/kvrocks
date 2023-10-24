@@ -130,4 +130,26 @@ func TestJson(t *testing.T) {
 		_, err = rdb.Do(ctx, "JSON.TYPE", "not_exists", "$").StringSlice()
 		require.EqualError(t, err, redis.Nil.Error())
 	})
+
+	t.Run("Clear JSON values", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.CLEAR", "bb", "$").Err())
+		require.Equal(t, `{}`, rdb.Do(ctx, "JSON.GET", "bb").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.CLEAR", "bb", "$.obj").Err())
+		require.Equal(t, `{"arr":[1,2,3],"bool":true,"float":3.14,"int":42,"obj":{},"str":"foo"}`, rdb.Do(ctx, "JSON.GET", "bb").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.CLEAR", "bb", "$.arr").Err())
+		require.Equal(t, `{"arr":[],"bool":true,"float":3.14,"int":42,"obj":{},"str":"foo"}`, rdb.Do(ctx, "JSON.GET", "bb").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.CLEAR", "bb", "$.*").Err())
+		require.Equal(t, `{"arr":[],"bool":true,"float":0,"int":0,"obj":{},"str":"foo"}`, rdb.Do(ctx, "JSON.GET", "bb").Val())
+
+		_, err := rdb.Do(ctx, "JSON.CLEAR", "bb", "$.some").Result()
+		require.NoError(t, err)
+	})
+
 }

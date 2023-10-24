@@ -172,6 +172,36 @@ struct JsonValue {
     return Status::OK();
   }
 
+  Status Clear(std::string_view path, int *result) {
+    try {
+      int cleared_count = 0;
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&cleared_count](const std::string &
+                                                        /*path*/,
+                                                        jsoncons::json &val) {
+                                         bool is_array = val.is_array() && !val.empty();
+                                         bool is_object = val.is_object() && !val.empty();
+                                         bool is_number = val.is_number() && val.as<double>() != 0;
+
+                                         if (is_array)
+                                           val = jsoncons::json::array();
+                                         else if (is_object)
+                                           val = jsoncons::json::object();
+                                         else if (is_number)
+                                           val = 0;
+                                         else
+                                           return;
+
+                                         cleared_count++;
+                                       });
+
+      *result = cleared_count;
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
   JsonValue(const JsonValue &) = default;
   JsonValue(JsonValue &&) = default;
 

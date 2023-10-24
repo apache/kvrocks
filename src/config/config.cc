@@ -105,7 +105,7 @@ Config::Config() {
       {"tls-session-cache-timeout", false, new IntField(&tls_session_cache_timeout, 300, 0, INT_MAX)},
       {"tls-replication", true, new YesNoField(&tls_replication, false)},
 #endif
-      {"workers", true, new IntField(&workers, 8, 1, 256)},
+      {"workers", false, new IntField(&workers, 8, 1, 256)},
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
@@ -359,296 +359,302 @@ void Config::initFieldCallback() {
   };
 #endif
 
-  std::map<std::string, CallbackFn> callbacks = {
-      {"dir",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         db_dir = dir + "/db";
-         {
-           std::lock_guard<std::mutex> lg(this->backup_mu);
-           if (backup_dir.empty()) {
-             backup_dir = dir + "/backup";
-           }
-         }
-         if (log_dir.empty()) log_dir = dir;
-         checkpoint_dir = dir + "/checkpoint";
-         sync_checkpoint_dir = dir + "/sync_checkpoint";
-         backup_sync_dir = dir + "/backup_for_sync";
-         return Status::OK();
-       }},
-      {"backup-dir",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         std::string previous_backup;
-         {
-           // Note: currently, backup_mu_ may block by backing up or purging,
-           //  the command may wait for seconds.
-           std::lock_guard<std::mutex> lg(this->backup_mu);
-           previous_backup = std::move(backup_dir);
-           backup_dir = v;
-         }
-         if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
-           // LOG(INFO) should be called after log is initialized and server is loaded.
-           LOG(INFO) << "change backup dir from " << previous_backup << " to " << v;
-         }
-         return Status::OK();
-       }},
-      {"cluster-enabled",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (cluster_enabled) slot_id_encoded = true;
-         return Status::OK();
-       }},
-      {"bind",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> args = util::Split(v, " \t");
-         binds = std::move(args);
-         return Status::OK();
-       }},
-      {"maxclients",
-       [](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         srv->AdjustOpenFilesLimit();
-         return Status::OK();
-       }},
-      {"slaveof",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (v.empty()) {
-           return Status::OK();
-         }
-         std::vector<std::string> args = util::Split(v, " \t");
-         if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
-         if (args[0] != "no" && args[1] != "one") {
-           master_host = args[0];
-           auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
-           if (!parse_result) {
-             return {Status::NotOK, "should be between 0 and 65535"};
-           }
-           master_port = *parse_result;
-         }
-         return Status::OK();
-       }},
-      {"profiling-sample-commands",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         std::vector<std::string> cmds = util::Split(v, ",");
-         profiling_sample_all_commands = false;
-         profiling_sample_commands.clear();
-         for (auto const &cmd : cmds) {
-           if (cmd == "*") {
-             profiling_sample_all_commands = true;
-             profiling_sample_commands.clear();
+  std::map<std::string, CallbackFn> callbacks =
+      {
+          {"workers",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             return srv->AdjustWorkerThreads();
+           }},
+          {"dir",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             db_dir = dir + "/db";
+             {
+               std::lock_guard<std::mutex> lg(this->backup_mu);
+               if (backup_dir.empty()) {
+                 backup_dir = dir + "/backup";
+               }
+             }
+             if (log_dir.empty()) log_dir = dir;
+             checkpoint_dir = dir + "/checkpoint";
+             sync_checkpoint_dir = dir + "/sync_checkpoint";
+             backup_sync_dir = dir + "/backup_for_sync";
              return Status::OK();
-           }
-           if (!redis::CommandTable::IsExists(cmd)) {
-             return {Status::NotOK, cmd + " is not Kvrocks supported command"};
-           }
-           // profiling_sample_commands use command's original name, regardless of rename-command directive
-           profiling_sample_commands.insert(cmd);
-         }
-         return Status::OK();
-       }},
-      {"slowlog-max-len",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         srv->GetSlowLog()->SetMaxEntries(slowlog_max_len);
-         return Status::OK();
-       }},
-      {"max-db-size",
-       [](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         srv->storage->CheckDBSizeLimit();
-         return Status::OK();
-       }},
-      {"max-io-mb",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         srv->storage->SetIORateLimit(max_io_mb);
-         return Status::OK();
-       }},
-      {"profiling-sample-record-max-len",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
-         return Status::OK();
-       }},
-      {"migrate-speed",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrator->SetMaxMigrationSpeed(migrate_speed);
-         return Status::OK();
-       }},
-      {"migrate-pipeline-size",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrator->SetMaxPipelineSize(pipeline_size);
-         return Status::OK();
-       }},
-      {"migrate-sequence-gap",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
-         return Status::OK();
-       }},
-      {"log-level",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         FLAGS_minloglevel = log_level;
-         return Status::OK();
-       }},
-      {"log-retention-days",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (util::ToLower(log_dir) == "stdout") {
-           return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
-         }
+           }},
+          {"backup-dir",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             std::string previous_backup;
+             {
+               // Note: currently, backup_mu_ may block by backing up or purging,
+               //  the command may wait for seconds.
+               std::lock_guard<std::mutex> lg(this->backup_mu);
+               previous_backup = std::move(backup_dir);
+               backup_dir = v;
+             }
+             if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
+               // LOG(INFO) should be called after log is initialized and server is loaded.
+               LOG(INFO) << "change backup dir from " << previous_backup << " to " << v;
+             }
+             return Status::OK();
+           }},
+          {"cluster-enabled",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (cluster_enabled) slot_id_encoded = true;
+             return Status::OK();
+           }},
+          {"bind",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             std::vector<std::string> args = util::Split(v, " \t");
+             binds = std::move(args);
+             return Status::OK();
+           }},
+          {"maxclients",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->AdjustOpenFilesLimit();
+             return Status::OK();
+           }},
+          {"slaveof",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (v.empty()) {
+               return Status::OK();
+             }
+             std::vector<std::string> args = util::Split(v, " \t");
+             if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
+             if (args[0] != "no" && args[1] != "one") {
+               master_host = args[0];
+               auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
+               if (!parse_result) {
+                 return {Status::NotOK, "should be between 0 and 65535"};
+               }
+               master_port = *parse_result;
+             }
+             return Status::OK();
+           }},
+          {"profiling-sample-commands",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             std::vector<std::string> cmds = util::Split(v, ",");
+             profiling_sample_all_commands = false;
+             profiling_sample_commands.clear();
+             for (auto const &cmd : cmds) {
+               if (cmd == "*") {
+                 profiling_sample_all_commands = true;
+                 profiling_sample_commands.clear();
+                 return Status::OK();
+               }
+               if (!redis::CommandTable::IsExists(cmd)) {
+                 return {Status::NotOK, cmd + " is not Kvrocks supported command"};
+               }
+               // profiling_sample_commands use command's original name, regardless of rename-command directive
+               profiling_sample_commands.insert(cmd);
+             }
+             return Status::OK();
+           }},
+          {"slowlog-max-len",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->GetSlowLog()->SetMaxEntries(slowlog_max_len);
+             return Status::OK();
+           }},
+          {"max-db-size",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->storage->CheckDBSizeLimit();
+             return Status::OK();
+           }},
+          {"max-io-mb",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->storage->SetIORateLimit(max_io_mb);
+             return Status::OK();
+           }},
+          {"profiling-sample-record-max-len",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
+             return Status::OK();
+           }},
+          {"migrate-speed",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (cluster_enabled) srv->slot_migrator->SetMaxMigrationSpeed(migrate_speed);
+             return Status::OK();
+           }},
+          {"migrate-pipeline-size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (cluster_enabled) srv->slot_migrator->SetMaxPipelineSize(pipeline_size);
+             return Status::OK();
+           }},
+          {"migrate-sequence-gap",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
+             return Status::OK();
+           }},
+          {"log-level",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             FLAGS_minloglevel = log_level;
+             return Status::OK();
+           }},
+          {"log-retention-days",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (util::ToLower(log_dir) == "stdout") {
+               return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
+             }
 
-         if (log_retention_days != -1) {
-           google::EnableLogCleaner(log_retention_days);
-         } else {
-           google::DisableLogCleaner();
-         }
-         return Status::OK();
-       }},
-      {"persist-cluster-nodes-enabled",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv || !cluster_enabled) return Status::OK();
-         auto nodes_file_path = NodesFilePath();
-         if (v == "yes") {
-           return srv->cluster->DumpClusterNodes(nodes_file_path);
-         }
-         // Remove the cluster nodes file to avoid stale cluster nodes info
-         remove(nodes_file_path.data());
-         return Status::OK();
-       }},
-      {"repl-namespace-enabled",
-       [](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         return srv->GetNamespace()->LoadAndRewrite();
-       }},
+             if (log_retention_days != -1) {
+               google::EnableLogCleaner(log_retention_days);
+             } else {
+               google::DisableLogCleaner();
+             }
+             return Status::OK();
+           }},
+          {"persist-cluster-nodes-enabled",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv || !cluster_enabled) return Status::OK();
+             auto nodes_file_path = NodesFilePath();
+             if (v == "yes") {
+               return srv->cluster->DumpClusterNodes(nodes_file_path);
+             }
+             // Remove the cluster nodes file to avoid stale cluster nodes info
+             remove(nodes_file_path.data());
+             return Status::OK();
+           }},
+          {"repl-namespace-enabled",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             return srv->GetNamespace()->LoadAndRewrite();
+           }},
 
-      {"rocksdb.target_file_size_base",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
-                                                            std::to_string(rocks_db.target_file_size_base * MiB));
-       }},
-      {"rocksdb.write_buffer_size",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
-                                                            std::to_string(rocks_db.write_buffer_size * MiB));
-       }},
-      {"rocksdb.disable_auto_compactions",
-       [](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         std::string disable_auto_compactions = v == "yes" ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), disable_auto_compactions);
-       }},
-      {"rocksdb.max_total_wal_size",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         return srv->storage->SetDBOption(TrimRocksDbPrefix(k), std::to_string(rocks_db.max_total_wal_size * MiB));
-       }},
-      {"rocksdb.enable_blob_files",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         std::string enable_blob_files = rocks_db.enable_blob_files ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_files);
-       }},
-      {"rocksdb.min_blob_size",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.enable_blob_files) {
-           return {Status::NotOK, errBlobDbNotEnabled};
-         }
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
-       }},
-      {"rocksdb.blob_file_size",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.enable_blob_files) {
-           return {Status::NotOK, errBlobDbNotEnabled};
-         }
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
-                                                            std::to_string(rocks_db.blob_file_size));
-       }},
-      {"rocksdb.enable_blob_garbage_collection",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.enable_blob_files) {
-           return {Status::NotOK, errBlobDbNotEnabled};
-         }
-         std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_garbage_collection);
-       }},
-      {"rocksdb.blob_garbage_collection_age_cutoff",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.enable_blob_files) {
-           return {Status::NotOK, errBlobDbNotEnabled};
-         }
-         int val = 0;
-         auto parse_result = ParseInt<int>(v, 10);
-         if (!parse_result) {
-           return {Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value."};
-         }
-         val = *parse_result;
-         if (val < 0 || val > 100) {
-           return {Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100."};
-         }
+          {"rocksdb.target_file_size_base",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
+                                                                std::to_string(rocks_db.target_file_size_base * MiB));
+           }},
+          {"rocksdb.write_buffer_size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
+                                                                std::to_string(rocks_db.write_buffer_size * MiB));
+           }},
+          {"rocksdb.disable_auto_compactions",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             std::string disable_auto_compactions = v == "yes" ? "true" : "false";
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), disable_auto_compactions);
+           }},
+          {"rocksdb.max_total_wal_size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             return srv->storage->SetDBOption(TrimRocksDbPrefix(k), std::to_string(rocks_db.max_total_wal_size * MiB));
+           }},
+          {"rocksdb.enable_blob_files",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             std::string enable_blob_files = rocks_db.enable_blob_files ? "true" : "false";
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_files);
+           }},
+          {"rocksdb.min_blob_size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.enable_blob_files) {
+               return {Status::NotOK, errBlobDbNotEnabled};
+             }
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
+           }},
+          {"rocksdb.blob_file_size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.enable_blob_files) {
+               return {Status::NotOK, errBlobDbNotEnabled};
+             }
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
+                                                                std::to_string(rocks_db.blob_file_size));
+           }},
+          {"rocksdb.enable_blob_garbage_collection",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.enable_blob_files) {
+               return {Status::NotOK, errBlobDbNotEnabled};
+             }
+             std::string enable_blob_garbage_collection = v == "yes" ? "true" : "false";
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), enable_blob_garbage_collection);
+           }},
+          {"rocksdb.blob_garbage_collection_age_cutoff",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.enable_blob_files) {
+               return {Status::NotOK, errBlobDbNotEnabled};
+             }
+             int val = 0;
+             auto parse_result = ParseInt<int>(v, 10);
+             if (!parse_result) {
+               return {Status::NotOK, "Illegal blob_garbage_collection_age_cutoff value."};
+             }
+             val = *parse_result;
+             if (val < 0 || val > 100) {
+               return {Status::NotOK, "blob_garbage_collection_age_cutoff must >= 0 and <= 100."};
+             }
 
-         double cutoff = val / 100.0;
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), std::to_string(cutoff));
-       }},
-      {"rocksdb.level_compaction_dynamic_level_bytes",
-       [](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
-         return srv->storage->SetDBOption(TrimRocksDbPrefix(k), level_compaction_dynamic_level_bytes);
-       }},
-      {"rocksdb.max_bytes_for_level_base",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.level_compaction_dynamic_level_bytes) {
-           return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
-         }
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
-                                                            std::to_string(rocks_db.max_bytes_for_level_base));
-       }},
-      {"rocksdb.max_bytes_for_level_multiplier",
-       [this](Server *srv, const std::string &k, const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (!rocks_db.level_compaction_dynamic_level_bytes) {
-           return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
-         }
-         return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
-       }},
-      {"rocksdb.max_open_files", set_db_option_cb},
-      {"rocksdb.stats_dump_period_sec", set_db_option_cb},
-      {"rocksdb.delayed_write_rate", set_db_option_cb},
-      {"rocksdb.max_background_compactions", set_db_option_cb},
-      {"rocksdb.max_background_flushes", set_db_option_cb},
-      {"rocksdb.compaction_readahead_size", set_db_option_cb},
-      {"rocksdb.max_background_jobs", set_db_option_cb},
+             double cutoff = val / 100.0;
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), std::to_string(cutoff));
+           }},
+          {"rocksdb.level_compaction_dynamic_level_bytes",
+           [](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             std::string level_compaction_dynamic_level_bytes = v == "yes" ? "true" : "false";
+             return srv->storage->SetDBOption(TrimRocksDbPrefix(k), level_compaction_dynamic_level_bytes);
+           }},
+          {"rocksdb.max_bytes_for_level_base",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.level_compaction_dynamic_level_bytes) {
+               return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
+             }
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k),
+                                                                std::to_string(rocks_db.max_bytes_for_level_base));
+           }},
+          {"rocksdb.max_bytes_for_level_multiplier",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             if (!rocks_db.level_compaction_dynamic_level_bytes) {
+               return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
+             }
+             return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
+           }},
+          {"rocksdb.max_open_files", set_db_option_cb},
+          {"rocksdb.stats_dump_period_sec", set_db_option_cb},
+          {"rocksdb.delayed_write_rate", set_db_option_cb},
+          {"rocksdb.max_background_compactions", set_db_option_cb},
+          {"rocksdb.max_background_flushes", set_db_option_cb},
+          {"rocksdb.compaction_readahead_size", set_db_option_cb},
+          {"rocksdb.max_background_jobs", set_db_option_cb},
 
-      {"rocksdb.max_write_buffer_number", set_cf_option_cb},
-      {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
-      {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
-      {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
-      {"rocksdb.compression", set_compression_type_cb},
+          {"rocksdb.max_write_buffer_number", set_cf_option_cb},
+          {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
+          {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
+          {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
+          {"rocksdb.compression", set_compression_type_cb},
 #ifdef ENABLE_OPENSSL
-      {"tls-cert-file", set_tls_option},
-      {"tls-key-file", set_tls_option},
-      {"tls-key-file-pass", set_tls_option},
-      {"tls-ca-cert-file", set_tls_option},
-      {"tls-ca-cert-dir", set_tls_option},
-      {"tls-protocols", set_tls_option},
-      {"tls-auth-clients", set_tls_option},
-      {"tls-ciphers", set_tls_option},
-      {"tls-ciphersuites", set_tls_option},
-      {"tls-prefer-server-ciphers", set_tls_option},
-      {"tls-session-caching", set_tls_option},
-      {"tls-session-cache-size", set_tls_option},
-      {"tls-session-cache-timeout", set_tls_option},
+          {"tls-cert-file", set_tls_option},
+          {"tls-key-file", set_tls_option},
+          {"tls-key-file-pass", set_tls_option},
+          {"tls-ca-cert-file", set_tls_option},
+          {"tls-ca-cert-dir", set_tls_option},
+          {"tls-protocols", set_tls_option},
+          {"tls-auth-clients", set_tls_option},
+          {"tls-ciphers", set_tls_option},
+          {"tls-ciphersuites", set_tls_option},
+          {"tls-prefer-server-ciphers", set_tls_option},
+          {"tls-session-caching", set_tls_option},
+          {"tls-session-cache-size", set_tls_option},
+          {"tls-session-cache-timeout", set_tls_option},
 #endif
-  };
+      };
   for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);
     if (field_iter != fields_.end()) {

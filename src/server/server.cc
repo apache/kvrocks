@@ -1680,6 +1680,60 @@ void Server::AdjustOpenFilesLimit() {
   }
 }
 
+Status Server::AdjustWorkerThreads() {
+  auto new_worker_threads = static_cast<size_t>(config_->workers);
+  size_t delta = 0;
+  if (new_worker_threads > worker_threads_.size()) {
+    delta = new_worker_threads - worker_threads_.size();
+  } else {
+    delta = worker_threads_.size() - new_worker_threads;
+  }
+  if (delta == 0) return Status::OK();
+
+  if (delta > 0) {
+    increaseWorkerThreads(delta);
+    LOG(INFO) << "[server] Increase worker threads to " << new_worker_threads;
+    return Status::OK();
+  }
+  LOG(INFO) << "[server] Decrease worker threads to " << new_worker_threads;
+  return decreaseWorkerThreads(-delta);
+}
+
+void Server::increaseWorkerThreads(size_t delta) {
+  std::vector<std::unique_ptr<WorkerThread>> new_threads;
+  for (size_t i = 0; i < delta; i++) {
+    auto worker = std::make_unique<Worker>(this, config_);
+    auto worker_thread = std::make_unique<WorkerThread>(std::move(worker));
+    worker_thread->Start();
+    worker_threads_.emplace_back(std::move(worker_thread));
+  }
+}
+
+Status Server::decreaseWorkerThreads(size_t delta) {
+  auto remain_num = worker_threads_.size() - delta;
+  std::vector<std::unique_ptr<WorkerThread>> old_threads;
+  for (size_t i = remain_num; i < worker_threads_.size(); i++) {
+    // Unix socket will be listening on the first worker,
+    // so it MUST remove workers from the end of the vector.
+    // Otherwise, the unix socket will be closed.
+    auto worker_thread = std::move(worker_threads_.back());
+    // Migrate connections to other workers before stopping the worker,
+    // we use round-robin to choose the target worker here.
+    auto connections = worker_thread->GetWorker()->GetConnections();
+    for (const auto &iter : connections) {
+      auto target_worker = worker_threads_[iter.first % remain_num]->GetWorker();
+      worker_thread->GetWorker()->MigrateConnection(target_worker, iter.second);
+    }
+
+    worker_threads_.pop_back();
+    old_threads.emplace_back(std::move(worker_thread));
+  }
+  for (auto &t : old_threads) {
+    t->Stop();
+  }
+  return Status::OK();
+}
+
 std::string ServerLogData::Encode() const {
   if (type_ == kReplIdLog) {
     return std::string(1, kReplIdTag) + " " + content_;

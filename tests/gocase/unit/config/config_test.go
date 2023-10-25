@@ -25,10 +25,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -140,4 +142,39 @@ func TestStartWithoutConfigurationFile(t *testing.T) {
 
 	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
 	require.Equal(t, "bar", rdb.Do(ctx, "GET", "foo").Val())
+}
+
+func TestDynamicChangeWorkerThread(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		MaxRetries: -1, // Disable retry to check connections are alive after config change
+	})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	runCommands := func() {
+		var wg sync.WaitGroup
+		for i := 0; i < 1; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := 0; j < 10; j++ {
+					require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
+				}
+			}()
+		}
+		wg.Wait()
+	}
+	runCommands()
+
+	// Reduce worker threads to 1
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "1").Err())
+	runCommands()
+
+	// Reduce worker threads to 8
+	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "8").Err())
+	runCommands()
 }

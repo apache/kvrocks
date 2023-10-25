@@ -232,10 +232,6 @@ void Server::Stop() {
 }
 
 void Server::Join() {
-  for (const auto &worker : worker_threads_) {
-    worker->Join();
-  }
-
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
     LOG(WARNING) << "Cron thread operation failed: " << s.Msg();
   }
@@ -244,6 +240,9 @@ void Server::Join() {
   }
   if (auto s = task_runner_.Join(); !s) {
     LOG(WARNING) << s.Msg();
+  }
+  for (const auto &worker : worker_threads_) {
+    worker->Join();
   }
 }
 
@@ -745,6 +744,12 @@ void Server::cron() {
       storage->GetDB()->Resume();
       LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
       storage->SetDBInRetryableIOError(false);
+    }
+
+    while (!recycle_worker_threads_.empty()) {
+      auto worker_thread = std::move(recycle_worker_threads_.back());
+      worker_thread->Join();
+      recycle_worker_threads_.pop_back();
     }
 
     CleanupExitedSlaves();
@@ -1682,21 +1687,20 @@ void Server::AdjustOpenFilesLimit() {
 
 Status Server::AdjustWorkerThreads() {
   auto new_worker_threads = static_cast<size_t>(config_->workers);
+  if (new_worker_threads == worker_threads_.size()) {
+    return Status::OK();
+  }
   size_t delta = 0;
   if (new_worker_threads > worker_threads_.size()) {
     delta = new_worker_threads - worker_threads_.size();
-  } else {
-    delta = worker_threads_.size() - new_worker_threads;
-  }
-  if (delta == 0) return Status::OK();
-
-  if (delta > 0) {
     increaseWorkerThreads(delta);
     LOG(INFO) << "[server] Increase worker threads to " << new_worker_threads;
     return Status::OK();
   }
+
+  delta = worker_threads_.size() - new_worker_threads;
   LOG(INFO) << "[server] Decrease worker threads to " << new_worker_threads;
-  return decreaseWorkerThreads(-delta);
+  return decreaseWorkerThreads(delta);
 }
 
 void Server::increaseWorkerThreads(size_t delta) {
@@ -1711,12 +1715,13 @@ void Server::increaseWorkerThreads(size_t delta) {
 
 Status Server::decreaseWorkerThreads(size_t delta) {
   auto remain_num = worker_threads_.size() - delta;
-  std::vector<std::unique_ptr<WorkerThread>> old_threads;
+
   for (size_t i = remain_num; i < worker_threads_.size(); i++) {
     // Unix socket will be listening on the first worker,
     // so it MUST remove workers from the end of the vector.
     // Otherwise, the unix socket will be closed.
     auto worker_thread = std::move(worker_threads_.back());
+    worker_threads_.pop_back();
     // Migrate connections to other workers before stopping the worker,
     // we use round-robin to choose the target worker here.
     auto connections = worker_thread->GetWorker()->GetConnections();
@@ -1724,12 +1729,9 @@ Status Server::decreaseWorkerThreads(size_t delta) {
       auto target_worker = worker_threads_[iter.first % remain_num]->GetWorker();
       worker_thread->GetWorker()->MigrateConnection(target_worker, iter.second);
     }
-
-    worker_threads_.pop_back();
-    old_threads.emplace_back(std::move(worker_thread));
-  }
-  for (auto &t : old_threads) {
-    t->Stop();
+    worker_thread->Stop();
+    // Don't join the worker thread here, because it may join itself.
+    recycle_worker_threads_.emplace_back(std::move(worker_thread));
   }
   return Status::OK();
 }

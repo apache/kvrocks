@@ -355,7 +355,7 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   auto bev = conn->GetBufferEvent();
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
-  bufferevent_enable(bev, EV_READ);
+  bufferevent_enable(bev, EV_READ | EV_WRITE);
   conn->SetOwner(target);
   // TODO: the connection may be blocked on list or stream, need to unblock it
 }

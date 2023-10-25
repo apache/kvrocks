@@ -198,6 +198,23 @@ struct JsonValue {
     return count;
   }
 
+  Status ArrLen(std::string_view path, std::vector<uint64_t> &arr_lens) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&arr_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                       if (basic_json.is_array()) {
+                                         arr_lens.push_back(static_cast<int64_t>(basic_json.size()));
+                                       } else {
+                                         arr_lens.push_back(-1);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return Status::OK();
+  }
+
   JsonValue(const JsonValue &) = default;
   JsonValue(JsonValue &&) = default;
 

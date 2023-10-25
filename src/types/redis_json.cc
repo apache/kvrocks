@@ -187,4 +187,34 @@ rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path
 
   return write(ns_key, &metadata, json_val);
 }
+
+rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &path, std::vector<uint64_t> &arr_lens) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  std::string bytes;
+  JsonMetadata metadata;
+  Slice rest;
+
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  if (!s.ok()) {
+    return s;
+  }
+
+  if (metadata.format != JsonStorageFormat::JSON) {
+    return rocksdb::Status::NotSupported("JSON storage format not supported");
+  }
+
+  auto json_res = JsonValue::FromString(rest.ToStringView());
+  if (!json_res) {
+    return rocksdb::Status::Corruption(json_res.Msg());
+  }
+
+  auto json_val = *std::move(json_res);
+  auto append_res = json_val.ArrLen(path, arr_lens);
+  if (!append_res) {
+    return rocksdb::Status::InvalidArgument(append_res.Msg());
+  }
+
+  return rocksdb::Status::OK();
+}
 }  // namespace redis

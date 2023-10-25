@@ -39,6 +39,7 @@ class Json : public Database {
   rocksdb::Status ArrAppend(const std::string &user_key, const std::string &path,
                             const std::vector<std::string> &values, std::vector<size_t> *result_count);
   rocksdb::Status Clear(const std::string &user_key, const std::string &path, size_t *result);
+  rocksdb::Status ArrLen(const std::string &user_key, const std::string &path, std::vector<uint64_t> &arr_lens);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

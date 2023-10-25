@@ -152,4 +152,36 @@ func TestJson(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("JSON.ARRLEN basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"s":"string","o":{"a3":[1,1,1]}}`).Err())
+
+		lens, err := rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a1").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{2})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{3})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2[0]").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{3})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.i").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{-1})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.s").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{-1})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{-1})
+
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o.a3").Int64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, lens, []int64{3})
+	})
+
 }

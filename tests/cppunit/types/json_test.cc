@@ -183,7 +183,7 @@ TEST_F(RedisJsonTest, ArrAppend) {
 }
 
 TEST_F(RedisJsonTest, Clear) {
-  int result = 0;
+  size_t result = 0;
 
   ASSERT_TRUE(
       json_

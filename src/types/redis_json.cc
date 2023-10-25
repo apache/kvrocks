@@ -159,11 +159,14 @@ rocksdb::Status Json::Type(const std::string &user_key, const std::string &path,
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto res = json_val.Type(path, results);
+  auto res = json_val.Type(path);
+  if (!res) return rocksdb::Status::InvalidArgument(res.Msg());
+
+  *results = *res;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path, int *result) {
+rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path, size_t *result) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -174,9 +177,10 @@ rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path
 
   if (!s.ok()) return s;
 
-  auto res = json_val.Clear(path, result);
-  if (!res.OK()) return s;
+  auto res = json_val.Clear(path);
+  if (!res) return rocksdb::Status::InvalidArgument(res.Msg());
 
+  *result = *res;
   if (*result == 0) {
     return rocksdb::Status::OK();
   }

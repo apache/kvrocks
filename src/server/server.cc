@@ -746,10 +746,12 @@ void Server::cron() {
       storage->SetDBInRetryableIOError(false);
     }
 
-    while (!recycle_worker_threads_.empty()) {
-      auto worker_thread = std::move(recycle_worker_threads_.back());
-      worker_thread->Join();
-      recycle_worker_threads_.pop_back();
+    if (counter != 0 && counter % 10 == 0) {
+      std::unique_ptr<WorkerThread> worker_thread = nullptr;
+      while (recycle_worker_threads_.try_pop(worker_thread)) {
+        worker_thread->Join();
+        worker_thread.reset();
+      }
     }
 
     CleanupExitedSlaves();
@@ -1714,9 +1716,9 @@ void Server::increaseWorkerThreads(size_t delta) {
 }
 
 Status Server::decreaseWorkerThreads(size_t delta) {
-  auto remain_num = worker_threads_.size() - delta;
-
-  for (size_t i = remain_num; i < worker_threads_.size(); i++) {
+  auto current_worker_threads = worker_threads_.size();
+  auto remain_worker_threads = current_worker_threads - delta;
+  for (size_t i = remain_worker_threads; i < current_worker_threads; i++) {
     // Unix socket will be listening on the first worker,
     // so it MUST remove workers from the end of the vector.
     // Otherwise, the unix socket will be closed.
@@ -1726,12 +1728,12 @@ Status Server::decreaseWorkerThreads(size_t delta) {
     // we use round-robin to choose the target worker here.
     auto connections = worker_thread->GetWorker()->GetConnections();
     for (const auto &iter : connections) {
-      auto target_worker = worker_threads_[iter.first % remain_num]->GetWorker();
+      auto target_worker = worker_threads_[iter.first % remain_worker_threads]->GetWorker();
       worker_thread->GetWorker()->MigrateConnection(target_worker, iter.second);
     }
     worker_thread->Stop();
     // Don't join the worker thread here, because it may join itself.
-    recycle_worker_threads_.emplace_back(std::move(worker_thread));
+    recycle_worker_threads_.push(std::move(worker_thread));
   }
   return Status::OK();
 }

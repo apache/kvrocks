@@ -21,6 +21,7 @@
 #pragma once
 
 #include <inttypes.h>
+#include <tbb/concurrent_vector.h>
 
 #include <array>
 #include <atomic>
@@ -365,7 +366,7 @@ class Server {
   TaskRunner task_runner_;
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
-  std::vector<std::unique_ptr<WorkerThread>> recycle_worker_threads_;
+  tbb::concurrent_queue<std::unique_ptr<WorkerThread>> recycle_worker_threads_;
 
   // memory
   std::atomic<int64_t> memory_startup_use_ = 0;

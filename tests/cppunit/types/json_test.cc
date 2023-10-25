@@ -230,7 +230,7 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_TRUE(
       json_->Set(key_, "$", R"({"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"s":"string","o":{"a3":[1,1,1]}})").ok());
   // 1. simple array
-  std::vector<uint64_t> res;
+  std::vector<std::optional<uint64_t>> res;
   ASSERT_TRUE(json_->ArrLen(key_, "$.a1", res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 2);
@@ -247,16 +247,16 @@ TEST_F(RedisJsonTest, ArrLen) {
   // 3.scaler
   ASSERT_TRUE(json_->ArrLen(key_, "$.i", res).ok());
   ASSERT_EQ(res.size(), 1);
-  ASSERT_EQ(res[0], -1);
+  ASSERT_EQ(res[0], std::nullopt);
   res.clear();
   ASSERT_TRUE(json_->ArrLen(key_, "$.s", res).ok());
   ASSERT_EQ(res.size(), 1);
-  ASSERT_EQ(res[0], -1);
+  ASSERT_EQ(res[0], std::nullopt);
   res.clear();
   // 4. object
   ASSERT_TRUE(json_->ArrLen(key_, "$.o", res).ok());
   ASSERT_EQ(res.size(), 1);
-  ASSERT_EQ(res[0], -1);
+  ASSERT_EQ(res[0], std::nullopt);
   res.clear();
   ASSERT_TRUE(json_->ArrLen(key_, "$.o.a3", res).ok());
   ASSERT_EQ(res.size(), 1);

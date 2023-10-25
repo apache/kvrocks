@@ -183,7 +183,7 @@ class CommandJsonArrLen : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
 
-    std::vector<uint64_t> results;
+    std::vector<std::optional<uint64_t>> results;
     auto s = json.ArrLen(args_[1], path, results);
     if (s.IsNotFound()) {
       *output = redis::NilString();
@@ -192,9 +192,9 @@ class CommandJsonArrLen : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(results.size());
-    for (size_t len : results) {
-      if (len >= 0) {
-        *output += redis::Integer(len);
+    for (const auto &len : results) {
+      if (len.has_value()) {
+        *output += redis::Integer(len.value());
       } else {
         *output += redis::NilString();
       }
@@ -209,6 +209,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonClear>("json.arrlen", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

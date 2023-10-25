@@ -343,7 +343,6 @@ class CommandXGroup : public Commander {
   StreamXGroupCreateOptions xgroup_create_options_;
 };
 
-
 class CommandXLen : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -403,7 +402,7 @@ class CommandXInfo : public Commander {
 
         count_ = *parse_result;
       }
-    } else if(val == "groups" && args.size() >= 3) {
+    } else if (val == "groups" && args.size() >= 3) {
       stream_ = false;
     }
     return Status::OK();
@@ -1109,140 +1108,136 @@ class CommandXSetId : public Commander {
 };
 
 class CommandXReadGroup : public Commander {
-  public:
-    Status Parse(const std::vector<std::string> &args) override {
-      size_t streams_word_idx = 0;
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    size_t streams_word_idx = 0;
 
-      for(size_t i = 1; i< args.size();) {
-        auto arg = util::ToLower(args[i]);
+    for (size_t i = 1; i < args.size();) {
+      auto arg = util::ToLower(args[i]);
 
-        if (arg == "group") {
-          if (i + 2 >= args.size()) {
-            return {Status::RedisParseErr, errInvalidSyntax};
-          }
-          group_name_ = args[i + 1];
-          consumer_name_ = args[i + 2];
-          i += 3;
-          continue;
+      if (arg == "group") {
+        if (i + 2 >= args.size()) {
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
-
-        if (arg == "streams") {
-          streams_word_idx = i;
-          break;
-        }
-
-        if(arg == "count") {
-          if (i + 1 >= args.size()) {
-            return {Status::RedisParseErr, errInvalidSyntax};
-          }
-
-          with_count_ = true;
-
-          auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
-          if (!parse_result) {
-            return {Status::RedisParseErr, errValueNotInteger};
-          }
-
-          count_ = *parse_result;
-          i += 2;
-          continue;
-        }
-
-        if (arg == "block") {
-          if (i + 1 >= args.size()) {
-            return {Status::RedisParseErr, errInvalidSyntax};
-          }
-
-          block_ = true;
-
-          auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
-          if (!parse_result) {
-            return {Status::RedisParseErr, errValueNotInteger};
-          }
-
-          if (*parse_result < 0) {
-            return {Status::RedisParseErr, errTimeoutIsNegative};
-          }
-
-          block_timeout_ = *parse_result;
-          i += 2;
-          continue;
-        }
-
-        ++i;
+        group_name_ = args[i + 1];
+        consumer_name_ = args[i + 2];
+        i += 3;
+        continue;
       }
 
-      if (streams_word_idx == 0) {
-        return {Status::RedisParseErr, errInvalidSyntax};
+      if (arg == "streams") {
+        streams_word_idx = i;
+        break;
       }
 
-      if ((args.size() - streams_word_idx - 1) % 2 != 0) {
-        return {Status::RedisParseErr, errUnbalancedStreamList};
-      }
-
-      size_t number_of_streams = (args.size() - streams_word_idx - 1) / 2;
-
-      for (size_t i = streams_word_idx + 1; i <= streams_word_idx + number_of_streams; ++i) {
-        streams_.push_back(args[i]);
-        const auto &id_str = args[i + number_of_streams];
-        bool get_latest = id_str == ">";
-        latest_marks_.push_back(get_latest);
-        StreamEntryID id;
-        if (!get_latest) {
-          auto s = ParseStreamEntryID(id_str, &id);
-          if (!s.IsOK()) {
-            return s;
-          }
+      if (arg == "count") {
+        if (i + 1 >= args.size()) {
+          return {Status::RedisParseErr, errInvalidSyntax};
         }
-        ids_.push_back(id);
+
+        with_count_ = true;
+
+        auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+
+        count_ = *parse_result;
+        i += 2;
+        continue;
       }
 
-      return Status::OK();
+      if (arg == "block") {
+        if (i + 1 >= args.size()) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+
+        block_ = true;
+
+        auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+
+        if (*parse_result < 0) {
+          return {Status::RedisParseErr, errTimeoutIsNegative};
+        }
+
+        block_timeout_ = *parse_result;
+        i += 2;
+        continue;
+      }
+
+      ++i;
     }
 
-    Status Execute(Server *svr, Connection *conn, std::string *output) override {
-      redis::Stream stream_db(svr->storage, conn->GetNamespace());
-      std::vector<redis::StreamReadResult> results;
-
-      for (size_t i = 0; i < streams_.size(); ++i) {
-
-        redis::StreamRangeOptions options;
-        options.reverse = false;
-        options.start = ids_[i];
-        options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
-        options.with_count = with_count_;
-        options.count = count_;
-        options.exclude_start = true;
-        options.exclude_end = false;
-
-        std::vector<StreamEntry> result;
-        redis::StreamXReadGroupContext context{
-          streams_[i], group_name_, consumer_name_
-        };
-        auto s = stream_db.ReadGroup(context, result, options, latest_marks_[i]);
-        if (!s.ok() && !s.IsNotFound()) {
-          return {Status::RedisExecErr, s.ToString()};
-        }
-
-        if (result.size() > 0) {
-          results.emplace_back(streams_[i], result);
-        }
-      }
-
-      return CommandXRead::SendResults(output, results);
+    if (streams_word_idx == 0) {
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    
-  private:
-    bool with_count_{false};
-    bool block_{false};
-    uint64_t block_timeout_{0};
-    uint64_t count_{0};
-    std::string consumer_name_;
-    std::string group_name_;
-    std::vector<std::string> streams_;
-    std::vector<StreamEntryID> ids_;
-    std::vector<bool> latest_marks_;
+    if ((args.size() - streams_word_idx - 1) % 2 != 0) {
+      return {Status::RedisParseErr, errUnbalancedStreamList};
+    }
+
+    size_t number_of_streams = (args.size() - streams_word_idx - 1) / 2;
+
+    for (size_t i = streams_word_idx + 1; i <= streams_word_idx + number_of_streams; ++i) {
+      streams_.push_back(args[i]);
+      const auto &id_str = args[i + number_of_streams];
+      bool get_latest = id_str == ">";
+      latest_marks_.push_back(get_latest);
+      StreamEntryID id;
+      if (!get_latest) {
+        auto s = ParseStreamEntryID(id_str, &id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      }
+      ids_.push_back(id);
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+    std::vector<redis::StreamReadResult> results;
+
+    for (size_t i = 0; i < streams_.size(); ++i) {
+      redis::StreamRangeOptions options;
+      options.reverse = false;
+      options.start = ids_[i];
+      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.with_count = with_count_;
+      options.count = count_;
+      options.exclude_start = true;
+      options.exclude_end = false;
+
+      std::vector<StreamEntry> result;
+      redis::StreamXReadGroupContext context{streams_[i], group_name_, consumer_name_};
+      auto s = stream_db.ReadGroup(context, result, options, latest_marks_[i]);
+      if (!s.ok() && !s.IsNotFound()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      if (result.size() > 0) {
+        results.emplace_back(streams_[i], result);
+      }
+    }
+
+    return CommandXRead::SendResults(output, results);
+  }
+
+ private:
+  bool with_count_{false};
+  bool block_{false};
+  uint64_t block_timeout_{0};
+  uint64_t count_{0};
+  std::string consumer_name_;
+  std::string group_name_;
+  std::vector<std::string> streams_;
+  std::vector<StreamEntryID> ids_;
+  std::vector<bool> latest_marks_;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
@@ -1256,6 +1251,5 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXReadGroup>("xreadgroup", -3, "write", 1, 1, 1));
-
 
 }  // namespace redis

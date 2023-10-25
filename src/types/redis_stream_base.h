@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -180,7 +181,14 @@ struct StreamConsumerMetadata {
   uint64_t pending_number = 0;
   uint64_t last_idle;
   uint64_t last_active;
+  StreamEntryID min_pending_entry_id;
   StreamEntryID max_pending_entry_id;
+};
+
+struct PendingEntryListMetadata {
+  std::string owner;
+  uint64_t deliver_time;
+  uint64_t deliver_count;
 };
 
 struct StreamInfo {
@@ -194,14 +202,6 @@ struct StreamInfo {
   std::vector<StreamEntry> entries;
 };
 
-struct GroupInfo {
-  std::string name;
-  uint64_t consumers;
-  uint64_t pending;
-  StreamEntryID last_delivered_id;
-  uint64_t entries_read;
-  uint64_t lag;
-};
 
 struct StreamReadResult {
   std::string name;

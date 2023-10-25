@@ -28,8 +28,8 @@
 
 #include "db_util.h"
 #include "encoding.h"
-#include "time_util.h"
 #include "status.h"
+#include "time_util.h"
 #include "types/redis_stream_base.h"
 
 namespace redis {
@@ -227,6 +227,17 @@ std::string Stream::internalKeyFromConsumerName(const std::string &ns_key, const
   return entry_key;
 }
 
+std::string Stream::internalKeyFromPEL(const std::string &ns_key, const StreamMetadata &metadata,
+                                                const std::string &group_name, const StreamEntryID &entry_id) const {
+  std::string sub_key;
+  PutFixed64(&sub_key, group_name.size());
+  sub_key += group_name;
+  PutFixed64(&sub_key, entry_id.ms);
+  PutFixed64(&sub_key, entry_id.seq);
+  std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  return entry_key;
+}
+
 std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata) {
   std::string dst;
   PutFixed64(&dst, consumer_metadata.pending_number);
@@ -236,7 +247,6 @@ std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetada
   PutFixed64(&dst, consumer_metadata.max_pending_entry_id.seq);
   return dst;
 }
-
 
 StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::string &value) {
   StreamConsumerMetadata consumer_metadata;
@@ -250,10 +260,11 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
   return consumer_metadata;
 }
 
-rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<StreamEntry>& entries, redis::StreamRangeOptions& options, bool read_pending_entry_list){
-  const auto& stream_name = context.stream_name;
-  const auto& group_name = context.group_name;
-  const auto& consumer_name = context.consumer_name;
+rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext &context, std::vector<StreamEntry> &entries,
+                                  redis::StreamRangeOptions &options, bool read_pending_entry_list) {
+  const auto &stream_name = context.stream_name;
+  const auto &group_name = context.group_name;
+  const auto &consumer_name = context.consumer_name;
 
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
@@ -276,9 +287,9 @@ rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<
 
   std::string get_entry_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
- 
+
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
- 
+
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
@@ -288,20 +299,21 @@ rocksdb::Status Stream::ReadGroup(StreamXReadGroupContext& context, std::vector<
 
   StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
 
-  if(read_pending_entry_list) {
+  if (read_pending_entry_list) {
+    options.start = consumer_metadata.min_pending_entry_id;
     options.end = consumer_metadata.max_pending_entry_id;
     options.exclude_start = false;
     options.exclude_end = false;
   } else {
     options.start = consumer_group_metadata.max_pending_entry_id;
-    options.end =  StreamEntryID{UINT64_MAX, UINT64_MAX};
+    options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
     options.exclude_start = true;
     options.exclude_end = false;
   }
-  
-  s = range(ns_key, metadata, options, &entries);
+
+  s = rangeWithStream(ns_key, metadata, options, &entries);
   if (!s.ok()) {
-      return s;
+    return s;
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -660,6 +672,45 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
   return rocksdb::Status::OK();
 }
 
+
+rocksdb::Status Stream::rangeWithStream(const std::string &ns_key, const StreamMetadata &metadata,
+                              const StreamRangeOptions &options, std::vector<StreamEntry> *entries) const {
+  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.start);
+  std::string end_key = internalKeyFromEntryID(ns_key, metadata, options.end);
+
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
+  iter->Seek(start_key);
+
+  for (; iter->Valid() && iter->key().ToString() <= end_key; iter->Next()) {
+
+    std::vector<std::string> values;
+    auto rv = DecodeRawStreamEntryValue(iter->value().ToString(), &values);
+    if (!rv.IsOK()) {
+      return rocksdb::Status::InvalidArgument(rv.Msg());
+    }
+
+    entries->emplace_back(entryIDFromInternalKey(iter->key()).ToString(), std::move(values));
+
+    if (options.with_count && entries->size() == options.count) {
+      break;
+    }
+  }
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &metadata,
                               const StreamRangeOptions &options, std::vector<StreamEntry> *entries) const {
   std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.start);
@@ -739,7 +790,6 @@ rocksdb::Status Stream::getEntryRawValue(const std::string &ns_key, const Stream
   std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
   return storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, value);
 }
-
 
 rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool full, uint64_t count, StreamInfo *info) {
   std::string ns_key = AppendNamespacePrefix(stream_name);

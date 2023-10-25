@@ -55,13 +55,16 @@ class Stream : public SubKeyScanner {
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
   rocksdb::Status SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,
                         std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id);
-  rocksdb::Status ReadGroup(StreamXReadGroupContext& context, std::vector<StreamEntry>&, redis::StreamRangeOptions& options, bool read_last_delivered_id);
+  rocksdb::Status ReadGroup(StreamXReadGroupContext &context, std::vector<StreamEntry> &,
+                            redis::StreamRangeOptions &options, bool read_last_delivered_id);
 
  private:
   rocksdb::ColumnFamilyHandle *stream_cf_handle_;
 
   rocksdb::Status range(const std::string &ns_key, const StreamMetadata &metadata, const StreamRangeOptions &options,
                         std::vector<StreamEntry> *entries) const;
+  rocksdb::Status rangeWithStream(const std::string &ns_key, const StreamMetadata &metadata, const StreamRangeOptions &options,
+                        std::vector<StreamEntry> *entries) const; 
   rocksdb::Status getEntryRawValue(const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
                                    std::string *value) const;
   StreamEntryID entryIDFromInternalKey(const rocksdb::Slice &key) const;
@@ -78,6 +81,8 @@ class Stream : public SubKeyScanner {
                                           const std::string &group_name, const std::string &consumer_name) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
   StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &consumer_metadata_value);
+  std::string internalKeyFromPEL(const std::string &ns_key, const StreamMetadata &metadata,
+                                                const std::string &group_name, const StreamEntryID &entry_id) const;
 };
 
 }  // namespace redis

@@ -185,9 +185,11 @@ class CommandJsonArrLen : public Commander {
 
     std::vector<uint64_t> results;
     auto s = json.ArrLen(args_[1], path, results);
-    if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
     }
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(results.size());
     for (size_t len : results) {

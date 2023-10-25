@@ -253,7 +253,7 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], -1);
   res.clear();
-  // 3. object
+  // 4. object
   ASSERT_TRUE(json_->ArrLen(key_, "$.o", res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], -1);
@@ -261,4 +261,8 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_TRUE(json_->ArrLen(key_, "$.o.a3", res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], 3);
+  res.clear();
+  // 5. path is not found
+  ASSERT_TRUE(!json_->ArrLen(key_, "$.o.a4", res).IsInvalidArgument());
+  ASSERT_TRUE(res.empty());
 }

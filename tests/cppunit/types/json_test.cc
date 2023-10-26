@@ -228,7 +228,8 @@ TEST_F(RedisJsonTest, Clear) {
 
 TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_TRUE(
-      json_->Set(key_, "$", R"({"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"s":"string","o":{"a3":[1,1,1]}})").ok());
+      json_->Set(key_, "$", R"({"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"d":1.0,"s":"string","o":{"a3":[1,1,1]}})")
+          .ok());
   // 1. simple array
   std::vector<std::optional<uint64_t>> res;
   ASSERT_TRUE(json_->ArrLen(key_, "$.a1", res).ok());
@@ -249,6 +250,10 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], std::nullopt);
   res.clear();
+  ASSERT_TRUE(json_->ArrLen(key_, "$.d", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], std::nullopt);
+  res.clear();
   ASSERT_TRUE(json_->ArrLen(key_, "$.s", res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_EQ(res[0], std::nullopt);
@@ -264,6 +269,6 @@ TEST_F(RedisJsonTest, ArrLen) {
   res.clear();
   // 5. key/path is not found
   ASSERT_FALSE(json_->ArrLen("not_exists", "$.*", res).ok());
-  ASSERT_TRUE(json_->ArrLen(key_, "$.o.a4", res).ok());
+  ASSERT_TRUE(json_->ArrLen(key_, "$.not_exists", res).ok());
   ASSERT_TRUE(res.empty());
 }

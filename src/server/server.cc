@@ -117,6 +117,9 @@ Server::~Server() {
   }
 
   lua::DestroyState(lua_);
+
+  cleanupExitedWorkerThreads();
+  CleanupExitedSlaves();
 }
 
 // Kvrocks threads list:
@@ -747,11 +750,7 @@ void Server::cron() {
     }
 
     if (counter != 0 && counter % 10 == 0) {
-      std::unique_ptr<WorkerThread> worker_thread = nullptr;
-      while (recycle_worker_threads_.try_pop(worker_thread)) {
-        worker_thread->Join();
-        worker_thread.reset();
-      }
+      cleanupExitedWorkerThreads();
     }
 
     CleanupExitedSlaves();
@@ -1736,6 +1735,14 @@ Status Server::decreaseWorkerThreads(size_t delta) {
     recycle_worker_threads_.push(std::move(worker_thread));
   }
   return Status::OK();
+}
+
+void Server::cleanupExitedWorkerThreads() {
+  std::unique_ptr<WorkerThread> worker_thread = nullptr;
+  while (recycle_worker_threads_.try_pop(worker_thread)) {
+    worker_thread->Join();
+    worker_thread.reset();
+  }
 }
 
 std::string ServerLogData::Encode() const {

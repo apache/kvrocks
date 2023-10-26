@@ -157,7 +157,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 
 	runCommands := func() {
 		var wg sync.WaitGroup
-		for i := 0; i < 1; i++ {
+		for i := 0; i < 10; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

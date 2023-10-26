@@ -351,7 +351,7 @@ redis::Connection *Worker::removeConnection(int fd) {
 // blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
-  if (conn->IsBlockingMode()) {
+  if (!conn->IsBlockingMode()) {
     conn->Close();
     return;
   }
@@ -361,6 +361,7 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   auto s = target->AddConnection(conn);
   if (!s.IsOK()) {
     conn->Close();
+    return;
   }
 
   auto bev = conn->GetBufferEvent();

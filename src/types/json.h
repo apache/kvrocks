@@ -205,7 +205,7 @@ struct JsonValue {
                                        if (basic_json.is_array()) {
                                          arr_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
                                        } else {
-                                         arr_lens.emplace_back();
+                                         arr_lens.emplace_back(std::nullopt);
                                        }
                                      });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

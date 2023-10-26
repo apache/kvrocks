@@ -156,36 +156,32 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "DEL", "a").Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"s":"string","o":{"a3":[1,1,1]}}`).Err())
 
-		lens, err := rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a1").Int64Slice()
+		lens, err := rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a1").Uint64Slice()
 		require.NoError(t, err)
-		require.EqualValues(t, lens, []int64{2})
+		require.EqualValues(t, []uint64{2}, lens)
 
-		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2").Int64Slice()
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2").Uint64Slice()
 		require.NoError(t, err)
-		require.EqualValues(t, lens, []int64{3})
+		require.EqualValues(t, []uint64{3}, lens)
 
-		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2[0]").Int64Slice()
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.a2[0]").Uint64Slice()
 		require.NoError(t, err)
-		require.EqualValues(t, lens, []int64{3})
+		require.EqualValues(t, []uint64{3}, lens)
 
-		_, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.i").Int64Slice()
-		require.EqualError(t, err, redis.Nil.Error())
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.ARRLEN", "a", "$.i").Val())
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.ARRLEN", "a", "$.s").Val())
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o").Val())
 
-		_, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.s").Int64Slice()
-		require.EqualError(t, err, redis.Nil.Error())
-
-		_, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o").Int64Slice()
-		require.EqualError(t, err, redis.Nil.Error())
-
-		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o.a3").Int64Slice()
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o.a3").Uint64Slice()
 		require.NoError(t, err)
-		require.EqualValues(t, lens, []int64{3})
+		require.EqualValues(t, []int64{3}, lens)
 
-		_, err = rdb.Do(ctx, "JSON.ARRLEN", "not_exists", "$.*").Int64Slice()
+		_, err = rdb.Do(ctx, "JSON.ARRLEN", "not_exists", "$.*").Uint64Slice()
 		require.EqualError(t, err, redis.Nil.Error())
 
-		_, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.o.a4").Int64Slice()
-		require.EqualError(t, err, redis.Nil.Error())
+		lens, err = rdb.Do(ctx, "JSON.ARRLEN", "a", "$.no_exists").Uint64Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, []uint64{}, lens)
 	})
 
 }

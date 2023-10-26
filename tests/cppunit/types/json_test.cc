@@ -264,7 +264,6 @@ TEST_F(RedisJsonTest, ArrLen) {
   res.clear();
   // 5. key/path is not found
   ASSERT_FALSE(json_->ArrLen("not_exists", "$.*", res).ok());
-  ASSERT_TRUE(res.empty());
   ASSERT_TRUE(json_->ArrLen(key_, "$.o.a4", res).ok());
   ASSERT_TRUE(res.empty());
 }

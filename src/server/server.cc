@@ -419,8 +419,6 @@ void Server::SubscribeChannel(const std::string &channel, redis::Connection *con
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
-  conn_ctxs_[conn_ctx] = true;
-
   if (auto iter = pubsub_channels_.find(channel); iter == pubsub_channels_.end()) {
     pubsub_channels_.emplace(channel, std::list<ConnContext>{conn_ctx});
   } else {
@@ -438,7 +436,6 @@ void Server::UnsubscribeChannel(const std::string &channel, redis::Connection *c
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_channels_.erase(iter);
@@ -475,8 +472,6 @@ void Server::PSubscribeChannel(const std::string &pattern, redis::Connection *co
   std::lock_guard<std::mutex> guard(pubsub_channels_mu_);
 
   auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
-  conn_ctxs_[conn_ctx] = true;
-
   if (auto iter = pubsub_patterns_.find(pattern); iter == pubsub_patterns_.end()) {
     pubsub_patterns_.emplace(pattern, std::list<ConnContext>{conn_ctx});
   } else {
@@ -494,7 +489,6 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         pubsub_patterns_.erase(iter);
@@ -508,7 +502,6 @@ void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
-  conn_ctxs_[conn_ctx] = true;
 
   if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
     blocking_keys_.emplace(key, std::list<ConnContext>{conn_ctx});
@@ -529,7 +522,6 @@ void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
 
   for (const auto &conn_ctx : iter->second) {
     if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      conn_ctxs_.erase(conn_ctx);
       iter->second.remove(conn_ctx);
       if (iter->second.empty()) {
         blocking_keys_.erase(iter);
@@ -598,7 +590,6 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     if (!s.IsOK()) {
       LOG(ERROR) << "[server] Failed to enable write event on blocked client " << conn_ctx.fd << ": " << s.Msg();
     }
-    conn_ctxs_.erase(conn_ctx);
     iter->second.pop_front();
   }
 }
@@ -1686,22 +1677,22 @@ void Server::AdjustOpenFilesLimit() {
   }
 }
 
-Status Server::AdjustWorkerThreads() {
+void Server::AdjustWorkerThreads() {
   auto new_worker_threads = static_cast<size_t>(config_->workers);
   if (new_worker_threads == worker_threads_.size()) {
-    return Status::OK();
+    return;
   }
   size_t delta = 0;
   if (new_worker_threads > worker_threads_.size()) {
     delta = new_worker_threads - worker_threads_.size();
     increaseWorkerThreads(delta);
     LOG(INFO) << "[server] Increase worker threads to " << new_worker_threads;
-    return Status::OK();
+    return;
   }
 
   delta = worker_threads_.size() - new_worker_threads;
   LOG(INFO) << "[server] Decrease worker threads to " << new_worker_threads;
-  return decreaseWorkerThreads(delta);
+  decreaseWorkerThreads(delta);
 }
 
 void Server::increaseWorkerThreads(size_t delta) {
@@ -1714,7 +1705,7 @@ void Server::increaseWorkerThreads(size_t delta) {
   }
 }
 
-Status Server::decreaseWorkerThreads(size_t delta) {
+void Server::decreaseWorkerThreads(size_t delta) {
   auto current_worker_threads = worker_threads_.size();
   auto remain_worker_threads = current_worker_threads - delta;
   for (size_t i = remain_worker_threads; i < current_worker_threads; i++) {
@@ -1734,7 +1725,6 @@ Status Server::decreaseWorkerThreads(size_t delta) {
     // Don't join the worker thread here, because it may join itself.
     recycle_worker_threads_.push(std::move(worker_thread));
   }
-  return Status::OK();
 }
 
 void Server::cleanupExitedWorkerThreads() {

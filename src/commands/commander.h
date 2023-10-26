@@ -69,6 +69,7 @@ class Commander {
  public:
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
   const CommandAttributes *GetAttributes() const { return attributes_; }
+  const std::vector<std::string> &GetArgs() const { return args_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }

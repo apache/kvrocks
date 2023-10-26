@@ -364,7 +364,8 @@ void Config::initFieldCallback() {
           {"workers",
            [](Server *srv, const std::string &k, const std::string &v) -> Status {
              if (!srv) return Status::OK();
-             return srv->AdjustWorkerThreads();
+             srv->AdjustWorkerThreads();
+             return Status::OK();
            }},
           {"dir",
            [this](Server *srv, const std::string &k, const std::string &v) -> Status {

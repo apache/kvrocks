@@ -32,6 +32,7 @@
 #include <event2/bufferevent_ssl.h>
 #endif
 
+#include "commands/blocking_commander.h"
 #include "redis_connection.h"
 #include "server.h"
 #include "time_util.h"
@@ -73,6 +74,13 @@ void Connection::Close() {
 }
 
 void Connection::Detach() { owner_->DetachConnection(this); }
+
+bool Connection::IsBlockingMode() {
+  if (current_cmd == nullptr) return false;
+  if (dynamic_cast<BlockingCommander *>(current_cmd.get()) != nullptr) return true;
+  std::string cmd_name = util::ToLower(current_cmd->GetArgs().front());
+  return cmd_name == "xread";
+}
 
 void Connection::OnRead(struct bufferevent *bev) {
   DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);

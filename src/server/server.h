@@ -179,7 +179,7 @@ class Server {
   Config *GetConfig() { return config_; }
   static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
-  Status AdjustWorkerThreads();
+  void AdjustWorkerThreads();
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
@@ -304,7 +304,7 @@ class Server {
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
   void updateAllWatchedKeys();
   void increaseWorkerThreads(size_t delta);
-  Status decreaseWorkerThreads(size_t delta);
+  void decreaseWorkerThreads(size_t delta);
   void cleanupExitedWorkerThreads();
 
   std::atomic<bool> stop_ = false;
@@ -348,7 +348,6 @@ class Server {
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;
 
-  std::map<ConnContext, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext>> pubsub_channels_;
   std::map<std::string, std::list<ConnContext>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;

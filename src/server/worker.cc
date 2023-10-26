@@ -346,18 +346,24 @@ redis::Connection *Worker::removeConnection(int fd) {
 
 // MigrateConnection moves the connection to another worker
 // when reducing the number of workers.
+//
+// To make it simple, we would close the connection if it's
+// blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
-  if (!target || !conn) return;
+  if (!target || !conn || conn->IsBlockingMode()) return;
 
   // remove the connection from current worker
   DetachConnection(conn);
+  auto s = target->AddConnection(conn);
+  if (!s.IsOK()) {
+    conn->Close();
+  }
 
   auto bev = conn->GetBufferEvent();
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ | EV_WRITE);
   conn->SetOwner(target);
-  // TODO: the connection may be blocked on list or stream, need to unblock it
 }
 
 void Worker::DetachConnection(redis::Connection *conn) {

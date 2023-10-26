@@ -55,6 +55,7 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   void Close();
   void Detach();
+  bool IsBlockingMode();
   void OnRead(struct bufferevent *bev);
   void OnWrite(struct bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
@@ -109,7 +110,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsNeedFreeBufferEvent() const { return need_free_bev_; }
 
   Worker *Owner() { return owner_; }
-  void SetOwner(Worker *owner) { owner_ = owner; }
+  void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }

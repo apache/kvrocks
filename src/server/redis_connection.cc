@@ -77,7 +77,7 @@ void Connection::Detach() { owner_->DetachConnection(this); }
 
 bool Connection::IsBlockingMode() const {
   if (current_cmd == nullptr) return false;
-  if (reinterpret_cast<BlockingCommander *>(current_cmd.get()) != nullptr) return true;
+  if (dynamic_cast<BlockingCommander *>(current_cmd.get()) != nullptr) return true;
 
   auto args = current_cmd->GetArgs();
   if (args.empty()) return false;

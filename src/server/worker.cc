@@ -350,7 +350,11 @@ redis::Connection *Worker::removeConnection(int fd) {
 // To make it simple, we would close the connection if it's
 // blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
-  if (!target || !conn || conn->IsBlockingMode()) return;
+  if (!target || !conn) return;
+  if (conn->IsBlockingMode()) {
+    conn->Close();
+    return;
+  }
 
   // remove the connection from current worker
   DetachConnection(conn);

@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -174,28 +173,80 @@ struct JsonValue {
     return Status::OK();
   }
 
-  Status Merge(const std::string_view path, const std::string &value_str) {
+  Status Merge(const std::string_view path, const std::string &merge_value) {
     try {
-        jsoncons::json patch_value = jsoncons::json::parse(value_str);
+      jsoncons::json patch_value = jsoncons::json::parse(merge_value);
+      bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
-        std::cout<<"patch_value\t"<<patch_value<<"\n";
+      if (path == "$" || not_exists) {
+        //  For non-existing keys the path must be $
+        if (not_exists) {
+          // create an actual object from non-existing path
+          jsoncons::json created_object = GenerateJsonFromPath(path.data(), patch_value);
 
-        // TODO:: Add support for the specific patch
+          // merge it with patch value
+          auto patch = jsoncons::mergepatch::from_diff(patch_value, created_object);
+          jsoncons::mergepatch::apply_merge_patch(patch_value, patch);
+        }
 
-        auto patch =jsoncons::mergepatch::from_diff(this->value, patch_value);
+        // simply merge with the current value
+        // merge patch function complies with RFC7396 Json Merge Patch
+        jsoncons::mergepatch::apply_merge_patch(value, patch_value);
+        return Status::OK();
+      }
 
-        std::cout << "patch\t" << patch<< "\n";
+      // simply replace value by path
+      if (!patch_value.is_null() && !not_exists) {
+        jsoncons::jsonpath::json_replace(
+            value, path,
+            [&patch_value](const std::string & /*path*/, jsoncons::json &target) { target = patch_value; });
+        return Status::OK();
+      }
 
-        jsoncons::mergepatch::apply_merge_patch(this->value, patch);
-        std::cout << "updated value\t" << this->value << "\n";
+      // handle null case
+      if (patch_value.is_null() && !not_exists) {
+        size_t last_dot = path.find_last_of('.');
+        if (last_dot != std::string::npos) {
+          std::string key_to_remove = std::string(path.substr(last_dot + 1));
+          auto parent_path = std::string(path.substr(0, last_dot));
+
+          jsoncons::jsonpath::json_replace(value, parent_path,
+                                           [&key_to_remove](const std::string & /*path*/, jsoncons::json &target) {
+                                             if (target.is_object()) {
+                                               target.erase(key_to_remove);
+                                             }
+                                           });
+        }
+        return Status::OK();
+      }
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
     }
-    catch (const jsoncons::jsonpath::jsonpath_error &e) {
-        return {Status::NotOK, e.what()};
+
+    return {Status::NotOK, "Nothing to merge."};
+  }
+
+  static jsoncons::json GenerateJsonFromPath(const std::string &path, const jsoncons::json &value) {
+    std::vector<std::string> parts;
+    std::stringstream ss(path);
+    std::string part;
+
+    while (std::getline(ss, part, '.')) {
+      if (part != "$") {
+        parts.push_back(part);
+      }
     }
-    catch (const jsoncons::ser_error &e) {
-        return {Status::NotOK, e.what()};
+
+    jsoncons::json result = value;
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+      jsoncons::json obj;
+      obj[*it] = result;
+      result = obj;
     }
-    return Status::OK();
+
+    return result;
   }
 
   JsonValue(const JsonValue &) = default;

@@ -352,7 +352,7 @@ redis::Connection *Worker::removeConnection(int fd) {
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
   if (conn->current_cmd != nullptr && conn->current_cmd->IsBlocking()) {
-    conn->Close();
+    // don't need to close the connection since destroy worker thread will close it
     return;
   }
 
@@ -360,6 +360,7 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   DetachConnection(conn);
   auto s = target->AddConnection(conn);
   if (!s.IsOK()) {
+    // Need to close the connection since it has been removed from current worker
     conn->Close();
     return;
   }

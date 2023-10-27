@@ -211,3 +211,94 @@ TEST_F(RedisJsonTest, Merge) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f2\":{\"a\":3,\"b\":4},\"f3\":[2,4,6]}");
   ASSERT_EQ(result, true);
 }
+
+TEST_F(RedisJsonTest, Clear) {
+  size_t result = 0;
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+
+  ASSERT_TRUE(json_->Clear(key_, "$", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{}");
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+
+  ASSERT_TRUE(json_->Clear(key_, "$.obj", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[1,2,3],"bool":true,"float":3.14,"int":42,"obj":{},"str":"foo"})");
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(json_->Clear(key_, "$.arr", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[],"bool":true,"float":3.14,"int":42,"obj":{},"str":"foo"})");
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+  ASSERT_TRUE(json_->Clear(key_, "$.*", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[],"bool":true,"float":0,"int":0,"obj":{},"str":"foo"})");
+  ASSERT_EQ(result, 4);
+
+  ASSERT_TRUE(json_->Clear(key_, "$.some", &result).ok());
+  ASSERT_EQ(result, 0);
+}
+
+TEST_F(RedisJsonTest, ArrLen) {
+  ASSERT_TRUE(
+      json_->Set(key_, "$", R"({"a1":[1,2],"a2":[[1,5,7],[8],[9]],"i":1,"d":1.0,"s":"string","o":{"a3":[1,1,1]}})")
+          .ok());
+  // 1. simple array
+  std::vector<std::optional<uint64_t>> res;
+  ASSERT_TRUE(json_->ArrLen(key_, "$.a1", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 2);
+  res.clear();
+  // 2. nested array
+  ASSERT_TRUE(json_->ArrLen(key_, "$.a2", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 3);
+  res.clear();
+  ASSERT_TRUE(json_->ArrLen(key_, "$.a2[0]", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 3);
+  res.clear();
+  // 3.non-array type
+  ASSERT_TRUE(json_->ArrLen(key_, "$.i", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], std::nullopt);
+  res.clear();
+  ASSERT_TRUE(json_->ArrLen(key_, "$.d", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], std::nullopt);
+  res.clear();
+  ASSERT_TRUE(json_->ArrLen(key_, "$.s", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], std::nullopt);
+  res.clear();
+  // 4. object
+  ASSERT_TRUE(json_->ArrLen(key_, "$.o", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], std::nullopt);
+  res.clear();
+  ASSERT_TRUE(json_->ArrLen(key_, "$.o.a3", res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 3);
+  res.clear();
+  // 5. key/path is not found
+  ASSERT_FALSE(json_->ArrLen("not_exists", "$.*", res).ok());
+  ASSERT_TRUE(json_->ArrLen(key_, "$.not_exists", res).ok());
+  ASSERT_TRUE(res.empty());
+}

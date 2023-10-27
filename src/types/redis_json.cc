@@ -159,7 +159,10 @@ rocksdb::Status Json::Type(const std::string &user_key, const std::string &path,
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto res = json_val.Type(path, results);
+  auto res = json_val.Type(path);
+  if (!res) return rocksdb::Status::InvalidArgument(res.Msg());
+
+  *results = *res;
   return rocksdb::Status::OK();
 }
 
@@ -187,4 +190,39 @@ rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path
   return write(ns_key, &metadata, json_val);
 }
 
+rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path, size_t *result) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonValue json_val;
+  JsonMetadata metadata;
+  auto s = read(ns_key, &metadata, &json_val);
+
+  if (!s.ok()) return s;
+
+  auto res = json_val.Clear(path);
+  if (!res) return rocksdb::Status::InvalidArgument(res.Msg());
+
+  *result = *res;
+  if (*result == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  return write(ns_key, &metadata, json_val);
+}
+
+rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &path,
+                             std::vector<std::optional<uint64_t>> &arr_lens) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  auto len_res = json_val.ArrLen(path, arr_lens);
+  if (!len_res) return rocksdb::Status::InvalidArgument(len_res.Msg());
+
+  return rocksdb::Status::OK();
+}
 }  // namespace redis

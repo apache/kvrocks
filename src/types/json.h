@@ -137,41 +137,84 @@ struct JsonValue {
     return result_count;
   }
 
-  Status Type(std::string_view path, std::vector<std::string> *types) const {
-    types->clear();
+  StatusOr<std::vector<std::string>> Type(std::string_view path) const {
+    std::vector<std::string> types;
     try {
       jsoncons::jsonpath::json_query(value, path, [&types](const std::string & /*path*/, const jsoncons::json &val) {
         switch (val.type()) {
           case jsoncons::json_type::null_value:
-            types->emplace_back("null");
+            types.emplace_back("null");
             break;
           case jsoncons::json_type::bool_value:
-            types->emplace_back("boolean");
+            types.emplace_back("boolean");
             break;
           case jsoncons::json_type::int64_value:
           case jsoncons::json_type::uint64_value:
-            types->emplace_back("integer");
+            types.emplace_back("integer");
             break;
           case jsoncons::json_type::double_value:
-            types->emplace_back("number");
+            types.emplace_back("number");
             break;
           case jsoncons::json_type::string_value:
-            types->emplace_back("string");
+            types.emplace_back("string");
             break;
           case jsoncons::json_type::array_value:
-            types->emplace_back("array");
+            types.emplace_back("array");
             break;
           case jsoncons::json_type::object_value:
-            types->emplace_back("object");
+            types.emplace_back("object");
             break;
           default:
-            types->emplace_back("unknown");
+            types.emplace_back("unknown");
             break;
         }
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
+
+    return types;
+  }
+
+  StatusOr<size_t> Clear(std::string_view path) {
+    size_t count = 0;
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&count](const std::string & /*path*/, jsoncons::json &val) {
+        bool is_array = val.is_array() && !val.empty();
+        bool is_object = val.is_object() && !val.empty();
+        bool is_number = val.is_number() && val.as<double>() != 0;
+
+        if (is_array)
+          val = jsoncons::json::array();
+        else if (is_object)
+          val = jsoncons::json::object();
+        else if (is_number)
+          val = 0;
+        else
+          return;
+
+        count++;
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return count;
+  }
+
+  Status ArrLen(std::string_view path, std::vector<std::optional<uint64_t>> &arr_lens) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&arr_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                       if (basic_json.is_array()) {
+                                         arr_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
+                                       } else {
+                                         arr_lens.emplace_back(std::nullopt);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
     return Status::OK();
   }
 

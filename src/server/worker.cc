@@ -351,7 +351,7 @@ redis::Connection *Worker::removeConnection(int fd) {
 // blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
-  if (conn->IsBlockingMode()) {
+  if (conn->current_cmd != nullptr && conn->current_cmd->IsBlocking()) {
     conn->Close();
     return;
   }

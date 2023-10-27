@@ -75,17 +75,6 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-bool Connection::IsBlockingMode() const {
-  if (current_cmd == nullptr) return false;
-  if (dynamic_cast<BlockingCommander *>(current_cmd.get()) != nullptr) return true;
-
-  auto args = current_cmd->GetArgs();
-  if (args.empty()) return false;
-
-  std::string cmd_name = util::ToLower(args.front());
-  return cmd_name == "xread";
-}
-
 void Connection::OnRead(struct bufferevent *bev) {
   DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
 

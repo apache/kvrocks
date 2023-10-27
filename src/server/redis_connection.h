@@ -55,7 +55,6 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   void Close();
   void Detach();
-  bool IsBlockingMode() const;
   void OnRead(struct bufferevent *bev);
   void OnWrite(struct bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);

@@ -156,14 +156,20 @@ class CommandJsonMerge : public Commander {
     std::string key = args_[1];
     std::string path = args_[2];
     std::string value = args_[3];
+    bool result = false;
 
-    auto s = json.Merge(key, path, value);
+    auto s = json.Merge(key, path, value, result);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::SimpleString("OK");
+    if (!result) {
+      *output = redis::NilString();
+    } else {
+      *output = redis::SimpleString("OK");
+    }
+
     return Status::OK();
   }
 };

@@ -163,7 +163,8 @@ rocksdb::Status Json::Type(const std::string &user_key, const std::string &path,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path, const std::string &merge_value) {
+rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path, const std::string &merge_value,
+                            bool &result) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -175,7 +176,13 @@ rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path
   if (!s.ok()) return s;
 
   auto res = json_val.Merge(path, merge_value);
-  if (!res.OK()) return s;
+
+  if (!res.IsOK()) return s;
+
+  result = static_cast<bool>(res.GetValue());
+  if (!res) {
+    return rocksdb::Status::OK();
+  }
 
   return write(ns_key, &metadata, json_val);
 }

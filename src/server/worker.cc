@@ -356,15 +356,12 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
     return;
   }
 
-  // remove the connection from current worker
-  DetachConnection(conn);
-  auto s = target->AddConnection(conn);
-  if (!s.IsOK()) {
-    // Need to close the connection since it has been removed from current worker
-    conn->Close();
+  if (!target->AddConnection(conn).IsOK()) {
+    // destroy worker thread will close the connection
     return;
   }
-
+  // remove the connection from current worker
+  DetachConnection(conn);
   auto bev = conn->GetBufferEvent();
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);

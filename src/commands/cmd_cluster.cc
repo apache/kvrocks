@@ -182,7 +182,7 @@ class CommandClusterX : public Commander {
 
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
-      Status s = CommanderHelper::ParseSlotRanges(args_[2], slot_ranges_);
+      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
       if (!s.IsOK()) {
         return s;
       }

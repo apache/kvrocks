@@ -748,7 +748,7 @@ bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator->GetFo
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = redis::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
+  auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
   // No keys
   if (!s.IsOK()) return Status::OK();
 

@@ -704,7 +704,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto commands = redis::GetCommands();
+  auto commands = redis::CommandTable::Get();
   auto cmd_iter = commands->find(util::ToLower(args[0]));
   if (cmd_iter == commands->end()) {
     PushError(lua, "Unknown Redis command called from Lua script");

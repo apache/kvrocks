@@ -609,7 +609,7 @@ class CommandCommand : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      GetAllCommandsInfo(output);
+      CommandTable::GetAllCommandsInfo(output);
     } else {
       std::string sub_command = util::ToLower(args_[1]);
       if ((sub_command == "count" && args_.size() != 2) || (sub_command == "getkeys" && args_.size() < 3) ||
@@ -618,18 +618,18 @@ class CommandCommand : public Commander {
       }
 
       if (sub_command == "count") {
-        *output = redis::Integer(GetCommandNum());
+        *output = redis::Integer(CommandTable::Size());
       } else if (sub_command == "info") {
-        GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
+        CommandTable::GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
-        auto cmd_iter = command_details::original_commands.find(util::ToLower(args_[2]));
-        if (cmd_iter == command_details::original_commands.end()) {
+        auto cmd_iter = CommandTable::GetOriginal()->find(util::ToLower(args_[2]));
+        if (cmd_iter == CommandTable::GetOriginal()->end()) {
           return {Status::RedisUnknownCmd, "Invalid command specified"};
         }
 
         std::vector<int> keys_indexes;
-        auto s = GetKeysFromCommand(cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end()),
-                                    &keys_indexes);
+        auto s = CommandTable::GetKeysFromCommand(
+            cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end()), &keys_indexes);
         if (!s.IsOK()) return s;
 
         if (keys_indexes.size() == 0) {

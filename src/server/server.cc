@@ -56,7 +56,7 @@ constexpr const char *REDIS_VERSION = "4.0.0";
 Server::Server(engine::Storage *storage, Config *config)
     : storage(storage), start_time_(util::GetTimeStamp()), config_(config), namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
-  auto commands = redis::GetOriginalCommands();
+  auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
     stats.commands_stats[iter.first].calls = 0;
     stats.commands_stats[iter.first].latency = 0;
@@ -1509,7 +1509,7 @@ ReplState Server::GetReplicationState() {
 Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd) {
   if (cmd_name.empty()) return {Status::RedisUnknownCmd};
 
-  auto commands = redis::GetCommands();
+  auto commands = redis::CommandTable::Get();
   auto cmd_iter = commands->find(util::ToLower(cmd_name));
   if (cmd_iter == commands->end()) {
     return {Status::RedisUnknownCmd};

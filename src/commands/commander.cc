@@ -26,21 +26,21 @@ namespace redis {
 
 RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
   for (const auto &attr : list) {
-    command_details::redis_command_table.emplace_back(attr);
-    command_details::original_commands[attr.name] = &command_details::redis_command_table.back();
-    command_details::commands[attr.name] = &command_details::redis_command_table.back();
+    CommandTable::redis_command_table.emplace_back(attr);
+    CommandTable::original_commands[attr.name] = &CommandTable::redis_command_table.back();
+    CommandTable::commands[attr.name] = &CommandTable::redis_command_table.back();
   }
 }
 
-size_t GetCommandNum() { return command_details::redis_command_table.size(); }
+size_t CommandTable::Size() { return redis_command_table.size(); }
 
-const CommandMap *GetOriginalCommands() { return &command_details::original_commands; }
+const CommandMap *CommandTable::GetOriginal() { return &original_commands; }
 
-CommandMap *GetCommands() { return &command_details::commands; }
+CommandMap *CommandTable::Get() { return &commands; }
 
-void ResetCommands() { command_details::commands = command_details::original_commands; }
+void CommandTable::Reset() { commands = original_commands; }
 
-std::string GetCommandInfo(const CommandAttributes *command_attributes) {
+std::string CommandTable::GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;
   command.append(redis::MultiLen(6));
   command.append(redis::BulkString(command_attributes->name));
@@ -54,20 +54,20 @@ std::string GetCommandInfo(const CommandAttributes *command_attributes) {
   return command;
 }
 
-void GetAllCommandsInfo(std::string *info) {
-  info->append(redis::MultiLen(command_details::original_commands.size()));
-  for (const auto &iter : command_details::original_commands) {
+void CommandTable::GetAllCommandsInfo(std::string *info) {
+  info->append(redis::MultiLen(original_commands.size()));
+  for (const auto &iter : original_commands) {
     auto command_attribute = iter.second;
     auto command_info = GetCommandInfo(command_attribute);
     info->append(command_info);
   }
 }
 
-void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
+void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
   info->append(redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
-    auto cmd_iter = command_details::original_commands.find(util::ToLower(cmd_name));
-    if (cmd_iter == command_details::original_commands.end()) {
+    auto cmd_iter = original_commands.find(util::ToLower(cmd_name));
+    if (cmd_iter == original_commands.end()) {
       info->append(redis::NilString());
     } else {
       auto command_attribute = cmd_iter->second;
@@ -86,8 +86,8 @@ void DumpKeyRange(std::vector<int> &keys_index, int argc, const CommandKeyRange 
   }
 }
 
-Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                          std::vector<int> *keys_index) {
+Status CommandTable::GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                                        std::vector<int> *keys_index) {
   if (attributes->key_range.first_key == 0) {
     return {Status::NotOK, "The command has no key arguments"};
   }
@@ -113,11 +113,11 @@ Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector
   return Status::OK();
 }
 
-bool IsCommandExists(const std::string &name) {
-  return command_details::original_commands.find(util::ToLower(name)) != command_details::original_commands.end();
+bool CommandTable::IsExists(const std::string &name) {
+  return original_commands.find(util::ToLower(name)) != original_commands.end();
 }
 
-Status CommanderHelper::ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots) {
+Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots) {
   if (slots_str.empty()) {
     return {Status::NotOK, "No slots to parse."};
   }

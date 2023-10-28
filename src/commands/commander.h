@@ -89,11 +89,6 @@ class CommanderWithParseMove : Commander {
   virtual Status ParseMove(std::vector<std::string> &&args) { return Status::OK(); }
 };
 
-class CommanderHelper {
- public:
-  static Status ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots);
-};
-
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 
 struct CommandKeyRange {
@@ -250,16 +245,36 @@ struct RegisterToCommandTable {
   RegisterToCommandTable(std::initializer_list<CommandAttributes> list);
 };
 
-// these variables cannot be put into source files (to ensure init order for multiple TUs)
-namespace command_details {
-inline std::deque<CommandAttributes> redis_command_table;
+struct CommandTable {
+ public:
+  CommandTable() = delete;
 
-// Original Command table before rename-command directive
-inline CommandMap original_commands;
+  static CommandMap *Get();
+  static const CommandMap *GetOriginal();
+  static void Reset();
 
-// Command table after rename-command directive
-inline CommandMap commands;
-}  // namespace command_details
+  static void GetAllCommandsInfo(std::string *info);
+  static void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
+  static std::string GetCommandInfo(const CommandAttributes *command_attributes);
+  static Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
+                                   std::vector<int> *keys_indexes);
+
+  static size_t Size();
+  static bool IsExists(const std::string &name);
+
+  static Status ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots);
+
+ private:
+  static inline std::deque<CommandAttributes> redis_command_table;
+
+  // Original Command table before rename-command directive
+  static inline CommandMap original_commands;
+
+  // Command table after rename-command directive
+  static inline CommandMap commands;
+
+  friend struct RegisterToCommandTable;
+};
 
 #define KVROCKS_CONCAT(a, b) a##b                   // NOLINT
 #define KVROCKS_CONCAT2(a, b) KVROCKS_CONCAT(a, b)  // NOLINT
@@ -267,16 +282,5 @@ inline CommandMap commands;
 // NOLINTNEXTLINE
 #define REDIS_REGISTER_COMMANDS(...) \
   static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__){__VA_ARGS__};
-
-size_t GetCommandNum();
-CommandMap *GetCommands();
-void ResetCommands();
-const CommandMap *GetOriginalCommands();
-void GetAllCommandsInfo(std::string *info);
-void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
-std::string GetCommandInfo(const CommandAttributes *command_attributes);
-Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                          std::vector<int> *keys_indexes);
-bool IsCommandExists(const std::string &name);
 
 }  // namespace redis

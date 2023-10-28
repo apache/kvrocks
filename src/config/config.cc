@@ -286,7 +286,7 @@ void Config::initFieldValidator() {
            if (args.size() != 2) {
              return {Status::NotOK, "Invalid rename-command format"};
            }
-           auto commands = redis::GetCommands();
+           auto commands = redis::CommandTable::Get();
            auto cmd_iter = commands->find(util::ToLower(args[0]));
            if (cmd_iter == commands->end()) {
              return {Status::NotOK, "No such command in rename-command"};
@@ -436,7 +436,7 @@ void Config::initFieldCallback() {
              profiling_sample_commands.clear();
              return Status::OK();
            }
-           if (!redis::IsCommandExists(cmd)) {
+           if (!redis::CommandTable::IsExists(cmd)) {
              return {Status::NotOK, cmd + " is not Kvrocks supported command"};
            }
            // profiling_sample_commands use command's original name, regardless of rename-command directive

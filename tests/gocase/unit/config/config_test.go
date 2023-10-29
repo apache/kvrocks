@@ -178,7 +178,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 		// Reduce worker threads to 1
 		runCommands(1)
 
-		// Reduce worker threads to 12
+		// Increase worker threads to 12
 		runCommands(12)
 	})
 

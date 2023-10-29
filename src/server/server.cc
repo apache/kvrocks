@@ -1707,6 +1707,7 @@ void Server::increaseWorkerThreads(size_t delta) {
 
 void Server::decreaseWorkerThreads(size_t delta) {
   auto current_worker_threads = worker_threads_.size();
+  DCHECK(current_worker_threads > delta);
   auto remain_worker_threads = current_worker_threads - delta;
   for (size_t i = remain_worker_threads; i < current_worker_threads; i++) {
     // Unix socket will be listening on the first worker,

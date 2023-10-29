@@ -111,15 +111,14 @@ Server::~Server() {
       break;
     }
   }
-  // Manually reset workers here to avoid accessing the conn_ctxs_ after it's freed
+
   for (auto &worker_thread : worker_threads_) {
     worker_thread.reset();
   }
-
-  lua::DestroyState(lua_);
-
   cleanupExitedWorkerThreads();
   CleanupExitedSlaves();
+
+  lua::DestroyState(lua_);
 }
 
 // Kvrocks threads list:

@@ -61,6 +61,8 @@ class Json : public Database {
   rocksdb::Status ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
                           std::vector<std::optional<uint64_t>> &results);
   rocksdb::Status Del(const std::string &user_key, const std::string &path, size_t *result);
+  rocksdb::Status ObjLen(const std::string &user_key, const std::string &path,
+                         std::vector<std::optional<uint64_t>> &obj_lens);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

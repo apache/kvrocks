@@ -52,7 +52,7 @@
 #include "server.h"
 #include "storage/scripting.h"
 
-Worker::Worker(Server *svr, Config *config) : svr(svr), base_(event_base_new()) {
+Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_.reset(NewEvent(base_, -1, EV_PERSIST));
@@ -72,7 +72,7 @@ Worker::Worker(Server *svr, Config *config) : svr(svr), base_(event_base_new()) 
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
-  lua_ = lua::CreateState(svr, true);
+  lua_ = lua::CreateState(srv, true);
 }
 
 Worker::~Worker() {
@@ -101,7 +101,7 @@ Worker::~Worker() {
 }
 
 void Worker::TimerCB(int, int16_t events) {
-  auto config = svr->GetConfig();
+  auto config = srv->GetConfig();
   if (config->timeout == 0) return;
   KickoutIdleClients(config->timeout);
 }
@@ -131,8 +131,8 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   bufferevent *bev = nullptr;
   ssl_st *ssl = nullptr;
 #ifdef ENABLE_OPENSSL
-  if (uint32_t(local_port) == svr->GetConfig()->tls_port) {
-    ssl = SSL_new(svr->ssl_ctx.get());
+  if (uint32_t(local_port) == srv->GetConfig()->tls_port) {
+    ssl = SSL_new(srv->ssl_ctx.get());
     if (!ssl) {
       LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
       evutil_closesocket(fd);
@@ -157,7 +157,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
     return;
   }
 #ifdef ENABLE_OPENSSL
-  if (uint32_t(local_port) == svr->GetConfig()->tls_port) {
+  if (uint32_t(local_port) == srv->GetConfig()->tls_port) {
     bufferevent_openssl_set_allow_dirty_shutdown(bev, 1);
   }
 #endif
@@ -187,7 +187,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
 }
 
 void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen) {
-  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << svr->GetConfig()->unixsocket
+  DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << srv->GetConfig()->unixsocket
              << " thread #" << tid_;
   event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
@@ -209,7 +209,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
     return;
   }
 
-  conn->SetAddr(svr->GetConfig()->unixsocket, 0);
+  conn->SetAddr(srv->GetConfig()->unixsocket, 0);
   if (rate_limit_group_) {
     bufferevent_add_to_rate_limit_group(bev, rate_limit_group_);
   }
@@ -309,14 +309,14 @@ Status Worker::AddConnection(redis::Connection *c) {
     return {Status::NotOK, "connection was exists"};
   }
 
-  int max_clients = svr->GetConfig()->maxclients;
-  if (svr->IncrClientNum() >= max_clients) {
-    svr->DecrClientNum();
+  int max_clients = srv->GetConfig()->maxclients;
+  if (srv->IncrClientNum() >= max_clients) {
+    srv->DecrClientNum();
     return {Status::NotOK, "max number of clients reached"};
   }
 
   conns_.emplace(c->GetFD(), c);
-  uint64_t id = svr->GetClientID();
+  uint64_t id = srv->GetClientID();
   c->SetID(id);
 
   return Status::OK();
@@ -330,15 +330,15 @@ redis::Connection *Worker::removeConnection(int fd) {
   if (iter != conns_.end()) {
     conn = iter->second;
     conns_.erase(iter);
-    svr->DecrClientNum();
+    srv->DecrClientNum();
   }
 
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end()) {
     conn = iter->second;
     monitor_conns_.erase(iter);
-    svr->DecrClientNum();
-    svr->DecrMonitorClientNum();
+    srv->DecrClientNum();
+    srv->DecrMonitorClientNum();
   }
 
   return conn;
@@ -387,7 +387,7 @@ void Worker::FreeConnection(redis::Connection *conn) {
   if (!conn) return;
 
   removeConnection(conn->GetFD());
-  svr->ResetWatchedKeys(conn);
+  srv->ResetWatchedKeys(conn);
   if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
@@ -403,15 +403,15 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
     }
     delete iter->second;
     conns_.erase(iter);
-    svr->DecrClientNum();
+    srv->DecrClientNum();
   }
 
   iter = monitor_conns_.find(fd);
   if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
     delete iter->second;
     monitor_conns_.erase(iter);
-    svr->DecrClientNum();
-    svr->DecrMonitorClientNum();
+    srv->DecrClientNum();
+    srv->DecrMonitorClientNum();
   }
 }
 
@@ -445,7 +445,7 @@ void Worker::BecomeMonitorConn(redis::Connection *conn) {
     conns_.erase(conn->GetFD());
     monitor_conns_[conn->GetFD()] = conn;
   }
-  svr->IncrMonitorClientNum();
+  srv->IncrMonitorClientNum();
   conn->EnableFlag(redis::Connection::kMonitor);
 }
 

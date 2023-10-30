@@ -68,7 +68,7 @@ class SyncMigrateContext;
 
 class Cluster {
  public:
-  explicit Cluster(Server *svr, std::vector<std::string> binds, int port);
+  explicit Cluster(Server *srv, std::vector<std::string> binds, int port);
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
   Status SetNodeId(const std::string &node_id);
@@ -99,7 +99,7 @@ class Cluster {
   SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);
-  Server *svr_;
+  Server *srv_;
   std::vector<std::string> binds_;
   int port_;
   int size_;

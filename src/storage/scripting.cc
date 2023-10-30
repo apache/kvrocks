@@ -56,13 +56,13 @@ enum {
 
 namespace lua {
 
-lua_State *CreateState(Server *svr, bool read_only) {
+lua_State *CreateState(Server *srv, bool read_only) {
   lua_State *lua = lua_open();
   LoadLibraries(lua);
   RemoveUnsupportedFunctions(lua);
   LoadFuncs(lua, read_only);
 
-  lua_pushlightuserdata(lua, svr);
+  lua_pushlightuserdata(lua, srv);
   lua_setglobal(lua, REDIS_LUA_SERVER_PTR);
 
   EnableGlobalsProtection(lua);

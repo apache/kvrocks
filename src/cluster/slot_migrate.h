@@ -75,7 +75,7 @@ class SyncMigrateContext;
 
 class SlotMigrator : public redis::Database {
  public:
-  explicit SlotMigrator(Server *svr, int max_migration_speed = kDefaultMaxMigrationSpeed,
+  explicit SlotMigrator(Server *srv, int max_migration_speed = kDefaultMaxMigrationSpeed,
                         int max_pipeline_size = kDefaultMaxPipelineSize, int seq_gap_limit = kDefaultSequenceGapLimit);
   SlotMigrator(const SlotMigrator &other) = delete;
   SlotMigrator &operator=(const SlotMigrator &other) = delete;
@@ -147,7 +147,7 @@ class SlotMigrator : public redis::Database {
   static const int kMaxItemsInCommand = 16;  // number of items in every write command of complex keys
   static const int kMaxLoopTimes = 10;
 
-  Server *svr_;
+  Server *srv_;
   int max_migration_speed_;
   int max_pipeline_size_;
   int seq_gap_limit_;

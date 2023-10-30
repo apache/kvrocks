@@ -828,7 +828,7 @@ void Config::Get(const std::string &key, std::vector<std::string> *values) const
   }
 }
 
-Status Config::Set(Server *svr, std::string key, const std::string &value) {
+Status Config::Set(Server *srv, std::string key, const std::string &value) {
   key = util::ToLower(key);
   auto iter = fields_.find(key);
   if (iter == fields_.end() || iter->second->readonly) {
@@ -845,7 +845,7 @@ Status Config::Set(Server *svr, std::string key, const std::string &value) {
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
   if (field->callback) {
-    return field->callback(svr, key, value);
+    return field->callback(srv, key, value);
   }
 
   return Status::OK();

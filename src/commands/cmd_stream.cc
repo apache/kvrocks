@@ -131,7 +131,7 @@ class CommandXAdd : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::StreamAddOptions options;
     options.nomkstream = nomkstream_;
     if (with_max_len_) {
@@ -144,7 +144,7 @@ class CommandXAdd : public Commander {
     }
     options.next_id_strategy = std::move(next_id_strategy_);
 
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
     StreamEntryID entry_id;
     auto s = stream_db.Add(stream_name_, options, name_value_pairs_, &entry_id);
     if (!s.ok() && !s.IsNotFound()) {
@@ -158,7 +158,7 @@ class CommandXAdd : public Commander {
 
     *output = redis::BulkString(entry_id.ToString());
 
-    svr->OnEntryAddedToStream(conn->GetNamespace(), stream_name_, entry_id);
+    srv->OnEntryAddedToStream(conn->GetNamespace(), stream_name_, entry_id);
 
     return Status::OK();
   }
@@ -189,8 +189,8 @@ class CommandXDel : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
     uint64_t deleted = 0;
     auto s = stream_db.DeleteEntries(args_[1], ids_, &deleted);
     if (!s.ok()) {
@@ -285,8 +285,8 @@ class CommandXGroup : public Commander {
     return {Status::RedisParseErr, "unknown subcommand"};
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     if (subcommand_ == "create") {
       auto s = stream_db.CreateGroup(stream_name_, xgroup_create_options_, group_name_);
@@ -364,8 +364,8 @@ class CommandXLen : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
     uint64_t len = 0;
     auto s = stream_db.Len(args_[1], options_, &len);
     if (!s.ok()) {
@@ -404,9 +404,9 @@ class CommandXInfo : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (stream_) {
-      return getStreamInfo(svr, conn, output);
+      return getStreamInfo(srv, conn, output);
     }
     return Status::OK();
   }
@@ -416,8 +416,8 @@ class CommandXInfo : public Commander {
   bool stream_ = false;
   bool full_ = false;
 
-  Status getStreamInfo(Server *svr, Connection *conn, std::string *output) {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status getStreamInfo(Server *srv, Connection *conn, std::string *output) {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
     redis::StreamInfo info;
     auto s = stream_db.GetStreamInfo(args_[2], full_, count_, &info);
     if (!s.ok() && !s.IsNotFound()) {
@@ -523,13 +523,13 @@ class CommandXRange : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (with_count_ && count_ == 0) {
       *output = redis::NilString();
       return Status::OK();
     }
 
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     redis::StreamRangeOptions options;
     options.reverse = false;
@@ -616,13 +616,13 @@ class CommandXRevRange : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (with_count_ && count_ == 0) {
       *output = redis::NilString();
       return Status::OK();
     }
 
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     redis::StreamRangeOptions options;
     options.reverse = true;
@@ -745,8 +745,8 @@ class CommandXRead : public Commander,
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     std::vector<redis::StreamReadResult> results;
 
@@ -781,7 +781,7 @@ class CommandXRead : public Commander,
         return Status::OK();  // No blocking in multi-exec
       }
 
-      return BlockingRead(svr, conn, &stream_db);
+      return BlockingRead(srv, conn, &stream_db);
     }
 
     if (!block_ && results.empty()) {
@@ -809,7 +809,7 @@ class CommandXRead : public Commander,
     return Status::OK();
   }
 
-  Status BlockingRead(Server *svr, Connection *conn, redis::Stream *stream_db) {
+  Status BlockingRead(Server *srv, Connection *conn, redis::Stream *stream_db) {
     if (!with_count_) {
       with_count_ = true;
       count_ = blocked_default_count_;
@@ -827,10 +827,10 @@ class CommandXRead : public Commander,
       }
     }
 
-    svr_ = svr;
+    srv_ = srv;
     conn_ = conn;
 
-    svr_->BlockOnStreams(streams_, ids_, conn_);
+    srv_->BlockOnStreams(streams_, ids_, conn_);
 
     auto bev = conn->GetBufferEvent();
     SetCB(bev);
@@ -861,7 +861,7 @@ class CommandXRead : public Commander,
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
 
-    redis::Stream stream_db(svr_->storage, conn_->GetNamespace());
+    redis::Stream stream_db(srv_->storage, conn_->GetNamespace());
 
     std::vector<StreamReadResult> results;
 
@@ -939,7 +939,7 @@ class CommandXRead : public Commander,
   std::vector<std::string> streams_;
   std::vector<StreamEntryID> ids_;
   std::vector<bool> latest_marks_;
-  Server *svr_ = nullptr;
+  Server *srv_ = nullptr;
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
   uint64_t count_ = 0;
@@ -948,7 +948,7 @@ class CommandXRead : public Commander,
   bool with_count_ = false;
   bool block_ = false;
 
-  void unblockAll() { svr_->UnblockOnStreams(streams_, conn_); }
+  void unblockAll() { srv_->UnblockOnStreams(streams_, conn_); }
 };
 
 class CommandXTrim : public Commander {
@@ -1019,8 +1019,8 @@ class CommandXTrim : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     StreamTrimOptions options;
     options.strategy = strategy_;
@@ -1084,8 +1084,8 @@ class CommandXSetId : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Stream stream_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
 
     auto s = stream_db.SetId(stream_name_, last_id_, entries_added_, max_deleted_id_);
     if (!s.ok()) {

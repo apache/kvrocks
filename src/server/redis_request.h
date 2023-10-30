@@ -38,7 +38,7 @@ class Connection;
 
 class Request {
  public:
-  explicit Request(Server *svr) : svr_(svr) {}
+  explicit Request(Server *srv) : srv_(srv) {}
   ~Request() = default;
 
   // Not copyable
@@ -60,7 +60,7 @@ class Request {
   CommandTokens tokens_;
   std::deque<CommandTokens> commands_;
 
-  Server *svr_;
+  Server *srv_;
 };
 
 }  // namespace redis

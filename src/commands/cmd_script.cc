@@ -29,7 +29,7 @@ namespace redis {
 template <bool evalsha, bool read_only>
 class CommandEvalImpl : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (evalsha && args_[1].size() != 40) {
       *output = redis::Error(errNoMatchingScript);
       return Status::OK();
@@ -63,21 +63,21 @@ class CommandScript : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     // There's a little tricky here since the script command was the write type
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
-    if (svr->IsSlave() && subcommand_ != "exists") {
+    if (srv->IsSlave() && subcommand_ != "exists") {
       return {Status::NotOK, "READONLY You can't write against a read only slave"};
     }
 
     if (args_.size() == 2 && subcommand_ == "flush") {
-      auto s = svr->ScriptFlush();
+      auto s = srv->ScriptFlush();
       if (!s) {
         LOG(ERROR) << "Failed to flush scripts: " << s.Msg();
         return s;
       }
-      s = svr->Propagate(engine::kPropagateScriptCommand, args_);
+      s = srv->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s) {
         LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
         return s;
@@ -86,7 +86,7 @@ class CommandScript : public Commander {
     } else if (args_.size() >= 3 && subcommand_ == "exists") {
       *output = redis::MultiLen(args_.size() - 2);
       for (size_t j = 2; j < args_.size(); j++) {
-        if (svr->ScriptExists(args_[j]).IsOK()) {
+        if (srv->ScriptExists(args_[j]).IsOK()) {
           *output += redis::Integer(1);
         } else {
           *output += redis::Integer(0);
@@ -94,7 +94,7 @@ class CommandScript : public Commander {
       }
     } else if (args_.size() == 3 && subcommand_ == "load") {
       std::string sha;
-      auto s = lua::CreateFunction(svr, args_[2], &sha, svr->Lua(), true);
+      auto s = lua::CreateFunction(srv, args_[2], &sha, srv->Lua(), true);
       if (!s.IsOK()) {
         return s;
       }

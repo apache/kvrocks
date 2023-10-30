@@ -67,7 +67,7 @@ Status Request::Tokenize(evbuffer *input) {
         }
 
         pipeline_size++;
-        svr_->stats.IncrInbondBytes(line.length);
+        srv_->stats.IncrInbondBytes(line.length);
         if (line[0] == '*') {
           auto parse_result = ParseInt<int64_t>(std::string(line.get() + 1, line.length - 1), 10);
           if (!parse_result) {
@@ -100,7 +100,7 @@ Status Request::Tokenize(evbuffer *input) {
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line || line.length <= 0) return Status::OK();
 
-        svr_->stats.IncrInbondBytes(line.length);
+        srv_->stats.IncrInbondBytes(line.length);
         if (line[0] != '$') {
           return {Status::NotOK, "Protocol error: expected '$'"};
         }
@@ -124,7 +124,7 @@ Status Request::Tokenize(evbuffer *input) {
         char *data = reinterpret_cast<char *>(evbuffer_pullup(input, static_cast<ssize_t>(bulk_len_ + 2)));
         tokens_.emplace_back(data, bulk_len_);
         evbuffer_drain(input, bulk_len_ + 2);
-        svr_->stats.IncrInbondBytes(bulk_len_ + 2);
+        srv_->stats.IncrInbondBytes(bulk_len_ + 2);
         --multi_bulk_len_;
         if (multi_bulk_len_ == 0) {
           state_ = ArrayLen;

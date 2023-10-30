@@ -44,7 +44,7 @@ class Server;
 
 class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
  public:
-  Worker(Server *svr, Config *config);
+  Worker(Server *srv, Config *config);
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
@@ -74,7 +74,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
 
   lua_State *Lua() { return lua_; }
   std::map<int, redis::Connection *> GetConnections() const { return conns_; }
-  Server *svr;
+  Server *srv;
 
  private:
   Status listenTCP(const std::string &host, uint32_t port, int backlog);

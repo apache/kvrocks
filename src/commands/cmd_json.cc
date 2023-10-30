@@ -30,8 +30,8 @@ namespace redis {
 
 class CommandJsonSet : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     auto s = json.Set(args_[1], args_[2], args_[3]);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -77,8 +77,8 @@ class CommandJsonGet : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     JsonValue result;
     auto s = json.Get(args_[1], paths_, &result);
@@ -102,8 +102,8 @@ class CommandJsonGet : public Commander {
 
 class CommandJsonArrAppend : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     std::vector<size_t> result_count;
 
@@ -125,8 +125,8 @@ class CommandJsonArrAppend : public Commander {
 
 class CommandJsonType : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     std::vector<std::string> types;
 

@@ -221,7 +221,7 @@ struct Config {
   Status Rewrite(const std::map<std::string, std::string> &tokens);
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values) const;
-  Status Set(Server *svr, std::string key, const std::string &value);
+  Status Set(Server *srv, std::string key, const std::string &value);
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }

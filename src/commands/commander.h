@@ -73,7 +73,7 @@ class Commander {
   virtual bool IsBlocking() const { return false; }
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
-  virtual Status Execute(Server *svr, Connection *conn, std::string *output) {
+  virtual Status Execute(Server *srv, Connection *conn, std::string *output) {
     return {Status::RedisExecErr, "not implemented"};
   }
 

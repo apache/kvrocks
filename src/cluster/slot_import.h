@@ -39,7 +39,7 @@ enum ImportStatus {
 
 class SlotImport : public redis::Database {
  public:
-  explicit SlotImport(Server *svr);
+  explicit SlotImport(Server *srv);
   ~SlotImport() = default;
 
   bool Start(int fd, int slot);
@@ -51,7 +51,7 @@ class SlotImport : public redis::Database {
   void GetImportInfo(std::string *info);
 
  private:
-  Server *svr_ = nullptr;
+  Server *srv_ = nullptr;
   std::mutex mutex_;
   int import_slot_;
   int import_status_;

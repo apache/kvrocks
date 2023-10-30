@@ -44,9 +44,9 @@ class CommandGetBit : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     bool bit = false;
-    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     auto s = bitmap_db.GetBit(args_[1], offset_, &bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -75,9 +75,9 @@ class CommandSetBit : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     bool old_bit = false;
-    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     auto s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -115,9 +115,9 @@ class CommandBitCount : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint32_t cnt = 0;
-    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     auto s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -167,9 +167,9 @@ class CommandBitPos : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t pos = 0;
-    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -205,7 +205,7 @@ class CommandBitOp : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> op_keys;
     op_keys.reserve(args_.size() - 2);
     for (uint64_t i = 3; i < args_.size(); i++) {
@@ -213,7 +213,7 @@ class CommandBitOp : public Commander {
     }
 
     int64_t dest_key_len = 0;
-    redis::Bitmap bitmap_db(svr->storage, conn->GetNamespace());
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     auto s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &dest_key_len);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 

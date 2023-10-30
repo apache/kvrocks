@@ -20,9 +20,9 @@
 
 #include "slot_import.h"
 
-SlotImport::SlotImport(Server *svr)
-    : Database(svr->storage, kDefaultNamespace),
-      svr_(svr),
+SlotImport::SlotImport(Server *srv)
+    : Database(srv->storage, kDefaultNamespace),
+      srv_(srv),
       import_slot_(-1),
       import_status_(kImportNone),
       import_fd_(-1) {
@@ -62,7 +62,7 @@ bool SlotImport::Success(int slot) {
     return false;
   }
 
-  Status s = svr_->cluster->SetSlotImported(import_slot_);
+  Status s = srv_->cluster->SetSlotImported(import_slot_);
   if (!s.IsOK()) {
     LOG(ERROR) << "[import] Failed to set slot, Err: " << s.Msg();
     return false;
@@ -107,7 +107,7 @@ void SlotImport::StopForLinkError(int fd) {
   // 4. ClearKeysOfSlot can clear data although server is a slave, because ClearKeysOfSlot
   //    deletes data in rocksdb directly. Therefore, it is necessary to avoid clearing data gotten
   //    from new master.
-  if (!svr_->IsSlave()) {
+  if (!srv_->IsSlave()) {
     // Clean imported slot data
     auto s = ClearKeysOfSlot(namespace_, import_slot_);
     if (!s.ok()) {

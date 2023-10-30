@@ -32,8 +32,8 @@ namespace redis {
 
 class CommandType : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     RedisType type = kRedisNone;
     auto s = redis.Type(args_[1], &type);
     if (s.ok()) {
@@ -53,9 +53,9 @@ class CommandMove : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int count = 0;
-    redis::Database redis(svr->storage, conn->GetNamespace());
+    redis::Database redis(srv->storage, conn->GetNamespace());
     rocksdb::Status s = redis.Exists({args_[1]}, &count);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -66,9 +66,9 @@ class CommandMove : public Commander {
 
 class CommandObject : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (util::ToLower(args_[1]) == "dump") {
-      redis::Database redis(svr->storage, conn->GetNamespace());
+      redis::Database redis(srv->storage, conn->GetNamespace());
       std::vector<std::string> infos;
       auto s = redis.Dump(args_[2], &infos);
       if (!s.ok()) {
@@ -88,8 +88,8 @@ class CommandObject : public Commander {
 
 class CommandTTL : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (s.ok()) {
@@ -103,8 +103,8 @@ class CommandTTL : public Commander {
 
 class CommandPTTL : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     int64_t ttl = 0;
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -116,7 +116,7 @@ class CommandPTTL : public Commander {
 
 class CommandExists : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<rocksdb::Slice> keys;
     keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
@@ -124,7 +124,7 @@ class CommandExists : public Commander {
     }
 
     int cnt = 0;
-    redis::Database redis(svr->storage, conn->GetNamespace());
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.Exists(keys, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::Integer(cnt);
@@ -140,8 +140,8 @@ class CommandExpire : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], ttl_ * 1000 + util::GetTimeStampMS());
     if (s.ok()) {
       *output = redis::Integer(1);
@@ -162,8 +162,8 @@ class CommandPExpire : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], seconds_);
     if (s.ok()) {
       *output = redis::Integer(1);
@@ -190,8 +190,8 @@ class CommandExpireAt : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_ * 1000);
     if (s.ok()) {
       *output = redis::Integer(1);
@@ -218,8 +218,8 @@ class CommandPExpireAt : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Database redis(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.Expire(args_[1], timestamp_);
     if (s.ok()) {
       *output = redis::Integer(1);
@@ -235,9 +235,9 @@ class CommandPExpireAt : public Commander {
 
 class CommandPersist : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t ttl = 0;
-    redis::Database redis(svr->storage, conn->GetNamespace());
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.TTL(args_[1], &ttl);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -256,7 +256,7 @@ class CommandPersist : public Commander {
 
 class CommandDel : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<rocksdb::Slice> keys;
     keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
@@ -264,7 +264,7 @@ class CommandDel : public Commander {
     }
 
     uint64_t cnt = 0;
-    redis::Database redis(svr->storage, conn->GetNamespace());
+    redis::Database redis(srv->storage, conn->GetNamespace());
     auto s = redis.MDel(keys, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 

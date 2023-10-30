@@ -39,8 +39,8 @@ class CommandSortedintAdd : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     uint64_t ret = 0;
     auto s = sortedint_db.Add(args_[1], ids_, &ret);
     if (!s.ok()) {
@@ -69,8 +69,8 @@ class CommandSortedintRem : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     uint64_t ret = 0;
     auto s = sortedint_db.Remove(args_[1], ids_, &ret);
     if (!s.ok()) {
@@ -87,8 +87,8 @@ class CommandSortedintRem : public Commander {
 
 class CommandSortedintCard : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     uint64_t ret = 0;
     auto s = sortedint_db.Card(args_[1], &ret);
     if (!s.ok()) {
@@ -102,8 +102,8 @@ class CommandSortedintCard : public Commander {
 
 class CommandSortedintExists : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     std::vector<uint64_t> ids;
     for (size_t i = 2; i < args_.size(); i++) {
       auto parse_result = ParseInt<uint64_t>(args_[i], 10);
@@ -162,8 +162,8 @@ class CommandSortedintRange : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     std::vector<uint64_t> ids;
     auto s = sortedint_db.Range(args_[1], cursor_id_, offset_, limit_, reversed_, &ids);
     if (!s.ok()) {
@@ -223,10 +223,10 @@ class CommandSortedintRangeByValue : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<uint64_t> ids;
     int size = 0;
-    redis::Sortedint sortedint_db(svr->storage, conn->GetNamespace());
+    redis::Sortedint sortedint_db(srv->storage, conn->GetNamespace());
     auto s = sortedint_db.RangeByValue(args_[1], spec_, &ids, &size);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

@@ -35,7 +35,7 @@ Kvrocks has the following key features:
 * Redis Compatible: Users can access Apache Kvrocks via any Redis client.
 * Namespace: Similar to Redis SELECT but equipped with token per namespace.
 * Replication: Async replication using binlog like MySQL.
-* High Available: Support Redis sentinel to failover when master or slave was failed.
+* High Availability: Support Redis sentinel to failover when master or slave was failed.
 * Cluster: Centralized management but accessible via any Redis cluster client.
 
 Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
@@ -109,7 +109,7 @@ $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 
 ### Connect Kvrocks service
 
-```
+```sh
 $ redis-cli -p 6666
 
 127.0.0.1:6666> get a
@@ -133,7 +133,7 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 
 Namespace is used to isolate data between users. Unlike all the Redis databases can be visited by `requirepass`, we use one token per namespace. `requirepass` is regraded as admin token, and only admin token allows to access the namespace command, as well as some commands like `config`, `slaveof`, `bgsave`, etc. See the [Namespace](https://kvrocks.apache.org/docs/namespace) page for more details.
 
-```
+```sh
 # add token
 127.0.0.1:6666> namespace add ns1 my_token
 OK
@@ -214,7 +214,7 @@ latency: 99.9% < 10ms
 
 ## License
 
-Kvrocks is under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
+Apache Kvrocks is licensed under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
 
 ## Social Media
 

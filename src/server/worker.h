@@ -53,6 +53,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void Stop();
   void Run(std::thread::id tid);
 
+  void MigrateConnection(Worker *target, redis::Connection *conn);
   void DetachConnection(redis::Connection *conn);
   void FreeConnection(redis::Connection *conn);
   void FreeConnectionByID(int fd, uint64_t id);
@@ -72,6 +73,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void TimerCB(int, int16_t events);
 
   lua_State *Lua() { return lua_; }
+  std::map<int, redis::Connection *> GetConnections() const { return conns_; }
   Server *svr;
 
  private:

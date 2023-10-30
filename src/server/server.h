@@ -21,6 +21,7 @@
 #pragma once
 
 #include <inttypes.h>
+#include <tbb/concurrent_vector.h>
 
 #include <array>
 #include <atomic>
@@ -178,6 +179,7 @@ class Server {
   Config *GetConfig() { return config_; }
   static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
   void AdjustOpenFilesLimit();
+  void AdjustWorkerThreads();
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
@@ -301,6 +303,9 @@ class Server {
   Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
   void updateAllWatchedKeys();
+  void increaseWorkerThreads(size_t delta);
+  void decreaseWorkerThreads(size_t delta);
+  void cleanupExitedWorkerThreads();
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;
@@ -343,7 +348,6 @@ class Server {
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;
 
-  std::map<ConnContext, bool> conn_ctxs_;
   std::map<std::string, std::list<ConnContext>> pubsub_channels_;
   std::map<std::string, std::list<ConnContext>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;
@@ -362,6 +366,7 @@ class Server {
   TaskRunner task_runner_;
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
+  tbb::concurrent_queue<std::unique_ptr<WorkerThread>> recycle_worker_threads_;
 
   // memory
   std::atomic<int64_t> memory_startup_use_ = 0;

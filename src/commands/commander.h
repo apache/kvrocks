@@ -70,6 +70,7 @@ class Commander {
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
   const CommandAttributes *GetAttributes() const { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
+  virtual bool IsBlocking() const { return false; }
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *svr, Connection *conn, std::string *output) {

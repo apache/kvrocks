@@ -36,6 +36,7 @@ TEST(Config, GetAndSet) {
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
   std::map<std::string, std::string> mutable_cases = {
+      {"workers", "4"},
       {"log-level", "info"},
       {"timeout", "1000"},
       {"maxclients", "2000"},
@@ -108,7 +109,6 @@ TEST(Config, GetAndSet) {
       {"daemonize", "yes"},
       {"bind", "0.0.0.0"},
       {"repl-bind", "0.0.0.0"},
-      {"workers", "8"},
       {"repl-workers", "8"},
       {"tcp-backlog", "500"},
       {"slaveof", "no one"},

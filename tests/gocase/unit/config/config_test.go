@@ -25,10 +25,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -140,4 +143,93 @@ func TestStartWithoutConfigurationFile(t *testing.T) {
 
 	require.NoError(t, rdb.Do(ctx, "SET", "foo", "bar").Err())
 	require.Equal(t, "bar", rdb.Do(ctx, "GET", "foo").Val())
+}
+
+func TestDynamicChangeWorkerThread(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		MaxIdleConns: 20,
+		MaxRetries:   -1, // Disable retry to check connections are alive after config change
+	})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Test dynamic change worker thread", func(t *testing.T) {
+		runCommands := func(workers int) {
+			var wg sync.WaitGroup
+			require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", strconv.Itoa(workers)).Err())
+			for i := 0; i < 10; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for j := 0; j < 10; j++ {
+						require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+					}
+				}()
+			}
+			wg.Wait()
+		}
+		// Reduce worker threads to 4
+		runCommands(4)
+
+		// Reduce worker threads to 1
+		runCommands(1)
+
+		// Increase worker threads to 12
+		runCommands(12)
+	})
+
+	t.Run("Test dynamic change worker thread with blocking requests", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+		defer cancel()
+
+		blockingTimeout := 5 * time.Second
+
+		var wg sync.WaitGroup
+		// blocking on list
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = rdb.BLPop(ctx, blockingTimeout, "list")
+		}()
+
+		// channel subscribe
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sub := rdb.Subscribe(ctx, "c1", "c2", "c3")
+			_, _ = sub.ReceiveTimeout(ctx, blockingTimeout)
+		}()
+
+		// pattern subscribe
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sub := rdb.PSubscribe(ctx, "c1", "c2", "c3")
+			_, _ = sub.ReceiveTimeout(ctx, blockingTimeout)
+		}()
+
+		// blocking on stream
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = rdb.XRead(ctx, &redis.XReadArgs{
+				Streams: []string{"s1", "s2", "s3"},
+				Count:   1,
+				Block:   blockingTimeout,
+			})
+		}()
+
+		require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "1").Err())
+		wg.Wait()
+
+		// We don't care about the result of these commands since we can't tell if the connection
+		// is migrated or not. We just want to confirm that server works well if there have blocking
+		// requests after changing worker threads.
+		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+	})
 }

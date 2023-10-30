@@ -82,6 +82,7 @@ void SubscribeCommandReply(std::string *output, const std::string &name, const s
 
 class CommandSubscribe : public Commander {
  public:
+  bool IsBlocking() const override { return true; }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
@@ -111,6 +112,7 @@ class CommandUnSubscribe : public Commander {
 
 class CommandPSubscribe : public Commander {
  public:
+  bool IsBlocking() const override { return true; }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     for (size_t i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);

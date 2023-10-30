@@ -32,6 +32,7 @@
 #include <event2/bufferevent_ssl.h>
 #endif
 
+#include "commands/blocking_commander.h"
 #include "redis_connection.h"
 #include "server.h"
 #include "time_util.h"

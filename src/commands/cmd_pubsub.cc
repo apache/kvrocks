@@ -27,12 +27,12 @@ namespace redis {
 
 class CommandPublish : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!svr->IsSlave()) {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (!srv->IsSlave()) {
       // Compromise: can't replicate a message to sub-replicas in a cascading-like structure.
       // Replication relies on WAL seq; increasing the seq on a replica will break the replication process,
       // hence the compromise solution
-      redis::PubSub pubsub_db(svr->storage);
+      redis::PubSub pubsub_db(srv->storage);
 
       auto s = pubsub_db.Publish(args_[1], args_[2]);
       if (!s.ok()) {
@@ -40,7 +40,7 @@ class CommandPublish : public Commander {
       }
     }
 
-    int receivers = svr->PublishMessage(args_[1], args_[2]);
+    int receivers = srv->PublishMessage(args_[1], args_[2]);
 
     *output = redis::Integer(receivers);
 
@@ -50,12 +50,12 @@ class CommandPublish : public Commander {
 
 class CommandMPublish : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int total_receivers = 0;
 
     for (size_t i = 2; i < args_.size(); i++) {
-      if (!svr->IsSlave()) {
-        redis::PubSub pubsub_db(svr->storage);
+      if (!srv->IsSlave()) {
+        redis::PubSub pubsub_db(srv->storage);
 
         auto s = pubsub_db.Publish(args_[1], args_[i]);
         if (!s.ok()) {
@@ -63,7 +63,7 @@ class CommandMPublish : public Commander {
         }
       }
 
-      int receivers = svr->PublishMessage(args_[1], args_[i]);
+      int receivers = srv->PublishMessage(args_[1], args_[i]);
       total_receivers += receivers;
     }
 
@@ -83,7 +83,7 @@ void SubscribeCommandReply(std::string *output, const std::string &name, const s
 class CommandSubscribe : public Commander {
  public:
   bool IsBlocking() const override { return true; }
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
       SubscribeCommandReply(output, "subscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
@@ -94,7 +94,7 @@ class CommandSubscribe : public Commander {
 
 class CommandUnSubscribe : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       conn->UnsubscribeAll([output](const std::string &sub_name, int num) {
         SubscribeCommandReply(output, "unsubscribe", sub_name, num);
@@ -113,7 +113,7 @@ class CommandUnSubscribe : public Commander {
 class CommandPSubscribe : public Commander {
  public:
   bool IsBlocking() const override { return true; }
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     for (size_t i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
       SubscribeCommandReply(output, "psubscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
@@ -124,7 +124,7 @@ class CommandPSubscribe : public Commander {
 
 class CommandPUnSubscribe : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       conn->PUnsubscribeAll([output](const std::string &sub_name, int num) {
         SubscribeCommandReply(output, "punsubscribe", sub_name, num);

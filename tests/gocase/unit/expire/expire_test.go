@@ -30,11 +30,11 @@ import (
 )
 
 func TestExpire(t *testing.T) {
-	svr := util.StartServer(t, map[string]string{})
-	defer svr.Close()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := svr.NewClient()
+	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("EXPIRE - set timeouts multiple times", func(t *testing.T) {

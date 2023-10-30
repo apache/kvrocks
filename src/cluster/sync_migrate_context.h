@@ -25,7 +25,7 @@
 class SyncMigrateContext : private EvbufCallbackBase<SyncMigrateContext, false>,
                            private EventCallbackBase<SyncMigrateContext> {
  public:
-  SyncMigrateContext(Server *svr, redis::Connection *conn, int timeout) : svr_(svr), conn_(conn), timeout_(timeout){};
+  SyncMigrateContext(Server *srv, redis::Connection *conn, int timeout) : srv_(srv), conn_(conn), timeout_(timeout){};
 
   void Suspend();
   void Resume(const Status &migrate_result);
@@ -34,7 +34,7 @@ class SyncMigrateContext : private EvbufCallbackBase<SyncMigrateContext, false>,
   void TimerCB(int, int16_t events);
 
  private:
-  Server *svr_;
+  Server *srv_;
   redis::Connection *conn_;
   int timeout_ = 0;
   UniqueEvent timer_;

@@ -544,7 +544,10 @@ class CommandJsonStrAppend : public Commander {
     std::string path = "$";
     if (args_.size() == 4) {
       path = args_[2];
+    } else if (args_.size() > 4) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
+
     std::vector<uint64_t> results;
     auto s = json.StrAppend(args_[1], path, args_[3], results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -553,10 +556,10 @@ class CommandJsonStrAppend : public Commander {
     return Status::OK();
   }
 
-  static std::string IntegerArray(const std::vector<uint64_t> &values, bool output_nil_for_negative = true) {
+  static std::string IntegerArray(const std::vector<uint64_t> &values) {
     std::string result = "*" + std::to_string(values.size()) + CRLF;
     for (const auto &value : values) {
-      if (value == (uint64_t)-1 and output_nil_for_negative) {
+      if (value == std::numeric_limits<uint64_t>::max()) {
         result += NilString();
       } else {
         result += Integer(value);
@@ -574,7 +577,10 @@ class CommandJsonStrLen : public Commander {
     std::string path = "$";
     if (args_.size() == 3) {
       path = args_[2];
+    } else if (args_.size() > 3) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
+
     std::vector<uint64_t> results;
     auto s = json.StrLen(args_[1], path, results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

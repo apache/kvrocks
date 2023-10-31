@@ -161,7 +161,14 @@ struct JsonValue {
 
   Status StrAppend(std::string_view path, const std::string &append_value, std::vector<uint64_t> &append_cnt) {
     try {
-      auto append_trimmed = util::Trim(append_value, "\"");
+      std::string append_trimmed;
+      jsoncons::json append_json = jsoncons::json::parse(append_value);
+      if (append_json.is_string()) {
+        append_trimmed = append_json.as_string();
+      } else {
+        return {Status::NotOK, "STRAPPEND need input a string to append"};
+      }
+
       jsoncons::jsonpath::json_replace(
           value, path, [&append_trimmed, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
             if (origin.is_string()) {
@@ -170,7 +177,7 @@ struct JsonValue {
               jsoncons::json new_value(origin_trimmed + append_trimmed);
               origin = new_value;
             } else {
-              append_cnt.push_back(-1);
+              append_cnt.push_back(std::numeric_limits<uint64_t>::max());
             }
           });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
@@ -187,7 +194,7 @@ struct JsonValue {
                                        if (origin.is_string()) {
                                          str_lens.push_back((int64_t)origin.as<std::string>().length());
                                        } else {
-                                         str_lens.push_back(-1);
+                                         str_lens.push_back(std::numeric_limits<uint64_t>::max());
                                        }
                                      });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

@@ -438,6 +438,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!reply.empty()) Reply(reply);
     reply.clear();
   }
+  if (current_cmd != nullptr) current_cmd.reset();
 }
 
 void Connection::ResetMultiExec() {

@@ -111,6 +111,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   Worker *Owner() { return owner_; }
   void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
+  bool HasRunningCommand() const { return current_cmd != nullptr; }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
@@ -127,8 +128,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
-  std::unique_ptr<Commander> current_cmd;
   std::function<void(int)> close_cb = nullptr;
+  std::unique_ptr<Commander> current_cmd;
 
   std::set<std::string> watched_keys;
   std::atomic<bool> watched_keys_modified = false;

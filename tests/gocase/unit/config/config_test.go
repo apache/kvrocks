@@ -151,10 +151,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := srv.NewClientWithOption(&redis.Options{
-		MaxIdleConns: 20,
-		MaxRetries:   -1, // Disable retry to check connections are alive after config change
-	})
+	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Test dynamic change worker thread", func(t *testing.T) {

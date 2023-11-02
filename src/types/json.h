@@ -134,6 +134,28 @@ struct JsonValue {
     return result_count;
   }
 
+  StatusOr<std::vector<size_t>> ArrInster(std::string_view path, const long &index,
+                                          const std::vector<jsoncons::json> &insert_values) {
+    std::vector<size_t> result_count;
+
+    try {
+      jsoncons::jsonpath::json_replace(
+          value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
+            if (val.is_array()) {
+              auto base_iter = index >= 0 ? val.array_range().begin() : val.array_range().end();
+              val.insert(base_iter + index, insert_values.begin(), insert_values.end());
+              result_count.emplace_back(val.size());
+            } else {
+              result_count.emplace_back(0);
+            }
+          });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return result_count;
+  }
+
   StatusOr<std::vector<std::string>> Type(std::string_view path) const {
     std::vector<std::string> types;
     try {

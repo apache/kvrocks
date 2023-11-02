@@ -22,6 +22,7 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_json.h"
@@ -123,6 +124,31 @@ class CommandJsonArrAppend : public Commander {
   }
 };
 
+class CommandJsonArrInsert : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<size_t> result_count;
+    auto parse_result = ParseInt<int>(args_[3], 10);
+
+    auto s =
+        json.ArrInsert(args_[1], args_[2], parse_result.GetValue(), {args_.begin() + 4, args_.end()}, &result_count);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(result_count.size());
+    for (size_t c : result_count) {
+      if (c != 0) {
+        *output += redis::Integer(c);
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 class CommandJsonType : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -208,6 +234,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
 

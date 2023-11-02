@@ -22,6 +22,7 @@
 
 #include <storage/redis_db.h>
 
+#include <cstddef>
 #include <string>
 
 #include "json.h"
@@ -41,6 +42,8 @@ class Json : public Database {
   rocksdb::Status Clear(const std::string &user_key, const std::string &path, size_t *result);
   rocksdb::Status ArrLen(const std::string &user_key, const std::string &path,
                          std::vector<std::optional<uint64_t>> &arr_lens);
+  rocksdb::Status ArrInsert(const std::string &user_key, const std::string &path, const long& index,
+                            const std::vector<std::string> &values, std::vector<size_t> *result_count);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

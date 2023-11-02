@@ -22,6 +22,7 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "commands/error_constants.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -126,14 +127,27 @@ class CommandJsonArrAppend : public Commander {
 
 class CommandJsonArrInsert : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    auto parse_result = ParseInt<int>(args[3], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    index_ = *parse_result;
+    return Commander::Parse(args);
+  }
+
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Json json(srv->storage, conn->GetNamespace());
 
     std::vector<size_t> result_count;
     auto parse_result = ParseInt<int>(args_[3], 10);
 
-    auto s =
-        json.ArrInsert(args_[1], args_[2], parse_result.GetValue(), {args_.begin() + 4, args_.end()}, &result_count);
+    auto s = json.ArrInsert(args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &result_count);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(result_count.size());
@@ -147,6 +161,9 @@ class CommandJsonArrInsert : public Commander {
 
     return Status::OK();
   }
+
+ private:
+  int index_;
 };
 
 class CommandJsonType : public Commander {

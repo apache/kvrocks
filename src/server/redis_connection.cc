@@ -302,7 +302,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
-    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
+    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
@@ -322,7 +322,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
     }
 
-    const auto attributes = current_cmd->GetAttributes();
+    const auto attributes = current_cmd_->GetAttributes();
     auto cmd_name = attributes->name;
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
@@ -363,8 +363,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    current_cmd->SetArgs(cmd_tokens);
-    s = current_cmd->Parse();
+    current_cmd_->SetArgs(cmd_tokens);
+    s = current_cmd_->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR " + s.Msg()));
@@ -412,7 +412,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = IsProfilingEnabled(cmd_name);
-    s = current_cmd->Execute(srv_, this, &reply);
+    s = current_cmd_->Execute(srv_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
@@ -438,7 +438,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!reply.empty()) Reply(reply);
     reply.clear();
   }
-  if (current_cmd != nullptr) current_cmd.reset();
+  if (current_cmd_ != nullptr) current_cmd_.reset();
 }
 
 void Connection::ResetMultiExec() {

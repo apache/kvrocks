@@ -427,6 +427,10 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       break;
     }
 
+    // MigrateConnection will NOT migrate the connection if it has the running command
+    // which will check if current_cmd_ is empty, so we need to explicitly reset the current_cmd_
+    // to empty here. To be noticed, we cannot reset if it's a blocking command, because it will
+    // be resumed in the future.
     current_cmd_.reset();
     // Reply for MULTI
     if (!s.IsOK()) {

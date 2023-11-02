@@ -134,7 +134,7 @@ struct JsonValue {
     return result_count;
   }
 
-  StatusOr<std::vector<size_t>> ArrInster(std::string_view path, const long &index,
+  StatusOr<std::vector<size_t>> ArrInsert(std::string_view path, const long &index,
                                           const std::vector<jsoncons::json> &insert_values) {
     std::vector<size_t> result_count;
 

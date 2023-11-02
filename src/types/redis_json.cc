@@ -222,7 +222,7 @@ rocksdb::Status Json::ArrInsert(const std::string &user_key, const std::string &
   auto s = read(ns_key, &metadata, &value);
   if (!s.ok()) return s;
 
-  auto insert_res = value.ArrInster(path, index, insert_values);
+  auto insert_res = value.ArrInsert(path, index, insert_values);
   if (!insert_res) return rocksdb::Status::InvalidArgument(insert_res.Msg());
   *result_count = *insert_res;
 

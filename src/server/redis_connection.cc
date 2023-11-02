@@ -427,6 +427,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       break;
     }
 
+    current_cmd_.reset();
     // Reply for MULTI
     if (!s.IsOK()) {
       Reply(redis::Error("ERR " + s.Msg()));
@@ -438,7 +439,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!reply.empty()) Reply(reply);
     reply.clear();
   }
-  if (current_cmd_ != nullptr) current_cmd_.reset();
 }
 
 void Connection::ResetMultiExec() {

@@ -29,7 +29,7 @@ namespace redis {
 
 class CommandMulti : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (conn->IsFlagEnabled(Connection::kMultiExec)) {
       return {Status::RedisExecErr, "MULTI calls can not be nested"};
     }
@@ -43,12 +43,12 @@ class CommandMulti : public Commander {
 
 class CommandDiscard : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       return {Status::RedisExecErr, "DISCARD without MULTI"};
     }
 
-    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
+    auto reset_watch = MakeScopeExit([srv, conn] { srv->ResetWatchedKeys(conn); });
     conn->ResetMultiExec();
 
     *output = redis::SimpleString("OK");
@@ -59,12 +59,12 @@ class CommandDiscard : public Commander {
 
 class CommandExec : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (!conn->IsFlagEnabled(Connection::kMultiExec)) {
       return {Status::RedisExecErr, "EXEC without MULTI"};
     }
 
-    auto reset_watch = MakeScopeExit([svr, conn] { svr->ResetWatchedKeys(conn); });
+    auto reset_watch = MakeScopeExit([srv, conn] { srv->ResetWatchedKeys(conn); });
     auto reset_multiexec = MakeScopeExit([conn] { conn->ResetMultiExec(); });
 
     if (conn->IsMultiError()) {
@@ -72,12 +72,12 @@ class CommandExec : public Commander {
       return Status::OK();
     }
 
-    if (svr->IsWatchedKeysModified(conn)) {
+    if (srv->IsWatchedKeysModified(conn)) {
       *output = redis::NilString();
       return Status::OK();
     }
 
-    auto storage = svr->storage;
+    auto storage = srv->storage;
     // Reply multi length first
     conn->Reply(redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
@@ -93,18 +93,18 @@ class CommandExec : public Commander {
 
 class CommandWatch : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (conn->IsFlagEnabled(Connection::kMultiExec)) {
       return {Status::RedisExecErr, "WATCH inside MULTI is not allowed"};
     }
 
     // If a conn is already marked as watched_keys_modified, we can skip the watch.
-    if (svr->IsWatchedKeysModified(conn)) {
+    if (srv->IsWatchedKeysModified(conn)) {
       *output = redis::SimpleString("OK");
       return Status::OK();
     }
 
-    svr->WatchKey(conn, std::vector<std::string>(args_.begin() + 1, args_.end()));
+    srv->WatchKey(conn, std::vector<std::string>(args_.begin() + 1, args_.end()));
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -112,8 +112,8 @@ class CommandWatch : public Commander {
 
 class CommandUnwatch : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    svr->ResetWatchedKeys(conn);
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    srv->ResetWatchedKeys(conn);
     *output = redis::SimpleString("OK");
     return Status::OK();
   }

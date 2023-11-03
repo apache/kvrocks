@@ -56,13 +56,13 @@ enum {
 
 namespace lua {
 
-lua_State *CreateState(Server *svr, bool read_only) {
+lua_State *CreateState(Server *srv, bool read_only) {
   lua_State *lua = lua_open();
   LoadLibraries(lua);
   RemoveUnsupportedFunctions(lua);
   LoadFuncs(lua, read_only);
 
-  lua_pushlightuserdata(lua, svr);
+  lua_pushlightuserdata(lua, srv);
   lua_setglobal(lua, REDIS_LUA_SERVER_PTR);
 
   EnableGlobalsProtection(lua);
@@ -704,7 +704,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto commands = redis::GetCommands();
+  auto commands = redis::CommandTable::Get();
   auto cmd_iter = commands->find(util::ToLower(args[0]));
   if (cmd_iter == commands->end()) {
     PushError(lua, "Unknown Redis command called from Lua script");

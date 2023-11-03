@@ -23,6 +23,9 @@
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
+#include <jsoncons_ext/cbor/cbor.hpp>
+#include <jsoncons_ext/cbor/cbor_encoder.hpp>
+#include <jsoncons_ext/cbor/cbor_options.hpp>
 #include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
@@ -50,6 +53,21 @@ struct JsonValue {
     return JsonValue(std::move(val));
   }
 
+  static StatusOr<JsonValue> FromCBOR(std::string_view str, int max_nesting_depth = std::numeric_limits<int>::max()) {
+    jsoncons::json val;
+
+    jsoncons::cbor::cbor_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
+    try {
+      val = jsoncons::cbor::decode_cbor<jsoncons::json>(str, options);
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return JsonValue(std::move(val));
+  }
+
   StatusOr<std::string> Dump(int max_nesting_depth = std::numeric_limits<int>::max()) const {
     std::string res;
     GET_OR_RET(Dump(&res, max_nesting_depth));
@@ -61,6 +79,26 @@ struct JsonValue {
     options.max_nesting_depth(max_nesting_depth);
 
     jsoncons::compact_json_string_encoder encoder{*buffer, options};
+    std::error_code ec;
+    value.dump(encoder, ec);
+    if (ec) {
+      return {Status::NotOK, ec.message()};
+    }
+
+    return Status::OK();
+  }
+
+  StatusOr<std::string> DumpCBOR(int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    std::string res;
+    GET_OR_RET(DumpCBOR(&res, max_nesting_depth));
+    return res;
+  }
+
+  Status DumpCBOR(std::string *buffer, int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    jsoncons::cbor::cbor_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
+    jsoncons::cbor::basic_cbor_encoder<jsoncons::string_sink<std::string>> encoder{*buffer, options};
     std::error_code ec;
     value.dump(encoder, ec);
     if (ec) {

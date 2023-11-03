@@ -42,8 +42,8 @@ static std::map<RedisType, std::string> type_to_cmd = {
     {kRedisZSet, "zadd"},  {kRedisBitmap, "setbit"}, {kRedisSortedint, "siadd"}, {kRedisStream, "xadd"},
 };
 
-SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipeline_size, int seq_gap_limit)
-    : Database(svr->storage, kDefaultNamespace), svr_(svr) {
+SlotMigrator::SlotMigrator(Server *srv, int max_migration_speed, int max_pipeline_size, int seq_gap_limit)
+    : Database(srv->storage, kDefaultNamespace), srv_(srv) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -71,7 +71,7 @@ SlotMigrator::SlotMigrator(Server *svr, int max_migration_speed, int max_pipelin
     seq_gap_limit_ = seq_gap_limit;
   }
 
-  if (svr->IsSlave()) {
+  if (srv->IsSlave()) {
     SetStopMigrationFlag(true);
   }
 }
@@ -92,9 +92,9 @@ Status SlotMigrator::PerformSlotMigration(const std::string &node_id, std::strin
 
   migration_state_ = MigrationState::kStarted;
 
-  auto speed = svr_->GetConfig()->migrate_speed;
-  auto seq_gap = svr_->GetConfig()->sequence_gap;
-  auto pipeline_size = svr_->GetConfig()->pipeline_size;
+  auto speed = srv_->GetConfig()->migrate_speed;
+  auto seq_gap = srv_->GetConfig()->sequence_gap;
+  auto pipeline_size = srv_->GetConfig()->pipeline_size;
 
   if (speed <= 0) {
     speed = 0;
@@ -279,7 +279,7 @@ Status SlotMigrator::startMigration() {
   dst_fd_.Reset(*result);
 
   // Auth first
-  std::string pass = svr_->GetConfig()->requirepass;
+  std::string pass = srv_->GetConfig()->requirepass;
   if (!pass.empty()) {
     auto s = authOnDstNode(*dst_fd_, pass);
     if (!s.IsOK()) {
@@ -396,7 +396,7 @@ Status SlotMigrator::finishSuccessfulMigration() {
   }
 
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
-  s = svr_->cluster->SetSlotMigrated(migrating_slot_, dst_ip_port);
+  s = srv_->cluster->SetSlotMigrated(migrating_slot_, dst_ip_port);
   if (!s.IsOK()) {
     return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", migrating_slot_.load(), dst_ip_port));
   }
@@ -896,7 +896,7 @@ void SlotMigrator::setForbiddenSlot(int16_t slot) {
   // Block server to set forbidden slot
   uint64_t during = util::GetTimeStampUS();
   {
-    auto exclusivity = svr_->WorkExclusivityGuard();
+    auto exclusivity = srv_->WorkExclusivityGuard();
     forbidden_slot_ = slot;
   }
   during = util::GetTimeStampUS() - during;

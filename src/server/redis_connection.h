@@ -96,7 +96,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   uint32_t GetAnnouncePort() const { return listening_port_ != 0 ? listening_port_ : port_; }
   std::string GetAnnounceAddr() const { return GetAnnounceIP() + ":" + std::to_string(GetAnnouncePort()); }
   uint64_t GetClientType() const;
-  Server *GetServer() { return svr_; }
+  Server *GetServer() { return srv_; }
 
   bool IsAdmin() const { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
@@ -109,6 +109,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsNeedFreeBufferEvent() const { return need_free_bev_; }
 
   Worker *Owner() { return owner_; }
+  void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
@@ -154,7 +155,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;
 
-  Server *svr_;
+  Server *srv_;
   bool in_exec_ = false;
   bool multi_error_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;

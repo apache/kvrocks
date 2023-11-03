@@ -36,6 +36,7 @@ TEST(Config, GetAndSet) {
   auto s = config.Load(CLIOptions(path));
   EXPECT_FALSE(s.IsOK());
   std::map<std::string, std::string> mutable_cases = {
+      {"workers", "4"},
       {"log-level", "info"},
       {"timeout", "1000"},
       {"maxclients", "2000"},
@@ -108,7 +109,6 @@ TEST(Config, GetAndSet) {
       {"daemonize", "yes"},
       {"bind", "0.0.0.0"},
       {"repl-bind", "0.0.0.0"},
-      {"workers", "8"},
       {"repl-workers", "8"},
       {"tcp-backlog", "500"},
       {"slaveof", "no one"},
@@ -145,7 +145,7 @@ TEST(Config, GetRenameCommand) {
   output_file << "rename-command SET SET_NEW"
               << "\n";
   output_file.close();
-  redis::ResetCommands();
+  redis::CommandTable::Reset();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   std::vector<std::string> values;
@@ -171,12 +171,12 @@ TEST(Config, Rewrite) {
               << "\n";
   output_file.close();
 
-  redis::ResetCommands();
+  redis::CommandTable::Reset();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
   ASSERT_TRUE(config.Rewrite({}).IsOK());
   // Need to re-populate the command table since it has renamed by the previous
-  redis::ResetCommands();
+  redis::CommandTable::Reset();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
   unlink(path);

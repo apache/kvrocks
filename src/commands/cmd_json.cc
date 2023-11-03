@@ -24,14 +24,15 @@
 #include "commands/command_parser.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "storage/redis_metadata.h"
 #include "types/redis_json.h"
 
 namespace redis {
 
 class CommandJsonSet : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     auto s = json.Set(args_[1], args_[2], args_[3]);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -77,8 +78,8 @@ class CommandJsonGet : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     JsonValue result;
     auto s = json.Get(args_[1], paths_, &result);
@@ -100,10 +101,27 @@ class CommandJsonGet : public Commander {
   std::vector<std::string> paths_;
 };
 
+class CommandJsonInfo : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    auto storage_format = JsonStorageFormat::JSON;
+    auto s = json.Info(args_[1], &storage_format);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    auto format_str = storage_format == JsonStorageFormat::JSON   ? "json"
+                      : storage_format == JsonStorageFormat::CBOR ? "cbor"
+                                                                  : "unknown";
+    output->append(redis::MultiBulkString({"storage_format", format_str}));
+    return Status::OK();
+  }
+};
+
 class CommandJsonArrAppend : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     std::vector<size_t> result_count;
 
@@ -125,8 +143,8 @@ class CommandJsonArrAppend : public Commander {
 
 class CommandJsonType : public Commander {
  public:
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    redis::Json json(svr->storage, conn->GetNamespace());
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
 
     std::vector<std::string> types;
 
@@ -232,6 +250,7 @@ class CommandJsonMerge : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),

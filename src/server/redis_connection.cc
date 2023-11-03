@@ -32,6 +32,7 @@
 #include <event2/bufferevent_ssl.h>
 #endif
 
+#include "commands/blocking_commander.h"
 #include "redis_connection.h"
 #include "server.h"
 #include "time_util.h"
@@ -41,7 +42,7 @@
 namespace redis {
 
 Connection::Connection(bufferevent *bev, Worker *owner)
-    : need_free_bev_(true), bev_(bev), req_(owner->svr), owner_(owner), svr_(owner->svr) {
+    : need_free_bev_(true), bev_(bev), req_(owner->srv), owner_(owner), srv_(owner->srv) {
   int64_t now = util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
@@ -123,7 +124,7 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->svr->stats.IncrOutbondBytes(msg.size());
+  owner_->srv->stats.IncrOutbondBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
@@ -182,14 +183,14 @@ void Connection::SubscribeChannel(const std::string &channel) {
   }
 
   subscribe_channels_.emplace_back(channel);
-  owner_->svr->SubscribeChannel(channel, this);
+  owner_->srv->SubscribeChannel(channel, this);
 }
 
 void Connection::UnsubscribeChannel(const std::string &channel) {
   for (auto iter = subscribe_channels_.begin(); iter != subscribe_channels_.end(); iter++) {
     if (*iter == channel) {
       subscribe_channels_.erase(iter);
-      owner_->svr->UnsubscribeChannel(channel, this);
+      owner_->srv->UnsubscribeChannel(channel, this);
       return;
     }
   }
@@ -203,7 +204,7 @@ void Connection::UnsubscribeAll(const UnsubscribeCallback &reply) {
 
   int removed = 0;
   for (const auto &chan : subscribe_channels_) {
-    owner_->svr->UnsubscribeChannel(chan, this);
+    owner_->srv->UnsubscribeChannel(chan, this);
     removed++;
     if (reply) {
       reply(chan, static_cast<int>(subscribe_channels_.size() - removed + subscribe_patterns_.size()));
@@ -219,14 +220,14 @@ void Connection::PSubscribeChannel(const std::string &pattern) {
     if (pattern == p) return;
   }
   subscribe_patterns_.emplace_back(pattern);
-  owner_->svr->PSubscribeChannel(pattern, this);
+  owner_->srv->PSubscribeChannel(pattern, this);
 }
 
 void Connection::PUnsubscribeChannel(const std::string &pattern) {
   for (auto iter = subscribe_patterns_.begin(); iter != subscribe_patterns_.end(); iter++) {
     if (*iter == pattern) {
       subscribe_patterns_.erase(iter);
-      owner_->svr->PUnsubscribeChannel(pattern, this);
+      owner_->srv->PUnsubscribeChannel(pattern, this);
       return;
     }
   }
@@ -240,7 +241,7 @@ void Connection::PUnsubscribeAll(const UnsubscribeCallback &reply) {
 
   int removed = 0;
   for (const auto &pattern : subscribe_patterns_) {
-    owner_->svr->PUnsubscribeChannel(pattern, this);
+    owner_->srv->PUnsubscribeChannel(pattern, this);
     removed++;
     if (reply) {
       reply(pattern, static_cast<int>(subscribe_patterns_.size() - removed + subscribe_channels_.size()));
@@ -252,7 +253,7 @@ void Connection::PUnsubscribeAll(const UnsubscribeCallback &reply) {
 int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patterns_.size()); }
 
 bool Connection::IsProfilingEnabled(const std::string &cmd) {
-  auto config = svr_->GetConfig();
+  auto config = srv_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;
 
   if (!config->profiling_sample_all_commands &&
@@ -271,7 +272,7 @@ bool Connection::IsProfilingEnabled(const std::string &cmd) {
 }
 
 void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration) {
-  int threshold = svr_->GetConfig()->profiling_sample_record_threshold_ms;
+  int threshold = srv_->GetConfig()->profiling_sample_record_threshold_ms;
   if (threshold > 0 && static_cast<int>(duration / 1000) < threshold) {
     rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
     return;
@@ -287,11 +288,11 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   entry->duration = duration;
   entry->iostats_context = std::move(iostats_context);
   entry->perf_context = std::move(perf_context);
-  svr_->GetPerfLog()->PushEntry(std::move(entry));
+  srv_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
-  Config *config = svr_->GetConfig();
+  Config *config = srv_->GetConfig();
   std::string reply, password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
@@ -301,7 +302,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
-    auto s = svr_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
+    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
@@ -334,21 +335,21 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (is_multi_exec && attributes->name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (cmd_flags & kCmdExclusive) {
-      exclusivity = svr_->WorkExclusivityGuard();
+      exclusivity = srv_->WorkExclusivityGuard();
 
       // When executing lua script commands that have "exclusive" attribute, we need to know current connection,
       // but we should set current connection after acquiring the WorkExclusivityGuard to make it thread-safe
-      svr_->SetCurrentConnection(this);
+      srv_->SetCurrentConnection(this);
     } else {
-      concurrency = svr_->WorkConcurrencyGuard();
+      concurrency = srv_->WorkConcurrencyGuard();
     }
 
     if (cmd_flags & kCmdROScript) {
       // if executing read only lua script commands, set current connection.
-      svr_->SetCurrentConnection(this);
+      srv_->SetCurrentConnection(this);
     }
 
-    if (svr_->IsLoading() && !(cmd_flags & kCmdLoading)) {
+    if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
       Reply(redis::Error("LOADING kvrocks is restoring the db from backup"));
       if (is_multi_exec) multi_error_ = true;
       continue;
@@ -378,7 +379,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (config->cluster_enabled) {
-      s = svr_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
+      s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (is_multi_exec) multi_error_ = true;
         Reply(redis::Error("ERR " + s.Msg()));
@@ -393,13 +394,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    if (config->slave_readonly && svr_->IsSlave() && (cmd_flags & kCmdWrite)) {
+    if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
       Reply(redis::Error("READONLY You can't write against a read only slave."));
       continue;
     }
 
-    if (!config->slave_serve_stale_data && svr_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
-        svr_->GetReplicationState() != kReplConnected) {
+    if (!config->slave_serve_stale_data && srv_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
+        srv_->GetReplicationState() != kReplConnected) {
       Reply(
           redis::Error("MASTERDOWN Link with MASTER is down "
                        "and slave-serve-stale-data is set to 'no'."));
@@ -407,18 +408,18 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
-    svr_->stats.IncrCalls(cmd_name);
+    srv_->stats.IncrCalls(cmd_name);
 
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = IsProfilingEnabled(cmd_name);
-    s = current_cmd->Execute(svr_, this, &reply);
+    s = current_cmd->Execute(srv_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
 
-    svr_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
-    svr_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
-    svr_->FeedMonitorConns(this, cmd_tokens);
+    srv_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
+    srv_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+    srv_->FeedMonitorConns(this, cmd_tokens);
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.
@@ -432,7 +433,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    svr_->UpdateWatchedKeysFromArgs(cmd_tokens, *attributes);
+    srv_->UpdateWatchedKeysFromArgs(cmd_tokens, *attributes);
 
     if (!reply.empty()) Reply(reply);
     reply.clear();

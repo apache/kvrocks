@@ -40,8 +40,8 @@ ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, s
                          std::bitset<kClusterSlots> slots)
     : id(std::move(id)), host(std::move(host)), port(port), role(role), master_id(std::move(master_id)), slots(slots) {}
 
-Cluster::Cluster(Server *svr, std::vector<std::string> binds, int port)
-    : svr_(svr), binds_(std::move(binds)), port_(port), size_(0), version_(-1), myself_(nullptr) {
+Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
+    : srv_(srv), binds_(std::move(binds)), port_(port), size_(0), version_(-1), myself_(nullptr) {
   for (auto &slots_node : slots_nodes_) {
     slots_node = nullptr;
   }
@@ -127,7 +127,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       if (old_node == myself_ && old_node != to_assign_node) {
         // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
-          auto s = svr_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
+          auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
           if (!s.ok()) {
             LOG(ERROR) << "failed to clear data of migrated slot: " << s.ToString();
           }
@@ -212,7 +212,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   if (!migrated_slots_.empty()) {
     for (auto &it : migrated_slots_) {
       if (slots_nodes_[it.first] != myself_) {
-        auto s = svr_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, it.first);
+        auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, it.first);
         if (!s.ok()) {
           LOG(ERROR) << "failed to clear data of migrated slots: " << s.ToString();
         }
@@ -228,13 +228,13 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
 // Set replication relationship by cluster topology setting
 Status Cluster::SetMasterSlaveRepl() {
-  if (!svr_) return Status::OK();
+  if (!srv_) return Status::OK();
 
   if (!myself_) return Status::OK();
 
   if (myself_->role == kClusterMaster) {
     // Master mode
-    auto s = svr_->RemoveMaster();
+    auto s = srv_->RemoveMaster();
     if (!s.IsOK()) {
       return s.Prefixed("failed to remove master");
     }
@@ -242,7 +242,7 @@ Status Cluster::SetMasterSlaveRepl() {
   } else if (nodes_.find(myself_->master_id) != nodes_.end()) {
     // Replica mode and master node is existing
     std::shared_ptr<ClusterNode> master = nodes_[myself_->master_id];
-    auto s = svr_->AddMaster(master->host, master->port, false);
+    auto s = srv_->AddMaster(master->host, master->port, false);
     if (!s.IsOK()) {
       LOG(WARNING) << "SLAVE OF " << master->host << ":" << master->port
                    << " wasn't enabled by cluster topology setting, encounter error: " << s.Msg();
@@ -254,7 +254,7 @@ Status Cluster::SetMasterSlaveRepl() {
   return Status::OK();
 }
 
-bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role != kClusterMaster || svr_->IsSlave(); }
+bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role != kClusterMaster || srv_->IsSlave(); }
 
 Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
   if (!IsValidSlot(slot)) {
@@ -264,7 +264,7 @@ Status Cluster::SetSlotMigrated(int slot, const std::string &ip_port) {
   // It is called by slot-migrating thread which is an asynchronous thread.
   // Therefore, it should be locked when a record is added to 'migrated_slots_'
   // which will be accessed when executing commands.
-  auto exclusivity = svr_->WorkExclusivityGuard();
+  auto exclusivity = srv_->WorkExclusivityGuard();
   migrated_slots_[slot] = ip_port;
   return Status::OK();
 }
@@ -306,7 +306,7 @@ Status Cluster::MigrateSlot(int slot, const std::string &dst_node_id, SyncMigrat
   }
 
   const auto &dst = nodes_[dst_node_id];
-  Status s = svr_->slot_migrator->PerformSlotMigration(dst_node_id, dst->host, dst->port, slot, blocking_ctx);
+  Status s = srv_->slot_migrator->PerformSlotMigration(dst_node_id, dst->host, dst->port, slot, blocking_ctx);
   return s;
 }
 
@@ -321,7 +321,7 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
 
   switch (state) {
     case kImportStart:
-      if (!svr_->slot_import->Start(conn->GetFD(), slot)) {
+      if (!srv_->slot_import->Start(conn->GetFD(), slot)) {
         return {Status::NotOK, fmt::format("Can't start importing slot {}", slot)};
       }
 
@@ -329,26 +329,26 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
       conn->SetImporting();
       myself_->importing_slot = slot;
       // Set link error callback
-      conn->close_cb = [object_ptr = svr_->slot_import.get(), capture_fd = conn->GetFD()](int fd) {
+      conn->close_cb = [object_ptr = srv_->slot_import.get(), capture_fd = conn->GetFD()](int fd) {
         object_ptr->StopForLinkError(capture_fd);
       };
       // Stop forbidding writing slot to accept write commands
-      if (slot == svr_->slot_migrator->GetForbiddenSlot()) svr_->slot_migrator->ReleaseForbiddenSlot();
+      if (slot == srv_->slot_migrator->GetForbiddenSlot()) srv_->slot_migrator->ReleaseForbiddenSlot();
       LOG(INFO) << "[import] Start importing slot " << slot;
       break;
     case kImportSuccess:
-      if (!svr_->slot_import->Success(slot)) {
+      if (!srv_->slot_import->Success(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << svr_->slot_import->GetSlot();
+                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
         return {Status::NotOK, fmt::format("Failed to set slot {} importing success", slot)};
       }
 
       LOG(INFO) << "[import] Succeed to import slot " << slot;
       break;
     case kImportFailed:
-      if (!svr_->slot_import->Fail(slot)) {
+      if (!srv_->slot_import->Fail(slot)) {
         LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << svr_->slot_import->GetSlot();
+                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
         return {Status::NotOK, fmt::format("Failed to set slot {} importing error", slot)};
       }
 
@@ -395,15 +395,15 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
       "cluster_my_epoch:" +
       std::to_string(version_) + "\r\n";
 
-  if (myself_ != nullptr && myself_->role == kClusterMaster && !svr_->IsSlave()) {
+  if (myself_ != nullptr && myself_->role == kClusterMaster && !srv_->IsSlave()) {
     // Get migrating status
     std::string migrate_infos;
-    svr_->slot_migrator->GetMigrationInfo(&migrate_infos);
+    srv_->slot_migrator->GetMigrationInfo(&migrate_infos);
     *cluster_infos += migrate_infos;
 
     // Get importing status
     std::string import_infos;
-    svr_->slot_import->GetImportInfo(&import_infos);
+    srv_->slot_import->GetImportInfo(&import_infos);
     *cluster_infos += import_infos;
   }
 
@@ -743,12 +743,12 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
-bool Cluster::IsWriteForbiddenSlot(int slot) { return svr_->slot_migrator->GetForbiddenSlot() == slot; }
+bool Cluster::IsWriteForbiddenSlot(int slot) { return srv_->slot_migrator->GetForbiddenSlot() == slot; }
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = redis::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
+  auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
   // No keys
   if (!s.IsOK()) return Status::OK();
 

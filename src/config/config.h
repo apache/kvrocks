@@ -32,6 +32,7 @@
 #include "config_type.h"
 #include "cron.h"
 #include "status.h"
+#include "storage/redis_metadata.h"
 
 // forward declaration
 class Server;
@@ -101,7 +102,7 @@ struct Config {
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
   bool daemonize = false;
-  int supervised_mode = kSupervisedNone;
+  SupervisedMode supervised_mode = kSupervisedNone;
   bool slave_readonly = true;
   bool slave_serve_stale_data = true;
   bool slave_empty_db_before_fullsync = false;
@@ -163,6 +164,7 @@ struct Config {
 
   // json
   int json_max_nesting_depth = 1024;
+  JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
   struct RocksDB {
     int block_size;
@@ -189,7 +191,7 @@ struct Config {
     int level0_slowdown_writes_trigger;
     int level0_stop_writes_trigger;
     int level0_file_num_compaction_trigger;
-    int compression;
+    rocksdb::CompressionType compression;
     bool disable_auto_compactions;
     bool enable_blob_files;
     int min_blob_size;
@@ -221,7 +223,7 @@ struct Config {
   Status Rewrite(const std::map<std::string, std::string> &tokens);
   Status Load(const CLIOptions &path);
   void Get(const std::string &key, std::vector<std::string> *values) const;
-  Status Set(Server *svr, std::string key, const std::string &value);
+  Status Set(Server *srv, std::string key, const std::string &value);
   void SetMaster(const std::string &host, uint32_t port);
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }

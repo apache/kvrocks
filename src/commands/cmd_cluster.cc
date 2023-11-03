@@ -50,8 +50,8 @@ class CommandCluster : public Commander {
     return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT"};
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!svr->GetConfig()->cluster_enabled) {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (!srv->GetConfig()->cluster_enabled) {
       return {Status::RedisExecErr, "Cluster mode is not enabled"};
     }
 
@@ -64,7 +64,7 @@ class CommandCluster : public Commander {
       *output = redis::Integer(slot_id);
     } else if (subcommand_ == "slots") {
       std::vector<SlotInfo> infos;
-      Status s = svr->cluster->GetSlotsInfo(&infos);
+      Status s = srv->cluster->GetSlotsInfo(&infos);
       if (s.IsOK()) {
         output->append(redis::MultiLen(infos.size()));
         for (const auto &info : infos) {
@@ -83,7 +83,7 @@ class CommandCluster : public Commander {
       }
     } else if (subcommand_ == "nodes") {
       std::string nodes_desc;
-      Status s = svr->cluster->GetClusterNodes(&nodes_desc);
+      Status s = srv->cluster->GetClusterNodes(&nodes_desc);
       if (s.IsOK()) {
         *output = redis::BulkString(nodes_desc);
       } else {
@@ -91,14 +91,14 @@ class CommandCluster : public Commander {
       }
     } else if (subcommand_ == "info") {
       std::string cluster_info;
-      Status s = svr->cluster->GetClusterInfo(&cluster_info);
+      Status s = srv->cluster->GetClusterInfo(&cluster_info);
       if (s.IsOK()) {
         *output = redis::BulkString(cluster_info);
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
     } else if (subcommand_ == "import") {
-      Status s = svr->cluster->ImportSlot(conn, static_cast<int>(slot_), state_);
+      Status s = srv->cluster->ImportSlot(conn, static_cast<int>(slot_), state_);
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
       } else {
@@ -182,7 +182,7 @@ class CommandClusterX : public Commander {
 
     // CLUSTERX SETSLOT $SLOT_ID NODE $NODE_ID $VERSION
     if (subcommand_ == "setslot" && args_.size() == 6) {
-      Status s = CommanderHelper::ParseSlotRanges(args_[2], slot_ranges_);
+      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
       if (!s.IsOK()) {
         return s;
       }
@@ -210,8 +210,8 @@ class CommandClusterX : public Commander {
     return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    if (!svr->GetConfig()->cluster_enabled) {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (!srv->GetConfig()->cluster_enabled) {
       return {Status::RedisExecErr, "Cluster mode is not enabled"};
     }
 
@@ -221,7 +221,7 @@ class CommandClusterX : public Commander {
 
     bool need_persist_nodes_info = false;
     if (subcommand_ == "setnodes") {
-      Status s = svr->cluster->SetClusterNodes(nodes_str_, set_version_, force_);
+      Status s = srv->cluster->SetClusterNodes(nodes_str_, set_version_, force_);
       if (s.IsOK()) {
         need_persist_nodes_info = true;
         *output = redis::SimpleString("OK");
@@ -229,7 +229,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisExecErr, s.Msg()};
       }
     } else if (subcommand_ == "setnodeid") {
-      Status s = svr->cluster->SetNodeId(args_[2]);
+      Status s = srv->cluster->SetNodeId(args_[2]);
       if (s.IsOK()) {
         need_persist_nodes_info = true;
         *output = redis::SimpleString("OK");
@@ -237,7 +237,7 @@ class CommandClusterX : public Commander {
         return {Status::RedisExecErr, s.Msg()};
       }
     } else if (subcommand_ == "setslot") {
-      Status s = svr->cluster->SetSlotRanges(slot_ranges_, args_[4], set_version_);
+      Status s = srv->cluster->SetSlotRanges(slot_ranges_, args_[4], set_version_);
       if (s.IsOK()) {
         need_persist_nodes_info = true;
         *output = redis::SimpleString("OK");
@@ -245,14 +245,14 @@ class CommandClusterX : public Commander {
         return {Status::RedisExecErr, s.Msg()};
       }
     } else if (subcommand_ == "version") {
-      int64_t v = svr->cluster->GetVersion();
+      int64_t v = srv->cluster->GetVersion();
       *output = redis::BulkString(std::to_string(v));
     } else if (subcommand_ == "migrate") {
       if (sync_migrate_) {
-        sync_migrate_ctx_ = std::make_unique<SyncMigrateContext>(svr, conn, sync_migrate_timeout_);
+        sync_migrate_ctx_ = std::make_unique<SyncMigrateContext>(srv, conn, sync_migrate_timeout_);
       }
 
-      Status s = svr->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_, sync_migrate_ctx_.get());
+      Status s = srv->cluster->MigrateSlot(static_cast<int>(slot_), dst_node_id_, sync_migrate_ctx_.get());
       if (s.IsOK()) {
         if (sync_migrate_) {
           return {Status::BlockingCmd};
@@ -264,8 +264,8 @@ class CommandClusterX : public Commander {
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
-    if (need_persist_nodes_info && svr->GetConfig()->persist_cluster_nodes_enabled) {
-      return svr->cluster->DumpClusterNodes(svr->GetConfig()->NodesFilePath());
+    if (need_persist_nodes_info && srv->GetConfig()->persist_cluster_nodes_enabled) {
+      return srv->cluster->DumpClusterNodes(srv->GetConfig()->NodesFilePath());
     }
     return Status::OK();
   }

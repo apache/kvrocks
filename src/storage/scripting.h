@@ -36,7 +36,7 @@ inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LIBRARI
 
 namespace lua {
 
-lua_State *CreateState(Server *svr, bool read_only = false);
+lua_State *CreateState(Server *srv, bool read_only = false);
 void DestroyState(lua_State *lua);
 Server *GetServer(lua_State *lua);
 

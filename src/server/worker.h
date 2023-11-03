@@ -44,7 +44,7 @@ class Server;
 
 class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
  public:
-  Worker(Server *svr, Config *config);
+  Worker(Server *srv, Config *config);
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
@@ -53,6 +53,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void Stop();
   void Run(std::thread::id tid);
 
+  void MigrateConnection(Worker *target, redis::Connection *conn);
   void DetachConnection(redis::Connection *conn);
   void FreeConnection(redis::Connection *conn);
   void FreeConnectionByID(int fd, uint64_t id);
@@ -72,7 +73,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void TimerCB(int, int16_t events);
 
   lua_State *Lua() { return lua_; }
-  Server *svr;
+  std::map<int, redis::Connection *> GetConnections() const { return conns_; }
+  Server *srv;
 
  private:
   Status listenTCP(const std::string &host, uint32_t port, int backlog);

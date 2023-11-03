@@ -173,6 +173,25 @@ struct JsonValue {
     return types;
   }
 
+  Status Toggle(std::string_view path) {
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&](const std::string & /*path*/, jsoncons::json &val) {
+        bool is_boolean = val.is_bool() && !val.empty();
+        // bool is_array = val.is_array() && !val.empty();
+
+        // if (is_array)
+        //   val = jsoncons::json::array();
+        if (is_boolean)
+          val = !val.as_bool();
+        else
+          return;
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
   StatusOr<size_t> Clear(std::string_view path) {
     size_t count = 0;
     try {

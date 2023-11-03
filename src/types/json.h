@@ -177,10 +177,7 @@ struct JsonValue {
     try {
       jsoncons::jsonpath::json_replace(value, path, [&](const std::string & /*path*/, jsoncons::json &val) {
         bool is_boolean = val.is_bool() && !val.empty();
-        // bool is_array = val.is_array() && !val.empty();
 
-        // if (is_array)
-        //   val = jsoncons::json::array();
         if (is_boolean)
           val = !val.as_bool();
         else

@@ -26,7 +26,6 @@
 #include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
-#include <jsoncons_ext/jsonpath/jsonpath_expression.hpp>
 #include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
 
@@ -225,17 +224,12 @@ struct JsonValue {
       jsoncons::json patch_value = jsoncons::json::parse(merge_value);
       bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
-      if (path == json_root_path || not_exists) {
-        // For non-existing keys the path must be $
-        if (not_exists) {
-          // Create an actual object from non-existing path
-          jsoncons::json created_object = GenerateJsonFromPath(path.data(), patch_value);
+      if (not_exists) {
+        // TODO:: Add ability to create an object from path.
+        return {Status::NotOK, "Path does not exist."};
+      }
 
-          // Merge it with patch value
-          auto patch = jsoncons::mergepatch::from_diff(patch_value, created_object);
-          jsoncons::mergepatch::apply_merge_patch(patch_value, patch);
-        }
-
+      if (path == json_root_path) {
         // Merge with the root. Patch function complies with RFC7396 Json Merge Patch
         jsoncons::mergepatch::apply_merge_patch(value, patch_value);
         is_updated = true;
@@ -269,27 +263,6 @@ struct JsonValue {
     }
 
     return is_updated;
-  }
-
-  static jsoncons::json GenerateJsonFromPath(const std::string &path, const jsoncons::json &value) {
-    std::vector<std::string> parts;
-    std::stringstream ss(path);
-    std::string part;
-
-    while (std::getline(ss, part, '.')) {
-      if (part != "$") {
-        parts.push_back(part);
-      }
-    }
-
-    jsoncons::json result = value;
-    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
-      jsoncons::json obj;
-      obj[*it] = result;
-      result = obj;
-    }
-
-    return result;
   }
 
   JsonValue(const JsonValue &) = default;

@@ -186,6 +186,12 @@ TEST_F(RedisJsonTest, Merge) {
   bool result = false;
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":2})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.b", "3", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":2}");
+  ASSERT_EQ(result, false);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":2})").ok());
   ASSERT_TRUE(json_->Merge(key_, "$.a", "3", result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":3}");

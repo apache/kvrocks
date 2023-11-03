@@ -62,6 +62,14 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata metadata, const std::string &value) {
+  auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
+  if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
+  auto json_val = *std::move(json_res);
+
+  return write(ns_key, &metadata, json_val);
+}
+
 rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, const std::string &value) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
@@ -74,11 +82,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (s.IsNotFound()) {
     if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
-    auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
-    if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
-    auto json_val = *std::move(json_res);
-
-    return write(ns_key, &metadata, json_val);
+    return create(ns_key, metadata, value);
   }
 
   if (!s.ok()) return s;
@@ -176,6 +180,13 @@ rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path
   JsonValue json_val;
 
   auto s = read(ns_key, &metadata, &json_val);
+
+  if (s.IsNotFound()) {
+    if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+    result = true;
+    return create(ns_key, metadata, merge_value);
+  }
+
   if (!s.ok()) return s;
 
   auto res = json_val.Merge(path, merge_value);

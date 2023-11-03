@@ -274,7 +274,6 @@ TEST_F(RedisJsonTest, ArrLen) {
 }
 
 TEST_F(RedisJsonTest, Toggle) {
-
   ASSERT_TRUE(json_->Set(key_, "$", "true").ok());
   ASSERT_TRUE(json_->Toggle(key_, "$").ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
@@ -309,5 +308,4 @@ TEST_F(RedisJsonTest, Toggle) {
   ASSERT_TRUE(json_->Toggle(key_, "$..*").ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "[false,99,true]");
-
 }

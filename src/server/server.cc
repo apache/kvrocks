@@ -1134,7 +1134,7 @@ void Server::GetClusterInfo(std::string *info) {
 // DB is closed and the pointer is invalid. Server may crash if we access DB during loading.
 // If you add new fields which access DB into INFO command output, make sure
 // this section can't be shown when loading(i.e. !is_loading_).
-void Server::GetInfo(const std::string &ns, const std::string &section, std::string *info) {
+void Server::GetInfo(const std::string &ns, const std::string &section, std::string *info, bool isAdmin) {
   info->clear();
 
   std::ostringstream string_stream;
@@ -1221,8 +1221,13 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   // In keyspace section, we access DB, so we can't do that when loading
   if (!is_loading_ && (all || section == "keyspace")) {
     KeyNumStats stats;
-    GetLatestKeyNumStats(ns, &stats);
 
+    if (ns == kDefaultNamespace || isAdmin) {
+          GetLatestKeyNumStats(kDefaultNamespace, &stats);
+    } else {
+          GetLatestKeyNumStats(ns, &stats);
+    }
+    
     time_t last_scan_time = GetLastScanTime(ns);
     tm last_scan_tm{};
     localtime_r(&last_scan_time, &last_scan_tm);
@@ -1234,8 +1239,36 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     } else {
       string_stream << "# Last DBSIZE SCAN time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
     }
-    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
+    string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl;
+    
+    if (ns == kDefaultNamespace || isAdmin) {
+      string_stream << "db0";
+    } else {
+      string_stream << "db" << ns;  
+    }
+
+    string_stream << ":keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
+
+    if (isAdmin) {
+      KeyNumStats nstats;
+
+      auto tokens = namespace_.List();
+
+      for (const auto &iter : tokens) {
+        string_stream << "db" << iter.second;  
+
+        if (db_scan_infos_.find(iter.second) != db_scan_infos_.end()) {
+          GetLatestKeyNumStats(iter.second, &nstats);
+          string_stream << ":keys=" << nstats.n_key << ",expires=" << nstats.n_expires << ",avg_ttl=" << nstats.avg_ttl
+                          << ",expired=" << nstats.n_expired << "\r\n";
+        } else {
+          string_stream << ":keys=-1,expires=-1,avg_ttl=-1"
+                        << ",expired=-1\r\n";
+        }
+      }
+    }
+
     string_stream << "sequence:" << storage->GetDB()->GetLatestSequenceNumber() << "\r\n";
     string_stream << "used_db_size:" << storage->GetTotalSize(ns) << "\r\n";
     string_stream << "max_db_size:" << config_->max_db_size * GiB << "\r\n";

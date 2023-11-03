@@ -45,7 +45,7 @@ enum class AuthResult {
 
 AuthResult AuthenticateUser(Server *srv, Connection *conn, const std::string &user_password) {
   auto ns = srv->GetNamespace()->GetByToken(user_password);
-  if (ns.IsOK()) {
+  if (ns.IsOK() && user_password != ns.GetValue()) {
     conn->SetNamespace(ns.GetValue());
     conn->BecomeUser();
     return AuthResult::OK;
@@ -221,6 +221,7 @@ class CommandPing : public Commander {
   }
 };
 
+/*
 class CommandSelect : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -228,6 +229,36 @@ class CommandSelect : public Commander {
     return Status::OK();
   }
 };
+*/
+
+class CommandSelect : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if (!conn->IsAdmin()) {
+      return {Status::RedisExecErr, errAdminPermissionRequired};
+    }
+
+    if (args_.size() == 2) {
+      std::string ns = util::ToLower(args_[1]);
+
+      if (ns == "0") {
+        ns = kDefaultNamespace;
+      } else {
+        auto s = svr->GetNamespace()->Get(ns);
+        if (s.Is<Status::NotFound>()) {
+          Status s = svr->GetNamespace()->Add(ns, ns);
+          LOG(WARNING) << "New namespace: " << ns << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
+        }
+      }
+
+      conn->SetNamespace(ns);
+      *output = redis::SimpleString("OK");
+      return Status::OK();
+    } else {
+      return {Status::NotOK, errWrongNumOfArguments};
+    }
+  }
+};	
 
 class CommandConfig : public Commander {
  public:
@@ -277,7 +308,7 @@ class CommandInfo : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
     std::string info;
-    srv->GetInfo(conn->GetNamespace(), section, &info);
+    srv->GetInfo(conn->GetNamespace(), section, &info, conn->IsAdmin());
     *output = conn->VerbatimString("txt", info);
     return Status::OK();
   }

@@ -461,21 +461,10 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
 rocksdb::Status Json::StrAppend(const std::string &user_key, const std::string &path, const std::string &value,
                                 std::vector<uint64_t> &append_cnt) {
   auto ns_key = AppendNamespacePrefix(user_key);
-
-  LockGuard guard(storage_->GetLockManager(), ns_key);
-
-  std::string bytes;
   JsonMetadata metadata;
-  Slice rest;
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
-
-  if (metadata.format != JsonStorageFormat::JSON)
-    return rocksdb::Status::NotSupported("JSON storage format not supported");
-
-  auto json_res = JsonValue::FromString(rest.ToStringView());
-  if (!json_res) return rocksdb::Status::Corruption(json_res.Msg());
-  auto json_val = *std::move(json_res);
 
   auto append_res = json_val.StrAppend(path, value, append_cnt);
   if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());

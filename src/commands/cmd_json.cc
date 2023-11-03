@@ -171,6 +171,24 @@ class CommandJsonClear : public Commander {
   }
 };
 
+class CommandJsonToggle : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string path = (args_.size() > 2) ? args_[2] : "$";
+    auto s = json.Toggle(args_[1], path);
+
+    if (s.IsNotFound()) {
+      return Status::OK();
+    }
+
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    return Status::OK();
+  }
+};
+
 class CommandJsonArrLen : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -209,6 +227,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonClear>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

@@ -272,3 +272,42 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_TRUE(json_->ArrLen(key_, "$.not_exists", res).ok());
   ASSERT_TRUE(res.empty());
 }
+
+TEST_F(RedisJsonTest, Toggle) {
+
+  ASSERT_TRUE(json_->Set(key_, "$", "true").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "false");
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false})");
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":true}})");
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":false}})");
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false}})");
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true},"incorrectbool":{"bool":88}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false},"incorrectbool":{"bool":88}})");
+
+  ASSERT_TRUE(json_->Set(key_, "$", "[true,99,false]").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..*").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "[false,99,true]");
+
+}

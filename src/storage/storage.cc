@@ -119,7 +119,7 @@ void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->enable_blob_files = config_->rocks_db.enable_blob_files;
   cf_options->min_blob_size = config_->rocks_db.min_blob_size;
   cf_options->blob_file_size = config_->rocks_db.blob_file_size;
-  cf_options->blob_compression_type = static_cast<rocksdb::CompressionType>(config_->rocks_db.compression);
+  cf_options->blob_compression_type = config_->rocks_db.compression;
   cf_options->enable_blob_garbage_collection = config_->rocks_db.enable_blob_garbage_collection;
   // Use 100.0 to force converting blob_garbage_collection_age_cutoff to double
   cf_options->blob_garbage_collection_age_cutoff = config_->rocks_db.blob_garbage_collection_age_cutoff / 100.0;
@@ -149,7 +149,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
     if (i < 2) {
       options.compression_per_level[i] = rocksdb::CompressionType::kNoCompression;
     } else {
-      options.compression_per_level[i] = static_cast<rocksdb::CompressionType>(config_->rocks_db.compression);
+      options.compression_per_level[i] = config_->rocks_db.compression;
     }
   }
   if (config_->rocks_db.row_cache_size) {

@@ -71,6 +71,17 @@ func TestJson(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "$").Val(), `[ {  "x":1,  "y":2 }]`)
 	})
 
+	t.Run("JSON storage format CBOR", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x":1, "y":2}`).Err())
+		require.Equal(t, "json", rdb.Do(ctx, "JSON.INFO", "a").Val().([]interface{})[1])
+
+		require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "json-storage-format", "cbor").Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "b", "$", `{"x":1, "y":2}`).Err())
+		require.Equal(t, "cbor", rdb.Do(ctx, "JSON.INFO", "b").Val().([]interface{})[1])
+		require.Equal(t, `{"x":1,"y":2}`, rdb.Do(ctx, "JSON.GET", "b").Val())
+		require.Equal(t, `{"x":1,"y":2}`, rdb.Do(ctx, "JSON.GET", "a").Val())
+	})
+
 	t.Run("JSON.ARRAPPEND basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
 		require.Error(t, rdb.Do(ctx, "JSON.ARRAPPEND", "a", "$", `1`).Err())

@@ -37,8 +37,10 @@
 #include "config_type.h"
 #include "config_util.h"
 #include "parse_util.h"
+#include "rocksdb/compression_type.h"
 #include "server/server.h"
 #include "status.h"
+#include "storage/redis_metadata.h"
 
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
@@ -46,22 +48,25 @@ constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files 
 constexpr const char *errLevelCompactionDynamicLevelBytesNotSet =
     "Must set rocksdb.level_compaction_dynamic_level_bytes yes first.";
 
-std::vector<ConfigEnum> supervised_modes{
+const std::vector<ConfigEnum<SupervisedMode>> supervised_modes{
     {"no", kSupervisedNone},
     {"auto", kSupervisedAutoDetect},
     {"upstart", kSupervisedUpStart},
     {"systemd", kSupervisedSystemd},
 };
 
-std::vector<ConfigEnum> log_levels{
+const std::vector<ConfigEnum<int>> log_levels{
     {"info", google::INFO},
     {"warning", google::WARNING},
     {"error", google::ERROR},
     {"fatal", google::FATAL},
 };
 
-std::vector<ConfigEnum> compression_types{[] {
-  std::vector<ConfigEnum> res;
+const std::vector<ConfigEnum<JsonStorageFormat>> json_storage_formats{{"json", JsonStorageFormat::JSON},
+                                                                      {"cbor", JsonStorageFormat::CBOR}};
+
+const std::vector<ConfigEnum<rocksdb::CompressionType>> compression_types{[] {
+  std::vector<ConfigEnum<rocksdb::CompressionType>> res;
   res.reserve(engine::CompressionOptions.size());
   for (const auto &e : engine::CompressionOptions) {
     res.push_back({e.name, e.type});
@@ -127,13 +132,13 @@ Config::Config() {
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
       {"backup-dir", false, new StringField(&backup_dir, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
-      {"log-level", false, new EnumField(&log_level, log_levels, google::INFO)},
+      {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
       {"pidfile", true, new StringField(&pidfile, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
       {"max-replication-mb", false, new IntField(&max_replication_mb, 0, 0, INT_MAX)},
-      {"supervised", true, new EnumField(&supervised_mode, supervised_modes, kSupervisedNone)},
+      {"supervised", true, new EnumField<SupervisedMode>(&supervised_mode, supervised_modes, kSupervisedNone)},
       {"slave-serve-stale-data", false, new YesNoField(&slave_serve_stale_data, true)},
       {"slave-empty-db-before-fullsync", false, new YesNoField(&slave_empty_db_before_fullsync, false)},
       {"slave-priority", false, new IntField(&slave_priority, 100, 0, INT_MAX)},
@@ -161,10 +166,13 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
+      {"json-storage-format", false,
+       new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
-       new EnumField(&rocks_db.compression, compression_types, rocksdb::CompressionType::kNoCompression)},
+       new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
+                                               rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},

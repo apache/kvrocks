@@ -272,6 +272,7 @@ class BloomChainMetadata : public Metadata {
 
 enum class JsonStorageFormat : uint8_t {
   JSON = 0,
+  CBOR = 1,
 };
 
 class JsonMetadata : public Metadata {

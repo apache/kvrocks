@@ -26,6 +26,7 @@
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
 #include <limits>
+#include <string>
 
 #include "status.h"
 
@@ -206,6 +207,27 @@ struct JsonValue {
                                          arr_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
                                        } else {
                                          arr_lens.emplace_back(std::nullopt);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return Status::OK();
+  }
+
+  Status ObjKeys(std::string_view path, std::vector<std::optional<std::vector<std::string>>> &keys) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&keys](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                       if (basic_json.is_object()) {
+                                         std::vector<std::string> ret;
+                                         for (const auto &member : basic_json.object_range()) {
+                                           ret.push_back(member.key());
+                                         }
+                                         keys.emplace_back(ret);
+                                       } else {
+                                         keys.emplace_back(std::nullopt);
                                        }
                                      });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

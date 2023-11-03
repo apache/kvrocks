@@ -201,4 +201,19 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
 
   return rocksdb::Status::OK();
 }
+
+rocksdb::Status Json::ObjKeys(const std::string &user_key, const std::string &path,
+                              std::vector<std::optional<std::vector<std::string>>> &keys) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  auto len_res = json_val.ObjKeys(path, keys);
+  if (!len_res) return rocksdb::Status::InvalidArgument(len_res.Msg());
+
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

@@ -27,6 +27,7 @@ jobs:
   publish-nightly-docker-image:
     name: Publish nightly Docker image
     runs-on: ubuntu-20.04
+    if: github.repository_owner == 'apache'
     steps:
 
       - uses: actions/checkout@v3

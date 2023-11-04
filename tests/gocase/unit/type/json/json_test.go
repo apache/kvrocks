@@ -462,4 +462,56 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a1", "$", `{"arr":[[1],[2],[3]]}`).Err())
 		require.Equal(t, []interface{}{int64(0), int64(-1), int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a1", "$.arr.*", `1`).Val())
 	})
+
+	t.Run("JSON.NUMOP basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{ "foo": 0, "bar": "baz" }`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.GET", "a", "$.foo").Val())
+		require.Equal(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
+		require.Equal(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())
+
+		// wrong type
+		require.Equal(t, `[null]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.bar", 1).Val())
+
+		require.Equal(t, `[]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.fuzz", 1).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `0`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$", 1).Val())
+		require.Equal(t, `[2.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$", 1.5).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"foo":0,"bar":42}`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
+		require.Equal(t, `[84]`, rdb.Do(ctx, "JSON.NUMMULTBY", "a", "$.bar", 2).Val())
+
+		// overflow case
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "big_num", "$", "1.6350000000001313e+308").Err())
+		require.Equal(t, `[1.6350000000001313e+308]`,
+			rdb.Do(ctx, "JSON.NUMINCRBY", "big_num", "$", 1).Val())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "big_num", "$", 2).Err())
+
+		require.Equal(t, `1.6350000000001313e+308`, rdb.Do(ctx, "JSON.GET", "big_num").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "nested_obj_big_num", "$",
+			`{"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}}`).Err())
+
+		require.Equal(t, `[1.6350000000001313e+308]`,
+			rdb.Do(ctx, "JSON.NUMINCRBY", "nested_obj_big_num", "$.l1.l2_a", 1).Val())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "nested_obj_big_num", "$.l1.l2_a", 2).Err())
+
+		require.Equal(t, `{"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}}`,
+			rdb.Do(ctx, "JSON.GET", "nested_obj_big_num").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "nested_arr_big_num", "$",
+			`{"l1":{"l2":[0,1.6350000000001313e+308]}}`).Err())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "nested_arr_big_num", "$.l1.l2[1]",
+			`1.6350000000001313e+308`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "nested_arr_big_num", "$.l1.l2[1]", 2).Err())
+
+		require.Equal(t, `{"l1":{"l2":[0,1.6350000000001313e+308]}}`,
+			rdb.Do(ctx, "JSON.GET", "nested_arr_big_num").Val())
+	})
+
 }

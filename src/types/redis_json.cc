@@ -91,7 +91,7 @@ rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *stora
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata metadata, const std::string &value) {
+rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value) {
   auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
   if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
   auto json_val = *std::move(json_res);

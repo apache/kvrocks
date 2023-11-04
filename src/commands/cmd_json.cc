@@ -195,10 +195,20 @@ class CommandJsonToggle : public Commander {
     redis::Json json(svr->storage, conn->GetNamespace());
 
     std::string path = (args_.size() > 2) ? args_[2] : "$";
-    auto s = json.Toggle(args_[1], path);
+    std::vector<std::optional<int>> results;
+    auto s = json.Toggle(args_[1], path, results);
 
     if (s.IsNotFound()) {
+      *output = redis::NilString();
       return Status::OK();
+    }
+
+    for (auto it = results.rbegin(); it != results.rend(); ++it) {
+      if ((*it).has_value()) {
+        *output += redis::Integer((*it).value());
+      } else {
+        *output += redis::NilString();
+      }
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -246,7 +256,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonClear>("json.toggle", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

@@ -274,38 +274,60 @@ TEST_F(RedisJsonTest, ArrLen) {
 }
 
 TEST_F(RedisJsonTest, Toggle) {
+  std::vector<std::optional<int>> res;
   ASSERT_TRUE(json_->Set(key_, "$", "true").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "false");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(0));
+  res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true})").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$.bool").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false})");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(0));
+  res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$.bool").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":true}})");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(0));
+  res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":false}})");
+  ASSERT_EQ(res.size(), 2);
+  ASSERT_THAT(res, testing::ElementsAre(0, 0));
+  res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true}})").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false}})");
+  ASSERT_EQ(res.size(), 2);
+  ASSERT_THAT(res, testing::ElementsAre(0, 1));
+  res.clear();
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true},"incorrectbool":{"bool":88}})").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$..bool").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false},"incorrectbool":{"bool":88}})");
+  ASSERT_EQ(res.size(), 3);
+  ASSERT_THAT(res, testing::ElementsAre(std::nullopt, 0, 1));
+  res.clear();
 
-  ASSERT_TRUE(json_->Set(key_, "$", "[true,99,false]").ok());
-  ASSERT_TRUE(json_->Toggle(key_, "$..*").ok());
+  ASSERT_TRUE(json_->Set(key_, "$", "[true,true,99]").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..*", res).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump().GetValue(), "[false,99,true]");
+  ASSERT_EQ(json_val_.Dump().GetValue(), "[false,false,99]");
+  ASSERT_EQ(res.size(), 3);
+  ASSERT_THAT(res, testing::ElementsAre(std::nullopt, 0, 0));
+  res.clear();
 }

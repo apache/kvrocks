@@ -211,15 +211,21 @@ struct JsonValue {
     return types;
   }
 
-  Status Toggle(std::string_view path) {
+  StatusOr<std::vector<std::optional<int>>> Toggle(std::string_view path) {
+    std::vector<std::optional<int>> result;
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&](const std::string & /*path*/, jsoncons::json &val) {
-        if (val.is_bool()) val = !val.as_bool();
+      jsoncons::jsonpath::json_replace(value, path, [&result](const std::string & /*path*/, jsoncons::json &val) {
+        if (val.is_bool()) {
+          val = !val.as_bool();
+          result.emplace_back(val == true ? 1 : 0);
+        } else {
+          result.emplace_back(std::nullopt);
+        }
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return Status::OK();
+    return result;
   }
 
   StatusOr<size_t> Clear(std::string_view path) {

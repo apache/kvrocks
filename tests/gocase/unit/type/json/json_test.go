@@ -185,4 +185,33 @@ func TestJson(t *testing.T) {
 		require.EqualValues(t, []uint64{}, lens)
 	})
 
+	t.Run("JSON.ARRINSERT basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$", 0, `1`).Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "a").Err())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y": {"x":1} } `).Err())
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$..k", 2, `1`).Val())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$", ` 1, 2, 3`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$", `1`, ` 1, 2, 3`).Err())
+		require.Equal(t, []interface{}{nil, nil}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$..x", `1`).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y": {"x":[]} } `).Err())
+		require.Equal(t, []interface{}{int64(1), nil}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$..x", `1`).Val())
+		require.Equal(t, `[{"x":1,"y":{"x":[1]}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":[], "y":[]} `).Err())
+		require.Equal(t, []interface{}{int64(1)}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$.x", `1`).Val())
+		require.Equal(t, `{"x":[1],"y":[]}`, rdb.Do(ctx, "JSON.GET", "a").Val())
+		require.Equal(t, []interface{}{int64(4)}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$.x", `1`, `2`, `3`).Val())
+		require.Equal(t, []interface{}{int64(1)}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$.y", ` {"x":[], "y":[]} `).Val())
+		require.Equal(t, `[{"x":[1,1,2,3],"y":[{"x":[],"y":[]}]}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+		require.Equal(t, []interface{}{int64(2), int64(6)}, rdb.Do(ctx, "JSON.ARRINSERT", "a", "$..x", `1`, `2`).Val())
+		require.Equal(t, `[[1,2]]`, rdb.Do(ctx, "JSON.GET", "a", "$.y[0].x").Val())
+		require.Equal(t, `[]`, rdb.Do(ctx, "JSON.GET", "a", "$.x.x").Val())
+		require.Equal(t, `[{"x":[1,1,2,3,1,2],"y":[{"x":[1,2],"y":[]}]}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+	})
+
 }

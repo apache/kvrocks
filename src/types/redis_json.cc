@@ -202,7 +202,7 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::ArrInsert(const std::string &user_key, const std::string &path, const long &index,
+rocksdb::Status Json::ArrInsert(const std::string &user_key, const std::string &path, const int64_t &index,
                                 const std::vector<std::string> &values, std::vector<size_t> *result_count) {
   auto ns_key = AppendNamespacePrefix(user_key);
 

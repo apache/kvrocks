@@ -20,6 +20,9 @@
 
 #pragma once
 
+#include <math.h>
+
+#include <cstdint>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -134,7 +137,7 @@ struct JsonValue {
     return result_count;
   }
 
-  StatusOr<std::vector<size_t>> ArrInsert(std::string_view path, const long &index,
+  StatusOr<std::vector<size_t>> ArrInsert(std::string_view path, const int64_t &index,
                                           const std::vector<jsoncons::json> &insert_values) {
     std::vector<size_t> result_count;
 
@@ -142,6 +145,10 @@ struct JsonValue {
       jsoncons::jsonpath::json_replace(
           value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
+              if ((int64_t)val.size() + index < 0 || (int64_t)val.size() - index < 0) {
+                result_count.emplace_back(0);
+                return;
+              }
               auto base_iter = index >= 0 ? val.array_range().begin() : val.array_range().end();
               val.insert(base_iter + index, insert_values.begin(), insert_values.end());
               result_count.emplace_back(val.size());

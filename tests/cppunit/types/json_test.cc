@@ -286,7 +286,7 @@ TEST_F(RedisJsonTest, ArrPop) {
   ASSERT_TRUE(json_->ArrPop(key_, "$", -2, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_TRUE(res[0].has_value());
-  ASSERT_EQ(res[0]->Dump().GetValue(), "3");
+  ASSERT_EQ(res[0]->Dump().GetValue(), "2.1");
   res.clear();
   ASSERT_TRUE(json_->ArrPop(key_, "$", 3, &res).ok());
   ASSERT_EQ(res.size(), 1);
@@ -296,12 +296,12 @@ TEST_F(RedisJsonTest, ArrPop) {
   ASSERT_TRUE(json_->ArrPop(key_, "$", 1, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_TRUE(res[0].has_value());
-  ASSERT_EQ(res[0]->Dump().GetValue(), "2.1");
+  ASSERT_EQ(res[0]->Dump().GetValue(), R"("str")");
   res.clear();
   ASSERT_TRUE(json_->ArrPop(key_, "$", 0, &res).ok());
   ASSERT_EQ(res.size(), 1);
   ASSERT_TRUE(res[0].has_value());
-  ASSERT_EQ(res[0]->Dump().GetValue(), R"("str")");
+  ASSERT_EQ(res[0]->Dump().GetValue(), "3");
   res.clear();
   ASSERT_TRUE(json_->ArrPop(key_, "$", -1, &res).ok());
   ASSERT_EQ(res.size(), 1);

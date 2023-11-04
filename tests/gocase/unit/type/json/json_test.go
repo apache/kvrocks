@@ -188,10 +188,10 @@ func TestJson(t *testing.T) {
 	t.Run("JSON.ARRPOP basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[3,"str",2.1,{},[5,6]]`).Err())
 		require.EqualValues(t, []interface{}{"[5,6]"}, rdb.Do(ctx, "JSON.ARRPOP", "a").Val())
-		require.EqualValues(t, []interface{}{"3"}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "-2").Val())
+		require.EqualValues(t, []interface{}{"2.1"}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "-2").Val())
 		require.EqualValues(t, []interface{}{"{}"}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "3").Val())
-		require.EqualValues(t, []interface{}{"2.1"}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "1").Val())
-		require.EqualValues(t, []interface{}{`"str"`}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "0").Val())
+		require.EqualValues(t, []interface{}{`"str"`}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "1").Val())
+		require.EqualValues(t, []interface{}{"3"}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "0").Val())
 		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.ARRPOP", "a", "$").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "o", "$", `{"o":{"x":1},"s":"str","i":1,"d":2.2}`).Err())

@@ -176,12 +176,7 @@ struct JsonValue {
   Status Toggle(std::string_view path) {
     try {
       jsoncons::jsonpath::json_replace(value, path, [&](const std::string & /*path*/, jsoncons::json &val) {
-        bool is_boolean = val.is_bool();
-
-        if (is_boolean)
-          val = !val.as_bool();
-        else
-          return;
+        if (val.is_bool()) val = !val.as_bool();
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};

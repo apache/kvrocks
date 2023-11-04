@@ -302,7 +302,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
-    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd_);
+    std::unique_ptr<Commander> current_cmd;
+    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
@@ -322,7 +323,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
     }
 
-    const auto attributes = current_cmd_->GetAttributes();
+    const auto attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
@@ -363,8 +364,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    current_cmd_->SetArgs(cmd_tokens);
-    s = current_cmd_->Parse();
+    current_cmd->SetArgs(cmd_tokens);
+    s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR " + s.Msg()));
@@ -412,7 +413,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     auto start = std::chrono::high_resolution_clock::now();
     bool is_profiling = IsProfilingEnabled(cmd_name);
-    s = current_cmd_->Execute(srv_, this, &reply);
+    s = current_cmd->Execute(srv_, this, &reply);
     auto end = std::chrono::high_resolution_clock::now();
     uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
@@ -424,14 +425,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.
     if (s.Is<Status::BlockingCmd>()) {
+      // For the blocking command, it will use the command while resumed from the suspend state.
+      // So we need to save the command for the next execution.
+      // Migrate connection would also check the saved_current_command_ to determine whether
+      // the connection can be migrated or not.
+      saved_current_command_ = std::move(current_cmd);
       break;
     }
 
-    // MigrateConnection will NOT migrate the connection if it has the running command
-    // which will check if current_cmd_ is empty, so we need to explicitly reset the current_cmd_
-    // to empty here. To be noticed, we cannot reset if it's a blocking command, because it will
-    // be resumed in the future.
-    current_cmd_.reset();
     // Reply for MULTI
     if (!s.IsOK()) {
       Reply(redis::Error("ERR " + s.Msg()));

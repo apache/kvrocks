@@ -214,7 +214,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_ = rdb.XRead(ctx, &redis.XReadArgs{
-				Streams: []string{"s1", "s2", "s3"},
+				Streams: []string{"s1", "$"},
 				Count:   1,
 				Block:   blockingTimeout,
 			})

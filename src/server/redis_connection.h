@@ -111,7 +111,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   Worker *Owner() { return owner_; }
   void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
-  bool HasRunningCommand() const { return current_cmd_ != nullptr; }
+  bool HasRunningCommand() const { return saved_current_command_ != nullptr; }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
@@ -152,7 +152,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
-  std::unique_ptr<Commander> current_cmd_;
+  std::unique_ptr<Commander> saved_current_command_;
 
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;

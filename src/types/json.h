@@ -222,7 +222,7 @@ struct JsonValue {
       jsoncons::jsonpath::json_replace(value, path,
                                        [&popped_values, index](const std::string & /*path*/, jsoncons::json &val) {
                                          if (val.is_array() && !val.empty()) {
-                                           int64_t len = val.size();
+                                           auto len = static_cast<int64_t>(val.size());
                                            auto popped_iter = val.array_range().begin();
                                            if (index < 0) {
                                              popped_iter += len - std::min(len, -index);

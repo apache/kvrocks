@@ -777,7 +777,6 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
 rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
                                      std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> &group_metadata) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
-  LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
@@ -810,7 +809,6 @@ rocksdb::Status Stream::GetConsumerInfo(
     const Slice &stream_name, const std::string &group_name,
     std::vector<std::pair<std::string, StreamConsumerMetadata>> &consumer_metadata) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
-  LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;

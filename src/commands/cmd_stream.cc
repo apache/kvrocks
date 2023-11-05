@@ -501,11 +501,6 @@ class CommandXInfo : public Commander {
       return {Status::RedisExecErr, errNoSuchKey};
     }
 
-    if (result_vector.empty()) {
-      output->append(redis::SimpleString("(empty array)"));
-      return Status::OK();
-    }
-
     output->append(redis::MultiLen(result_vector.size()));
     for (auto const &it : result_vector) {
       output->append(redis::MultiLen(12));
@@ -541,11 +536,6 @@ class CommandXInfo : public Commander {
 
     if (s.IsNotFound()) {
       return {Status::RedisExecErr, errNoSuchKey};
-    }
-
-    if (result_vector.empty()) {
-      output->append(redis::SimpleString("(empty array)"));
-      return Status::OK();
     }
 
     output->append(redis::MultiLen(result_vector.size()));

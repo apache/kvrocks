@@ -232,7 +232,7 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
 }
 
 rocksdb::Status Json::Toggle(const std::string &user_key, const std::string &path,
-                             std::vector<std::optional<int>> &result) {
+                             std::vector<std::optional<bool>> &result) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);

@@ -42,7 +42,7 @@ class Json : public Database {
   rocksdb::Status Clear(const std::string &user_key, const std::string &path, size_t *result);
   rocksdb::Status ArrLen(const std::string &user_key, const std::string &path,
                          std::vector<std::optional<uint64_t>> &arr_lens);
-  rocksdb::Status Toggle(const std::string &user_key, const std::string &path, std::vector<std::optional<int>> &result);
+  rocksdb::Status Toggle(const std::string &user_key, const std::string &path, std::vector<std::optional<bool>> &result);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

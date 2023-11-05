@@ -211,13 +211,13 @@ struct JsonValue {
     return types;
   }
 
-  StatusOr<std::vector<std::optional<int>>> Toggle(std::string_view path) {
-    std::vector<std::optional<int>> result;
+  StatusOr<std::vector<std::optional<bool>>> Toggle(std::string_view path) {
+    std::vector<std::optional<bool>> result;
     try {
       jsoncons::jsonpath::json_replace(value, path, [&result](const std::string & /*path*/, jsoncons::json &val) {
         if (val.is_bool()) {
           val = !val.as_bool();
-          result.emplace_back(val == true ? 1 : 0);
+          result.emplace_back(val.as_bool());
         } else {
           result.emplace_back(std::nullopt);
         }

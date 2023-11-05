@@ -195,7 +195,7 @@ class CommandJsonToggle : public Commander {
     redis::Json json(svr->storage, conn->GetNamespace());
 
     std::string path = (args_.size() > 2) ? args_[2] : "$";
-    std::vector<std::optional<int>> results;
+    std::vector<std::optional<bool>> results;
     auto s = json.Toggle(args_[1], path, results);
 
     if (s.IsNotFound()) {

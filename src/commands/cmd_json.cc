@@ -22,6 +22,7 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_metadata.h"
@@ -248,6 +249,45 @@ class CommandJsonMerge : public Commander {
   }
 };
 
+class CommandJsonArrPop : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    path_ = (args_.size() > 2) ? args_[2] : "$";
+
+    if (args_.size() == 4) {
+      index_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
+    } else if (args_.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<JsonValue>> results;
+
+    auto s = json.ArrPop(args_[1], path_, index_, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(results.size());
+    for (const auto &data : results) {
+      if (data.has_value()) {
+        *output += redis::BulkString(GET_OR_RET(data->Print()));
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string path_;
+  int64_t index_ = -1;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -255,6 +295,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1), );
 
 }  // namespace redis

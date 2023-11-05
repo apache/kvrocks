@@ -231,7 +231,6 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
-
 rocksdb::Status Json::Toggle(const std::string &user_key, const std::string &path,
                              std::vector<std::optional<bool>> &result) {
   auto ns_key = AppendNamespacePrefix(user_key);
@@ -249,7 +248,7 @@ rocksdb::Status Json::Toggle(const std::string &user_key, const std::string &pat
 
   return write(ns_key, &metadata, origin);
 }
-  
+
 rocksdb::Status Json::ArrPop(const std::string &user_key, const std::string &path, int64_t index,
                              std::vector<std::optional<JsonValue>> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);

@@ -297,7 +297,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1), );
 }  // namespace redis

@@ -329,6 +329,7 @@ TEST_F(RedisJsonTest, Toggle) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "[false,false,99]");
   ASSERT_EQ(res.size(), 3);
   ASSERT_THAT(res, testing::ElementsAre(std::nullopt, false, false));
+}
 
 TEST_F(RedisJsonTest, ArrPop) {
   std::vector<std::optional<JsonValue>> res;

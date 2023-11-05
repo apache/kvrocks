@@ -34,6 +34,7 @@
 
 #include "commands/blocking_commander.h"
 #include "redis_connection.h"
+#include "scope_exit.h"
 #include "server.h"
 #include "time_util.h"
 #include "tls_util.h"
@@ -295,6 +296,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = srv_->GetConfig();
   std::string reply, password = config->requirepass;
 
+  has_running_command_ = true;
+  MakeScopeExit([this] { has_running_command_ = false; });
   while (!to_process_cmds->empty()) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();

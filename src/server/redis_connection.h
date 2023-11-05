@@ -111,7 +111,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   Worker *Owner() { return owner_; }
   void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
-  bool HasRunningCommand() const { return saved_current_command_ != nullptr; }
+  bool HasRunningCommand() const { return has_running_command_; }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
@@ -160,6 +160,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   Server *srv_;
   bool in_exec_ = false;
   bool multi_error_ = false;
+  std::atomic<bool> has_running_command_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;

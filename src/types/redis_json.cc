@@ -31,11 +31,20 @@ rocksdb::Status Json::write(Slice ns_key, JsonMetadata *metadata, const JsonValu
   WriteBatchLogData log_data(kRedisJson);
   batch->PutLogData(log_data.Encode());
 
-  metadata->format = JsonStorageFormat::JSON;
+  auto format = storage_->GetConfig()->json_storage_format;
+  metadata->format = format;
 
   std::string val;
   metadata->Encode(&val);
-  auto s = json_val.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
+
+  Status s;
+  if (format == JsonStorageFormat::JSON) {
+    s = json_val.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
+  } else if (format == JsonStorageFormat::CBOR) {
+    s = json_val.DumpCBOR(&val, storage_->GetConfig()->json_max_nesting_depth);
+  } else {
+    return rocksdb::Status::InvalidArgument("JSON storage format not supported");
+  }
   if (!s) {
     return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + s.Msg());
   }
@@ -52,12 +61,32 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   auto s = GetMetadata(kRedisJson, ns_key, &bytes, metadata, &rest);
   if (!s.ok()) return s;
 
-  if (metadata->format != JsonStorageFormat::JSON)
+  if (metadata->format == JsonStorageFormat::JSON) {
+    auto origin_res = JsonValue::FromString(rest.ToStringView());
+    if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
+    *value = *std::move(origin_res);
+  } else if (metadata->format == JsonStorageFormat::CBOR) {
+    auto origin_res = JsonValue::FromCBOR(rest.ToStringView());
+    if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
+    *value = *std::move(origin_res);
+  } else {
     return rocksdb::Status::NotSupported("JSON storage format not supported");
+  }
 
-  auto origin_res = JsonValue::FromString(rest.ToStringView());
-  if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
-  *value = *std::move(origin_res);
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *storage_format) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  std::string bytes;
+  Slice rest;
+  JsonMetadata metadata;
+
+  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  if (!s.ok()) return s;
+
+  *storage_format = metadata.format;
 
   return rocksdb::Status::OK();
 }

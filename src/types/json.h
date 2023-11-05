@@ -275,7 +275,7 @@ struct JsonValue {
         // Replace value by path
         jsoncons::jsonpath::json_replace(
             value, path, [&patch_value, &is_updated](const std::string & /*path*/, jsoncons::json &target) {
-              target = patch_value;
+              jsoncons::mergepatch::apply_merge_patch(target, patch_value);
               is_updated = true;
             });
       } else {

@@ -329,5 +329,71 @@ TEST_F(RedisJsonTest, Toggle) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "[false,false,99]");
   ASSERT_EQ(res.size(), 3);
   ASSERT_THAT(res, testing::ElementsAre(std::nullopt, false, false));
+
+TEST_F(RedisJsonTest, ArrPop) {
+  std::vector<std::optional<JsonValue>> res;
+
+  // Array
+  ASSERT_TRUE(json_->Set(key_, "$", R"([3,"str",2.1,{},[5,6]])").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "[5,6]");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -2, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "2.1");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 3, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "{}");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), R"("str")");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 0, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "3");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+
+  // Non-array
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"o":{"x":1},"s":"str","i":1,"d":2.2})").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$.o", 1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.s", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.i", 0, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.d", 2, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+
+  // Multiple arrays
+  ASSERT_TRUE(json_->Set(key_, "$", R"([[0,1],[3,{"x":2.0}],"str",[4,[5,"6"]]])").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$.*", -1, &res).ok());
+  ASSERT_EQ(res.size(), 4);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), R"([5,"6"])");
+  ASSERT_FALSE(res[1].has_value());
+  ASSERT_TRUE(res[2].has_value());
+  ASSERT_EQ(res[2]->Dump().GetValue(), R"({"x":2.0})");
+  ASSERT_TRUE(res[3].has_value());
+  ASSERT_EQ(res[3]->Dump().GetValue(), "1");
   res.clear();
 }

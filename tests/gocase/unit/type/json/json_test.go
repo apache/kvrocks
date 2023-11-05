@@ -185,4 +185,38 @@ func TestJson(t *testing.T) {
 		require.EqualValues(t, []uint64{}, lens)
 	})
 
+	t.Run("JSON.OBJKEYS basics", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		// key no exists
+		_, err := rdb.Do(ctx, "JSON.OBJKEYS", "not_exists", "$").Slice()
+		require.Error(t, err)
+		// key not json
+		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
+		_, err = rdb.Do(ctx, "JSON.OBJKEYS", "no_json", "$").Slice()
+		require.Error(t, err)
+		// json path no exists
+		_, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.not_exists").Slice()
+		require.Error(t, err)
+		// json path not object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2]}`).Err())
+		lens, err := rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, []interface{}{interface{}(nil)}, lens)
+		// json path has one object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":{"b":1,"c":1}}`).Err())
+		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}}), lens)
+		// json path has many object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":{"e":1,"f":1}}}`).Err())
+		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}, []interface{}{"e", "f"}}), lens)
+		// json path has many object and one is not object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":[1]},"c":{"a1":{"e":1,"f":1}}}`).Err())
+		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}, interface{}(nil), []interface{}{"e", "f"}}), lens)
+	})
+
 }

@@ -210,8 +210,8 @@ rocksdb::Status Json::ObjKeys(const std::string &user_key, const std::string &pa
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto len_res = json_val.ObjKeys(path, keys);
-  if (!len_res) return rocksdb::Status::InvalidArgument(len_res.Msg());
+  auto keys_res = json_val.ObjKeys(path, keys);
+  if (!keys_res) return rocksdb::Status::InvalidArgument(keys_res.Msg());
 
   return rocksdb::Status::OK();
 }

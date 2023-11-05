@@ -24,6 +24,7 @@
 #include "commands/command_parser.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "storage/redis_metadata.h"
 #include "types/redis_json.h"
 
 namespace redis {
@@ -98,6 +99,23 @@ class CommandJsonGet : public Commander {
   std::string new_line_chars_;
 
   std::vector<std::string> paths_;
+};
+
+class CommandJsonInfo : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    auto storage_format = JsonStorageFormat::JSON;
+    auto s = json.Info(args_[1], &storage_format);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    auto format_str = storage_format == JsonStorageFormat::JSON   ? "json"
+                      : storage_format == JsonStorageFormat::CBOR ? "cbor"
+                                                                  : "unknown";
+    output->append(redis::MultiBulkString({"storage_format", format_str}));
+    return Status::OK();
+  }
 };
 
 class CommandJsonArrAppend : public Commander {
@@ -229,6 +247,7 @@ class CommandJsonArrLen : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),

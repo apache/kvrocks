@@ -913,7 +913,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
   }
   for (const auto &remain : new_config) {
     if (remain.second.empty()) continue;
-    fmt::format_to(std::back_inserter(out_buf), "{} {}\n", remain.first, remain.second);
+    fmt::format_to(std::back_inserter(out_buf), "{}\n", DumpConfigLine({remain.first, remain.second}));
   }
   std::string tmp_path = path_ + ".tmp";
   remove(tmp_path.data());

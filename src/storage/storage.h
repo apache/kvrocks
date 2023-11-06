@@ -125,7 +125,8 @@ class Storage {
   Status InWALBoundary(rocksdb::SequenceNumber seq);
   Status WriteToPropagateCF(const std::string &key, const std::string &value);
 
-  [[nodiscard]] rocksdb::Status Compact(const rocksdb::Slice *begin, const rocksdb::Slice *end);
+  [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
+                                        const rocksdb::Slice *end);
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }

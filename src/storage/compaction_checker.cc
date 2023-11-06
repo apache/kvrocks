@@ -59,7 +59,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
 
   auto force_compact_file_age = storage_->GetConfig()->force_compact_file_age;
   auto force_compact_min_ratio =
-      static_cast<double>(storage_->GetConfig()->force_compact_file_min_deleted_percentage / 100);
+      static_cast<double>(storage_->GetConfig()->force_compact_file_min_deleted_percentage) / 100.0;
 
   std::string best_filename;
   double best_delete_ratio = 0;
@@ -112,7 +112,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
     if (file_creation_time < static_cast<uint64_t>(now - force_compact_file_age) &&
         delete_ratio >= force_compact_min_ratio) {
       LOG(INFO) << "[compaction checker] Going to compact the key in file (force compact policy): " << iter.first;
-      auto s = storage_->Compact(&start_key, &stop_key);
+      auto s = storage_->Compact(cf, &start_key, &stop_key);
       LOG(INFO) << "[compaction checker] Compact the key in file (force compact policy): " << iter.first
                 << " finished, result: " << s.ToString();
       max_files_to_compact--;
@@ -135,7 +135,7 @@ void CompactionChecker::PickCompactionFiles(const std::string &cf_name) {
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
     LOG(INFO) << "[compaction checker] Going to compact the key in file: " << best_filename
               << ", delete ratio: " << best_delete_ratio;
-    auto s = storage_->Compact(&best_start_key, &best_stop_key);
+    auto s = storage_->Compact(cf, &best_start_key, &best_stop_key);
     if (!s.ok()) {
       LOG(ERROR) << "[compaction checker] Failed to do compaction: " << s.ToString();
     }

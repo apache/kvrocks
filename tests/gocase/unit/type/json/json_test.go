@@ -229,6 +229,7 @@ func TestJson(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}, interface{}(nil), []interface{}{"e", "f"}}), lens)
 	})
+
 	t.Run("JSON.ARRPOP basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[3,"str",2.1,{},[5,6]]`).Err())
 		require.EqualValues(t, []interface{}{"[5,6]"}, rdb.Do(ctx, "JSON.ARRPOP", "a").Val())

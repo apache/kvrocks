@@ -273,7 +273,7 @@ struct JsonValue {
     }
     return Status::OK();
   }
-  
+
   StatusOr<std::vector<std::optional<JsonValue>>> ArrPop(std::string_view path, int64_t index = -1) {
     std::vector<std::optional<JsonValue>> popped_values;
 

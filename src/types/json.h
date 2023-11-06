@@ -297,6 +297,7 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
+    
     return popped_values;
   }
 

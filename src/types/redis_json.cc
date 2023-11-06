@@ -252,4 +252,23 @@ rocksdb::Status Json::ArrPop(const std::string &user_key, const std::string &pat
 
   return write(ns_key, &metadata, json_val);
 }
+
+rocksdb::Status Json::ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
+                              std::vector<std::optional<uint64_t>> &results) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  auto len_res = json_val.ArrTrim(path, start, stop, results);
+  if (!len_res) return rocksdb::Status::InvalidArgument(len_res.Msg());
+  bool is_write =
+      std::any_of(results.begin(), results.end(), [](const std::optional<uint64_t> &val) { return val.has_value(); });
+  if (!is_write) return rocksdb::Status::OK();
+  return write(ns_key, &metadata, json_val);
+}
 }  // namespace redis

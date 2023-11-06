@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -278,6 +279,50 @@ struct JsonValue {
     }
 
     return popped_values;
+  }
+
+  Status ArrTrim(std::string_view path, int64_t start, int64_t stop, std::vector<std::optional<uint64_t>> &results) {
+    try {
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
+                                         if (val.is_array()) {
+                                           auto len = static_cast<int64_t>(val.size());
+                                           auto trim_iter = val.array_range().begin();
+                                           auto t_stop = stop;
+                                           auto t_start = start;
+                                           if (stop < 0) {
+                                             t_stop = len + stop;
+                                             if (t_stop < 0) {
+                                               t_stop = 0;
+                                             }
+                                           }
+                                           if (start < 0) {
+                                             t_start = len + start;
+                                             if (t_start < 0) {
+                                               t_start = 0;
+                                             }
+                                           }
+                                           if (t_start > len || t_start > t_stop) {
+                                             val = jsoncons::json::array();
+                                             results.emplace_back(0);
+                                             return;
+                                           }
+                                           for (int64_t index = 0; index < t_start; index++) {
+                                             val.erase(trim_iter + index);
+                                           }
+                                           for (int64_t index = t_stop + 1; index < len; index++) {
+                                             val.erase(trim_iter + index);
+                                           }
+                                           results.emplace_back(static_cast<int64_t>(val.size()));
+                                         } else {
+                                           results.emplace_back(std::nullopt);
+                                         }
+                                       });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return Status::OK();
   }
 
   JsonValue(const JsonValue &) = default;

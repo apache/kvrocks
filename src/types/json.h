@@ -20,6 +20,9 @@
 
 #pragma once
 
+#include <math.h>
+
+#include <algorithm>
 #include <cstdint>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
@@ -287,26 +290,16 @@ struct JsonValue {
                                        [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
                                          if (val.is_array()) {
                                            auto len = static_cast<int64_t>(val.size());
-                                           auto trim_iter = val.array_range().begin();
-                                           auto t_stop = stop;
-                                           auto t_start = start;
-                                           if (stop < 0) {
-                                             t_stop = len + stop;
-                                             if (t_stop < 0) {
-                                               t_stop = 0;
-                                             }
-                                           }
-                                           if (start < 0) {
-                                             t_start = len + start;
-                                             if (t_start < 0) {
-                                               t_start = 0;
-                                             }
-                                           }
+                                           auto t_stop = stop < 0 ? std::max(len + stop, 0l) : stop;
+                                           auto t_start = start < 0 ? std::max(len + start, 0l) : start;
+
                                            if (t_start > len || t_start > t_stop) {
                                              val = jsoncons::json::array();
                                              results.emplace_back(0);
                                              return;
                                            }
+
+                                           auto trim_iter = val.array_range().begin();
                                            for (int64_t index = 0; index < t_start; index++) {
                                              val.erase(trim_iter + index);
                                            }

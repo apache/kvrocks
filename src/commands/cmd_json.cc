@@ -174,7 +174,9 @@ class CommandJsonObjkeys : public Commander {
 
     std::vector<std::optional<std::vector<std::string>>> results;
 
-    auto s = json.ObjKeys(args_[1], args_[2], results);
+    // If path not specified set it to $
+    std::string path = (args_.size() > 2) ? args_[2] : "$";
+    auto s = json.ObjKeys(args_[1], path, results);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
       *output = redis::NilString();

@@ -268,11 +268,32 @@ struct JsonValue {
                                          keys.emplace_back(std::nullopt);
                                        }
                                      });
+    return Status::OK();
+  }
+  StatusOr<std::vector<std::optional<JsonValue>>> ArrPop(std::string_view path, int64_t index = -1) {
+    std::vector<std::optional<JsonValue>> popped_values;
+
+    try {
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&popped_values, index](const std::string & /*path*/, jsoncons::json &val) {
+                                         if (val.is_array() && !val.empty()) {
+                                           auto len = static_cast<int64_t>(val.size());
+                                           auto popped_iter = val.array_range().begin();
+                                           if (index < 0) {
+                                             popped_iter += len - std::min(len, -index);
+                                           } else if (index > 0) {
+                                             popped_iter += std::min(len - 1, index);
+                                           }
+                                           popped_values.emplace_back(*popped_iter);
+                                           val.erase(popped_iter);
+                                         } else {
+                                           popped_values.emplace_back(std::nullopt);
+                                         }
+                                       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-
-    return Status::OK();
+    return popped_values;
   }
 
   JsonValue(const JsonValue &) = default;

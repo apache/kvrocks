@@ -231,14 +231,33 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::ObjKeys(const std::string &user_key, const std::string &path,
-                              std::vector<std::optional<std::vector<std::string>>> &keys) {
+
+rocksdb::Status Json::ArrPop(const std::string &user_key, const std::string &path, int64_t index,
+                             std::vector<std::optional<JsonValue>> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
   JsonMetadata metadata;
   JsonValue json_val;
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
+
+  auto pop_res = json_val.ArrPop(path, index);
+  if (!pop_res) return rocksdb::Status::InvalidArgument(pop_res.Msg());
+  *results = *pop_res;
+
+  bool is_write = std::any_of(pop_res->begin(), pop_res->end(),
+                              [](const std::optional<JsonValue> &val) { return val.has_value(); });
+  if (!is_write) return rocksdb::Status::OK();
+
+  return write(ns_key, &metadata, json_val);
+}
+
+rocksdb::Status Json::ObjKeys(const std::string &user_key, const std::string &path,
+                              std::vector<std::optional<std::vector<std::string>>> &keys) {
+  auto ns_key = AppendNamespacePrefix(user_key);
   auto keys_res = json_val.ObjKeys(path, keys);
   if (!keys_res) return rocksdb::Status::InvalidArgument(keys_res.Msg());
 

@@ -210,24 +210,16 @@ func TestJson(t *testing.T) {
 		require.Error(t, err)
 		// json path not object
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2]}`).Err())
-		lens, err := rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Slice()
-		require.NoError(t, err)
-		require.EqualValues(t, []interface{}{interface{}(nil)}, lens)
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Val())
 		// json path has one object
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":{"b":1,"c":1}}`).Err())
-		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Slice()
-		require.NoError(t, err)
-		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}}), lens)
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Val())
 		// json path has many object
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":{"e":1,"f":1}}}`).Err())
-		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Slice()
-		require.NoError(t, err)
-		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}, []interface{}{"e", "f"}}), lens)
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}, []interface{}{"e", "f"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Val())
 		// json path has many object and one is not object
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":[1]},"c":{"a1":{"e":1,"f":1}}}`).Err())
-		lens, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Slice()
-		require.NoError(t, err)
-		require.EqualValues(t, []interface{}([]interface{}{[]interface{}{"b", "c"}, interface{}(nil), []interface{}{"e", "f"}}), lens)
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}, interface{}(nil), []interface{}{"e", "f"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Val())
 	})
 
 	t.Run("JSON.ARRPOP basics", func(t *testing.T) {

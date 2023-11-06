@@ -175,7 +175,11 @@ class CommandJsonObjkeys : public Commander {
     std::vector<std::optional<std::vector<std::string>>> results;
 
     auto s = json.ObjKeys(args_[1], args_[2], results);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
 
     *output = redis::MultiLen(results.size());
     for (const auto &item : results) {

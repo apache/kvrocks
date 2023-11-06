@@ -200,14 +200,14 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		// key no exists
 		_, err := rdb.Do(ctx, "JSON.OBJKEYS", "not_exists", "$").Slice()
-		require.Error(t, err)
+		require.EqualError(t, err, redis.Nil.Error())
 		// key not json
 		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
 		_, err = rdb.Do(ctx, "JSON.OBJKEYS", "no_json", "$").Slice()
 		require.Error(t, err)
 		// json path no exists
-		_, err = rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.not_exists").Slice()
-		require.Error(t, err)
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2]}`).Err())
+		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.not_exists").Val())
 		// json path not object
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2]}`).Err())
 		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Val())

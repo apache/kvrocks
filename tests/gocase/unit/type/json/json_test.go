@@ -253,7 +253,7 @@ func TestJson(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0, 2, 3).Err())
 	})
 
-	t.Run("JSON.ARRTRIM special start and end args", func(t *testing.T) {
+	t.Run("JSON.ARRTRIM special <start> and <stop> args", func(t *testing.T) {
 		// start < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(4)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -5, 8).Val())
@@ -262,7 +262,7 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(6)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -20, 5).Val())
 		require.EqualValues(t, "[[1,2,3,4,5,6]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start > len and stop > start
+		// start > len
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 15, 25).Val())
 		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
@@ -274,31 +274,31 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -12, 0).Val())
 		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// end < 0
+		// stop < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(9)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, -2).Val())
 		require.EqualValues(t, "[[1,2,3,4,5,6,7,8,9]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// len + end < 0
+		// len + stop < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, -20).Val())
 		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// end > len
+		// stop > len
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(10)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, 20).Val())
 		require.EqualValues(t, "[[1,2,3,4,5,6,7,8,9,10]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start > end
+		// start > stop
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 8, 5).Val())
 		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start < 0 and end < 0
+		// start < 0 and stop < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(4)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -8, -5).Val())
 		require.EqualValues(t, "[[3,4,5,6]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start < 0 , end < 0 and start > end
+		// start < 0 , stop < 0 and start > end
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -5, -8).Val())
 		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start + len < 0 , end + len < 0
+		// start + len < 0 , stop + len < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -30, -20).Val())
 		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())

@@ -220,7 +220,9 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 			})
 		}()
 
-		require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "4").Err())
+		// sleep a while to make sure all blocking requests are ready
+		time.Sleep(time.Second)
+		require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "1").Err())
 		wg.Wait()
 
 		// We don't care about the result of these commands since we can't tell if the connection

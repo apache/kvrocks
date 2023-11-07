@@ -246,6 +246,6 @@ struct Config {
   void initFieldCallback();
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
+  bool checkFieldValueIsDefault(const std::string &key, const std::string &value) const;
   Status finish();
-  bool checkOptionIsDefault(const std::string &key, const std::string &value) const;
 };

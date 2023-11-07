@@ -853,7 +853,7 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
   return Status::OK();
 }
 
-bool Config::checkOptionIsDefault(const std::string &key, const std::string &value) const {
+bool Config::checkFieldValueIsDefault(const std::string &key, const std::string &value) const {
   auto iter = fields_.find(key);
   return iter != fields_.end() && iter->second->Default() == value;
 }
@@ -911,7 +911,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
     fmt::format_to(std::back_inserter(out_buf), "{}\n", line);
   }
   for (const auto &remain : new_config) {
-    if (remain.second.empty() || checkOptionIsDefault(remain.first, remain.second)) continue;
+    if (remain.second.empty() || checkFieldValueIsDefault(remain.first, remain.second)) continue;
     fmt::format_to(std::back_inserter(out_buf), "{}\n", DumpConfigLine({remain.first, remain.second}));
   }
   std::string tmp_path = path_ + ".tmp";

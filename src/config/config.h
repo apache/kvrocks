@@ -247,5 +247,5 @@ struct Config {
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
   Status finish();
-  bool ignoreIfNotModified(const std::string &key, const std::string &value) const;
+  bool checkOptionIsDefault(const std::string &key, const std::string &value) const;
 };

@@ -286,31 +286,29 @@ struct JsonValue {
 
   Status ArrTrim(std::string_view path, int64_t start, int64_t stop, std::vector<std::optional<uint64_t>> &results) {
     try {
-      jsoncons::jsonpath::json_replace(value, path,
-                                       [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
-                                         if (val.is_array()) {
-                                           auto len = static_cast<int64_t>(val.size());
-                                           auto t_stop = stop < 0 ? std::max(len + stop, 0l) : stop;
-                                           auto t_start = start < 0 ? std::max(len + start, 0l) : start;
+      jsoncons::jsonpath::json_replace(
+          value, path, [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
+            if (val.is_array()) {
+              auto len = static_cast<int64_t>(val.size());
+              auto begin_index = start < 0 ? std::max(len + start, 0l) : start;
+              auto end_index = std::min(stop < 0 ? std::max(len + stop, 0l) : stop, len - 1);
 
-                                           if (t_start > len || t_start > t_stop) {
-                                             val = jsoncons::json::array();
-                                             results.emplace_back(0);
-                                             return;
-                                           }
+              if (begin_index >= len || begin_index > end_index) {
+                val = jsoncons::json::array();
+                results.emplace_back(0);
+                return;
+              }
 
-                                           auto trim_iter = val.array_range().begin();
-                                           for (int64_t index = 0; index < t_start; index++) {
-                                             val.erase(trim_iter + index);
-                                           }
-                                           for (int64_t index = t_stop + 1; index < len; index++) {
-                                             val.erase(trim_iter + index);
-                                           }
-                                           results.emplace_back(static_cast<int64_t>(val.size()));
-                                         } else {
-                                           results.emplace_back(std::nullopt);
-                                         }
-                                       });
+              auto n_val = jsoncons::json::array();
+              auto begin_iter = val.array_range().begin();
+
+              n_val.insert(n_val.end(), begin_iter + begin_index, begin_iter + end_index + 1);
+              val = n_val;
+              results.emplace_back(static_cast<int64_t>(n_val.size()));
+            } else {
+              results.emplace_back(std::nullopt);
+            }
+          });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }

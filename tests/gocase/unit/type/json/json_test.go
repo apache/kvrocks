@@ -23,9 +23,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,8 +34,6 @@ func TestJson(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
-	// rdb := redis.NewClient(&redis.Options{})
-
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("JSON.SET and JSON.GET basics", func(t *testing.T) {
@@ -245,6 +243,17 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":[1,2,3,4,5,6]},"b":{"a1":{"b":1,"c":1}},"c":{"a1":[7,8,9,10]}}`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(3), interface{}(nil), int64(3)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$..a1", 1, 3).Val())
 		require.EqualValues(t, "[{\"a\":{\"a1\":[2,3,4]},\"b\":{\"a1\":{\"b\":1,\"c\":1}},\"c\":{\"a1\":[8,9,10]}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start not a integer
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", "no", 1).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1.1, 1).Err())
+		// stop not a integer
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1, 1.1).Err())
+		// args size != 5
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0, 2, 3).Err())
+	})
+
+	t.Run("JSON.ARRTRIM special start and end args", func(t *testing.T) {
 		// start < 0
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(4)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -5, 8).Val())
@@ -293,14 +302,5 @@ func TestJson(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
 		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -30, -20).Val())
 		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
-		// start not a integer
-		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", "no", 1).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1.1, 1).Err())
-		// stop not a integer
-		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1, 1.1).Err())
-		// args size != 5
-		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0, 2, 3).Err())
 	})
-
 }

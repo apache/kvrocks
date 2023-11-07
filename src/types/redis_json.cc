@@ -272,7 +272,6 @@ rocksdb::Status Json::ArrTrim(const std::string &user_key, const std::string &pa
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
-
   JsonMetadata metadata;
   JsonValue json_val;
   auto s = read(ns_key, &metadata, &json_val);

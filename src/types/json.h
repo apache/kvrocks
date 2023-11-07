@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>

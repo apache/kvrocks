@@ -167,6 +167,35 @@ class CommandJsonType : public Commander {
   }
 };
 
+class CommandJsonObjkeys : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<std::vector<std::string>>> results;
+
+    // If path not specified set it to $
+    std::string path = (args_.size() > 2) ? args_[2] : "$";
+    auto s = json.ObjKeys(args_[1], path, results);
+    if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    *output = redis::MultiLen(results.size());
+    for (const auto &item : results) {
+      if (item.has_value()) {
+        *output += redis::MultiBulkString(item.value(), false);
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 class CommandJsonClear : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -316,6 +345,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1), );
 
 }  // namespace redis

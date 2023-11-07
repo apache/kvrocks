@@ -130,10 +130,10 @@ Config::Config() {
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
       {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", false, new StringField(&backup_dir, "")},
+      {"backup-dir", false, new StringField(&backup_dir_, "")},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
-      {"pidfile", true, new StringField(&pidfile, "")},
+      {"pidfile", true, new StringField(&pidfile_, "")},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
@@ -378,12 +378,6 @@ void Config::initFieldCallback() {
           {"dir",
            [this](Server *srv, const std::string &k, const std::string &v) -> Status {
              db_dir = dir + "/db";
-             {
-               std::lock_guard<std::mutex> lg(this->backup_mu);
-               if (backup_dir.empty()) {
-                 backup_dir = dir + "/backup";
-               }
-             }
              if (log_dir.empty()) log_dir = dir;
              checkpoint_dir = dir + "/checkpoint";
              sync_checkpoint_dir = dir + "/sync_checkpoint";
@@ -397,8 +391,8 @@ void Config::initFieldCallback() {
                // Note: currently, backup_mu_ may block by backing up or purging,
                //  the command may wait for seconds.
                std::lock_guard<std::mutex> lg(this->backup_mu);
-               previous_backup = std::move(backup_dir);
-               backup_dir = v;
+               previous_backup = std::move(backup_dir_);
+               backup_dir_ = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
                // LOG(INFO) should be called after log is initialized and server is loaded.
@@ -751,10 +745,10 @@ Status Config::finish() {
   if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
+  if (backup_dir_.empty()) backup_dir_ = dir + "/backup";
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (backup_dir.empty()) backup_dir = dir + "/backup";
+  if (pidfile_.empty()) pidfile_ = dir + "/kvrocks.pid";
   if (log_dir.empty()) log_dir = dir;
-  if (pidfile.empty()) pidfile = dir + "/kvrocks.pid";
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);
@@ -859,6 +853,11 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
   return Status::OK();
 }
 
+bool Config::checkFieldValueIsDefault(const std::string &key, const std::string &value) const {
+  auto iter = fields_.find(key);
+  return iter != fields_.end() && iter->second->Default() == value;
+}
+
 Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
   if (!HasConfigFile()) {
     return {Status::NotOK, "the server is running without a config file"};
@@ -912,7 +911,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
     fmt::format_to(std::back_inserter(out_buf), "{}\n", line);
   }
   for (const auto &remain : new_config) {
-    if (remain.second.empty()) continue;
+    if (remain.second.empty() || checkFieldValueIsDefault(remain.first, remain.second)) continue;
     fmt::format_to(std::back_inserter(out_buf), "{}\n", DumpConfigLine({remain.first, remain.second}));
   }
   std::string tmp_path = path_ + ".tmp";

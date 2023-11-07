@@ -30,7 +30,6 @@
 TEST(Compact, Filter) {
   Config config;
   config.db_dir = "compactdb";
-  config.backup_dir = "compactdb/backup";
   config.slot_id_encoded = false;
 
   auto storage = std::make_unique<engine::Storage>(&config);

@@ -336,7 +336,7 @@ Status Storage::Open(bool read_only) {
 Status Storage::CreateBackup() {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu);
-  std::string task_backup_dir = config_->backup_dir;
+  std::string task_backup_dir = config_->GetBackupDir();
 
   std::string tmpdir = task_backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
@@ -486,7 +486,7 @@ void Storage::EmptyDB() {
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = util::GetTimeStamp();
   std::lock_guard<std::mutex> lg(config_->backup_mu);
-  std::string task_backup_dir = config_->backup_dir;
+  std::string task_backup_dir = config_->GetBackupDir();
 
   // Return if there is no backup
   auto s = env_->FileExists(task_backup_dir);
@@ -640,13 +640,14 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
   return cf_handles_[0];
 }
 
-rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
+rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   // For the manual compaction, we would like to force the bottommost level to be compacted.
   // Or it may use the trivial mode and some expired key-values were still exist in the bottommost level.
   compact_opts.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForceOptimized;
-  for (const auto &cf_handle : cf_handles_) {
+  const auto &cf_handles = cf ? std::vector<rocksdb::ColumnFamilyHandle *>{cf} : cf_handles_;
+  for (const auto &cf_handle : cf_handles) {
     rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle, begin, end);
     if (!s.ok()) return s;
   }

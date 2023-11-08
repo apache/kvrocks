@@ -128,7 +128,7 @@ class CommandJsonArrAppend : public Commander {
 class CommandJsonArrInsert : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 4) {
+    if (args.size() < 5) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
@@ -144,16 +144,20 @@ class CommandJsonArrInsert : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Json json(srv->storage, conn->GetNamespace());
 
-    std::vector<size_t> result_count;
+    std::vector<std::optional<uint64_t>> result_count;
     auto parse_result = ParseInt<int>(args_[3], 10);
 
     auto s = json.ArrInsert(args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &result_count);
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(result_count.size());
-    for (size_t c : result_count) {
-      if (c != 0) {
-        *output += redis::Integer(c);
+    for (auto c : result_count) {
+      if (c.has_value()) {
+        *output += redis::Integer(c.value());
       } else {
         *output += redis::NilString();
       }

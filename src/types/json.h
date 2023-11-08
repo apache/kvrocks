@@ -137,23 +137,24 @@ struct JsonValue {
     return result_count;
   }
 
-  StatusOr<std::vector<size_t>> ArrInsert(std::string_view path, const int64_t &index,
-                                          const std::vector<jsoncons::json> &insert_values) {
-    std::vector<size_t> result_count;
+  StatusOr<std::vector<std::optional<uint64_t>>> ArrInsert(std::string_view path, const int64_t &index,
+                                                           const std::vector<jsoncons::json> &insert_values) {
+    std::vector<std::optional<uint64_t>> result_count;
 
     try {
       jsoncons::jsonpath::json_replace(
           value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
-              if ((int64_t)val.size() + index < 0 || (int64_t)val.size() - index < 0) {
-                result_count.emplace_back(0);
+              auto len = static_cast<int64_t>(val.size());
+              if (index >= len /*index > 0*/ || len + index < 0 /*index < 0*/) {
+                result_count.emplace_back(std::nullopt);
                 return;
               }
               auto base_iter = index >= 0 ? val.array_range().begin() : val.array_range().end();
               val.insert(base_iter + index, insert_values.begin(), insert_values.end());
               result_count.emplace_back(val.size());
             } else {
-              result_count.emplace_back(0);
+              result_count.emplace_back(std::nullopt);
             }
           });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

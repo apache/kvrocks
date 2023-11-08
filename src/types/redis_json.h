@@ -43,7 +43,7 @@ class Json : public Database {
   rocksdb::Status ArrLen(const std::string &user_key, const std::string &path,
                          std::vector<std::optional<uint64_t>> &arr_lens);
   rocksdb::Status ArrInsert(const std::string &user_key, const std::string &path, const int64_t &index,
-                            const std::vector<std::string> &values, std::vector<size_t> *result_count);
+                            const std::vector<std::string> &values, std::vector<std::optional<uint64_t>> *result_count);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

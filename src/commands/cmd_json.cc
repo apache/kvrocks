@@ -295,13 +295,8 @@ class CommandJsonArrTrim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     path_ = args_[2];
-
-    if (args_.size() == 5) {
-      start_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
-      stop_ = GET_OR_RET(ParseInt<int64_t>(args_[4], 10));
-    } else {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
+    start_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
+    stop_ = GET_OR_RET(ParseInt<int64_t>(args_[4], 10));
 
     return Status::OK();
   }

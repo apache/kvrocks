@@ -90,7 +90,7 @@ StatusOr<std::vector<std::string>> ListPack::Entries() {
     return elements;
   } catch (const std::runtime_error &e) {
     return Status{Status::NotOK, e.what()};
-  } catch (const std::exception &e) {
+  } catch (...) {
     return Status{Status::NotOK, "invalid listpack encoding"};
   }
 }

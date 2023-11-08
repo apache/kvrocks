@@ -41,7 +41,7 @@ class InputStringStream {
   std::string Read(size_t n);
 
  private:
-  void peak(size_t n) const;
+  void check(size_t n) const;
 
   std::string_view input_;
   size_t pos_{0};
@@ -53,10 +53,11 @@ T InputStringStream::Read() {
   static_assert(sizeof(T) <= 8);
 
   size_t len = sizeof(T);
-  Consume(len);
+  check(len);
 
   T v;
-  memcpy(&v, Data() - len, len);
+  memcpy(&v, Data(), len);
+  Consume(len);
 
   if (sizeof(T) == 2) {
     return intrev16ifbe(v);

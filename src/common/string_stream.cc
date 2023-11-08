@@ -18,28 +18,27 @@
  *
  */
 
-#include "string_stream.h"
+#include "common/string_stream.h"
 
-InputStringStream::InputStringStream(std::string_view input) : input_(input), pos_(0) {}
+InputStringStream::InputStringStream(std::string_view input) : input_(input) {}
 
 const char* InputStringStream::Data() const { return input_.data() + pos_; }
 
 size_t InputStringStream::ReadableSize() const { return input_.size() - pos_; }
 
 void InputStringStream::Consume(size_t size) {
-  peak(size);
+  check(size);
   pos_ += size;
 }
 
 std::string InputStringStream::Read(size_t size) {
-  peak(size);
-
+  check(size);
   std::string str{Data(), size};
   Consume(size);
   return str;
 }
 
-void InputStringStream::peak(size_t n) const {
+void InputStringStream::check(size_t n) const {
   if (ReadableSize() < n) {
     throw std::out_of_range{"unexpected end of stream"};
   }

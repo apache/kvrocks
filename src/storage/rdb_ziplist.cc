@@ -257,7 +257,7 @@ StatusOr<std::vector<std::string>> ZipList::Entries() {
       return {Status::NotOK, "invalid ziplist encoding"};
     }
     return entries;
-  } catch (const std::exception &e) {
+  } catch (...) {
     return {Status::NotOK, "invalid ziplist encoding"};
   }
 }

@@ -22,23 +22,20 @@
 
 #include <map>
 #include <string_view>
+#include <vector>
 
 #include "common/status.h"
+#include "common/string_stream.h"
 
 class ZipList {
  public:
-  explicit ZipList(std::string_view input) : input_(input){};
+  explicit ZipList(std::string_view input) : stream_(input){};
   ~ZipList() = default;
 
-  StatusOr<std::string> Next();
   StatusOr<std::vector<std::string>> Entries();
 
  private:
-  std::string_view input_;
-  uint64_t pos_ = 0;
-  uint32_t pre_entry_len_ = 0;
+  InputStringStream stream_;
 
-  Status peekOK(size_t n);
-  void setPreEntryLen(uint32_t len) { pre_entry_len_ = len; }
-  static uint32_t getEncodedLengthSize(uint32_t len);
+  std::string next();
 };

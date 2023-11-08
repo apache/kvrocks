@@ -49,77 +49,58 @@
  * The total bytes of the element is used to traverse the list-pack from the end to the beginning.
  */
 #include "rdb_listpack.h"
+#include <string>
+#include <vector>
+#include <stdexcept>
 
 constexpr const int ListPack7BitUIntMask = 0x80;
 constexpr const int ListPack7BitUInt = 0;
-// skip 1byte for encoding type and 1byte for element length
-constexpr const int ListPack7BitIntEntrySize = 2;
 
 constexpr const int ListPack6BitStringMask = 0xC0;
 constexpr const int ListPack6BitString = 0x80;
 
 constexpr const int ListPack13BitIntMask = 0xE0;
 constexpr const int ListPack13BitInt = 0xC0;
-// skip 2byte for encoding type and 1byte for element length
-constexpr const int ListPack13BitIntEntrySize = 3;
 
 constexpr const int ListPack12BitStringMask = 0xF0;
 constexpr const int ListPack12BitString = 0xE0;
 
 constexpr const int ListPack16BitIntMask = 0xFF;
 constexpr const int ListPack16BitInt = 0xF1;
-// skip 3byte for encoding type and 1byte for element length
-constexpr const int ListPack16BitIntEntrySize = 4;
 
 constexpr const int ListPack24BitIntMask = 0xFF;
 constexpr const int ListPack24BitInt = 0xF2;
-// skip 4byte for encoding type and 1byte for element length
-constexpr const int ListPack24BitIntEntrySize = 5;
 
 constexpr const int ListPack32BitIntMask = 0xFF;
 constexpr const int ListPack32BitInt = 0xF3;
-// skip 5byte for encoding type and 1byte for element length
-constexpr const int ListPack32BitIntEntrySize = 6;
 
 constexpr const int ListPack64BitIntMask = 0xFF;
 constexpr const int ListPack64BitInt = 0xF4;
-// skip 9byte for encoding type and 1byte for element length
-constexpr const int ListPack64BitIntEntrySize = 10;
 
 constexpr const int ListPack32BitStringMask = 0xFF;
 constexpr const int ListPack32BitString = 0xF0;
 
-constexpr const int ListPackEOF = 0xFF;
-
 StatusOr<std::vector<std::string>> ListPack::Entries() {
-  auto len = GET_OR_RET(Length());
-  std::vector<std::string> elements;
-  while (len-- != 0) {
-    auto element = GET_OR_RET(Next());
-    elements.emplace_back(element);
+  try {
+    std::vector<std::string> elements;
+    auto len = length();
+    while (len-- != 0) {
+      elements.emplace_back(next());
+    }
+    return elements;
+  } catch (const std::exception &e) {
+    return Status{Status::NotOK, e.what()};
   }
-  return elements;
 }
 
-StatusOr<uint32_t> ListPack::Length() {
-  // list pack header size is 6 bytes which contains the total bytes and number of elements
-  constexpr const int listPackHeaderSize = 6;
-  if (input_.size() < listPackHeaderSize) {
-    return {Status::NotOK, "invalid listpack length"};
+uint32_t ListPack::length() {
+  try {
+    stream_.Consume(4);  // skip total-bytes
+    auto entries = stream_.Read<uint16_t>();
+    return entries;
+  } catch (...) {
+    throw std::runtime_error("invalid listpack length");
   }
-
-  auto data = reinterpret_cast<const uint8_t*>(
-      input_.data());  // to avoid the sign extension in static_cast<uint32_t>(input_[n]))
-  // total bytes and number of elements are encoded in little endian
-  uint32_t total_bytes = (static_cast<uint32_t>(data[0])) | (static_cast<uint32_t>(data[1]) << 8) |
-                         (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
-  uint32_t len = (static_cast<uint32_t>(data[4])) | (static_cast<uint32_t>(data[5]) << 8);
-  pos_ += listPackHeaderSize;
-
-  if (total_bytes != input_.size()) {
-    return {Status::NotOK, "invalid listpack length"};
-  }
-  return len;
 }
 
 // encodeBackLen returns the number of bytes required to encode the length of the element.
@@ -137,88 +118,66 @@ uint32_t ListPack::encodeBackLen(uint32_t len) {
   }
 }
 
-Status ListPack::peekOK(size_t n) {
-  if (pos_ + n > input_.size()) {
-    return {Status::NotOK, "reach the end of listpack"};
-  }
-  return Status::OK();
-}
-
-StatusOr<std::string> ListPack::Next() {
-  GET_OR_RET(peekOK(1));
-
-  uint32_t value_len = 0;
-  uint64_t int_value = 0;
+std::string ListPack::next() {
+  uint32_t len = 0;
+  int64_t num = 0;
   std::string value;
-  // For integer type, need to convert the byte to the uint8_t type to avoid the sign extension.
-  auto data = reinterpret_cast<const uint8_t*>(input_.data());
-  auto c = data[pos_];
-  if ((c & ListPack7BitUIntMask) == ListPack7BitUInt) {  // 7bit unsigned int
-    GET_OR_RET(peekOK(2));
-    int_value = c & 0x7F;
-    value = std::to_string(int_value);
-    pos_ += ListPack7BitIntEntrySize;
-  } else if ((c & ListPack6BitStringMask) == ListPack6BitString) {  // 6bit string
-    value_len = (c & 0x3F);
-    // skip the encoding type byte
-    pos_ += 1;
-    GET_OR_RET(peekOK(value_len));
-    value = input_.substr(pos_, value_len);
-    // skip the value bytes and the length of the element
-    pos_ += value_len + encodeBackLen(value_len + 1);
-  } else if ((c & ListPack13BitIntMask) == ListPack13BitInt) {  // 13bit int
-    GET_OR_RET(peekOK(3));
-    int_value = ((c & 0x1F) << 8) | data[pos_ + 1];
-    value = std::to_string(int_value);
-    pos_ += ListPack13BitIntEntrySize;
-  } else if ((c & ListPack16BitIntMask) == ListPack16BitInt) {  // 16bit int
-    GET_OR_RET(peekOK(4));
-    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8);
-    value = std::to_string(int_value);
-    pos_ += ListPack16BitIntEntrySize;
-  } else if ((c & ListPack24BitIntMask) == ListPack24BitInt) {  // 24bit int
-    GET_OR_RET(peekOK(5));
-    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(data[pos_ + 3]) << 16);
-    value = std::to_string(int_value);
-    pos_ += ListPack24BitIntEntrySize;
-  } else if ((c & ListPack32BitIntMask) == ListPack32BitInt) {  // 32bit int
-    GET_OR_RET(peekOK(6));
-    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(data[pos_ + 3]) << 16) | (static_cast<uint64_t>(data[pos_ + 4]) << 24);
-    value = std::to_string(int_value);
-    pos_ += ListPack32BitIntEntrySize;
-  } else if ((c & ListPack64BitIntMask) == ListPack64BitInt) {  // 64bit int
-    GET_OR_RET(peekOK(10));
-    int_value = (static_cast<uint64_t>(data[pos_ + 1])) | (static_cast<uint64_t>(data[pos_ + 2]) << 8) |
-                (static_cast<uint64_t>(data[pos_ + 3]) << 16) | (static_cast<uint64_t>(data[pos_ + 4]) << 24) |
-                (static_cast<uint64_t>(data[pos_ + 5]) << 32) | (static_cast<uint64_t>(data[pos_ + 6]) << 40) |
-                (static_cast<uint64_t>(data[pos_ + 7]) << 48) | (static_cast<uint64_t>(data[pos_ + 8]) << 56);
-    value = std::to_string(int_value);
-    pos_ += ListPack64BitIntEntrySize;
-  } else if ((c & ListPack12BitStringMask) == ListPack12BitString) {  // 12bit string
-    GET_OR_RET(peekOK(2));
-    value_len = ((data[pos_] & 0xF) << 8) | data[pos_ + 1];
-    // skip 2byte encoding type
-    pos_ += 2;
-    GET_OR_RET(peekOK(value_len));
-    value = input_.substr(pos_, value_len);
-    // skip the value bytes and the length of the element
-    pos_ += value_len + encodeBackLen(value_len + 2);
-  } else if ((c & ListPack32BitStringMask) == ListPack32BitString) {  // 32bit string
-    GET_OR_RET(peekOK(5));
-    value_len = (static_cast<uint32_t>(data[pos_])) | (static_cast<uint32_t>(data[pos_ + 1]) << 8) |
-                (static_cast<uint32_t>(data[pos_ + 2]) << 16) | (static_cast<uint32_t>(data[pos_ + 3]) << 24);
-    // skip 5byte encoding type
-    pos_ += 5;
-    GET_OR_RET(peekOK(value_len));
-    value = input_.substr(pos_, value_len);
-    // skip the value bytes and the length of the element
-    pos_ += value_len + encodeBackLen(value_len + 5);
-  } else if (c == ListPackEOF) {
-    ++pos_;
+  uint32_t entry_bytes = 0;
+
+  auto encoding = stream_.Read<uint8_t>();
+  if ((encoding & ListPack7BitUIntMask) == ListPack7BitUInt) {
+    // 0|xxxxxxx - 7bit unsigned integer
+    num = encoding & 0x7F;
+    value = std::to_string(num);
+    entry_bytes = 1;
+  } else if ((encoding & ListPack6BitStringMask) == ListPack6BitString) {
+    // 10xxxxxx - 6bit string
+    len = (encoding & 0x3F);
+    value = stream_.Read(len);
+    entry_bytes = 1 + len;
+  } else if ((encoding & ListPack13BitIntMask) == ListPack13BitInt) {
+    // 110|xxxxx yyyyyyyy -- 13 bit signed integer
+    uint16_t u16 = (encoding & 0x1F) << 8 | stream_.Read<uint8_t>();
+    num = static_cast<int16_t>(u16 << 3) >> 3;
+    value = std::to_string(num);
+    entry_bytes = 1 + 1;
+  } else if ((encoding & ListPack16BitIntMask) == ListPack16BitInt) {
+    // 1111|0001 <16 bits signed integer>
+    num = stream_.Read<int16_t>();
+    value = std::to_string(num);
+    entry_bytes = 1 + sizeof(int16_t);
+  } else if ((encoding & ListPack24BitIntMask) == ListPack24BitInt) {
+    // 1111|0010 <24 bits signed integer>
+    uint32_t u32 = stream_.Read<uint8_t>() << 8 | stream_.Read<uint8_t>() << 16 | stream_.Read<uint8_t>() << 24;
+    num = static_cast<int32_t>(u32) >> 8;
+    value = std::to_string(num);
+    entry_bytes = 1 + 3;
+  } else if ((encoding & ListPack32BitIntMask) == ListPack32BitInt) {
+    // 1111|0011 <32 bits signed integer>
+    num = stream_.Read<int32_t>();
+    value = std::to_string(num);
+    entry_bytes = 1 + sizeof(int32_t);
+  } else if ((encoding & ListPack64BitIntMask) == ListPack64BitInt) {
+    // 1111|0100 <64 bits signed integer>
+    num = stream_.Read<int64_t>();
+    value = std::to_string(num);
+    entry_bytes = 1 + sizeof(int64_t);
+  } else if ((encoding & ListPack12BitStringMask) == ListPack12BitString) {
+    // 1110|xxxx yyyyyyyy -- string with length up to 4095
+    len = (encoding & 0xF) << 8 | stream_.Read<uint8_t>();
+    value = stream_.Read(len);
+    entry_bytes = 2 + len;
+  } else if ((encoding & ListPack32BitStringMask) == ListPack32BitString) {
+    // 1111|0000 <4 bytes len> <large string>
+    len = stream_.Read<uint32_t>();
+    value = stream_.Read(len);
+    entry_bytes += 1 + 4 + len;
   } else {
-    return {Status::NotOK, "invalid listpack entry"};
+    throw std::runtime_error("invalid listpack entry");
   }
+
+  len = encodeBackLen(entry_bytes);
+  stream_.Consume(len);  // skip tail len
+
   return value;
 }

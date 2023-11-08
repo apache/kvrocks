@@ -18,28 +18,29 @@
  *
  */
 
-#pragma once
+#include "string_stream.h"
 
-#include <string>
-#include <string_view>
-#include <vector>
+InputStringStream::InputStringStream(std::string_view input) : input_(input), pos_(0) {}
 
-#include "common/status.h"
-#include "common/string_stream.h"
-#include "endianconv.h"
+const char* InputStringStream::Data() const { return input_.data() + pos_; }
 
-class ListPack {
- public:
-  explicit ListPack(std::string_view input) : stream_(input) {}
-  ~ListPack() = default;
+size_t InputStringStream::ReadableSize() const { return input_.size() - pos_; }
 
-  StatusOr<std::vector<std::string>> Entries();
+void InputStringStream::Consume(size_t size) {
+  peak(size);
+  pos_ += size;
+}
 
- private:
-  InputStringStream stream_;
+std::string InputStringStream::Read(size_t size) {
+  peak(size);
 
-  static uint32_t encodeBackLen(uint32_t len);
+  std::string str{Data(), size};
+  Consume(size);
+  return str;
+}
 
-  uint32_t length();
-  std::string next();
-};
+void InputStringStream::peak(size_t n) const {
+  if (ReadableSize() < n) {
+    throw std::out_of_range{"unexpected end of stream"};
+  }
+}

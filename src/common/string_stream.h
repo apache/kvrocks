@@ -21,25 +21,49 @@
 #pragma once
 
 #include <string>
-#include <string_view>
-#include <vector>
 
-#include "common/status.h"
-#include "common/string_stream.h"
 #include "endianconv.h"
+#include "status.h"
 
-class ListPack {
+class InputStringStream {
  public:
-  explicit ListPack(std::string_view input) : stream_(input) {}
-  ~ListPack() = default;
+  InputStringStream() = default;
 
-  StatusOr<std::vector<std::string>> Entries();
+  explicit InputStringStream(std::string_view input);
+
+  size_t ReadableSize() const;
+  const char *Data() const;
+  void Consume(size_t size);
+
+  template <typename T>
+  T Read();
+
+  std::string Read(size_t n);
 
  private:
-  InputStringStream stream_;
+  void peak(size_t n) const;
 
-  static uint32_t encodeBackLen(uint32_t len);
-
-  uint32_t length();
-  std::string next();
+  std::string_view input_;
+  size_t pos_{0};
 };
+
+template <typename T>
+T InputStringStream::Read() {
+  static_assert(std::is_integral<T>::value);
+  static_assert(sizeof(T) <= 8);
+
+  size_t len = sizeof(T);
+  Consume(len);
+
+  T v;
+  memcpy(&v, Data() - len, len);
+
+  if (sizeof(T) == 2) {
+    return intrev16ifbe(v);
+  } else if (sizeof(T) == 4) {
+    return intrev32ifbe(v);
+  } else if (sizeof(T) == 8) {
+    return intrev64ifbe(v);
+  }
+  return v;
+}

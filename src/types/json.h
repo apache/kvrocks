@@ -308,8 +308,8 @@ struct JsonValue {
           value, path, [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
               auto len = static_cast<int64_t>(val.size());
-              auto begin_index = start < 0 ? std::max(len + start, 0l) : start;
-              auto end_index = std::min(stop < 0 ? std::max(len + stop, 0l) : stop, len - 1);
+              auto begin_index = start < 0 ? std::max(len + start, static_cast<int64_t>(0)) : start;
+              auto end_index = std::min(stop < 0 ? std::max(len + stop, static_cast<int64_t>(0)) : stop, len - 1);
 
               if (begin_index >= len || begin_index > end_index) {
                 val = jsoncons::json::array();

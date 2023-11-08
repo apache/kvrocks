@@ -243,20 +243,21 @@ std::string ZipList::next() {
 }
 
 StatusOr<std::vector<std::string>> ZipList::Entries() {
-  stream_.Consume(4);  // skip zlbytes
-  stream_.Consume(4);  // skip zltail
+  try {
+    stream_.Consume(4);  // skip zlbytes
+    stream_.Consume(4);  // skip zltail
 
-  std::vector<std::string> entries;
-  auto zllen = stream_.Read<uint16_t>();
-
-  for (uint16_t i = 0; i < zllen; i++) {
-    entries.emplace_back(next());
+    std::vector<std::string> entries;
+    auto zllen = stream_.Read<uint16_t>();
+    for (uint16_t i = 0; i < zllen; i++) {
+      entries.emplace_back(next());
+    }
+    auto end = stream_.Read<uint8_t>();
+    if (end != zlEnd) {
+      return {Status::NotOK, "invalid ziplist encoding"};
+    }
+    return entries;
+  } catch (const std::exception &e) {
+    return {Status::NotOK, "invalid ziplist encoding"};
   }
-
-  auto end = stream_.Read<uint8_t>();
-  if (end != zlEnd) {
-    return {Status::NotOK, "invalid ziplist length"};
-  }
-
-  return entries;
 }

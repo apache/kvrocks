@@ -88,8 +88,10 @@ StatusOr<std::vector<std::string>> ListPack::Entries() {
       elements.emplace_back(next());
     }
     return elements;
-  } catch (const std::exception &e) {
+  } catch (const std::runtime_error &e) {
     return Status{Status::NotOK, e.what()};
+  } catch (const std::exception &e) {
+    return Status{Status::NotOK, "invalid listpack encoding"};
   }
 }
 
@@ -171,7 +173,7 @@ std::string ListPack::next() {
     // 1111|0000 <4 bytes len> <large string>
     len = stream_.Read<uint32_t>();
     value = stream_.Read(len);
-    entry_bytes += 1 + 4 + len;
+    entry_bytes += 1 + sizeof(uint32_t) + len;
   } else {
     throw std::runtime_error("invalid listpack entry");
   }

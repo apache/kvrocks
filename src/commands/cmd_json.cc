@@ -233,9 +233,10 @@ class CommandJsonToggle : public Commander {
       return Status::OK();
     }
 
+    *output = redis::MultiLen(results.size());
     for (auto it = results.rbegin(); it != results.rend(); ++it) {
-      if ((*it).has_value()) {
-        *output += redis::Integer((*it).value());
+      if (it->has_value()) {
+        *output += redis::Integer(it->value());
       } else {
         *output += redis::NilString();
       }

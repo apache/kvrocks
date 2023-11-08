@@ -200,7 +200,7 @@ TEST_F(RedisJsonTest, Merge) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[2,4,6,8]})").ok());
   ASSERT_TRUE(json_->Merge(key_, "$.arr", "[10,12]", result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":[10,12]}");
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"arr\":[10,12]}");
   ASSERT_EQ(result, true);
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"f1": {"a":1}, "f2":{"a":2}})").ok());

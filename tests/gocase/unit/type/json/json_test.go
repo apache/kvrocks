@@ -215,6 +215,31 @@ func TestJson(t *testing.T) {
 		require.EqualValues(t, []uint64{}, lens)
 	})
 
+	t.Run("JSON.OBJKEYS basics", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		// key no exists
+		require.EqualError(t, rdb.Do(ctx, "JSON.OBJKEYS", "not_exists", "$").Err(), redis.Nil.Error())
+		// key not json
+		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.OBJKEYS", "no_json", "$").Err())
+		// json path no exists
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2]}`).Err())
+		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.not_exists").Val())
+		// json path not object
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Val())
+		// default path
+		require.EqualValues(t, []interface{}{[]interface{}{"a1"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a").Val())
+		// json path has one object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":{"b":1,"c":1}}`).Err())
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$.a1").Val())
+		// json path has many object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":{"e":1,"f":1}}}`).Err())
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}, []interface{}{"e", "f"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Val())
+		// json path has many object and one is not object
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":{"b":1,"c":1}},"b":{"a1":[1]},"c":{"a1":{"e":1,"f":1}}}`).Err())
+		require.EqualValues(t, []interface{}{[]interface{}{"b", "c"}, interface{}(nil), []interface{}{"e", "f"}}, rdb.Do(ctx, "JSON.OBJKEYS", "a", "$..a1").Val())
+	})
+
 	t.Run("JSON.ARRPOP basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[3,"str",2.1,{},[5,6]]`).Err())
 		require.EqualValues(t, []interface{}{"[5,6]"}, rdb.Do(ctx, "JSON.ARRPOP", "a").Val())

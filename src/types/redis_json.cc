@@ -231,6 +231,24 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::Toggle(const std::string &user_key, const std::string &path,
+                             std::vector<std::optional<bool>> &result) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonMetadata metadata;
+  JsonValue origin;
+  auto s = read(ns_key, &metadata, &origin);
+  if (!s.ok()) return s;
+
+  auto toggle_res = origin.Toggle(path);
+  if (!toggle_res) return rocksdb::Status::InvalidArgument(toggle_res.Msg());
+  result = *toggle_res;
+
+  return write(ns_key, &metadata, origin);
+}
+
 rocksdb::Status Json::ArrPop(const std::string &user_key, const std::string &path, int64_t index,
                              std::vector<std::optional<JsonValue>> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);

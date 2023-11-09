@@ -30,7 +30,6 @@
 TEST(Compact, Filter) {
   Config config;
   config.db_dir = "compactdb";
-  config.backup_dir = "compactdb/backup";
   config.slot_id_encoded = false;
 
   auto storage = std::make_unique<engine::Storage>(&config);
@@ -49,11 +48,11 @@ TEST(Compact, Filter) {
   hash->Set(live_hash_key, "f1", "v1", &ret);
   hash->Set(live_hash_key, "f2", "v2", &ret);
 
-  auto status = storage->Compact(nullptr, nullptr);
+  auto status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
   // Compact twice to workaround issue fixed by: https://github.com/facebook/rocksdb/pull/11468
   // before rocksdb/speedb 8.1.1. This line can be removed after speedb upgraded above 8.1.1.
-  status = storage->Compact(nullptr, nullptr);
+  status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
 
   rocksdb::DB* db = storage->GetDB();
@@ -85,9 +84,9 @@ TEST(Compact, Filter) {
   usleep(10000);
 
   // Same as the above compact, need to compact twice here
-  status = storage->Compact(nullptr, nullptr);
+  status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
-  status = storage->Compact(nullptr, nullptr);
+  status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
 
   iter = new_iterator("default");
@@ -107,7 +106,7 @@ TEST(Compact, Filter) {
 
   int retry = 2;
   while (retry-- > 0) {
-    status = storage->Compact(nullptr, nullptr);
+    status = storage->Compact(nullptr, nullptr, nullptr);
     assert(status.ok());
     std::vector<FieldValue> fieldvalues;
     auto get_res = hash->GetAll(mk_with_ttl, &fieldvalues);

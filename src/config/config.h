@@ -119,12 +119,10 @@ struct Config {
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
-  std::string backup_dir;  // GUARD_BY(backup_mu_)
   std::string backup_sync_dir;
   std::string checkpoint_dir;
   std::string sync_checkpoint_dir;
   std::string log_dir;
-  std::string pidfile;
   std::string db_name;
   std::string masterauth;
   std::string requirepass;
@@ -228,9 +226,13 @@ struct Config {
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }
   bool HasConfigFile() const { return !path_.empty(); }
+  std::string GetBackupDir() const { return backup_dir_.empty() ? dir + "/backup" : backup_dir_; }
+  std::string GetPidFile() const { return pidfile_.empty() ? dir + "/kvrocks.pid" : pidfile_; }
 
  private:
   std::string path_;
+  std::string backup_dir_;  // GUARD_BY(backup_mu_)
+  std::string pidfile_;
   std::string binds_str_;
   std::string slaveof_;
   std::string compact_cron_str_;
@@ -244,5 +246,6 @@ struct Config {
   void initFieldCallback();
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
+  bool checkFieldValueIsDefault(const std::string &key, const std::string &value) const;
   Status finish();
 };

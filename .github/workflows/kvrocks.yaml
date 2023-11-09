@@ -310,7 +310,19 @@ jobs:
           tags: kvrocks:ci
           outputs: type=docker
       - name: Test built image
-        run: docker run --rm kvrocks:ci -v
+        run: |
+          docker run --rm kvrocks:ci -v
+          ID="$(docker run --rm -d -p 6666:6666 kvrocks:ci)"
+          sleep 1m
+          if [ "$(docker inspect --format='{{.State.Health.Status}}' $ID)" != "healthy" ]; then
+            echo "The container is not healthy."
+            exit 1
+          fi
+          if [ "$(ss --listening --no-header --tcp '( sport = :6666 )')" == "" ]; then
+            echo "The container listening port can not be accessed from outside."
+            exit 1
+          fi
+          docker stop $ID
 
   build-and-test-in-container:
     name: Build and test in container

@@ -245,4 +245,34 @@ func TestJson(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "0", "1").Err(), "wrong number of arguments")
 	})
 
+	t.Run("JSON.TOGGLE basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `true`).Err())
+		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `false`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true}`).Err())
+		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$.bool").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false}`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true,"bools":{"bool":true}}`).Err())
+		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$.bool").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false,"bools":{"bool":true}}`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true,"bools":{"bool":true}}`).Err())
+		require.EqualValues(t, []interface{}{int64(0), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false,"bools":{"bool":false}}`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":false,"bools":{"bool":true}}`).Err())
+		require.EqualValues(t, []interface{}{int64(1), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":true,"bools":{"bool":false}}`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"incorrectbool":99,"bools":{"bool":true},"bool":{"bool":false}}`).Err())
+		require.EqualValues(t, []interface{}{nil, int64(1), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":{"bool":true},"bools":{"bool":false},"incorrectbool":99}`)
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[99,true,99]`).Err())
+		require.EqualValues(t, []interface{}{nil, int64(0), nil}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..*").Val())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `[99,false,99]`)
+	})
+
 }

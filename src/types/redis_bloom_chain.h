@@ -77,7 +77,7 @@ class BloomChain : public Database {
   rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
   std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);
   void getBFKeyList(const Slice &ns_key, const BloomChainMetadata &metadata, std::vector<std::string> *bf_key_list);
-  rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list, std::vector<std::string> *bf_data_list);
+  rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list, std::vector<rocksdb::Slice> *bf_data_list);
   static void getItemHashList(const std::vector<std::string> &items, std::vector<uint64_t> *item_hash_list);
 
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,

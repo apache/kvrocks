@@ -818,7 +818,7 @@ static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerG
     group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
     valid = true;
   } else {
-    uint64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
+    int64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
     if (entries_read != -1) {
       group_metadata.lag = stream_metadata.entries_added - entries_read;
       valid = true;

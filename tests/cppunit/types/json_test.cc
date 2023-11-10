@@ -398,3 +398,60 @@ TEST_F(RedisJsonTest, ArrPop) {
   ASSERT_EQ(res[3]->Dump().GetValue(), "1");
   res.clear();
 }
+
+TEST_F(RedisJsonTest, ArrIndex) {
+  std::vector<ssize_t> res;
+  int max_end = std::numeric_limits<int>::max();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[0, 1, 2, 3, 2, 1, 0]})").ok());
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 0);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 3);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "4", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 1, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", -1, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 6, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 5, -1, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 5, 0, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", -2, 6, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "\"foo\"", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[0, 1, 2, 3, 4, 2, 1, 0]})").ok());
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 3);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", 3, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 5);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "1", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", 1, 4, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 2);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "6", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, 2, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+}

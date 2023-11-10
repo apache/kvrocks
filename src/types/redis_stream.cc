@@ -253,20 +253,21 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
 StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice subkey = ikey.GetSubKey();
-  if (subkey.size() <= 16) {  // id.ms(uint64) + id.seq(uint64)
+  const size_t entry_id_size = sizeof(StreamEntryID);
+  if (subkey.size() <= entry_id_size) {
     return StreamSubkeyType::StreamEntry;
   }
   uint64_t group_name_len = 0;
   GetFixed64(&subkey, &group_name_len);
   std::string without_group_name = subkey.ToString().substr(group_name_len);
-  if (without_group_name.size() <= 8) {  // strlen(consumerGroupMetadataDelimiter) = 8 byte
+  const size_t metadata_delimiter_size = strlen(consumerGroupMetadataDelimiter);
+  if (without_group_name.size() <= metadata_delimiter_size) {
     return StreamSubkeyType::StreamConsumerGroupMetadata;
   }
-  if (without_group_name.size() <= 16) {  // id.ms(uint64) + id.seq(uint64)
+  if (without_group_name.size() <= entry_id_size) {
     return StreamSubkeyType::StreamPelEntry;
   }
-  return StreamSubkeyType::StreamConsumerMetadata;  // sizeof(uint64) + consumer_name.size +
-                                                    // strlen(consumerGroupMetadataDelimiter)
+  return StreamSubkeyType::StreamConsumerMetadata;
 }
 
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
@@ -774,6 +775,63 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
   return rocksdb::Status::OK();
 }
 
+static bool StreamRangeHasTombstones(const StreamMetadata &metadata, StreamEntryID start_id) {
+  StreamEntryID end_id = StreamEntryID{UINT64_MAX, UINT64_MAX};
+  if (metadata.size == 0 || metadata.max_deleted_entry_id == StreamEntryID{0, 0}) {
+    return false;
+  }
+  if (metadata.first_entry_id > metadata.max_deleted_entry_id) {
+    return false;
+  }
+  if (start_id <= metadata.max_deleted_entry_id && metadata.max_deleted_entry_id <= end_id) {
+    return true;
+  }
+  return false;
+}
+
+static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &metadata, StreamEntryID id) {
+  if (metadata.entries_added == 0) {
+    return 0;
+  }
+  if (metadata.size == 0 && id < metadata.last_entry_id) {
+    return static_cast<int64_t>(metadata.entries_added);
+  }
+  if (id == metadata.last_entry_id) {
+    return static_cast<int64_t>(metadata.entries_added);
+  } else if (id > metadata.last_entry_id) {
+    return -1;
+  }
+  if (metadata.max_deleted_entry_id == StreamEntryID{0, 0} || metadata.max_deleted_entry_id < metadata.first_entry_id) {
+    if (id < metadata.first_entry_id) {
+      return static_cast<int64_t>(metadata.entries_added - metadata.size);
+    } else if (id == metadata.first_entry_id) {
+      return static_cast<int64_t>(metadata.entries_added - metadata.size + 1);
+    }
+  }
+  return -1;
+}
+
+static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerGroupMetadata &group_metadata) {
+  bool valid = false;
+  if (stream_metadata.entries_added == 0) {
+    group_metadata.lag = 0;
+    valid = true;
+  } else if (group_metadata.entries_read != -1 &&
+             !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
+    group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
+    valid = true;
+  } else {
+    uint64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
+    if (entries_read != -1) {
+      group_metadata.lag = stream_metadata.entries_added - entries_read;
+      valid = true;
+    }
+  }
+  if (!valid) {
+    group_metadata.lag = UINT64_MAX;
+  }
+}
+
 rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
                                      std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> &group_metadata) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -798,6 +856,7 @@ rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
     if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamConsumerGroupMetadata) {
       std::string group_name = groupNameFromInternalKey(iter->key());
       StreamConsumerGroupMetadata cg_metadata = decodeStreamConsumerGroupMetadataValue(iter->value().ToString());
+      CheckLagValid(metadata, cg_metadata);
       std::pair<std::string, StreamConsumerGroupMetadata> tmp_item(group_name, cg_metadata);
       group_metadata.push_back(tmp_item);
     }

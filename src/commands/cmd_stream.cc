@@ -519,7 +519,11 @@ class CommandXInfo : public Commander {
         output->append(redis::Integer(it.second.entries_read));
       }
       output->append(redis::BulkString("lag"));
-      output->append(redis::Integer(it.second.lag));
+      if (it.second.lag == UINT64_MAX) {
+        output->append(redis::NilString());
+      } else {
+        output->append(redis::Integer(it.second.lag));
+      }
     }
 
     return Status::OK();

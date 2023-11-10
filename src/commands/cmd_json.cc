@@ -323,27 +323,17 @@ class CommandJsonArrPop : public Commander {
 class CommanderJsonArrIndex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 4 || args.size() > 6) {
+    if (args.size() > 6) {
       return {Status::RedisExecErr, errWrongNumOfArguments};
     }
     start_ = 0;
     end_ = std::numeric_limits<ssize_t>::max();
 
     if (args.size() > 4) {
-      auto parse_start = ParseInt<ssize_t>(args[4], 10);
-      if (parse_start.IsOK()) {
-        start_ = parse_start.GetValue();
-      } else {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
+      start_ = GET_OR_RET(ParseInt<ssize_t>(args[4], 10));
     }
     if (args.size() > 5) {
-      auto parse_end = ParseInt<ssize_t>(args[5], 10);
-      if (parse_end.IsOK()) {
-        end_ = parse_end.GetValue();
-      } else {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
+      end_ = GET_OR_RET(ParseInt<ssize_t>(args[5], 10));
     }
     return Status::OK();
   }

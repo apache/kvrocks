@@ -783,10 +783,7 @@ static bool StreamRangeHasTombstones(const StreamMetadata &metadata, StreamEntry
   if (metadata.first_entry_id > metadata.max_deleted_entry_id) {
     return false;
   }
-  if (start_id <= metadata.max_deleted_entry_id && metadata.max_deleted_entry_id <= end_id) {
-    return true;
-  }
-  return false;
+  return (start_id <= metadata.max_deleted_entry_id && metadata.max_deleted_entry_id <= end_id);
 }
 
 static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &metadata, StreamEntryID id) {

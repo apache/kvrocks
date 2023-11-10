@@ -35,6 +35,9 @@
 
 #include "status.h"
 
+constexpr ssize_t NOT_FOUND_INDEX = -1;
+constexpr ssize_t NOT_ARRAY = -2;
+
 struct JsonValue {
   JsonValue() = default;
   explicit JsonValue(jsoncons::basic_json<char> value) : value(std::move(value)) {}
@@ -175,6 +178,48 @@ struct JsonValue {
     return result_count;
   }
 
+  static std::pair<ssize_t, ssize_t> NormalizeArrIndices(ssize_t start, ssize_t end, ssize_t len) {
+    if (start < 0) {
+      start = std::max<ssize_t>(0, len + start);
+    } else {
+      start = std::min<ssize_t>(start, len - 1);
+    }
+    if (end == 0) {
+      end = len;
+    } else if (end < 0) {
+      end = std::max<ssize_t>(0, len + end);
+    }
+    end = std::min<ssize_t>(end, len);
+    return {start, end};
+  }
+
+  StatusOr<std::vector<ssize_t>> ArrIndex(std::string_view path, const jsoncons::json &needle, ssize_t start,
+                                          ssize_t end) const {
+    std::vector<ssize_t> result;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &val) {
+        if (!val.is_array()) {
+          result.emplace_back(NOT_ARRAY);
+          return;
+        }
+        auto [pstart, pend] = NormalizeArrIndices(start, end, static_cast<ssize_t>(val.size()));
+        auto arr_begin = val.array_range().begin();
+        auto begin_it = arr_begin + pstart;
+
+        auto end_it = arr_begin + pend;
+        auto it = std::find(begin_it, end_it, needle);
+        if (it != end_it) {
+          result.emplace_back(it - arr_begin);
+          return;
+        }
+        result.emplace_back(NOT_FOUND_INDEX);
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return result;
+  }
+
   StatusOr<std::vector<std::string>> Type(std::string_view path) const {
     std::vector<std::string> types;
     try {
@@ -212,6 +257,23 @@ struct JsonValue {
     }
 
     return types;
+  }
+
+  StatusOr<std::vector<std::optional<bool>>> Toggle(std::string_view path) {
+    std::vector<std::optional<bool>> result;
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&result](const std::string & /*path*/, jsoncons::json &val) {
+        if (val.is_bool()) {
+          val = !val.as_bool();
+          result.emplace_back(val.as_bool());
+        } else {
+          result.emplace_back(std::nullopt);
+        }
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return result;
   }
 
   StatusOr<size_t> Clear(std::string_view path) {

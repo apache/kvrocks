@@ -25,6 +25,7 @@ FetchContent_DeclareGitHubWithMirror(tbb
 )
 
 FetchContent_MakeAvailableWithArgs(tbb
+  TBB_STRICT=OFF
   TBB_TEST=OFF
   TBB_EXAMPLES=OFF
   TBBMALLOC_BUILD=OFF

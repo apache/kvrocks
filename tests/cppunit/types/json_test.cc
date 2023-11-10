@@ -182,6 +182,36 @@ TEST_F(RedisJsonTest, ArrAppend) {
   res.clear();
 }
 
+TEST_F(RedisJsonTest, Merge) {
+  bool result = false;
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":2})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.a", "3", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":3}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"v": {"b": "cc"}})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.v.b", "null", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[2,4,6,8]})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.arr", "[10,12]", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"arr\":[10,12]}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"f1": {"a":1}, "f2":{"a":2}})").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f1\":{\"a\":1},\"f2\":{\"a\":2}}");
+  ASSERT_TRUE(json_->Merge(key_, "$", R"({"f1": null, "f2":{"a":3, "b":4}, "f3":[2,4,6]})", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f2\":{\"a\":3,\"b\":4},\"f3\":[2,4,6]}");
+  ASSERT_EQ(result, true);
+}
+
 TEST_F(RedisJsonTest, Clear) {
   size_t result = 0;
 

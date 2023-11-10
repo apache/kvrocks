@@ -142,6 +142,25 @@ func TestJson(t *testing.T) {
 		require.EqualError(t, err, redis.Nil.Error())
 	})
 
+	t.Run("Merge basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":2}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `3`).Err())
+		require.Equal(t, `{"a":3}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":2}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `null`).Err())
+		require.Equal(t, `{}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":[2,4,6,8]}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `[10,12]`).Err())
+		require.Equal(t, `{"a":[10,12]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"f1": {"a":1}, "f2":{"a":2}}`).Err())
+		require.Equal(t, `{"f1":{"a":1},"f2":{"a":2}}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$", `{"f1": null, "f2":{"a":3, "b":4}, "f3":[2,4,6]}`).Err())
+		require.Equal(t, `{"f2":{"a":3,"b":4},"f3":[2,4,6]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+	})
+
 	t.Run("Clear JSON values", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
 

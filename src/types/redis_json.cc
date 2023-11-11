@@ -76,6 +76,14 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value) {
+  auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
+  if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
+  auto json_val = *std::move(json_res);
+
+  return write(ns_key, &metadata, json_val);
+}
+
 rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *storage_format) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
@@ -103,11 +111,7 @@ rocksdb::Status Json::Set(const std::string &user_key, const std::string &path, 
   if (s.IsNotFound()) {
     if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
-    auto json_res = JsonValue::FromString(value, storage_->GetConfig()->json_max_nesting_depth);
-    if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
-    auto json_val = *std::move(json_res);
-
-    return write(ns_key, &metadata, json_val);
+    return create(ns_key, metadata, value);
   }
 
   if (!s.ok()) return s;
@@ -213,6 +217,37 @@ rocksdb::Status Json::Type(const std::string &user_key, const std::string &path,
 
   *results = *res;
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status Json::Merge(const std::string &user_key, const std::string &path, const std::string &merge_value,
+                            bool &result) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonMetadata metadata;
+  JsonValue json_val;
+
+  auto s = read(ns_key, &metadata, &json_val);
+
+  if (s.IsNotFound()) {
+    if (path != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+    result = true;
+    return create(ns_key, metadata, merge_value);
+  }
+
+  if (!s.ok()) return s;
+
+  auto res = json_val.Merge(path, merge_value);
+
+  if (!res.IsOK()) return s;
+
+  result = static_cast<bool>(res.GetValue());
+  if (!res) {
+    return rocksdb::Status::OK();
+  }
+
+  return write(ns_key, &metadata, json_val);
 }
 
 rocksdb::Status Json::Clear(const std::string &user_key, const std::string &path, size_t *result) {

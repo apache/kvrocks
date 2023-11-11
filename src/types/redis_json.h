@@ -39,6 +39,7 @@ class Json : public Database {
   rocksdb::Status Type(const std::string &user_key, const std::string &path, std::vector<std::string> *results);
   rocksdb::Status ArrAppend(const std::string &user_key, const std::string &path,
                             const std::vector<std::string> &values, std::vector<size_t> *result_count);
+  rocksdb::Status Merge(const std::string &user_key, const std::string &path, const std::string &value, bool &result);
   rocksdb::Status Clear(const std::string &user_key, const std::string &path, size_t *result);
   rocksdb::Status ArrLen(const std::string &user_key, const std::string &path,
                          std::vector<std::optional<uint64_t>> &arr_lens);
@@ -57,6 +58,7 @@ class Json : public Database {
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
+  rocksdb::Status create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value);
 };
 
 }  // namespace redis

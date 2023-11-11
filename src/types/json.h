@@ -27,8 +27,10 @@
 #include <jsoncons_ext/cbor/cbor.hpp>
 #include <jsoncons_ext/cbor/cbor_encoder.hpp>
 #include <jsoncons_ext/cbor/cbor_options.hpp>
+#include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
+#include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
 #include <string>
 
@@ -315,6 +317,54 @@ struct JsonValue {
     }
 
     return Status::OK();
+  }
+
+  StatusOr<bool> Merge(const std::string_view path, const std::string &merge_value) {
+    bool is_updated = false;
+    const std::string json_root_path = "$";
+    try {
+      jsoncons::json patch_value = jsoncons::json::parse(merge_value);
+      bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
+
+      if (not_exists) {
+        // TODO:: Add ability to create an object from path.
+        return {Status::NotOK, "Path does not exist."};
+      }
+
+      if (path == json_root_path) {
+        // Merge with the root. Patch function complies with RFC7396 Json Merge Patch
+        jsoncons::mergepatch::apply_merge_patch(value, patch_value);
+        is_updated = true;
+      } else if (!patch_value.is_null()) {
+        // Replace value by path
+        jsoncons::jsonpath::json_replace(
+            value, path, [&patch_value, &is_updated](const std::string & /*path*/, jsoncons::json &target) {
+              jsoncons::mergepatch::apply_merge_patch(target, patch_value);
+              is_updated = true;
+            });
+      } else {
+        // Handle null case
+        // Unify path expression.
+        auto expr = jsoncons::jsonpath::make_expression<jsoncons::json>(path);
+        std::string converted_path;
+        expr.evaluate(
+            value, [&](const jsoncons::string_view &p, const jsoncons::json &val) { converted_path = p; },
+            jsoncons::jsonpath::result_options::path);
+        // Unify object state
+        jsoncons::json flattened = jsoncons::jsonpath::flatten(value);
+        if (flattened.contains(converted_path)) {
+          flattened.erase(converted_path);
+          value = jsoncons::jsonpath::unflatten(flattened);
+          is_updated = true;
+        }
+      }
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return is_updated;
   }
 
   Status ObjKeys(std::string_view path, std::vector<std::optional<std::vector<std::string>>> &keys) const {

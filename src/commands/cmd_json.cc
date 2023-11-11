@@ -281,6 +281,32 @@ class CommandJsonArrLen : public Commander {
   }
 };
 
+class CommandJsonMerge : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string key = args_[1];
+    std::string path = args_[2];
+    std::string value = args_[3];
+    bool result = false;
+
+    auto s = json.Merge(key, path, value, result);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (!result) {
+      *output = redis::NilString();
+    } else {
+      *output = redis::SimpleString("OK");
+    }
+
+    return Status::OK();
+  }
+};
+
 class CommandJsonArrPop : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -418,6 +444,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1), );

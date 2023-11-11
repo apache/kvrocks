@@ -273,7 +273,7 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
     return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
   }
 
-  if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+  if (bind(fd, (sockaddr *)&sa, sizeof(sa)) < 0) {
     return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
   }
 

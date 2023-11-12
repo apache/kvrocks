@@ -346,6 +346,47 @@ class CommandJsonArrPop : public Commander {
   int64_t index_ = -1;
 };
 
+class CommandJsonArrTrim : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    path_ = args_[2];
+    start_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
+    stop_ = GET_OR_RET(ParseInt<int64_t>(args_[4], 10));
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<uint64_t>> results;
+
+    auto s = json.ArrTrim(args_[1], path_, start_, stop_, results);
+
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(results.size());
+    for (const auto &len : results) {
+      if (len.has_value()) {
+        *output += redis::Integer(len.value());
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string path_;
+  int64_t start_ = 0;
+  int64_t stop_ = 0;
+};
+
 class CommanderJsonArrIndex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -399,6 +440,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),

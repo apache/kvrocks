@@ -151,14 +151,14 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  bool is_supervised = IsSupervisedMode(static_cast<SupervisedMode>(config.supervised_mode));
+  bool is_supervised = IsSupervisedMode(config.supervised_mode);
   if (config.daemonize && !is_supervised) Daemonize();
-  s = CreatePidFile(config.pidfile);
+  s = CreatePidFile(config.GetPidFile());
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     return 1;
   }
-  auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
+  auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.GetPidFile()); });
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL

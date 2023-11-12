@@ -266,6 +266,36 @@ TEST_F(RedisJsonTest, ArrInsert) {
   res.clear();
 }
 
+TEST_F(RedisJsonTest, Merge) {
+  bool result = false;
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":2})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.a", "3", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":3}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"v": {"b": "cc"}})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.v.b", "null", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[2,4,6,8]})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.arr", "[10,12]", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"arr\":[10,12]}");
+  ASSERT_EQ(result, true);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"f1": {"a":1}, "f2":{"a":2}})").ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f1\":{\"a\":1},\"f2\":{\"a\":2}}");
+  ASSERT_TRUE(json_->Merge(key_, "$", R"({"f1": null, "f2":{"a":3, "b":4}, "f3":[2,4,6]})", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f2\":{\"a\":3,\"b\":4},\"f3\":[2,4,6]}");
+  ASSERT_EQ(result, true);
+}
+
 TEST_F(RedisJsonTest, Clear) {
   size_t result = 0;
 
@@ -355,4 +385,187 @@ TEST_F(RedisJsonTest, ArrLen) {
   ASSERT_FALSE(json_->ArrLen("not_exists", "$.*", res).ok());
   ASSERT_TRUE(json_->ArrLen(key_, "$.not_exists", res).ok());
   ASSERT_TRUE(res.empty());
+}
+
+TEST_F(RedisJsonTest, Toggle) {
+  std::vector<std::optional<bool>> res;
+  ASSERT_TRUE(json_->Set(key_, "$", "true").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "false");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(false));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false})");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(false));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$.bool", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":true}})");
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_THAT(res, testing::ElementsAre(false));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":true,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":false,"bools":{"bool":false}})");
+  ASSERT_EQ(res.size(), 2);
+  ASSERT_THAT(res, testing::ElementsAre(false, false));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false}})");
+  ASSERT_EQ(res.size(), 2);
+  ASSERT_THAT(res, testing::ElementsAre(false, true));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"bool":false,"bools":{"bool":true},"incorrectbool":{"bool":88}})").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..bool", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"bools":{"bool":false},"incorrectbool":{"bool":88}})");
+  ASSERT_EQ(res.size(), 3);
+  ASSERT_THAT(res, testing::ElementsAre(std::nullopt, false, true));
+  res.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", "[true,true,99]").ok());
+  ASSERT_TRUE(json_->Toggle(key_, "$..*", res).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "[false,false,99]");
+  ASSERT_EQ(res.size(), 3);
+  ASSERT_THAT(res, testing::ElementsAre(std::nullopt, false, false));
+}
+
+TEST_F(RedisJsonTest, ArrPop) {
+  std::vector<std::optional<JsonValue>> res;
+
+  // Array
+  ASSERT_TRUE(json_->Set(key_, "$", R"([3,"str",2.1,{},[5,6]])").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "[5,6]");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -2, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "2.1");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 3, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "{}");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), R"("str")");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", 0, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), "3");
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+
+  // Non-array
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"o":{"x":1},"s":"str","i":1,"d":2.2})").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$.o", 1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.s", -1, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.i", 0, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+  ASSERT_TRUE(json_->ArrPop(key_, "$.d", 2, &res).ok());
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_FALSE(res[0].has_value());
+  res.clear();
+
+  // Multiple arrays
+  ASSERT_TRUE(json_->Set(key_, "$", R"([[0,1],[3,{"x":2.0}],"str",[4,[5,"6"]]])").ok());
+  ASSERT_TRUE(json_->ArrPop(key_, "$.*", -1, &res).ok());
+  ASSERT_EQ(res.size(), 4);
+  ASSERT_TRUE(res[0].has_value());
+  ASSERT_EQ(res[0]->Dump().GetValue(), R"([5,"6"])");
+  ASSERT_FALSE(res[1].has_value());
+  ASSERT_TRUE(res[2].has_value());
+  ASSERT_EQ(res[2]->Dump().GetValue(), R"({"x":2.0})");
+  ASSERT_TRUE(res[3].has_value());
+  ASSERT_EQ(res[3]->Dump().GetValue(), "1");
+  res.clear();
+}
+
+TEST_F(RedisJsonTest, ArrIndex) {
+  std::vector<ssize_t> res;
+  int max_end = std::numeric_limits<int>::max();
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[0, 1, 2, 3, 2, 1, 0]})").ok());
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 0);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res.size(), 1);
+  ASSERT_EQ(res[0], 3);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "4", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 1, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", -1, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 6, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 5, -1, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "0", 5, 0, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 6);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", -2, 6, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "\"foo\"", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[0, 1, 2, 3, 4, 2, 1, 0]})").ok());
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 3);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", 3, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 5);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "1", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "2", 1, 4, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], 2);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "6", 0, max_end, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
+
+  ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, 2, &res).ok() && res.size() == 1);
+  ASSERT_EQ(res[0], -1);
 }

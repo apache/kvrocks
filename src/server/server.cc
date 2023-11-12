@@ -1253,7 +1253,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
     if (!begin_key.empty()) begin = std::make_unique<Slice>(begin_key);
     if (!end_key.empty()) end = std::make_unique<Slice>(end_key);
 
-    auto s = storage->Compact(begin.get(), end.get());
+    auto s = storage->Compact(nullptr, begin.get(), end.get());
     if (!s.ok()) {
       LOG(ERROR) << "[task runner] Failed to do compaction: " << s.ToString();
     }

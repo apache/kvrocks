@@ -26,11 +26,20 @@
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
+#include <jsoncons_ext/cbor/cbor.hpp>
+#include <jsoncons_ext/cbor/cbor_encoder.hpp>
+#include <jsoncons_ext/cbor/cbor_options.hpp>
+#include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
+#include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
+#include <string>
 
 #include "status.h"
+
+constexpr ssize_t NOT_FOUND_INDEX = -1;
+constexpr ssize_t NOT_ARRAY = -2;
 
 struct JsonValue {
   JsonValue() = default;
@@ -51,6 +60,21 @@ struct JsonValue {
     return JsonValue(std::move(val));
   }
 
+  static StatusOr<JsonValue> FromCBOR(std::string_view str, int max_nesting_depth = std::numeric_limits<int>::max()) {
+    jsoncons::json val;
+
+    jsoncons::cbor::cbor_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
+    try {
+      val = jsoncons::cbor::decode_cbor<jsoncons::json>(str, options);
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return JsonValue(std::move(val));
+  }
+
   StatusOr<std::string> Dump(int max_nesting_depth = std::numeric_limits<int>::max()) const {
     std::string res;
     GET_OR_RET(Dump(&res, max_nesting_depth));
@@ -62,6 +86,26 @@ struct JsonValue {
     options.max_nesting_depth(max_nesting_depth);
 
     jsoncons::compact_json_string_encoder encoder{*buffer, options};
+    std::error_code ec;
+    value.dump(encoder, ec);
+    if (ec) {
+      return {Status::NotOK, ec.message()};
+    }
+
+    return Status::OK();
+  }
+
+  StatusOr<std::string> DumpCBOR(int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    std::string res;
+    GET_OR_RET(DumpCBOR(&res, max_nesting_depth));
+    return res;
+  }
+
+  Status DumpCBOR(std::string *buffer, int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    jsoncons::cbor::cbor_options options;
+    options.max_nesting_depth(max_nesting_depth);
+
+    jsoncons::cbor::basic_cbor_encoder<jsoncons::string_sink<std::string>> encoder{*buffer, options};
     std::error_code ec;
     value.dump(encoder, ec);
     if (ec) {
@@ -164,6 +208,48 @@ struct JsonValue {
     return result_count;
   }
 
+  static std::pair<ssize_t, ssize_t> NormalizeArrIndices(ssize_t start, ssize_t end, ssize_t len) {
+    if (start < 0) {
+      start = std::max<ssize_t>(0, len + start);
+    } else {
+      start = std::min<ssize_t>(start, len - 1);
+    }
+    if (end == 0) {
+      end = len;
+    } else if (end < 0) {
+      end = std::max<ssize_t>(0, len + end);
+    }
+    end = std::min<ssize_t>(end, len);
+    return {start, end};
+  }
+
+  StatusOr<std::vector<ssize_t>> ArrIndex(std::string_view path, const jsoncons::json &needle, ssize_t start,
+                                          ssize_t end) const {
+    std::vector<ssize_t> result;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &val) {
+        if (!val.is_array()) {
+          result.emplace_back(NOT_ARRAY);
+          return;
+        }
+        auto [pstart, pend] = NormalizeArrIndices(start, end, static_cast<ssize_t>(val.size()));
+        auto arr_begin = val.array_range().begin();
+        auto begin_it = arr_begin + pstart;
+
+        auto end_it = arr_begin + pend;
+        auto it = std::find(begin_it, end_it, needle);
+        if (it != end_it) {
+          result.emplace_back(it - arr_begin);
+          return;
+        }
+        result.emplace_back(NOT_FOUND_INDEX);
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return result;
+  }
+
   StatusOr<std::vector<std::string>> Type(std::string_view path) const {
     std::vector<std::string> types;
     try {
@@ -201,6 +287,23 @@ struct JsonValue {
     }
 
     return types;
+  }
+
+  StatusOr<std::vector<std::optional<bool>>> Toggle(std::string_view path) {
+    std::vector<std::optional<bool>> result;
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&result](const std::string & /*path*/, jsoncons::json &val) {
+        if (val.is_bool()) {
+          val = !val.as_bool();
+          result.emplace_back(val.as_bool());
+        } else {
+          result.emplace_back(std::nullopt);
+        }
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return result;
   }
 
   StatusOr<size_t> Clear(std::string_view path) {
@@ -243,6 +346,101 @@ struct JsonValue {
     }
 
     return Status::OK();
+  }
+
+  StatusOr<bool> Merge(const std::string_view path, const std::string &merge_value) {
+    bool is_updated = false;
+    const std::string json_root_path = "$";
+    try {
+      jsoncons::json patch_value = jsoncons::json::parse(merge_value);
+      bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
+
+      if (not_exists) {
+        // TODO:: Add ability to create an object from path.
+        return {Status::NotOK, "Path does not exist."};
+      }
+
+      if (path == json_root_path) {
+        // Merge with the root. Patch function complies with RFC7396 Json Merge Patch
+        jsoncons::mergepatch::apply_merge_patch(value, patch_value);
+        is_updated = true;
+      } else if (!patch_value.is_null()) {
+        // Replace value by path
+        jsoncons::jsonpath::json_replace(
+            value, path, [&patch_value, &is_updated](const std::string & /*path*/, jsoncons::json &target) {
+              jsoncons::mergepatch::apply_merge_patch(target, patch_value);
+              is_updated = true;
+            });
+      } else {
+        // Handle null case
+        // Unify path expression.
+        auto expr = jsoncons::jsonpath::make_expression<jsoncons::json>(path);
+        std::string converted_path;
+        expr.evaluate(
+            value, [&](const jsoncons::string_view &p, const jsoncons::json &val) { converted_path = p; },
+            jsoncons::jsonpath::result_options::path);
+        // Unify object state
+        jsoncons::json flattened = jsoncons::jsonpath::flatten(value);
+        if (flattened.contains(converted_path)) {
+          flattened.erase(converted_path);
+          value = jsoncons::jsonpath::unflatten(flattened);
+          is_updated = true;
+        }
+      }
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return is_updated;
+  }
+
+  Status ObjKeys(std::string_view path, std::vector<std::optional<std::vector<std::string>>> &keys) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&keys](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                       if (basic_json.is_object()) {
+                                         std::vector<std::string> ret;
+                                         for (const auto &member : basic_json.object_range()) {
+                                           ret.push_back(member.key());
+                                         }
+                                         keys.emplace_back(ret);
+                                       } else {
+                                         keys.emplace_back(std::nullopt);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
+  StatusOr<std::vector<std::optional<JsonValue>>> ArrPop(std::string_view path, int64_t index = -1) {
+    std::vector<std::optional<JsonValue>> popped_values;
+
+    try {
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&popped_values, index](const std::string & /*path*/, jsoncons::json &val) {
+                                         if (val.is_array() && !val.empty()) {
+                                           auto len = static_cast<int64_t>(val.size());
+                                           auto popped_iter = val.array_range().begin();
+                                           if (index < 0) {
+                                             popped_iter += len - std::min(len, -index);
+                                           } else if (index > 0) {
+                                             popped_iter += std::min(len - 1, index);
+                                           }
+                                           popped_values.emplace_back(*popped_iter);
+                                           val.erase(popped_iter);
+                                         } else {
+                                           popped_values.emplace_back(std::nullopt);
+                                         }
+                                       });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return popped_values;
   }
 
   JsonValue(const JsonValue &) = default;

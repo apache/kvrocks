@@ -47,9 +47,10 @@ using IntField = IntegerField<int>;
 using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
 
+template <typename Enum>
 struct ConfigEnum {
-  const std::string name;
-  const int val;
+  std::string name;
+  Enum val;
 };
 
 enum ConfigType { SingleConfig, MultiConfig };
@@ -58,6 +59,7 @@ class ConfigField {
  public:
   ConfigField() = default;
   virtual ~ConfigField() = default;
+  virtual std::string Default() const = 0;
   virtual std::string ToString() const = 0;
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) const { return {Status::NotOK, "not supported"}; }
@@ -76,8 +78,9 @@ class ConfigField {
 
 class StringField : public ConfigField {
  public:
-  StringField(std::string *receiver, std::string s) : receiver_(receiver) { *receiver_ = std::move(s); }
+  StringField(std::string *receiver, std::string s) : receiver_(receiver), default_(s) { *receiver_ = std::move(s); }
   ~StringField() override = default;
+  std::string Default() const override { return default_; }
   std::string ToString() const override { return *receiver_; }
   Status Set(const std::string &v) override {
     *receiver_ = v;
@@ -86,22 +89,20 @@ class StringField : public ConfigField {
 
  private:
   std::string *receiver_;
+  std::string default_;
 };
 
 class MultiStringField : public ConfigField {
  public:
-  MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input) : receiver_(receiver) {
+  MultiStringField(std::vector<std::string> *receiver, std::vector<std::string> input)
+      : receiver_(receiver), default_(input) {
     *receiver_ = std::move(input);
     this->config_type = ConfigType::MultiConfig;
   }
   ~MultiStringField() override = default;
-  std::string ToString() const override {
-    std::string tmp;
-    for (auto &p : *receiver_) {
-      tmp += p + "\n";
-    }
-    return tmp;
-  }
+
+  std::string Default() const override { return format(default_); }
+  std::string ToString() const override { return format(*receiver_); }
   Status Set(const std::string &v) override {
     receiver_->emplace_back(v);
     return Status::OK();
@@ -109,16 +110,26 @@ class MultiStringField : public ConfigField {
 
  private:
   std::vector<std::string> *receiver_;
+  std::vector<std::string> default_;
+
+  static std::string format(const std::vector<std::string> &v) {
+    std::string tmp;
+    for (auto &p : v) {
+      tmp += p + "\n";
+    }
+    return tmp;
+  }
 };
 
 template <typename IntegerType>
 class IntegerField : public ConfigField {
  public:
   IntegerField(IntegerType *receiver, IntegerType n, IntegerType min, IntegerType max)
-      : receiver_(receiver), min_(min), max_(max) {
+      : receiver_(receiver), default_(n), min_(min), max_(max) {
     *receiver_ = n;
   }
   ~IntegerField() override = default;
+  std::string Default() const override { return std::to_string(default_); }
   std::string ToString() const override { return std::to_string(*receiver_); }
   Status ToNumber(int64_t *n) const override {
     *n = *receiver_;
@@ -133,14 +144,19 @@ class IntegerField : public ConfigField {
 
  private:
   IntegerType *receiver_;
+  IntegerType default_ = 0;
   IntegerType min_ = std::numeric_limits<IntegerType>::min();
   IntegerType max_ = std::numeric_limits<IntegerType>::max();
 };
 
 class OctalField : public ConfigField {
  public:
-  OctalField(int *receiver, int n, int min, int max) : receiver_(receiver), min_(min), max_(max) { *receiver_ = n; }
+  OctalField(int *receiver, int n, int min, int max) : receiver_(receiver), default_(n), min_(min), max_(max) {
+    *receiver_ = n;
+  }
   ~OctalField() override = default;
+
+  std::string Default() const override { return fmt::format("{:o}", default_); }
   std::string ToString() const override { return fmt::format("{:o}", *receiver_); }
   Status ToNumber(int64_t *n) const override {
     *n = *receiver_;
@@ -155,14 +171,17 @@ class OctalField : public ConfigField {
 
  private:
   int *receiver_;
+  int default_ = 0;
   int min_ = INT_MIN;
   int max_ = INT_MAX;
 };
 
 class YesNoField : public ConfigField {
  public:
-  YesNoField(bool *receiver, bool b) : receiver_(receiver) { *receiver_ = b; }
+  YesNoField(bool *receiver, bool b) : receiver_(receiver), default_(b) { *receiver_ = b; }
   ~YesNoField() override = default;
+
+  std::string Default() const override { return default_ ? "yes" : "no"; }
   std::string ToString() const override { return *receiver_ ? "yes" : "no"; }
   Status ToBool(bool *b) const override {
     *b = *receiver_;
@@ -181,24 +200,24 @@ class YesNoField : public ConfigField {
 
  private:
   bool *receiver_;
+  bool default_;
 };
 
+template <typename Enum>
 class EnumField : public ConfigField {
  public:
-  EnumField(int *receiver, std::vector<ConfigEnum> enums, int e) : receiver_(receiver), enums_(std::move(enums)) {
+  using EnumItem = ConfigEnum<Enum>;
+  using EnumItems = std::vector<EnumItem>;
+
+  EnumField(Enum *receiver, EnumItems enums, Enum e) : receiver_(receiver), default_(e), enums_(std::move(enums)) {
     *receiver_ = e;
   }
   ~EnumField() override = default;
 
-  std::string ToString() const override {
-    for (const auto &e : enums_) {
-      if (e.val == *receiver_) return e.name;
-    }
-    return {};
-  }
-
+  std::string Default() const override { return enumToString(default_); }
+  std::string ToString() const override { return enumToString(*receiver_); }
   Status ToNumber(int64_t *n) const override {
-    *n = *receiver_;
+    *n = static_cast<int64_t>(*receiver_);
     return Status::OK();
   }
 
@@ -209,16 +228,25 @@ class EnumField : public ConfigField {
         return Status::OK();
       }
     }
-    return {Status::NotOK, fmt::format("invalid enum option, acceptable values are {}",
-                                       std::accumulate(enums_.begin(), enums_.end(), std::string{},
-                                                       [this](const std::string &res, const ConfigEnum &e) {
-                                                         if (&e != &enums_.back()) return res + "'" + e.name + "', ";
 
-                                                         return res + "'" + e.name + "'";
-                                                       }))};
+    auto acceptable_values =
+        std::accumulate(enums_.begin(), enums_.end(), std::string{}, [this](const std::string &res, const EnumItem &e) {
+          if (&e != &enums_.back()) return res + "'" + e.name + "', ";
+
+          return res + "'" + e.name + "'";
+        });
+    return {Status::NotOK, fmt::format("invalid enum option, acceptable values are {}", acceptable_values)};
   }
 
  private:
-  int *receiver_;
-  std::vector<ConfigEnum> enums_;
+  Enum *receiver_;
+  Enum default_;
+  EnumItems enums_;
+
+  std::string enumToString(const Enum v) const {
+    for (const auto &e : enums_) {
+      if (e.val == v) return e.name;
+    }
+    return {};
+  }
 };

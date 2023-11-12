@@ -23,9 +23,11 @@
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "commands/error_constants.h"
+#include "error_constants.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "storage/redis_metadata.h"
 #include "types/redis_json.h"
 
 namespace redis {
@@ -100,6 +102,23 @@ class CommandJsonGet : public Commander {
   std::string new_line_chars_;
 
   std::vector<std::string> paths_;
+};
+
+class CommandJsonInfo : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    auto storage_format = JsonStorageFormat::JSON;
+    auto s = json.Info(args_[1], &storage_format);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    auto format_str = storage_format == JsonStorageFormat::JSON   ? "json"
+                      : storage_format == JsonStorageFormat::CBOR ? "cbor"
+                                                                  : "unknown";
+    output->append(redis::MultiBulkString({"storage_format", format_str}));
+    return Status::OK();
+  }
 };
 
 class CommandJsonArrAppend : public Commander {
@@ -195,6 +214,35 @@ class CommandJsonType : public Commander {
   }
 };
 
+class CommandJsonObjkeys : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<std::vector<std::string>>> results;
+
+    // If path not specified set it to $
+    std::string path = (args_.size() > 2) ? args_[2] : "$";
+    auto s = json.ObjKeys(args_[1], path, results);
+    if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    *output = redis::MultiLen(results.size());
+    for (const auto &item : results) {
+      if (item.has_value()) {
+        *output += redis::MultiBulkString(item.value(), false);
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 class CommandJsonClear : public Commander {
  public:
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
@@ -214,6 +262,35 @@ class CommandJsonClear : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(result);
+    return Status::OK();
+  }
+};
+
+class CommandJsonToggle : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string path = (args_.size() > 2) ? args_[2] : "$";
+    std::vector<std::optional<bool>> results;
+    auto s = json.Toggle(args_[1], path, results);
+
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    *output = redis::MultiLen(results.size());
+    for (auto it = results.rbegin(); it != results.rend(); ++it) {
+      if (it->has_value()) {
+        *output += redis::Integer(it->value());
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
     return Status::OK();
   }
 };
@@ -251,12 +328,131 @@ class CommandJsonArrLen : public Commander {
   }
 };
 
+class CommandJsonMerge : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string key = args_[1];
+    std::string path = args_[2];
+    std::string value = args_[3];
+    bool result = false;
+
+    auto s = json.Merge(key, path, value, result);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (!result) {
+      *output = redis::NilString();
+    } else {
+      *output = redis::SimpleString("OK");
+    }
+
+    return Status::OK();
+  }
+};
+
+class CommandJsonArrPop : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    path_ = (args_.size() > 2) ? args_[2] : "$";
+
+    if (args_.size() == 4) {
+      index_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
+    } else if (args_.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<JsonValue>> results;
+
+    auto s = json.ArrPop(args_[1], path_, index_, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(results.size());
+    for (const auto &data : results) {
+      if (data.has_value()) {
+        *output += redis::BulkString(GET_OR_RET(data->Print()));
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string path_;
+  int64_t index_ = -1;
+};
+
+class CommanderJsonArrIndex : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 6) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+    start_ = 0;
+    end_ = std::numeric_limits<ssize_t>::max();
+
+    if (args.size() > 4) {
+      start_ = GET_OR_RET(ParseInt<ssize_t>(args[4], 10));
+    }
+    if (args.size() > 5) {
+      end_ = GET_OR_RET(ParseInt<ssize_t>(args[5], 10));
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<ssize_t> result;
+
+    auto s = json.ArrIndex(args_[1], args_[2], args_[3], start_, end_, &result);
+
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(result.size());
+    for (const auto &found_index : result) {
+      if (found_index == NOT_ARRAY) {
+        *output += redis::NilString();
+        continue;
+      }
+      *output += redis::Integer(found_index);
+    }
+    return Status::OK();
+  }
+
+ private:
+  ssize_t start_;
+  ssize_t end_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1), );
 
 }  // namespace redis

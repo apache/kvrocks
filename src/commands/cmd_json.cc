@@ -147,10 +147,6 @@ class CommandJsonArrAppend : public Commander {
 class CommandJsonArrInsert : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 5) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-
     auto parse_result = ParseInt<int>(args[3], 10);
     if (!parse_result) {
       return {Status::RedisParseErr, errValueNotInteger};
@@ -446,7 +442,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),

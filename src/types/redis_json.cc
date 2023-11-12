@@ -313,8 +313,8 @@ rocksdb::Status Json::ArrInsert(const std::string &user_key, const std::string &
   if (!insert_res) return rocksdb::Status::InvalidArgument(insert_res.Msg());
   *result_count = *insert_res;
 
-  bool is_write = std::any_of(result_count->begin(), result_count->end(),
-                              [](std::optional<uint64_t> c) { return c.has_value() && c > 0; });
+  bool is_write =
+      std::any_of(result_count->begin(), result_count->end(), [](std::optional<uint64_t> c) { return c.has_value(); });
   if (!is_write) return rocksdb::Status::OK();
 
   return write(ns_key, &metadata, value);

@@ -55,8 +55,8 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   void Close();
   void Detach();
-  void OnRead(struct bufferevent *bev);
-  void OnWrite(struct bufferevent *bev);
+  void OnRead(bufferevent *bev);
+  void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
   void Reply(const std::string &msg);
   void SendFile(int fd);

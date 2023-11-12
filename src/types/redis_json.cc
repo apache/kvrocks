@@ -20,8 +20,6 @@
 
 #include "redis_json.h"
 
-#include <cstdint>
-
 #include "json.h"
 #include "lock_manager.h"
 #include "storage/redis_metadata.h"

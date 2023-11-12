@@ -22,7 +22,6 @@
 
 #include <storage/redis_db.h>
 
-#include <cstddef>
 #include <string>
 
 #include "json.h"

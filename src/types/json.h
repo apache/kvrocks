@@ -20,9 +20,6 @@
 
 #pragma once
 
-#include <math.h>
-
-#include <cstdint>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>

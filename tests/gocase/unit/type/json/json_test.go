@@ -34,7 +34,6 @@ func TestJson(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
-	// rdb := redis.NewClient(&redis.Options{})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("JSON.SET and JSON.GET basics", func(t *testing.T) {

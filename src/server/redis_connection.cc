@@ -75,7 +75,7 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(struct bufferevent *bev) {
+void Connection::OnRead(bufferevent *bev) {
   DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
 
   SetLastInteraction();
@@ -93,7 +93,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   }
 }
 
-void Connection::OnWrite(struct bufferevent *bev) {
+void Connection::OnWrite(bufferevent *bev) {
   if (IsFlagEnabled(kCloseAfterReply) || IsFlagEnabled(kCloseAsync)) {
     Close();
   }

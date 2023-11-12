@@ -125,9 +125,9 @@ StatusOr<std::vector<std::string>> LookupHostByName(const std::string &host) {
   for (auto p = servinfo; p != nullptr; p = p->ai_next) {
     char ip[INET6_ADDRSTRLEN] = {};
     if (p->ai_family == AF_INET) {
-      inet_ntop(p->ai_family, &((struct sockaddr_in *)p->ai_addr)->sin_addr, ip, sizeof(ip));
+      inet_ntop(p->ai_family, &((sockaddr_in *)p->ai_addr)->sin_addr, ip, sizeof(ip));
     } else {
-      inet_ntop(p->ai_family, &((struct sockaddr_in6 *)p->ai_addr)->sin6_addr, ip, sizeof(ip));
+      inet_ntop(p->ai_family, &((sockaddr_in6 *)p->ai_addr)->sin6_addr, ip, sizeof(ip));
     }
     ips.emplace_back(ip);
   }
@@ -350,7 +350,7 @@ StatusOr<std::tuple<std::string, uint32_t>> GetPeerAddr(int fd) {
 int GetLocalPort(int fd) {
   sockaddr_in6 address;
   socklen_t len = sizeof(address);
-  if (getsockname(fd, (struct sockaddr *)&address, &len) == -1) {
+  if (getsockname(fd, (sockaddr *)&address, &len) == -1) {
     return 0;
   }
 

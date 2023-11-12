@@ -62,7 +62,7 @@ class Stats {
   std::atomic<uint64_t> out_bytes = {0};
 
   mutable std::shared_mutex inst_metrics_mutex;
-  std::vector<struct InstMetric> inst_metrics;
+  std::vector<InstMetric> inst_metrics;
 
   std::atomic<uint64_t> fullsync_counter = {0};
   std::atomic<uint64_t> psync_err_counter = {0};

@@ -52,7 +52,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   return Status::OK();
 }
 
-bool Cron::IsTimeMatch(struct tm *tm) {
+bool Cron::IsTimeMatch(tm *tm) {
   if (tm->tm_min == last_tm_.tm_min && tm->tm_hour == last_tm_.tm_hour && tm->tm_mday == last_tm_.tm_mday &&
       tm->tm_mon == last_tm_.tm_mon && tm->tm_wday == last_tm_.tm_wday) {
     return false;

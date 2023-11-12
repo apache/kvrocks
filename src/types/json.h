@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -411,6 +412,38 @@ struct JsonValue {
     }
 
     return popped_values;
+  }
+
+  Status ArrTrim(std::string_view path, int64_t start, int64_t stop, std::vector<std::optional<uint64_t>> &results) {
+    try {
+      jsoncons::jsonpath::json_replace(
+          value, path, [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
+            if (val.is_array()) {
+              auto len = static_cast<int64_t>(val.size());
+              auto begin_index = start < 0 ? std::max(len + start, static_cast<int64_t>(0)) : start;
+              auto end_index = std::min(stop < 0 ? std::max(len + stop, static_cast<int64_t>(0)) : stop, len - 1);
+
+              if (begin_index >= len || begin_index > end_index) {
+                val = jsoncons::json::array();
+                results.emplace_back(0);
+                return;
+              }
+
+              auto n_val = jsoncons::json::array();
+              auto begin_iter = val.array_range().begin();
+
+              n_val.insert(n_val.end(), begin_iter + begin_index, begin_iter + end_index + 1);
+              val = n_val;
+              results.emplace_back(static_cast<int64_t>(n_val.size()));
+            } else {
+              results.emplace_back(std::nullopt);
+            }
+          });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return Status::OK();
   }
 
   JsonValue(const JsonValue &) = default;

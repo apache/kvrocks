@@ -756,20 +756,20 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
 }
 
 Status Storage::ShiftReplId() {
-  const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const int charset_len = static_cast<int>(strlen(charset));
+  static constexpr std::string_view charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
   // Do nothing if rsid psync is not enabled
   if (!config_->use_rsid_psync) return Status::OK();
 
   std::random_device rd;
   std::mt19937 gen(rd() + getpid());
-  std::uniform_int_distribution<> distrib(0, charset_len - 1);
-  std::string rand_str;
+  std::uniform_int_distribution<size_t> distrib(0, charset.size() - 1);
+
+  std::string rand_str(kReplIdLength, 0);
   for (int i = 0; i < kReplIdLength; i++) {
-    rand_str.push_back(charset[distrib(gen)]);
+    rand_str[i] = charset[distrib(gen)];
   }
-  replid_ = rand_str;
+  replid_ = std::move(rand_str);
   LOG(INFO) << "[replication] New replication id: " << replid_;
 
   // Write new replication id into db engine

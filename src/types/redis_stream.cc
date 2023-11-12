@@ -31,7 +31,7 @@
 
 namespace redis {
 
-constexpr const char *consumerGroupMetadataDelimiter = "METADATA";
+std::string_view consumerGroupMetadataDelimiter = "METADATA";
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
 const char *errEntriesAddedSmallerThanStreamSize =
@@ -181,9 +181,7 @@ std::string Stream::groupNameFromInternalKey(rocksdb::Slice key) const {
   uint64_t len = 0;
   GetFixed64(&group_name_metadata, &len);
   std::string group_name;
-  if (len <= group_name_metadata.size() - strlen(consumerGroupMetadataDelimiter)) {
-    group_name = group_name_metadata.ToString().substr(0, len);
-  }
+  group_name = group_name_metadata.ToString().substr(0, len);
   return group_name;
 }
 
@@ -224,12 +222,52 @@ std::string Stream::internalKeyFromConsumerName(const std::string &ns_key, const
   return entry_key;
 }
 
+std::string Stream::consumerNameFromInternalKey(rocksdb::Slice key) const {
+  InternalKey ikey(key, storage_->IsSlotIdEncoded());
+  Slice subkey = ikey.GetSubKey();
+  uint64_t group_name_len = 0;
+  GetFixed64(&subkey, &group_name_len);
+  subkey.remove_prefix(group_name_len);
+  uint64_t consumer_name_len = 0;
+  GetFixed64(&subkey, &consumer_name_len);
+  return subkey.ToString().substr(0, consumer_name_len);
+}
+
 std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata) {
   std::string dst;
   PutFixed64(&dst, consumer_metadata.pending_number);
   PutFixed64(&dst, consumer_metadata.last_idle);
   PutFixed64(&dst, consumer_metadata.last_active);
   return dst;
+}
+
+StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::string &value) {
+  StreamConsumerMetadata consumer_metadata;
+  rocksdb::Slice input(value);
+  GetFixed64(&input, &consumer_metadata.pending_number);
+  GetFixed64(&input, &consumer_metadata.last_idle);
+  GetFixed64(&input, &consumer_metadata.last_active);
+  return consumer_metadata;
+}
+
+StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) {
+  InternalKey ikey(key, storage_->IsSlotIdEncoded());
+  Slice subkey = ikey.GetSubKey();
+  const size_t entry_id_size = sizeof(StreamEntryID);
+  if (subkey.size() <= entry_id_size) {
+    return StreamSubkeyType::StreamEntry;
+  }
+  uint64_t group_name_len = 0;
+  GetFixed64(&subkey, &group_name_len);
+  std::string without_group_name = subkey.ToString().substr(group_name_len);
+  const size_t metadata_delimiter_size = consumerGroupMetadataDelimiter.size();
+  if (without_group_name.size() <= metadata_delimiter_size) {
+    return StreamSubkeyType::StreamConsumerGroupMetadata;
+  }
+  if (without_group_name.size() <= entry_id_size) {
+    return StreamSubkeyType::StreamPelEntry;
+  }
+  return StreamSubkeyType::StreamConsumerMetadata;
 }
 
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
@@ -734,6 +772,126 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
     info->last_entry = std::make_unique<StreamEntry>(metadata.last_entry_id.ToString(), std::move(values));
   }
 
+  return rocksdb::Status::OK();
+}
+
+static bool StreamRangeHasTombstones(const StreamMetadata &metadata, StreamEntryID start_id) {
+  StreamEntryID end_id = StreamEntryID{UINT64_MAX, UINT64_MAX};
+  if (metadata.size == 0 || metadata.max_deleted_entry_id == StreamEntryID{0, 0}) {
+    return false;
+  }
+  if (metadata.first_entry_id > metadata.max_deleted_entry_id) {
+    return false;
+  }
+  return (start_id <= metadata.max_deleted_entry_id && metadata.max_deleted_entry_id <= end_id);
+}
+
+static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &metadata, StreamEntryID id) {
+  if (metadata.entries_added == 0) {
+    return 0;
+  }
+  if (metadata.size == 0 && id < metadata.last_entry_id) {
+    return static_cast<int64_t>(metadata.entries_added);
+  }
+  if (id == metadata.last_entry_id) {
+    return static_cast<int64_t>(metadata.entries_added);
+  } else if (id > metadata.last_entry_id) {
+    return -1;
+  }
+  if (metadata.max_deleted_entry_id == StreamEntryID{0, 0} || metadata.max_deleted_entry_id < metadata.first_entry_id) {
+    if (id < metadata.first_entry_id) {
+      return static_cast<int64_t>(metadata.entries_added - metadata.size);
+    } else if (id == metadata.first_entry_id) {
+      return static_cast<int64_t>(metadata.entries_added - metadata.size + 1);
+    }
+  }
+  return -1;
+}
+
+static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerGroupMetadata &group_metadata) {
+  bool valid = false;
+  if (stream_metadata.entries_added == 0) {
+    group_metadata.lag = 0;
+    valid = true;
+  } else if (group_metadata.entries_read != -1 &&
+             !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
+    group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
+    valid = true;
+  } else {
+    int64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
+    if (entries_read != -1) {
+      group_metadata.lag = stream_metadata.entries_added - entries_read;
+      valid = true;
+    }
+  }
+  if (!valid) {
+    group_metadata.lag = UINT64_MAX;
+  }
+}
+
+rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
+                                     std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> &group_metadata) {
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamConsumerGroupMetadata) {
+      std::string group_name = groupNameFromInternalKey(iter->key());
+      StreamConsumerGroupMetadata cg_metadata = decodeStreamConsumerGroupMetadataValue(iter->value().ToString());
+      CheckLagValid(metadata, cg_metadata);
+      std::pair<std::string, StreamConsumerGroupMetadata> tmp_item(group_name, cg_metadata);
+      group_metadata.push_back(tmp_item);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Stream::GetConsumerInfo(
+    const Slice &stream_name, const std::string &group_name,
+    std::vector<std::pair<std::string, StreamConsumerMetadata>> &consumer_metadata) {
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamConsumerMetadata) {
+      std::string cur_group_name = groupNameFromInternalKey(iter->key());
+      if (cur_group_name != group_name) continue;
+      std::string consumer_name = consumerNameFromInternalKey(iter->key());
+      StreamConsumerMetadata c_metadata = decodeStreamConsumerMetadataValue(iter->value().ToString());
+      std::pair<std::string, StreamConsumerMetadata> tmp_item(consumer_name, c_metadata);
+      consumer_metadata.push_back(tmp_item);
+    }
+  }
   return rocksdb::Status::OK();
 }
 

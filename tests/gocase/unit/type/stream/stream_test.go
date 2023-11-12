@@ -929,6 +929,52 @@ func TestStreamOffset(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "xgroup", "setid", streamName, groupName, "$", "entriesread", "-100").Err())
 		require.NoError(t, rdb.Do(ctx, "xgroup", "setid", streamName, groupName, "$", "entriesread", "100").Err())
 	})
+
+	t.Run("XINFO GROUPS and XINFO CONSUMERS", func(t *testing.T) {
+		streamName := "test-stream"
+		group1 := "t1"
+		group2 := "t2"
+		consumer1 := "c1"
+		consumer2 := "c2"
+		consumer3 := "c3"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"data", "a"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, group1, "$").Err())
+		r := rdb.XInfoGroups(ctx, streamName).Val()
+		require.Equal(t, group1, r[0].Name)
+		require.Equal(t, int64(0), r[0].Consumers)
+		require.Equal(t, int64(0), r[0].Pending)
+		require.Equal(t, "1-0", r[0].LastDeliveredID)
+		require.Equal(t, int64(0), r[0].EntriesRead)
+		require.Equal(t, int64(0), r[0].Lag)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"data1", "b"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, group2, "$").Err())
+		r = rdb.XInfoGroups(ctx, streamName).Val()
+		require.Equal(t, group2, r[1].Name)
+		require.Equal(t, "2-0", r[1].LastDeliveredID)
+
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, group1, consumer1).Err())
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, group1, consumer2).Err())
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, group2, consumer3).Err())
+		r = rdb.XInfoGroups(ctx, streamName).Val()
+		require.Equal(t, int64(2), r[0].Consumers)
+		require.Equal(t, int64(1), r[1].Consumers)
+
+		r1 := rdb.XInfoConsumers(ctx, streamName, group1).Val()
+		require.Equal(t, consumer1, r1[0].Name)
+		require.Equal(t, consumer2, r1[1].Name)
+		r1 = rdb.XInfoConsumers(ctx, streamName, group2).Val()
+		require.Equal(t, consumer3, r1[0].Name)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

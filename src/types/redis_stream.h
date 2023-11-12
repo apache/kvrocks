@@ -49,6 +49,10 @@ class Stream : public SubKeyScanner {
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);
   rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
+  rocksdb::Status GetGroupInfo(const Slice &stream_name,
+                               std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> &group_metadata);
+  rocksdb::Status GetConsumerInfo(const Slice &stream_name, const std::string &group_name,
+                                  std::vector<std::pair<std::string, StreamConsumerMetadata>> &consumer_metadata);
   rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options, std::vector<StreamEntry> *entries);
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *delete_cnt);
   rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
@@ -75,7 +79,10 @@ class Stream : public SubKeyScanner {
   static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
   std::string internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
                                           const std::string &group_name, const std::string &consumer_name) const;
+  std::string consumerNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
+  static StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &value);
+  StreamSubkeyType identifySubkeyType(const rocksdb::Slice &key);
 };
 
 }  // namespace redis

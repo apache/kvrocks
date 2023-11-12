@@ -157,7 +157,7 @@ struct StreamLenOptions {
 
 struct StreamXGroupCreateOptions {
   bool mkstream = false;
-  int64_t entries_read = 0;
+  int64_t entries_read = -1;
   std::string last_id;
 };
 
@@ -173,6 +173,13 @@ struct StreamConsumerMetadata {
   uint64_t pending_number = 0;
   uint64_t last_idle;
   uint64_t last_active;
+};
+
+enum class StreamSubkeyType {
+  StreamEntry = 0,
+  StreamConsumerGroupMetadata = 1,
+  StreamConsumerMetadata = 2,
+  StreamPelEntry = 3,
 };
 
 struct StreamInfo {

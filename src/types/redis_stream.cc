@@ -31,7 +31,7 @@
 
 namespace redis {
 
-constexpr const char *consumerGroupMetadataDelimiter = "METADATA";
+std::string_view consumerGroupMetadataDelimiter = "METADATA";
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
 const char *errEntriesAddedSmallerThanStreamSize =
@@ -260,7 +260,7 @@ StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) {
   uint64_t group_name_len = 0;
   GetFixed64(&subkey, &group_name_len);
   std::string without_group_name = subkey.ToString().substr(group_name_len);
-  const size_t metadata_delimiter_size = strlen(consumerGroupMetadataDelimiter);
+  const size_t metadata_delimiter_size = consumerGroupMetadataDelimiter.size();
   if (without_group_name.size() <= metadata_delimiter_size) {
     return StreamSubkeyType::StreamConsumerGroupMetadata;
   }

@@ -54,6 +54,9 @@ class Json : public Database {
   rocksdb::Status ArrIndex(const std::string &user_key, const std::string &path, const std::string &needle,
                            ssize_t start, ssize_t end, std::vector<ssize_t> *result);
 
+  rocksdb::Status ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
+                          std::vector<std::optional<uint64_t>> &results);
+
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);

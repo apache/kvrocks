@@ -360,10 +360,15 @@ redis::Connection *Worker::removeConnection(int fd) {
 // blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
+
+  auto bev = conn->GetBufferEvent();
+  // disable read/write event to prevent the connection from being processed during migration
+  bufferevent_disable(bev, EV_READ | EV_WRITE);
   // We cannot migrate the connection if it has a running command
   // since it will cause data race since the old worker may still process the command.
-  if (conn->HasRunningCommand()) {
-    // don't need to close the connection since destroy worker thread will close it
+  if (!conn->CanMigrate()) {
+    // Need to enable read/write event again since we disabled them before
+    bufferevent_enable(bev, EV_READ | EV_WRITE);
     return;
   }
 
@@ -373,7 +378,6 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
     conn->Close();
     return;
   }
-  auto bev = conn->GetBufferEvent();
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ | EV_WRITE);

@@ -76,8 +76,9 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(bufferevent *bev) {
-  DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
+void Connection::OnRead(struct bufferevent *bev) {
+  is_running_ = true;
+  MakeScopeExit([this] { is_running_ = false; });
 
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
@@ -177,6 +178,13 @@ void Connection::EnableFlag(Flag flag) { flags_ |= flag; }
 void Connection::DisableFlag(Flag flag) { flags_ &= (~flag); }
 
 bool Connection::IsFlagEnabled(Flag flag) const { return (flags_ & flag) > 0; }
+
+bool Connection::CanMigrate() const {
+  return !is_running_                                                    // reading or writing
+         && !IsFlagEnabled(redis::Connection::kCloseAfterReply)          // close after reply
+         && saved_current_command_ == nullptr                            // not executing blocking command like BLPOP
+         && subscribe_channels_.empty() && subscribe_patterns_.empty();  // not subscribing any channel
+}
 
 void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {
@@ -296,8 +304,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = srv_->GetConfig();
   std::string reply, password = config->requirepass;
 
-  has_running_command_ = true;
-  MakeScopeExit([this] { has_running_command_ = false; });
   while (!to_process_cmds->empty()) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();

@@ -188,7 +188,7 @@ struct JsonValue {
           value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
               auto len = static_cast<int64_t>(val.size());
-              if (index >= len /*index > 0*/ || len + index < 0 /*index < 0*/) {
+              if (index >= len /*when index > 0*/ || len + index < 0 /*when index < 0*/) {
                 result_count.emplace_back(std::nullopt);
                 return;
               }

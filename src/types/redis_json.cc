@@ -286,6 +286,38 @@ rocksdb::Status Json::ArrLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::ArrInsert(const std::string &user_key, const std::string &path, const int64_t &index,
+                                const std::vector<std::string> &values,
+                                std::vector<std::optional<uint64_t>> *result_count) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  std::vector<jsoncons::json> insert_values;
+  insert_values.reserve(values.size());
+  for (auto &v : values) {
+    auto value_res = JsonValue::FromString(v, storage_->GetConfig()->json_max_nesting_depth);
+    if (!value_res) return rocksdb::Status::InvalidArgument(value_res.Msg());
+    auto value = *std::move(value_res);
+    insert_values.emplace_back(std::move(value.value));
+  }
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  JsonMetadata metadata;
+  JsonValue value;
+  auto s = read(ns_key, &metadata, &value);
+  if (!s.ok()) return s;
+
+  auto insert_res = value.ArrInsert(path, index, insert_values);
+  if (!insert_res) return rocksdb::Status::InvalidArgument(insert_res.Msg());
+  *result_count = *insert_res;
+
+  bool is_write =
+      std::any_of(result_count->begin(), result_count->end(), [](std::optional<uint64_t> c) { return c.has_value(); });
+  if (!is_write) return rocksdb::Status::OK();
+
+  return write(ns_key, &metadata, value);
+}
+
 rocksdb::Status Json::Toggle(const std::string &user_key, const std::string &path,
                              std::vector<std::optional<bool>> &result) {
   auto ns_key = AppendNamespacePrefix(user_key);

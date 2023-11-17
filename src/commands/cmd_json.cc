@@ -22,7 +22,9 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "commands/error_constants.h"
 #include "error_constants.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_metadata.h"
@@ -140,6 +142,47 @@ class CommandJsonArrAppend : public Commander {
 
     return Status::OK();
   }
+};
+
+class CommandJsonArrInsert : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseInt<int>(args[3], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    index_ = *parse_result;
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Json json(srv->storage, conn->GetNamespace());
+
+    std::vector<std::optional<uint64_t>> result_count;
+    auto parse_result = ParseInt<int>(args_[3], 10);
+
+    auto s = json.ArrInsert(args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &result_count);
+    if (s.IsNotFound()) {
+      *output = redis::NilString();
+      return Status::OK();
+    }
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::MultiLen(result_count.size());
+    for (auto c : result_count) {
+      if (c.has_value()) {
+        *output += redis::Integer(c.value());
+      } else {
+        *output += redis::NilString();
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  int index_;
 };
 
 class CommandJsonType : public Commander {
@@ -440,6 +483,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),

@@ -44,7 +44,6 @@ class BlockingCommander : public Commander,
   // in other words, returning true indicates ending the blocking
   virtual bool OnBlockingWrite() = 0;
 
-  bool IsBlocking() const override { return true; }
   // to start the blocking process
   // usually put to the end of the Execute method
   Status StartBlocking(int64_t timeout, std::string *output) {

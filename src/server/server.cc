@@ -115,7 +115,7 @@ Server::~Server() {
   for (auto &worker_thread : worker_threads_) {
     worker_thread.reset();
   }
-  cleanupExitedWorkerThreads();
+  cleanupExitedWorkerThreads(true /* force */);
   CleanupExitedSlaves();
 
   lua::DestroyState(lua_);
@@ -226,7 +226,7 @@ void Server::Stop() {
   slaveof_mu_.unlock();
 
   for (const auto &worker : worker_threads_) {
-    worker->Stop();
+    worker->Stop(0 /* immediately terminate  */);
   }
 
   rocksdb::CancelAllBackgroundWork(storage->GetDB(), true);
@@ -739,8 +739,9 @@ void Server::cron() {
       storage->SetDBInRetryableIOError(false);
     }
 
-    if (counter != 0 && counter % 10 == 0) {
-      cleanupExitedWorkerThreads();
+    // check if we need to clean up exited worker threads every 5s
+    if (counter != 0 && counter % 50 == 0) {
+      cleanupExitedWorkerThreads(false);
     }
 
     CleanupExitedSlaves();
@@ -1685,12 +1686,12 @@ void Server::AdjustWorkerThreads() {
   if (new_worker_threads > worker_threads_.size()) {
     delta = new_worker_threads - worker_threads_.size();
     increaseWorkerThreads(delta);
-    LOG(INFO) << "[server] Increase worker threads to " << new_worker_threads;
+    LOG(INFO) << "[server] Increase worker threads from " << worker_threads_.size() << " to " << new_worker_threads;
     return;
   }
 
   delta = worker_threads_.size() - new_worker_threads;
-  LOG(INFO) << "[server] Decrease worker threads to " << new_worker_threads;
+  LOG(INFO) << "[server] Decrease worker threads from " << worker_threads_.size() << " to " << new_worker_threads;
   decreaseWorkerThreads(delta);
 }
 
@@ -1721,17 +1722,26 @@ void Server::decreaseWorkerThreads(size_t delta) {
       auto target_worker = worker_threads_[iter.first % remain_worker_threads]->GetWorker();
       worker_thread->GetWorker()->MigrateConnection(target_worker, iter.second);
     }
-    worker_thread->Stop();
+    worker_thread->Stop(10 /* graceful timeout */);
     // Don't join the worker thread here, because it may join itself.
     recycle_worker_threads_.push(std::move(worker_thread));
   }
 }
 
-void Server::cleanupExitedWorkerThreads() {
+void Server::cleanupExitedWorkerThreads(bool force) {
   std::unique_ptr<WorkerThread> worker_thread = nullptr;
-  while (recycle_worker_threads_.try_pop(worker_thread)) {
-    worker_thread->Join();
-    worker_thread.reset();
+  auto total = recycle_worker_threads_.unsafe_size();
+  for (size_t i = 0; i < total; i++) {
+    if (!recycle_worker_threads_.try_pop(worker_thread)) {
+      break;
+    }
+    if (worker_thread->IsTerminated() || force) {
+      worker_thread->Join();
+      worker_thread.reset();
+    } else {
+      // Push the worker thread back to the queue if it's still running.
+      recycle_worker_threads_.push(std::move(worker_thread));
+    }
   }
 }
 

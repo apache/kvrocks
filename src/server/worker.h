@@ -50,8 +50,9 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   Worker(Worker &&) = delete;
   Worker &operator=(const Worker &) = delete;
 
-  void Stop();
+  void Stop(uint32_t wait_seconds);
   void Run(std::thread::id tid);
+  bool IsTerminated() const { return is_terminated_; }
 
   void MigrateConnection(Worker *target, redis::Connection *conn);
   void DetachConnection(redis::Connection *conn);
@@ -94,6 +95,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
   lua_State *lua_;
+  std::atomic<bool> is_terminated_ = false;
 };
 
 class WorkerThread {
@@ -106,8 +108,9 @@ class WorkerThread {
 
   Worker *GetWorker() { return worker_.get(); }
   void Start();
-  void Stop();
+  void Stop(uint32_t wait_seconds);
   void Join();
+  bool IsTerminated() const { return worker_->IsTerminated(); }
 
  private:
   std::thread t_;

@@ -34,6 +34,7 @@
 
 #include "commands/blocking_commander.h"
 #include "redis_connection.h"
+#include "scope_exit.h"
 #include "server.h"
 #include "time_util.h"
 #include "tls_util.h"
@@ -75,8 +76,9 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(bufferevent *bev) {
-  DLOG(INFO) << "[connection] on read: " << bufferevent_getfd(bev);
+void Connection::OnRead(struct bufferevent *bev) {
+  is_running_ = true;
+  MakeScopeExit([this] { is_running_ = false; });
 
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
@@ -176,6 +178,13 @@ void Connection::EnableFlag(Flag flag) { flags_ |= flag; }
 void Connection::DisableFlag(Flag flag) { flags_ &= (~flag); }
 
 bool Connection::IsFlagEnabled(Flag flag) const { return (flags_ & flag) > 0; }
+
+bool Connection::CanMigrate() const {
+  return !is_running_                                                    // reading or writing
+         && !IsFlagEnabled(redis::Connection::kCloseAfterReply)          // close after reply
+         && saved_current_command_ == nullptr                            // not executing blocking command like BLPOP
+         && subscribe_channels_.empty() && subscribe_patterns_.empty();  // not subscribing any channel
+}
 
 void Connection::SubscribeChannel(const std::string &channel) {
   for (const auto &chan : subscribe_channels_) {
@@ -302,6 +311,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
+    std::unique_ptr<Commander> current_cmd;
     auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
@@ -424,6 +434,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.
     if (s.Is<Status::BlockingCmd>()) {
+      // For the blocking command, it will use the command while resumed from the suspend state.
+      // So we need to save the command for the next execution.
+      // Migrate connection would also check the saved_current_command_ to determine whether
+      // the connection can be migrated or not.
+      saved_current_command_ = std::move(current_cmd);
       break;
     }
 

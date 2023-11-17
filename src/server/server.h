@@ -305,7 +305,7 @@ class Server {
   void updateAllWatchedKeys();
   void increaseWorkerThreads(size_t delta);
   void decreaseWorkerThreads(size_t delta);
-  void cleanupExitedWorkerThreads();
+  void cleanupExitedWorkerThreads(bool force);
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;

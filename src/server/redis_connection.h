@@ -119,6 +119,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   void RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }
   bool IsImporting() const { return importing_; }
+  bool CanMigrate() const;
 
   // Multi exec
   void SetInExec() { in_exec_ = true; }
@@ -127,7 +128,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
-  std::unique_ptr<Commander> current_cmd;
   std::function<void(int)> close_cb = nullptr;
 
   std::set<std::string> watched_keys;
@@ -152,12 +152,15 @@ class Connection : public EvbufCallbackBase<Connection> {
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
+  std::unique_ptr<Commander> saved_current_command_;
+
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;
 
   Server *srv_;
   bool in_exec_ = false;
   bool multi_error_ = false;
+  std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;

@@ -151,10 +151,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := srv.NewClientWithOption(&redis.Options{
-		MaxIdleConns: 20,
-		MaxRetries:   -1, // Disable retry to check connections are alive after config change
-	})
+	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Test dynamic change worker thread", func(t *testing.T) {
@@ -217,12 +214,14 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_ = rdb.XRead(ctx, &redis.XReadArgs{
-				Streams: []string{"s1", "s2", "s3"},
+				Streams: []string{"s1", "$"},
 				Count:   1,
 				Block:   blockingTimeout,
 			})
 		}()
 
+		// sleep a while to make sure all blocking requests are ready
+		time.Sleep(time.Second)
 		require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "workers", "1").Err())
 		wg.Wait()
 

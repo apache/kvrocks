@@ -179,6 +179,35 @@ struct JsonValue {
     return result_count;
   }
 
+  StatusOr<std::vector<std::optional<uint64_t>>> ArrInsert(std::string_view path, const int64_t &index,
+                                                           const std::vector<jsoncons::json> &insert_values) {
+    std::vector<std::optional<uint64_t>> result_count;
+
+    try {
+      jsoncons::jsonpath::json_replace(
+          value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
+            if (val.is_array()) {
+              auto len = static_cast<int64_t>(val.size());
+              // When index > 0, we need index < len
+              // when index < 0, we need index >= -len.
+              if (index >= len || index < -len) {
+                result_count.emplace_back(std::nullopt);
+                return;
+              }
+              auto base_iter = index >= 0 ? val.array_range().begin() : val.array_range().end();
+              val.insert(base_iter + index, insert_values.begin(), insert_values.end());
+              result_count.emplace_back(val.size());
+            } else {
+              result_count.emplace_back(std::nullopt);
+            }
+          });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return result_count;
+  }
+
   static std::pair<ssize_t, ssize_t> NormalizeArrIndices(ssize_t start, ssize_t end, ssize_t len) {
     if (start < 0) {
       start = std::max<ssize_t>(0, len + start);

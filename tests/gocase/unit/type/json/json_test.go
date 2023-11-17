@@ -215,6 +215,52 @@ func TestJson(t *testing.T) {
 		require.EqualValues(t, []uint64{}, lens)
 	})
 
+	t.Run("JSON.ARRINSERT basics", func(t *testing.T) {
+		arrInsertCmd := "JSON.ARRINSERT"
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		// key no exists
+		require.EqualError(t, rdb.Do(ctx, arrInsertCmd, "not_exists", "$", 0, 1).Err(), redis.Nil.Error())
+		// key not json
+		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "no_json", "$", 0, 1).Err())
+		// json path no exists
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{}}`).Err())
+		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, arrInsertCmd, "a", "$.not_exists", 0, 1).Val())
+		// json path not array
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$.a", 0, 1).Val())
+		// index not a integer
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", "no", 1).Err())
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", 1.1, 1).Err())
+		// args size < 4
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", 0).Err())
+		// json path has one array
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":[1,2,3], "b":{"a":[4,5,6,7],"c":2},"c":[1,2,3,4],"e":[6,7,8],"f":{"a":[10,11,12,13,14], "g":2}}`).Err())
+		require.EqualValues(t, []interface{}{int64(4)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 1, 90).Val())
+		require.Equal(t, "[{\"a\":[1,2,3],\"b\":{\"a\":[4,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,7,8],\"f\":{\"a\":[10,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// insert many value
+		require.EqualValues(t, []interface{}{int64(8)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 2, 80, 81, 82, 83).Val())
+		require.Equal(t, "[{\"a\":[1,2,3],\"b\":{\"a\":[4,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// json path has many array
+		require.EqualValues(t, []interface{}{int64(6), int64(5), int64(4)}, rdb.Do(ctx, arrInsertCmd, "a", "$..a", 1, 91).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// json path has many array and one is not array
+		require.EqualValues(t, []interface{}{int64(5), nil}, rdb.Do(ctx, arrInsertCmd, "a", "$..c", 0, 92).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index = 0
+		require.EqualValues(t, []interface{}{int64(9)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 0, 93).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index < 0
+		require.EqualValues(t, []interface{}{int64(10)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", -2, 94).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index >= len
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 15, 95).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index + len < 0
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$", -15, 96).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+	})
+
 	t.Run("JSON.OBJKEYS basics", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		// key no exists

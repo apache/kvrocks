@@ -252,7 +252,8 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
     }
 
     evutil_make_socket_nonblocking(fd);
-    auto lev = NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
+    auto lev =
+        NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
   }
 
@@ -292,13 +293,21 @@ void Worker::Run(std::thread::id tid) {
   if (event_base_dispatch(base_) != 0) {
     LOG(ERROR) << "[worker] Failed to run server, err: " << strerror(errno);
   }
+  is_terminated_ = true;
 }
 
-void Worker::Stop() {
-  event_base_loopbreak(base_);
+void Worker::Stop(uint32_t wait_seconds) {
   for (const auto &lev : listen_events_) {
     // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
+  }
+  // wait_seconds == 0 means stop immediately, or it will wait N seconds
+  // for the worker to process the remaining requests before stopping.
+  if (wait_seconds > 0) {
+    timeval tv = {wait_seconds, 0};
+    event_base_loopexit(base_, &tv);
+  } else {
+    event_base_loopbreak(base_);
   }
 }
 
@@ -351,18 +360,24 @@ redis::Connection *Worker::removeConnection(int fd) {
 // blocked on a key or stream.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
-  if (conn->current_cmd != nullptr && conn->current_cmd->IsBlocking()) {
-    // don't need to close the connection since destroy worker thread will close it
+
+  auto bev = conn->GetBufferEvent();
+  // disable read/write event to prevent the connection from being processed during migration
+  bufferevent_disable(bev, EV_READ | EV_WRITE);
+  // We cannot migrate the connection if it has a running command
+  // since it will cause data race since the old worker may still process the command.
+  if (!conn->CanMigrate()) {
+    // Need to enable read/write event again since we disabled them before
+    bufferevent_enable(bev, EV_READ | EV_WRITE);
     return;
   }
 
-  if (!target->AddConnection(conn).IsOK()) {
-    // destroy worker thread will close the connection
-    return;
-  }
   // remove the connection from current worker
   DetachConnection(conn);
-  auto bev = conn->GetBufferEvent();
+  if (!target->AddConnection(conn).IsOK()) {
+    conn->Close();
+    return;
+  }
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ | EV_WRITE);
@@ -540,7 +555,7 @@ void WorkerThread::Start() {
   LOG(INFO) << "[worker] Thread #" << t_.get_id() << " started";
 }
 
-void WorkerThread::Stop() { worker_->Stop(); }
+void WorkerThread::Stop(uint32_t wait_seconds) { worker_->Stop(wait_seconds); }
 
 void WorkerThread::Join() {
   if (auto s = util::ThreadJoin(t_); !s) {

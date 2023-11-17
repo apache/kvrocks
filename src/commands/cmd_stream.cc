@@ -750,7 +750,6 @@ class CommandXRead : public Commander,
                      private EvbufCallbackBase<CommandXRead, false>,
                      private EventCallbackBase<CommandXRead> {
  public:
-  bool IsBlocking() const override { return true; }
   Status Parse(const std::vector<std::string> &args) override {
     size_t streams_word_idx = 0;
 

@@ -45,18 +45,17 @@ void BloomChain::getBFKeyList(const Slice &ns_key, const BloomChainMetadata &met
 }
 
 rocksdb::Status BloomChain::getBFDataList(const std::vector<std::string> &bf_key_list,
-                                          std::vector<rocksdb::Slice> *bf_data_list) {
+                                          std::vector<rocksdb::PinnableSlice> *bf_data_list) {
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
 
   bf_data_list->reserve(bf_key_list.size());
-  for (size_t i = 0; i < bf_key_list.size(); ++i) {
+  for (const auto &bf_key : bf_key_list) {
     rocksdb::PinnableSlice pin_value;
-    auto &bf_key = bf_key_list[i];
-    rocksdb::Status s = storage_->Get(read_options, storage_->GetDB()->DefaultColumnFamily(), bf_key, &pin_value);
+    rocksdb::Status s = storage_->Get(read_options, bf_key, &pin_value);
     if (!s.ok()) return s;
-    bf_data_list->emplace_back(pin_value);
+    bf_data_list->push_back(std::move(pin_value));
   }
   return rocksdb::Status::OK();
 }
@@ -164,7 +163,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
 
-  std::vector<rocksdb::Slice> bf_data_list;
+  std::vector<rocksdb::PinnableSlice> bf_data_list;
   s = getBFDataList(bf_key_list, &bf_data_list);
   if (!s.ok()) return s;
 
@@ -195,8 +194,9 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
           batch->Put(bf_key_list.back(), bf_data_list.back().ToString());
           std::string bf_data;
           createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
-          rocksdb::Slice slice(bf_data);
-          bf_data_list.push_back(std::move(slice));
+          rocksdb::PinnableSlice pin_slice;
+          pin_slice.PinSelf(rocksdb::Slice(bf_data));
+          bf_data_list.push_back(std::move(pin_slice));
           bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
         } else {
           (*rets)[i] = BloomFilterAddResult::kFull;
@@ -205,6 +205,8 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
       }
       std::string data = bf_data_list.back().ToString();
       bloomAdd(item_hash_list[i], data);
+      bf_data_list.back().Reset();
+      bf_data_list.back().PinSelf(rocksdb::Slice(data));
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }
@@ -241,7 +243,7 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
 
-  std::vector<rocksdb::Slice> bf_data_list;
+  std::vector<rocksdb::PinnableSlice> bf_data_list;
   s = getBFDataList(bf_key_list, &bf_data_list);
   if (!s.ok()) return s;
 

@@ -156,6 +156,7 @@ struct Config {
   bool redis_cursor_compatible = false;
   bool resp3_enabled = false;
   int log_retention_days;
+  int databases = 10000;
 
   // load_tokens is used to buffer the tokens when loading,
   // don't use it to authenticate or rewrite the configuration file.

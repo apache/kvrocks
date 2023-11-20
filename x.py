@@ -110,7 +110,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
-        cmake_options.append("-DDEPS_FETCH_PROXY=https://mirror.ghproxy.com")
+        cmake_options.append("-DDEPS_FETCH_PROXY=https://mirror.ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':

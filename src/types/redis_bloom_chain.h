@@ -77,7 +77,8 @@ class BloomChain : public Database {
   rocksdb::Status getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata);
   std::string getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index);
   void getBFKeyList(const Slice &ns_key, const BloomChainMetadata &metadata, std::vector<std::string> *bf_key_list);
-  rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list, std::vector<rocksdb::PinnableSlice> *bf_data_list);
+  rocksdb::Status getBFDataList(const std::vector<std::string> &bf_key_list,
+                                std::vector<rocksdb::PinnableSlice> *bf_data_list);
   static void getItemHashList(const std::vector<std::string> &items, std::vector<uint64_t> *item_hash_list);
 
   rocksdb::Status createBloomChain(const Slice &ns_key, double error_rate, uint32_t capacity, uint16_t expansion,
@@ -88,6 +89,6 @@ class BloomChain : public Database {
   /// bf_data: [in/out] The content string of bloomfilter.
   static void bloomAdd(uint64_t item_hash, std::string &bf_data);
 
-  static bool bloomCheck(uint64_t item_hash, std::string &bf_data);
+  static bool bloomCheck(uint64_t item_hash, std::string_view &bf_data);
 };
 }  // namespace redis

@@ -113,8 +113,9 @@ void BloomChain::bloomAdd(uint64_t item_hash, std::string &bf_data) {
   block_split_bloom_filter.InsertHash(item_hash);
 }
 
-bool BloomChain::bloomCheck(uint64_t item_hash, std::string &bf_data) {
-  const BlockSplitBloomFilter block_split_bloom_filter(bf_data);
+bool BloomChain::bloomCheck(uint64_t item_hash, std::string_view &bf_data) {
+  const BlockSplitBloomFilter block_split_bloom_filter(
+      nonstd::span<char>(const_cast<char *>(bf_data.data()), bf_data.size()));
   return block_split_bloom_filter.FindHash(item_hash);
 }
 
@@ -180,7 +181,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     bool exist = false;
     // TODO: to test which direction for searching is better
     for (int ii = static_cast<int>(bf_data_list.size()) - 1; ii >= 0; --ii) {
-      std::string data = bf_data_list[ii].ToString();
+      std::string_view data = bf_data_list[ii].ToStringView();
       exist = bloomCheck(item_hash_list[i], data);
       if (exist) break;
     }
@@ -191,7 +192,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     } else {
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
-          batch->Put(bf_key_list.back(), bf_data_list.back().ToString());
+          batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
           std::string bf_data;
           createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
           rocksdb::PinnableSlice pin_slice;
@@ -216,7 +217,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     std::string bloom_chain_metadata_bytes;
     metadata.Encode(&bloom_chain_metadata_bytes);
     batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
-    batch->Put(bf_key_list.back(), bf_data_list.back().ToString());
+    batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -254,7 +255,7 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std
     // check
     // TODO: to test which direction for searching is better
     for (int ii = static_cast<int>(bf_data_list.size()) - 1; ii >= 0; --ii) {
-      std::string data = bf_data_list[ii].ToString();
+      std::string_view data = bf_data_list[ii].ToStringView();
       (*exists)[i] = bloomCheck(item_hash_list[i], data);
       if ((*exists)[i]) break;
     }

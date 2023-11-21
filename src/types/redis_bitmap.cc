@@ -251,7 +251,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     std::string sub_key =
         InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
             .Encode();
-    s = storage_->Get(read_options, storage_->GetDB()->DefaultColumnFamily(), sub_key, &pin_value);
+    s = storage_->Get(read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
     size_t j = 0;
@@ -309,7 +309,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     std::string sub_key =
         InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
             .Encode();
-    s = storage_->Get(read_options, storage_->GetDB()->DefaultColumnFamily(), sub_key, &pin_value);
+    s = storage_->Get(read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       if (!bit) {

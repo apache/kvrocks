@@ -172,9 +172,9 @@ struct JsonValue {
       jsoncons::jsonpath::json_replace(
           value, path, [&append_str, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
             if (origin.is_string()) {
-              auto origin_trimmed = origin.as_string();
-              append_cnt.push_back(origin_trimmed.length() + append_str.length());
-              origin = origin_trimmed + append_str;
+              auto origin_str = origin.as_string();
+              append_cnt.push_back(origin_str.length() + append_str.length());
+              origin = origin_str + append_str;
             } else {
               append_cnt.push_back(std::numeric_limits<uint64_t>::max());
             }

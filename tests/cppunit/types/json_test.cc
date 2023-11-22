@@ -664,7 +664,7 @@ TEST_F(RedisJsonTest, StrAppend) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
   ASSERT_TRUE(json_->StrAppend(key_, "$..a", "\"be\"", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
-  int64_t result1[] = {5, 7, -1};
+  std::vector<int64_t> result1 = {5, 7, -1};
   for (int i = 0; i < 3; ++i) {
     ASSERT_EQ(append_cnt_[i], result1[i]);
   }
@@ -681,7 +681,7 @@ TEST_F(RedisJsonTest, StrLen) {
   ASSERT_TRUE(json_->Set(key_, "$", R"({"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}})").ok());
   ASSERT_TRUE(json_->StrLen(key_, "$..a", append_cnt_).ok());
   ASSERT_EQ(append_cnt_.size(), 3);
-  int64_t result1[] = {3, 5, -1};
+  std::vector<int64_t> result1 = {3, 5, -1};
   for (int i = 0; i < 3; ++i) {
     ASSERT_EQ(append_cnt_[i], result1[i]);
   }

@@ -186,6 +186,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
 
+  // avoid blocking io on iteration
+  // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
+  options.avoid_unnecessary_blocking_io = config_->rocks_db.avoid_unnecessary_blocking_io;
   return options;
 }
 

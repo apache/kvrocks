@@ -161,21 +161,20 @@ struct JsonValue {
 
   Status StrAppend(std::string_view path, const std::string &append_value, std::vector<uint64_t> &append_cnt) {
     try {
-      std::string append_trimmed;
+      std::string append_str;
       jsoncons::json append_json = jsoncons::json::parse(append_value);
       if (append_json.is_string()) {
-        append_trimmed = append_json.as_string();
+        append_str = append_json.as_string();
       } else {
         return {Status::NotOK, "STRAPPEND need input a string to append"};
       }
 
       jsoncons::jsonpath::json_replace(
-          value, path, [&append_trimmed, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
+          value, path, [&append_str, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
             if (origin.is_string()) {
-              auto origin_trimmed = origin.as<std::string>();
-              append_cnt.push_back(origin_trimmed.length() + append_trimmed.length());
-              jsoncons::json new_value(origin_trimmed + append_trimmed);
-              origin = new_value;
+              auto origin_trimmed = origin.as_string();
+              append_cnt.push_back(origin_trimmed.length() + append_str.length());
+              origin = origin_trimmed + append_str;
             } else {
               append_cnt.push_back(std::numeric_limits<uint64_t>::max());
             }
@@ -192,7 +191,7 @@ struct JsonValue {
       jsoncons::jsonpath::json_query(value, path,
                                      [&str_lens](const std::string & /*path*/, const jsoncons::json &origin) {
                                        if (origin.is_string()) {
-                                         str_lens.push_back((int64_t)origin.as<std::string>().length());
+                                         str_lens.push_back(origin.as_string().length());
                                        } else {
                                          str_lens.push_back(std::numeric_limits<uint64_t>::max());
                                        }

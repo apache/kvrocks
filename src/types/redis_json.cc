@@ -468,12 +468,12 @@ rocksdb::Status Json::StrAppend(const std::string &user_key, const std::string &
 
   auto append_res = json_val.StrAppend(path, value, append_cnt);
   if (!append_res) return rocksdb::Status::InvalidArgument(append_res.Msg());
-  // need Reverse order
+  // need reverse order
   std::reverse(append_cnt.begin(), append_cnt.end());
 
   bool need_overwrite = false;
   for (auto append : append_cnt) {
-    if (append > 0) {
+    if (append != std::numeric_limits<uint64_t>::max()) {
       need_overwrite = true;
     }
   }

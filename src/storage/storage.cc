@@ -188,7 +188,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
-  options.avoid_unnecessary_blocking_io = true;
+  options.avoid_unnecessary_blocking_io = config_->rocks_db.avoid_unnecessary_blocking_io;
   return options;
 }
 

@@ -201,6 +201,7 @@ struct Config {
     bool level_compaction_dynamic_level_bytes;
     int max_background_jobs;
     bool rate_limiter_auto_tuned;
+    bool avoid_unnecessary_blocking_io;
 
     struct WriteOptions {
       bool sync;

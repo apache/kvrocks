@@ -102,7 +102,7 @@ $ ./build/kvrocks -c kvrocks.conf
 ### Running Kvrocks using Docker
 
 ```shell
-$ docker run -it -p 6666:6666 apache/kvrocks
+$ docker run -it -p 6666:6666 apache/kvrocks --bind 0.0.0.0
 # or get the nightly image:
 $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```

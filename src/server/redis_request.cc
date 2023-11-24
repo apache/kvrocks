@@ -91,6 +91,7 @@ Status Request::Tokenize(evbuffer *input) {
           }
 
           tokens_ = util::Split(std::string(line.get(), line.length), " \t");
+          if (tokens_.empty()) continue;
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;
         }

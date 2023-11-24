@@ -20,9 +20,11 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "common/bitfield_util.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -41,6 +43,8 @@ namespace redis {
 
 class Bitmap : public Database {
  public:
+  class SegmentCacheStore;
+
   Bitmap(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status GetBit(const Slice &user_key, uint32_t offset, bool *bit);
   rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
@@ -49,11 +53,31 @@ class Bitmap : public Database {
   rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
   rocksdb::Status BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
                         const std::vector<Slice> &op_keys, int64_t *len);
+  rocksdb::Status Bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+                           std::vector<std::optional<BitfieldValue>> *rets) {
+    return bitfield<false>(user_key, ops, rets);
+  }
+  // read-only version for Bitfield(), if there is a write operation in ops, the function will return with failed
+  // status.
+  rocksdb::Status BitfieldReadOnly(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+                                   std::vector<std::optional<BitfieldValue>> *rets) {
+    return bitfield<true>(user_key, ops, rets);
+  }
   static bool GetBitFromValueAndOffset(const std::string &value, uint32_t offset);
   static bool IsEmptySegment(const Slice &segment);
 
  private:
+  template <bool ReadOnly>
+  rocksdb::Status bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+                           std::vector<std::optional<BitfieldValue>> *rets);
+  static void bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                    const std::vector<BitfieldOperation> &ops);
   rocksdb::Status GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value);
+
+  template <bool ReadOnly>
+  static rocksdb::Status runBitfieldOperationsWithCache(SegmentCacheStore &cache,
+                                                        const std::vector<BitfieldOperation> &ops,
+                                                        std::vector<std::optional<BitfieldValue>> *rets);
 };
 
 }  // namespace redis

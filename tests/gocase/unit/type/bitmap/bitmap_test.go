@@ -302,4 +302,14 @@ func TestBitmap(t *testing.T) {
 		Set2SetBit(t, rdb, ctx, "a", []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
 		require.EqualValues(t, 32, rdb.BitOpOr(ctx, "x", "a", "b").Val())
 	})
+
+	t.Run("BITFIELD on string type", func(t *testing.T) {
+		str := "zhe ge ren hen lan, shen me dou mei you liu xia."
+		require.NoError(t, rdb.Set(ctx, "str", str, 0).Err())
+		res := rdb.BitField(ctx, "str", "GET", "u8", "32", "SET", "u8", "32", 'r', "GET", "u8", "32")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, str[4], res.Val()[0])
+		require.EqualValues(t, str[4], res.Val()[1])
+		require.EqualValues(t, 'r', res.Val()[2])
+	})
 }

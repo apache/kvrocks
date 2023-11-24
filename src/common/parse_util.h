@@ -34,12 +34,17 @@ template <typename>
 struct ParseIntFunc;
 
 template <>
+struct ParseIntFunc<char> {  // NOLINT
+  constexpr static const auto value = std::strtol;
+};
+
+template <>
 struct ParseIntFunc<short> {  // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
 template <>
-struct ParseIntFunc<int> {
+struct ParseIntFunc<int> {  // NOLINT
   constexpr static const auto value = std::strtol;
 };
 
@@ -54,12 +59,17 @@ struct ParseIntFunc<long long> {  // NOLINT
 };
 
 template <>
+struct ParseIntFunc<unsigned char> {  // NOLINT
+  constexpr static const auto value = std::strtoul;
+};
+
+template <>
 struct ParseIntFunc<unsigned short> {  // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 
 template <>
-struct ParseIntFunc<unsigned> {
+struct ParseIntFunc<unsigned> {  // NOLINT
   constexpr static const auto value = std::strtoul;
 };
 

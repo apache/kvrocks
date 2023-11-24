@@ -61,6 +61,7 @@ enum RedisCommand {
   kRedisCmdExpire,
   kRedisCmdSetBit,
   kRedisCmdBitOp,
+  kRedisCmdBitfield,
   kRedisCmdLMove,
 };
 

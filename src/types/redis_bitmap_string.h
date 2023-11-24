@@ -20,9 +20,11 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "common/bitfield_util.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -36,6 +38,11 @@ class BitmapString : public Database {
   static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt);
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
                                 int64_t *pos);
+  rocksdb::Status Bitfield(const Slice &ns_key, std::string *raw_value, const std::vector<BitfieldOperation> &ops,
+                           std::vector<std::optional<BitfieldValue>> *rets);
+  static rocksdb::Status BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
+                                          const std::vector<BitfieldOperation> &ops,
+                                          std::vector<std::optional<BitfieldValue>> *rets);
 
   static size_t RawPopcount(const uint8_t *p, int64_t count);
   static int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit);

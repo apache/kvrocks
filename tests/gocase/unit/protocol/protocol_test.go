@@ -31,10 +31,20 @@ func TestProtocolNetwork(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
-	t.Run("handle an empty array", func(t *testing.T) {
+	t.Run("empty bulk array command", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.Write("*-1\r\n"))
+		require.NoError(t, c.Write("*0\r\n"))
 		require.NoError(t, c.Write("\r\n"))
+		require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
+		c.MustRead(t, "+PONG")
+	})
+
+	t.Run("empty inline command", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.Write(" \r\n"))
 		require.NoError(t, c.Write("*1\r\n$4\r\nPING\r\n"))
 		c.MustRead(t, "+PONG")
 	})

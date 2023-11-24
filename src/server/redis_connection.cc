@@ -307,6 +307,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   while (!to_process_cmds->empty()) {
     auto cmd_tokens = to_process_cmds->front();
     to_process_cmds->pop_front();
+    if (cmd_tokens.empty()) continue;
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;

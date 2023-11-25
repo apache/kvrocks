@@ -575,9 +575,10 @@ class Bitmap::SegmentCacheStore {
     uint64_t used_size = 0;
     for (auto &[index, content] : cache_) {
       if (content.first) {
-        InternalKey sub_key(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded());
-        batch->Put(sub_key.Encode(), content.second);
-        used_size = std::max(used_size, index * kBitmapSegmentBytes + content.second.size());
+        std::string sub_key =
+            InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
+        batch->Put(sub_key, content.second);
+        used_size = std::max(used_size, static_cast<uint64_t>(index) * kBitmapSegmentBytes + content.second.size());
       }
     }
     if (used_size > metadata_.size) {
@@ -595,8 +596,9 @@ class Bitmap::SegmentCacheStore {
 
     if (no_cache) {
       is_dirty = false;
-      InternalKey sub_key(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded());
-      rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), sub_key.Encode(), &str);
+      std::string sub_key =
+          InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
+      rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), sub_key, &str);
       if (!s.ok() && !s.IsNotFound()) {
         return s;
       }
@@ -739,15 +741,15 @@ rocksdb::Status Bitmap::bitfield(const Slice &user_key, const std::vector<Bitfie
   SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, metadata);
   runBitfieldOperationsWithCache<ReadOnly>(cache, ops, rets);
 
-  if constexpr (ReadOnly) {
-    return rocksdb::Status::OK();
+  if constexpr (!ReadOnly) {
+    // Write changes into storage.
+    auto batch = storage_->GetWriteBatchBase();
+    if (bitfieldWriteAheadLog(batch, ops)) {
+      cache.BatchForFlush(batch);
+      return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    }
   }
-
-  // Write changes into storage.
-  auto batch = storage_->GetWriteBatchBase();
-  bitfieldWriteAheadLog(batch, ops);
-  cache.BatchForFlush(batch);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return rocksdb::Status::OK();
 }
 
 template <bool ReadOnly>
@@ -780,7 +782,7 @@ rocksdb::Status Bitmap::runBitfieldOperationsWithCache(SegmentCacheStore &cache,
 
     auto &ret = rets->emplace_back();
     uint64_t unsigned_new_value = 0;
-    // BitfieldOp failed only when the length or bits not illegal.
+    // BitfieldOp failed only when the length or bits illegal.
     // BitfieldOperation already check above case in construction function.
     if (BitfieldOp(op, unsigned_old_value, &unsigned_new_value).GetValue()) {
       if (op.type != BitfieldOperation::Type::kGet) {
@@ -807,7 +809,8 @@ template rocksdb::Status Bitmap::bitfield<false>(const Slice &, const std::vecto
 template rocksdb::Status Bitmap::bitfield<true>(const Slice &, const std::vector<BitfieldOperation> &,
                                                 std::vector<std::optional<BitfieldValue>> *);
 
-void Bitmap::bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+// Return true if there are any write operation to bitmap. Otherwise return false.
+bool Bitmap::bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                    const std::vector<BitfieldOperation> &ops) {
   std::vector<std::string> cmd_args{std::to_string(kRedisCmdBitfield)};
   auto current_overflow = BitfieldOverflowBehavior::kWrap;
@@ -854,7 +857,9 @@ void Bitmap::bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatch
   if (cmd_args.size() > 1) {
     WriteBatchLogData log_data(kRedisBitmap, std::move(cmd_args));
     batch->PutLogData(log_data.Encode());
+    return true;
   }
+  return false;
 }
 
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {

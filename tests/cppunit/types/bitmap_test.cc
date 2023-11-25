@@ -106,17 +106,17 @@ TEST_F(RedisBitmapTest, BitfieldGetSetTest) {
   op.offset = 114514;
   op.value = magic;
 
-  bitmap_->Bitfield(key_, {op}, &rets);
+  EXPECT_TRUE(bitmap_->Bitfield(key_, {op}, &rets).ok());
   EXPECT_EQ(1, rets.size());
   EXPECT_EQ(0, rets[0].value());
   rets.clear();
 
   op.type = BitfieldOperation::Type::kGet;
-  auto _ = op.encoding.SetBits(1);
+  auto _ = op.encoding.SetBitsCount(1);
 
   // bitfield is stored in big-endian.
   for (int i = 31; i != -1; --i) {
-    bitmap_->Bitfield(key_, {op}, &rets);
+    EXPECT_TRUE(bitmap_->Bitfield(key_, {op}, &rets).ok());
     EXPECT_EQ((magic >> i) & 1, rets[0].value());
     rets.clear();
     op.offset++;

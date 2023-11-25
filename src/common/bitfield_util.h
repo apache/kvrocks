@@ -67,7 +67,7 @@ class BitfieldEncoding {
 
   uint8_t Bits() const noexcept { return bits_; }
 
-  Status SetBits(uint8_t new_bits) {
+  Status SetBitsCount(uint8_t new_bits) {
     if (!IsSupportedBitLengths(type_, new_bits)) {
       return Status::NotOK;
     }
@@ -168,9 +168,17 @@ inline StatusOr<bool> BitfieldOp(BitfieldOperation op, uint64_t old_value, uint6
 
   bool overflow = false;
   if (op.type == BitfieldOperation::Type::kSet) {
-    overflow = BitfieldPlus(op.value, 0, op.encoding, op.overflow, new_value).GetValue();
+    auto plus_res = BitfieldPlus(op.value, 0, op.encoding, op.overflow, new_value);
+    if (!plus_res) {
+      return plus_res;
+    }
+    overflow = plus_res.GetValue();
   } else {
-    overflow = BitfieldPlus(old_value, op.value, op.encoding, op.overflow, new_value).GetValue();
+    auto plus_res = BitfieldPlus(old_value, op.value, op.encoding, op.overflow, new_value);
+    if (!plus_res) {
+      return plus_res;
+    }
+    overflow = plus_res.GetValue();
   }
 
   return op.overflow != BitfieldOverflowBehavior::kFail || !overflow;

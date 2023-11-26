@@ -38,6 +38,7 @@ const char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
     "configuration item max-bitmap-to-string-mb";
 
+// Resize the segment to makes its new length at least min_bytes, new bytes will be set to 0.
 // min_bytes can not more than kBitmapSegmentBytes
 void ExpandBitmapSegment(std::string *segment, size_t min_bytes) {
   assert(min_bytes <= kBitmapSegmentBytes);
@@ -52,7 +53,7 @@ void ExpandBitmapSegment(std::string *segment, size_t min_bytes) {
     } else {
       new_size = old_size * 2;
     }
-    segment->resize(new_size);
+    segment->resize(new_size, 0);
   }
 }
 
@@ -560,7 +561,7 @@ class Bitmap::SegmentCacheStore {
   // Get a read-only segment by given index
   rocksdb::Status Get(uint32_t index, const std::string **cache) {
     std::string *res = nullptr;
-    auto s = get(index, false, &res);
+    auto s = get(index, /*set_dirty=*/false, &res);
     if (s.ok()) {
       *cache = res;
     }
@@ -568,7 +569,7 @@ class Bitmap::SegmentCacheStore {
   }
 
   // Get a segment by given index, and mark it dirty.
-  rocksdb::Status GetMut(uint32_t index, std::string **cache) { return get(index, true, cache); }
+  rocksdb::Status GetMut(uint32_t index, std::string **cache) { return get(index, /*set_dirty=*/true, cache); }
 
   // Add all dirty segments into write batch.
   void BatchForFlush(ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch) {
@@ -622,7 +623,7 @@ class Bitmap::SegmentCacheStore {
 // Copy a range of bytes from entire bitmap and store them into ArrayBitfieldBitmap.
 static rocksdb::Status CopySegmentsBytesToBitfield(Bitmap::SegmentCacheStore &store, uint32_t byte_offset,
                                                    uint32_t bytes, ArrayBitfieldBitmap *bitfield) {
-  bitfield->SetOffset(byte_offset);
+  bitfield->SetByteOffset(byte_offset);
   bitfield->Reset();
 
   uint32_t segment_index = byte_offset / kBitmapSegmentBytes;
@@ -636,7 +637,7 @@ static rocksdb::Status CopySegmentsBytesToBitfield(Bitmap::SegmentCacheStore &st
       return cache_status;
     }
 
-    int cache_size = static_cast<int>(cache->size());
+    auto cache_size = static_cast<int>(cache->size());
     auto copyable = std::max(0, cache_size - segment_byte_offset);
     auto copy_count = std::min(static_cast<int>(remain_bytes), copyable);
     auto src = reinterpret_cast<const uint8_t *>(cache->data() + segment_byte_offset);
@@ -655,16 +656,16 @@ static rocksdb::Status CopySegmentsBytesToBitfield(Bitmap::SegmentCacheStore &st
   return rocksdb::Status::OK();
 }
 
-static rocksdb::Status GetBitfieldInteger(const ArrayBitfieldBitmap &bitfield, uint32_t offset, BitfieldEncoding enc,
-                                          uint64_t *res) {
+static rocksdb::Status GetBitfieldInteger(const ArrayBitfieldBitmap &bitfield, uint32_t bit_offset,
+                                          BitfieldEncoding enc, uint64_t *res) {
   if (enc.IsSigned()) {
-    auto status = bitfield.GetSignedBitfield(offset, enc.Bits());
+    auto status = bitfield.GetSignedBitfield(bit_offset, enc.Bits());
     if (!status) {
       return rocksdb::Status::InvalidArgument();
     }
     *res = status.GetValue();
   } else {
-    auto status = bitfield.GetUnsignedBitfield(offset, enc.Bits());
+    auto status = bitfield.GetUnsignedBitfield(bit_offset, enc.Bits());
     if (!status) {
       return rocksdb::Status::InvalidArgument();
     }

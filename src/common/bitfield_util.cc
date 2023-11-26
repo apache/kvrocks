@@ -22,10 +22,24 @@
 
 namespace detail {
 
+static uint64_t WrappedSignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits) {
+  uint64_t res = value + static_cast<uint64_t>(incr);
+  if (bits < 64) {
+    auto mask = std::numeric_limits<uint64_t>::max() << bits;
+    if ((res & (1 << (bits - 1))) != 0) {
+      res |= mask;
+    } else {
+      res &= ~mask;
+    }
+  }
+  return res;
+}
+
 StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                   uint64_t *dst) {
-  if (!BitfieldEncoding::IsSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits)) {
-    return Status::NotOK;
+  Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits));
+  if (!bits_status) {
+    return bits_status;
   }
 
   auto max = std::numeric_limits<int64_t>::max();
@@ -38,32 +52,23 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
   int64_t max_incr = CastToSignedWithoutBitChanges(static_cast<uint64_t>(max) - value);
   int64_t min_incr = min - signed_value;
 
-  auto wrap = [=]() {
-    uint64_t res = value + static_cast<uint64_t>(incr);
-    if (bits < 64) {
-      auto mask = std::numeric_limits<uint64_t>::max() << bits;
-      if ((res & (1 << (bits - 1))) != 0) {
-        res |= mask;
-      } else {
-        res &= ~mask;
-      }
-    }
-    return res;
-  };
-
   if (signed_value > max || (bits != 64 && incr > max_incr) || (signed_value >= 0 && incr >= 0 && incr > max_incr)) {
     if (overflow == BitfieldOverflowBehavior::kWrap) {
-      *dst = wrap();
-    } else {
+      *dst = WrappedSignedBitfieldPlus(value, incr, bits);
+    } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = max;
+    } else {
+      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   } else if (signed_value < min || (bits != 64 && incr < min_incr) ||
              (signed_value < 0 && incr < 0 && incr < min_incr)) {
     if (overflow == BitfieldOverflowBehavior::kWrap) {
-      *dst = wrap();
-    } else {
+      *dst = WrappedSignedBitfieldPlus(value, incr, bits);
+    } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = min;
+    } else {
+      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   }
@@ -72,35 +77,41 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
   return false;
 }
 
+static uint64_t WrappedUnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits) {
+  uint64_t mask = std::numeric_limits<uint64_t>::max() << bits;
+  uint64_t res = value + incr;
+  res &= ~mask;
+  return res;
+}
+
 // return true if overflow.
 StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                     uint64_t *dst) {
-  if (!BitfieldEncoding::IsSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits)) {
-    return Status::NotOK;
+  Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits));
+  if (!bits_status) {
+    return bits_status;
   }
+
   auto max = (static_cast<uint64_t>(1) << bits) - 1;
   int64_t max_incr = CastToSignedWithoutBitChanges(max - value);
   int64_t min_incr = CastToSignedWithoutBitChanges((~value) + 1);
 
-  auto wrap = [=]() {
-    uint64_t mask = std::numeric_limits<uint64_t>::max() << bits;
-    uint64_t res = value + incr;
-    res &= ~mask;
-    return res;
-  };
-
   if (value > max || (incr > 0 && incr > max_incr)) {
     if (overflow == BitfieldOverflowBehavior::kWrap) {
-      *dst = wrap();
+      *dst = WrappedUnsignedBitfieldPlus(value, incr, bits);
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = max;
+    } else {
+      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   } else if (incr < 0 && incr < min_incr) {
     if (overflow == BitfieldOverflowBehavior::kWrap) {
-      *dst = wrap();
+      *dst = WrappedUnsignedBitfieldPlus(value, incr, bits);
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = 0;
+    } else {
+      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   }

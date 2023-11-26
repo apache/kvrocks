@@ -210,7 +210,6 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
                                        std::vector<std::optional<BitfieldValue>> *rets) {
   auto header_offset = Metadata::GetOffsetAfterExpire((*raw_value)[0]);
   std::string string_value = raw_value->substr(header_offset);
-  std::string ret;
   for (BitfieldOperation op : ops) {
     // [first_byte, last_byte)
     uint32_t first_byte = op.offset / 8;

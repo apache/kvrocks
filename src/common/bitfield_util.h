@@ -41,18 +41,24 @@ class BitfieldEncoding {
   // limitation with unsigned integers is due to the fact that currently the Redis protocol is unable to return 64 bit
   // unsigned integers as replies.
   // see also https://redis.io/commands/bitfield/
-  static bool IsSupportedBitLengths(Type type, uint8_t bits) {
+  static Status CheckSupportedBitLengths(Type type, uint8_t bits) noexcept {
     uint8_t max_bits = 64;
     if (type == Type::kUnsigned) {
       max_bits = 63;
     }
-    return 1 <= bits && bits <= max_bits;
+    if (1 <= bits && bits <= max_bits) {
+      return Status::OK();
+    }
+
+    return {Status::NotOK, "Unsupported new bits length, only i1~i64, u1~u63 are supported."};
   }
 
-  static StatusOr<BitfieldEncoding> Create(Type type, uint8_t bits) {
-    if (!IsSupportedBitLengths(type, bits)) {
-      return Status::NotOK;
+  static StatusOr<BitfieldEncoding> Create(Type type, uint8_t bits) noexcept {
+    Status bits_status(CheckSupportedBitLengths(type, bits));
+    if (!bits_status) {
+      return bits_status;
     }
+
     BitfieldEncoding enc;
     enc.type_ = type;
     enc.bits_ = bits;
@@ -67,18 +73,22 @@ class BitfieldEncoding {
 
   uint8_t Bits() const noexcept { return bits_; }
 
-  Status SetBitsCount(uint8_t new_bits) {
-    if (!IsSupportedBitLengths(type_, new_bits)) {
-      return Status::NotOK;
+  Status SetBitsCount(uint8_t new_bits) noexcept {
+    Status bits_status(CheckSupportedBitLengths(type_, new_bits));
+    if (!bits_status) {
+      return bits_status;
     }
+
     bits_ = new_bits;
     return Status::OK();
   }
 
-  Status SetType(Type new_type) {
-    if (!IsSupportedBitLengths(new_type, bits_)) {
-      return Status::NotOK;
+  Status SetType(Type new_type) noexcept {
+    Status bits_status(CheckSupportedBitLengths(new_type, bits_));
+    if (!bits_status) {
+      return bits_status;
     }
+
     type_ = new_type;
     return Status::OK();
   }
@@ -105,12 +115,14 @@ struct BitfieldOperation {
 };
 
 namespace detail {
-// return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
+// Let value add incr, according to the bits limit and overflow rule. The value is reguarded as a signed integer.
+// Return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
 // for given op return false.
 StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                   uint64_t *dst);
 
-// return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
+// Let value add incr, according to the bits limit and overflow rule.  The value is reguarded as an unsigned integer.
+// Return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
 // for given op return false.
 StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                     uint64_t *dst);
@@ -148,6 +160,7 @@ class BitfieldValue {
   uint64_t value_;
 };
 
+// Let value add incr, according to the encoding and overflow rule.
 // return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
 // for given op return false.
 inline StatusOr<bool> BitfieldPlus(uint64_t value, int64_t incr, BitfieldEncoding enc,
@@ -168,73 +181,65 @@ inline StatusOr<bool> BitfieldOp(BitfieldOperation op, uint64_t old_value, uint6
 
   bool overflow = false;
   if (op.type == BitfieldOperation::Type::kSet) {
-    auto plus_res = BitfieldPlus(op.value, 0, op.encoding, op.overflow, new_value);
-    if (!plus_res) {
-      return plus_res;
-    }
-    overflow = plus_res.GetValue();
+    overflow = GET_OR_RET(BitfieldPlus(op.value, 0, op.encoding, op.overflow, new_value));
   } else {
-    auto plus_res = BitfieldPlus(old_value, op.value, op.encoding, op.overflow, new_value);
-    if (!plus_res) {
-      return plus_res;
-    }
-    overflow = plus_res.GetValue();
+    overflow = GET_OR_RET(BitfieldPlus(old_value, op.value, op.encoding, op.overflow, new_value));
   }
 
   return op.overflow != BitfieldOverflowBehavior::kFail || !overflow;
 }
 
 // Use a small buffer to store a range of bytes on a bitmap.
-// If you try to visit other place on bitmap. It will failed.
+// If you try to visit other place on bitmap, it will failed.
 class ArrayBitfieldBitmap {
  public:
-  // offset is the byte offset of view in entire bitmap.
-  explicit ArrayBitfieldBitmap(uint32_t offset = 0) noexcept : offset_(offset) { Reset(); }
+  // byte_offset is the byte offset of view in entire bitmap.
+  explicit ArrayBitfieldBitmap(uint32_t byte_offset = 0) noexcept : byte_offset_(byte_offset) { Reset(); }
 
   ArrayBitfieldBitmap(const ArrayBitfieldBitmap &) = delete;
   ArrayBitfieldBitmap &operator=(const ArrayBitfieldBitmap &) = delete;
   ~ArrayBitfieldBitmap() = default;
 
   // Change the position this represents.
-  void SetOffset(uint64_t offset) noexcept { offset_ = offset; }
+  void SetByteOffset(uint64_t byte_offset) noexcept { byte_offset_ = byte_offset; }
 
   void Reset() { memset(buf_, 0, sizeof(buf_)); }
 
-  Status Set(uint32_t offset, uint32_t bytes, const uint8_t *src) {
-    if (isOutOfBound(offset, bytes)) {
-      return Status::NotOK;
+  Status Set(uint32_t byte_offset, uint32_t bytes, const uint8_t *src) {
+    Status bound_status(checkLegalBound(byte_offset, bytes));
+    if (!bound_status) {
+      return bound_status;
     }
-    offset -= offset_;
-    memcpy(buf_ + offset, src, bytes);
+    byte_offset -= byte_offset_;
+    memcpy(buf_ + byte_offset, src, bytes);
     return Status::OK();
   }
 
-  Status Get(uint32_t offset, uint32_t bytes, uint8_t *dst) const {
-    if (isOutOfBound(offset, bytes)) {
-      return Status::NotOK;
+  Status Get(uint32_t byte_offset, uint32_t bytes, uint8_t *dst) const {
+    Status bound_status(checkLegalBound(byte_offset, bytes));
+    if (!bound_status) {
+      return bound_status;
     }
-    offset -= offset_;
-    memcpy(dst, buf_ + offset, bytes);
+    byte_offset -= byte_offset_;
+    memcpy(dst, buf_ + byte_offset, bytes);
     return Status::OK();
   }
 
-  StatusOr<uint64_t> GetUnsignedBitfield(uint64_t offset, uint64_t bits) const {
-    if (!BitfieldEncoding::IsSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits)) {
-      return Status::NotOK;
+  StatusOr<uint64_t> GetUnsignedBitfield(uint64_t bit_offset, uint64_t bits) const {
+    Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits));
+    if (!bits_status) {
+      return bits_status;
     }
-    return getBitfield(offset, bits);
+    return getBitfield(bit_offset, bits);
   }
 
-  StatusOr<int64_t> GetSignedBitfield(uint64_t offset, uint64_t bits) const {
-    if (!BitfieldEncoding::IsSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits)) {
-      return Status::NotOK;
+  StatusOr<int64_t> GetSignedBitfield(uint64_t bit_offset, uint64_t bits) const {
+    Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits));
+    if (!bits_status) {
+      return bits_status;
     }
-    auto status = getBitfield(offset, bits);
-    if (!status) {
-      return status;
-    }
-
-    int64_t value = CastToSignedWithoutBitChanges(status.GetValue());
+    uint64_t bitfield = GET_OR_RET(getBitfield(bit_offset, bits));
+    int64_t value = CastToSignedWithoutBitChanges(bitfield);
 
     // for a bits of k signed number, 1 << (bits - 1) is the MSB (most-significant bit).
     // the number is a negative when the MSB is "1".
@@ -252,23 +257,24 @@ class ArrayBitfieldBitmap {
     return value;
   }
 
-  Status SetBitfield(uint32_t offset, uint32_t bits, uint64_t value) {
-    uint32_t first_byte = offset / 8;
-    uint32_t last_byte = (offset + bits - 1) / 8 + 1;
-    if (isOutOfBound(first_byte, last_byte - first_byte)) {
-      return Status::NotOK;
+  Status SetBitfield(uint32_t bit_offset, uint32_t bits, uint64_t value) {
+    uint32_t first_byte = bit_offset / 8;
+    uint32_t last_byte = (bit_offset + bits - 1) / 8 + 1;
+    Status bound_status(checkLegalBound(first_byte, last_byte - first_byte));
+    if (!bound_status) {
+      return bound_status;
     }
 
-    offset -= offset_ * 8;
+    bit_offset -= byte_offset_ * 8;
     while (bits--) {
       bool v = (value & (uint64_t(1) << bits)) != 0;
-      uint32_t byte = offset >> 3;
-      uint32_t bit = 7 - (offset & 7);
+      uint32_t byte = bit_offset >> 3;
+      uint32_t bit = 7 - (bit_offset & 7);
       uint32_t byteval = buf_[byte];
       byteval &= ~(1 << bit);
       byteval |= int(v) << bit;
       buf_[byte] = char(byteval);
-      offset++;
+      bit_offset++;
     }
     return Status::OK();
   }
@@ -277,30 +283,34 @@ class ArrayBitfieldBitmap {
   // The bit field cannot exceed 64 bits, takes an extra byte when it unaligned.
   static constexpr uint32_t kSize = 8 + 1;
 
-  bool isOutOfBound(uint32_t offset, uint32_t bytes) const noexcept {
-    return offset < offset_ || offset_ + kSize < offset + bytes;
+  Status checkLegalBound(uint32_t byte_offset, uint32_t bytes) const noexcept {
+    if (byte_offset < byte_offset_ || byte_offset_ + kSize < byte_offset + bytes) {
+      return {Status::NotOK, "The range [offset, offset + bytes) is out of bitfield."};
+    }
+    return Status::OK();
   }
 
-  StatusOr<uint64_t> getBitfield(uint64_t offset, uint8_t bits) const {
-    uint32_t first_byte = offset / 8;
-    uint32_t last_byte = (offset + bits - 1) / 8 + 1;
-    if (isOutOfBound(first_byte, last_byte - first_byte)) {
-      return Status::NotOK;
+  StatusOr<uint64_t> getBitfield(uint32_t bit_offset, uint8_t bits) const {
+    uint32_t first_byte = bit_offset / 8;
+    uint32_t last_byte = (bit_offset + bits - 1) / 8 + 1;
+    Status bound_status(checkLegalBound(first_byte, last_byte - first_byte));
+    if (!bound_status) {
+      return bound_status;
     }
 
-    offset -= offset_ * 8;
+    bit_offset -= byte_offset_ * 8;
     uint64_t value = 0;
     while (bits--) {
-      uint32_t byte = offset >> 3;
-      uint32_t bit = 7 - (offset & 0x7);
+      uint32_t byte = bit_offset >> 3;
+      uint32_t bit = 7 - (bit_offset & 0x7);
       uint32_t byteval = buf_[byte];
       uint32_t bitval = (byteval >> bit) & 1;
       value = (value << 1) | bitval;
-      offset++;
+      bit_offset++;
     }
     return value;
   }
 
   uint8_t buf_[kSize];
-  uint32_t offset_;
+  uint32_t byte_offset_;
 };

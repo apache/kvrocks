@@ -531,6 +531,19 @@ rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::Colum
   return db_->Get(options, column_family, key, value);
 }
 
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
+                             rocksdb::PinnableSlice *value) {
+  return Get(options, db_->DefaultColumnFamily(), key, value);
+}
+
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                             const rocksdb::Slice &key, rocksdb::PinnableSlice *value) {
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    return txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+  }
+  return db_->Get(options, column_family, key, value);
+}
+
 rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
   return NewIterator(options, db_->DefaultColumnFamily());
 }

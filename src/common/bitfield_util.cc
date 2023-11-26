@@ -35,6 +35,7 @@ static uint64_t WrappedSignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t 
   return res;
 }
 
+// See also https://github.com/redis/redis/blob/7f4bae817614988c43c3024402d16edcbf3b3277/src/bitops.c#L325
 StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                   uint64_t *dst) {
   Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits));
@@ -84,7 +85,7 @@ static uint64_t WrappedUnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_
   return res;
 }
 
-// return true if overflow.
+// See also https://github.com/redis/redis/blob/7f4bae817614988c43c3024402d16edcbf3b3277/src/bitops.c#L288
 StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                     uint64_t *dst) {
   Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits));

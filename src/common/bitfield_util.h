@@ -243,7 +243,7 @@ class ArrayBitfieldBitmap {
 
     // for a bits of k signed number, 1 << (bits - 1) is the MSB (most-significant bit).
     // the number is a negative when the MSB is "1".
-    auto msb = static_cast<uint64_t>(1) << (bits - 1);
+    auto msb = static_cast<uint64_t>(1) << (bits - 1);  // NOLINT
     if ((value & msb) != 0) {
       // The way of enlarge width of a signed integer is sign-extended.
       // The values of higher bits should all "1", when the number is negative.

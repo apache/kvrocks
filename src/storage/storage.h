@@ -107,6 +107,10 @@ class Storage {
   [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
   [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
                                     const rocksdb::Slice &key, std::string *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
+                                    rocksdb::PinnableSlice *value);
+  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                                    const rocksdb::Slice &key, rocksdb::PinnableSlice *value);
   void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
                 const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);

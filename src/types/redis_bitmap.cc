@@ -246,19 +246,19 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
-  std::string value;
   for (uint32_t i = start_index; i <= stop_index; i++) {
+    rocksdb::PinnableSlice pin_value;
     std::string sub_key =
         InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
             .Encode();
-    s = storage_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) continue;
     size_t j = 0;
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    auto k = static_cast<int64_t>(value.size());
+    auto k = static_cast<int64_t>(pin_value.size());
     if (i == stop_index) k = u_stop % kBitmapSegmentBytes + 1;
-    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(value.data()) + j, k);
+    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + j, k);
   }
   return rocksdb::Status::OK();
 }
@@ -304,12 +304,12 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
-  std::string value;
+  rocksdb::PinnableSlice pin_value;
   for (uint32_t i = start_index; i <= stop_index; i++) {
     std::string sub_key =
         InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
             .Encode();
-    s = storage_->Get(read_options, sub_key, &value);
+    s = storage_->Get(read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       if (!bit) {
@@ -320,17 +320,18 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     }
     size_t j = 0;
     if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    for (; j < value.size(); j++) {
+    for (; j < pin_value.size(); j++) {
       if (i == stop_index && j > (u_stop % kBitmapSegmentBytes)) break;
-      if (bit_pos_in_byte(value[j], bit) != -1) {
-        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bit_pos_in_byte(value[j], bit));
+      if (bit_pos_in_byte(pin_value[j], bit) != -1) {
+        *pos = static_cast<int64_t>(i * kBitmapSegmentBits + j * 8 + bit_pos_in_byte(pin_value[j], bit));
         return rocksdb::Status::OK();
       }
     }
-    if (!bit && value.size() < kBitmapSegmentBytes) {
-      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + value.size() * 8);
+    if (!bit && pin_value.size() < kBitmapSegmentBytes) {
+      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + pin_value.size() * 8);
       return rocksdb::Status::OK();
     }
+    pin_value.Reset();
   }
   // bit was not found
   *pos = bit ? -1 : static_cast<int64_t>(metadata.size * 8);

@@ -45,17 +45,17 @@ void BloomChain::getBFKeyList(const Slice &ns_key, const BloomChainMetadata &met
 }
 
 rocksdb::Status BloomChain::getBFDataList(const std::vector<std::string> &bf_key_list,
-                                          std::vector<std::string> *bf_data_list) {
+                                          std::vector<rocksdb::PinnableSlice> *bf_data_list) {
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
 
   bf_data_list->reserve(bf_key_list.size());
   for (const auto &bf_key : bf_key_list) {
-    std::string bf_data;
-    rocksdb::Status s = storage_->Get(read_options, bf_key, &bf_data);
+    rocksdb::PinnableSlice pin_value;
+    rocksdb::Status s = storage_->Get(read_options, bf_key, &pin_value);
     if (!s.ok()) return s;
-    bf_data_list->push_back(std::move(bf_data));
+    bf_data_list->push_back(std::move(pin_value));
   }
   return rocksdb::Status::OK();
 }
@@ -113,8 +113,9 @@ void BloomChain::bloomAdd(uint64_t item_hash, std::string &bf_data) {
   block_split_bloom_filter.InsertHash(item_hash);
 }
 
-bool BloomChain::bloomCheck(uint64_t item_hash, std::string &bf_data) {
-  const BlockSplitBloomFilter block_split_bloom_filter(bf_data);
+bool BloomChain::bloomCheck(uint64_t item_hash, std::string_view &bf_data) {
+  const BlockSplitBloomFilter block_split_bloom_filter(
+      nonstd::span<char>(const_cast<char *>(bf_data.data()), bf_data.size()));
   return block_split_bloom_filter.FindHash(item_hash);
 }
 
@@ -163,7 +164,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
 
-  std::vector<std::string> bf_data_list;
+  std::vector<rocksdb::PinnableSlice> bf_data_list;
   s = getBFDataList(bf_key_list, &bf_data_list);
   if (!s.ok()) return s;
 
@@ -180,7 +181,8 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     bool exist = false;
     // TODO: to test which direction for searching is better
     for (int ii = static_cast<int>(bf_data_list.size()) - 1; ii >= 0; --ii) {
-      exist = bloomCheck(item_hash_list[i], bf_data_list[ii]);
+      std::string_view data = bf_data_list[ii].ToStringView();
+      exist = bloomCheck(item_hash_list[i], data);
       if (exist) break;
     }
 
@@ -190,17 +192,23 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     } else {
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
-          batch->Put(bf_key_list.back(), bf_data_list.back());
+          batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
           std::string bf_data;
           createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
-          bf_data_list.push_back(std::move(bf_data));
+          rocksdb::PinnableSlice pin_slice;
+          *pin_slice.GetSelf() = std::move(bf_data);
+          pin_slice.PinSelf();
+          bf_data_list.push_back(std::move(pin_slice));
           bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
         } else {
           (*rets)[i] = BloomFilterAddResult::kFull;
           continue;
         }
       }
-      bloomAdd(item_hash_list[i], bf_data_list.back());
+      std::string data = bf_data_list.back().ToString();
+      bloomAdd(item_hash_list[i], data);
+      *bf_data_list.back().GetSelf() = std::move(data);
+      bf_data_list.back().PinSelf();
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }
@@ -210,7 +218,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
     std::string bloom_chain_metadata_bytes;
     metadata.Encode(&bloom_chain_metadata_bytes);
     batch->Put(metadata_cf_handle_, ns_key, bloom_chain_metadata_bytes);
-    batch->Put(bf_key_list.back(), bf_data_list.back());
+    batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -237,7 +245,7 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std
   std::vector<std::string> bf_key_list;
   getBFKeyList(ns_key, metadata, &bf_key_list);
 
-  std::vector<std::string> bf_data_list;
+  std::vector<rocksdb::PinnableSlice> bf_data_list;
   s = getBFDataList(bf_key_list, &bf_data_list);
   if (!s.ok()) return s;
 
@@ -248,7 +256,8 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std
     // check
     // TODO: to test which direction for searching is better
     for (int ii = static_cast<int>(bf_data_list.size()) - 1; ii >= 0; --ii) {
-      (*exists)[i] = bloomCheck(item_hash_list[i], bf_data_list[ii]);
+      std::string_view data = bf_data_list[ii].ToStringView();
+      (*exists)[i] = bloomCheck(item_hash_list[i], data);
       if ((*exists)[i]) break;
     }
   }

@@ -84,6 +84,16 @@ rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata &metadata, 
   return write(ns_key, &metadata, json_val);
 }
 
+rocksdb::Status Json::del(const Slice &ns_key) {
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisJson);
+  batch->PutLogData(log_data.Encode());
+
+  batch->Delete(metadata_cf_handle_, ns_key);
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *storage_format) {
   auto ns_key = AppendNamespacePrefix(user_key);
 
@@ -387,6 +397,31 @@ rocksdb::Status Json::ArrTrim(const std::string &user_key, const std::string &pa
   bool is_write =
       std::any_of(results.begin(), results.end(), [](const std::optional<uint64_t> &val) { return val.has_value(); });
   if (!is_write) return rocksdb::Status::OK();
+  return write(ns_key, &metadata, json_val);
+}
+
+rocksdb::Status Json::Del(const std::string &user_key, const std::string &path, size_t *result) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  if (path == "$") {
+    *result = 1;
+    return del(ns_key);
+  }
+  JsonValue json_val;
+  JsonMetadata metadata;
+  auto s = read(ns_key, &metadata, &json_val);
+
+  if (!s.ok()) return s;
+
+  auto res = json_val.Del(path);
+  if (!res) return rocksdb::Status::InvalidArgument(res.Msg());
+
+  *result = *res;
+  if (*result == 0) {
+    return rocksdb::Status::OK();
+  }
+
   return write(ns_key, &metadata, json_val);
 }
 

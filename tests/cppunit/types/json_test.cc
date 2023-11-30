@@ -89,12 +89,13 @@ TEST_F(RedisJsonTest, Set) {
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), R"([{},[{},4]])");
 
-  ASSERT_TRUE(json_->Del(key_).ok());
+  size_t result = 0;
+  ASSERT_TRUE(json_->Del(key_, "$", &result).ok());
   ASSERT_TRUE(json_->Set(key_, "$", "[{ }, [ ]]").ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "[{},[]]");
   ASSERT_THAT(json_->Set(key_, "$[1]", "invalid").ToString(), MatchesRegex(".*syntax_error.*"));
-  ASSERT_TRUE(json_->Del(key_).ok());
+  ASSERT_TRUE(json_->Del(key_, "$", &result).ok());
 }
 
 TEST_F(RedisJsonTest, Get) {
@@ -484,4 +485,53 @@ TEST_F(RedisJsonTest, ArrIndex) {
 
   ASSERT_TRUE(json_->ArrIndex(key_, "$.arr", "3", 0, 2, &res).ok() && res.size() == 1);
   ASSERT_EQ(res[0], -1);
+}
+
+TEST_F(RedisJsonTest, Del) {
+  size_t result = 0;
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+
+  ASSERT_TRUE(json_->Del(key_, "$", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).IsNotFound());
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+
+  ASSERT_TRUE(json_->Del(key_, "$.obj", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"arr":[1,2,3],"bool":true,"float":3.14,"int":42,"str":"foo"})");
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(json_->Del(key_, "$.arr", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"bool":true,"float":3.14,"int":42,"str":"foo"})");
+  ASSERT_EQ(result, 1);
+
+  ASSERT_TRUE(
+      json_
+          ->Set(key_, "$",
+                R"({"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14})")
+          .ok());
+  ASSERT_TRUE(json_->Del(key_, "$.*", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({})");
+  ASSERT_EQ(result, 6);
+
+  ASSERT_TRUE(json_->Del(key_, "$.some", &result).ok());
+  ASSERT_EQ(result, 0);
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a": 1, "nested": {"a": 2, "b": 3}})").ok());
+  ASSERT_TRUE(json_->Del(key_, "$..a", &result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"nested":{"b":3}})");
+  ASSERT_EQ(result, 2);
 }

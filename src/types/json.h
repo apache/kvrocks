@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -473,6 +474,16 @@ struct JsonValue {
     }
 
     return Status::OK();
+  }
+
+  StatusOr<size_t> Del(const std::string &path) {
+    size_t count = 0;
+    try {
+      count = jsoncons::jsonpath::remove(value, path);
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return count;
   }
 
   JsonValue(const JsonValue &) = default;

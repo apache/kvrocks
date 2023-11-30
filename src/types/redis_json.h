@@ -56,11 +56,13 @@ class Json : public Database {
 
   rocksdb::Status ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
                           std::vector<std::optional<uint64_t>> &results);
+  rocksdb::Status Del(const std::string &user_key, const std::string &path, size_t *result);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
   rocksdb::Status create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value);
+  rocksdb::Status del(const Slice &ns_key);
 };
 
 }  // namespace redis

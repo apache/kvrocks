@@ -421,7 +421,40 @@ rocksdb::Status Json::Del(const std::string &user_key, const std::string &path, 
   if (*result == 0) {
     return rocksdb::Status::OK();
   }
+  return write(ns_key, &metadata, json_val);
+}
 
+rocksdb::Status Json::NumIncrBy(const std::string &user_key, const std::string &path, const std::string &value,
+                                JsonValue *result) {
+  return numop(JsonValue::NumOpEnum::Incr, user_key, path, value, result);
+}
+
+rocksdb::Status Json::NumMultBy(const std::string &user_key, const std::string &path, const std::string &value,
+                                JsonValue *result) {
+  return numop(JsonValue::NumOpEnum::Mul, user_key, path, value, result);
+}
+
+rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
+                            const std::string &value, JsonValue *result) {
+  JsonValue number;
+  auto number_res = JsonValue::FromString(value);
+  if (!number_res || !number_res.GetValue().value.is_number()) {
+    return rocksdb::Status::InvalidArgument("should be a number");
+  }
+  number = std::move(number_res.GetValue());
+
+  auto ns_key = AppendNamespacePrefix(user_key);
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  auto res = json_val.NumOp(path, number, op, result);
+  if (!res) {
+    return rocksdb::Status::InvalidArgument(res.Msg());
+  }
   return write(ns_key, &metadata, json_val);
 }
 

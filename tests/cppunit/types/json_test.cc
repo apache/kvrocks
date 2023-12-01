@@ -535,3 +535,120 @@ TEST_F(RedisJsonTest, Del) {
   ASSERT_EQ(json_val_.Dump().GetValue(), R"({"nested":{"b":3}})");
   ASSERT_EQ(result, 2);
 }
+
+TEST_F(RedisJsonTest, NumIncrBy) {
+  ASSERT_TRUE(json_->Set(key_, "$", R"({ "foo": 0, "bar": "baz" })").ok());
+  JsonValue res = JsonValue::FromString("[]").GetValue();
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.foo", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.foo", "2", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[3]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.foo", "0.5", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[3.5]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.bar", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[null]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.fuzz", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->Set(key_, "$", "0").ok());
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$", "0", &res).ok());
+  res.value.clear();
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$", "1.5", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[2.5]");
+  res.value.clear();
+
+  // overflow case
+  ASSERT_TRUE(json_->Set(key_, "$", "1.6350000000001313e+308").ok());
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$", "2", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  // nested big_num object
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}})").ok());
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.l1.l2_a", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumIncrBy(key_, "$.l1.l2_a", "2", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  // nested big_num array
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"l1":{"l2":[0,1.6350000000001313e+308]}})").ok());
+  ASSERT_FALSE(json_->NumIncrBy(key_, "$.l1.l2[1]", "1.6350000000001313e+308", &res).ok());
+  res.value.clear();
+
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"l1":{"l2":[0,1.6350000000001313e+308]}})");
+}
+
+TEST_F(RedisJsonTest, NumMultBy) {
+  ASSERT_TRUE(json_->Set(key_, "$", R"({ "foo": 1, "bar": "baz" })").ok());
+  JsonValue res = JsonValue::FromString("[]").GetValue();
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.foo", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.foo", "2", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[2]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.foo", "0.5", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.bar", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[null]");
+  res.value.clear();
+
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.fuzz", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[]");
+  res.value.clear();
+
+  // num object
+  ASSERT_TRUE(json_->Set(key_, "$", "1.0").ok());
+  ASSERT_TRUE(json_->NumMultBy(key_, "$", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  res.value.clear();
+  ASSERT_TRUE(json_->NumMultBy(key_, "$", "1.5", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.5]");
+  res.value.clear();
+
+  // overflow case
+  ASSERT_TRUE(json_->Set(key_, "$", "1.6350000000001313e+308").ok());
+  ASSERT_TRUE(json_->NumMultBy(key_, "$", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  ASSERT_FALSE(json_->NumMultBy(key_, "$", "2", &res).ok());
+  res.value.clear();
+
+  // nested big_num object
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}})").ok());
+  ASSERT_TRUE(json_->NumMultBy(key_, "$.l1.l2_a", "1", &res).ok());
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.6350000000001313e+308]");
+  res.value.clear();
+
+  ASSERT_FALSE(json_->NumMultBy(key_, "$.l1.l2_a", "2", &res).ok());
+  res.value.clear();
+
+  // nested big_num array
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"l1":{"l2":[0,1.6350000000001313e+308]}})").ok());
+  ASSERT_FALSE(json_->NumMultBy(key_, "$.l1.l2[1]", "2", &res).ok());
+  res.value.clear();
+
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), R"({"l1":{"l2":[0,1.6350000000001313e+308]}})");
+}

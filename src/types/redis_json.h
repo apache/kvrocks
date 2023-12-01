@@ -53,6 +53,10 @@ class Json : public Database {
                          std::vector<std::optional<JsonValue>> *results);
   rocksdb::Status ArrIndex(const std::string &user_key, const std::string &path, const std::string &needle,
                            ssize_t start, ssize_t end, std::vector<ssize_t> *result);
+  rocksdb::Status NumIncrBy(const std::string &user_key, const std::string &path, const std::string &value,
+                            JsonValue *result);
+  rocksdb::Status NumMultBy(const std::string &user_key, const std::string &path, const std::string &value,
+                            JsonValue *result);
 
   rocksdb::Status ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
                           std::vector<std::optional<uint64_t>> &results);
@@ -63,6 +67,8 @@ class Json : public Database {
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
   rocksdb::Status create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value);
   rocksdb::Status del(const Slice &ns_key);
+  rocksdb::Status numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
+                        const std::string &value, JsonValue *result);
 };
 
 }  // namespace redis

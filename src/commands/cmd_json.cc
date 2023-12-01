@@ -500,6 +500,40 @@ class CommandJsonDel : public Commander {
   }
 };
 
+class CommandJsonNumIncrBy : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    JsonValue result = JsonValue::FromString("[]").GetValue();
+    auto s = json.NumIncrBy(args_[1], args_[2], args_[3], &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::BulkString(result.value.to_string());
+
+    return Status::OK();
+  }
+};
+
+class CommandJsonNumMultBy : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    JsonValue result = JsonValue::FromString("[]").GetValue();
+    auto s = json.NumMultBy(args_[1], args_[2], args_[3], &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::BulkString(result.value.to_string());
+
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -514,6 +548,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonDel>("json.del", -2, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonDel>("json.del", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1), );
 
 }  // namespace redis

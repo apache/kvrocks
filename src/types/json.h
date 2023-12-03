@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
 #include <jsoncons/json_options.hpp>
@@ -40,6 +41,11 @@ constexpr ssize_t NOT_FOUND_INDEX = -1;
 constexpr ssize_t NOT_ARRAY = -2;
 
 struct JsonValue {
+  enum class NumOpEnum : uint8_t {
+    Incr = 1,
+    Mul = 2,
+  };
+
   JsonValue() = default;
   explicit JsonValue(jsoncons::basic_json<char> value) : value(std::move(value)) {}
 
@@ -473,6 +479,54 @@ struct JsonValue {
     }
 
     return Status::OK();
+  }
+
+  StatusOr<size_t> Del(const std::string &path) {
+    size_t count = 0;
+    try {
+      count = jsoncons::jsonpath::remove(value, path);
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return count;
+  }
+
+  Status NumOp(std::string_view path, const JsonValue &number, NumOpEnum op, JsonValue *result) {
+    Status status = Status::OK();
+    try {
+      jsoncons::jsonpath::json_replace(value, path, [&](const std::string & /*path*/, jsoncons::json &origin) {
+        if (!status.IsOK()) {
+          return;
+        }
+        if (!origin.is_number()) {
+          result->value.push_back(jsoncons::json::null());
+          return;
+        }
+        if (number.value.is_double() || origin.is_double()) {
+          double v = 0;
+          if (op == NumOpEnum::Incr) {
+            v = origin.as_double() + number.value.as_double();
+          } else if (op == NumOpEnum::Mul) {
+            v = origin.as_double() * number.value.as_double();
+          }
+          if (std::isinf(v)) {
+            status = {Status::RedisExecErr, "result is an infinite number"};
+            return;
+          }
+          origin = v;
+        } else {
+          if (op == NumOpEnum::Incr) {
+            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
+          } else if (op == NumOpEnum::Mul) {
+            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
+          }
+        }
+        result->value.push_back(origin);
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return status;
   }
 
   JsonValue(const JsonValue &) = default;

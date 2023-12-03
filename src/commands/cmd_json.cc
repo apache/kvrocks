@@ -549,6 +549,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonDel>("json.del", -2, "write", 1, 1, 1),
+                        // JSON.FORGET is an alias for JSON.DEL, refer: https://redis.io/commands/json.forget/
+                        MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1), );
 

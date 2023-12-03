@@ -784,17 +784,21 @@ void Server::GetRocksDBInfo(std::string *info) {
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
     string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
+                  << "]:" << cf_stats_map["l0-file-count-limit-delays"] << "\r\n";
     string_stream << "level0_file_limit_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
+                  << "]:" << cf_stats_map["l0-file-count-limit-stops"] << "\r\n";
     string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
+                  << "]:" << cf_stats_map["pending-compaction-bytes-delays"] << "\r\n";
     string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
+                  << "]:" << cf_stats_map["pending-compaction-bytes-stops"] << "\r\n";
+    string_stream << "level0_file_limit_stop_with_ongoing_compaction[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["cf-l0-file-count-limit-stops-with-ongoing-compaction"] << "\r\n";
+    string_stream << "level0_file_limit_slowdown_with_ongoing_compaction[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["cf-l0-file-count-limit-delays-with-ongoing-compaction"] << "\r\n";
     string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
+                  << "]:" << cf_stats_map["memtable-limit-delays"] << "\r\n";
     string_stream << "memtable_count_limit_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
+                  << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";

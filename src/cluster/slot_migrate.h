@@ -138,7 +138,7 @@ class SlotMigrator : public redis::Database {
 
   void resumeSyncCtx(const Status &migrate_result);
 
-  enum class ParserState { ArrayLen, BulkLen, BulkData, OneRspEnd };
+  enum class ParserState { ArrayLen, BulkLen, BulkData, ArrayData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };
 
   static const int kDefaultMaxPipelineSize = 16;

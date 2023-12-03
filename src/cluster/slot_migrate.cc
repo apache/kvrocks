@@ -474,8 +474,8 @@ Status SlotMigrator::checkSingleResponse(int sock_fd) { return checkMultipleResp
 
 // Commands  |  Response            |  Instance
 // ++++++++++++++++++++++++++++++++++++++++
-// set          Redis::Integer         :1/r/n
-// hset         Redis::SimpleString    +OK/r/n
+// set          Redis::Integer         :1\r\n
+// hset         Redis::SimpleString    +OK\r\n
 // sadd         Redis::Integer
 // zadd         Redis::Integer
 // siadd        Redis::Integer
@@ -497,6 +497,7 @@ Status SlotMigrator::checkSingleResponse(int sock_fd) { return checkMultipleResp
 // sirem        Redis::Integer
 // del          Redis::Integer
 // xadd         Redis::BulkString
+// bitfield     Redis::Array           *1\r\n:0
 Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
   if (sock_fd < 0 || total <= 0) {
     return {Status::NotOK, fmt::format("invalid arguments: sock_fd={}, count={}", sock_fd, total)};
@@ -509,7 +510,7 @@ Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
   setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
   // Start checking response
-  size_t bulk_len = 0;
+  size_t bulk_or_array_len = 0;
   int cnt = 0;
   parser_state_ = ParserState::ArrayLen;
   UniqueEvbuf evbuf;
@@ -534,14 +535,20 @@ Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
 
           if (line[0] == '-') {
             return {Status::NotOK, fmt::format("got invalid response of length {}: {}", line.length, line.get())};
-          } else if (line[0] == '$') {
+          } else if (line[0] == '$' || line[0] == '*') {
             auto parse_result = ParseInt<uint64_t>(std::string(line.get() + 1, line.length - 1), 10);
             if (!parse_result) {
               return {Status::NotOK, "protocol error: expected integer value"};
             }
 
-            bulk_len = *parse_result;
-            parser_state_ = bulk_len > 0 ? ParserState::BulkData : ParserState::OneRspEnd;
+            bulk_or_array_len = *parse_result;
+            if (bulk_or_array_len <= 0) {
+              parser_state_ = ParserState::OneRspEnd;
+            } else if (line[0] == '$') {
+              parser_state_ = ParserState::BulkData;
+            } else {
+              parser_state_ = ParserState::ArrayData;
+            }
           } else if (line[0] == '+' || line[0] == ':') {
             parser_state_ = ParserState::OneRspEnd;
           } else {
@@ -552,15 +559,31 @@ Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
         }
         // Handle bulk string response
         case ParserState::BulkData: {
-          if (evbuffer_get_length(evbuf.get()) < bulk_len + 2) {
+          if (evbuffer_get_length(evbuf.get()) < bulk_or_array_len + 2) {
             LOG(INFO) << "[migrate] Bulk data in event buffer is not complete, read socket again";
             run = false;
             break;
           }
           // TODO(chrisZMF): Check tail '\r\n'
-          evbuffer_drain(evbuf.get(), bulk_len + 2);
-          bulk_len = 0;
+          evbuffer_drain(evbuf.get(), bulk_or_array_len + 2);
+          bulk_or_array_len = 0;
           parser_state_ = ParserState::OneRspEnd;
+          break;
+        }
+        case ParserState::ArrayData: {
+          while (run && bulk_or_array_len > 0) {
+            evbuffer_ptr ptr = evbuffer_search_eol(evbuf.get(), nullptr, nullptr, EVBUFFER_EOL_CRLF_STRICT);
+            if (ptr.pos < 0) {
+              LOG(INFO) << "[migrate] Array data in event buffer is not complete, read socket again";
+              run = false;
+              break;
+            }
+            evbuffer_drain(evbuf.get(), ptr.pos + 2);
+            --bulk_or_array_len;
+          }
+          if (run) {
+            parser_state_ = ParserState::OneRspEnd;
+          }
           break;
         }
         case ParserState::OneRspEnd: {

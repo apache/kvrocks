@@ -232,6 +232,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
               first_seen_ = false;
             }
             break;
+          case kRedisCmdBitfield:
+            command_args = {"BITFIELD", user_key};
+            command_args.insert(command_args.end(), args->begin() + 1, args->end());
+            break;
           default:
             LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Bitmap: unhandled command with code "
                        << *parsed_cmd;

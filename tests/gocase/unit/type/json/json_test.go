@@ -62,6 +62,19 @@ func TestJson(t *testing.T) {
 		require.Equal(t, rdb.Type(ctx, "a").Val(), "ReJSON-RL")
 	})
 
+	t.Run("JSON.DEL and JSON.FORGET basics", func(t *testing.T) {
+		// JSON.DEL and JSON.FORGET are aliases
+		for _, command := range []string{"JSON.DEL", "JSON.FORGET"} {
+			require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x": 1, "nested": {"x": 2, "y": 3}}`).Err())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "a", "$..x").Val())
+			require.Equal(t, `[{"nested":{"y":3}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+			require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x": 1, "nested": {"x": 2, "y": 3}}`).Err())
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "a", "$.x").Val())
+			require.Equal(t, `[{"nested":{"x":2,"y":3}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		}
+	})
+
 	t.Run("JSON.GET with options", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y":2} `).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ").Val(), `{ "x":1, "y":2}`)

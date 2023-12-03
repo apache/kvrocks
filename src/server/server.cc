@@ -1700,7 +1700,6 @@ void Server::AdjustWorkerThreads() {
 }
 
 void Server::increaseWorkerThreads(size_t delta) {
-  std::vector<std::unique_ptr<WorkerThread>> new_threads;
   for (size_t i = 0; i < delta; i++) {
     auto worker = std::make_unique<Worker>(this, config_);
     auto worker_thread = std::make_unique<WorkerThread>(std::move(worker));

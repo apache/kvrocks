@@ -279,10 +279,10 @@ rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::s
 
     if (op.encoding.IsSigned()) {
       int64_t value = bitfield.GetSignedBitfield(op.offset, op.encoding.Bits()).GetValue();
-      rets->emplace_back() = {op.encoding, static_cast<uint64_t>(value)};
+      rets->emplace_back(std::in_place, op.encoding, static_cast<uint64_t>(value));
     } else {
       uint64_t value = bitfield.GetUnsignedBitfield(op.offset, op.encoding.Bits()).GetValue();
-      rets->emplace_back() = {op.encoding, value};
+      rets->emplace_back(std::in_place, op.encoding, value);
     }
   }
 

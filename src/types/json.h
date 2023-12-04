@@ -426,7 +426,7 @@ struct JsonValue {
     try {
       jsoncons::jsonpath::json_query(value, path,
                                      [&obj_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
-                                       if (basic_json.is_array()) {
+                                       if (basic_json.is_object()) {
                                          obj_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
                                        } else {
                                          obj_lens.emplace_back(std::nullopt);

@@ -401,18 +401,23 @@ rocksdb::Status Json::ArrTrim(const std::string &user_key, const std::string &pa
 }
 
 rocksdb::Status Json::Del(const std::string &user_key, const std::string &path, size_t *result) {
-  auto ns_key = AppendNamespacePrefix(user_key);
+  *result = 0;
 
+  auto ns_key = AppendNamespacePrefix(user_key);
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  if (path == "$") {
-    *result = 1;
-    return del(ns_key);
-  }
   JsonValue json_val;
   JsonMetadata metadata;
   auto s = read(ns_key, &metadata, &json_val);
 
-  if (!s.ok()) return s;
+  if (!s.ok() && !s.IsNotFound()) return s;
+  if (s.IsNotFound()) {
+    return rocksdb::Status::OK();
+  }
+
+  if (path == "$") {
+    *result = 1;
+    return del(ns_key);
+  }
 
   auto res = json_val.Del(path);
   if (!res) return rocksdb::Status::InvalidArgument(res.Msg());

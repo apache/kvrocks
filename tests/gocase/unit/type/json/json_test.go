@@ -72,6 +72,9 @@ func TestJson(t *testing.T) {
 			require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x": 1, "nested": {"x": 2, "y": 3}}`).Err())
 			require.EqualValues(t, 1, rdb.Do(ctx, command, "a", "$.x").Val())
 			require.Equal(t, `[{"nested":{"x":2,"y":3}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "a", "$").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, command, "no-such-json-key", "$").Val())
 		}
 	})
 

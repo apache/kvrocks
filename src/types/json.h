@@ -34,6 +34,7 @@
 #include <jsoncons_ext/jsonpointer/jsonpointer.hpp>
 #include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
+#include <ostream>
 #include <string>
 
 #include "jsoncons/pretty_print.hpp"
@@ -375,8 +376,7 @@ struct JsonValue {
             ptr /= element.index();
           }
         }
-
-        jsoncons::jsonpointer::replace(value, ptr, merge_value, true);
+        jsoncons::jsonpointer::replace(value, ptr, patch_value, true);
 
         is_updated = true;
       } else if (path == json_root_path) {

@@ -31,6 +31,8 @@
 #include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
+#include <jsoncons_ext/jsonpointer/jsonpointer.hpp>
+#include <jsoncons_ext/jsonpointer/jsonpointer_error.hpp>
 #include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
 #include <string>
@@ -407,11 +409,20 @@ struct JsonValue {
       bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
       if (not_exists) {
-        // TODO:: Add ability to create an object from path.
-        return {Status::NotOK, "Path does not exist."};
-      }
+        jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
+        jsoncons::jsonpointer::json_pointer ptr{};
 
-      if (path == json_root_path) {
+        for (const auto &element : location) {
+          if (element.has_name())
+            ptr /= element.name();
+          else {
+            ptr /= element.index();
+          }
+        }
+        jsoncons::jsonpointer::replace(value, ptr, patch_value, true);
+
+        is_updated = true;
+      } else if (path == json_root_path) {
         // Merge with the root. Patch function complies with RFC7396 Json Merge Patch
         jsoncons::mergepatch::apply_merge_patch(value, patch_value);
         is_updated = true;
@@ -424,20 +435,11 @@ struct JsonValue {
             });
       } else {
         // Handle null case
-        // Unify path expression.
-        auto expr = jsoncons::jsonpath::make_expression<jsoncons::json>(path);
-        std::string converted_path;
-        expr.evaluate(
-            value, [&](const jsoncons::string_view &p, const jsoncons::json &val) { converted_path = p; },
-            jsoncons::jsonpath::result_options::path);
-        // Unify object state
-        jsoncons::json flattened = jsoncons::jsonpath::flatten(value);
-        if (flattened.contains(converted_path)) {
-          flattened.erase(converted_path);
-          value = jsoncons::jsonpath::unflatten(flattened);
-          is_updated = true;
-        }
+        jsoncons::jsonpath::remove(value, path);
+        is_updated = true;
       }
+    } catch (const jsoncons::jsonpointer::jsonpointer_error &e) {
+      return {Status::NotOK, e.what()};
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     } catch (const jsoncons::ser_error &e) {

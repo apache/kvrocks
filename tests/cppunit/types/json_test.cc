@@ -193,10 +193,16 @@ TEST_F(RedisJsonTest, Merge) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":3}");
   ASSERT_EQ(result, true);
 
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":2})").ok());
+  ASSERT_TRUE(json_->Merge(key_, "$.b", "3", result).ok());
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"a\":2,\"b\":3}");
+  ASSERT_EQ(result, true);
+
   ASSERT_TRUE(json_->Set(key_, "$", R"({"v": {"b": "cc"}})").ok());
   ASSERT_TRUE(json_->Merge(key_, "$.v.b", "null", result).ok());
   ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
-  ASSERT_EQ(json_val_.Dump().GetValue(), "{}");
+  ASSERT_EQ(json_val_.Dump().GetValue(), "{\"v\":{}}");
   ASSERT_EQ(result, true);
 
   ASSERT_TRUE(json_->Set(key_, "$", R"({"arr":[2,4,6,8]})").ok());

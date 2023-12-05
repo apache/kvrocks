@@ -32,13 +32,11 @@
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
 #include <jsoncons_ext/jsonpointer/jsonpointer.hpp>
+#include <jsoncons_ext/jsonpointer/jsonpointer_error.hpp>
 #include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
-#include <ostream>
 #include <string>
 
-#include "jsoncons/pretty_print.hpp"
-#include "jsoncons_ext/jsonpointer/jsonpointer_error.hpp"
 #include "status.h"
 
 constexpr ssize_t NOT_FOUND_INDEX = -1;

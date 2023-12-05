@@ -530,4 +530,31 @@ func TestJson(t *testing.T) {
 			rdb.Do(ctx, "JSON.GET", "nested_arr_big_num").Val())
 	})
 
+	t.Run("JSON.OBJLEN basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x":[3], "nested": {"x": {"y":2, "z": 1}}}`).Err())
+		vals, err := rdb.Do(ctx, "JSON.OBJLEN", "a", "$..x").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, len(vals))
+		// the first `x` path is not an object, so it should return nil
+		require.EqualValues(t, nil, vals[0])
+		// the second `x` path is an object with two fields, so it should return 2
+		require.EqualValues(t, 2, vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$.nested").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(vals))
+		require.EqualValues(t, 1, vals[0])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(vals))
+		require.EqualValues(t, 2, vals[0])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$.no_exists_path").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 0, len(vals))
+
+		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err()
+		require.EqualError(t, err, redis.Nil.Error())
+	})
 }

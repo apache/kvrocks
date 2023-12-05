@@ -422,6 +422,22 @@ struct JsonValue {
     return Status::OK();
   }
 
+  Status ObjLen(std::string_view path, std::vector<std::optional<uint64_t>> &obj_lens) const {
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&obj_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                       if (basic_json.is_object()) {
+                                         obj_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
+                                       } else {
+                                         obj_lens.emplace_back(std::nullopt);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return Status::OK();
+  }
+
   StatusOr<std::vector<std::optional<JsonValue>>> ArrPop(std::string_view path, int64_t index = -1) {
     std::vector<std::optional<JsonValue>> popped_values;
 

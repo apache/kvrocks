@@ -567,6 +567,61 @@ class CommandJsonNumMultBy : public Commander {
   }
 };
 
+class CommandJsonStrAppend : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    // path default, if not provided
+    std::string path = "$";
+    if (args_.size() == 4) {
+      path = args_[2];
+    } else if (args_.size() > 4) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
+    }
+
+    std::vector<uint64_t> results;
+    auto s = json.StrAppend(args_[1], path, args_[3], results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = IntegerArray(results);
+    return Status::OK();
+  }
+
+  static std::string IntegerArray(const std::vector<uint64_t> &values) {
+    std::string result = "*" + std::to_string(values.size()) + CRLF;
+    for (const auto &value : values) {
+      if (value == std::numeric_limits<uint64_t>::max()) {
+        result += NilString();
+      } else {
+        result += Integer(value);
+      }
+    }
+    return result;
+  }
+};
+
+class CommandJsonStrLen : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string path = "$";
+    if (args_.size() == 3) {
+      path = args_[2];
+    } else if (args_.size() > 3) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
+    }
+
+    std::vector<uint64_t> results;
+    auto s = json.StrLen(args_[1], path, results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = CommandJsonStrAppend::IntegerArray(results);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -586,6 +641,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonObjLen>("json.objlen", -2, "read-only", 1, 1, 1));
+                        MakeCmdAttr<CommandJsonObjLen>("json.objlen", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

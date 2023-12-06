@@ -41,8 +41,8 @@
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
 
-constexpr ssize_t NOT_FOUND_INDEX = -1;
-constexpr ssize_t NOT_ARRAY = -2;
+template <class T>
+using Optionals = std::vector<std::optional<T>>;
 
 struct JsonValue {
   enum class NumOpEnum : uint8_t {
@@ -161,7 +161,8 @@ struct JsonValue {
     return Status::OK();
   }
 
-  Status StrAppend(std::string_view path, const std::string &append_value, std::vector<uint64_t> &append_cnt) {
+  StatusOr<Optionals<uint64_t>> StrAppend(std::string_view path, const std::string &append_value) {
+    Optionals<uint64_t> results;
     try {
       std::string append_str;
       jsoncons::json append_json = jsoncons::json::parse(append_value);
@@ -171,37 +172,39 @@ struct JsonValue {
         return {Status::NotOK, "STRAPPEND need input a string to append"};
       }
 
-      jsoncons::jsonpath::json_replace(
-          value, path, [&append_str, &append_cnt](const std::string & /*path*/, jsoncons::json &origin) {
-            if (origin.is_string()) {
-              auto origin_str = origin.as_string();
-              append_cnt.push_back(origin_str.length() + append_str.length());
-              origin = origin_str + append_str;
-            } else {
-              append_cnt.push_back(std::numeric_limits<uint64_t>::max());
-            }
-          });
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&append_str, &results](const std::string & /*path*/, jsoncons::json &origin) {
+                                         if (origin.is_string()) {
+                                           auto origin_str = origin.as_string();
+                                           results.emplace_back(origin_str.length() + append_str.length());
+                                           origin = origin_str + append_str;
+                                         } else {
+                                           results.emplace_back(std::nullopt);
+                                         }
+                                       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
 
-    return Status::OK();
+    std::reverse(results.begin(), results.end());
+    return results;
   }
 
-  Status StrLen(std::string_view path, std::vector<uint64_t> &str_lens) const {
+  StatusOr<Optionals<uint64_t>> StrLen(std::string_view path) const {
+    Optionals<uint64_t> results;
     try {
       jsoncons::jsonpath::json_query(value, path,
-                                     [&str_lens](const std::string & /*path*/, const jsoncons::json &origin) {
+                                     [&results](const std::string & /*path*/, const jsoncons::json &origin) {
                                        if (origin.is_string()) {
-                                         str_lens.push_back(origin.as_string().length());
+                                         results.emplace_back(origin.as_string().length());
                                        } else {
-                                         str_lens.push_back(std::numeric_limits<uint64_t>::max());
+                                         results.emplace_back(std::nullopt);
                                        }
                                      });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return Status::OK();
+    return results;
   }
 
   StatusOr<JsonValue> Get(std::string_view path) const {
@@ -212,53 +215,52 @@ struct JsonValue {
     }
   }
 
-  StatusOr<std::vector<size_t>> ArrAppend(std::string_view path, const std::vector<jsoncons::json> &append_values) {
-    std::vector<size_t> result_count;
+  StatusOr<Optionals<size_t>> ArrAppend(std::string_view path, const std::vector<jsoncons::json> &append_values) {
+    Optionals<size_t> results;
 
     try {
       jsoncons::jsonpath::json_replace(
-          value, path, [&append_values, &result_count](const std::string & /*path*/, jsoncons::json &val) {
+          value, path, [&append_values, &results](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
               val.insert(val.array_range().end(), append_values.begin(), append_values.end());
-              result_count.emplace_back(val.size());
+              results.emplace_back(val.size());
             } else {
-              result_count.emplace_back(0);
+              results.emplace_back(std::nullopt);
             }
           });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
 
-    return result_count;
+    return results;
   }
 
-  StatusOr<std::vector<std::optional<uint64_t>>> ArrInsert(std::string_view path, const int64_t &index,
-                                                           const std::vector<jsoncons::json> &insert_values) {
-    std::vector<std::optional<uint64_t>> result_count;
-
+  StatusOr<Optionals<uint64_t>> ArrInsert(std::string_view path, const int64_t &index,
+                                          const std::vector<jsoncons::json> &insert_values) {
+    Optionals<uint64_t> results;
     try {
       jsoncons::jsonpath::json_replace(
-          value, path, [&insert_values, &result_count, index](const std::string & /*path*/, jsoncons::json &val) {
+          value, path, [&insert_values, &results, index](const std::string & /*path*/, jsoncons::json &val) {
             if (val.is_array()) {
               auto len = static_cast<int64_t>(val.size());
               // When index > 0, we need index < len
               // when index < 0, we need index >= -len.
               if (index >= len || index < -len) {
-                result_count.emplace_back(std::nullopt);
+                results.emplace_back(std::nullopt);
                 return;
               }
               auto base_iter = index >= 0 ? val.array_range().begin() : val.array_range().end();
               val.insert(base_iter + index, insert_values.begin(), insert_values.end());
-              result_count.emplace_back(val.size());
+              results.emplace_back(val.size());
             } else {
-              result_count.emplace_back(std::nullopt);
+              results.emplace_back(std::nullopt);
             }
           });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
 
-    return result_count;
+    return results;
   }
 
   static std::pair<ssize_t, ssize_t> NormalizeArrIndices(ssize_t start, ssize_t end, ssize_t len) {
@@ -276,13 +278,13 @@ struct JsonValue {
     return {start, end};
   }
 
-  StatusOr<std::vector<ssize_t>> ArrIndex(std::string_view path, const jsoncons::json &needle, ssize_t start,
-                                          ssize_t end) const {
-    std::vector<ssize_t> result;
+  StatusOr<Optionals<ssize_t>> ArrIndex(std::string_view path, const jsoncons::json &needle, ssize_t start,
+                                        ssize_t end) const {
+    Optionals<ssize_t> results;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &val) {
         if (!val.is_array()) {
-          result.emplace_back(NOT_ARRAY);
+          results.emplace_back(std::nullopt);
           return;
         }
         auto [pstart, pend] = NormalizeArrIndices(start, end, static_cast<ssize_t>(val.size()));
@@ -292,15 +294,16 @@ struct JsonValue {
         auto end_it = arr_begin + pend;
         auto it = std::find(begin_it, end_it, needle);
         if (it != end_it) {
-          result.emplace_back(it - arr_begin);
+          results.emplace_back(it - arr_begin);
           return;
         }
-        result.emplace_back(NOT_FOUND_INDEX);
+        // index not found
+        results.emplace_back(-1);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return result;
+    return results;
   }
 
   StatusOr<std::vector<std::string>> Type(std::string_view path) const {
@@ -342,21 +345,22 @@ struct JsonValue {
     return types;
   }
 
-  StatusOr<std::vector<std::optional<bool>>> Toggle(std::string_view path) {
-    std::vector<std::optional<bool>> result;
+  StatusOr<Optionals<bool>> Toggle(std::string_view path) {
+    Optionals<bool> results;
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&result](const std::string & /*path*/, jsoncons::json &val) {
+      jsoncons::jsonpath::json_replace(value, path, [&results](const std::string & /*path*/, jsoncons::json &val) {
         if (val.is_bool()) {
           val = !val.as_bool();
-          result.emplace_back(val.as_bool());
+          results.emplace_back(val.as_bool());
         } else {
-          result.emplace_back(std::nullopt);
+          results.emplace_back(std::nullopt);
         }
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return result;
+    std::reverse(results.begin(), results.end());
+    return results;
   }
 
   StatusOr<size_t> Clear(std::string_view path) {
@@ -384,21 +388,21 @@ struct JsonValue {
     return count;
   }
 
-  Status ArrLen(std::string_view path, std::vector<std::optional<uint64_t>> &arr_lens) const {
+  StatusOr<Optionals<uint64_t>> ArrLen(std::string_view path) const {
+    Optionals<uint64_t> results;
     try {
       jsoncons::jsonpath::json_query(value, path,
-                                     [&arr_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
+                                     [&results](const std::string & /*path*/, const jsoncons::json &basic_json) {
                                        if (basic_json.is_array()) {
-                                         arr_lens.emplace_back(static_cast<uint64_t>(basic_json.size()));
+                                         results.emplace_back(static_cast<uint64_t>(basic_json.size()));
                                        } else {
-                                         arr_lens.emplace_back(std::nullopt);
+                                         results.emplace_back(std::nullopt);
                                        }
                                      });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-
-    return Status::OK();
+    return results;
   }
 
   StatusOr<bool> Merge(const std::string_view path, const std::string &merge_value) {
@@ -449,7 +453,8 @@ struct JsonValue {
     return is_updated;
   }
 
-  Status ObjKeys(std::string_view path, std::vector<std::optional<std::vector<std::string>>> &keys) const {
+  StatusOr<Optionals<std::vector<std::string>>> ObjKeys(std::string_view path) const {
+    Optionals<std::vector<std::string>> keys;
     try {
       jsoncons::jsonpath::json_query(value, path,
                                      [&keys](const std::string & /*path*/, const jsoncons::json &basic_json) {
@@ -466,10 +471,12 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return Status::OK();
+
+    return keys;
   }
 
-  Status ObjLen(std::string_view path, std::vector<std::optional<uint64_t>> &obj_lens) const {
+  StatusOr<Optionals<uint64_t>> ObjLen(std::string_view path) const {
+    Optionals<uint64_t> obj_lens;
     try {
       jsoncons::jsonpath::json_query(value, path,
                                      [&obj_lens](const std::string & /*path*/, const jsoncons::json &basic_json) {
@@ -482,11 +489,11 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return Status::OK();
+    return obj_lens;
   }
 
-  StatusOr<std::vector<std::optional<JsonValue>>> ArrPop(std::string_view path, int64_t index = -1) {
-    std::vector<std::optional<JsonValue>> popped_values;
+  StatusOr<Optionals<JsonValue>> ArrPop(std::string_view path, int64_t index = -1) {
+    Optionals<JsonValue> popped_values;
 
     try {
       jsoncons::jsonpath::json_replace(value, path,
@@ -512,7 +519,8 @@ struct JsonValue {
     return popped_values;
   }
 
-  Status ArrTrim(std::string_view path, int64_t start, int64_t stop, std::vector<std::optional<uint64_t>> &results) {
+  StatusOr<Optionals<uint64_t>> ArrTrim(std::string_view path, int64_t start, int64_t stop) {
+    Optionals<uint64_t> results;
     try {
       jsoncons::jsonpath::json_replace(
           value, path, [&results, start, stop](const std::string & /*path*/, jsoncons::json &val) {
@@ -540,8 +548,7 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-
-    return Status::OK();
+    return results;
   }
 
   StatusOr<size_t> Del(const std::string &path) {

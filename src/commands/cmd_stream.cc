@@ -1191,7 +1191,7 @@ class CommandXSetId : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
+                        // MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),

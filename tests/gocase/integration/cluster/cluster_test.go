@@ -237,7 +237,7 @@ func TestClusterSlotSet(t *testing.T) {
 
 	slotKey := util.SlotTable[0]
 	require.NoError(t, rdb1.Set(ctx, slotKey, 0, 0).Err())
-	util.ErrorRegexp(t, rdb2.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv1.Port()))
+	util.ErrorRegexp(t, rdb2.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv1.Port()))
 
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "3").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "3").Err())
@@ -254,7 +254,7 @@ func TestClusterSlotSet(t *testing.T) {
 	require.EqualValues(t, []redis.ClusterNode{{ID: nodeID1, Addr: srv1.HostPort()}}, slots[1].Nodes)
 
 	require.NoError(t, rdb2.Set(ctx, slotKey, 0, 0).Err())
-	util.ErrorRegexp(t, rdb1.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv2.Port()))
+	util.ErrorRegexp(t, rdb1.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv2.Port()))
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
 	slots = rdb2.ClusterSlots(ctx).Val()
@@ -292,8 +292,8 @@ func TestClusterMultiple(t *testing.T) {
 	}
 
 	t.Run("requests on non-init-cluster", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb[0].Set(ctx, util.SlotTable[0], 0, 0).Err(), ".*CLUSTERDOWN.*not served.*")
-		util.ErrorRegexp(t, rdb[2].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), ".*CLUSTERDOWN.*not served.*")
+		util.ErrorRegexp(t, rdb[0].Set(ctx, util.SlotTable[0], 0, 0).Err(), "CLUSTERDOWN.*not served.*")
+		util.ErrorRegexp(t, rdb[2].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), "CLUSTERDOWN.*not served.*")
 	})
 
 	clusterNodes := fmt.Sprintf("%s %s %d master - 0-1 3 5-8191\n", nodeID[1], srv[1].Host(), srv[1].Port())
@@ -318,11 +318,11 @@ func TestClusterMultiple(t *testing.T) {
 
 	t.Run("MOVED slot ip:port if needed", func(t *testing.T) {
 		// request node2 that doesn't serve slot 0, we will receive MOVED
-		util.ErrorRegexp(t, rdb[2].Set(ctx, util.SlotTable[0], 0, 0).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv[1].Port()))
+		util.ErrorRegexp(t, rdb[2].Set(ctx, util.SlotTable[0], 0, 0).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv[1].Port()))
 		// request node3 that doesn't serve slot 0, we will receive MOVED
-		util.ErrorRegexp(t, rdb[3].Get(ctx, util.SlotTable[0]).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv[1].Port()))
+		util.ErrorRegexp(t, rdb[3].Get(ctx, util.SlotTable[0]).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv[1].Port()))
 		// request node1 that doesn't serve slot 16383, we will receive MOVED, and the MOVED node must be master
-		util.ErrorRegexp(t, rdb[1].Get(ctx, util.SlotTable[16383]).Err(), fmt.Sprintf(".*MOVED 16383.*%d.*", srv[2].Port()))
+		util.ErrorRegexp(t, rdb[1].Get(ctx, util.SlotTable[16383]).Err(), fmt.Sprintf("MOVED 16383.*%d.*", srv[2].Port()))
 	})
 
 	t.Run("requests on cluster are ok", func(t *testing.T) {
@@ -338,12 +338,12 @@ func TestClusterMultiple(t *testing.T) {
 	})
 
 	t.Run("requests non-member of cluster, role is master", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb[0].Set(ctx, util.SlotTable[0], 0, 0).Err(), fmt.Sprintf(".*MOVED 0.*%d.*", srv[1].Port()))
-		util.ErrorRegexp(t, rdb[0].Get(ctx, util.SlotTable[16383]).Err(), fmt.Sprintf(".*MOVED 16383.*%d.*", srv[2].Port()))
+		util.ErrorRegexp(t, rdb[0].Set(ctx, util.SlotTable[0], 0, 0).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv[1].Port()))
+		util.ErrorRegexp(t, rdb[0].Get(ctx, util.SlotTable[16383]).Err(), fmt.Sprintf("MOVED 16383.*%d.*", srv[2].Port()))
 	})
 
 	t.Run("cluster slot is not served", func(t *testing.T) {
-		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[2], 2, 0).Err(), ".*CLUSTERDOWN.*not served.*")
+		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[2], 2, 0).Err(), "CLUSTERDOWN.*not served.*")
 	})
 
 	t.Run("multiple keys(cross slots) command is wrong", func(t *testing.T) {
@@ -365,7 +365,7 @@ func TestClusterMultiple(t *testing.T) {
 		require.NoError(t, rdb[1].Set(ctx, util.SlotTable[0], "no-multi", 0).Err())
 		require.NoError(t, rdb[1].Do(ctx, "MULTI").Err())
 		require.NoError(t, rdb[1].Set(ctx, util.SlotTable[0], "multi", 0).Err())
-		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[16383], 0, 0).Err(), fmt.Sprintf(".*MOVED 16383.*%d.*", srv[2].Port()))
+		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[16383], 0, 0).Err(), fmt.Sprintf("MOVED 16383.*%d.*", srv[2].Port()))
 		require.ErrorContains(t, rdb[1].Do(ctx, "EXEC").Err(), "EXECABORT")
 		require.Equal(t, "no-multi", rdb[1].Get(ctx, util.SlotTable[0]).Val())
 	})

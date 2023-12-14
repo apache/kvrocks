@@ -64,6 +64,9 @@ class Json : public Database {
   rocksdb::Status StrLen(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
   rocksdb::Status ObjLen(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
 
+  std::vector<rocksdb::Status> MGet(const std::vector<std::string> &user_keys, const std::string &path,
+                                    std::vector<JsonValue> &results);
+
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
@@ -71,6 +74,9 @@ class Json : public Database {
   rocksdb::Status del(const Slice &ns_key);
   rocksdb::Status numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
                         const std::string &value, JsonValue *result);
+  std::vector<rocksdb::Status> readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values);
+  std::vector<rocksdb::Status> getRawMetaData(const std::vector<Slice> &ns_keys, std::vector<JsonMetadata> &metadatas,
+                                              std::vector<std::string> *raw_values);
 };
 
 }  // namespace redis

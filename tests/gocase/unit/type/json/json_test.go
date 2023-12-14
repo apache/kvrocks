@@ -581,4 +581,36 @@ func TestJson(t *testing.T) {
 		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err()
 		require.EqualError(t, err, redis.Nil.Error())
 	})
+
+	t.Run("JSON.MGET basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a0", "$", `{"a":1, "b": 2, "nested": {"a": 3}, "c": null}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a1", "$", `{"a":4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "a2", `{"a": 100}`).Err())
+
+		vals, err := rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.a").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[1]", vals[0])
+		require.EqualValues(t, "[4]", vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "a2", "$.a").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 3, len(vals))
+		require.EqualValues(t, "[1]", vals[0])
+		require.EqualValues(t, "[4]", vals[1])
+		require.EqualValues(t, nil, vals[2])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.c").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[null]", vals[0])
+		require.EqualValues(t, "[null]", vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.nonexists").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[]", vals[0])
+		require.EqualValues(t, "[]", vals[1])
+
+	})
 }

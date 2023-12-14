@@ -210,7 +210,6 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value, uint64_t ttl, StringSetType type,
                             bool get, bool keep_ttl, std::optional<std::string> &ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
-  std::string old_value = nullptr;
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   std::string raw_value;

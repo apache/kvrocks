@@ -512,4 +512,87 @@ rocksdb::Status Json::ObjLen(const std::string &user_key, const std::string &pat
   return rocksdb::Status::OK();
 }
 
+std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_keys, const std::string &path,
+                                        std::vector<JsonValue> &results) {
+  std::vector<Slice> ns_keys;
+  std::vector<std::string> ns_keys_string;
+  ns_keys.resize(user_keys.size());
+  ns_keys_string.resize(user_keys.size());
+
+  for (size_t i = 0; i < user_keys.size(); i++) {
+    ns_keys_string[i] = AppendNamespacePrefix(user_keys[i]);
+    ns_keys[i] = Slice(ns_keys_string[i]);
+  }
+
+  std::vector<JsonValue> json_vals;
+  json_vals.resize(ns_keys.size());
+  auto statuses = readMulti(ns_keys, json_vals);
+
+  results.resize(ns_keys.size());
+  for (size_t i = 0; i < ns_keys.size(); i++) {
+    if (!statuses[i].ok()) {
+      continue;
+    }
+    auto res = json_vals[i].Get(path);
+
+    if (!res) {
+      statuses[i] = rocksdb::Status::Corruption(res.Msg());
+    } else {
+      results[i] = *std::move(res);
+    }
+  }
+  return statuses;
+}
+
+std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values) {
+  std::vector<std::string> raw_values;
+  std::vector<JsonMetadata> meta_data;
+  raw_values.resize(ns_keys.size());
+  meta_data.resize(ns_keys.size());
+
+  auto statuses = getRawMetaData(ns_keys, meta_data, &raw_values);
+  for (size_t i = 0; i < ns_keys.size(); i++) {
+    if (!statuses[i].ok()) continue;
+    if (meta_data[i].format == JsonStorageFormat::JSON) {
+      auto res = JsonValue::FromString(raw_values[i]);
+      if (!res) {
+        statuses[i] = rocksdb::Status::Corruption(res.Msg());
+        continue;
+      }
+      values[i] = *std::move(res);
+    } else if (meta_data[i].format == JsonStorageFormat::CBOR) {
+      auto res = JsonValue::FromCBOR(raw_values[i]);
+      if (!res) {
+        statuses[i] = rocksdb::Status::Corruption(res.Msg());
+        continue;
+      }
+      values[i] = *std::move(res);
+    } else {
+      statuses[i] = rocksdb::Status::NotSupported("JSON storage format not supported");
+    }
+  }
+  return statuses;
+}
+
+std::vector<rocksdb::Status> Json::getRawMetaData(const std::vector<Slice> &ns_keys,
+                                                  std::vector<JsonMetadata> &metadatas,
+                                                  std::vector<std::string> *raw_values) {
+  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  raw_values->resize(ns_keys.size());
+  std::vector<rocksdb::Status> statuses(ns_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(ns_keys.size());
+  storage_->MultiGet(read_options, metadata_cf_handle_, ns_keys.size(), ns_keys.data(), pin_values.data(),
+                     statuses.data());
+  for (size_t i = 0; i < ns_keys.size(); i++) {
+    if (!statuses[i].ok()) continue;
+    Slice slice(pin_values[i].data(), pin_values[i].size());
+    statuses[i] = ParseMetadata(kRedisJson, &slice, &metadatas[i]);
+    if (!statuses[i].ok()) continue;
+    (*raw_values)[i].assign(slice.data(), slice.size());
+  }
+  return statuses;
+}
+
 }  // namespace redis

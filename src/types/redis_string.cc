@@ -244,7 +244,7 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
     return rocksdb::Status::OK();
   } else {
     // if GET option not given, make ret not nil
-    if (!get) ret = std::make_optional("");
+    if (!get) ret = "";
   }
 
   // Handle expire time

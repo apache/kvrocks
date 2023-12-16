@@ -188,7 +188,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
-  auto s = Set(user_key, new_value, 0, StringSetType::NONE, /*get*/ true, /*keep_ttl*/ false, old_value);
+  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get*/ true, /*keep_ttl*/ false}, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -206,8 +206,8 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   return MSet(pairs, /*ttl=*/0, /*lock=*/true);
 }
 
-rocksdb::Status String::Set(const std::string &user_key, const std::string &value, uint64_t ttl, StringSetType type,
-                            bool get, bool keep_ttl, std::optional<std::string> &ret) {
+rocksdb::Status String::Set(const std::string &user_key, const std::string &value, StringSetArgs args,
+                            std::optional<std::string> &ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -219,7 +219,7 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   auto old_key_found = !s.IsNotFound();
   // The reply following Redis doc: https://redis.io/commands/set/
   // Handle GET option
-  if (get) {
+  if (args.get) {
     if (s.IsInvalidArgument()) {
       return s;
     }
@@ -234,25 +234,25 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   }
 
   // Handle NX/XX option
-  if (old_key_found && type == StringSetType::NX) {
+  if (old_key_found && args.type == StringSetType::NX) {
     // if GET option not given, operation aborted: return nil
-    if (!get) ret = std::nullopt;
+    if (!args.get) ret = std::nullopt;
     return rocksdb::Status::OK();
-  } else if (!old_key_found && type == StringSetType::XX) {
+  } else if (!old_key_found && args.type == StringSetType::XX) {
     // if GET option not given, operation aborted: return nil
-    if (!get) ret = std::nullopt;
+    if (!args.get) ret = std::nullopt;
     return rocksdb::Status::OK();
   } else {
     // if GET option not given, make ret not nil
-    if (!get) ret = "";
+    if (!args.get) ret = "";
   }
 
   // Handle expire time
   uint64_t expire = 0;
-  if (ttl > 0) {
+  if (args.ttl > 0) {
     uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  } else if (keep_ttl && old_key_found) {
+    expire = now + args.ttl;
+  } else if (args.keep_ttl && old_key_found) {
     Metadata metadata(kRedisString, false);
     auto s = metadata.Decode(old_raw_value);
     if (!s.ok()) {
@@ -272,19 +272,19 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
 
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
   std::optional<std::string> ret;
-  return Set(user_key, value, ttl, StringSetType::NONE, /*get*/ false, /*keep_ttl*/ false, ret);
+  return Set(user_key, value, {ttl, StringSetType::NONE, /*get*/ false, /*keep_ttl*/ false}, ret);
 }
 
 rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, ttl, StringSetType::NX, /*get*/ false, /*keep_ttl*/ false, ret);
+  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get*/ false, /*keep_ttl*/ false}, ret);
   *flag = ret.has_value();
   return s;
 }
 
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, ttl, StringSetType::XX, /*get*/ false, /*keep_ttl*/ false, ret);
+  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get*/ false, /*keep_ttl*/ false}, ret);
   *flag = ret.has_value();
   return s;
 }

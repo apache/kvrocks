@@ -313,7 +313,7 @@ class CommandSet : public Commander {
     }
 
     rocksdb::Status s;
-    s = string_db.Set(args_[1], args_[2], ttl_, set_flag_, get_, keep_ttl_, ret);
+    s = string_db.Set(args_[1], args_[2], {ttl_, set_flag_, get_, keep_ttl_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

@@ -186,10 +186,9 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {
-  std::optional<std::string> ret;
-  auto s = Set(user_key, new_value, 0, StringSetType::NX, /*get*/ true, /*keep_ttl*/ false, ret);
-  *old_value = *ret;
+rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
+                               std::optional<std::string> &old_value) {
+  auto s = Set(user_key, new_value, 0, StringSetType::NX, /*get*/ true, /*keep_ttl*/ false, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -212,16 +211,16 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  std::string raw_value;
-  auto s = getRawValue(ns_key, &raw_value);
+  std::string old_raw_value;
+  auto s = getRawValue(ns_key, &old_raw_value);
 
   if (!s.ok() && !s.IsNotFound()) return s;
   auto old_key_found = !s.IsNotFound();
   if (get) {
     if (old_key_found) {
       // if GET option given: return The previous value of the key.
-      auto offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
-      ret = std::make_optional(raw_value.substr(offset));
+      auto offset = Metadata::GetOffsetAfterExpire(old_raw_value[0]);
+      ret = std::make_optional(old_raw_value.substr(offset));
     } else {
       // if GET option given, the key didn't exist before the SET: return nil
       ret = std::nullopt;
@@ -248,7 +247,7 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
     expire = now + ttl;
   } else if (keep_ttl && old_key_found) {
     Metadata metadata(kRedisString, false);
-    auto s = metadata.Decode(raw_value);
+    auto s = metadata.Decode(old_raw_value);
     if (!s.ok()) {
       return s;
     }
@@ -256,11 +255,12 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   }
 
   // create new key
+  std::string new_raw_value;
   Metadata metadata(kRedisString, false);
   metadata.expire = expire;
-  metadata.Encode(&raw_value);
-  raw_value.append(value);
-  return updateRawValue(ns_key, raw_value);
+  metadata.Encode(&new_raw_value);
+  new_raw_value.append(value);
+  return updateRawValue(ns_key, new_raw_value);
 }
 
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {

@@ -133,16 +133,16 @@ class CommandGetSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    std::string old_value;
-    auto s = string_db.GetSet(args_[1], args_[2], &old_value);
-    if (!s.ok() && !s.IsNotFound()) {
+    std::optional<std::string> old_value;
+    auto s = string_db.GetSet(args_[1], args_[2], old_value);
+    if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (s.IsNotFound()) {
-      *output = redis::NilString();
+    if (old_value.has_value()) {
+      *output = redis::BulkString(old_value.value());
     } else {
-      *output = redis::BulkString(old_value);
+      *output = redis::NilString();
     }
     return Status::OK();
   }

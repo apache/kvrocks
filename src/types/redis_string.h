@@ -43,7 +43,8 @@ class String : public Database {
   rocksdb::Status Append(const std::string &user_key, const std::string &value, uint64_t *new_size);
   rocksdb::Status Get(const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist);
-  rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value);
+  rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value,
+                         std::optional<std::string> &old_value);
   rocksdb::Status GetDel(const std::string &user_key, std::string *value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value, uint64_t ttl, StringSetType type, bool get,

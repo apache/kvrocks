@@ -142,15 +142,15 @@ TEST_F(RedisStringTest, GetSet) {
   rocksdb::Env::Default()->GetCurrentTime(&now);
   std::vector<std::string> values = {"a", "b", "c", "d"};
   for (size_t i = 0; i < values.size(); i++) {
-    std::string old_value;
+    std::optional<std::string> old_value;
     auto s = string_->Expire(key_, now * 1000 + 100000);
-    string_->GetSet(key_, values[i], &old_value);
+    string_->GetSet(key_, values[i], old_value);
     if (i != 0) {
       EXPECT_EQ(values[i - 1], old_value);
       auto s = string_->TTL(key_, &ttl);
       EXPECT_TRUE(ttl == -1);
     } else {
-      EXPECT_TRUE(old_value.empty());
+      EXPECT_TRUE(old_value->empty());
     }
   }
   auto s = string_->Del(key_);

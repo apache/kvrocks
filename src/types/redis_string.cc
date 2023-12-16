@@ -188,7 +188,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
-  auto s = Set(user_key, new_value, 0, StringSetType::NX, /*get*/ true, /*keep_ttl*/ false, old_value);
+  auto s = Set(user_key, new_value, 0, StringSetType::NONE, /*get*/ true, /*keep_ttl*/ false, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -211,36 +211,41 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  // Get old value for NX/XX/GET/KEEPTTL option
   std::string old_raw_value;
   auto s = getRawValue(ns_key, &old_raw_value);
-
   if (!s.ok() && !s.IsNotFound()) return s;
   auto old_key_found = !s.IsNotFound();
+
+  // The reply following Redis doc: https://redis.io/commands/set/
+  // Handle GET option
   if (get) {
     if (old_key_found) {
       // if GET option given: return The previous value of the key.
       auto offset = Metadata::GetOffsetAfterExpire(old_raw_value[0]);
       ret = std::make_optional(old_raw_value.substr(offset));
     } else {
-      // if GET option given, the key didn't exist before the SET: return nil
+      // if GET option given, the key didn't exist before: return nil
       ret = std::nullopt;
-    }
-  } else {
-    // if GET option not given, operation aborted: return nil
-    if (old_key_found && type == StringSetType::NX) {
-      ret = std::nullopt;
-      return rocksdb::Status::OK();
-    }
-    // if GET option not given, operation aborted: return nil
-    else if (!old_key_found && type == StringSetType::XX) {
-      ret = std::nullopt;
-      return rocksdb::Status::OK();
-    } else {
-      // make ret not nil
-      ret = std::make_optional("");
     }
   }
 
+  // Handle NX/XX option
+  if (old_key_found && type == StringSetType::NX) {
+    // if GET option not given, operation aborted: return nil
+    if (!get) ret = std::nullopt;
+    return rocksdb::Status::OK();
+  } else if (!old_key_found && type == StringSetType::XX) {
+    // if GET option not given, operation aborted: return nil
+    if (!get) ret = std::nullopt;
+    return rocksdb::Status::OK();
+  } else {
+    // if GET option not given, make ret not nil
+    if (!get) ret = std::make_optional("");
+  }
+
+  // Handle expire time
   uint64_t expire = 0;
   if (ttl > 0) {
     uint64_t now = util::GetTimeStampMS();
@@ -254,7 +259,7 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
     expire = metadata.expire;
   }
 
-  // create new key
+  // Create new value
   std::string new_raw_value;
   Metadata metadata(kRedisString, false);
   metadata.expire = expire;

@@ -321,9 +321,9 @@ class CommandSet : public Commander {
 
     if (get_) {
       if (ret.has_value()) {
-        *output = redis::NilString();
+        *output = redis::BulkString(ret.value());
       } else {
-        *output = redis::BulkString(*ret);
+        *output = redis::NilString();
       }
     } else {
       if (ret.has_value()) {

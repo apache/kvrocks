@@ -215,12 +215,14 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   // Get old value for NX/XX/GET/KEEPTTL option
   std::string old_raw_value;
   auto s = getRawValue(ns_key, &old_raw_value);
-  if (!s.ok() && !s.IsNotFound()) return s;
+  if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
   auto old_key_found = !s.IsNotFound();
-
   // The reply following Redis doc: https://redis.io/commands/set/
   // Handle GET option
   if (get) {
+    if (s.IsInvalidArgument()) {
+      return s;
+    }
     if (old_key_found) {
       // if GET option given: return The previous value of the key.
       auto offset = Metadata::GetOffsetAfterExpire(old_raw_value[0]);

@@ -150,7 +150,7 @@ TEST_F(RedisStringTest, GetSet) {
       auto s = string_->TTL(key_, &ttl);
       EXPECT_TRUE(ttl == -1);
     } else {
-      EXPECT_TRUE(old_value->empty());
+      EXPECT_TRUE(!old_value.has_value());
     }
   }
   auto s = string_->Del(key_);

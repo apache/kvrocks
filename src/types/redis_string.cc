@@ -188,7 +188,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
-  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get*/ true, /*keep_ttl*/ false}, old_value);
+  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -272,19 +272,19 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
 
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
   std::optional<std::string> ret;
-  return Set(user_key, value, {ttl, StringSetType::NONE, /*get*/ false, /*keep_ttl*/ false}, ret);
+  return Set(user_key, value, {ttl, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
 }
 
 rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get*/ false, /*keep_ttl*/ false}, ret);
+  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
 
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get*/ false, /*keep_ttl*/ false}, ret);
+  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,15 @@ struct StringPair {
   Slice value;
 };
 
+enum class StringSetType { NONE, NX, XX };
+
+struct StringSetArgs {
+  uint64_t ttl;
+  StringSetType type;
+  bool get;
+  bool keep_ttl;
+};
+
 namespace redis {
 
 class String : public Database {
@@ -40,9 +50,12 @@ class String : public Database {
   rocksdb::Status Append(const std::string &user_key, const std::string &value, uint64_t *new_size);
   rocksdb::Status Get(const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist);
-  rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value);
+  rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value,
+                         std::optional<std::string> &old_value);
   rocksdb::Status GetDel(const std::string &user_key, std::string *value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value);
+  rocksdb::Status Set(const std::string &user_key, const std::string &value, StringSetArgs args,
+                      std::optional<std::string> &ret);
   rocksdb::Status SetEX(const std::string &user_key, const std::string &value, uint64_t ttl);
   rocksdb::Status SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag);
   rocksdb::Status SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag);

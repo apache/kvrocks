@@ -678,6 +678,94 @@ func TestString(t *testing.T) {
 		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
 	})
 
+	t.Run("Extended SET KEEPTTL and EX/PX/EXAT/PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "xx", "keepttl", "ex", "100").Err())
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "xx", "keepttl", "px", "100").Err())
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "xx", "keepttl", "exat", "100").Err())
+		require.Error(t, rdb.Do(ctx, "SET", "foo", "xx", "keepttl", "pxat", "100").Err())
+	})
+
+	t.Run("Extended SET KEEPTTL WITH option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "OK", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{KeepTTL: true}).Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		require.Equal(t, time.Duration(-1), ttl)
+		require.Equal(t, "OK", rdb.Set(ctx, "foo", "bar", 10*time.Second).Val())
+		require.Equal(t, "OK", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{KeepTTL: true}).Val())
+		ttl = rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET GET option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "", rdb.SetArgs(ctx, "foo", "bar", redis.SetArgs{Get: true}).Val())
+		require.Equal(t, "bar", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true}).Val())
+		require.Equal(t, "xx", rdb.Get(ctx, "foo").Val())
+	})
+
+	t.Run("Extended SET GET and NX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, Mode: "NX"}).Val())
+		require.Equal(t, "xx", rdb.Get(ctx, "foo").Val())
+		require.Equal(t, "OK", rdb.Set(ctx, "foo", "bar", 0).Val())
+		require.Equal(t, "bar", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, Mode: "NX"}).Val())
+		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+	})
+
+	t.Run("Extended SET GET and XX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, Mode: "XX"}).Val())
+		require.Equal(t, "", rdb.Get(ctx, "foo").Val())
+		require.Equal(t, "OK", rdb.Set(ctx, "foo", "bar", 0).Val())
+		require.Equal(t, "bar", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, Mode: "XX"}).Val())
+		require.Equal(t, "xx", rdb.Get(ctx, "foo").Val())
+	})
+
+	t.Run("Extended SET GET and KEEPTTL option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, "", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, KeepTTL: true}).Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		require.Equal(t, time.Duration(-1), ttl)
+		require.Equal(t, "OK", rdb.Set(ctx, "foo", "bar", 10*time.Second).Val())
+		require.Equal(t, "bar", rdb.SetArgs(ctx, "foo", "xx", redis.SetArgs{Get: true, KeepTTL: true}).Val())
+		ttl = rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET GET and EX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, nil, rdb.Do(ctx, "SET", "foo", "bar", "ex", "10", "get").Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET GET and PX option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.Equal(t, nil, rdb.Do(ctx, "SET", "foo", "bar", "px", "10000", "get").Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET GET and EXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+
+		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).Unix(), 10)
+		require.Equal(t, nil, rdb.Do(ctx, "SET", "foo", "bar", "exat", expireAt, "get").Val())
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
+	t.Run("Extended SET GET and PXAT option", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+
+		expireAt := strconv.FormatInt(time.Now().Add(10*time.Second).UnixMilli(), 10)
+		require.Equal(t, nil, rdb.Do(ctx, "SET", "foo", "bar", "pxat", expireAt, "get").Val())
+
+		ttl := rdb.TTL(ctx, "foo").Val()
+		util.BetweenValues(t, ttl, 5*time.Second, 10*time.Second)
+	})
+
 	t.Run("GETRANGE with huge ranges, Github issue redis/redis#1844", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 		require.Equal(t, "bar", rdb.GetRange(ctx, "foo", 0, 2094967291).Val())

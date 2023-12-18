@@ -169,7 +169,6 @@ list(APPEND EXTERNAL_LIBS Threads::Threads)
 list(APPEND EXTERNAL_LIBS ${Backtrace_LIBRARY})
 list(APPEND EXTERNAL_LIBS xxhash)
 list(APPEND EXTERNAL_LIBS span-lite)
-list(APPEND EXTERNAL_LIBS stdc++fs)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
@@ -260,4 +259,4 @@ file(GLOB_RECURSE TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
 target_include_directories(unittest PRIVATE tests/cppunit)
 
-target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main gmock ${EXTERNAL_LIBS})
+target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main gmock stdc++fs ${EXTERNAL_LIBS})

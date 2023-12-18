@@ -800,6 +800,24 @@ void Server::GetRocksDBInfo(std::string *info) {
     string_stream << "memtable_count_limit_stop[" << cf_handle->GetName()
                   << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
+
+  auto db_stats = storage->GetDB()->GetDBOptions().statistics;
+  if (db_stats) {
+    std::map<std::string, uint32_t> block_cache_stats = {
+        {"block_cache_hit", rocksdb::Tickers::BLOCK_CACHE_HIT},
+        {"block_cache_index_hit", rocksdb::Tickers::BLOCK_CACHE_INDEX_HIT},
+        {"block_cache_filter_hit", rocksdb::Tickers::BLOCK_CACHE_FILTER_HIT},
+        {"block_cache_data_hit", rocksdb::Tickers::BLOCK_CACHE_DATA_HIT},
+        {"block_cache_miss", rocksdb::Tickers::BLOCK_CACHE_MISS},
+        {"block_cache_index_miss", rocksdb::Tickers::BLOCK_CACHE_INDEX_MISS},
+        {"block_cache_filter_miss", rocksdb::Tickers::BLOCK_CACHE_FILTER_MISS},
+        {"block_cache_data_miss", rocksdb::Tickers::BLOCK_CACHE_DATA_MISS},
+    };
+    for (const auto &iter : block_cache_stats) {
+      string_stream << iter.first << ":" << db_stats->getTickerCount(iter.second) << "\r\n";
+    }
+  }
+
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";
   string_stream << "snapshots:" << num_snapshots << "\r\n";

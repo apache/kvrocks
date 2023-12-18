@@ -169,6 +169,10 @@ list(APPEND EXTERNAL_LIBS Threads::Threads)
 list(APPEND EXTERNAL_LIBS ${Backtrace_LIBRARY})
 list(APPEND EXTERNAL_LIBS xxhash)
 list(APPEND EXTERNAL_LIBS span-lite)
+if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13))
+    list(APPEND EXTERNAL_LIBS stdc++fs)
+endif()
 
 # Add git sha to version.h
 find_package(Git REQUIRED)
@@ -258,5 +262,4 @@ target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 file(GLOB_RECURSE TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
 target_include_directories(unittest PRIVATE tests/cppunit)
-
-target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main gmock stdc++fs ${EXTERNAL_LIBS})
+target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main gmock ${EXTERNAL_LIBS})

@@ -148,7 +148,6 @@ endif()
 find_package(Threads REQUIRED)
 
 list(APPEND EXTERNAL_LIBS glog)
-list(APPEND EXTERNAL_LIBS snappy)
 list(APPEND EXTERNAL_LIBS rocksdb_with_headers)
 list(APPEND EXTERNAL_LIBS event_with_headers)
 list(APPEND EXTERNAL_LIBS lz4)
@@ -173,7 +172,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_L
     list(APPEND EXTERNAL_LIBS stdc++fs)
 endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
-    list(APPEND EXTERNAL_LIBS c++fs)
+    if (NOT APPLE)
+        list(APPEND EXTERNAL_LIBS stdc++fs)
+    else()
+        list(APPEND EXTERNAL_LIBS c++fs)
+    endif()
 endif()
 
 # Add git sha to version.h

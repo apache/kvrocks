@@ -23,7 +23,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 
@@ -187,20 +186,10 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value, std::string *old_value) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = getValue(ns_key, old_value);
-  if (!s.ok() && !s.IsNotFound()) return s;
-
-  std::string raw_value;
-  Metadata metadata(kRedisString, false);
-  metadata.Encode(&raw_value);
-  raw_value.append(new_value);
-  auto write_status = updateRawValue(ns_key, raw_value);
-  // prev status was used to tell whether old value was empty or not
-  return !write_status.ok() ? write_status : s;
+rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
+                               std::optional<std::string> &old_value) {
+  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
+  return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -217,38 +206,87 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   return MSet(pairs, /*ttl=*/0, /*lock=*/true);
 }
 
+rocksdb::Status String::Set(const std::string &user_key, const std::string &value, StringSetArgs args,
+                            std::optional<std::string> &ret) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+
+  // Get old value for NX/XX/GET/KEEPTTL option
+  std::string old_raw_value;
+  auto s = getRawValue(ns_key, &old_raw_value);
+  if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
+  auto old_key_found = !s.IsNotFound();
+  // The reply following Redis doc: https://redis.io/commands/set/
+  // Handle GET option
+  if (args.get) {
+    if (s.IsInvalidArgument()) {
+      return s;
+    }
+    if (old_key_found) {
+      // if GET option given: return The previous value of the key.
+      auto offset = Metadata::GetOffsetAfterExpire(old_raw_value[0]);
+      ret = std::make_optional(old_raw_value.substr(offset));
+    } else {
+      // if GET option given, the key didn't exist before: return nil
+      ret = std::nullopt;
+    }
+  }
+
+  // Handle NX/XX option
+  if (old_key_found && args.type == StringSetType::NX) {
+    // if GET option not given, operation aborted: return nil
+    if (!args.get) ret = std::nullopt;
+    return rocksdb::Status::OK();
+  } else if (!old_key_found && args.type == StringSetType::XX) {
+    // if GET option not given, operation aborted: return nil
+    if (!args.get) ret = std::nullopt;
+    return rocksdb::Status::OK();
+  } else {
+    // if GET option not given, make ret not nil
+    if (!args.get) ret = "";
+  }
+
+  // Handle expire time
+  uint64_t expire = 0;
+  if (args.ttl > 0) {
+    uint64_t now = util::GetTimeStampMS();
+    expire = now + args.ttl;
+  } else if (args.keep_ttl && old_key_found) {
+    Metadata metadata(kRedisString, false);
+    auto s = metadata.Decode(old_raw_value);
+    if (!s.ok()) {
+      return s;
+    }
+    expire = metadata.expire;
+  }
+
+  // Create new value
+  std::string new_raw_value;
+  Metadata metadata(kRedisString, false);
+  metadata.expire = expire;
+  metadata.Encode(&new_raw_value);
+  new_raw_value.append(value);
+  return updateRawValue(ns_key, new_raw_value);
+}
+
 rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
-  std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, /*ttl=*/ttl, /*lock=*/true);
+  std::optional<std::string> ret;
+  return Set(user_key, value, {ttl, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
 }
 
 rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
-  std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSetNX(pairs, ttl, flag);
+  std::optional<std::string> ret;
+  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  *flag = ret.has_value();
+  return s;
 }
 
 rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
-  *flag = false;
-  int exists = 0;
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
-
-  std::string ns_key = AppendNamespacePrefix(user_key);
-  LockGuard guard(storage_->GetLockManager(), ns_key);
-  auto s = Exists({user_key}, &exists);
-  if (!s.ok()) return s;
-  if (exists != 1) return rocksdb::Status::OK();
-
-  *flag = true;
-  std::string raw_value;
-  Metadata metadata(kRedisString, false);
-  metadata.expire = expire;
-  metadata.Encode(&raw_value);
-  raw_value.append(value);
-  return updateRawValue(ns_key, raw_value);
+  std::optional<std::string> ret;
+  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  *flag = ret.has_value();
+  return s;
 }
 
 rocksdb::Status String::SetRange(const std::string &user_key, size_t offset, const std::string &value,

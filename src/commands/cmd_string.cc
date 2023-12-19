@@ -20,10 +20,12 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
 #include "time_util.h"
@@ -131,16 +133,16 @@ class CommandGetSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    std::string old_value;
-    auto s = string_db.GetSet(args_[1], args_[2], &old_value);
-    if (!s.ok() && !s.IsNotFound()) {
+    std::optional<std::string> old_value;
+    auto s = string_db.GetSet(args_[1], args_[2], old_value);
+    if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (s.IsNotFound()) {
-      *output = redis::NilString();
+    if (old_value.has_value()) {
+      *output = redis::BulkString(old_value.value());
     } else {
-      *output = redis::BulkString(old_value);
+      *output = redis::NilString();
     }
     return Status::OK();
   }
@@ -281,10 +283,14 @@ class CommandSet : public Commander {
     while (parser.Good()) {
       if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
         ttl_ = *v;
+      } else if (parser.EatEqICaseFlag("KEEPTTL", ttl_flag)) {
+        keep_ttl_ = true;
       } else if (parser.EatEqICaseFlag("NX", set_flag)) {
-        set_flag_ = NX;
+        set_flag_ = StringSetType::NX;
       } else if (parser.EatEqICaseFlag("XX", set_flag)) {
-        set_flag_ = XX;
+        set_flag_ = StringSetType::XX;
+      } else if (parser.EatEqICase("GET")) {
+        get_ = true;
       } else {
         return parser.InvalidSyntax();
       }
@@ -294,7 +300,7 @@ class CommandSet : public Commander {
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    bool ret = false;
+    std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
 
     if (ttl_ < 0) {
@@ -307,29 +313,33 @@ class CommandSet : public Commander {
     }
 
     rocksdb::Status s;
-    if (set_flag_ == NX) {
-      s = string_db.SetNX(args_[1], args_[2], ttl_, &ret);
-    } else if (set_flag_ == XX) {
-      s = string_db.SetXX(args_[1], args_[2], ttl_, &ret);
-    } else {
-      s = string_db.SetEX(args_[1], args_[2], ttl_);
-    }
+    s = string_db.Set(args_[1], args_[2], {ttl_, set_flag_, get_, keep_ttl_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (set_flag_ != NONE && !ret) {
-      *output = redis::NilString();
+    if (get_) {
+      if (ret.has_value()) {
+        *output = redis::BulkString(ret.value());
+      } else {
+        *output = redis::NilString();
+      }
     } else {
-      *output = redis::SimpleString("OK");
+      if (ret.has_value()) {
+        *output = redis::SimpleString("OK");
+      } else {
+        *output = redis::NilString();
+      }
     }
     return Status::OK();
   }
 
  private:
   uint64_t ttl_ = 0;
-  enum { NONE, NX, XX } set_flag_ = NONE;
+  bool get_ = false;
+  bool keep_ttl_ = false;
+  StringSetType set_flag_ = StringSetType::NONE;
 };
 
 class CommandSetEX : public Commander {

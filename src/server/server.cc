@@ -1164,7 +1164,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
     if (last_scan_time == 0) {
-      string_stream << "# WARN: DB not scaned, use `dbsize scan` command first.\r\n";
+      string_stream << "# WARN: DB not scaned, run `dbsize scan` command first.\r\n";
     } else {
       string_stream << "# Last scan DB time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
     }

@@ -1138,7 +1138,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", 0, 0, 0),

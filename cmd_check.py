@@ -23,7 +23,7 @@ def GetSortedTagList():
     output = run(["git", "tag", "-l", "--sort=v:refname"], stdout=subprocess.PIPE)
     git_tag_str = output.read().decode().strip()
     git_tag_list = git_tag_str.split('\n')
-    git_tag_list_final = git_tag_list[2:]  # remove v.1.1.2 and v1.0.0
+    git_tag_list_final = git_tag_list[1:]  # remove v.1.1.2
     # print(git_tag_list_final)
     return git_tag_list_final
 
@@ -90,7 +90,10 @@ def Main():
         print("now branch: ", output.read().decode().strip())
 
         target = os.getcwd()
-        files = glob(target + '/src/**/' + '*.cc', recursive=True)
+        subpath = '/src/**/'
+        if git_tag == 'v1.0.0':
+            subpath = '/kvrocks/src/**/'
+        files = glob(target + subpath + '*.cc', recursive=True)
         for LowerCommandIdx in range(len(CommandsLowerList)):
             LowerCommand = CommandsLowerList[LowerCommandIdx]
             pattern = GetPattern(LowerCommand, git_tag)

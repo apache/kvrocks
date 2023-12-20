@@ -77,7 +77,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name << ", job_id: " << ci.job_id
-            << ", compaction reason: " << static_cast<int>(ci.compaction_reason)
+            << ", compaction reason: " << rocksdb::GetCompactionReasonString(ci.compaction_reason)
             << ", output compression type: " << CompressType2String(ci.compression)
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
@@ -90,7 +90,7 @@ void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::Compac
 
 void EventListener::OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   LOG(INFO) << "[event_listener/flush_begin] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id
-            << ", job_id: " << fi.job_id << ", reason: " << static_cast<int>(fi.flush_reason);
+            << ", job_id: " << fi.job_id << ", reason: " << rocksdb::GetFlushReasonString(fi.flush_reason);
 }
 
 void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {

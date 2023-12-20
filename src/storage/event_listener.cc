@@ -106,7 +106,7 @@ void EventListener::OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si
 }
 
 void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) {
-  LOG(INFO) << "[event_listener/subcompaction_begin] column family: " << si.cf_name << ", job_id: " << si.job_id
+  LOG(INFO) << "[event_listener/subcompaction_completed] column family: " << si.cf_name << ", job_id: " << si.job_id
             << ", compaction reason: " << rocksdb::GetCompactionReasonString(si.compaction_reason)
             << ", output compression type: " << CompressType2String(si.compression)
             << ", base input level(files): " << si.base_input_level << ", output level(files): " << si.output_level

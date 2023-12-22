@@ -66,6 +66,7 @@ class Sync {
   Status auth();
   Status tryPSync();
   Status incrementBatchLoop();
+  Status checkWalBoundary();
 
   void parseKVFromLocalStorage();
 

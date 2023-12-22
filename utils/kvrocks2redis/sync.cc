@@ -51,7 +51,7 @@ Sync::~Sync() {
 /*
  * Run connect to kvrocks, and start the following steps
  * asynchronously
- *  - TryPsync
+ *  - CheckWALBoundary
  *  - - if ok, IncrementBatchLoop
  *  - - not, parseAllLocalStorage and restart TryPsync when done
  */
@@ -64,36 +64,13 @@ void Sync::Start() {
 
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    auto sock_fd = util::SockConnect(config_->kvrocks_host, config_->kvrocks_port);
-    if (!sock_fd) {
-      LOG(ERROR) << fmt::format("Failed to connect to Kvrocks on {}:{}. Error: {}", config_->kvrocks_host,
-                                config_->kvrocks_port, sock_fd.Msg());
-      usleep(10000);
-      continue;
+    if (!checkWalBoundary().IsOK()) {
+      parseKVFromLocalStorage();
     }
-
-    sock_fd_ = *sock_fd;
-    s = auth();
+    s = incrementBatchLoop();
     if (!s.IsOK()) {
       LOG(ERROR) << s.Msg();
-      usleep(10000);
-      continue;
     }
-
-    while (!IsStopped()) {
-      s = tryPSync();
-      if (!s.IsOK()) {
-        LOG(ERROR) << s.Msg();
-        break;
-      }
-      LOG(INFO) << "[kvrocks2redis] PSync is ok, start increment batch loop";
-      s = incrementBatchLoop();
-      if (!s.IsOK()) {
-        LOG(ERROR) << s.Msg();
-        continue;
-      }
-    }
-    close(sock_fd_);
   }
 }
 
@@ -149,52 +126,50 @@ Status Sync::tryPSync() {
   return Status::OK();
 }
 
+Status Sync::checkWalBoundary() {
+  if (next_seq_ == storage_->LatestSeqNumber() + 1) {
+    return Status::OK();
+  }
+
+  // Upper bound
+  if (next_seq_ > storage_->LatestSeqNumber() + 1) {
+    return {Status::NotOK};
+  }
+
+  // Lower bound
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  auto s = storage_->GetWALIter(next_seq_, &iter);
+  if (s.IsOK() && iter->Valid()) {
+    auto batch = iter->GetBatch();
+    if (next_seq_ != batch.sequence) {
+      if (next_seq_ > batch.sequence) {
+        LOG(ERROR) << "checkWALBoundary with sequence: " << next_seq_
+                   << ", but GetWALIter return older sequence: " << batch.sequence;
+      }
+      return {Status::NotOK};
+    }
+    return Status::OK();
+  }
+  return {Status::NotOK};
+}
+
 Status Sync::incrementBatchLoop() {
   std::cout << "Start parse increment batch ..." << std::endl;
-  evbuffer *evbuf = evbuffer_new();
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
   while (!IsStopped()) {
-    if (evbuffer_read(evbuf, sock_fd_, -1) <= 0) {
-      evbuffer_free(evbuf);
-      return {Status::NotOK, std::string("[kvrocks2redis] read increment batch err: ") + strerror(errno)};
-    }
-    if (incr_state_ == IncrementBatchLoopState::Incr_batch_size) {
-      // Read bulk length
-      UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_CRLF_STRICT);
-      if (!line) {
-        usleep(10000);
-        continue;
-      }
-      incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
-      if (incr_bulk_len_ == 0) {
-        return {Status::NotOK, "[kvrocks2redis] Invalid increment data size"};
-      }
-      incr_state_ = Incr_batch_data;
-    }
-
-    if (incr_state_ == IncrementBatchLoopState::Incr_batch_data) {
-      // Read bulk data (batch data)
-      if (incr_bulk_len_ + 2 <= evbuffer_get_length(evbuf)) {  // We got enough data
-        char *bulk_data = reinterpret_cast<char *>(evbuffer_pullup(evbuf, static_cast<ssize_t>(incr_bulk_len_) + 2));
-        std::string bulk_data_str = std::string(bulk_data, incr_bulk_len_);
-        // Skip the ping packet
-        if (bulk_data_str != "ping") {
-          auto bat = rocksdb::WriteBatch(bulk_data_str);
-          int count = static_cast<int>(bat.Count());
-          auto s = parser_->ParseWriteBatch(bulk_data_str);
-          if (!s.IsOK()) {
-            return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(bulk_data_str)));
-          }
-
-          s = updateNextSeq(next_seq_ + count);
-          if (!s.IsOK()) {
-            return s.Prefixed("failed to update next sequence");
-          }
+    storage_->GetDB()->TryCatchUpWithPrimary();
+    if (next_seq_ < storage_->LatestSeqNumber()) {
+      storage_->GetDB()->GetUpdatesSince(next_seq_, &iter);
+      for (; iter->Valid(); iter->Next()) {
+        auto batch = iter->GetBatch().writeBatchPtr;
+        auto s = parser_->ParseWriteBatch(batch->Data());
+        if (!s.IsOK()) {
+          return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(batch->Data())));
         }
-        evbuffer_drain(evbuf, incr_bulk_len_ + 2);
-        incr_state_ = Incr_batch_size;
-      } else {
-        usleep(10000);
-        continue;
+        s = updateNextSeq(next_seq_ + batch->Count());
+        if (!s.IsOK()) {
+          return s.Prefixed("failed to update next sequence");
+        }
       }
     }
   }

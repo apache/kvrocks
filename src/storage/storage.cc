@@ -243,7 +243,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   return Status::OK();
 }
 
-Status Storage::Open(bool read_only) {
+Status Storage::Open(bool read_only, bool as_secondary) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
 
@@ -322,8 +322,10 @@ Status Storage::Open(bool read_only) {
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   auto start = std::chrono::high_resolution_clock::now();
-  auto dbs = read_only ? util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_)
-                       : util::DBOpen(options, config_->db_dir, column_families, &cf_handles_);
+  auto dbs = as_secondary ? util::DBOpenAsSecondaryInstance(options, config_->db_dir, config_->secondary_dir,
+                                                            column_families, &cf_handles_)
+             : read_only  ? util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_)
+                          : util::DBOpen(options, config_->db_dir, column_families, &cf_handles_);
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
   if (!s.ok()) {

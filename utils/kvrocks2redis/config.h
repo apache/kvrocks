@@ -43,6 +43,7 @@ struct Config {
   std::string data_dir = "./data";
   std::string output_dir = "./";
   std::string db_dir = data_dir + "/db";
+  std::string secondary_dir = "./secondary";
   std::string pidfile = output_dir + "/kvrocks2redis2.pid";
   std::string aof_file_name = "appendonly.aof";
   std::string next_offset_file_name = "last_next_offset.txt";

@@ -119,6 +119,7 @@ struct Config {
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
+  std::string secondary_dir;
   std::string backup_sync_dir;
   std::string checkpoint_dir;
   std::string sync_checkpoint_dir;

@@ -118,11 +118,12 @@ int main(int argc, char *argv[]) {
 
   Config kvrocks_config;
   kvrocks_config.db_dir = config.db_dir;
+  kvrocks_config.secondary_dir = config.secondary_dir;
   kvrocks_config.cluster_enabled = config.cluster_enabled;
   kvrocks_config.slot_id_encoded = config.cluster_enabled;
 
   engine::Storage storage(&kvrocks_config);
-  s = storage.Open(true);
+  s = storage.Open(true, true);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open Kvrocks storage: " << s.Msg();
     exit(1);

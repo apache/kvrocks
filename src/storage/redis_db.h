@@ -34,7 +34,8 @@ class Database {
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
   explicit Database(engine::Storage *storage, std::string ns = "");
-  [[nodiscard]] static rocksdb::Status ParseMetadata(RedisType type, Slice *bytes, Metadata *metadata);
+  [[nodiscard]] static rocksdb::Status ParseMetadata(const std::vector<RedisType> &types, Slice *bytes,
+                                                     Metadata *metadata);
   [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
   [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value,
                                             Metadata *metadata, Slice *rest);

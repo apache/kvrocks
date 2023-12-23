@@ -561,7 +561,7 @@ std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, 
     if (!statuses[i].ok()) continue;
     Slice rest(pin_values[i].data(), pin_values[i].size());
     JsonMetadata metadata;
-    statuses[i] = ParseMetadata(kRedisJson, &rest, &metadata);
+    statuses[i] = ParseMetadata({kRedisJson}, &rest, &metadata);
     if (!statuses[i].ok()) continue;
 
     statuses[i] = parse(metadata, rest, &values[i]);

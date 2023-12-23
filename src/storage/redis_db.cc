@@ -89,10 +89,6 @@ rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes
   return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
 }
 
-rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
-  return GetRawMetadata(AppendNamespacePrefix(user_key), bytes);
-}
-
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 

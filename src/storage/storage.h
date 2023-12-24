@@ -93,7 +93,6 @@ class Storage {
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
   rocksdb::Options InitRocksDBOptions();
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
-  Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
   Status CreateBackup();

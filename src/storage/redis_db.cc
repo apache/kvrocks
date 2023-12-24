@@ -597,43 +597,6 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
-                                          int count) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
-
-  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
-  bool end = false;
-  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
-    std::string prefix = ComposeSlotKeyPrefix(namespace_, i);
-    uint64_t total = 0;
-    int cnt = 0;
-    if (slot != -1 && i != slot) {
-      (*slotskeys)[i] = total;
-      continue;
-    }
-    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
-      if (!iter->key().starts_with(prefix)) {
-        break;
-      }
-      total++;
-      if (slot != -1 && count > 0 && !end) {
-        // Get user key
-        if (cnt < count) {
-          auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
-          keys->emplace_back(user_key.ToString());
-          cnt++;
-        }
-      }
-    }
-    // Maybe cnt < count
-    if (cnt > 0) end = true;
-    (*slotskeys)[i] = total;
-  }
-  return rocksdb::Status::OK();
-}
-
 rocksdb::Status Database::KeyExist(const std::string &key) {
   int cnt = 0;
   std::vector<rocksdb::Slice> keys;

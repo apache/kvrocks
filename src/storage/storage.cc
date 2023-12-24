@@ -200,12 +200,6 @@ Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std:
   return Status::OK();
 }
 
-Status Storage::SetOption(const std::string &key, const std::string &value) {
-  auto s = db_->SetOptions({{key, value}});
-  if (!s.ok()) return {Status::NotOK, s.ToString()};
-  return Status::OK();
-}
-
 Status Storage::SetDBOption(const std::string &key, const std::string &value) {
   auto s = db_->SetDBOptions({{key, value}});
   if (!s.ok()) return {Status::NotOK, s.ToString()};

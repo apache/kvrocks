@@ -237,15 +237,12 @@ class CommandExpireTime : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-
     uint64_t timestamp = 0;
     auto s = redis.GetExpireTime(args_[1], &timestamp);
-    if (s.IsNotFound() || s.IsExpired()) {
+    if (s.ok()) {
+      *output = timestamp > 0 ? redis::Integer(timestamp / 1000) : redis::Integer(-1);
+    } else if (s.IsNotFound() || s.IsExpired()) {
       *output = redis::Integer(-2);
-    } else if (s.ok() && timestamp == 0) {
-      *output = redis::Integer(-1);
-    } else if (s.ok() && timestamp > 0) {
-      *output = redis::Integer(timestamp / 1000);
     } else {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -257,16 +254,12 @@ class CommandPExpireTime : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-
     uint64_t timestamp = 0;
     auto s = redis.GetExpireTime(args_[1], &timestamp);
-
-    if (s.IsNotFound() || s.IsExpired()) {
+    if (s.ok()) {
+      *output = timestamp > 0 ? redis::Integer(timestamp) : redis::Integer(-1);
+    } else if (s.IsNotFound() || s.IsExpired()) {
       *output = redis::Integer(-2);
-    } else if (s.ok() && timestamp == 0) {
-      *output = redis::Integer(-1);
-    } else if (s.ok() && timestamp > 0) {
-      *output = redis::Integer(timestamp);
     } else {
       return {Status::RedisExecErr, s.ToString()};
     }

@@ -43,28 +43,25 @@ Sync::Sync(engine::Storage *storage, Writer *writer, Parser *parser, kvrocks2red
     : storage_(storage), writer_(writer), parser_(parser), config_(config) {}
 
 Sync::~Sync() {
-  if (sock_fd_) close(sock_fd_);
   if (next_seq_fd_) close(next_seq_fd_);
   writer_->Stop();
 }
 
 /*
- * Run connect to kvrocks, and start the following steps
- * asynchronously
- *  - CheckWALBoundary
- *  - - if ok, IncrementBatchLoop
- *  - - not, parseAllLocalStorage and restart TryPsync when done
- */
+ * 1. Attempt to directly parse the wal.
+ * 2. If the attempt fails, then it is necessary to parse the current snapshot,
+ *    After completion, repeat the steps of the first phase.
+*/
 void Sync::Start() {
   auto s = readNextSeqFromFile(&next_seq_);
   if (!s.IsOK()) {
     LOG(ERROR) << s.Msg();
     return;
   }
-
   LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
   while (!IsStopped()) {
-    if (!checkWalBoundary().IsOK()) {
+    s = checkWalBoundary();
+    if (!s.IsOK()) {
       parseKVFromLocalStorage();
     }
     s = incrementBatchLoop();
@@ -81,49 +78,10 @@ void Sync::Stop() {
   LOG(INFO) << "[kvrocks2redis] Stopped";
 }
 
-Status Sync::auth() {
-  // Send auth when needed
-  if (!config_->kvrocks_auth.empty()) {
-    const auto auth_command = redis::MultiBulkString({"AUTH", config_->kvrocks_auth});
-    auto s = util::SockSend(sock_fd_, auth_command);
-    if (!s) return s.Prefixed("send auth command err");
-    std::string line = GET_OR_RET(util::SockReadLine(sock_fd_).Prefixed("read auth response err"));
-    if (line.compare(0, 3, "+OK") != 0) {
-      return {Status::NotOK, "auth got invalid response"};
-    }
-  }
-  LOG(INFO) << "[kvrocks2redis] Auth succ, continue...";
-  return Status::OK();
-}
 
-Status Sync::tryPSync() {
-  const auto seq_str = std::to_string(next_seq_);
-  const auto seq_len_str = std::to_string(seq_str.length());
-  const auto cmd_str = "*2" CRLF "$5" CRLF "PSYNC" CRLF "$" + seq_len_str + CRLF + seq_str + CRLF;
-  auto s = util::SockSend(sock_fd_, cmd_str);
-  LOG(INFO) << "[kvrocks2redis] Try to use psync, next seq: " << next_seq_;
-  if (!s) return s.Prefixed("send psync command err");
-  std::string line = GET_OR_RET(util::SockReadLine(sock_fd_).Prefixed("read psync response err"));
-
-  if (line.compare(0, 3, "+OK") != 0) {
-    if (next_seq_ > 0) {
-      // Ooops, Failed to psync , sync process has been terminated, administrator should be notified
-      // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-      auto error_msg =
-          "[kvrocks2redis] CRITICAL - Failed to psync , please remove"
-          " last_next_seq config file, and restart kvrocks2redis, redis reply: " +
-          std::string(line);
-      stop_flag_ = true;
-      return {Status::NotOK, error_msg};
-    }
-    // PSYNC isn't OK, we should use parseAllLocalStorage
-    // Switch to parseAllLocalStorage
-    LOG(INFO) << "[kvrocks2redis] Failed to psync, redis reply: " << std::string(line);
-    parseKVFromLocalStorage();
-    // Restart tryPSync
-    return tryPSync();
-  }
-  return Status::OK();
+Status Sync::tryCatchUpWithPrimary() {
+  auto s = storage_->GetDB()->TryCatchUpWithPrimary();
+  return s.ok() ? Status() : Status::NotOK;
 }
 
 Status Sync::checkWalBoundary() {
@@ -154,23 +112,34 @@ Status Sync::checkWalBoundary() {
 }
 
 Status Sync::incrementBatchLoop() {
-  std::cout << "Start parse increment batch ..." << std::endl;
+  LOG(INFO) << "[kvrocks2redis] Start parsing increment data";
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;
   while (!IsStopped()) {
-    storage_->GetDB()->TryCatchUpWithPrimary();
+    if (!tryCatchUpWithPrimary().IsOK()) {
+      return {Status::NotOK};
+    }
     if (next_seq_ < storage_->LatestSeqNumber()) {
       storage_->GetDB()->GetUpdatesSince(next_seq_, &iter);
       for (; iter->Valid(); iter->Next()) {
-        auto batch = iter->GetBatch().writeBatchPtr;
-        auto s = parser_->ParseWriteBatch(batch->Data());
-        if (!s.IsOK()) {
-          return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(batch->Data())));
+        auto batch = iter->GetBatch();
+        if (batch.sequence != next_seq_) {
+          if (next_seq_ > batch.sequence) {
+            LOG(ERROR) << "checkWALBoundary with sequence: " << next_seq_
+                        << ", but GetWALIter return older sequence: " << batch.sequence;
+          }
+          return {Status::NotOK};
         }
-        s = updateNextSeq(next_seq_ + batch->Count());
+        auto s = parser_->ParseWriteBatch(batch.writeBatchPtr->Data());
+        if (!s.IsOK()) {
+          return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(batch.writeBatchPtr->Data())));
+        }
+        s = updateNextSeq(next_seq_ + batch.writeBatchPtr->Count());
         if (!s.IsOK()) {
           return s.Prefixed("failed to update next sequence");
         }
       }
+    } else {
+      usleep(10000);
     }
   }
   return Status::OK();
@@ -192,8 +161,8 @@ void Sync::parseKVFromLocalStorage() {
     LOG(ERROR) << "[kvrocks2redis] Failed to parse full db, encounter error: " << s.Msg();
     return;
   }
-
-  s = updateNextSeq(storage_->LatestSeqNumber() + 1);
+  auto last_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  s = updateNextSeq(last_seq + 1);
   if (!s.IsOK()) {
     LOG(ERROR) << "[kvrocks2redis] Failed to update next sequence: " << s.Msg();
   }

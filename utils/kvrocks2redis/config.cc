@@ -67,11 +67,6 @@ Status Config::parseConfigFromString(const std::string &input) {
       data_dir += "/";
     }
     db_dir = data_dir + "db";
-  } else if (size == 1 && key == "secondary-dir") {
-    secondary_dir = args[0];
-    if (secondary_dir.empty()) {
-      return {Status::NotOK, "'secondary-dir' was not specified"};
-    }
   } else if (size == 1 && key == "output-dir") {
     output_dir = args[0];
     if (output_dir.empty()) {
@@ -83,6 +78,7 @@ Status Config::parseConfigFromString(const std::string &input) {
     }
     pidfile = output_dir + "kvrocks2redis.pid";
     next_seq_file_path = output_dir + "last_next_seq.txt";
+    secondary_dir = output_dir + "secondary";
   } else if (size == 1 && key == "log-level") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (util::ToLower(args[0]) == kLogLevels[i]) {
@@ -92,14 +88,6 @@ Status Config::parseConfigFromString(const std::string &input) {
     }
   } else if (size == 1 && key == "pidfile") {
     pidfile = args[0];
-  } else if (size >= 2 && key == "kvrocks") {
-    kvrocks_host = args[0];
-    // In new versions, we don't use extra port to implement replication
-    kvrocks_port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
-
-    if (size == 3) {
-      kvrocks_auth = args[2];
-    }
   } else if (size == 1 && key == "cluster-enable") {
     // Renamed to cluster-enabled, keeping the old one for compatibility.
     cluster_enabled = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));

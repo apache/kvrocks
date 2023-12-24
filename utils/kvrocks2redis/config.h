@@ -43,15 +43,12 @@ struct Config {
   std::string data_dir = "./data";
   std::string output_dir = "./";
   std::string db_dir = data_dir + "/db";
-  std::string secondary_dir = "./secondary";
+  std::string secondary_dir = output_dir + "/secondary";
   std::string pidfile = output_dir + "/kvrocks2redis2.pid";
   std::string aof_file_name = "appendonly.aof";
   std::string next_offset_file_name = "last_next_offset.txt";
   std::string next_seq_file_path = output_dir + "/last_next_seq.txt";
 
-  std::string kvrocks_auth;
-  std::string kvrocks_host;
-  int kvrocks_port = 0;
   std::map<std::string, RedisServer> tokens;
   bool cluster_enabled = false;
 

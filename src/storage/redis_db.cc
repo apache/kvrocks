@@ -40,7 +40,7 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
 
 // Some data types may support reading multiple types of metadata.
 // For example, bitmap supports reading string metadata and bitmap metadata.
-rocksdb::Status Database::ParseMetadata(const std::vector<RedisType> &types, Slice *bytes, Metadata *metadata) {
+rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
 
@@ -53,9 +53,8 @@ rocksdb::Status Database::ParseMetadata(const std::vector<RedisType> &types, Sli
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
 
-  bool is_type_matched = std::find(types.begin(), types.end(), metadata->Type()) != types.end();
   // if type is not matched, we still need to check if the metadata is valid.
-  if (!is_type_matched && (metadata->size > 0 || metadata->IsEmptyableType())) {
+  if (!types.Contains(metadata->Type()) && (metadata->size > 0 || metadata->IsEmptyableType())) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);

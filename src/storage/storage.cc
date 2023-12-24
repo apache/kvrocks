@@ -243,7 +243,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   return Status::OK();
 }
 
-Status Storage::Open(bool read_only, bool as_secondary) {
+Status Storage::Open(DBOpenMode mode) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
 
@@ -256,7 +256,7 @@ Status Storage::Open(bool read_only, bool as_secondary) {
   }
 
   rocksdb::Options options = InitRocksDBOptions();
-  if (!read_only) {
+  if (mode == kDBOpenModeDefault) {
     if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
       return s.Prefixed("failed to create column families");
     }
@@ -322,19 +322,32 @@ Status Storage::Open(bool read_only, bool as_secondary) {
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   auto start = std::chrono::high_resolution_clock::now();
-  auto dbs = as_secondary ? util::DBOpenAsSecondaryInstance(options, config_->db_dir, config_->secondary_dir,
-                                                            column_families, &cf_handles_)
-             : read_only  ? util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_)
-                          : util::DBOpen(options, config_->db_dir, column_families, &cf_handles_);
+  switch (mode) {
+    case DBOpenMode::kDBOpenModeDefault: {
+      db_ = GET_OR_RET(util::DBOpen(options, config_->db_dir, column_families, &cf_handles_));
+      break;
+    }
+    case DBOpenMode::kDBOpenModeForReadOnly: {
+      db_ = GET_OR_RET(util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_));
+      break;
+    }
+    case DBOpenMode::kDBOpenModeAsSecondaryInstance: {
+      db_ = GET_OR_RET(
+          util::DBOpenAsSecondaryInstance(options, config_->db_dir, config_->dir, column_families, &cf_handles_));
+      break;
+    }
+    default:
+      break;
+  }
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-  if (!s.ok()) {
-    LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
-    return {Status::DBOpenErr, s.ToString()};
-  }
 
-  db_ = std::move(*dbs);
+  if (!db_) {
+    LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
+    return {Status::DBOpenErr};
+  }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
+
   return Status::OK();
 }
 

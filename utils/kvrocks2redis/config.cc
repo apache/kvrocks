@@ -78,7 +78,6 @@ Status Config::parseConfigFromString(const std::string &input) {
     }
     pidfile = output_dir + "kvrocks2redis.pid";
     next_seq_file_path = output_dir + "last_next_seq.txt";
-    secondary_dir = output_dir + "secondary";
   } else if (size == 1 && key == "log-level") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (util::ToLower(args[0]) == kLogLevels[i]) {

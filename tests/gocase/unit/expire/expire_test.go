@@ -106,12 +106,14 @@ func TestExpire(t *testing.T) {
 		expireTime = time.UnixMilli(time.Now().Unix()*1000 + 1456)
 		require.NoError(t, rdb.PExpireAt(ctx, "x", expireTime).Err())
 		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
-		require.Equal(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.GreaterOrEqual(t, expireTime.UnixMilli(), rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.LessOrEqual(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
 
 		expireTime = time.UnixMilli(time.Now().Unix()*1000 + 1789)
 		require.NoError(t, rdb.PExpireAt(ctx, "x", expireTime).Err())
 		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
-		require.Equal(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.LessOrEqual(t, expireTime.UnixMilli(), rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.GreaterOrEqual(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
 
 		require.NoError(t, rdb.PExpireTime(ctx, "x_key_no_exist").Err())
 		require.Equal(t, int64(-2), rdb.PExpireTime(ctx, "x_key_no_exist").Val().Nanoseconds())

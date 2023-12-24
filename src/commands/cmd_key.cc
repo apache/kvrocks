@@ -233,6 +233,47 @@ class CommandPExpireAt : public Commander {
   uint64_t timestamp_ = 0;
 };
 
+class CommandExpireTime : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    uint64_t timestamp = 0;
+    auto s = redis.GetExpireTime(args_[1], &timestamp);
+    if (s.IsNotFound() || s.IsExpired()) {
+      *output = redis::Integer(-2);
+    } else if (s.ok() && timestamp == 0) {
+      *output = redis::Integer(-1);
+    } else if (s.ok() && timestamp > 0) {
+      *output = redis::Integer(timestamp / 1000);
+    } else {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return Status::OK();
+  }
+};
+
+class CommandPExpireTime : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    uint64_t timestamp = 0;
+    auto s = redis.GetExpireTime(args_[1], &timestamp);
+
+    if (s.IsNotFound() || s.IsExpired()) {
+      *output = redis::Integer(-2);
+    } else if (s.ok() && timestamp == 0) {
+      *output = redis::Integer(-1);
+    } else if (s.ok() && timestamp > 0) {
+      *output = redis::Integer(timestamp);
+    } else {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return Status::OK();
+  }
+};
+
 class CommandPersist : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -284,6 +325,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandExpireTime>("expiretime", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1), )
 

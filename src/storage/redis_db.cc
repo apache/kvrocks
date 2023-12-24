@@ -227,6 +227,30 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Database::GetExpireTime(const Slice &user_key, uint64_t *timestamp) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  std::string value;
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
+  if (!s.ok()) {
+    return s;
+  }
+
+  Metadata metadata(kRedisNone, false);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
+
+  if (metadata.Expired()) {
+    return rocksdb::Status::Expired();
+  }
+  *timestamp = metadata.expire;
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Database::GetKeyNumStats(const std::string &prefix, KeyNumStats *stats) {
   return Keys(prefix, nullptr, stats);
 }

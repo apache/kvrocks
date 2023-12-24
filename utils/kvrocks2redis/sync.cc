@@ -51,7 +51,7 @@ Sync::~Sync() {
  * 1. Attempt to directly parse the wal.
  * 2. If the attempt fails, then it is necessary to parse the current snapshot,
  *    After completion, repeat the steps of the first phase.
-*/
+ */
 void Sync::Start() {
   auto s = readNextSeqFromFile(&next_seq_);
   if (!s.IsOK()) {
@@ -77,7 +77,6 @@ void Sync::Stop() {
   stop_flag_ = true;  // Stopping procedure is asynchronous,
   LOG(INFO) << "[kvrocks2redis] Stopped";
 }
-
 
 Status Sync::tryCatchUpWithPrimary() {
   auto s = storage_->GetDB()->TryCatchUpWithPrimary();
@@ -125,13 +124,14 @@ Status Sync::incrementBatchLoop() {
         if (batch.sequence != next_seq_) {
           if (next_seq_ > batch.sequence) {
             LOG(ERROR) << "checkWALBoundary with sequence: " << next_seq_
-                        << ", but GetWALIter return older sequence: " << batch.sequence;
+                       << ", but GetWALIter return older sequence: " << batch.sequence;
           }
           return {Status::NotOK};
         }
         auto s = parser_->ParseWriteBatch(batch.writeBatchPtr->Data());
         if (!s.IsOK()) {
-          return s.Prefixed(fmt::format("failed to parse write batch '{}'", util::StringToHex(batch.writeBatchPtr->Data())));
+          return s.Prefixed(
+              fmt::format("failed to parse write batch '{}'", util::StringToHex(batch.writeBatchPtr->Data())));
         }
         s = updateNextSeq(next_seq_ + batch.writeBatchPtr->Count());
         if (!s.IsOK()) {

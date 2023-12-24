@@ -165,18 +165,14 @@ TEST_F(RedisTypeTest, ExpireTimeKeyExpired) {
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  uint64_t ms_offset = 1314;
+  uint64_t ms_offset = 1120;
   uint64_t expire_timestamp_ms = now * 1000 + ms_offset;
   s = redis_->Expire(key_, expire_timestamp_ms);
   EXPECT_TRUE(s.ok());
-  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   uint64_t timestamp = 0;
   s = redis_->GetExpireTime(key_, &timestamp);
-  if (METADATA_ENCODING_VERSION != 0) {
-    EXPECT_FALSE(s.IsExpired());
-  } else {
-    EXPECT_TRUE(s.IsExpired());
-  }
+  EXPECT_TRUE(s.IsExpired() && timestamp == 0);
   s = redis_->Del(key_);
 }
 

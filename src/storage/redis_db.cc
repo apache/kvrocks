@@ -38,7 +38,9 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
   metadata_cf_handle_ = storage->GetCFHandle("metadata");
 }
 
-rocksdb::Status Database::ParseMetadata(RedisType type, Slice *bytes, Metadata *metadata) {
+// Some data types may support reading multiple types of metadata.
+// For example, bitmap supports reading string metadata and bitmap metadata.
+rocksdb::Status Database::ParseMetadata(const std::vector<RedisType> &types, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
 
@@ -50,7 +52,10 @@ rocksdb::Status Database::ParseMetadata(RedisType type, Slice *bytes, Metadata *
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata->Type() != type && (metadata->size > 0 || metadata->IsEmptyableType())) {
+
+  bool is_type_matched = std::find(types.begin(), types.end(), metadata->Type()) != types.end();
+  // if type is not matched, we still need to check if the metadata is valid.
+  if (!is_type_matched && (metadata->size > 0 || metadata->IsEmptyableType())) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
@@ -64,11 +69,9 @@ rocksdb::Status Database::ParseMetadata(RedisType type, Slice *bytes, Metadata *
 }
 
 rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
-  std::string bytes;
-  auto s = GetRawMetadata(ns_key, &bytes);
-  if (!s.ok()) return s;
-  Slice bytes_slice(bytes);
-  return ParseMetadata(type, &bytes_slice, metadata);
+  std::string raw_value;
+  Slice rest;
+  return GetMetadata(type, ns_key, &raw_value, metadata, &rest);
 }
 
 rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
@@ -76,7 +79,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, std::
   auto s = GetRawMetadata(ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
-  return ParseMetadata(type, rest, metadata);
+  return ParseMetadata({type}, rest, metadata);
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
@@ -84,10 +87,6 @@ rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
-}
-
-rocksdb::Status Database::GetRawMetadataByUserKey(const Slice &user_key, std::string *bytes) {
-  return GetRawMetadata(AppendNamespacePrefix(user_key), bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {

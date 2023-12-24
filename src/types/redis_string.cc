@@ -89,15 +89,27 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::getValue(const std::string &ns_key, std::string *value) {
+rocksdb::Status String::getValueAndExpire(const std::string &ns_key, std::string *value, uint64_t *expire) {
   value->clear();
 
   std::string raw_value;
   auto s = getRawValue(ns_key, &raw_value);
   if (!s.ok()) return s;
+
   size_t offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
   *value = raw_value.substr(offset);
+
+  if (expire) {
+    Metadata metadata(kRedisString, false);
+    s = metadata.Decode(raw_value);
+    if (!s.ok()) return s;
+    *expire = metadata.expire;
+  }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::getValue(const std::string &ns_key, std::string *value) {
+  return getValueAndExpire(ns_key, value, nullptr);
 }
 
 std::vector<rocksdb::Status> String::getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values) {
@@ -208,57 +220,55 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value, StringSetArgs args,
                             std::optional<std::string> &ret) {
+  uint64_t expire = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-
-  // Get old value for NX/XX/GET/KEEPTTL option
-  std::string old_raw_value;
-  auto s = getRawValue(ns_key, &old_raw_value);
-  if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
-  auto old_key_found = !s.IsNotFound();
-  // The reply following Redis doc: https://redis.io/commands/set/
-  // Handle GET option
-  if (args.get) {
-    if (s.IsInvalidArgument()) {
-      return s;
+  bool needGetOldValue = args.type != StringSetType::NONE || args.get || args.keep_ttl;
+  if (needGetOldValue) {
+    std::string old_value;
+    uint64_t old_expire;
+    auto s = getValueAndExpire(ns_key, &old_value, &old_expire);
+    if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
+    // GET option
+    if (args.get) {
+      if (s.IsInvalidArgument()) {
+        return s;
+      }
+      if (s.IsNotFound()) {
+        // if GET option given, the key didn't exist before: return nil
+        ret = std::nullopt;
+      } else {
+        // if GET option given: return The previous value of the key.
+        ret = std::make_optional(old_value);
+      }
     }
-    if (old_key_found) {
-      // if GET option given: return The previous value of the key.
-      auto offset = Metadata::GetOffsetAfterExpire(old_raw_value[0]);
-      ret = std::make_optional(old_raw_value.substr(offset));
+    // NX/XX option
+    if (args.type == StringSetType::NX && s.ok()) {
+      // if NX option given, the key already exist: return nil
+      if (!args.get) ret = std::nullopt;
+      return rocksdb::Status::OK();
+    } else if (args.type == StringSetType::XX && s.IsNotFound()) {
+      // if XX option given, the key didn't exist before: return nil
+      if (!args.get) ret = std::nullopt;
+      return rocksdb::Status::OK();
     } else {
-      // if GET option given, the key didn't exist before: return nil
-      ret = std::nullopt;
+      // if GET option not given, make ret not nil
+      if (!args.get) ret = "";
     }
-  }
-
-  // Handle NX/XX option
-  if (old_key_found && args.type == StringSetType::NX) {
-    // if GET option not given, operation aborted: return nil
-    if (!args.get) ret = std::nullopt;
-    return rocksdb::Status::OK();
-  } else if (!old_key_found && args.type == StringSetType::XX) {
-    // if GET option not given, operation aborted: return nil
-    if (!args.get) ret = std::nullopt;
-    return rocksdb::Status::OK();
+    if (s.ok() && args.keep_ttl) {
+      // if KEEPTTL option given, use the old ttl
+      expire = old_expire;
+    }
   } else {
-    // if GET option not given, make ret not nil
+    // if no option given, make ret not nil
     if (!args.get) ret = "";
   }
 
   // Handle expire time
-  uint64_t expire = 0;
   if (args.ttl > 0) {
     uint64_t now = util::GetTimeStampMS();
     expire = now + args.ttl;
-  } else if (args.keep_ttl && old_key_found) {
-    Metadata metadata(kRedisString, false);
-    auto s = metadata.Decode(old_raw_value);
-    if (!s.ok()) {
-      return s;
-    }
-    expire = metadata.expire;
   }
 
   // Create new value

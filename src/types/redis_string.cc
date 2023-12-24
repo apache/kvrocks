@@ -224,10 +224,10 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  bool needGetOldValue = args.type != StringSetType::NONE || args.get || args.keep_ttl;
-  if (needGetOldValue) {
+  bool need_old_value = args.type != StringSetType::NONE || args.get || args.keep_ttl;
+  if (need_old_value) {
     std::string old_value;
-    uint64_t old_expire;
+    uint64_t old_expire = 0;
     auto s = getValueAndExpire(ns_key, &old_value, &old_expire);
     if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
     // GET option

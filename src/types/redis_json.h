@@ -70,7 +70,7 @@ class Json : public Database {
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
-  rocksdb::Status parse(const JsonMetadata &metadata, const Slice &json_byt, JsonValue *value);
+  static rocksdb::Status parse(const JsonMetadata &metadata, const Slice &json_byt, JsonValue *value);
   rocksdb::Status create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value);
   rocksdb::Status del(const Slice &ns_key);
   rocksdb::Status numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,

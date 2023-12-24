@@ -80,6 +80,20 @@ inline const std::vector<CompressionOption> CompressionOptions = {
     {rocksdb::kZSTD, "zstd", "kZSTD"},
 };
 
+enum class StatType {
+  CompactionCount,
+  FlushCount,
+  KeyspaceHits,
+  KeyspaceMisses,
+};
+
+struct DBStats {
+  std::atomic<uint64_t> compaction_count = 0;
+  std::atomic<uint64_t> flush_count = 0;
+  std::atomic<uint64_t> keyspace_hits = 0;
+  std::atomic<uint64_t> keyspace_misses = 0;
+};
+
 class Storage {
  public:
   explicit Storage(Config *config);
@@ -144,12 +158,11 @@ class Storage {
   std::shared_lock<std::shared_mutex> ReadLockGuard();
   std::unique_lock<std::shared_mutex> WriteLockGuard();
 
-  uint64_t GetFlushCount() const { return flush_count_; }
-  void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
-  uint64_t GetCompactionCount() const { return compaction_count_; }
-  void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
   Config *GetConfig() const { return config_; }
+
+  const DBStats *GetDBStats() const { return &db_stats_; }
+  void RecordStat(StatType type, uint64_t v);
 
   Status BeginTxn();
   Status CommitTxn();
@@ -213,8 +226,8 @@ class Storage {
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
   bool db_size_limit_reached_ = false;
-  std::atomic<uint64_t> flush_count_{0};
-  std::atomic<uint64_t> compaction_count_{0};
+
+  DBStats db_stats_;
 
   std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;
@@ -233,6 +246,7 @@ class Storage {
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
 };
 
 }  // namespace engine

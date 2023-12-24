@@ -25,6 +25,7 @@
 #include <utility>
 
 #include "cluster/redis_slot.h"
+#include "common/scope_exit.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
@@ -43,6 +44,15 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
 rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
+
+  bool is_keyspace_hit = false;
+  ScopeExit se([this, &is_keyspace_hit] {
+    if (is_keyspace_hit) {
+      storage_->RecordStat(engine::StatType::KeyspaceHits, 1);
+    } else {
+      storage_->RecordStat(engine::StatType::KeyspaceMisses, 1);
+    }
+  });
 
   auto s = metadata->Decode(bytes);
   if (!s.ok()) return s;
@@ -64,6 +74,7 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no element found");
   }
+  is_keyspace_hit = true;
   return s;
 }
 

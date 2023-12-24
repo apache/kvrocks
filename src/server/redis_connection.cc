@@ -126,7 +126,7 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->srv->stats.IncrOutbondBytes(msg.size());
+  owner_->srv->stats.IncrOutboundBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
 }
 

@@ -172,7 +172,7 @@ TEST_F(RedisTypeTest, ExpireTimeKeyExpired) {
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   uint64_t timestamp = 0;
   s = redis_->GetExpireTime(key_, &timestamp);
-  EXPECT_TRUE(s.IsExpired() && timestamp == 0);
+  EXPECT_TRUE(s.IsNotFound() && timestamp == 0);
   s = redis_->Del(key_);
 }
 

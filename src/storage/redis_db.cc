@@ -78,7 +78,7 @@ rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, std::
   auto s = GetRawMetadata(ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
-  return ParseMetadata({type}, rest, metadata);
+  return type == kRedisNone ? ParseMetadata(RedisTypes::All(), rest, metadata) : ParseMetadata({type}, rest, metadata);
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
@@ -227,23 +227,9 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
 
 rocksdb::Status Database::GetExpireTime(const Slice &user_key, uint64_t *timestamp) {
   std::string ns_key = AppendNamespacePrefix(user_key);
-
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  std::string value;
-  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-  if (!s.ok()) {
-    return s;
-  }
-
   Metadata metadata(kRedisNone, false);
-  s = metadata.Decode(value);
+  auto s = GetMetadata(kRedisNone, ns_key, &metadata);
   if (!s.ok()) return s;
-
-  if (metadata.Expired()) {
-    return rocksdb::Status::Expired();
-  }
   *timestamp = metadata.expire;
 
   return rocksdb::Status::OK();

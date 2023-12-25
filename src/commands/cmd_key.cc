@@ -241,7 +241,7 @@ class CommandExpireTime : public Commander {
     auto s = redis.GetExpireTime(args_[1], &timestamp);
     if (s.ok()) {
       *output = timestamp > 0 ? redis::Integer(timestamp / 1000) : redis::Integer(-1);
-    } else if (s.IsNotFound() || s.IsExpired()) {
+    } else if (s.IsNotFound()) {
       *output = redis::Integer(-2);
     } else {
       return {Status::RedisExecErr, s.ToString()};
@@ -258,7 +258,7 @@ class CommandPExpireTime : public Commander {
     auto s = redis.GetExpireTime(args_[1], &timestamp);
     if (s.ok()) {
       *output = timestamp > 0 ? redis::Integer(timestamp) : redis::Integer(-1);
-    } else if (s.IsNotFound() || s.IsExpired()) {
+    } else if (s.IsNotFound()) {
       *output = redis::Integer(-2);
     } else {
       return {Status::RedisExecErr, s.ToString()};

@@ -58,7 +58,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
       statuses[i] = rocksdb::Status::NotFound(kErrMsgKeyExpired);
       continue;
     }
-    if (metadata.Type() != kRedisString && metadata.size > 0) {
+    if (metadata.Type() != kRedisString && (metadata.IsEmptyableType() || metadata.size > 0)) {
       (*raw_values)[i].clear();
       statuses[i] = rocksdb::Status::InvalidArgument(kErrMsgWrongType);
       continue;
@@ -83,7 +83,7 @@ rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_
     raw_value->clear();
     return rocksdb::Status::NotFound(kErrMsgKeyExpired);
   }
-  if (metadata.Type() != kRedisString && metadata.size > 0) {
+  if (metadata.Type() != kRedisString && (metadata.IsEmptyableType() || metadata.size > 0)) {
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
   return rocksdb::Status::OK();

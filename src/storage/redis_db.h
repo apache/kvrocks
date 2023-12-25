@@ -35,8 +35,8 @@ class Database {
 
   explicit Database(engine::Storage *storage, std::string ns = "");
   [[nodiscard]] static rocksdb::Status ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value,
+  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata);
+  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value,
                                             Metadata *metadata, Slice *rest);
   [[nodiscard]] rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);

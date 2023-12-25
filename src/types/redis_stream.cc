@@ -45,7 +45,7 @@ const char *errXGroupSubcommandRequiresKeyExist =
 Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically.";
 
 rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
-  return Database::GetMetadata(kRedisStream, stream_name, metadata);
+  return Database::GetMetadata({kRedisStream}, stream_name, metadata);
 }
 
 rocksdb::Status Stream::GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id) {

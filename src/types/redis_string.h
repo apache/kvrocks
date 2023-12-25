@@ -71,6 +71,7 @@ class String : public Database {
 
  private:
   rocksdb::Status getValue(const std::string &ns_key, std::string *value);
+  rocksdb::Status getValueAndExpire(const std::string &ns_key, std::string *value, uint64_t *expire);
   std::vector<rocksdb::Status> getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values);
   rocksdb::Status getRawValue(const std::string &ns_key, std::string *raw_value);
   std::vector<rocksdb::Status> getRawValues(const std::vector<Slice> &keys, std::vector<std::string> *raw_values);

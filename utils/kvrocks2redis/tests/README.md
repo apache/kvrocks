@@ -12,9 +12,9 @@ For testing the `kvrocks2redis` utility, manually check generate AOF.
 
 ```bash
 # populate data
-python populate-kvrocks.py  
-# check generated aof file 
-# append new data 
-python append-data-to-kvrocks.py
-# check appended new aof data  
+python3 populate-kvrocks.py
+# check generated aof file & user_key.log file
+
+# check consistency
+python3 check_consistency.py
 ```

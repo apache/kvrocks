@@ -35,8 +35,8 @@ class Database {
 
   explicit Database(engine::Storage *storage, std::string ns = "");
   [[nodiscard]] static rocksdb::Status ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value,
+  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata);
+  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value,
                                             Metadata *metadata, Slice *rest);
   [[nodiscard]] rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
@@ -44,6 +44,7 @@ class Database {
   [[nodiscard]] rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
   [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
+  [[nodiscard]] rocksdb::Status GetExpireTime(const Slice &user_key, uint64_t *timestamp);
   [[nodiscard]] rocksdb::Status Type(const Slice &user_key, RedisType *type);
   [[nodiscard]] rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   [[nodiscard]] rocksdb::Status FlushDB();

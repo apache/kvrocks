@@ -32,7 +32,7 @@
 namespace redis {
 
 rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
-  return Database::GetMetadata(kRedisZSet, ns_key, metadata);
+  return Database::GetMetadata({kRedisZSet}, ns_key, metadata);
 }
 
 rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt) {

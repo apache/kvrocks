@@ -71,6 +71,58 @@ func TestExpire(t *testing.T) {
 		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 13*time.Second, 16*time.Second)
 	})
 
+	t.Run("EXPIRETIME  - Check for EXPRIRETIME alike behavior", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
+
+		require.NoError(t, rdb.ExpireTime(ctx, "x").Err())
+		require.Equal(t, int64(-1), rdb.ExpireTime(ctx, "x").Val().Nanoseconds())
+
+		expireTime := time.Unix(time.Now().Unix()+1, 0)
+		require.NoError(t, rdb.ExpireAt(ctx, "x", time.Unix(time.Now().Unix()+1, 0)).Err())
+		require.NoError(t, rdb.ExpireTime(ctx, "x").Err())
+		require.Equal(t, expireTime.UnixMilli(), rdb.ExpireTime(ctx, "x").Val().Milliseconds())
+
+		require.NoError(t, rdb.ExpireTime(ctx, "x_key_no_exist").Err())
+		require.Equal(t, int64(-2), rdb.ExpireTime(ctx, "x_key_no_exist").Val().Nanoseconds())
+
+		time.Sleep(1001 * time.Millisecond)
+		require.NoError(t, rdb.ExpireTime(ctx, "x").Err())
+		require.Equal(t, int64(-2), rdb.ExpireTime(ctx, "x").Val().Nanoseconds())
+	})
+
+	t.Run("PEXPIRETIME  - Check for PEXPRIRETIME alike behavior", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "x").Err())
+		require.NoError(t, rdb.Set(ctx, "x", "foo", 0).Err())
+
+		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
+		require.Equal(t, int64(-1), rdb.PExpireTime(ctx, "x").Val().Nanoseconds())
+
+		expireTime := time.Unix(time.Now().Unix()+1, 0)
+		require.NoError(t, rdb.PExpireAt(ctx, "x", expireTime).Err())
+		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
+		require.Equal(t, expireTime.UnixMilli(), rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+
+		expireTime = time.UnixMilli(time.Now().Unix()*1000 + 1456)
+		require.NoError(t, rdb.PExpireAt(ctx, "x", expireTime).Err())
+		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
+		require.GreaterOrEqual(t, expireTime.UnixMilli(), rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.LessOrEqual(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+
+		expireTime = time.UnixMilli(time.Now().Unix()*1000 + 1789)
+		require.NoError(t, rdb.PExpireAt(ctx, "x", expireTime).Err())
+		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
+		require.LessOrEqual(t, expireTime.UnixMilli(), rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+		require.GreaterOrEqual(t, (expireTime.UnixMilli()+499)/1000*1000, rdb.PExpireTime(ctx, "x").Val().Milliseconds())
+
+		require.NoError(t, rdb.PExpireTime(ctx, "x_key_no_exist").Err())
+		require.Equal(t, int64(-2), rdb.PExpireTime(ctx, "x_key_no_exist").Val().Nanoseconds())
+
+		time.Sleep(2000 * time.Millisecond)
+		require.NoError(t, rdb.PExpireTime(ctx, "x").Err())
+		require.Equal(t, int64(-2), rdb.PExpireTime(ctx, "x").Val().Nanoseconds())
+	})
+
 	t.Run("SETEX - Set + Expire combo operation. Check for TTL", func(t *testing.T) {
 		require.NoError(t, rdb.SetEx(ctx, "x", "test", 12*time.Second).Err())
 		util.BetweenValues(t, rdb.TTL(ctx, "x").Val(), 10*time.Second, 12*time.Second)

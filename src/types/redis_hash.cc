@@ -34,7 +34,7 @@
 namespace redis {
 
 rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
-  return Database::GetMetadata(kRedisHash, ns_key, metadata);
+  return Database::GetMetadata({kRedisHash}, ns_key, metadata);
 }
 
 rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {

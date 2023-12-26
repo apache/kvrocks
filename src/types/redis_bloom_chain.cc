@@ -25,7 +25,7 @@
 namespace redis {
 
 rocksdb::Status BloomChain::getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata) {
-  return Database::GetMetadata(kRedisBloomFilter, ns_key, metadata);
+  return Database::GetMetadata({kRedisBloomFilter}, ns_key, metadata);
 }
 
 std::string BloomChain::getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index) {

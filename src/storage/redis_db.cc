@@ -25,6 +25,7 @@
 #include <utility>
 
 #include "cluster/redis_slot.h"
+#include "common/scope_exit.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
@@ -43,6 +44,15 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
 rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
+
+  bool is_keyspace_hit = false;
+  ScopeExit se([this, &is_keyspace_hit] {
+    if (is_keyspace_hit) {
+      storage_->RecordStat(engine::StatType::KeyspaceHits, 1);
+    } else {
+      storage_->RecordStat(engine::StatType::KeyspaceMisses, 1);
+    }
+  });
 
   auto s = metadata->Decode(bytes);
   if (!s.ok()) return s;
@@ -64,6 +74,7 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no element found");
   }
+  is_keyspace_hit = true;
   return s;
 }
 
@@ -593,43 +604,6 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   auto s = storage_->DeleteRange(prefix, prefix_end);
   if (!s.ok()) {
     return s;
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
-                                          int count) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
-
-  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
-  bool end = false;
-  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
-    std::string prefix = ComposeSlotKeyPrefix(namespace_, i);
-    uint64_t total = 0;
-    int cnt = 0;
-    if (slot != -1 && i != slot) {
-      (*slotskeys)[i] = total;
-      continue;
-    }
-    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
-      if (!iter->key().starts_with(prefix)) {
-        break;
-      }
-      total++;
-      if (slot != -1 && count > 0 && !end) {
-        // Get user key
-        if (cnt < count) {
-          auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
-          keys->emplace_back(user_key.ToString());
-          cnt++;
-        }
-      }
-    }
-    // Maybe cnt < count
-    if (cnt > 0) end = true;
-    (*slotskeys)[i] = total;
   }
   return rocksdb::Status::OK();
 }

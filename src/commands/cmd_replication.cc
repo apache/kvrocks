@@ -84,7 +84,7 @@ class CommandPSync : public Commander {
     }
 
     if (need_full_sync) {
-      srv->stats.IncrPSyncErrCounter();
+      srv->stats.IncrPSyncErrCount();
       return {Status::RedisExecErr, *output};
     }
 
@@ -98,7 +98,7 @@ class CommandPSync : public Commander {
       return s.Prefixed("failed to set blocking mode on socket");
     }
 
-    srv->stats.IncrPSyncOKCounter();
+    srv->stats.IncrPSyncOKCount();
     s = srv->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
       std::string err = "-ERR " + s.Msg() + "\r\n";
@@ -216,7 +216,7 @@ class CommandFetchMeta : public Commander {
 
     conn->NeedNotFreeBufferEvent();
     conn->EnableFlag(redis::Connection::kCloseAsync);
-    srv->stats.IncrFullSyncCounter();
+    srv->stats.IncrFullSyncCount();
 
     // Feed-replica-meta thread
     auto t = GET_OR_RET(util::CreateThread("feed-repl-info", [srv, repl_fd, ip, bev = conn->GetBufferEvent()] {

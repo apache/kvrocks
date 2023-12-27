@@ -47,20 +47,11 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
     if (!statuses[i].ok()) continue;
     (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
     Metadata metadata(kRedisNone, false);
-    auto s = metadata.Decode((*raw_values)[i]);
+    Slice slice = (*raw_values)[i];
+    auto s = ParseMetadata({kRedisString}, &slice, &metadata);
     if (!s.ok()) {
-      (*raw_values)[i].clear();
       statuses[i] = s;
-      continue;
-    }
-    if (metadata.Expired()) {
       (*raw_values)[i].clear();
-      statuses[i] = rocksdb::Status::NotFound(kErrMsgKeyExpired);
-      continue;
-    }
-    if (metadata.Type() != kRedisString && metadata.size > 0) {
-      (*raw_values)[i].clear();
-      statuses[i] = rocksdb::Status::InvalidArgument(kErrMsgWrongType);
       continue;
     }
   }
@@ -70,23 +61,12 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
 rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
   raw_value->clear();
 
-  rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, raw_value);
+  auto s = GetRawMetadata(ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);
-  s = metadata.Decode(*raw_value);
-  if (!s.ok()) return s;
-  if (metadata.Expired()) {
-    raw_value->clear();
-    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
-  }
-  if (metadata.Type() != kRedisString && metadata.size > 0) {
-    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
-  }
-  return rocksdb::Status::OK();
+  Slice slice = *raw_value;
+  return ParseMetadata({kRedisString}, &slice, &metadata);
 }
 
 rocksdb::Status String::getValueAndExpire(const std::string &ns_key, std::string *value, uint64_t *expire) {

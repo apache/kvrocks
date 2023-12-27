@@ -64,19 +64,19 @@ class Stats {
   mutable std::shared_mutex inst_metrics_mutex;
   std::vector<InstMetric> inst_metrics;
 
-  std::atomic<uint64_t> fullsync_counter = {0};
-  std::atomic<uint64_t> psync_err_counter = {0};
-  std::atomic<uint64_t> psync_ok_counter = {0};
+  std::atomic<uint64_t> fullsync_count = {0};
+  std::atomic<uint64_t> psync_err_count = {0};
+  std::atomic<uint64_t> psync_ok_count = {0};
   std::map<std::string, CommandStat> commands_stats;
 
   Stats();
   void IncrCalls(const std::string &command_name);
   void IncrLatency(uint64_t latency, const std::string &command_name);
-  void IncrInbondBytes(uint64_t bytes) { in_bytes.fetch_add(bytes, std::memory_order_relaxed); }
-  void IncrOutbondBytes(uint64_t bytes) { out_bytes.fetch_add(bytes, std::memory_order_relaxed); }
-  void IncrFullSyncCounter() { fullsync_counter.fetch_add(1, std::memory_order_relaxed); }
-  void IncrPSyncErrCounter() { psync_err_counter.fetch_add(1, std::memory_order_relaxed); }
-  void IncrPSyncOKCounter() { psync_ok_counter.fetch_add(1, std::memory_order_relaxed); }
+  void IncrInboundBytes(uint64_t bytes) { in_bytes.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrOutboundBytes(uint64_t bytes) { out_bytes.fetch_add(bytes, std::memory_order_relaxed); }
+  void IncrFullSyncCount() { fullsync_count.fetch_add(1, std::memory_order_relaxed); }
+  void IncrPSyncErrCount() { psync_err_count.fetch_add(1, std::memory_order_relaxed); }
+  void IncrPSyncOKCount() { psync_ok_count.fetch_add(1, std::memory_order_relaxed); }
   static int64_t GetMemoryRSS();
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
   uint64_t GetInstantaneousMetric(int metric) const;

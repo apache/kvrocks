@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
@@ -100,4 +102,43 @@ func TestInfo(t *testing.T) {
 	t.Run("get cluster information by INFO - cluster enabled", func(t *testing.T) {
 		require.Equal(t, "1", util.FindInfoEntry(rdb0, "cluster_enabled", "cluster"))
 	})
+}
+
+func TestKeyspaceHitMiss(t *testing.T) {
+	srv0 := util.StartServer(t, map[string]string{})
+	defer func() { srv0.Close() }()
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.Equal(t, "0", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	require.Equal(t, "0", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+	require.NoError(t, rdb0.Set(ctx, "foo", "bar", 0).Err())
+
+	require.NoError(t, rdb0.Get(ctx, "foo").Err())
+	require.Equal(t, "1", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	require.Equal(t, "0", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+
+	require.EqualError(t, rdb0.Get(ctx, "no_exists_key").Err(), redis.Nil.Error())
+	require.Equal(t, "1", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	require.Equal(t, "1", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+
+	require.NoError(t, rdb0.HSet(ctx, "hash", "f1", "v1").Err())
+	require.Equal(t, "1", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	// increase by 2 because of the previous HSet will try to get the key first
+	require.Equal(t, "2", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+
+	require.NoError(t, rdb0.HGet(ctx, "hash", "f1").Err())
+	require.Equal(t, "2", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	require.Equal(t, "2", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+
+	require.EqualError(t, rdb0.HGet(ctx, "no_exists_hash", "f1").Err(), redis.Nil.Error())
+	require.Equal(t, "2", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
+	require.Equal(t, "3", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
 }

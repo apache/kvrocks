@@ -801,8 +801,8 @@ void Server::GetRocksDBInfo(std::string *info) {
                   << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
 
-  auto db_stats = storage->GetDB()->GetDBOptions().statistics;
-  if (db_stats) {
+  auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
+  if (rocksdb_stats) {
     std::map<std::string, uint32_t> block_cache_stats = {
         {"block_cache_hit", rocksdb::Tickers::BLOCK_CACHE_HIT},
         {"block_cache_index_hit", rocksdb::Tickers::BLOCK_CACHE_INDEX_HIT},
@@ -814,7 +814,7 @@ void Server::GetRocksDBInfo(std::string *info) {
         {"block_cache_data_miss", rocksdb::Tickers::BLOCK_CACHE_DATA_MISS},
     };
     for (const auto &iter : block_cache_stats) {
-      string_stream << iter.first << ":" << db_stats->getTickerCount(iter.second) << "\r\n";
+      string_stream << iter.first << ":" << rocksdb_stats->getTickerCount(iter.second) << "\r\n";
     }
   }
 
@@ -829,8 +829,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_super_version:" << num_super_version << "\r\n";
   string_stream << "num_background_errors:" << num_background_errors << "\r\n";
-  string_stream << "flush_count:" << storage->GetFlushCount() << "\r\n";
-  string_stream << "compaction_count:" << storage->GetCompactionCount() << "\r\n";
+  auto db_stats = storage->GetDBStats();
+  string_stream << "flush_count:" << db_stats->flush_count << "\r\n";
+  string_stream << "compaction_count:" << db_stats->compaction_count << "\r\n";
   string_stream << "put_per_sec:" << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
   string_stream << "get_per_sec:"
                 << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
@@ -1027,9 +1028,14 @@ void Server::GetStatsInfo(std::string *info) {
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
   string_stream << "instantaneous_output_kbps:"
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
-  string_stream << "sync_full:" << stats.fullsync_counter << "\r\n";
-  string_stream << "sync_partial_ok:" << stats.psync_ok_counter << "\r\n";
-  string_stream << "sync_partial_err:" << stats.psync_err_counter << "\r\n";
+  string_stream << "sync_full:" << stats.fullsync_count << "\r\n";
+  string_stream << "sync_partial_ok:" << stats.psync_ok_count << "\r\n";
+  string_stream << "sync_partial_err:" << stats.psync_err_count << "\r\n";
+
+  auto db_stats = storage->GetDBStats();
+  string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";
+  string_stream << "keyspace_misses:" << db_stats->keyspace_misses << "\r\n";
+
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";

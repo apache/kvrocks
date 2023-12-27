@@ -117,7 +117,7 @@ Status Sync::incrementBatchLoop() {
     if (!tryCatchUpWithPrimary().IsOK()) {
       return {Status::NotOK};
     }
-    if (next_seq_ < storage_->LatestSeqNumber()) {
+    if (next_seq_ <= storage_->LatestSeqNumber()) {
       storage_->GetDB()->GetUpdatesSince(next_seq_, &iter);
       for (; iter->Valid(); iter->Next()) {
         auto batch = iter->GetBatch();

@@ -40,6 +40,13 @@
 #include "observer_or_unique.h"
 #include "status.h"
 
+enum class StorageEngineType : uint16_t {
+  RocksDB,
+  Speedb,
+};
+
+static constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType { STORAGE_ENGINE };
+
 const int kReplIdLength = 16;
 
 enum ColumnFamilyID {

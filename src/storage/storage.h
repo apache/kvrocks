@@ -45,7 +45,7 @@ enum class StorageEngineType : uint16_t {
   Speedb,
 };
 
-static constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType { STORAGE_ENGINE };
+inline constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType::KVROCKS_STORAGE_ENGINE;
 
 const int kReplIdLength = 16;
 

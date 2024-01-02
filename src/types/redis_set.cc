@@ -29,7 +29,7 @@
 namespace redis {
 
 rocksdb::Status Set::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
-  return Database::GetMetadata(kRedisSet, ns_key, metadata);
+  return Database::GetMetadata({kRedisSet}, ns_key, metadata);
 }
 
 // Make sure members are uniq before use Overwrite

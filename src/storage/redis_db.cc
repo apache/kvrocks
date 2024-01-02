@@ -25,6 +25,7 @@
 #include <utility>
 
 #include "cluster/redis_slot.h"
+#include "common/scope_exit.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
@@ -43,6 +44,15 @@ Database::Database(engine::Storage *storage, std::string ns) : storage_(storage)
 rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata) {
   std::string old_metadata;
   metadata->Encode(&old_metadata);
+
+  bool is_keyspace_hit = false;
+  ScopeExit se([this, &is_keyspace_hit] {
+    if (is_keyspace_hit) {
+      storage_->RecordStat(engine::StatType::KeyspaceHits, 1);
+    } else {
+      storage_->RecordStat(engine::StatType::KeyspaceMisses, 1);
+    }
+  });
 
   auto s = metadata->Decode(bytes);
   if (!s.ok()) return s;
@@ -64,21 +74,22 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::NotFound("no element found");
   }
+  is_keyspace_hit = true;
   return s;
 }
 
-rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, Metadata *metadata) {
+rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata) {
   std::string raw_value;
   Slice rest;
-  return GetMetadata(type, ns_key, &raw_value, metadata, &rest);
+  return GetMetadata(types, ns_key, &raw_value, metadata, &rest);
 }
 
-rocksdb::Status Database::GetMetadata(RedisType type, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
+rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
                                       Slice *rest) {
   auto s = GetRawMetadata(ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
-  return ParseMetadata({type}, rest, metadata);
+  return ParseMetadata(types, rest, metadata);
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
@@ -221,6 +232,16 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
   s = metadata.Decode(value);
   if (!s.ok()) return s;
   *ttl = metadata.TTL();
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::GetExpireTime(const Slice &user_key, uint64_t *timestamp) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  Metadata metadata(kRedisNone, false);
+  auto s = GetMetadata(RedisTypes::All(), ns_key, &metadata);
+  if (!s.ok()) return s;
+  *timestamp = metadata.expire;
 
   return rocksdb::Status::OK();
 }
@@ -488,7 +509,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
 
   if (metadata.Type() == kRedisList) {
     ListMetadata list_metadata(false);
-    s = GetMetadata(kRedisList, ns_key, &list_metadata);
+    s = GetMetadata({kRedisList}, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
     infos->emplace_back(std::to_string(list_metadata.head));
@@ -587,43 +608,6 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::GetSlotKeysInfo(int slot, std::map<int, uint64_t> *slotskeys, std::vector<std::string> *keys,
-                                          int count) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
-
-  auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
-  bool end = false;
-  for (int i = 0; i < HASH_SLOTS_SIZE; i++) {
-    std::string prefix = ComposeSlotKeyPrefix(namespace_, i);
-    uint64_t total = 0;
-    int cnt = 0;
-    if (slot != -1 && i != slot) {
-      (*slotskeys)[i] = total;
-      continue;
-    }
-    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
-      if (!iter->key().starts_with(prefix)) {
-        break;
-      }
-      total++;
-      if (slot != -1 && count > 0 && !end) {
-        // Get user key
-        if (cnt < count) {
-          auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
-          keys->emplace_back(user_key.ToString());
-          cnt++;
-        }
-      }
-    }
-    // Maybe cnt < count
-    if (cnt > 0) end = true;
-    (*slotskeys)[i] = total;
-  }
-  return rocksdb::Status::OK();
-}
-
 rocksdb::Status Database::KeyExist(const std::string &key) {
   int cnt = 0;
   std::vector<rocksdb::Slice> keys;
@@ -644,7 +628,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
-  rocksdb::Status s = GetMetadata(type, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata({type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   LatestSnapShot ss(storage_);

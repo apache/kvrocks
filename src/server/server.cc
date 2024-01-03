@@ -1169,7 +1169,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    if (last_scan_time == 0) {
+      string_stream << "# WARN: DBSIZE SCAN never performed yet\r\n";
+    } else {
+      string_stream << "# Last DBSIZE SCAN time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    }
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage->GetDB()->GetLatestSequenceNumber() << "\r\n";

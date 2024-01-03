@@ -46,7 +46,6 @@ class Sync {
   bool IsStopped() const { return stop_flag_; }
 
  private:
-  int sock_fd_;
   bool stop_flag_ = false;
   engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
@@ -61,11 +60,10 @@ class Sync {
     Incr_batch_data,
   } incr_state_ = Incr_batch_size;
 
-  size_t incr_bulk_len_ = 0;
-
-  Status auth();
-  Status tryPSync();
   Status incrementBatchLoop();
+
+  Status tryCatchUpWithPrimary();
+  Status checkWalBoundary();
 
   void parseKVFromLocalStorage();
 

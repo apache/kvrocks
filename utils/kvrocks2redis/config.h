@@ -48,9 +48,6 @@ struct Config {
   std::string next_offset_file_name = "last_next_offset.txt";
   std::string next_seq_file_path = output_dir + "/last_next_seq.txt";
 
-  std::string kvrocks_auth;
-  std::string kvrocks_host;
-  int kvrocks_port = 0;
   std::map<std::string, RedisServer> tokens;
   bool cluster_enabled = false;
 

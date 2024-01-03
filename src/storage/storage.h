@@ -29,6 +29,7 @@
 
 #include <atomic>
 #include <cinttypes>
+#include <cstddef>
 #include <memory>
 #include <shared_mutex>
 #include <string>
@@ -49,6 +50,12 @@ enum ColumnFamilyID {
   kColumnFamilyIDPubSub,
   kColumnFamilyIDPropagate,
   kColumnFamilyIDStream,
+};
+
+enum DBOpenMode {
+  kDBOpenModeDefault,
+  kDBOpenModeForReadOnly,
+  kDBOpenModeAsSecondaryInstance,
 };
 
 namespace engine {
@@ -100,7 +107,7 @@ class Storage {
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
-  Status Open(bool read_only = false);
+  Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();

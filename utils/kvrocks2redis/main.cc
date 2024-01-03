@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
   kvrocks_config.slot_id_encoded = config.cluster_enabled;
 
   engine::Storage storage(&kvrocks_config);
-  s = storage.Open(true);
+  s = storage.Open(kDBOpenModeAsSecondaryInstance);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open Kvrocks storage: " << s.Msg();
     exit(1);

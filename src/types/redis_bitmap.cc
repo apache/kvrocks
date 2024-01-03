@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "db_util.h"

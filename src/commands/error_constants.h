@@ -22,6 +22,7 @@
 
 namespace redis {
 
+inline constexpr const char *errNotImplemented = "not implemented";
 inline constexpr const char *errInvalidSyntax = "syntax error";
 inline constexpr const char *errInvalidExpireTime = "invalid expire time";
 inline constexpr const char *errWrongNumOfArguments = "wrong number of arguments";

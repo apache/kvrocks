@@ -84,7 +84,7 @@ void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::Compac
             << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes
             << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no")
             << ", elapsed(micro): " << ci.stats.elapsed_micros;
-  storage_->IncrCompactionCount(1);
+  storage_->RecordStat(engine::StatType::CompactionCount, 1);
   storage_->CheckDBSizeLimit();
 }
 
@@ -94,7 +94,7 @@ void EventListener::OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &f
 }
 
 void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
-  storage_->IncrFlushCount(1);
+  storage_->RecordStat(engine::StatType::FlushCount, 1);
   storage_->CheckDBSizeLimit();
   LOG(INFO) << "[event_listener/flush_completed] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id
             << ", job_id: " << fi.job_id << ", file: " << fi.file_path

@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "db_util.h"
@@ -58,28 +57,11 @@ void ExpandBitmapSegment(std::string *segment, size_t min_bytes) {
 }
 
 rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
-  std::string old_metadata;
-  metadata->Encode(&old_metadata);
   auto s = GetRawMetadata(ns_key, raw_value);
   if (!s.ok()) return s;
-  s = metadata->Decode(*raw_value);
-  if (!s.ok()) return s;
 
-  if (metadata->Expired()) {
-    // error discarded here since it already failed
-    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
-    return rocksdb::Status::NotFound(kErrMsgKeyExpired);
-  }
-  if (metadata->Type() == kRedisString) return s;
-  if (metadata->Type() != kRedisBitmap && metadata->size > 0) {
-    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
-    return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
-  }
-  if (metadata->size == 0) {
-    auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
-    return rocksdb::Status::NotFound("no elements");
-  }
-  return s;
+  Slice slice = *raw_value;
+  return ParseMetadata({kRedisBitmap, kRedisString}, &slice, metadata);
 }
 
 rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit) {

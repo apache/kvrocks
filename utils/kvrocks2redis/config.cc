@@ -87,14 +87,6 @@ Status Config::parseConfigFromString(const std::string &input) {
     }
   } else if (size == 1 && key == "pidfile") {
     pidfile = args[0];
-  } else if (size >= 2 && key == "kvrocks") {
-    kvrocks_host = args[0];
-    // In new versions, we don't use extra port to implement replication
-    kvrocks_port = GET_OR_RET(ParseInt<std::uint16_t>(args[1]).Prefixed("kvrocks port number"));
-
-    if (size == 3) {
-      kvrocks_auth = args[2];
-    }
   } else if (size == 1 && key == "cluster-enable") {
     // Renamed to cluster-enabled, keeping the old one for compatibility.
     cluster_enabled = GET_OR_RET(yesnotoi(args[0]).Prefixed("key 'cluster-enable'"));

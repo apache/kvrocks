@@ -126,7 +126,7 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->srv->stats.IncrOutbondBytes(msg.size());
+  owner_->srv->stats.IncrOutboundBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
@@ -393,7 +393,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (is_multi_exec) multi_error_ = true;
-        Reply(redis::Error("ERR " + s.Msg()));
+        Reply(redis::Error(s.Msg()));
         continue;
       }
     }

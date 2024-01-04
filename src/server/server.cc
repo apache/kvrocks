@@ -800,6 +800,24 @@ void Server::GetRocksDBInfo(std::string *info) {
     string_stream << "memtable_count_limit_stop[" << cf_handle->GetName()
                   << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
+
+  auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
+  if (rocksdb_stats) {
+    std::map<std::string, uint32_t> block_cache_stats = {
+        {"block_cache_hit", rocksdb::Tickers::BLOCK_CACHE_HIT},
+        {"block_cache_index_hit", rocksdb::Tickers::BLOCK_CACHE_INDEX_HIT},
+        {"block_cache_filter_hit", rocksdb::Tickers::BLOCK_CACHE_FILTER_HIT},
+        {"block_cache_data_hit", rocksdb::Tickers::BLOCK_CACHE_DATA_HIT},
+        {"block_cache_miss", rocksdb::Tickers::BLOCK_CACHE_MISS},
+        {"block_cache_index_miss", rocksdb::Tickers::BLOCK_CACHE_INDEX_MISS},
+        {"block_cache_filter_miss", rocksdb::Tickers::BLOCK_CACHE_FILTER_MISS},
+        {"block_cache_data_miss", rocksdb::Tickers::BLOCK_CACHE_DATA_MISS},
+    };
+    for (const auto &iter : block_cache_stats) {
+      string_stream << iter.first << ":" << rocksdb_stats->getTickerCount(iter.second) << "\r\n";
+    }
+  }
+
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";
   string_stream << "snapshots:" << num_snapshots << "\r\n";
@@ -811,8 +829,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_super_version:" << num_super_version << "\r\n";
   string_stream << "num_background_errors:" << num_background_errors << "\r\n";
-  string_stream << "flush_count:" << storage->GetFlushCount() << "\r\n";
-  string_stream << "compaction_count:" << storage->GetCompactionCount() << "\r\n";
+  auto db_stats = storage->GetDBStats();
+  string_stream << "flush_count:" << db_stats->flush_count << "\r\n";
+  string_stream << "compaction_count:" << db_stats->compaction_count << "\r\n";
   string_stream << "put_per_sec:" << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
   string_stream << "get_per_sec:"
                 << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
@@ -1009,9 +1028,14 @@ void Server::GetStatsInfo(std::string *info) {
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
   string_stream << "instantaneous_output_kbps:"
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
-  string_stream << "sync_full:" << stats.fullsync_counter << "\r\n";
-  string_stream << "sync_partial_ok:" << stats.psync_ok_counter << "\r\n";
-  string_stream << "sync_partial_err:" << stats.psync_err_counter << "\r\n";
+  string_stream << "sync_full:" << stats.fullsync_count << "\r\n";
+  string_stream << "sync_partial_ok:" << stats.psync_ok_count << "\r\n";
+  string_stream << "sync_partial_err:" << stats.psync_err_count << "\r\n";
+
+  auto db_stats = storage->GetDBStats();
+  string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";
+  string_stream << "keyspace_misses:" << db_stats->keyspace_misses << "\r\n";
+
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
@@ -1145,7 +1169,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    if (last_scan_time == 0) {
+      string_stream << "# WARN: DBSIZE SCAN never performed yet\r\n";
+    } else {
+      string_stream << "# Last DBSIZE SCAN time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    }
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage->GetDB()->GetLatestSequenceNumber() << "\r\n";

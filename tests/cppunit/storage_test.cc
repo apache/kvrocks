@@ -18,11 +18,12 @@
  *
  */
 
-#include <__filesystem/operations.h>
 #include <config/config.h>
 #include <gtest/gtest.h>
 #include <status.h>
 #include <storage/storage.h>
+
+#include <filesystem>
 
 TEST(Storage, CreateBackup) {
   std::error_code ec;
@@ -32,26 +33,26 @@ TEST(Storage, CreateBackup) {
   config.slot_id_encoded = false;
 
   std::filesystem::remove_all(config.db_dir, ec);
-  assert(!ec);
+  ASSERT_TRUE(!ec);
 
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
-  assert(s.IsOK());
+  ASSERT_TRUE(s.IsOK());
 
   constexpr int cnt = 10;
   for (int i = 0; i < cnt; i++) {
     rocksdb::WriteBatch batch;
     batch.Put("k", "v");
-    assert(storage->Write(rocksdb::WriteOptions(), &batch).ok());
+    ASSERT_TRUE(storage->Write(rocksdb::WriteOptions(), &batch).ok());
   }
   uint64_t sequence_number = 0;
   s = storage->CreateBackup(&sequence_number);
-  assert(s.IsOK());
-  assert(cnt == sequence_number);
+  ASSERT_TRUE(s.IsOK());
+  ASSERT_EQ(cnt, sequence_number);
   // check if backup success without caring about the sequence number
   s = storage->CreateBackup();
-  assert(s.IsOK());
+  ASSERT_TRUE(s.IsOK());
 
   std::filesystem::remove_all(config.db_dir, ec);
-  assert(!ec);
+  ASSERT_TRUE(!ec);
 }

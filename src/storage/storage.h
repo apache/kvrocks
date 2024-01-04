@@ -96,7 +96,7 @@ class Storage {
   Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
-  Status CreateBackup();
+  Status CreateBackup(uint64_t *sequence_number = nullptr);
   void DestroyBackup();
   Status RestoreFromBackup();
   Status RestoreFromCheckpoint();

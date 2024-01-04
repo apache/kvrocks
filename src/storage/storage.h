@@ -123,8 +123,9 @@ class Storage {
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
-  // It will set sequence_number to the latest sequence number of the backup
-  // if sequence_number is not nullptr and backup success.
+  // The sequence_number will be pointed to the value of the sequence number in range of DB,
+  // but can't promise it's the latest sequence number. So you must check it by yourself before
+  // using it.
   Status CreateBackup(uint64_t *sequence_number = nullptr);
   void DestroyBackup();
   Status RestoreFromBackup();

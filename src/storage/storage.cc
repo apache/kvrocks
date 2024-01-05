@@ -345,7 +345,7 @@ Status Storage::Open(DBOpenMode mode) {
   return Status::OK();
 }
 
-Status Storage::CreateBackup() {
+Status Storage::CreateBackup(uint64_t *sequence_number) {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->GetBackupDir();
@@ -363,7 +363,7 @@ Status Storage::CreateBackup() {
   }
 
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB);
+  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB, sequence_number);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to create checkpoint (snapshot) for backup. Error: " << s.ToString();
     return {Status::DBBackupErr, s.ToString()};

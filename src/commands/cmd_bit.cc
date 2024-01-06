@@ -242,6 +242,7 @@ class CommandBitOp : public Commander {
   BitOpFlags op_flag_;
 };
 
+template <bool ReadOnly>
 class CommandBitfield : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -312,6 +313,12 @@ class CommandBitfield : public Commander {
       }
 
       cmds_.push_back(cmd);
+    }
+
+    if constexpr (ReadOnly) {
+      if (!read_only_) {
+        return {Status::RedisParseErr, "BITFIELD_RO only supports the GET subcommand"};
+      }
     }
 
     return Commander::Parse(args);
@@ -394,6 +401,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 
                         MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
-                        MakeCmdAttr<CommandBitfield>("bitfield", -2, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandBitfield<false>>("bitfield", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBitfield<true>>("bitfield_ro", -2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

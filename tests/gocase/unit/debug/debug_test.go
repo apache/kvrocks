@@ -55,13 +55,13 @@ func TestDebugProtocolV2(t *testing.T) {
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {
-		var return_value = redis.NewScript(`
+		var returnValueScript = redis.NewScript(`
 			return ARGV[1]
 		`)
-		val, err := return_value.Run(ctx, rdb, []string{}, true).Int()
+		val, err := returnValueScript.Run(ctx, rdb, []string{}, true).Int()
 		require.NoError(t, err)
 		require.EqualValues(t, 1, val)
-		val, err = return_value.Run(ctx, rdb, []string{}, false).Int()
+		val, err = returnValueScript.Run(ctx, rdb, []string{}, false).Int()
 		require.NoError(t, err)
 		require.EqualValues(t, 0, val)
 	})
@@ -93,13 +93,13 @@ func TestDebugProtocolV3(t *testing.T) {
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {
-		var return_value = redis.NewScript(`
+		var returnValueScript = redis.NewScript(`
 			return ARGV[1]
 		`)
-		val, err := return_value.Run(ctx, rdb, []string{}, true).Bool()
+		val, err := returnValueScript.Run(ctx, rdb, []string{}, true).Bool()
 		require.NoError(t, err)
 		require.EqualValues(t, true, val)
-		val, err = return_value.Run(ctx, rdb, []string{}, false).Bool()
+		val, err = returnValueScript.Run(ctx, rdb, []string{}, false).Bool()
 		require.NoError(t, err)
 		require.EqualValues(t, false, val)
 	})

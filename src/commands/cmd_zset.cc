@@ -18,7 +18,6 @@
  *
  */
 
-#include <iostream>
 #include <limits>
 
 #include "command_parser.h"

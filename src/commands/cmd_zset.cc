@@ -1271,9 +1271,9 @@ class CommandZInter : public CommandZUnion {
     };
     std::sort(member_scores.begin(), member_scores.end(), ms_comparator);
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-    for (const auto &ms : member_scores) {
-      output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+    for (const auto &member_score : member_scores) {
+      output->append(redis::BulkString(member_score.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(member_score.score)));
     }
     return Status::OK();
   }

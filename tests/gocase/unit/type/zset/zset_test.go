@@ -1236,6 +1236,58 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, []redis.Z{{2, "b"}, {3, "c"}}, rdb.ZRangeWithScores(ctx, "zsetc", 0, -1).Val())
 	})
 
+	t.Run(fmt.Sprintf("ZINTER with AGGREGATE and WEIGHTS - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "sum"}).Val())
+
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "sum"}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "max"}).Val())
+		require.Equal(t, []string{"b", "c"}, rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "min"}).Val())
+
+		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+		require.Equal(t, []redis.Z{{2, "b"}, {3, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "max"}).Val())
+		require.Equal(t, []redis.Z{{1, "b"}, {2, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "min"}).Val())
+		require.Equal(t, []redis.Z{{3, "b"}, {5, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Aggregate: "sum"}).Val())
+
+		require.Equal(t, []redis.Z{{7, "b"}, {12, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "sum"}).Val())
+		require.Equal(t, []redis.Z{{4, "b"}, {6, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "max"}).Val())
+		require.Equal(t, []redis.Z{{3, "b"}, {6, "c"}}, rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb"}, Weights: []float64{2, 3}, Aggregate: "min"}).Val())
+
+		require.Equal(t, 0, len(rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb", "zset_noexists"}}).Val()))
+		require.Equal(t, 0, len(rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb", "zset_noexists"}, Weights: []float64{2, 3}, Aggregate: "sum"}).Val()))
+	})
+
+	t.Run(fmt.Sprintf("ZINTERCARD with LIMIT - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 0, "zseta", "zsetb").Val())
+		require.Equal(t, int64(1), rdb.ZInterCard(ctx, 1, "zseta", "zsetb").Val())
+
+		require.Error(t, rdb.ZInterCard(ctx, -1, "zseta", "zsetb").Err())
+
+	})
+
 	for i, cmd := range []func(ctx context.Context, dest string, store *redis.ZStore) *redis.IntCmd{rdb.ZInterStore, rdb.ZUnionStore} {
 		var funcName string
 		switch i {

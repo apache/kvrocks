@@ -1263,13 +1263,13 @@ class CommandZInter : public CommandZUnion {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    auto compare_score = [](const MemberScore &score1, const MemberScore &score2) {
-      if (score1.score == score2.score) {
-        return score1.member < score2.member;
+    auto ms_comparator = [](const MemberScore &ms1, const MemberScore &ms2) {
+      if (ms1.score == ms2.score) {
+        return ms1.member < ms2.member;
       }
-      return score1.score < score2.score;
+      return ms1.score < ms2.score;
     };
-    std::sort(member_scores.begin(), member_scores.end(), compare_score);
+    std::sort(member_scores.begin(), member_scores.end(), ms_comparator);
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &ms : member_scores) {
       output->append(redis::BulkString(ms.member));
@@ -1327,7 +1327,7 @@ class CommandZInterCard : public Commander {
     return {2, 1 + num_key, 1};
   }
 
- protected:
+ private:
   size_t numkeys_ = 0;
   size_t limit_ = 0;
   std::vector<std::string> keys_;

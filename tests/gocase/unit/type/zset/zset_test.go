@@ -1392,7 +1392,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 				} else if auxList[i].Score > auxList[j].Score {
 					return false
 				} else {
-					if strings.Compare(auxList[i].Member.(string), auxList[j].Member.(string)) == 1 {
+					if strings.Compare(auxList[i].Member, auxList[j].Member) == 1 {
 						return false
 					} else {
 						return true
@@ -1401,7 +1401,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 			})
 			var aux []string
 			for _, z := range auxList {
-				aux = append(aux, z.Member.(string))
+				aux = append(aux, z.Member)
 			}
 			fromRedis := rdb.ZRange(ctx, "myzset", 0, -1).Val()
 			for i := 0; i < len(fromRedis); i++ {

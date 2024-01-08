@@ -562,7 +562,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.NoError(t, rdb0.SRem(ctx, keys["set"], 1, 3).Err())
 		require.NoError(t, rdb0.Expire(ctx, keys["set"], 10*time.Second).Err())
 		// type zset
-		require.NoError(t, rdb0.ZAdd(ctx, keys["zset"], []redis.Z{{0, 1}, {2, 3}, {4, 5}}...).Err())
+		require.NoError(t, rdb0.ZAdd(ctx, keys["zset"], []redis.Z{{0, "1"}, {2, "3"}, {4, "5"}}...).Err())
 		require.NoError(t, rdb0.ZRem(ctx, keys["zset"], 1, 3).Err())
 		require.NoError(t, rdb0.Expire(ctx, keys["zset"], 10*time.Second).Err())
 		// type bitmap

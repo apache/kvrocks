@@ -63,10 +63,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
     if (metadata.Type() == kRedisString) {
       command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
-      resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+      resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
       if (metadata.expire > 0) {
         command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
-        resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+        resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
       }
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();
@@ -80,7 +80,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         auto cmd = static_cast<RedisCommand>(*parse_result);
         if (cmd == kRedisCmdExpire) {
           command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
-          resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+          resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
         }
       }
     }
@@ -103,7 +103,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
                       std::to_string(stream_metadata.entries_added),
                       "MAXDELETEDID",
                       stream_metadata.max_deleted_entry_id.ToString()};
-      resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+      resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
     }
 
     return rocksdb::Status::OK();
@@ -262,7 +262,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   }
 
   if (!command_args.empty()) {
-    resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+    resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
   }
 
   return rocksdb::Status::OK();
@@ -387,7 +387,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   }
 
   if (!command_args.empty()) {
-    resp_commands_[ns].emplace_back(redis::Command2RESP(command_args));
+    resp_commands_[ns].emplace_back(redis::Array2RESP(command_args));
   }
 
   return rocksdb::Status::OK();

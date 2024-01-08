@@ -148,7 +148,7 @@ class CommandGeoDist : public CommandGeoBase {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(util::Float2String(GetDistanceByUnit(distance)));
     }
@@ -177,7 +177,7 @@ class CommandGeoHash : public Commander {
       hashes.resize(members_.size(), "");
     }
 
-    *output = redis::MultiBulkString(hashes);
+    *output = conn->MultiBulkString(hashes);
     return Status::OK();
   }
 
@@ -206,16 +206,16 @@ class CommandGeoPos : public Commander {
 
     if (s.IsNotFound()) {
       list.resize(members_.size(), "");
-      *output = redis::MultiBulkString(list);
+      *output = conn->MultiBulkString(list);
       return Status::OK();
     }
 
     for (const auto &member : members_) {
       auto iter = geo_points.find(member.ToString());
       if (iter == geo_points.end()) {
-        list.emplace_back(redis::NilString());
+        list.emplace_back(conn->NilString());
       } else {
-        list.emplace_back(redis::MultiBulkString(
+        list.emplace_back(conn->MultiBulkString(
             {util::Float2String(iter->second.longitude), util::Float2String(iter->second.latitude)}));
       }
     }
@@ -314,12 +314,12 @@ class CommandGeoRadius : public CommandGeoBase {
     if (store_key_.size() != 0) {
       *output = redis::Integer(geo_points.size());
     } else {
-      *output = GenerateOutput(geo_points);
+      *output = GenerateOutput(conn, geo_points);
     }
     return Status::OK();
   }
 
-  std::string GenerateOutput(const std::vector<GeoPoint> &geo_points) {
+  std::string GenerateOutput(Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
@@ -337,8 +337,8 @@ class CommandGeoRadius : public CommandGeoBase {
           one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
         }
         if (with_coord_) {
-          one.emplace_back(redis::MultiBulkString(
-              {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(
+              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
         }
         list.emplace_back(redis::Array(one));
       }
@@ -440,7 +440,7 @@ class CommandGeoSearch : public CommandGeoBase {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = generateOutput(geo_points);
+    *output = generateOutput(conn, geo_points);
 
     return Status::OK();
   }
@@ -496,7 +496,7 @@ class CommandGeoSearch : public CommandGeoBase {
     return Status::OK();
   }
 
-  std::string generateOutput(const std::vector<GeoPoint> &geo_points) {
+  std::string generateOutput(Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> output;
@@ -515,8 +515,8 @@ class CommandGeoSearch : public CommandGeoBase {
           one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
         }
         if (with_coord_) {
-          one.emplace_back(redis::MultiBulkString(
-              {util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(
+              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
         }
         output.emplace_back(redis::Array(one));
       }
@@ -644,7 +644,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     if (store_key_.size() != 0) {
       *output = redis::Integer(geo_points.size());
     } else {
-      *output = GenerateOutput(geo_points);
+      *output = GenerateOutput(conn, geo_points);
     }
 
     return Status::OK();

@@ -711,9 +711,9 @@ rocksdb::Status ZSet::InterCard(const std::vector<std::string> &user_keys, uint6
   std::vector<MemberScores> mscores_list;
   mscores_list.reserve(user_keys.size());
   RangeScoreSpec spec;
-  for (size_t i = 0; i < user_keys.size(); i++) {
+  for (const auto &user_key : user_keys) {
     MemberScores mscores;
-    auto s = RangeByScore(user_keys[i], spec, &mscores, nullptr);
+    auto s = RangeByScore(user_key, spec, &mscores, nullptr);
     if (!s.ok() || mscores.empty()) return s;
     mscores_list.emplace_back(mscores);
   }
@@ -721,7 +721,6 @@ rocksdb::Status ZSet::InterCard(const std::vector<std::string> &user_keys, uint6
             [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
 
   auto base_mscores = mscores_list[0];
-  bool is_limited = limit > 0 ? true : false;
   std::map<std::string, size_t> member_counters;
   uint64_t cardinality = 0;
   for (const auto &base_ms : base_mscores) {
@@ -736,7 +735,7 @@ rocksdb::Status ZSet::InterCard(const std::vector<std::string> &user_keys, uint6
     }
     if (member_counters[base_ms.member] == mscores_list.size()) {
       cardinality++;
-      if (is_limited && cardinality >= limit) {
+      if (limit > 0 && cardinality >= limit) {
         *inter_cnt = limit;
         return rocksdb::Status::OK();
       };

@@ -147,6 +147,7 @@ struct Config {
   int sequence_gap;
 
   bool redis_cursor_compatible = false;
+  bool resp3_enabled = false;
   int log_retention_days;
 
   // load_tokens is used to buffer the tokens when loading,

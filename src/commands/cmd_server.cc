@@ -591,20 +591,44 @@ class CommandDebug : public Commander {
 
       microsecond_ = static_cast<uint64_t>(*second * 1000 * 1000);
       return Status::OK();
+    } else if (subcommand_ == "protocol" && args.size() == 3) {
+      protocol_type_ = util::ToLower(args[2]);
+      return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>"};
+    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>|PROTOCOL <type>"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "sleep") {
       usleep(microsecond_);
+      *output = redis::SimpleString("OK");
+    } else if (subcommand_ == "protocol") {  // protocol type
+      if (protocol_type_ == "string") {
+        *output = redis::BulkString("Hello World");
+      } else if (protocol_type_ == "integer") {
+        *output = redis::Integer(12345);
+      } else if (protocol_type_ == "array") {
+        *output = redis::MultiLen(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+        }
+      } else if (protocol_type_ == "true") {
+        *output = redis::Bool(conn->GetProtocolVersion(), true);
+      } else if (protocol_type_ == "false") {
+        *output = redis::Bool(conn->GetProtocolVersion(), false);
+      } else {
+        *output =
+            redis::Error("Wrong protocol type name. Please use one of the following: string|int|array|true|false");
+      }
+    } else {
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
     }
-    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
   std::string subcommand_;
+  std::string protocol_type_;
   uint64_t microsecond_ = 0;
 };
 
@@ -685,14 +709,15 @@ class CommandHello final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
+    int protocol = 2;  // default protocol version is 2
     if (args_.size() >= 2) {
-      auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
+      auto parse_result = ParseInt<int>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
         return {Status::NotOK, "Protocol version is not an integer or out of range"};
       }
 
-      int64_t protocol = *parse_result;
+      protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
@@ -737,7 +762,12 @@ class CommandHello final : public Commander {
     output_list.push_back(redis::BulkString("server"));
     output_list.push_back(redis::BulkString("redis"));
     output_list.push_back(redis::BulkString("proto"));
-    output_list.push_back(redis::Integer(2));
+    if (srv->GetConfig()->resp3_enabled) {
+      output_list.push_back(redis::Integer(protocol));
+      conn->SetProtocolVersion(protocol == 3 ? RESP::v3 : RESP::v2);
+    } else {
+      output_list.push_back(redis::Integer(2));
+    }
 
     output_list.push_back(redis::BulkString("mode"));
     // Note: sentinel is not supported in kvrocks.

@@ -417,7 +417,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_pop(lua, 2);
     return {Status::NotOK, fmt::format("Error while running function `{}`: {}", name, err_msg)};
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
 
@@ -628,7 +628,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     *output = redis::Error(msg);
     lua_pop(lua, 2);
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
 
@@ -1073,7 +1073,7 @@ void PushError(lua_State *lua, const char *err) {
 }
 
 // this function does not pop any element on the stack
-std::string ReplyToRedisReply(lua_State *lua) {
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
@@ -1085,7 +1085,11 @@ std::string ReplyToRedisReply(lua_State *lua) {
       output = redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
-      output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
+      if (conn->GetProtocolVersion() == redis::RESP::v2) {
+        output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
+      } else {
+        output = redis::Bool(redis::RESP::v3, lua_toboolean(lua, -1));
+      }
       break;
     case LUA_TNUMBER:
       output = redis::Integer((int64_t)(lua_tonumber(lua, -1)));
@@ -1127,7 +1131,7 @@ std::string ReplyToRedisReply(lua_State *lua) {
             break;
           }
           mbulklen++;
-          output += ReplyToRedisReply(lua);
+          output += ReplyToRedisReply(conn, lua);
           lua_pop(lua, 1);
         }
         output = redis::MultiLen(mbulklen) + output;

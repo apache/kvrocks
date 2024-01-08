@@ -31,6 +31,8 @@
 
 namespace redis {
 
+enum class RESP { v2, v3 };
+
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 std::string Error(const std::string &err);
@@ -38,6 +40,13 @@ std::string Error(const std::string &err);
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string Integer(T data) {
   return ":" + std::to_string(data) + CRLF;
+}
+
+inline std::string Bool(const RESP ver, const bool b) {
+  if (ver == RESP::v3) {
+    return b ? "#t" CRLF : "#f" CRLF;
+  }
+  return Integer(b ? 1 : 0);
 }
 
 std::string BulkString(const std::string &data);

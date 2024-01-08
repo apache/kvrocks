@@ -58,9 +58,12 @@ class Connection : public EvbufCallbackBase<Connection> {
   void OnRead(bufferevent *bev);
   void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
-  void Reply(const std::string &msg);
   void SendFile(int fd);
   std::string ToString();
+
+  void Reply(const std::string &msg);
+  RESP GetProtocolVersion() const { return protocol_version_; }
+  void SetProtocolVersion(RESP version) { protocol_version_ = version; }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
@@ -164,6 +167,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;
+  RESP protocol_version_ = RESP::v2;
 };
 
 }  // namespace redis

@@ -111,6 +111,7 @@ class ZSet : public SubKeyScanner {
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
   rocksdb::Status Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
                         std::vector<MemberScore> *members);
+  rocksdb::Status InterCard(const std::vector<std::string> &user_keys, uint64_t limit, uint64_t *inter_cnt);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
   rocksdb::Status Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,

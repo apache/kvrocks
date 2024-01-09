@@ -699,6 +699,52 @@ rocksdb::Status ZSet::Inter(const std::vector<KeyWeight> &keys_weights, Aggregat
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::InterCard(const std::vector<std::string> &user_keys, uint64_t limit, uint64_t *inter_cnt) {
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(user_keys.size());
+  for (const auto &user_key : user_keys) {
+    std::string ns_key = AppendNamespacePrefix(user_key);
+    lock_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  std::vector<MemberScores> mscores_list;
+  mscores_list.reserve(user_keys.size());
+  RangeScoreSpec spec;
+  for (const auto &user_key : user_keys) {
+    MemberScores mscores;
+    auto s = RangeByScore(user_key, spec, &mscores, nullptr);
+    if (!s.ok() || mscores.empty()) return s;
+    mscores_list.emplace_back(mscores);
+  }
+  std::sort(mscores_list.begin(), mscores_list.end(),
+            [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
+
+  auto base_mscores = mscores_list[0];
+  std::map<std::string, size_t> member_counters;
+  uint64_t cardinality = 0;
+  for (const auto &base_ms : base_mscores) {
+    member_counters[base_ms.member] = 1;
+    for (size_t i = 1; i < mscores_list.size(); i++) {
+      for (const auto &ms : mscores_list[i]) {
+        if (base_ms.member == ms.member) {
+          member_counters[ms.member]++;
+          break;
+        }
+      }
+    }
+    if (member_counters[base_ms.member] == mscores_list.size()) {
+      cardinality++;
+      if (limit > 0 && cardinality >= limit) {
+        *inter_cnt = limit;
+        return rocksdb::Status::OK();
+      };
+    }
+  }
+  *inter_cnt = cardinality;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status ZSet::UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                                  AggregateMethod aggregate_method, uint64_t *saved_cnt) {
   *saved_cnt = 0;

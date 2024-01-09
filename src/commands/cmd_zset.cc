@@ -1252,6 +1252,87 @@ class CommandZInterStore : public CommandZUnionStore {
   }
 };
 
+class CommandZInter : public CommandZUnion {
+ public:
+  CommandZInter() : CommandZUnion() {}
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(srv->storage, conn->GetNamespace());
+    std::vector<MemberScore> member_scores;
+    auto s = zset_db.Inter(keys_weights_, aggregate_method_, &member_scores);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    auto ms_comparator = [](const MemberScore &ms1, const MemberScore &ms2) {
+      if (ms1.score == ms2.score) {
+        return ms1.member < ms2.member;
+      }
+      return ms1.score < ms2.score;
+    };
+    std::sort(member_scores.begin(), member_scores.end(), ms_comparator);
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &member_score : member_scores) {
+      output->append(redis::BulkString(member_score.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(member_score.score)));
+    }
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+};
+
+class CommandZInterCard : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    numkeys_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+    for (size_t i = 0; i < numkeys_; ++i) {
+      keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    // if set limit option
+    if (parser.Good()) {
+      if (parser.EatEqICase("limit")) {
+        auto res = parser.TakeInt<int64_t>();
+        if (!res.IsOK() || res.GetValue() < 0) {
+          return {Status::RedisParseErr, errLimitIsNegative};
+        }
+        limit_ = static_cast<size_t>(res.GetValue());
+        if (parser.Good()) {
+          return parser.InvalidSyntax();
+        }
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(srv->storage, conn->GetNamespace());
+    uint64_t count = 0;
+    auto s = zset_db.InterCard(keys_, limit_, &count);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(count);
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 1 + num_key, 1};
+  }
+
+ private:
+  size_t numkeys_ = 0;
+  size_t limit_ = 0;
+  std::vector<std::string> keys_;
+};
+
 class CommandZScan : public CommandSubkeyScanBase {
  public:
   CommandZScan() = default;
@@ -1281,6 +1362,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", CommandZInterStore::Range),
+                        MakeCmdAttr<CommandZInter>("zinter", -3, "read-only", CommandZInter::Range),
+                        MakeCmdAttr<CommandZInterCard>("zintercard", -3, "read-only", CommandZInterCard::Range),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),

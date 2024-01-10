@@ -91,6 +91,7 @@ class CommandSetBit : public Commander {
   bool bit_ = false;
 };
 
+// BITCOUNT key [start end [BYTE | BIT]]
 class CommandBitCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -98,7 +99,11 @@ class CommandBitCount : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (args.size() == 4) {
+    if (args.size() > 5) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[2], 10);
       if (!parse_start) {
         return {Status::RedisParseErr, errValueNotInteger};
@@ -111,6 +116,15 @@ class CommandBitCount : public Commander {
       }
 
       stop_ = *parse_stop;
+    }
+
+    if (args.size() == 5) {
+      if (util::EqualICase(args[4], "BYTE")) {
+      } else if (util::EqualICase(args[4], "BIT")) {
+        return {Status::RedisExecErr, errNotImplemented};
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
     }
 
     return Commander::Parse(args);

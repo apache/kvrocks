@@ -34,6 +34,10 @@ namespace redis {
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    for (auto a : args)
+    {
+      LOG(INFO) << a << "\n";
+    }
     size_t index = 2;
     parseFlags(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {
@@ -1276,6 +1280,63 @@ class CommandZScan : public CommandSubkeyScanBase {
   }
 };
 
+class CommandZDiff : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseInt<int>(args[1], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    numkeys_ = *parse_result;
+    if (numkeys_ > args.size() - 2) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    size_t j = 0;
+    while (j < numkeys_) {
+      keys_.emplace_back(args[j + 2]);
+      j++;
+    }
+
+    if (auto i = 2 + numkeys_; i < args.size()) {
+      if (util::ToLower(args[i]) == "withscores") {
+        with_scores_ = true;
+      }
+    }
+    
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(srv->storage, conn->GetNamespace());
+
+    std::vector<MemberScore> members_with_scores;
+    auto s = zset_db.Diff(keys_, &members_with_scores);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    output->append(redis::MultiLen(members_with_scores.size() * (with_scores_ ? 2 : 1)));
+    for (const auto &ms : members_with_scores) {
+      output->append(redis::BulkString(ms.member));
+      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+    }
+
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_key = *ParseInt<int>(args[1], 10);
+    return {2, 2 + num_key, 1};
+  }
+
+ protected:
+  size_t numkeys_ {0};
+  std::vector<rocksdb::Slice> keys_;
+  bool with_scores_ {false};
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
@@ -1305,6 +1366,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
-                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range), )
+                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range),
+                        MakeCmdAttr<CommandZDiff>("zdiff", -3, "read-only", CommandZDiff::Range), )
 
 }  // namespace redis

@@ -76,6 +76,27 @@ func TestHello(t *testing.T) {
 	})
 }
 
+func TestEnableRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	r := rdb.Do(ctx, "HELLO", "2")
+	rList := r.Val().([]interface{})
+	require.EqualValues(t, rList[2], "proto")
+	require.EqualValues(t, rList[3], 2)
+
+	r = rdb.Do(ctx, "HELLO", "3")
+	rList = r.Val().([]interface{})
+	require.EqualValues(t, rList[2], "proto")
+	require.EqualValues(t, rList[3], 3)
+}
+
 func TestHelloWithAuth(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"requirepass": "foobar",

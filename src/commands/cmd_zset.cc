@@ -34,10 +34,6 @@ namespace redis {
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    for (auto a : args)
-    {
-      LOG(INFO) << a << "\n";
-    }
     size_t index = 2;
     parseFlags(args, index);
     if (auto s = validateFlags(); !s.IsOK()) {

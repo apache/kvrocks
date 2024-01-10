@@ -1221,6 +1221,39 @@ class CommandAnalyze : public Commander {
   std::vector<std::string> command_args_;
 };
 
+class CommandReset : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    // 1. Discards the current MULTI transaction block, if one exists.
+    if (conn->IsFlagEnabled(Connection::kMultiExec)) {
+      conn->ResetMultiExec();
+    }
+    // 2. Unwatches all keys WATCHed by the connection.
+    srv->ResetWatchedKeys(conn);
+    // 3. Disables CLIENT TRACKING, if in use. (not yet supported)
+    // 4. Sets the connection to READWRITE mode.
+    // 5. Cancels the connection's ASKING mode, if previously set. (not yet supported)
+    // 6. Sets CLIENT REPLY to ON. (not yet supported)
+    // 9. Exits MONITOR mode, when applicable.
+    if (conn->IsFlagEnabled(Connection::kMonitor)) {
+      conn->Owner()->QuitMonitorConn(conn);
+    }
+    // 10. Aborts Pub/Sub's subscription state (SUBSCRIBE and PSUBSCRIBE), when appropriate.
+    if (conn->SubscriptionsCount() != 0) {
+      conn->UnsubscribeAll();
+    }
+    if (conn->PSubscriptionsCount() != 0) {
+      conn->PUnsubscribeAll();
+    }
+    // 11. Deauthenticates the connection, requiring a call AUTH to reauthenticate when authentication is enabled.
+    conn->SetNamespace(kDefaultNamespace);
+    conn->BecomeAdmin();
+    // 12. Turns off NO-EVICT / NO-TOUCH mode. (not yet supported)
+    *output = redis::SimpleString("RESET");
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1256,6 +1289,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
-                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0), )
-
+                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
+                        MakeCmdAttr<CommandReset>("reset", -1, "multi pub-sub", 0, 0, 0), )
 }  // namespace redis

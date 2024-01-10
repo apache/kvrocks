@@ -115,7 +115,7 @@ Server::~Server() {
   for (auto &worker_thread : worker_threads_) {
     worker_thread.reset();
   }
-  cleanupExitedWorkerThreads();
+  cleanupExitedWorkerThreads(true /* force */);
   CleanupExitedSlaves();
 
   lua::DestroyState(lua_);
@@ -226,7 +226,7 @@ void Server::Stop() {
   slaveof_mu_.unlock();
 
   for (const auto &worker : worker_threads_) {
-    worker->Stop();
+    worker->Stop(0 /* immediately terminate  */);
   }
 
   rocksdb::CancelAllBackgroundWork(storage->GetDB(), true);
@@ -739,8 +739,9 @@ void Server::cron() {
       storage->SetDBInRetryableIOError(false);
     }
 
-    if (counter != 0 && counter % 10 == 0) {
-      cleanupExitedWorkerThreads();
+    // check if we need to clean up exited worker threads every 5s
+    if (counter != 0 && counter % 50 == 0) {
+      cleanupExitedWorkerThreads(false);
     }
 
     CleanupExitedSlaves();
@@ -783,18 +784,40 @@ void Server::GetRocksDBInfo(std::string *info) {
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
     string_stream << "level0_file_limit_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.level0_slowdown"] << "\r\n";
+                  << "]:" << cf_stats_map["l0-file-count-limit-delays"] << "\r\n";
     string_stream << "level0_file_limit_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.level0_numfiles"] << "\r\n";
+                  << "]:" << cf_stats_map["l0-file-count-limit-stops"] << "\r\n";
     string_stream << "pending_compaction_bytes_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.slowdown_for_pending_compaction_bytes"] << "\r\n";
+                  << "]:" << cf_stats_map["pending-compaction-bytes-delays"] << "\r\n";
     string_stream << "pending_compaction_bytes_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.stop_for_pending_compaction_bytes"] << "\r\n";
+                  << "]:" << cf_stats_map["pending-compaction-bytes-stops"] << "\r\n";
+    string_stream << "level0_file_limit_stop_with_ongoing_compaction[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["cf-l0-file-count-limit-stops-with-ongoing-compaction"] << "\r\n";
+    string_stream << "level0_file_limit_slowdown_with_ongoing_compaction[" << cf_handle->GetName()
+                  << "]:" << cf_stats_map["cf-l0-file-count-limit-delays-with-ongoing-compaction"] << "\r\n";
     string_stream << "memtable_count_limit_slowdown[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.memtable_slowdown"] << "\r\n";
+                  << "]:" << cf_stats_map["memtable-limit-delays"] << "\r\n";
     string_stream << "memtable_count_limit_stop[" << cf_handle->GetName()
-                  << "]:" << cf_stats_map["io_stalls.memtable_compaction"] << "\r\n";
+                  << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
+
+  auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
+  if (rocksdb_stats) {
+    std::map<std::string, uint32_t> block_cache_stats = {
+        {"block_cache_hit", rocksdb::Tickers::BLOCK_CACHE_HIT},
+        {"block_cache_index_hit", rocksdb::Tickers::BLOCK_CACHE_INDEX_HIT},
+        {"block_cache_filter_hit", rocksdb::Tickers::BLOCK_CACHE_FILTER_HIT},
+        {"block_cache_data_hit", rocksdb::Tickers::BLOCK_CACHE_DATA_HIT},
+        {"block_cache_miss", rocksdb::Tickers::BLOCK_CACHE_MISS},
+        {"block_cache_index_miss", rocksdb::Tickers::BLOCK_CACHE_INDEX_MISS},
+        {"block_cache_filter_miss", rocksdb::Tickers::BLOCK_CACHE_FILTER_MISS},
+        {"block_cache_data_miss", rocksdb::Tickers::BLOCK_CACHE_DATA_MISS},
+    };
+    for (const auto &iter : block_cache_stats) {
+      string_stream << iter.first << ":" << rocksdb_stats->getTickerCount(iter.second) << "\r\n";
+    }
+  }
+
   string_stream << "all_mem_tables:" << memtable_sizes << "\r\n";
   string_stream << "cur_mem_tables:" << cur_memtable_sizes << "\r\n";
   string_stream << "snapshots:" << num_snapshots << "\r\n";
@@ -806,8 +829,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_super_version:" << num_super_version << "\r\n";
   string_stream << "num_background_errors:" << num_background_errors << "\r\n";
-  string_stream << "flush_count:" << storage->GetFlushCount() << "\r\n";
-  string_stream << "compaction_count:" << storage->GetCompactionCount() << "\r\n";
+  auto db_stats = storage->GetDBStats();
+  string_stream << "flush_count:" << db_stats->flush_count << "\r\n";
+  string_stream << "compaction_count:" << db_stats->compaction_count << "\r\n";
   string_stream << "put_per_sec:" << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
   string_stream << "get_per_sec:"
                 << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
@@ -840,6 +864,8 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "redis_version:" << REDIS_VERSION << "\r\n";
   string_stream << "git_sha1:" << GIT_COMMIT << "\r\n";
   string_stream << "kvrocks_git_sha1:" << GIT_COMMIT << "\r\n";
+  string_stream << "redis_mode:" << (config_->cluster_enabled ? "cluster" : "standalone") << "\r\n";
+  string_stream << "kvrocks_mode:" << (config_->cluster_enabled ? "cluster" : "standalone") << "\r\n";
   string_stream << "os:" << name.sysname << " " << name.release << " " << name.machine << "\r\n";
 #ifdef __GNUC__
   string_stream << "gcc_version:" << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__ << "\r\n";
@@ -1002,9 +1028,14 @@ void Server::GetStatsInfo(std::string *info) {
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
   string_stream << "instantaneous_output_kbps:"
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
-  string_stream << "sync_full:" << stats.fullsync_counter << "\r\n";
-  string_stream << "sync_partial_ok:" << stats.psync_ok_counter << "\r\n";
-  string_stream << "sync_partial_err:" << stats.psync_err_counter << "\r\n";
+  string_stream << "sync_full:" << stats.fullsync_count << "\r\n";
+  string_stream << "sync_partial_ok:" << stats.psync_ok_count << "\r\n";
+  string_stream << "sync_partial_err:" << stats.psync_err_count << "\r\n";
+
+  auto db_stats = storage->GetDBStats();
+  string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";
+  string_stream << "keyspace_misses:" << db_stats->keyspace_misses << "\r\n";
+
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
@@ -1138,7 +1169,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    if (last_scan_time == 0) {
+      string_stream << "# WARN: DBSIZE SCAN never performed yet\r\n";
+    } else {
+      string_stream << "# Last DBSIZE SCAN time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    }
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage->GetDB()->GetLatestSequenceNumber() << "\r\n";
@@ -1685,17 +1720,16 @@ void Server::AdjustWorkerThreads() {
   if (new_worker_threads > worker_threads_.size()) {
     delta = new_worker_threads - worker_threads_.size();
     increaseWorkerThreads(delta);
-    LOG(INFO) << "[server] Increase worker threads to " << new_worker_threads;
+    LOG(INFO) << "[server] Increase worker threads from " << worker_threads_.size() << " to " << new_worker_threads;
     return;
   }
 
   delta = worker_threads_.size() - new_worker_threads;
-  LOG(INFO) << "[server] Decrease worker threads to " << new_worker_threads;
+  LOG(INFO) << "[server] Decrease worker threads from " << worker_threads_.size() << " to " << new_worker_threads;
   decreaseWorkerThreads(delta);
 }
 
 void Server::increaseWorkerThreads(size_t delta) {
-  std::vector<std::unique_ptr<WorkerThread>> new_threads;
   for (size_t i = 0; i < delta; i++) {
     auto worker = std::make_unique<Worker>(this, config_);
     auto worker_thread = std::make_unique<WorkerThread>(std::move(worker));
@@ -1721,17 +1755,26 @@ void Server::decreaseWorkerThreads(size_t delta) {
       auto target_worker = worker_threads_[iter.first % remain_worker_threads]->GetWorker();
       worker_thread->GetWorker()->MigrateConnection(target_worker, iter.second);
     }
-    worker_thread->Stop();
+    worker_thread->Stop(10 /* graceful timeout */);
     // Don't join the worker thread here, because it may join itself.
     recycle_worker_threads_.push(std::move(worker_thread));
   }
 }
 
-void Server::cleanupExitedWorkerThreads() {
+void Server::cleanupExitedWorkerThreads(bool force) {
   std::unique_ptr<WorkerThread> worker_thread = nullptr;
-  while (recycle_worker_threads_.try_pop(worker_thread)) {
-    worker_thread->Join();
-    worker_thread.reset();
+  auto total = recycle_worker_threads_.unsafe_size();
+  for (size_t i = 0; i < total; i++) {
+    if (!recycle_worker_threads_.try_pop(worker_thread)) {
+      break;
+    }
+    if (worker_thread->IsTerminated() || force) {
+      worker_thread->Join();
+      worker_thread.reset();
+    } else {
+      // Push the worker thread back to the queue if it's still running.
+      recycle_worker_threads_.push(std::move(worker_thread));
+    }
   }
 }
 

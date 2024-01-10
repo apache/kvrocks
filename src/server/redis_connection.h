@@ -55,12 +55,15 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   void Close();
   void Detach();
-  void OnRead(struct bufferevent *bev);
-  void OnWrite(struct bufferevent *bev);
+  void OnRead(bufferevent *bev);
+  void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
-  void Reply(const std::string &msg);
   void SendFile(int fd);
   std::string ToString();
+
+  void Reply(const std::string &msg);
+  RESP GetProtocolVersion() const { return protocol_version_; }
+  void SetProtocolVersion(RESP version) { protocol_version_ = version; }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
@@ -119,6 +122,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   void RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }
   bool IsImporting() const { return importing_; }
+  bool CanMigrate() const;
 
   // Multi exec
   void SetInExec() { in_exec_ = true; }
@@ -127,7 +131,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
-  std::unique_ptr<Commander> current_cmd;
   std::function<void(int)> close_cb = nullptr;
 
   std::set<std::string> watched_keys;
@@ -152,15 +155,19 @@ class Connection : public EvbufCallbackBase<Connection> {
   bufferevent *bev_;
   Request req_;
   Worker *owner_;
+  std::unique_ptr<Commander> saved_current_command_;
+
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;
 
   Server *srv_;
   bool in_exec_ = false;
   bool multi_error_ = false;
+  std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;
+  RESP protocol_version_ = RESP::v2;
 };
 
 }  // namespace redis

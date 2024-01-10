@@ -62,6 +62,22 @@ func TestJson(t *testing.T) {
 		require.Equal(t, rdb.Type(ctx, "a").Val(), "ReJSON-RL")
 	})
 
+	t.Run("JSON.DEL and JSON.FORGET basics", func(t *testing.T) {
+		// JSON.DEL and JSON.FORGET are aliases
+		for _, command := range []string{"JSON.DEL", "JSON.FORGET"} {
+			require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x": 1, "nested": {"x": 2, "y": 3}}`).Err())
+			require.EqualValues(t, 2, rdb.Do(ctx, command, "a", "$..x").Val())
+			require.Equal(t, `[{"nested":{"y":3}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+			require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x": 1, "nested": {"x": 2, "y": 3}}`).Err())
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "a", "$.x").Val())
+			require.Equal(t, `[{"nested":{"x":2,"y":3}}]`, rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+			require.EqualValues(t, 1, rdb.Do(ctx, command, "a", "$").Val())
+			require.EqualValues(t, 0, rdb.Do(ctx, command, "no-such-json-key", "$").Val())
+		}
+	})
+
 	t.Run("JSON.GET with options", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y":2} `).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ").Val(), `{ "x":1, "y":2}`)
@@ -142,6 +158,49 @@ func TestJson(t *testing.T) {
 		require.EqualError(t, err, redis.Nil.Error())
 	})
 
+	t.Run("JSON.STRAPPEND basics", func(t *testing.T) {
+		var result1 = make([]interface{}, 0)
+		result1 = append(result1, int64(5))
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "\"be\"").Val(), result1)
+
+		var result2 = make([]interface{}, 0)
+		result2 = append(result2, int64(5), int64(7), interface{}(nil))
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "\"be\"").Val(), result2)
+	})
+
+	t.Run("JSON.STRLEN basics", func(t *testing.T) {
+		var result1 = make([]interface{}, 0)
+		result1 = append(result1, int64(3))
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$.a").Val(), result1)
+
+		var result2 = make([]interface{}, 0)
+		result2 = append(result2, int64(3), int64(5), interface{}(nil))
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
+	})
+
+	t.Run("Merge basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":2}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `3`).Err())
+		require.Equal(t, `{"a":3}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":2}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `null`).Err())
+		require.Equal(t, `{}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"a":[2,4,6,8]}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$.a", `[10,12]`).Err())
+		require.Equal(t, `{"a":[10,12]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "key", "$", `{"f1": {"a":1}, "f2":{"a":2}}`).Err())
+		require.Equal(t, `{"f1":{"a":1},"f2":{"a":2}}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$", `{"f1": null, "f2":{"a":3, "b":4}, "f3":[2,4,6]}`).Err())
+		require.Equal(t, `{"f2":{"a":3,"b":4},"f3":[2,4,6]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+	})
+
 	t.Run("Clear JSON values", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
 
@@ -196,6 +255,52 @@ func TestJson(t *testing.T) {
 		require.EqualValues(t, []uint64{}, lens)
 	})
 
+	t.Run("JSON.ARRINSERT basics", func(t *testing.T) {
+		arrInsertCmd := "JSON.ARRINSERT"
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		// key no exists
+		require.EqualError(t, rdb.Do(ctx, arrInsertCmd, "not_exists", "$", 0, 1).Err(), redis.Nil.Error())
+		// key not json
+		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "no_json", "$", 0, 1).Err())
+		// json path no exists
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{}}`).Err())
+		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, arrInsertCmd, "a", "$.not_exists", 0, 1).Val())
+		// json path not array
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$.a", 0, 1).Val())
+		// index not a integer
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", "no", 1).Err())
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", 1.1, 1).Err())
+		// args size < 4
+		require.Error(t, rdb.Do(ctx, arrInsertCmd, "a", "$", 0).Err())
+		// json path has one array
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":[1,2,3], "b":{"a":[4,5,6,7],"c":2},"c":[1,2,3,4],"e":[6,7,8],"f":{"a":[10,11,12,13,14], "g":2}}`).Err())
+		require.EqualValues(t, []interface{}{int64(4)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 1, 90).Val())
+		require.Equal(t, "[{\"a\":[1,2,3],\"b\":{\"a\":[4,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,7,8],\"f\":{\"a\":[10,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// insert many value
+		require.EqualValues(t, []interface{}{int64(8)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 2, 80, 81, 82, 83).Val())
+		require.Equal(t, "[{\"a\":[1,2,3],\"b\":{\"a\":[4,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// json path has many array
+		require.EqualValues(t, []interface{}{int64(6), int64(5), int64(4)}, rdb.Do(ctx, arrInsertCmd, "a", "$..a", 1, 91).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// json path has many array and one is not array
+		require.EqualValues(t, []interface{}{int64(5), nil}, rdb.Do(ctx, arrInsertCmd, "a", "$..c", 0, 92).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index = 0
+		require.EqualValues(t, []interface{}{int64(9)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 0, 93).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index < 0
+		require.EqualValues(t, []interface{}{int64(10)}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", -2, 94).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index >= len
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$.e", 15, 95).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// index + len < 0
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, arrInsertCmd, "a", "$", -15, 96).Val())
+		require.Equal(t, "[{\"a\":[1,91,2,3],\"b\":{\"a\":[4,91,5,6,7],\"c\":2},\"c\":[92,1,2,3,4],\"e\":[93,6,90,80,81,82,83,94,7,8],\"f\":{\"a\":[10,91,11,12,13,14],\"g\":2}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+
+	})
+
 	t.Run("JSON.OBJKEYS basics", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		// key no exists
@@ -245,34 +350,267 @@ func TestJson(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "JSON.ARRPOP", "a", "$", "0", "1").Err(), "wrong number of arguments")
 	})
 
+	t.Run("JSON.ARRTRIM basics", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		// key no exists
+		require.EqualError(t, rdb.Do(ctx, "JSON.ARRTRIM", "not_exists", "$", 0, 0).Err(), redis.Nil.Error())
+		// key not json
+		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "no_json", "$", 0, 0).Err())
+		// json path no exists
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":{}}`).Err())
+		require.EqualValues(t, []interface{}{}, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.not_exists", 0, 0).Val())
+		// json path not array
+		require.EqualValues(t, []interface{}{nil}, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0, 0).Val())
+		// json path has one array
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a1":[1,2,3,4,5,6,7,8,9]}`).Err())
+		require.EqualValues(t, []interface{}{int64(5)}, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 2, 6).Val())
+		// json path has many array
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":[1,2,3,4,5,6]},"b":{"a1":["a",{},"b"]},"c":{"a1":[7,8,9,10,11]}}`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(3), int64(2), int64(3)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$..a1", 1, 3).Val())
+		require.EqualValues(t, "[{\"a\":{\"a1\":[2,3,4]},\"b\":{\"a1\":[{},\"b\"]},\"c\":{\"a1\":[8,9,10]}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// json path has many array and one is not array
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":{"a1":[1,2,3,4,5,6]},"b":{"a1":{"b":1,"c":1}},"c":{"a1":[7,8,9,10]}}`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(3), interface{}(nil), int64(3)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$..a1", 1, 3).Val())
+		require.EqualValues(t, "[{\"a\":{\"a1\":[2,3,4]},\"b\":{\"a1\":{\"b\":1,\"c\":1}},\"c\":{\"a1\":[8,9,10]}}]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start not a integer
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", "no", 1).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1.1, 1).Err())
+		// stop not a integer
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 1, 1.1).Err())
+		// args size != 5
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "a", "$.a1", 0, 2, 3).Err())
+	})
+
+	t.Run("JSON.ARRTRIM special <start> and <stop> args", func(t *testing.T) {
+		// start < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(4)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -5, 8).Val())
+		require.EqualValues(t, "[[6,7,8,9]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start + len < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(6)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -20, 5).Val())
+		require.EqualValues(t, "[[1,2,3,4,5,6]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start > len
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 15, 25).Val())
+		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start = 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(9)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, 8).Val())
+		require.EqualValues(t, "[[1,2,3,4,5,6,7,8,9]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// stop = 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -12, 0).Val())
+		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// stop < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(9)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, -2).Val())
+		require.EqualValues(t, "[[1,2,3,4,5,6,7,8,9]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// len + stop < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, -20).Val())
+		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// stop > len
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(10)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 0, 20).Val())
+		require.EqualValues(t, "[[1,2,3,4,5,6,7,8,9,10]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start > stop
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", 8, 5).Val())
+		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start < 0 and stop < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(4)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -8, -5).Val())
+		require.EqualValues(t, "[[3,4,5,6]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start < 0 , stop < 0 and start > end
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(0)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -5, -8).Val())
+		require.EqualValues(t, "[[]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+		// start + len < 0 , stop + len < 0
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[1,2,3,4,5,6,7,8,9,10]`).Err())
+		require.EqualValues(t, []interface{}([]interface{}{int64(1)}), rdb.Do(ctx, "JSON.ARRTRIM", "a", "$", -30, -20).Val())
+		require.EqualValues(t, "[[1]]", rdb.Do(ctx, "JSON.GET", "a", "$").Val())
+	})
+
 	t.Run("JSON.TOGGLE basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `true`).Err())
 		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `false`)
+		require.Equal(t, `false`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true}`).Err())
 		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$.bool").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false}`)
+		require.Equal(t, `{"bool":false}`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true,"bools":{"bool":true}}`).Err())
 		require.EqualValues(t, []interface{}{int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$.bool").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false,"bools":{"bool":true}}`)
+		require.Equal(t, `{"bool":false,"bools":{"bool":true}}`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":true,"bools":{"bool":true}}`).Err())
 		require.EqualValues(t, []interface{}{int64(0), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":false,"bools":{"bool":false}}`)
+		require.Equal(t, `{"bool":false,"bools":{"bool":false}}`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"bool":false,"bools":{"bool":true}}`).Err())
 		require.EqualValues(t, []interface{}{int64(1), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":true,"bools":{"bool":false}}`)
+		require.Equal(t, `{"bool":true,"bools":{"bool":false}}`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"incorrectbool":99,"bools":{"bool":true},"bool":{"bool":false}}`).Err())
 		require.EqualValues(t, []interface{}{nil, int64(1), int64(0)}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..bool").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `{"bool":{"bool":true},"bools":{"bool":false},"incorrectbool":99}`)
+		require.Equal(t, `{"bool":{"bool":true},"bools":{"bool":false},"incorrectbool":99}`, rdb.Do(ctx, "JSON.GET", "a").Val())
 
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `[99,true,99]`).Err())
 		require.EqualValues(t, []interface{}{nil, int64(0), nil}, rdb.Do(ctx, "JSON.TOGGLE", "a", "$..*").Val())
-		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a").Val(), `[99,false,99]`)
+		require.Equal(t, `[99,false,99]`, rdb.Do(ctx, "JSON.GET", "a").Val())
 	})
 
+	t.Run("JSON.ARRINDEX basics", func(t *testing.T) {
+		arrIndexCmd := "JSON.ARRINDEX"
+		require.NoError(t, rdb.Do(ctx, "SET", "a", `1`).Err())
+		require.Error(t, rdb.Do(ctx, arrIndexCmd, "a", "$", `1`).Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "a").Err())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y": {"x":1} } `).Err())
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, arrIndexCmd, "a", "$..k", `1`).Val())
+		require.Error(t, rdb.Do(ctx, arrIndexCmd, "a", "$").Err())
+		require.Error(t, rdb.Do(ctx, arrIndexCmd, "a", "$", ` 1, 2, 3`).Err())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"arr":[0,1,2,3,2,1,0]}`).Err())
+		require.Equal(t, []interface{}{int64(0)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`).Val())
+		require.Equal(t, []interface{}{int64(3)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `3`).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `4`).Val())
+		require.Equal(t, []interface{}{int64(6)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, 1).Val())
+		require.Equal(t, []interface{}{int64(6)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, -1).Val())
+		require.Equal(t, []interface{}{int64(6)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, 6).Val())
+		require.Equal(t, []interface{}{int64(6)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, 4, -0).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, 5, -1).Val())
+		require.Equal(t, []interface{}{int64(6)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `0`, 5, 0).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `2`, -2, 6).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `"foo"`).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"arr":[0,1,2,3,4,2,1,0]}`).Err())
+
+		require.Equal(t, []interface{}{int64(3)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `3`).Val())
+		require.Equal(t, []interface{}{int64(5)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `2`, 3).Val())
+		require.Equal(t, []interface{}{int64(1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `1`).Val())
+		require.Equal(t, []interface{}{int64(2)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `2`, 1, 4).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `6`).Val())
+		require.Equal(t, []interface{}{int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr", `3`, 0, 2).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"arr":[0,1,2]}`).Err())
+		require.Equal(t, []interface{}{nil, nil, nil}, rdb.Do(ctx, arrIndexCmd, "a", "$.arr.*", `1`).Val())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a1", "$", `{"arr":[[1],[2],[3]]}`).Err())
+		require.Equal(t, []interface{}{int64(0), int64(-1), int64(-1)}, rdb.Do(ctx, arrIndexCmd, "a1", "$.arr.*", `1`).Val())
+	})
+
+	t.Run("JSON.NUMOP basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{ "foo": 0, "bar": "baz" }`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.GET", "a", "$.foo").Val())
+		require.Equal(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
+		require.Equal(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())
+
+		// wrong type
+		require.Equal(t, `[null]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.bar", 1).Val())
+
+		require.Equal(t, `[]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.fuzz", 1).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `0`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$", 1).Val())
+		require.Equal(t, `[2.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$", 1.5).Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"foo":0,"bar":42}`).Err())
+		require.Equal(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
+		require.Equal(t, `[84]`, rdb.Do(ctx, "JSON.NUMMULTBY", "a", "$.bar", 2).Val())
+
+		// overflow case
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "big_num", "$", "1.6350000000001313e+308").Err())
+		require.Equal(t, `[1.6350000000001313e+308]`,
+			rdb.Do(ctx, "JSON.NUMINCRBY", "big_num", "$", 1).Val())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "big_num", "$", 2).Err())
+
+		require.Equal(t, `1.6350000000001313e+308`, rdb.Do(ctx, "JSON.GET", "big_num").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "nested_obj_big_num", "$",
+			`{"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}}`).Err())
+
+		require.Equal(t, `[1.6350000000001313e+308]`,
+			rdb.Do(ctx, "JSON.NUMINCRBY", "nested_obj_big_num", "$.l1.l2_a", 1).Val())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "nested_obj_big_num", "$.l1.l2_a", 2).Err())
+
+		require.Equal(t, `{"l1":{"l2_a":1.6350000000001313e+308,"l2_b":2}}`,
+			rdb.Do(ctx, "JSON.GET", "nested_obj_big_num").Val())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "nested_arr_big_num", "$",
+			`{"l1":{"l2":[0,1.6350000000001313e+308]}}`).Err())
+
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "nested_arr_big_num", "$.l1.l2[1]",
+			`1.6350000000001313e+308`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "nested_arr_big_num", "$.l1.l2[1]", 2).Err())
+
+		require.Equal(t, `{"l1":{"l2":[0,1.6350000000001313e+308]}}`,
+			rdb.Do(ctx, "JSON.GET", "nested_arr_big_num").Val())
+	})
+
+	t.Run("JSON.OBJLEN basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"x":[3], "nested": {"x": {"y":2, "z": 1}}}`).Err())
+		vals, err := rdb.Do(ctx, "JSON.OBJLEN", "a", "$..x").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, len(vals))
+		// the first `x` path is not an object, so it should return nil
+		require.EqualValues(t, nil, vals[0])
+		// the second `x` path is an object with two fields, so it should return 2
+		require.EqualValues(t, 2, vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$.nested").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(vals))
+		require.EqualValues(t, 1, vals[0])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(vals))
+		require.EqualValues(t, 2, vals[0])
+
+		vals, err = rdb.Do(ctx, "JSON.OBJLEN", "a", "$.no_exists_path").Slice()
+		require.NoError(t, err)
+		require.EqualValues(t, 0, len(vals))
+
+		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err()
+		require.EqualError(t, err, redis.Nil.Error())
+	})
+
+	t.Run("JSON.MGET basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a0", "$", `{"a":1, "b": 2, "nested": {"a": 3}, "c": null}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a1", "$", `{"a":4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "a2", `{"a": 100}`).Err())
+
+		vals, err := rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.a").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[1]", vals[0])
+		require.EqualValues(t, "[4]", vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "a2", "$.a").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 3, len(vals))
+		require.EqualValues(t, "[1]", vals[0])
+		require.EqualValues(t, "[4]", vals[1])
+		require.EqualValues(t, nil, vals[2])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.c").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[null]", vals[0])
+		require.EqualValues(t, "[null]", vals[1])
+
+		vals, err = rdb.Do(ctx, "JSON.MGET", "a0", "a1", "$.nonexists").Slice()
+		require.NoError(t, err)
+		require.Equal(t, 2, len(vals))
+		require.EqualValues(t, "[]", vals[0])
+		require.EqualValues(t, "[]", vals[1])
+
+	})
 }

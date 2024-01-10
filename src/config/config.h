@@ -147,6 +147,7 @@ struct Config {
   int sequence_gap;
 
   bool redis_cursor_compatible = false;
+  bool resp3_enabled = false;
   int log_retention_days;
 
   // load_tokens is used to buffer the tokens when loading,
@@ -201,6 +202,7 @@ struct Config {
     bool level_compaction_dynamic_level_bytes;
     int max_background_jobs;
     bool rate_limiter_auto_tuned;
+    bool avoid_unnecessary_blocking_io = true;
 
     struct WriteOptions {
       bool sync;

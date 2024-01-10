@@ -41,6 +41,9 @@ struct CommandParser {
  public:
   using ValueType = typename Iter::value_type;
 
+  static constexpr bool IsRandomAccessIter =
+      std::is_base_of_v<std::random_access_iterator_tag, typename std::iterator_traits<Iter>::iterator_category>;
+
   CommandParser(Iter begin, Iter end) : begin_(std::move(begin)), end_(std::move(end)) {}
 
   template <typename Container>
@@ -56,11 +59,40 @@ struct CommandParser {
 
   decltype(auto) RawPeek() const { return *begin_; }
 
+  decltype(auto) operator[](size_t index) const {
+    Iter iter = begin_;
+    std::advance(iter, index);
+    return *iter;
+  }
+
   decltype(auto) RawTake() { return *begin_++; }
 
   decltype(auto) RawNext() { ++begin_; }
 
   bool Good() const { return begin_ != end_; }
+
+  std::enable_if_t<IsRandomAccessIter, size_t> Remains() const {
+    // O(1) iff Iter is random access iterator.
+    auto d = std::distance(begin_, end_);
+    DCHECK(d >= 0);
+    return d;
+  }
+
+  size_t Skip(size_t count) {
+    if constexpr (IsRandomAccessIter) {
+      size_t steps = std::min(Remains(), count);
+      begin_ += steps;
+      return steps;
+    } else {
+      size_t steps = 0;
+      while (count != 0 && Good()) {
+        ++begin_;
+        ++steps;
+        --count;
+      }
+      return steps;
+    }
+  }
 
   template <typename Pred>
   bool EatPred(Pred&& pred) {

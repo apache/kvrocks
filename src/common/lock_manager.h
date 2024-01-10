@@ -92,10 +92,18 @@ class LockGuard {
   LockGuard(const LockGuard &) = delete;
   LockGuard &operator=(const LockGuard &) = delete;
 
-  LockGuard(LockGuard &&guard) : lock_(guard.lock_) { guard.lock_ = nullptr; }
+  LockGuard(LockGuard &&guard) noexcept : lock_(guard.lock_) { guard.lock_ = nullptr; }
+
+  LockGuard &operator=(LockGuard &&other) noexcept {
+    if (&other != this) {
+      std::destroy_at(this);
+      new (this) LockGuard(std::move(other));
+    }
+    return *this;
+  }
 
  private:
-  std::mutex *lock_;
+  std::mutex *lock_{nullptr};
 };
 
 class MultiLockGuard {

@@ -26,6 +26,7 @@
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
+#include "time_util.h"
 #include "types/redis_stream.h"
 
 namespace redis {
@@ -386,7 +387,7 @@ class CommandXInfo : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto val = util::ToLower(args[1]);
     if (val == "stream" && args.size() >= 2) {
-      stream_ = true;
+      subcommand_ = "stream";
 
       if (args.size() > 3 && util::ToLower(args[3]) == "full") {
         full_ = true;
@@ -400,20 +401,35 @@ class CommandXInfo : public Commander {
 
         count_ = *parse_result;
       }
+    } else if (val == "groups" && args.size() == 3) {
+      subcommand_ = "groups";
+    } else if (val == "consumers" && args.size() == 4) {
+      subcommand_ = "consumers";
+    } else {
+      return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
     }
+
     return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    if (stream_) {
+    if (subcommand_ == "stream") {
       return getStreamInfo(srv, conn, output);
+    }
+
+    if (subcommand_ == "groups") {
+      return getGroupInfo(srv, conn, output);
+    }
+
+    if (subcommand_ == "consumers") {
+      return getConsumerInfo(srv, conn, output);
     }
     return Status::OK();
   }
 
  private:
   uint64_t count_ = 10;  // default Redis value
-  bool stream_ = false;
+  std::string subcommand_;
   bool full_ = false;
 
   Status getStreamInfo(Server *srv, Connection *conn, std::string *output) {
@@ -468,6 +484,76 @@ class CommandXInfo : public Commander {
         output->append(redis::BulkString(e.key));
         output->append(redis::MultiBulkString(e.values));
       }
+    }
+
+    return Status::OK();
+  }
+
+  Status getGroupInfo(Server *srv, Connection *conn, std::string *output) {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> result_vector;
+    auto s = stream_db.GetGroupInfo(args_[2], result_vector);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, errNoSuchKey};
+    }
+
+    output->append(redis::MultiLen(result_vector.size()));
+    for (auto const &it : result_vector) {
+      output->append(redis::MultiLen(12));
+      output->append(redis::BulkString("name"));
+      output->append(redis::BulkString(it.first));
+      output->append(redis::BulkString("consumers"));
+      output->append(redis::Integer(it.second.consumer_number));
+      output->append(redis::BulkString("pending"));
+      output->append(redis::Integer(it.second.pending_number));
+      output->append(redis::BulkString("last-delivered-id"));
+      output->append(redis::BulkString(it.second.last_delivered_id.ToString()));
+      output->append(redis::BulkString("entries-read"));
+      if (it.second.entries_read == -1) {
+        output->append(redis::NilString());
+      } else {
+        output->append(redis::Integer(it.second.entries_read));
+      }
+      output->append(redis::BulkString("lag"));
+      if (it.second.lag == UINT64_MAX) {
+        output->append(redis::NilString());
+      } else {
+        output->append(redis::Integer(it.second.lag));
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status getConsumerInfo(Server *srv, Connection *conn, std::string *output) {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<std::pair<std::string, redis::StreamConsumerMetadata>> result_vector;
+    auto s = stream_db.GetConsumerInfo(args_[2], args_[3], result_vector);
+
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, errNoSuchKey};
+    }
+
+    output->append(redis::MultiLen(result_vector.size()));
+    auto now = util::GetTimeStampMS();
+    for (auto const &it : result_vector) {
+      output->append(redis::MultiLen(8));
+      output->append(redis::BulkString("name"));
+      output->append(redis::BulkString(it.first));
+      output->append(redis::BulkString("pending"));
+      output->append(redis::Integer(it.second.pending_number));
+      output->append(redis::BulkString("idle"));
+      output->append(redis::Integer(now - it.second.last_idle));
+      output->append(redis::BulkString("inactive"));
+      output->append(redis::Integer(now - it.second.last_active));
     }
 
     return Status::OK();
@@ -664,7 +750,6 @@ class CommandXRead : public Commander,
                      private EvbufCallbackBase<CommandXRead, false>,
                      private EventCallbackBase<CommandXRead> {
  public:
-  bool IsBlocking() const override { return true; }
   Status Parse(const std::vector<std::string> &args) override {
     size_t streams_word_idx = 0;
 

@@ -186,6 +186,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
 
+  // avoid blocking io on iteration
+  // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
+  options.avoid_unnecessary_blocking_io = config_->rocks_db.avoid_unnecessary_blocking_io;
   return options;
 }
 
@@ -194,12 +197,6 @@ Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std:
     auto s = db_->SetOptions(cf_handle, {{key, value}});
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
-  return Status::OK();
-}
-
-Status Storage::SetOption(const std::string &key, const std::string &value) {
-  auto s = db_->SetOptions({{key, value}});
-  if (!s.ok()) return {Status::NotOK, s.ToString()};
   return Status::OK();
 }
 
@@ -240,7 +237,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   return Status::OK();
 }
 
-Status Storage::Open(bool read_only) {
+Status Storage::Open(DBOpenMode mode) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
 
@@ -253,7 +250,7 @@ Status Storage::Open(bool read_only) {
   }
 
   rocksdb::Options options = InitRocksDBOptions();
-  if (!read_only) {
+  if (mode == kDBOpenModeDefault) {
     if (auto s = CreateColumnFamilies(options); !s.IsOK()) {
       return s.Prefixed("failed to create column families");
     }
@@ -319,21 +316,36 @@ Status Storage::Open(bool read_only) {
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   auto start = std::chrono::high_resolution_clock::now();
-  auto dbs = read_only ? util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_)
-                       : util::DBOpen(options, config_->db_dir, column_families, &cf_handles_);
+  switch (mode) {
+    case DBOpenMode::kDBOpenModeDefault: {
+      db_ = GET_OR_RET(util::DBOpen(options, config_->db_dir, column_families, &cf_handles_));
+      break;
+    }
+    case DBOpenMode::kDBOpenModeForReadOnly: {
+      db_ = GET_OR_RET(util::DBOpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_));
+      break;
+    }
+    case DBOpenMode::kDBOpenModeAsSecondaryInstance: {
+      db_ = GET_OR_RET(
+          util::DBOpenAsSecondaryInstance(options, config_->db_dir, config_->dir, column_families, &cf_handles_));
+      break;
+    }
+    default:
+      __builtin_unreachable();
+  }
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-  if (!s.ok()) {
-    LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
-    return {Status::DBOpenErr, s.ToString()};
-  }
 
-  db_ = std::move(*dbs);
+  if (!db_) {
+    LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
+    return {Status::DBOpenErr};
+  }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
+
   return Status::OK();
 }
 
-Status Storage::CreateBackup() {
+Status Storage::CreateBackup(uint64_t *sequence_number) {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->GetBackupDir();
@@ -351,7 +363,7 @@ Status Storage::CreateBackup() {
   }
 
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB);
+  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB, sequence_number);
   if (!s.ok()) {
     LOG(WARNING) << "Failed to create checkpoint (snapshot) for backup. Error: " << s.ToString();
     return {Status::DBBackupErr, s.ToString()};
@@ -522,14 +534,47 @@ rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb:
 
 rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
                              const rocksdb::Slice &key, std::string *value) {
+  rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
-    return txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+    s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+  } else {
+    s = db_->Get(options, column_family, key, value);
   }
-  return db_->Get(options, column_family, key, value);
+
+  recordKeyspaceStat(column_family, s);
+  return s;
+}
+
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
+                             rocksdb::PinnableSlice *value) {
+  return Get(options, db_->DefaultColumnFamily(), key, value);
+}
+
+rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                             const rocksdb::Slice &key, rocksdb::PinnableSlice *value) {
+  rocksdb::Status s;
+  if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
+    s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+  } else {
+    s = db_->Get(options, column_family, key, value);
+  }
+
+  recordKeyspaceStat(column_family, s);
+  return s;
 }
 
 rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
   return NewIterator(options, db_->DefaultColumnFamily());
+}
+
+void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s) {
+  if (column_family->GetName() != kMetadataColumnFamilyName) return;
+
+  // Don't record keyspace hits here because we cannot tell
+  // if the key was expired or not. So we record it when parsing the metadata.
+  if (s.IsNotFound() || s.IsInvalidArgument()) {
+    RecordStat(StatType::KeyspaceMisses, 1);
+  }
 }
 
 rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options,
@@ -549,6 +594,10 @@ void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamil
                                              false);
   } else {
     db_->MultiGet(options, column_family, num_keys, keys, values, statuses, false);
+  }
+
+  for (size_t i = 0; i < num_keys; i++) {
+    recordKeyspaceStat(column_family, statuses[i]);
   }
 }
 
@@ -623,6 +672,23 @@ Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
   }
 
   return Status::OK();
+}
+
+void Storage::RecordStat(StatType type, uint64_t v) {
+  switch (type) {
+    case StatType::FlushCount:
+      db_stats_.flush_count += v;
+      break;
+    case StatType::CompactionCount:
+      db_stats_.compaction_count += v;
+      break;
+    case StatType::KeyspaceHits:
+      db_stats_.keyspace_hits += v;
+      break;
+    case StatType::KeyspaceMisses:
+      db_stats_.keyspace_misses += v;
+      break;
+  }
 }
 
 rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
@@ -756,20 +822,20 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
 }
 
 Status Storage::ShiftReplId() {
-  const char *charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const int charset_len = static_cast<int>(strlen(charset));
+  static constexpr std::string_view charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
   // Do nothing if rsid psync is not enabled
   if (!config_->use_rsid_psync) return Status::OK();
 
   std::random_device rd;
   std::mt19937 gen(rd() + getpid());
-  std::uniform_int_distribution<> distrib(0, charset_len - 1);
-  std::string rand_str;
+  std::uniform_int_distribution<size_t> distrib(0, charset.size() - 1);
+
+  std::string rand_str(kReplIdLength, 0);
   for (int i = 0; i < kReplIdLength; i++) {
-    rand_str.push_back(charset[distrib(gen)]);
+    rand_str[i] = charset[distrib(gen)];
   }
-  replid_ = rand_str;
+  replid_ = std::move(rand_str);
   LOG(INFO) << "[replication] New replication id: " << replid_;
 
   // Write new replication id into db engine

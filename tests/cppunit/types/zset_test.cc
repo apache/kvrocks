@@ -433,3 +433,55 @@ TEST_F(RedisZSetTest, Rank) {
   }
   auto s = zset_->Del(key_);
 }
+
+TEST_F(RedisZSetTest, Diff) {
+  uint64_t ret = 0;
+
+  std::string k1 = "key1";
+  std::vector<rocksdb::Slice> k1_fields_ = {"a", "b", "c", "d"};
+  std::vector<double> k1_scores_ = {-100.1, -100.1, 0, 1.234};
+  std::vector<MemberScore> k1_mscores;
+  for (size_t i = 0; i < k1_fields_.size(); i++) {
+    k1_mscores.emplace_back(MemberScore{k1_fields_[i].ToString(), k1_scores_[i]});
+  }
+
+  std::string k2 = "key2";
+  std::vector<rocksdb::Slice> k2_fields_ = {"c"};
+  std::vector<double> k2_scores_ = {-150.1};
+  std::vector<MemberScore> k2_mscores;
+  for (size_t i = 0; i < k2_fields_.size(); i++) {
+    k2_mscores.emplace_back(MemberScore{k2_fields_[i].ToString(), k2_scores_[i]});
+  }
+
+  std::string k3 = "key3";
+  std::vector<rocksdb::Slice> k3_fields_ = {"a", "c", "e"};
+  std::vector<double> k3_scores_ = {-1000.1, -100.1, 8000.9};
+  std::vector<MemberScore> k3_mscores;
+  for (size_t i = 0; i < k3_fields_.size(); i++) {
+    k3_mscores.emplace_back(MemberScore{k3_fields_[i].ToString(), k3_scores_[i]});
+  }
+
+  rocksdb::Status s = zset_->Add(k1, ZAddFlags::Default(), &k1_mscores, &ret);
+  EXPECT_EQ(ret, 4);
+  zset_->Add(k2, ZAddFlags::Default(), &k2_mscores, &ret);
+  EXPECT_EQ(ret, 1);
+  zset_->Add(k3, ZAddFlags::Default(), &k3_mscores, &ret);
+  EXPECT_EQ(ret, 3);
+
+  std::vector<MemberScore> mscores;
+  zset_->Diff({k1, k2, k3}, &mscores);
+
+  EXPECT_EQ(2, mscores.size());
+  std::vector<MemberScore> expected_mscores = {{"b", -100.1}, {"d", 0}};
+  int index = 0;
+  for (auto mscore : expected_mscores) {
+    EXPECT_EQ(mscore.member, mscores[index].member);
+    EXPECT_EQ(mscore.score, mscores[index].score);
+    index++;
+  }
+  // EXPECT_EQ(expected_mscores, mscores);
+
+  s = zset_->Del(k1);
+  s = zset_->Del(k2);
+  s = zset_->Del(k3);
+}

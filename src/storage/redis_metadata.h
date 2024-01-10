@@ -23,6 +23,8 @@
 #include <rocksdb/status.h>
 
 #include <atomic>
+#include <bitset>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -35,7 +37,7 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 // explicitly since it cannot be changed once confirmed
 // Note that if you want to add a new redis type in `RedisType`
 // you should also add a type name to the `RedisTypeNames` below
-enum RedisType {
+enum RedisType : uint8_t {
   kRedisNone = 0,
   kRedisString = 1,
   kRedisHash = 2,
@@ -47,6 +49,29 @@ enum RedisType {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
+};
+
+struct RedisTypes {
+  RedisTypes(std::initializer_list<RedisType> list) {
+    for (auto type : list) {
+      types_.set(type);
+    }
+  }
+
+  static RedisTypes All() {
+    UnderlyingType types;
+    types.set();
+    return RedisTypes(types);
+  }
+
+  bool Contains(RedisType type) { return types_[type]; }
+
+ private:
+  using UnderlyingType = std::bitset<128>;
+
+  explicit RedisTypes(UnderlyingType types) : types_(types) {}
+
+  UnderlyingType types_;
 };
 
 enum RedisCommand {
@@ -61,6 +86,7 @@ enum RedisCommand {
   kRedisCmdExpire,
   kRedisCmdSetBit,
   kRedisCmdBitOp,
+  kRedisCmdBitfield,
   kRedisCmdLMove,
 };
 

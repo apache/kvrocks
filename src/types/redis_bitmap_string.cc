@@ -25,6 +25,7 @@
 #include <cstdint>
 
 #include "redis_string.h"
+#include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
 #include "type_util.h"
 
@@ -202,6 +203,90 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   }
 
   return res;
+}
+
+rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_value,
+                                       const std::vector<BitfieldOperation> &ops,
+                                       std::vector<std::optional<BitfieldValue>> *rets) {
+  auto header_offset = Metadata::GetOffsetAfterExpire((*raw_value)[0]);
+  std::string string_value = raw_value->substr(header_offset);
+  for (BitfieldOperation op : ops) {
+    // [first_byte, last_byte)
+    uint32_t first_byte = op.offset / 8;
+    uint32_t last_byte = (op.offset + op.encoding.Bits() - 1) / 8 + 1;
+
+    // expand string if need.
+    if (string_value.size() < last_byte) {
+      string_value.resize(last_byte);
+    }
+
+    ArrayBitfieldBitmap bitfield(first_byte);
+    auto str = reinterpret_cast<const uint8_t *>(string_value.data() + first_byte);
+    auto s = bitfield.Set(first_byte, last_byte - first_byte, str);
+
+    uint64_t unsigned_old_value = 0;
+    if (op.encoding.IsSigned()) {
+      unsigned_old_value = bitfield.GetSignedBitfield(op.offset, op.encoding.Bits()).GetValue();
+    } else {
+      unsigned_old_value = bitfield.GetUnsignedBitfield(op.offset, op.encoding.Bits()).GetValue();
+    }
+
+    uint64_t unsigned_new_value = 0;
+    auto &ret = rets->emplace_back();
+    if (BitfieldOp(op, unsigned_old_value, &unsigned_new_value).GetValue()) {
+      if (op.type != BitfieldOperation::Type::kGet) {
+        // never failed.
+        s = bitfield.SetBitfield(op.offset, op.encoding.Bits(), unsigned_new_value);
+        auto dst = reinterpret_cast<uint8_t *>(string_value.data()) + first_byte;
+        s = bitfield.Get(first_byte, last_byte - first_byte, dst);
+      }
+
+      if (op.type == BitfieldOperation::Type::kSet) {
+        unsigned_new_value = unsigned_old_value;
+      }
+
+      ret = {op.encoding, unsigned_new_value};
+    }
+  }
+
+  raw_value->resize(header_offset);
+  raw_value->append(string_value);
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisString);
+  batch->PutLogData(log_data.Encode());
+  batch->Put(metadata_cf_handle_, ns_key, *raw_value);
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
+                                               const std::vector<BitfieldOperation> &ops,
+                                               std::vector<std::optional<BitfieldValue>> *rets) {
+  std::string_view string_value = raw_value;
+  string_value = string_value.substr(Metadata::GetOffsetAfterExpire(string_value[0]));
+
+  for (BitfieldOperation op : ops) {
+    if (op.type != BitfieldOperation::Type::kGet) {
+      return rocksdb::Status::InvalidArgument("Write bitfield in read-only mode.");
+    }
+
+    uint32_t first_byte = op.offset / 8;
+    uint32_t last_byte = (op.offset + op.encoding.Bits() - 1) / 8 + 1;
+
+    ArrayBitfieldBitmap bitfield(first_byte);
+    auto s = bitfield.Set(first_byte, last_byte - first_byte,
+                          reinterpret_cast<const uint8_t *>(string_value.data() + first_byte));
+
+    if (op.encoding.IsSigned()) {
+      int64_t value = bitfield.GetSignedBitfield(op.offset, op.encoding.Bits()).GetValue();
+      rets->emplace_back(std::in_place, op.encoding, static_cast<uint64_t>(value));
+    } else {
+      uint64_t value = bitfield.GetUnsignedBitfield(op.offset, op.encoding.Bits()).GetValue();
+      rets->emplace_back(std::in_place, op.encoding, value);
+    }
+  }
+
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

@@ -38,20 +38,44 @@ class Json : public Database {
   rocksdb::Status Info(const std::string &user_key, JsonStorageFormat *storage_format);
   rocksdb::Status Type(const std::string &user_key, const std::string &path, std::vector<std::string> *results);
   rocksdb::Status ArrAppend(const std::string &user_key, const std::string &path,
-                            const std::vector<std::string> &values, std::vector<size_t> *result_count);
+                            const std::vector<std::string> &values, Optionals<size_t> *results);
+  rocksdb::Status Merge(const std::string &user_key, const std::string &path, const std::string &value, bool &result);
   rocksdb::Status Clear(const std::string &user_key, const std::string &path, size_t *result);
-  rocksdb::Status ArrLen(const std::string &user_key, const std::string &path,
-                         std::vector<std::optional<uint64_t>> &arr_lens);
-  rocksdb::Status Toggle(const std::string &user_key, const std::string &path,
-                         std::vector<std::optional<bool>> &result);
+  rocksdb::Status ArrLen(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
+  rocksdb::Status ArrInsert(const std::string &user_key, const std::string &path, const int64_t &index,
+                            const std::vector<std::string> &values, Optionals<uint64_t> *results);
+  rocksdb::Status Toggle(const std::string &user_key, const std::string &path, Optionals<bool> *results);
   rocksdb::Status ObjKeys(const std::string &user_key, const std::string &path,
-                          std::vector<std::optional<std::vector<std::string>>> &keys);
+                          Optionals<std::vector<std::string>> *keys);
   rocksdb::Status ArrPop(const std::string &user_key, const std::string &path, int64_t index,
                          std::vector<std::optional<JsonValue>> *results);
+  rocksdb::Status ArrIndex(const std::string &user_key, const std::string &path, const std::string &needle,
+                           ssize_t start, ssize_t end, Optionals<ssize_t> *results);
+  rocksdb::Status NumIncrBy(const std::string &user_key, const std::string &path, const std::string &value,
+                            JsonValue *result);
+  rocksdb::Status NumMultBy(const std::string &user_key, const std::string &path, const std::string &value,
+                            JsonValue *result);
+
+  rocksdb::Status ArrTrim(const std::string &user_key, const std::string &path, int64_t start, int64_t stop,
+                          Optionals<uint64_t> *results);
+  rocksdb::Status Del(const std::string &user_key, const std::string &path, size_t *result);
+  rocksdb::Status StrAppend(const std::string &user_key, const std::string &path, const std::string &value,
+                            Optionals<uint64_t> *results);
+  rocksdb::Status StrLen(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
+  rocksdb::Status ObjLen(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
+
+  std::vector<rocksdb::Status> MGet(const std::vector<std::string> &user_keys, const std::string &path,
+                                    std::vector<JsonValue> &results);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);
+  static rocksdb::Status parse(const JsonMetadata &metadata, const Slice &json_byt, JsonValue *value);
+  rocksdb::Status create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value);
+  rocksdb::Status del(const Slice &ns_key);
+  rocksdb::Status numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
+                        const std::string &value, JsonValue *result);
+  std::vector<rocksdb::Status> readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values);
 };
 
 }  // namespace redis

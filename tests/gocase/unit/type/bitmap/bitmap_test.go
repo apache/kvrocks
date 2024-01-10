@@ -302,4 +302,26 @@ func TestBitmap(t *testing.T) {
 		Set2SetBit(t, rdb, ctx, "a", []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
 		require.EqualValues(t, 32, rdb.BitOpOr(ctx, "x", "a", "b").Val())
 	})
+
+	t.Run("BITFIELD and BITFIELD_RO on string type", func(t *testing.T) {
+		str := "zhe ge ren hen lan, shen me dou mei you liu xia."
+		require.NoError(t, rdb.Set(ctx, "str", str, 0).Err())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, "str", "GET", "u8", "32", "GET", "u8", "40")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(str[4]), int64(str[5])}, res.Val())
+		}
+
+		res := rdb.BitField(ctx, "str", "GET", "u8", "32", "SET", "u8", "32", 'r', "GET", "u8", "32")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, str[4], res.Val()[0])
+		require.EqualValues(t, str[4], res.Val()[1])
+		require.EqualValues(t, 'r', res.Val()[2])
+		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "GET", "u8", "32", "SET", "u8", "32", 'r', "GET", "u8", "32").Err(), "BITFIELD_RO only supports the GET subcommand")
+
+		res = rdb.BitField(ctx, "str", "INCRBY", "u8", "32", 2)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, 't', res.Val()[0])
+		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "INCRBY", "u8", "32", 2).Err(), "BITFIELD_RO only supports the GET subcommand")
+	})
 }

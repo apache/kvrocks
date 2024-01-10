@@ -18,6 +18,9 @@
  *
  */
 
+#include <rocksdb/iostats_context.h>
+#include <rocksdb/perf_context.h>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -588,20 +591,44 @@ class CommandDebug : public Commander {
 
       microsecond_ = static_cast<uint64_t>(*second * 1000 * 1000);
       return Status::OK();
+    } else if (subcommand_ == "protocol" && args.size() == 3) {
+      protocol_type_ = util::ToLower(args[2]);
+      return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>"};
+    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>|PROTOCOL <type>"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "sleep") {
       usleep(microsecond_);
+      *output = redis::SimpleString("OK");
+    } else if (subcommand_ == "protocol") {  // protocol type
+      if (protocol_type_ == "string") {
+        *output = redis::BulkString("Hello World");
+      } else if (protocol_type_ == "integer") {
+        *output = redis::Integer(12345);
+      } else if (protocol_type_ == "array") {
+        *output = redis::MultiLen(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+        }
+      } else if (protocol_type_ == "true") {
+        *output = redis::Bool(conn->GetProtocolVersion(), true);
+      } else if (protocol_type_ == "false") {
+        *output = redis::Bool(conn->GetProtocolVersion(), false);
+      } else {
+        *output =
+            redis::Error("Wrong protocol type name. Please use one of the following: string|int|array|true|false");
+      }
+    } else {
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
     }
-    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
   std::string subcommand_;
+  std::string protocol_type_;
   uint64_t microsecond_ = 0;
 };
 
@@ -682,14 +709,15 @@ class CommandHello final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
+    int protocol = 2;  // default protocol version is 2
     if (args_.size() >= 2) {
-      auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
+      auto parse_result = ParseInt<int>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
         return {Status::NotOK, "Protocol version is not an integer or out of range"};
       }
 
-      int64_t protocol = *parse_result;
+      protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
@@ -734,7 +762,12 @@ class CommandHello final : public Commander {
     output_list.push_back(redis::BulkString("server"));
     output_list.push_back(redis::BulkString("redis"));
     output_list.push_back(redis::BulkString("proto"));
-    output_list.push_back(redis::Integer(2));
+    if (srv->GetConfig()->resp3_enabled) {
+      output_list.push_back(redis::Integer(protocol));
+      conn->SetProtocolVersion(protocol == 3 ? RESP::v3 : RESP::v2);
+    } else {
+      output_list.push_back(redis::Integer(2));
+    }
 
     output_list.push_back(redis::BulkString("mode"));
     // Note: sentinel is not supported in kvrocks.
@@ -1123,6 +1156,71 @@ class CommandRdb : public Commander {
   uint32_t db_index_ = 0;
 };
 
+class CommandAnalyze : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() <= 1) return {Status::RedisExecErr, errInvalidSyntax};
+    for (int i = 1; i < args.size(); ++i) {
+      command_args_.push_back(args[i]);
+    }
+    return Status::OK();
+  }
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    auto commands = redis::CommandTable::Get();
+    auto cmd_iter = commands->find(util::ToLower(command_args_[0]));
+    if (cmd_iter == commands->end()) {
+      // unsupported redis command
+      return {Status::RedisExecErr, errInvalidSyntax};
+    }
+    auto redis_cmd = cmd_iter->second;
+    auto cmd = redis_cmd->factory();
+    cmd->SetAttributes(redis_cmd);
+    cmd->SetArgs(command_args_);
+
+    int arity = cmd->GetAttributes()->arity;
+    if ((arity > 0 && command_args_.size() != arity) || (arity < 0 && command_args_.size() < -arity)) {
+      *output = redis::Error("ERR wrong number of arguments");
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+
+    auto s = cmd->Parse(command_args_);
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    auto prev_perf_level = rocksdb::GetPerfLevel();
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+    rocksdb::get_perf_context()->Reset();
+    rocksdb::get_iostats_context()->Reset();
+
+    std::string command_output;
+    s = cmd->Execute(srv, conn, &command_output);
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    if (command_output[0] == '-') {
+      *output = command_output;
+      return s;
+    }
+
+    std::string perf_context = rocksdb::get_perf_context()->ToString(true);
+    std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
+    rocksdb::get_perf_context()->Reset();
+    rocksdb::get_iostats_context()->Reset();
+    rocksdb::SetPerfLevel(prev_perf_level);
+
+    *output = redis::MultiLen(3);  // command output + perf context + iostats context
+    *output += command_output;
+    *output += redis::BulkString(perf_context);
+    *output += redis::BulkString(iostats_context);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<std::string> command_args_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1138,7 +1236,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandClient>("client", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandQuit>("quit", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandScan>("scan", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", 0, 0, 0),
@@ -1157,6 +1255,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0), )
+                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
+                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0), )
 
 }  // namespace redis

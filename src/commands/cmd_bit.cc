@@ -19,6 +19,7 @@
  */
 
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
 #include "types/redis_bitmap.h"
@@ -90,6 +91,7 @@ class CommandSetBit : public Commander {
   bool bit_ = false;
 };
 
+// BITCOUNT key [start end [BYTE | BIT]]
 class CommandBitCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -97,7 +99,11 @@ class CommandBitCount : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (args.size() == 4) {
+    if (args.size() > 5) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[2], 10);
       if (!parse_start) {
         return {Status::RedisParseErr, errValueNotInteger};
@@ -110,6 +116,15 @@ class CommandBitCount : public Commander {
       }
 
       stop_ = *parse_stop;
+    }
+
+    if (args.size() == 5) {
+      if (util::EqualICase(args[4], "BYTE")) {
+      } else if (util::EqualICase(args[4], "BIT")) {
+        return {Status::RedisExecErr, errNotImplemented};
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
     }
 
     return Commander::Parse(args);
@@ -132,6 +147,8 @@ class CommandBitCount : public Commander {
 
 class CommandBitPos : public Commander {
  public:
+  using Commander::Parse;
+
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[3], 10);
@@ -225,10 +242,166 @@ class CommandBitOp : public Commander {
   BitOpFlags op_flag_;
 };
 
+template <bool ReadOnly>
+class CommandBitfield : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    BitfieldOperation cmd;
+
+    read_only_ = true;
+    // BITFIELD <key> [commands...]
+    for (CommandParser group(args, 2); group.Good();) {
+      auto remains = group.Remains();
+
+      std::string opcode = util::ToLower(group[0]);
+      if (opcode == "get") {
+        cmd.type = BitfieldOperation::Type::kGet;
+      } else if (opcode == "set") {
+        cmd.type = BitfieldOperation::Type::kSet;
+        read_only_ = false;
+      } else if (opcode == "incrby") {
+        cmd.type = BitfieldOperation::Type::kIncrBy;
+        read_only_ = false;
+      } else if (opcode == "overflow") {
+        constexpr auto kOverflowCmdSize = 2;
+        if (remains < kOverflowCmdSize) {
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+        auto s = parseOverflowSubCommand(group[1], &cmd);
+        if (!s.IsOK()) {
+          return s;
+        }
+
+        group.Skip(kOverflowCmdSize);
+        continue;
+      } else {
+        return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+      }
+
+      if (remains < 3) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      // parse encoding
+      auto encoding = parseBitfieldEncoding(group[1]);
+      if (!encoding.IsOK()) {
+        return encoding.ToStatus();
+      }
+      cmd.encoding = encoding.GetValue();
+
+      // parse offset
+      if (!GetBitOffsetFromArgument(group[2], &cmd.offset).IsOK()) {
+        return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
+      }
+
+      if (cmd.type != BitfieldOperation::Type::kGet) {
+        if (remains < 4) {
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+
+        auto value = ParseInt<int64_t>(group[3], 10);
+        if (!value.IsOK()) {
+          return value.ToStatus();
+        }
+        cmd.value = value.GetValue();
+
+        // SET|INCRBY <encoding> <offset> <value>
+        group.Skip(4);
+      } else {
+        // GET <encoding> <offset>
+        group.Skip(3);
+      }
+
+      cmds_.push_back(cmd);
+    }
+
+    if constexpr (ReadOnly) {
+      if (!read_only_) {
+        return {Status::RedisParseErr, "BITFIELD_RO only supports the GET subcommand"};
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
+    std::vector<std::optional<BitfieldValue>> rets;
+    rocksdb::Status s;
+    if (read_only_) {
+      s = bitmap_db.BitfieldReadOnly(args_[1], cmds_, &rets);
+    } else {
+      s = bitmap_db.Bitfield(args_[1], cmds_, &rets);
+    }
+    std::vector<std::string> str_rets(rets.size());
+    for (size_t i = 0; i != rets.size(); ++i) {
+      if (rets[i].has_value()) {
+        if (rets[i]->Encoding().IsSigned()) {
+          str_rets[i] = redis::Integer(CastToSignedWithoutBitChanges(rets[i]->Value()));
+        } else {
+          str_rets[i] = redis::Integer(rets[i]->Value());
+        }
+      } else {
+        str_rets[i] = redis::NilString();
+      }
+    }
+    *output = redis::Array(str_rets);
+    return Status::OK();
+  }
+
+ private:
+  static Status parseOverflowSubCommand(const std::string &overflow, BitfieldOperation *cmd) {
+    std::string lower = util::ToLower(overflow);
+    if (lower == "wrap") {
+      cmd->overflow = BitfieldOverflowBehavior::kWrap;
+    } else if (lower == "sat") {
+      cmd->overflow = BitfieldOverflowBehavior::kSat;
+    } else if (lower == "fail") {
+      cmd->overflow = BitfieldOverflowBehavior::kFail;
+    } else {
+      return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+    }
+    return Status::OK();
+  }
+
+  static StatusOr<BitfieldEncoding> parseBitfieldEncoding(const std::string &token) {
+    if (token.empty()) {
+      return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+    }
+
+    auto sign = std::tolower(token[0]);
+    if (sign != 'u' && sign != 'i') {
+      return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+    }
+
+    auto type = BitfieldEncoding::Type::kUnsigned;
+    if (sign == 'i') {
+      type = BitfieldEncoding::Type::kSigned;
+    }
+
+    auto bits_parse = ParseInt<uint8_t>(token.substr(1), 10);
+    if (!bits_parse.IsOK()) {
+      return bits_parse.ToStatus();
+    }
+    uint8_t bits = bits_parse.GetValue();
+
+    auto encoding = BitfieldEncoding::Create(type, bits);
+    if (!encoding.IsOK()) {
+      return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
+    }
+    return encoding.GetValue();
+  }
+
+  std::vector<BitfieldOperation> cmds_;
+  bool read_only_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1), )
+                        MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
+                        MakeCmdAttr<CommandBitfield<false>>("bitfield", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBitfield<true>>("bitfield_ro", -2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

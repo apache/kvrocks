@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "error_constants.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "status.h"
@@ -70,11 +71,10 @@ class Commander {
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
   const CommandAttributes *GetAttributes() const { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
-  virtual bool IsBlocking() const { return false; }
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *srv, Connection *conn, std::string *output) {
-    return {Status::RedisExecErr, "not implemented"};
+    return {Status::RedisExecErr, errNotImplemented};
   }
 
   virtual ~Commander() = default;

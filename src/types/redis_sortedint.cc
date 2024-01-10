@@ -29,7 +29,7 @@
 namespace redis {
 
 rocksdb::Status Sortedint::GetMetadata(const Slice &ns_key, SortedintMetadata *metadata) {
-  return Database::GetMetadata(kRedisSortedint, ns_key, metadata);
+  return Database::GetMetadata({kRedisSortedint}, ns_key, metadata);
 }
 
 rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *added_cnt) {

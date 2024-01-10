@@ -562,7 +562,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.NoError(t, rdb0.SRem(ctx, keys["set"], 1, 3).Err())
 		require.NoError(t, rdb0.Expire(ctx, keys["set"], 10*time.Second).Err())
 		// type zset
-		require.NoError(t, rdb0.ZAdd(ctx, keys["zset"], []redis.Z{{0, 1}, {2, 3}, {4, 5}}...).Err())
+		require.NoError(t, rdb0.ZAdd(ctx, keys["zset"], []redis.Z{{0, "1"}, {2, "3"}, {4, "5"}}...).Err())
 		require.NoError(t, rdb0.ZRem(ctx, keys["zset"], 1, 3).Err())
 		require.NoError(t, rdb0.Expire(ctx, keys["zset"], 10*time.Second).Err())
 		// type bitmap
@@ -912,6 +912,12 @@ func TestSlotMigrateDataType(t *testing.T) {
 		for i := 10000; i < 11000; i += 2 {
 			require.NoError(t, rdb0.SetBit(ctx, keys[8], int64(i), 1).Err())
 		}
+		for i := 20000; i < 21000; i += 5 {
+			res := rdb0.BitField(ctx, keys[8], "SET", "u5", strconv.Itoa(i), 23)
+			require.NoError(t, res.Err())
+			require.EqualValues(t, 1, len(res.Val()))
+			require.EqualValues(t, 0, res.Val()[0])
+		}
 		// 7. type sortint
 		require.NoError(t, rdb0.Do(ctx, "SIADD", keys[9], 2, 4, 1, 3).Err())
 		require.NoError(t, rdb0.Do(ctx, "SIREM", keys[9], 2).Err())
@@ -956,6 +962,12 @@ func TestSlotMigrateDataType(t *testing.T) {
 		}
 		for i := 0; i < 20; i += 2 {
 			require.EqualValues(t, 0, rdb1.GetBit(ctx, keys[8], int64(i)).Val())
+		}
+		for i := 20000; i < 21000; i += 5 {
+			res := rdb1.BitField(ctx, keys[8], "GET", "u5", strconv.Itoa(i))
+			require.NoError(t, res.Err())
+			require.EqualValues(t, 1, len(res.Val()))
+			require.EqualValues(t, 23, res.Val()[0])
 		}
 		// 7. type sortint
 		require.EqualValues(t, siv, rdb1.Do(ctx, "SIRANGE", keys[9], 0, -1).Val())

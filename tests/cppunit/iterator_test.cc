@@ -32,7 +32,7 @@
 
 class IteratorTest : public TestBase {
  protected:
-  explicit IteratorTest() {}
+  explicit IteratorTest() = default;
   ~IteratorTest() override = default;
 
   void SetUp() override {
@@ -265,7 +265,7 @@ TEST_F(IteratorTest, BasicBitmap) {
 
 class SlotIteratorTest : public TestBase {
  protected:
-  explicit SlotIteratorTest() {}
+  explicit SlotIteratorTest() = default;
   ~SlotIteratorTest() override = default;
   void SetUp() override { storage_->GetConfig()->slot_id_encoded = true; }
 };

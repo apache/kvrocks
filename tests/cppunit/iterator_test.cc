@@ -137,8 +137,9 @@ TEST_F(IteratorTest, BasicHash) {
     ASSERT_EQ("test_ns1", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
-    std::vector<std::string> expected_keys = {"f3", "f2", "f1", "f0"};
+    ASSERT_TRUE(subkey_iter);
+    std::vector<std::string> expected_keys = {"f0", "f1", "f2", "f3"};
+    std::reverse(expected_keys.begin(), expected_keys.end());
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_keys.empty()) {
         FAIL() << "Unexpected key: " << subkey_iter->UserKey().ToString();
@@ -159,8 +160,9 @@ TEST_F(IteratorTest, BasicSet) {
     ASSERT_EQ("test_ns2", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
-    std::vector<std::string> expected_keys = {"e2", "e1", "e0"};
+    ASSERT_TRUE(subkey_iter);
+    std::vector<std::string> expected_keys = {"e0", "e1", "e2"};
+    std::reverse(expected_keys.begin(), expected_keys.end());
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_keys.empty()) {
         FAIL() << "Unexpected key: " << subkey_iter->UserKey().ToString();
@@ -181,8 +183,9 @@ TEST_F(IteratorTest, BasicZSet) {
     ASSERT_EQ("test_ns3", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
-    std::vector<std::string> expected_members = {"z2", "z1", "z0"};
+    ASSERT_TRUE(subkey_iter);
+    std::vector<std::string> expected_members = {"z0", "z1", "z2"};
+    std::reverse(expected_members.begin(), expected_members.end());
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_members.empty()) {
         FAIL() << "Unexpected key: " << subkey_iter->UserKey().ToString();
@@ -203,8 +206,9 @@ TEST_F(IteratorTest, BasicList) {
     ASSERT_EQ("test_ns4", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
-    std::vector<std::string> expected_values = {"l2", "l1", "l0"};
+    ASSERT_TRUE(subkey_iter);
+    std::vector<std::string> expected_values = {"l0", "l1", "l2"};
+    std::reverse(expected_values.begin(), expected_values.end());
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_values.empty()) {
         FAIL() << "Unexpected value: " << subkey_iter->Value().ToString();
@@ -225,8 +229,9 @@ TEST_F(IteratorTest, BasicStream) {
     ASSERT_EQ("test_ns5", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
-    std::vector<std::string> expected_values = {"x2", "x1", "x0"};
+    ASSERT_TRUE(subkey_iter);
+    std::vector<std::string> expected_values = {"x0", "x1", "x2"};
+    std::reverse(expected_values.begin(), expected_values.end());
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_values.empty()) {
         FAIL() << "Unexpected value: " << subkey_iter->Value().ToString();
@@ -250,7 +255,7 @@ TEST_F(IteratorTest, BasicBitmap) {
     ASSERT_EQ("test_ns6", ns.ToString());
 
     auto subkey_iter = iter.GetSubKeyIterator();
-    ASSERT_TRUE(!subkey_iter);
+    ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_values = {"\x1", "\x1", "\x1"};
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       if (expected_values.empty()) {

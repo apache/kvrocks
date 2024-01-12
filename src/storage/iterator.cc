@@ -28,10 +28,12 @@ namespace engine {
 DBIterator::DBIterator(Storage* storage, rocksdb::ReadOptions read_options, int slot)
     : storage_(storage), read_options_(std::move(read_options)), slot_(slot) {
   metadata_cf_handle_ = storage_->GetCFHandle(kMetadataColumnFamilyName);
-  metadata_iter_ = std::move(util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_)));
+  metadata_iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_));
 }
 
 void DBIterator::Next() {
+  if (!Valid()) return;
+
   metadata_iter_->Next();
   nextUntilValid();
 }
@@ -79,7 +81,7 @@ void DBIterator::Reset() {
 }
 
 void DBIterator::Seek(const std::string& target) {
-  metadata_iter_->Reset();
+  if (!metadata_iter_) return;
 
   // Iterate with the slot id but storage didn't enable slot id encoding
   if (slot_ != -1 && !storage_->IsSlotIdEncoded()) {
@@ -108,7 +110,7 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
   }
 
   auto prefix = InternalKey(Key(), "", metadata_.version, storage_->IsSlotIdEncoded()).Encode();
-  return std::make_unique<SubKeyIterator>(storage_, read_options_, type, prefix);
+  return std::make_unique<SubKeyIterator>(storage_, read_options_, type, std::move(prefix));
 }
 
 SubKeyIterator::SubKeyIterator(Storage* storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix)
@@ -118,10 +120,12 @@ SubKeyIterator::SubKeyIterator(Storage* storage, rocksdb::ReadOptions read_optio
   } else {
     cf_handle_ = storage_->GetCFHandle(kSubkeyColumnFamilyName);
   }
-  iter_ = std::move(util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_)));
+  iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_));
 }
 
 void SubKeyIterator::Next() {
+  if (!Valid()) return;
+
   iter_->Next();
 
   if (!Valid()) return;
@@ -145,9 +149,9 @@ Slice SubKeyIterator::UserKey() const {
 Slice SubKeyIterator::Value() const { return Valid() ? iter_->value() : Slice(); }
 
 void SubKeyIterator::Seek() {
-  iter_->Reset();
-  iter_->Seek(prefix_);
+  if (!iter_) return;
 
+  iter_->Seek(prefix_);
   if (!iter_->Valid()) return;
   // For the subkey iterator, it MUST contain the prefix key itself
   if (!iter_->key().starts_with(prefix_)) {

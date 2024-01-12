@@ -22,8 +22,10 @@
 #include <storage/iterator.h>
 #include <types/redis_bitmap.h>
 #include <types/redis_bloom_chain.h>
+#include <types/redis_json.h>
 #include <types/redis_list.h>
 #include <types/redis_set.h>
+#include <types/redis_sortedint.h>
 #include <types/redis_stream.h>
 #include <types/redis_zset.h>
 
@@ -90,12 +92,30 @@ class IteratorTest : public TestBase {
       bitmap.SetBit("bitmap-1", 8 * 1024, true, &ret);
       bitmap.SetBit("bitmap-1", 2 * 8 * 1024, true, &ret);
     }
+
+    {  // json
+      redis::Json json(storage_, "test_ns7");
+      json.Set("json-1", "$", "{\"a\": 1, \"b\": 2}");
+      json.Set("json-2", "$", "{\"a\": 1, \"b\": 2}");
+      json.Set("json-3", "$", "{\"a\": 1, \"b\": 2}");
+      json.Set("json-4", "$", "{\"a\": 1, \"b\": 2}");
+      auto s = json.Expire("json-4", 1);
+      ASSERT_TRUE(s.ok());
+    }
+
+    {
+      // sorted integer
+      redis::Sortedint sortedint(storage_, "test_ns8");
+      uint64_t ret = 0;
+      sortedint.Add("sortedint-1", {1, 2, 3}, &ret);
+    }
   }
 };
 
 TEST_F(IteratorTest, AllKeys) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
-  std::vector<std::string> live_keys = {"a", "b", "d", "hash-1", "set-1", "zset-1", "list-1", "stream-1", "bitmap-1"};
+  std::vector<std::string> live_keys = {"a",        "b",        "d",      "hash-1", "set-1",  "zset-1",     "list-1",
+                                        "stream-1", "bitmap-1", "json-1", "json-2", "json-3", "sortedint-1"};
   std::reverse(live_keys.begin(), live_keys.end());
   for (iter.Seek(); iter.Valid(); iter.Next()) {
     ASSERT_TRUE(!live_keys.empty());
@@ -265,6 +285,52 @@ TEST_F(IteratorTest, BasicBitmap) {
       expected_values.pop_back();
     }
     ASSERT_TRUE(expected_values.empty());
+  }
+}
+
+TEST_F(IteratorTest, BasicJSON) {
+  engine::DBIterator iter(storage_, rocksdb::ReadOptions());
+
+  std::vector<std::string> expected_keys = {"json-1", "json-2", "json-3"};
+  std::reverse(expected_keys.begin(), expected_keys.end());
+  auto prefix = ComposeNamespaceKey("test_ns7", "", storage_->IsSlotIdEncoded());
+  for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
+    if (expected_keys.empty()) {
+      FAIL() << "Unexpected key: " << iter.Key().ToString();
+    }
+    ASSERT_EQ(kRedisJson, iter.Type());
+    auto [ns, key] = iter.UserKey();
+    ASSERT_EQ("test_ns7", ns.ToString());
+    ASSERT_EQ(expected_keys.back(), key.ToString());
+    expected_keys.pop_back();
+    // Make sure there is no subkey iterator
+    ASSERT_TRUE(!iter.GetSubKeyIterator());
+  }
+  // Make sure all keys are iterated except the expired one: "json-4"
+  ASSERT_TRUE(expected_keys.empty());
+}
+
+TEST_F(IteratorTest, BasicSortedInt) {
+  engine::DBIterator iter(storage_, rocksdb::ReadOptions());
+
+  auto prefix = ComposeNamespaceKey("test_ns8", "", storage_->IsSlotIdEncoded());
+  for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
+    ASSERT_EQ(kRedisSortedint, iter.Type());
+    auto [ns, key] = iter.UserKey();
+    ASSERT_EQ("test_ns8", ns.ToString());
+
+    auto subkey_iter = iter.GetSubKeyIterator();
+    ASSERT_TRUE(subkey_iter);
+    std::vector<uint64_t> expected_keys = {1, 2, 3};
+    std::reverse(expected_keys.begin(), expected_keys.end());
+    for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+      auto value = DecodeFixed64(subkey_iter->UserKey().data());
+      if (expected_keys.empty()) {
+        FAIL() << "Unexpected value: " << value;
+      }
+      ASSERT_EQ(expected_keys.back(), value);
+      expected_keys.pop_back();
+    }
   }
 }
 

@@ -261,6 +261,45 @@ void Connection::PUnsubscribeAll(const UnsubscribeCallback &reply) {
 
 int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patterns_.size()); }
 
+void Connection::SSubscribeChannel(const std::string &channel, uint16_t slot) {
+  for (const auto &chan : subscribe_shard_channels_) {
+    if (channel == chan) return;
+  }
+
+  subscribe_shard_channels_.emplace_back(channel);
+  owner_->srv->SSubscribeChannel(channel, this, slot);
+}
+
+void Connection::SUnsubscribeChannel(const std::string &channel, uint16_t slot) {
+  for (auto iter = subscribe_shard_channels_.begin(); iter != subscribe_shard_channels_.end(); iter++) {
+    if (*iter == channel) {
+      subscribe_shard_channels_.erase(iter);
+      owner_->srv->SUnsubscribeChannel(channel, this, slot);
+      return;
+    }
+  }
+}
+
+void Connection::SUnsubscribeAll(const UnsubscribeCallback &reply) {
+  if (subscribe_shard_channels_.empty()) {
+    if (reply) reply("", 0);
+    return;
+  }
+
+  int removed = 0;
+  for (const auto &chan : subscribe_shard_channels_) {
+    owner_->srv->SUnsubscribeChannel(chan, this,
+                                     owner_->srv->GetConfig()->cluster_enabled ? GetSlotIdFromKey(chan) : 0);
+    removed++;
+    if (reply) {
+      reply(chan, static_cast<int>(subscribe_shard_channels_.size() - removed));
+    }
+  }
+  subscribe_shard_channels_.clear();
+}
+
+int Connection::SSubscriptionsCount() { return static_cast<int>(subscribe_shard_channels_.size()); }
+
 bool Connection::IsProfilingEnabled(const std::string &cmd) {
   auto config = srv_->GetConfig();
   if (config->profiling_sample_ratio == 0) return false;

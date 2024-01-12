@@ -1160,7 +1160,7 @@ class CommandAnalyze : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() <= 1) return {Status::RedisExecErr, errInvalidSyntax};
-    for (int i = 1; i < args.size(); ++i) {
+    for (unsigned int i = 1; i < args.size(); ++i) {
       command_args_.push_back(args[i]);
     }
     return Status::OK();
@@ -1178,7 +1178,8 @@ class CommandAnalyze : public Commander {
     cmd->SetArgs(command_args_);
 
     int arity = cmd->GetAttributes()->arity;
-    if ((arity > 0 && command_args_.size() != arity) || (arity < 0 && command_args_.size() < -arity)) {
+    if ((arity > 0 && static_cast<int>(command_args_.size()) != arity) ||
+        (arity < 0 && static_cast<int>(command_args_.size()) < -arity)) {
       *output = redis::Error("ERR wrong number of arguments");
       return {Status::RedisExecErr, errWrongNumOfArguments};
     }

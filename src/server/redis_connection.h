@@ -74,6 +74,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   void PUnsubscribeChannel(const std::string &pattern);
   void PUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int PSubscriptionsCount();
+  void SSubscribeChannel(const std::string &channel, uint16_t slot);
+  void SUnsubscribeChannel(const std::string &channel, uint16_t slot);
+  void SUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
+  int SSubscriptionsCount();
 
   uint64_t GetAge() const;
   uint64_t GetIdleTime() const;
@@ -159,6 +163,7 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;
+  std::vector<std::string> subscribe_shard_channels_;
 
   Server *srv_;
   bool in_exec_ = false;

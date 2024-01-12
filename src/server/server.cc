@@ -78,6 +78,9 @@ Server::Server(engine::Storage *storage, Config *config)
   // Init cluster
   cluster = std::make_unique<Cluster>(this, config_->binds, config_->port);
 
+  // init shard pub/sub channels
+  pubsub_shard_channels_.resize(config->cluster_enabled ? HASH_SLOTS_SIZE : 1);
+
   for (int i = 0; i < config->workers; i++) {
     auto worker = std::make_unique<Worker>(this, config);
     // multiple workers can't listen to the same unix socket, so
@@ -493,6 +496,64 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
         pubsub_patterns_.erase(iter);
       }
       break;
+    }
+  }
+}
+
+void Server::SSubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot) {
+  assert((config_->cluster_enabled && slot < HASH_SLOTS_SIZE) || slot == 0);
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
+  if (auto iter = pubsub_shard_channels_[slot].find(channel); iter == pubsub_shard_channels_[slot].end()) {
+    pubsub_shard_channels_[slot].emplace(channel, std::list<ConnContext>{conn_ctx});
+  } else {
+    iter->second.emplace_back(conn_ctx);
+  }
+}
+
+void Server::SUnsubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot) {
+  assert((config_->cluster_enabled && slot < HASH_SLOTS_SIZE) || slot == 0);
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  auto iter = pubsub_shard_channels_[slot].find(channel);
+  if (iter == pubsub_shard_channels_[slot].end()) {
+    return;
+  }
+
+  for (const auto &conn_ctx : iter->second) {
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      iter->second.remove(conn_ctx);
+      if (iter->second.empty()) {
+        pubsub_shard_channels_[slot].erase(iter);
+      }
+      break;
+    }
+  }
+}
+
+void Server::GetSChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels) {
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  for (const auto &shard_channels : pubsub_shard_channels_) {
+    for (const auto &iter : shard_channels) {
+      if (pattern.empty() || util::StringMatch(pattern, iter.first, 0)) {
+        channels->emplace_back(iter.first);
+      }
+    }
+  }
+}
+
+void Server::ListSChannelSubscribeNum(const std::vector<std::string> &channels,
+                                      std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  for (const auto &chan : channels) {
+    uint16_t slot = config_->cluster_enabled ? GetSlotIdFromKey(chan) : 0;
+    if (auto iter = pubsub_shard_channels_[slot].find(chan); iter != pubsub_shard_channels_[slot].end()) {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{iter->first, iter->second.size()});
+    } else {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{chan, 0});
     }
   }
 }

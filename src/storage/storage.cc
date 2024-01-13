@@ -622,8 +622,6 @@ rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb
   return db_->Write(options, updates);
 }
 
-
-
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
   auto batch = GetWriteBatchBase();

@@ -1222,6 +1222,39 @@ class CommandAnalyze : public Commander {
   std::vector<std::string> command_args_;
 };
 
+class CommandApplyBatch : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    raw_batch_ = args[1];
+    if (args.size() > 2) {
+      if (args.size() > 3) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      if (!util::EqualICase(args[2], "low_pri")) {
+        return {Status::RedisParseErr, "only support low_pri option"};
+      }
+      low_pri_ = true;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    size_t size = raw_batch_.size();
+    auto options = svr->storage->DefaultWriteOptions();
+    options.low_pri = low_pri_;
+    auto s = svr->storage->ApplyWriteBatch(options, std::move(raw_batch_));
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, s.Msg()};
+    }
+    *output = redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  std::string raw_batch_;
+  bool low_pri_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1257,6 +1290,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
-                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0), )
+                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
+                        MakeCmdAttr<CommandApplyBatch>("applybatch no-multi", -2, "write", 0, 0, 0), )
 
 }  // namespace redis

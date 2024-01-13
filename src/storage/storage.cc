@@ -622,6 +622,8 @@ rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb
   return db_->Write(options, updates);
 }
 
+
+
 rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                 const rocksdb::Slice &key) {
   auto batch = GetWriteBatchBase();
@@ -661,16 +663,18 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
+  return ApplyWriteBatch(write_opts_, std::move(raw_batch));
+}
+
+Status Storage::ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch) {
   if (db_size_limit_reached_) {
     return {Status::NotOK, "reach space limit"};
   }
-
   auto batch = rocksdb::WriteBatch(std::move(raw_batch));
-  auto s = db_->Write(write_opts_, &batch);
+  auto s = db_->Write(options, &batch);
   if (!s.ok()) {
     return {Status::NotOK, s.ToString()};
   }
-
   return Status::OK();
 }
 

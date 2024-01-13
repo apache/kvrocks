@@ -30,6 +30,7 @@
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "server/server.h"
+#include "storage/iterator.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
@@ -689,5 +690,45 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 
   return Status::OK();
+}
+
+rocksdb::Status Database::Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret) {
+  *ret = true;
+  RedisType type = kRedisNone;
+  std::string ns_key = AppendNamespacePrefix(key);
+  std::string new_ns_key = AppendNamespacePrefix(new_key);
+  std::vector<std::string> lock_keys = {ns_key, new_ns_key};
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+  auto s = Type(key, &type);
+  if (!s.ok()) return s;
+
+  if (nx) {
+    int exist = 0;
+    s = Exists({new_key}, &exist);
+    if (!s.ok()) return s;
+    if (exist > 0) {
+      *ret = false;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (key == new_key) {
+    return rocksdb::Status::OK();
+  }
+
+  engine::DBIterator iter(storage_, rocksdb::ReadOptions());
+  iter.Seek(ns_key);
+  // copy metadata
+
+  auto subkey_iter = iter.GetSubKeyIterator();
+  if (subkey_iter == nullptr) {
+    // dont have subkey
+    return rocksdb::Status::OK();
+  }
+  for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+    // copy subkey
+    // copy zset sorce key
+  }
+  return rocksdb::Status::OK();
 }
 }  // namespace redis

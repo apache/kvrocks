@@ -851,4 +851,38 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {
+  std::vector<std::string> lock_keys;
+  lock_keys.reserve(keys.size());
+  for (const auto key : keys) {
+    std::string ns_key = AppendNamespacePrefix(key);
+    lock_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  members->clear();
+  MemberScores source_member_scores;
+  RangeScoreSpec spec;
+  uint64_t size {0};
+  auto s = RangeByScore(keys[0], spec, &source_member_scores, &size);
+  if (!s.ok()) return s;
+
+  std::map<std::string, bool> exclude_members {};
+  MemberScores target_member_scores {};
+  for (size_t i = 1; i < keys.size(); i++) {
+    uint64_t size {0};
+    s = RangeByScore(keys[i], spec, &target_member_scores, &size);
+    if (!s.ok()) return s;
+    for (const auto &member_score : target_member_scores) {
+      exclude_members[member_score.member] = true;
+    }
+  }
+  for (const auto &member_score : source_member_scores) {
+    if (exclude_members.find(member_score.member) == exclude_members.end()) {
+      members->push_back(member_score);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

@@ -103,9 +103,8 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
     return nullptr;
   }
 
-  // The string/json type doesn't have sub keys
   RedisType type = metadata_.Type();
-  if (type == kRedisNone || type == kRedisString || type == kRedisJson) {
+  if (type == kRedisNone || metadata_.IsSingleKVType()) {
     return nullptr;
   }
 

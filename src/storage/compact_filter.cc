@@ -91,7 +91,7 @@ bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &me
   // `util::GetTimeStampMS() - 300000` means extending 5 minutes for expired items,
   // to prevent them from being recycled once they reach the expiration time.
   uint64_t lazy_expired_ts = util::GetTimeStampMS() - 300000;
-  return metadata.Type() == kRedisString  // metadata key was overwrite by set command
+  return metadata.IsSingleKVType()  // metadata key was overwrite by set command
          || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
 }
 

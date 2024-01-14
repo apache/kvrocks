@@ -885,4 +885,12 @@ rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count) {
+  MemberScores mscores;
+  auto s = Diff(keys, &mscores);
+  if (!s.ok()) return s;
+  *stored_count = mscores.size();
+  return Overwrite(dst, mscores);
+}
+
 }  // namespace redis

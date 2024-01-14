@@ -903,16 +903,17 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
   s = GetAllMemberScores(user_key, &samples);
   if (!s.ok() || samples.empty()) return s;
 
-  member_scores->reserve(std::min(samples.size(), count));
+  auto size = static_cast<uint64_t>(samples.size());
+  member_scores->reserve(std::min(size, count));
 
   if (!unique || count == 1) {
     std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<uint64_t> dist(0, samples.size() - 1);
+    std::uniform_int_distribution<uint64_t> dist(0, size - 1);
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = dist(gen);
       member_scores->emplace_back(samples[index]);
     }
-  } else if (samples.size() <= count) {
+  } else if (size <= count) {
     for (auto &sample : samples) {
       member_scores->push_back(sample);
     }

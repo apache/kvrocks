@@ -730,10 +730,10 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
   if (subkey_iter != nullptr) {
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
-      std::string to_sub_key =
+      std::string to_ikey =
           InternalKey(new_ns_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
       // copy sub key
-      batch->Put(subkey_iter->ColumnFamilyHandle(), to_sub_key, subkey_iter->Value());
+      batch->Put(subkey_iter->ColumnFamilyHandle(), to_ikey, subkey_iter->Value());
 
       if (type == kRedisZSet) {
         std::string score_bytes = subkey_iter->Value().ToString();

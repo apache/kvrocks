@@ -1330,6 +1330,45 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 				Weights: []float64{math.NaN(), math.NaN()}},
 			).Err(), ".*weight.*not.*double.*")
 		})
+
+		t.Run(fmt.Sprintf("ZDIFF with two sets - %s", encoding), func(t *testing.T) {
+			createZset(rdb, ctx, "zseta", []redis.Z{
+				{Score: 1, Member: "a"}, {Score: 2, Member: "b"}, {Score: 3, Member: "c"},
+				{Score: 3, Member: "d"}, {Score: 4, Member: "e"},
+			})
+			createZset(rdb, ctx, "zsetb", []redis.Z{
+				{Score: 1, Member: "b"}, {Score: 2, Member: "c"}, {Score: 4, Member: "f"},
+			})
+			cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, []string{"a", "d", "e"}, cmd.Val())
+		})
+
+		t.Run(fmt.Sprintf("ZDIFF with three sets - %s", encoding), func(t *testing.T) {
+			createZset(rdb, ctx, "zseta", []redis.Z{
+				{Score: 1, Member: "a"}, {Score: 2, Member: "b"}, {Score: 3, Member: "c"},
+				{Score: 3, Member: "d"}, {Score: 4, Member: "e"},
+			})
+			createZset(rdb, ctx, "zsetb", []redis.Z{
+				{Score: 1, Member: "b"}, {Score: 2, Member: "c"}, {Score: 4, Member: "f"},
+			})
+			createZset(rdb, ctx, "zsetc", []redis.Z{
+				{Score: 3, Member: "c"}, {Score: 3, Member: "d"}, {Score: 4, Member: "e"},
+			})
+			cmd := rdb.ZDiff(ctx, "zseta", "zsetb", "zsetc")
+			require.NoError(t, cmd.Err())
+			sort.Strings(cmd.Val())
+			require.EqualValues(t, []string{"a"}, cmd.Val())
+		})
+
+		// t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {
+		// 	require.NoError(t, rdb.ZDiffStore(ctx, "setres", "set1", "set4", "set5").Err())
+		// 	cmd := rdb.SMembers(ctx, "setres")
+		// 	require.NoError(t, cmd.Err())
+		// 	sort.Strings(cmd.Val())
+		// 	require.EqualValues(t, []string{"1", "2", "3", "4"}, cmd.Val())
+		// })
 	}
 }
 

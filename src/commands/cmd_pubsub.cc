@@ -138,6 +138,44 @@ class CommandPUnSubscribe : public Commander {
   }
 };
 
+class CommandSSubscribe : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    uint16_t slot = 0;
+    if (srv->GetConfig()->cluster_enabled) {
+      slot = GetSlotIdFromKey(args_[1]);
+      for (unsigned int i = 2; i < args_.size(); i++) {
+        if (GetSlotIdFromKey(args_[i]) != slot) {
+          return {Status::RedisExecErr, "CROSSSLOT Keys in request don't hash to the same slot"};
+        }
+      }
+    }
+
+    for (unsigned int i = 1; i < args_.size(); i++) {
+      conn->SSubscribeChannel(args_[i], slot);
+      SubscribeCommandReply(output, "ssubscribe", args_[i], conn->SSubscriptionsCount());
+    }
+    return Status::OK();
+  }
+};
+
+class CommandSUnSubscribe : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (args_.size() == 1) {
+      conn->SUnsubscribeAll([output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(output, "sunsubscribe", sub_name, num);
+      });
+    } else {
+      for (size_t i = 1; i < args_.size(); i++) {
+        conn->SUnsubscribeChannel(args_[i], srv->GetConfig()->cluster_enabled ? GetSlotIdFromKey(args_[i]) : 0);
+        SubscribeCommandReply(output, "sunsubscribe", args_[i], conn->SSubscriptionsCount());
+      }
+    }
+    return Status::OK();
+  }
+};
+
 class CommandPubSub : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -146,14 +184,14 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if ((subcommand_ == "numsub") && args.size() >= 2) {
+    if ((subcommand_ == "numsub" || subcommand_ == "shardnumsub") && args.size() >= 2) {
       if (args.size() > 2) {
         channels_ = std::vector<std::string>(args.begin() + 2, args.end());
       }
       return Status::OK();
     }
 
-    if ((subcommand_ == "channels") && args.size() <= 3) {
+    if ((subcommand_ == "channels" || subcommand_ == "shardchannels") && args.size() <= 3) {
       if (args.size() == 3) {
         pattern_ = args[2];
       }
@@ -169,9 +207,13 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "numsub") {
+    if (subcommand_ == "numsub" || subcommand_ == "shardnumsub") {
       std::vector<ChannelSubscribeNum> channel_subscribe_nums;
-      srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      if (subcommand_ == "numsub") {
+        srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      } else {
+        srv->ListSChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      }
 
       output->append(redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
@@ -182,9 +224,13 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "channels") {
+    if (subcommand_ == "channels" || subcommand_ == "shardchannels") {
       std::vector<std::string> channels;
-      srv->GetChannelsByPattern(pattern_, &channels);
+      if (subcommand_ == "channels") {
+        srv->GetChannelsByPattern(pattern_, &channels);
+      } else {
+        srv->GetSChannelsByPattern(pattern_, &channels);
+      }
       *output = redis::MultiBulkString(channels);
       return Status::OK();
     }
@@ -205,6 +251,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSSubscribe>("ssubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSUnSubscribe>("sunsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0), )
 
 }  // namespace redis

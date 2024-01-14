@@ -464,6 +464,16 @@ void Worker::BecomeMonitorConn(redis::Connection *conn) {
   conn->EnableFlag(redis::Connection::kMonitor);
 }
 
+void Worker::QuitMonitorConn(redis::Connection *conn) {
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    monitor_conns_.erase(conn->GetFD());
+    conns_[conn->GetFD()] = conn;
+  }
+  srv->DecrMonitorClientNum();
+  conn->DisableFlag(redis::Connection::kMonitor);
+}
+
 void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &response) {
   std::unique_lock<std::mutex> lock(conns_mu_);
 

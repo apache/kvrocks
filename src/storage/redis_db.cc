@@ -32,6 +32,7 @@
 #include "server/server.h"
 #include "storage/iterator.h"
 #include "storage/redis_metadata.h"
+#include "storage/storage.h"
 #include "time_util.h"
 
 namespace redis {
@@ -704,31 +705,47 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
 
   if (nx) {
     int exist = 0;
-    s = Exists({new_key}, &exist);
-    if (!s.ok()) return s;
+    if (s = Exists({new_key}, &exist), !s.ok()) return s;
     if (exist > 0) {
       *ret = false;
       return rocksdb::Status::OK();
     }
   }
 
-  if (key == new_key) {
-    return rocksdb::Status::OK();
-  }
+  if (key == new_key) return rocksdb::Status::OK();
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(type);
+  batch->PutLogData(log_data.Encode());
 
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   iter.Seek(ns_key);
+
   // copy metadata
+  batch->Delete(metadata_cf_handle_, ns_key);
+  batch->Put(metadata_cf_handle_, new_ns_key, iter.Value());
 
   auto subkey_iter = iter.GetSubKeyIterator();
-  if (subkey_iter == nullptr) {
-    // dont have subkey
-    return rocksdb::Status::OK();
+
+  if (subkey_iter != nullptr) {
+    for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+      InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
+      std::string to_sub_key =
+          InternalKey(new_ns_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+      // copy sub key
+      batch->Put(subkey_iter->ColumnFamilyHandle(), to_sub_key, subkey_iter->Value());
+
+      if (type == kRedisZSet) {
+        std::string score_bytes = subkey_iter->Value().ToString();
+        score_bytes.append(from_ikey.GetSubKey().ToString());
+        // copy score key
+        std::string score_key =
+            InternalKey(new_ns_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+        batch->Put(storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName), score_key, Slice());
+      }
+    }
   }
-  for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
-    // copy subkey
-    // copy zset sorce key
-  }
-  return rocksdb::Status::OK();
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 }  // namespace redis

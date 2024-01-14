@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "common/range_spec.h"
+#include "rocksdb/status.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -126,6 +127,8 @@ class ZSet : public SubKeyScanner {
                                uint64_t *removed_cnt);
   rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
                              uint64_t *removed_cnt);
+  rocksdb::Status GetAllMemberScores(const Slice &user_key, std::vector<MemberScore> *member_scores);
+  rocksdb::Status RandMember(const Slice &user_key, int64_t command_count, std::vector<MemberScore> *member_scores);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

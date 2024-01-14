@@ -25,8 +25,11 @@
 #include "commands/blocking_commander.h"
 #include "commands/scan_base.h"
 #include "error_constants.h"
+#include "parse_util.h"
+#include "rocksdb/env.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "string_util.h"
 #include "types/redis_zset.h"
 
 namespace redis {
@@ -1357,6 +1360,66 @@ class CommandZScan : public CommandSubkeyScanBase {
   }
 };
 
+class CommandZRandMember : public Commander {
+ public:
+  CommandZRandMember() = default;
+
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    if (args.size() >= 3) {
+      no_parameters_ = false;
+      auto parse_result = ParseInt<int64_t>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      count_ = *parse_result;
+    }
+
+    if (args.size() == 4) {
+      if (util::ToLower(args[3]) == "withscores") {
+        with_scores_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::ZSet zset_db(srv->storage, conn->GetNamespace());
+    std::vector<MemberScore> member_scores;
+    auto s = zset_db.RandMember(args_[1], count_, &member_scores);
+
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> result_entries;
+    result_entries.reserve(member_scores.size());
+
+    for (const auto &[member, score] : member_scores) {
+      LOG(INFO) << "member: " << member << ", score: " << score;
+      result_entries.emplace_back(member);
+      if (with_scores_) result_entries.emplace_back(util::Float2String(score));
+    }
+
+    if (no_parameters_)
+      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+    else
+      *output = redis::MultiBulkString(result_entries, false);
+    return Status::OK();
+  }
+
+ private:
+  int64_t count_ = 1;
+  bool with_scores_ = false;
+  bool no_parameters_ = true;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
@@ -1388,6 +1451,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
-                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range), )
+                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range),
+                        MakeCmdAttr<CommandZRandMember>("zrandmember", -2, "read-only", 1, 1, 1))
 
 }  // namespace redis

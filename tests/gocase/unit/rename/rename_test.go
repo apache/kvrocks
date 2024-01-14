@@ -863,3 +863,167 @@ func TestRename_SInt(t *testing.T) {
 	})
 
 }
+
+func TestRename_Bloom(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	BF_ADD := "BF.ADD"
+	BF_EXISTS := "BF.EXISTS"
+
+	t.Run("Rename Bloom", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
+
+		// to-key has value with TTL
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world").Err())
+		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, 0, rdb.Do(ctx, BF_EXISTS, "a1", "world").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
+
+		// to-key has value that not same type
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
+
+		// key == newkey
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
+
+		// rename*3
+		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a2", "world2").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a3", "world3").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
+		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
+		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a3", "hello").Val())
+	})
+
+	t.Run("RenameNX Bloom", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world").Err())
+		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "world").Val())
+
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+
+		// key == newkey
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
+	})
+}
+
+func TestRename_Stream(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	XADD := "XADD"
+	XREAD := "XREAD"
+	t.Run("Rename Stream", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
+		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
+
+		// to-key has value with TTL
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world").Err())
+		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
+		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
+
+		// to-key has value that not same type
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
+		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
+
+		// key == newkey
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
+
+		// rename*3
+		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a2", "*", "a", "world2").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a3", "*", "a", "world3").Err())
+		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
+		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
+		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a3", "0").String(), "hello")
+	})
+
+	t.Run("RenameNX Stream", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world").Err())
+		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "world")
+
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
+		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+
+		// key == newkey
+		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
+		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
+		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
+	})
+}

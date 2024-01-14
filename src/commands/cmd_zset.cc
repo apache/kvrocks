@@ -1402,7 +1402,6 @@ class CommandZRandMember : public Commander {
     result_entries.reserve(member_scores.size());
 
     for (const auto &[member, score] : member_scores) {
-      LOG(INFO) << "member: " << member << ", score: " << score;
       result_entries.emplace_back(member);
       if (with_scores_) result_entries.emplace_back(util::Float2String(score));
     }

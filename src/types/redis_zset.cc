@@ -29,9 +29,6 @@
 #include <set>
 
 #include "db_util.h"
-#include "encoding.h"
-#include "rocksdb/slice.h"
-#include "rocksdb/status.h"
 
 namespace redis {
 

@@ -26,7 +26,6 @@
 #include <vector>
 
 #include "common/range_spec.h"
-#include "rocksdb/status.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 

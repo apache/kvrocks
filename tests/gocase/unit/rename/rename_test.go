@@ -125,89 +125,89 @@ func TestRename_JSON(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	SET_CMD := "JSON.SET"
-	GET_CMD := "JSON.GET"
-	JSON_STR_A := `{"x":1,"y":2}`
-	JSON_STR_B := `{"x":1}`
+	setCmd := "JSON.SET"
+	getCmd := "JSON.GET"
+	jsonA := `{"x":1,"y":2}`
+	jsonB := `{"x":1}`
 
 	t.Run("Rename json", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a").Val())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// to-key has value
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a1", "$", JSON_STR_B).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// to-key has value with TTL
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a1", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonA).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
 		// to-key has value that not same type
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "world").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 
 		// rename*3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a1", "$", JSON_STR_B).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a2", "$", JSON_STR_B).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a3", "$", JSON_STR_B).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a2", "$", jsonB).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a3", "$", jsonB).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
 		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a1").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a2").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a3").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a2").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a3").Val())
 	})
 
 	t.Run("RenameNX json", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a1", "$", JSON_STR_B).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_B, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonB, rdb.Do(ctx, getCmd, "a1").Val())
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, GET_CMD, "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a1").Val())
+		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, SET_CMD, "a", "$", JSON_STR_A).Err())
+		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
-		require.EqualValues(t, JSON_STR_A, rdb.Do(ctx, GET_CMD, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 	})
 
 }
@@ -319,8 +319,8 @@ func TestRename_hash(t *testing.T) {
 
 	EqualListValues := func(t *testing.T, key string, value map[string]string) {
 		require.EqualValues(t, len(value), rdb.HLen(ctx, key).Val())
-		for sub_key := range value {
-			require.EqualValues(t, value[sub_key], rdb.HGet(ctx, key, sub_key).Val())
+		for subKey := range value {
+			require.EqualValues(t, value[subKey], rdb.HGet(ctx, key, subKey).Val())
 		}
 	}
 
@@ -550,20 +550,20 @@ func TestRename_zset(t *testing.T) {
 
 	EqualZSetValues := func(t *testing.T, key string, value map[string]int) {
 		require.EqualValues(t, len(value), rdb.ZCard(ctx, key).Val())
-		for sub_key := range value {
-			score := value[sub_key]
-			require.EqualValues(t, []string{sub_key}, rdb.ZRangeByScore(ctx, key,
+		for subKey := range value {
+			score := value[subKey]
+			require.EqualValues(t, []string{subKey}, rdb.ZRangeByScore(ctx, key,
 				&redis.ZRangeBy{Max: strconv.Itoa(score), Min: strconv.Itoa(score)}).Val())
-			require.EqualValues(t, float64(score), rdb.ZScore(ctx, key, sub_key).Val())
+			require.EqualValues(t, float64(score), rdb.ZScore(ctx, key, subKey).Val())
 		}
 	}
 
-	Z_MEMBER := []redis.Z{{Member: "a", Score: 1}, {Member: "b", Score: 2}, {Member: "c", Score: 3}}
-	Z_MEMBER_2 := []redis.Z{{Member: "a", Score: 2}}
+	zMember := []redis.Z{{Member: "a", Score: 1}, {Member: "b", Score: 2}, {Member: "c", Score: 3}}
+	zMember2 := []redis.Z{{Member: "a", Score: 2}}
 
 	t.Run("Rename zset", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 		EqualZSetValues(t, "a1", map[string]int{
@@ -575,8 +575,8 @@ func TestRename_zset(t *testing.T) {
 
 		// to-key has value
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a1", Z_MEMBER_2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 		EqualZSetValues(t, "a1", map[string]int{
@@ -588,9 +588,9 @@ func TestRename_zset(t *testing.T) {
 
 		// to-key has value with TTL
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a1", Z_MEMBER_2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
@@ -603,7 +603,7 @@ func TestRename_zset(t *testing.T) {
 
 		// to-key has value that not same type
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", 1, 2, 3).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
@@ -616,7 +616,7 @@ func TestRename_zset(t *testing.T) {
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
@@ -625,10 +625,10 @@ func TestRename_zset(t *testing.T) {
 		})
 		// rename*3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a1", Z_MEMBER_2...).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a2", Z_MEMBER_2...).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a3", Z_MEMBER_2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a2", zMember2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a3", zMember2...).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
 		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
@@ -645,8 +645,8 @@ func TestRename_zset(t *testing.T) {
 
 	t.Run("RenameNX zset", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a1", Z_MEMBER_2...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
 		EqualZSetValues(t, "a", map[string]int{
 			"a": 1,
@@ -658,7 +658,7 @@ func TestRename_zset(t *testing.T) {
 		})
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
@@ -669,7 +669,7 @@ func TestRename_zset(t *testing.T) {
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", Z_MEMBER...).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
 		EqualZSetValues(t, "a", map[string]int{
 			"a": 1,
@@ -700,77 +700,77 @@ func TestRename_Bitmap(t *testing.T) {
 			require.NoError(t, rdb.Do(ctx, "SETBIT", key, value[i], 1).Err())
 		}
 	}
-	BITSET_A := []int64{16, 1024 * 8 * 2, 1024 * 8 * 12}
-	BITSET_B := []int64{1}
+	bitSetA := []int64{16, 1024 * 8 * 2, 1024 * 8 * 12}
+	bitSetB := []int64{1}
 
 	t.Run("Rename Bitmap", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
+		SetBits(t, "a", bitSetA)
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		EqualBitSetValues(t, "a1", BITSET_A)
+		EqualBitSetValues(t, "a1", bitSetA)
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// newkey has value with TTL
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
-		SetBits(t, "a1", BITSET_B)
+		SetBits(t, "a", bitSetA)
+		SetBits(t, "a1", bitSetB)
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		EqualBitSetValues(t, "a1", BITSET_A)
+		EqualBitSetValues(t, "a1", bitSetA)
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
 		// newkey has value that not same type
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
+		SetBits(t, "a", bitSetA)
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		EqualBitSetValues(t, "a1", BITSET_A)
+		EqualBitSetValues(t, "a1", bitSetA)
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
-		SetBits(t, "a", BITSET_A)
+		SetBits(t, "a", bitSetA)
 		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
-		EqualBitSetValues(t, "a", BITSET_A)
+		EqualBitSetValues(t, "a", bitSetA)
 
 		// rename*3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
-		SetBits(t, "a", BITSET_A)
-		SetBits(t, "a1", BITSET_B)
-		SetBits(t, "a2", BITSET_B)
-		SetBits(t, "a3", BITSET_B)
+		SetBits(t, "a", bitSetA)
+		SetBits(t, "a1", bitSetB)
+		SetBits(t, "a2", bitSetB)
+		SetBits(t, "a3", bitSetB)
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
 		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
-		EqualBitSetValues(t, "a3", BITSET_A)
+		EqualBitSetValues(t, "a3", bitSetA)
 	})
 
 	t.Run("RenameNX Bitmap", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
-		SetBits(t, "a1", BITSET_B)
+		SetBits(t, "a", bitSetA)
+		SetBits(t, "a1", bitSetB)
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
-		EqualBitSetValues(t, "a", BITSET_A)
-		EqualBitSetValues(t, "a1", BITSET_B)
+		EqualBitSetValues(t, "a", bitSetA)
+		EqualBitSetValues(t, "a1", bitSetB)
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
+		SetBits(t, "a", bitSetA)
 		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		EqualBitSetValues(t, "a1", BITSET_A)
+		EqualBitSetValues(t, "a1", bitSetA)
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		SetBits(t, "a", BITSET_A)
+		SetBits(t, "a", bitSetA)
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
-		EqualBitSetValues(t, "a", BITSET_A)
+		EqualBitSetValues(t, "a", bitSetA)
 
 	})
 
@@ -872,78 +872,78 @@ func TestRename_Bloom(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	BF_ADD := "BF.ADD"
-	BF_EXISTS := "BF.EXISTS"
+	bfAdd := "BF.ADD"
+	bfExists := "BF.EXISTS"
 
 	t.Run("Rename Bloom", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// to-key has value with TTL
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
-		require.EqualValues(t, 0, rdb.Do(ctx, BF_EXISTS, "a1", "world").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
+		require.EqualValues(t, 0, rdb.Do(ctx, bfExists, "a1", "world").Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
 		// to-key has value that not same type
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 
 		// rename*3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a2", "world2").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a3", "world3").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world1").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a2", "world2").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a3", "world3").Err())
 		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
 		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a3", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a3", "hello").Val())
 	})
 
 	t.Run("RenameNX Bloom", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a1", "world").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world").Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "world").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "world").Val())
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a1", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Do(ctx, BF_ADD, "a", "hello").Err())
+		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
-		require.EqualValues(t, 1, rdb.Do(ctx, BF_EXISTS, "a", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 	})
 }
 

@@ -34,7 +34,7 @@ func TestTypesError(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Operation Wrong Type", func(t *testing.T) {
+	t.Run("Operate with wrong type", func(t *testing.T) {
 		message := "ERR Invalid argument: WRONGTYPE Operation against a key holding the wrong kind of value"
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
 		require.EqualError(t, rdb.Do(ctx, "XADD", "a", "*", "a", "test").Err(), message)

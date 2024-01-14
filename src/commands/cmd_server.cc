@@ -1230,8 +1230,8 @@ class CommandApplyBatch : public Commander {
       if (args.size() > 3) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
-      if (!util::EqualICase(args[2], "low_pri")) {
-        return {Status::RedisParseErr, "only support low_pri option"};
+      if (!util::EqualICase(args[2], "lowpri")) {
+        return {Status::RedisParseErr, "only support LOWPRI option"};
       }
       low_pri_ = true;
     }

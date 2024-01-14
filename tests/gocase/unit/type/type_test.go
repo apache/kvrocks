@@ -35,20 +35,20 @@ func TestTypesError(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Operation Wrong Type", func(t *testing.T) {
-		MESSAGE := "ERR Invalid argument: WRONGTYPE Operation against a key holding the wrong kind of value"
+		message := "ERR Invalid argument: WRONGTYPE Operation against a key holding the wrong kind of value"
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
-		require.EqualError(t, rdb.Do(ctx, "XADD", "a", "*", "a", "test").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "LPUSH", "a", 1).Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "HSET", "a", "1", "2").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "SADD", "a", "1", "2").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "ZADD", "a", "1", "2").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "JSON.SET", "a", "$", "{}").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "BF.ADD", "a", "test").Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "SADD", "a", 100).Err(), MESSAGE)
+		require.EqualError(t, rdb.Do(ctx, "XADD", "a", "*", "a", "test").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "LPUSH", "a", 1).Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "HSET", "a", "1", "2").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "SADD", "a", "1", "2").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "ZADD", "a", "1", "2").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "JSON.SET", "a", "$", "{}").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "BF.ADD", "a", "test").Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "SADD", "a", 100).Err(), message)
 
 		require.NoError(t, rdb.LPush(ctx, "a1", "hello", 0).Err())
-		require.EqualError(t, rdb.Do(ctx, "SETBIT", "a1", 1, 1).Err(), MESSAGE)
-		require.EqualError(t, rdb.Do(ctx, "GET", "a1").Err(), MESSAGE)
+		require.EqualError(t, rdb.Do(ctx, "SETBIT", "a1", 1, 1).Err(), message)
+		require.EqualError(t, rdb.Do(ctx, "GET", "a1").Err(), message)
 
 	})
 }

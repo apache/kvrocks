@@ -1291,6 +1291,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
-                        MakeCmdAttr<CommandApplyBatch>("applybatch no-multi", -2, "write", 0, 0, 0), )
+                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
 
 }  // namespace redis

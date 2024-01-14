@@ -1286,7 +1286,7 @@ class CommandApplyBatch : public Commander {
  private:
   std::string raw_batch_;
   bool low_pri_ = false;
-}
+};
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),

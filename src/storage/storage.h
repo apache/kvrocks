@@ -132,6 +132,7 @@ class Storage {
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
+  Status ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
   [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);

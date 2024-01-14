@@ -1255,6 +1255,39 @@ class CommandReset : public Commander {
   }
 };
 
+class CommandApplyBatch : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    raw_batch_ = args[1];
+    if (args.size() > 2) {
+      if (args.size() > 3) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      if (!util::EqualICase(args[2], "lowpri")) {
+        return {Status::RedisParseErr, "only support LOWPRI option"};
+      }
+      low_pri_ = true;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    size_t size = raw_batch_.size();
+    auto options = svr->storage->DefaultWriteOptions();
+    options.low_pri = low_pri_;
+    auto s = svr->storage->ApplyWriteBatch(options, std::move(raw_batch_));
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, s.Msg()};
+    }
+    *output = redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  std::string raw_batch_;
+  bool low_pri_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1291,5 +1324,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
-                        MakeCmdAttr<CommandReset>("reset", -1, "multi pub-sub", 0, 0, 0), )
+                        MakeCmdAttr<CommandReset>("reset", -1, "multi pub-sub", 0, 0, 0),
+                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
 }  // namespace redis

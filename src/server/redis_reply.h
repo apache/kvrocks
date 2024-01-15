@@ -21,10 +21,8 @@
 #pragma once
 
 #include <event2/buffer.h>
-#include <rocksdb/status.h>
 
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #define CRLF "\r\n"  // NOLINT
@@ -42,15 +40,14 @@ std::string Integer(T data) {
   return ":" + std::to_string(data) + CRLF;
 }
 
-inline std::string Bool(const RESP ver, const bool b) {
+inline std::string NilString(const RESP ver) {
   if (ver == RESP::v3) {
-    return b ? "#t" CRLF : "#f" CRLF;
+    return "_" CRLF;
   }
-  return Integer(b ? 1 : 0);
+  return "$-1" CRLF;
 }
 
 std::string BulkString(const std::string &data);
-std::string NilString();
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string MultiLen(T len) {
@@ -58,8 +55,6 @@ std::string MultiLen(T len) {
 }
 
 std::string Array(const std::vector<std::string> &list);
-std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true);
-std::string MultiBulkString(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses);
-std::string Command2RESP(const std::vector<std::string> &cmd_args);
+std::string ArrayOfBulkStrings(const std::vector<std::string> &elements);
 
 }  // namespace redis

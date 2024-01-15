@@ -342,7 +342,7 @@ class CommandBitfield : public Commander {
           str_rets[i] = redis::Integer(rets[i]->Value());
         }
       } else {
-        str_rets[i] = redis::NilString();
+        str_rets[i] = conn->NilString();
       }
     }
     *output = redis::Array(str_rets);

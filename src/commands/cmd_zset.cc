@@ -1445,6 +1445,7 @@ class CommandZDiff : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::ZSet zset_db(srv->storage, conn->GetNamespace());
+
     std::vector<MemberScore> members_with_scores;
     auto s = zset_db.Diff(keys_, &members_with_scores);
     if (!s.ok()) {

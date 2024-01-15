@@ -83,7 +83,7 @@ class CommandZAdd : public Commander {
       auto new_score = member_scores_[0].score;
       if ((flags_.HasNX() || flags_.HasXX() || flags_.HasLT() || flags_.HasGT()) && old_score == new_score &&
           ret == 0) {  // not the first time using incr && score not changed
-        *output = redis::NilString();
+        *output = conn->NilString();
         return Status::OK();
       }
 
@@ -336,7 +336,7 @@ class CommandBZPop : public BlockingCommander {
     return StartBlocking(timeout_, output);
   }
 
-  std::string NoopReply() override { return redis::MultiLen(-1); }
+  std::string NoopReply(const Connection *conn) override { return conn->NilArray(); }
 
   void BlockKeys() override {
     for (const auto &key : keys_) {
@@ -454,7 +454,7 @@ class CommandZMPop : public Commander {
       SendMembersWithScoresForZMpop(conn, user_key, member_scores);
       return Status::OK();
     }
-    *output = redis::MultiLen(-1);
+    *output = conn->NilArray();
     return Status::OK();
   }
 
@@ -538,7 +538,7 @@ class CommandBZMPop : public BlockingCommander {
     }
   }
 
-  std::string NoopReply() override { return redis::NilString(); }
+  std::string NoopReply(const Connection *conn) override { return conn->NilString(); }
 
   bool OnBlockingWrite() override {
     std::string user_key;
@@ -797,14 +797,14 @@ class CommandZRangeGeneric : public Commander {
         break;
       case kZRangeScore:
         if (score_spec_.count == 0) {
-          *output = redis::MultiBulkString({});
+          *output = conn->MultiBulkString({});
           return Status::OK();
         }
         s = zset_db.RangeByScore(key_, score_spec_, &member_scores, nullptr);
         break;
       case kZRangeLex:
         if (lex_spec_.count == 0) {
-          *output = redis::MultiBulkString({});
+          *output = conn->MultiBulkString({});
           return Status::OK();
         }
         s = zset_db.RangeByLex(key_, lex_spec_, &member_scores, nullptr);
@@ -896,9 +896,9 @@ class CommandZRank : public Commander {
 
     if (rank == -1) {
       if (with_score_) {
-        output->append(redis::MultiLen(-1));
+        output->append(conn->NilArray());
       } else {
-        *output = redis::NilString();
+        *output = conn->NilString();
       }
     } else {
       if (with_score_) {
@@ -1045,7 +1045,7 @@ class CommandZScore : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(util::Float2String(score));
     }
@@ -1080,7 +1080,7 @@ class CommandZMScore : public Commander {
         }
       }
     }
-    *output = redis::MultiBulkString(values);
+    *output = conn->MultiBulkString(values);
     return Status::OK();
   }
 };
@@ -1355,7 +1355,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     for (const auto &score : scores) {
       score_strings.emplace_back(util::Float2String(score));
     }
-    *output = GenerateOutput(srv, members, score_strings, CursorType::kTypeZSet);
+    *output = GenerateOutput(srv, conn, members, score_strings, CursorType::kTypeZSet);
     return Status::OK();
   }
 };
@@ -1407,9 +1407,9 @@ class CommandZRandMember : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = redis::MultiBulkString(result_entries, false);
+      *output = conn->MultiBulkString(result_entries, false);
     return Status::OK();
   }
 

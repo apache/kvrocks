@@ -438,7 +438,7 @@ void SlotMigrator::clean() {
 }
 
 Status SlotMigrator::authOnDstNode(int sock_fd, const std::string &password) {
-  std::string cmd = redis::MultiBulkString({"auth", password}, false);
+  std::string cmd = redis::ArrayOfBulkStrings({"auth", password});
   auto s = util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send AUTH command");
@@ -456,7 +456,7 @@ Status SlotMigrator::setImportStatusOnDstNode(int sock_fd, int status) {
   if (sock_fd <= 0) return {Status::NotOK, "invalid socket descriptor"};
 
   std::string cmd =
-      redis::MultiBulkString({"cluster", "import", std::to_string(migrating_slot_), std::to_string(status)});
+      redis::ArrayOfBulkStrings({"cluster", "import", std::to_string(migrating_slot_), std::to_string(status)});
   auto s = util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send command to the destination node");
@@ -666,7 +666,7 @@ Status SlotMigrator::migrateSimpleKey(const rocksdb::Slice &key, const Metadata 
     command.emplace_back("PXAT");
     command.emplace_back(std::to_string(metadata.expire));
   }
-  *restore_cmds += redis::MultiBulkString(command, false);
+  *restore_cmds += redis::ArrayOfBulkStrings(command);
   current_pipeline_size_++;
 
   // Check whether pipeline needs to be sent
@@ -747,7 +747,7 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
     if (metadata.Type() != kRedisBitmap) {
       item_count++;
       if (item_count >= kMaxItemsInCommand) {
-        *restore_cmds += redis::MultiBulkString(user_cmd, false);
+        *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
         current_pipeline_size_++;
         item_count = 0;
         // Have to clear saved items
@@ -764,13 +764,13 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
 
   // Have to check the item count of the last command list
   if (item_count % kMaxItemsInCommand != 0) {
-    *restore_cmds += redis::MultiBulkString(user_cmd, false);
+    *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
     current_pipeline_size_++;
   }
 
   // Add TTL for complex key
   if (metadata.expire > 0) {
-    *restore_cmds += redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds += redis::ArrayOfBulkStrings({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)});
     current_pipeline_size_++;
   }
 
@@ -809,7 +809,7 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
     if (!s.IsOK()) {
       return s;
     }
-    *restore_cmds += redis::MultiBulkString(user_cmd, false);
+    *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
     current_pipeline_size_++;
 
     user_cmd.erase(user_cmd.begin() + 2, user_cmd.end());
@@ -822,15 +822,14 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
 
   // commands like XTRIM and XDEL affect stream's metadata, but we use only XADD for a slot migration
   // XSETID is used to adjust stream's info on the destination node according to the current values on the source
-  *restore_cmds += redis::MultiBulkString(
-      {"XSETID", key.ToString(), metadata.last_generated_id.ToString(), "ENTRIESADDED",
-       std::to_string(metadata.entries_added), "MAXDELETEDID", metadata.max_deleted_entry_id.ToString()},
-      false);
+  *restore_cmds += redis::ArrayOfBulkStrings({"XSETID", key.ToString(), metadata.last_generated_id.ToString(),
+                                              "ENTRIESADDED", std::to_string(metadata.entries_added), "MAXDELETEDID",
+                                              metadata.max_deleted_entry_id.ToString()});
   current_pipeline_size_++;
 
   // Add TTL
   if (metadata.expire > 0) {
-    *restore_cmds += redis::MultiBulkString({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)}, false);
+    *restore_cmds += redis::ArrayOfBulkStrings({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)});
     current_pipeline_size_++;
   }
 
@@ -862,7 +861,7 @@ Status SlotMigrator::migrateBitmapKey(const InternalKey &inkey, std::unique_ptr<
           uint32_t offset = (index * 8) + (byte_idx * 8) + bit_idx;
           user_cmd->emplace_back(std::to_string(offset));
           user_cmd->emplace_back("1");
-          *restore_cmds += redis::MultiBulkString(*user_cmd, false);
+          *restore_cmds += redis::ArrayOfBulkStrings(*user_cmd);
           current_pipeline_size_++;
           user_cmd->erase(user_cmd->begin() + 2, user_cmd->end());
         }

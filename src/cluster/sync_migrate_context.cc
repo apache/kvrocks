@@ -54,7 +54,7 @@ void SyncMigrateContext::OnEvent(bufferevent *bev, int16_t events) {
 void SyncMigrateContext::TimerCB(int, int16_t events) {
   auto &&slot_migrator = srv_->slot_migrator;
 
-  conn_->Reply(redis::NilString());
+  conn_->Reply(conn_->NilString());
   timer_.reset();
 
   slot_migrator->CancelSyncCtx();

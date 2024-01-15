@@ -32,32 +32,6 @@ std::string Error(const std::string &err) { return "-" + err + CRLF; }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
-std::string NilString() { return "$-1" CRLF; }
-
-std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string) {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
-  for (const auto &value : values) {
-    if (value.empty() && output_nil_for_empty_string) {
-      result += NilString();
-    } else {
-      result += BulkString(value);
-    }
-  }
-  return result;
-}
-
-std::string MultiBulkString(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses) {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
-  for (size_t i = 0; i < values.size(); i++) {
-    if (i < statuses.size() && !statuses[i].ok()) {
-      result += NilString();
-    } else {
-      result += BulkString(values[i]);
-    }
-  }
-  return result;
-}
-
 std::string Array(const std::vector<std::string> &list) {
   size_t n = std::accumulate(list.begin(), list.end(), 0, [](size_t n, const std::string &s) { return n + s.size(); });
   std::string result = "*" + std::to_string(list.size()) + CRLF;
@@ -67,6 +41,12 @@ std::string Array(const std::vector<std::string> &list) {
   return result;
 }
 
-std::string Command2RESP(const std::vector<std::string> &cmd_args) { return MultiBulkString(cmd_args, false); }
+std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
+  std::string result = "*" + std::to_string(elems.size()) + CRLF;
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
 
 }  // namespace redis

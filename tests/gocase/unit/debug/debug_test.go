@@ -52,6 +52,9 @@ func TestDebugProtocolV2(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.EqualValues(t, expectedValue, r.Val())
 		}
+
+		r := rdb.Do(ctx, "DEBUG", "PROTOCOL", "null")
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {
@@ -90,6 +93,8 @@ func TestDebugProtocolV3(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.EqualValues(t, expectedValue, r.Val())
 		}
+		r := rdb.Do(ctx, "DEBUG", "PROTOCOL", "null")
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {

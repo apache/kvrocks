@@ -1086,9 +1086,9 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       break;
     case LUA_TBOOLEAN:
       if (conn->GetProtocolVersion() == redis::RESP::v2) {
-        output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
+        output = lua_toboolean(lua, -1) ? redis::Integer(1) : conn->NilString();
       } else {
-        output = redis::Bool(redis::RESP::v3, lua_toboolean(lua, -1));
+        output = conn->Bool(lua_toboolean(lua, -1));
       }
       break;
     case LUA_TNUMBER:
@@ -1138,7 +1138,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       }
       break;
     default:
-      output = redis::NilString();
+      output = conn->NilString();
   }
   return output;
 }

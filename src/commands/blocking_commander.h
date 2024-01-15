@@ -31,7 +31,7 @@ class BlockingCommander : public Commander,
                           private EventCallbackBase<BlockingCommander> {
  public:
   // method to reply when no operation happens
-  virtual std::string NoopReply() = 0;
+  virtual std::string NoopReply(const Connection *conn) = 0;
 
   // method to block keys
   virtual void BlockKeys() = 0;
@@ -48,7 +48,7 @@ class BlockingCommander : public Commander,
   // usually put to the end of the Execute method
   Status StartBlocking(int64_t timeout, std::string *output) {
     if (conn_->IsInExec()) {
-      *output = NoopReply();
+      *output = NoopReply(conn_);
       return Status::OK();  // no blocking in multi-exec
     }
 
@@ -111,7 +111,7 @@ class BlockingCommander : public Commander,
   }
 
   void TimerCB(int, int16_t) {
-    conn_->Reply(NoopReply());
+    conn_->Reply(NoopReply(conn_));
     timer_.reset();
     UnblockKeys();
     auto bev = conn_->GetBufferEvent();

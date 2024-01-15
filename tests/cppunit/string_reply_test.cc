@@ -39,7 +39,7 @@ class StringReplyTest : public testing::Test {
 std::vector<std::string> StringReplyTest::values;
 
 TEST_F(StringReplyTest, MultiBulkString) {
-  std::string result = redis::MultiBulkString(values);
+  std::string result = redis::ArrayOfBulkStrings(values);
   ASSERT_EQ(result.length(), 13 * 10 + 14 * 90 + 15 * 900 + 17 * 9000 + 18 * 90000 + 9);
 }
 

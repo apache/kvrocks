@@ -130,6 +130,39 @@ void Connection::Reply(const std::string &msg) {
   redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
+std::string Connection::Bool(bool b) const {
+  if (protocol_version_ == RESP::v3) {
+    return b ? "#t" CRLF : "#f" CRLF;
+  }
+  return Integer(b ? 1 : 0);
+}
+
+std::string Connection::MultiBulkString(const std::vector<std::string> &values,
+                                        bool output_nil_for_empty_string) const {
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  for (const auto &value : values) {
+    if (value.empty() && output_nil_for_empty_string) {
+      result += NilString();
+    } else {
+      result += BulkString(value);
+    }
+  }
+  return result;
+}
+
+std::string Connection::MultiBulkString(const std::vector<std::string> &values,
+                                        const std::vector<rocksdb::Status> &statuses) const {
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  for (size_t i = 0; i < values.size(); i++) {
+    if (i < statuses.size() && !statuses[i].ok()) {
+      result += NilString();
+    } else {
+      result += BulkString(values[i]);
+    }
+  }
+  return result;
+}
+
 void Connection::SendFile(int fd) {
   // NOTE: we don't need to close the fd, the libevent will do that
   auto output = bufferevent_get_output(bev_);

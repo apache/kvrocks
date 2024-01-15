@@ -1407,9 +1407,9 @@ class CommandZRandMember : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = redis::MultiBulkString(result_entries, false);
+      *output = conn->MultiBulkString(result_entries, false);
     return Status::OK();
   }
 

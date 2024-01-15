@@ -152,6 +152,11 @@ Status Server::Start() {
     }
   }
 
+  s = checkClusterMode();
+  if (!s.IsOK()) {
+    return s;
+  }
+
   if (config_->cluster_enabled) {
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
@@ -1836,6 +1841,27 @@ void Server::cleanupExitedWorkerThreads(bool force) {
       // Push the worker thread back to the queue if it's still running.
       recycle_worker_threads_.push(std::move(worker_thread));
     }
+  }
+}
+
+Status Server::checkClusterMode() {
+  std::string value;
+  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  rocksdb::Status check_cluster_enabled =
+      storage->Get(rocksdb::ReadOptions(), cf, rocksdb::Slice(engine::kClusterEnabledKey), &value);
+
+  if (check_cluster_enabled.IsNotFound()) {
+    return storage->WriteToPropagateCF(engine::kClusterEnabledKey, std::to_string(config_->cluster_enabled));
+  }
+  if (check_cluster_enabled.ok()) {
+    auto is_enabled = GET_OR_RET(ParseInt<int64_t>(value, 10));
+    if (config_->cluster_enabled != is_enabled) {
+      LOG(ERROR) << "cluster_enabled status from config file is inconsistent with the persisted one";
+      return {Status::NotOK, "inconsistent cluster_enabled status"};
+    }
+    return Status::OK();
+  } else {
+    return {Status::NotOK, "failed to load cluster_enabled from storage: " + check_cluster_enabled.ToString()};
   }
 }
 

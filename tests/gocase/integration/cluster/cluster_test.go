@@ -93,6 +93,17 @@ func TestClusterNodes(t *testing.T) {
 		require.EqualValues(t, []redis.ClusterNode{{ID: nodeID, Addr: srv.HostPort()}}, slots[0].Nodes)
 	})
 
+	t.Run("enable/disable cluster-enabled option", func(t *testing.T) {
+		// force change cluster-enabled status in kvrocks.conf file
+		srv.ForceChangeClusterMode(false)
+		defer func() {
+			srv.ForceChangeClusterMode(true)
+			srv.Restart(util.RestartOpt{Nowait: false, Noclose: true})
+		}()
+		srv.Restart(util.RestartOpt{Nowait: true, Noclose: false})
+		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "version").Err(), "connection refused")
+	})
+
 	t.Run("enable/disable the persist cluster nodes", func(t *testing.T) {
 		require.NoError(t, rdb.ConfigSet(ctx, "persist-cluster-nodes-enabled", "yes").Err())
 		srv.Restart()

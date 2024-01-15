@@ -862,7 +862,7 @@ class CommandXRead : public Commander,
 
     if (block_ && results.empty()) {
       if (conn->IsInExec()) {
-        *output = conn_->NilArray();
+        *output = conn->NilArray();
         return Status::OK();  // No blocking in multi-exec
       }
 
@@ -870,7 +870,7 @@ class CommandXRead : public Commander,
     }
 
     if (!block_ && results.empty()) {
-      *output = conn_->NilArray();
+      *output = conn->NilArray();
       return Status::OK();
     }
 
@@ -976,10 +976,10 @@ class CommandXRead : public Commander,
       conn_->Reply(conn_->NilArray());
     }
 
-    SendReply(conn_, results);
+    SendReply(results);
   }
 
-  void SendReply(Connection *conn, const std::vector<StreamReadResult> &results) {
+  void SendReply(const std::vector<StreamReadResult> &results) {
     std::string output;
 
     output.append(redis::MultiLen(results.size()));
@@ -991,7 +991,7 @@ class CommandXRead : public Commander,
       for (const auto &entry : result.entries) {
         output.append(redis::MultiLen(2));
         output.append(redis::BulkString(entry.key));
-        output.append(conn->MultiBulkString(entry.values));
+        output.append(conn_->MultiBulkString(entry.values));
       }
     }
 

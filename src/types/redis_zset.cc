@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 
 #include "db_util.h"
@@ -848,6 +849,84 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
     double target_score = DecodeDouble(score_bytes.data());
     (*mscores)[member.ToString()] = target_score;
   }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::GetAllMemberScores(const Slice &user_key, std::vector<MemberScore> *member_scores) {
+  member_scores->clear();
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  ZSetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
+
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    Slice score_key = ikey.GetSubKey();
+    double score = NAN;
+    GetDouble(&score_key, &score);
+    member_scores->emplace_back(MemberScore{score_key.ToString(), score});
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
+                                 std::vector<MemberScore> *member_scores) {
+  if (command_count == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  uint64_t count = command_count > 0 ? static_cast<uint64_t>(command_count) : static_cast<uint64_t>(-command_count);
+  bool unique = (command_count >= 0);
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  ZSetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok() || metadata.size == 0) return s;
+
+  std::vector<MemberScore> samples;
+  s = GetAllMemberScores(user_key, &samples);
+  if (!s.ok() || samples.empty()) return s;
+
+  auto size = static_cast<uint64_t>(samples.size());
+  member_scores->reserve(std::min(size, count));
+
+  if (!unique || count == 1) {
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist(0, size - 1);
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = dist(gen);
+      member_scores->emplace_back(samples[index]);
+    }
+  } else if (size <= count) {
+    for (auto &sample : samples) {
+      member_scores->push_back(sample);
+    }
+  } else {
+    // first shuffle the samples
+    std::shuffle(samples.begin(), samples.end(), std::random_device{});
+
+    // then pick the first `count` ones.
+    for (uint64_t i = 0; i < count; i++) {
+      member_scores->emplace_back(samples[i]);
+    }
+  }
+
   return rocksdb::Status::OK();
 }
 

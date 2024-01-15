@@ -433,3 +433,105 @@ TEST_F(RedisZSetTest, Rank) {
   }
   auto s = zset_->Del(key_);
 }
+
+TEST_F(RedisZSetTest, RandMember) {
+  uint64_t ret = 0;
+  {
+    std::vector<MemberScore> in_mscores;
+    in_mscores.reserve(fields_.size());
+    for (size_t i = 0; i < fields_.size(); i++) {
+      in_mscores.emplace_back(MemberScore{fields_[i].ToString(), scores_[i]});
+    }
+    zset_->Add(key_, ZAddFlags::Default(), &in_mscores, &ret);
+    EXPECT_EQ(static_cast<int>(fields_.size()), ret);
+  }
+
+  std::unordered_map<std::string, double> member_map;
+  for (size_t i = 0; i < fields_.size(); i++) {
+    member_map[fields_[i].ToString()] = scores_[i];
+  }
+
+  // count = 0
+  {
+    std::vector<MemberScore> mscores;
+    rocksdb::Status s = zset_->RandMember(key_, 0, &mscores);
+    EXPECT_EQ(0, mscores.size());
+    EXPECT_TRUE(s.ok());
+  }
+
+  // count = 1/-1
+  for (int64_t count : {1, -1}) {
+    std::vector<MemberScore> mscores;
+    rocksdb::Status s = zset_->RandMember(key_, count, &mscores);
+    EXPECT_EQ(1, mscores.size());
+    EXPECT_TRUE(s.ok());
+    EXPECT_NE(member_map.find(mscores[0].member), member_map.end());
+  }
+
+  auto no_duplicate_members = [](const std::vector<MemberScore> &mscores) {
+    std::unordered_set<std::string> member_set;
+    for (const auto &mscore : mscores) {
+      if (member_set.find(mscore.member) != member_set.end()) {
+        return false;
+      }
+      member_set.insert(mscore.member);
+    }
+    return true;
+  };
+
+  auto no_non_exist_members = [&member_map](const std::vector<MemberScore> &mscores) {
+    for (const auto &mscore : mscores) {
+      const auto find_res = member_map.find(mscore.member);
+      if (find_res == member_map.end() || find_res->second != mscore.score) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // count > 1, but count <= fields_.size()
+  for (int64_t count : {
+           static_cast<int64_t>(fields_.size()),
+           static_cast<int64_t>(fields_.size() / 2),
+       }) {
+    std::vector<MemberScore> mscores;
+    rocksdb::Status s = zset_->RandMember(key_, count, &mscores);
+    EXPECT_EQ(static_cast<size_t>(count), mscores.size());
+    EXPECT_TRUE(s.ok());
+    ASSERT_TRUE(no_non_exist_members(mscores));
+    ASSERT_TRUE(no_duplicate_members(mscores));
+  }
+
+  // count < -1, but count >= -fields_.size()
+  for (int64_t count : {
+           -static_cast<int64_t>(fields_.size()),
+           -static_cast<int64_t>(fields_.size() / 2),
+       }) {
+    std::vector<MemberScore> mscores;
+    rocksdb::Status s = zset_->RandMember(key_, count, &mscores);
+    EXPECT_EQ(static_cast<size_t>(-count), mscores.size());
+    EXPECT_TRUE(s.ok());
+    ASSERT_TRUE(no_non_exist_members(mscores));
+  }
+
+  // cout < -fields_.size() or count > fields_.size()
+
+  for (int64_t count : {
+           static_cast<int64_t>(fields_.size() + 10),
+           -static_cast<int64_t>(fields_.size() + 10),
+       }) {
+    std::vector<MemberScore> mscores;
+    rocksdb::Status s = zset_->RandMember(key_, count, &mscores);
+    EXPECT_TRUE(s.ok());
+    ASSERT_TRUE(no_non_exist_members(mscores));
+    if (count > 0) {
+      EXPECT_EQ(fields_.size(), mscores.size());
+      ASSERT_TRUE(no_duplicate_members(mscores));
+    } else {
+      EXPECT_EQ(static_cast<size_t>(-count), mscores.size());
+    }
+  }
+
+  auto s = zset_->Del(key_);
+  EXPECT_TRUE(s.ok());
+}

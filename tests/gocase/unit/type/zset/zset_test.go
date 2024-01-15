@@ -1288,6 +1288,138 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 	})
 
+	t.Run(fmt.Sprintf("ZRANDMEMBER without scores - %s", encoding), func(t *testing.T) {
+		// create a zset with 6 elements
+		members := []string{"a", "b", "c", "d", "e", "f"}
+		scores := []float64{1, 2, 3, 4, 5, 6}
+		sort.Strings(members)
+		sort.Float64s(scores)
+
+		z := make([]redis.Z, len(members))
+		for i := range members {
+			z[i] = redis.Z{Score: scores[i], Member: members[i]}
+		}
+		createZset(rdb, ctx, "zset", z)
+
+		// ZRANDMEMBER zset len(members)
+		res := rdb.ZRandMember(ctx, "zset", len(members)).Val()
+		sort.Strings(res)
+		require.Equal(t, members, res)
+
+		// ZRANDMEMBER zset len(members)+10
+		res = rdb.ZRandMember(ctx, "zset", len(members)+10).Val()
+		sort.Strings(res)
+		require.Equal(t, members, res)
+
+		// ZRANDMEMBER zset -len(members)
+		res = rdb.ZRandMember(ctx, "zset", -len(members)).Val()
+		sort.Strings(res)
+		for _, v := range res {
+			require.Contains(t, members, v)
+		}
+
+		// ZRANDMEMBER zset -len(members) - 10
+		res = rdb.ZRandMember(ctx, "zset", -len(members)-10).Val()
+		sort.Strings(res)
+		require.Equal(t, len(res), len(members)+10)
+		for _, v := range res {
+			require.Contains(t, members, v)
+		}
+
+		// ZRANDMEMBER zset 0
+		require.Equal(t, []string{}, rdb.ZRandMember(ctx, "zset", 0).Val())
+		// ZRANDMEMBER zset 1
+		res = rdb.ZRandMember(ctx, "zset", 1).Val()
+		require.Len(t, res, 1)
+		require.Contains(t, members, res[0])
+
+		// ZRANDMEMBER zset 3
+		res = rdb.ZRandMember(ctx, "zset", 3).Val()
+		require.Len(t, res, 3)
+		memberMap := make(map[string]struct{})
+		for _, v := range res {
+			require.Contains(t, members, v)
+			memberMap[v] = struct{}{}
+		}
+		require.Equal(t, len(res), len(memberMap))
+
+		// ZRANDMEMBER zset -3
+		res = rdb.ZRandMember(ctx, "zset", -3).Val()
+		require.Len(t, res, 3)
+		for _, v := range res {
+			require.Contains(t, members, v)
+		}
+	})
+
+	t.Run(fmt.Sprintf("ZRANDMEMBER with scores - %s", encoding), func(t *testing.T) {
+		// create a zset with 6 elements
+		members := []string{"a", "b", "c", "d", "e", "f"}
+		scores := []float64{1, 2, 3, 4, 5, 6}
+		sort.Strings(members)
+		sort.Float64s(scores)
+
+		z := make([]redis.Z, len(members))
+		for i := range members {
+			z[i] = redis.Z{Score: scores[i], Member: members[i]}
+		}
+		createZset(rdb, ctx, "zset", z)
+
+		// ZRANDMEMBER zset len(members) WITHSCORES
+		res := rdb.ZRandMemberWithScores(ctx, "zset", len(members)).Val()
+		sort.Slice(res, func(i, j int) bool {
+			return res[i].Member < res[j].Member
+		})
+		require.Equal(t, z, res)
+
+		// ZRANDMEMBER zset len(members)+10 WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", len(members)+10).Val()
+		sort.Slice(res, func(i, j int) bool {
+			return res[i].Member < res[j].Member
+		})
+		require.Equal(t, z, res)
+
+		// ZRANDMEMBER zset -len(members) WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", -len(members)).Val()
+		sort.Slice(res, func(i, j int) bool {
+			return res[i].Member < res[j].Member
+		})
+		for _, v := range res {
+			require.Contains(t, z, v)
+		}
+
+		// ZRANDMEMBER zset -len(members)-10 WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", -len(members)-10).Val()
+		require.Equal(t, len(members)+10, len(res))
+		for _, v := range res {
+			require.Contains(t, z, v)
+		}
+
+		// ZRANDMEMBER zset 0 WITHSCORES
+		require.Equal(t, []redis.Z{}, rdb.ZRandMemberWithScores(ctx, "zset", 0).Val())
+
+		// ZRANDMEMBER zset 1 WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", 1).Val()
+		require.Len(t, res, 1)
+		require.Contains(t, z, res[0])
+
+		// ZRANDMEMBER zset 3 WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", 3).Val()
+		require.Len(t, res, 3)
+		memberMap := make(map[string]struct{})
+		for _, v := range res {
+			require.Contains(t, z, v)
+			memberMap[v.Member] = struct{}{}
+		}
+		require.Equal(t, len(res), len(memberMap))
+
+		// ZRANDMEMBER zset -3 WITHSCORES
+		res = rdb.ZRandMemberWithScores(ctx, "zset", -3).Val()
+		require.Len(t, res, 3)
+		for _, v := range res {
+			require.Contains(t, z, v)
+		}
+	})
+
 	for i, cmd := range []func(ctx context.Context, dest string, store *redis.ZStore) *redis.IntCmd{rdb.ZInterStore, rdb.ZUnionStore} {
 		var funcName string
 		switch i {

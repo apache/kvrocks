@@ -73,7 +73,7 @@ class CommandExec : public Commander {
     }
 
     if (srv->IsWatchedKeysModified(conn)) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 

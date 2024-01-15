@@ -64,6 +64,12 @@ class Connection : public EvbufCallbackBase<Connection> {
   void Reply(const std::string &msg);
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
+  std::string Bool(bool b) const;
+  std::string NilString() const { return redis::NilString(protocol_version_); }
+  std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
+  std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true) const;
+  std::string MultiBulkString(const std::vector<std::string> &values,
+                              const std::vector<rocksdb::Status> &statuses) const;
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

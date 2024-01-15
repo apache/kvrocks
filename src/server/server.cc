@@ -1029,7 +1029,7 @@ void Server::GetRoleInfo(std::string *info) {
       roles.emplace_back("connecting");
     }
     roles.emplace_back(std::to_string(storage->LatestSeqNumber()));
-    *info = redis::MultiBulkString(roles);
+    *info = redis::ArrayOfBulkStrings(roles);
   } else {
     std::vector<std::string> list;
 
@@ -1037,7 +1037,7 @@ void Server::GetRoleInfo(std::string *info) {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
-      list.emplace_back(redis::MultiBulkString({
+      list.emplace_back(redis::ArrayOfBulkStrings({
           slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),

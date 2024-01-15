@@ -809,7 +809,7 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  static std::string GenerateOutput(Server *srv, Connection *conn, const std::vector<std::string> &keys,
+  static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
                                     const std::string &end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {

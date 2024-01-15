@@ -319,7 +319,7 @@ class CommandGeoRadius : public CommandGeoBase {
     return Status::OK();
   }
 
-  std::string GenerateOutput(Connection *conn, const std::vector<GeoPoint> &geo_points) {
+  std::string GenerateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
@@ -496,7 +496,7 @@ class CommandGeoSearch : public CommandGeoBase {
     return Status::OK();
   }
 
-  std::string generateOutput(Connection *conn, const std::vector<GeoPoint> &geo_points) {
+  std::string generateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> output;

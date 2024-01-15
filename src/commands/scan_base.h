@@ -64,7 +64,7 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(Server *srv, Connection *conn, const std::vector<std::string> &keys,
+  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
                              CursorType cursor_type) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit_)) {
@@ -112,7 +112,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(Server *srv, Connection *conn, const std::vector<std::string> &fields,
+  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &fields,
                              const std::vector<std::string> &values, CursorType cursor_type) {
     std::vector<std::string> list;
     auto items_count = fields.size();

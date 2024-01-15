@@ -32,7 +32,7 @@ std::string SlowEntry::ToRedisString() const {
   output.append(redis::Integer(id));
   output.append(redis::Integer(time));
   output.append(redis::Integer(duration));
-  output.append(redis::Array2RESP(args));
+  output.append(redis::ArrayOfBulkStrings(args));
   output.append(redis::BulkString(ip + ":" + std::to_string(port)));
   output.append(redis::BulkString(client_name));
   return output;

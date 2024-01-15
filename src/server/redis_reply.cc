@@ -41,7 +41,7 @@ std::string Array(const std::vector<std::string> &list) {
   return result;
 }
 
-std::string Array2RESP(const std::vector<std::string> &elems) {
+std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
   std::string result = "*" + std::to_string(elems.size()) + CRLF;
   for (const auto &elem : elems) {
     result += BulkString(elem);

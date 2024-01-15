@@ -72,7 +72,7 @@ Status RedisWriter::FlushDB(const std::string &ns) {
     return s;
   }
 
-  s = Write(ns, {redis::Array2RESP({"FLUSHDB"})});
+  s = Write(ns, {redis::ArrayOfBulkStrings({"FLUSHDB"})});
   if (!s.IsOK()) return s;
 
   return Status::OK();

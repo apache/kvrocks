@@ -55,6 +55,6 @@ std::string MultiLen(T len) {
 }
 
 std::string Array(const std::vector<std::string> &list);
-std::string Array2RESP(const std::vector<std::string> &elements);
+std::string ArrayOfBulkStrings(const std::vector<std::string> &elements);
 
 }  // namespace redis

@@ -105,11 +105,11 @@ class CommandNamespace : public Commander {
         }
         namespaces.emplace_back(kDefaultNamespace);
         namespaces.emplace_back(config->requirepass);
-        *output = redis::MultiBulkString(namespaces, false);
+        *output = conn->MultiBulkString(namespaces, false);
       } else {
         auto token = srv->GetNamespace()->Get(args_[2]);
         if (token.Is<Status::NotFound>()) {
-          *output = redis::NilString();
+          *output = conn->NilString();
         } else {
           *output = redis::BulkString(token.GetValue());
         }
@@ -155,7 +155,7 @@ class CommandKeys : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::MultiBulkString(keys);
+    *output = conn->MultiBulkString(keys);
     return Status::OK();
   }
 };
@@ -252,7 +252,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
-      *output = redis::MultiBulkString(values);
+      *output = conn->MultiBulkString(values);
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->Set(srv, args_[2], args_[3]);
       if (!s.IsOK()) {
@@ -302,7 +302,7 @@ class CommandDisk : public Commander {
     if (!s.ok()) {
       // Redis returns the Nil string when the key does not exist
       if (s.IsNotFound()) {
-        *output = redis::NilString();
+        *output = conn->NilString();
         return Status::OK();
       }
       return {Status::RedisExecErr, s.ToString()};
@@ -514,7 +514,7 @@ class CommandClient : public Commander {
       return Status::OK();
     } else if (subcommand_ == "getname") {
       std::string name = conn->GetName();
-      *output = name == "" ? redis::NilString() : redis::BulkString(name);
+      *output = name == "" ? conn->NilString() : redis::BulkString(name);
       return Status::OK();
     } else if (subcommand_ == "id") {
       *output = redis::Integer(conn->GetID());
@@ -613,12 +613,14 @@ class CommandDebug : public Commander {
           *output += redis::Integer(i);
         }
       } else if (protocol_type_ == "true") {
-        *output = redis::Bool(conn->GetProtocolVersion(), true);
+        *output = conn->Bool(true);
       } else if (protocol_type_ == "false") {
-        *output = redis::Bool(conn->GetProtocolVersion(), false);
+        *output = conn->Bool(false);
+      } else if (protocol_type_ == "null") {
+        *output = conn->NilString();
       } else {
         *output =
-            redis::Error("Wrong protocol type name. Please use one of the following: string|int|array|true|false");
+            redis::Error("Wrong protocol type name. Please use one of the following: string|int|array|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
@@ -668,7 +670,7 @@ class CommandCommand : public Commander {
         for (const auto &key_index : keys_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
-        *output = redis::MultiBulkString(keys);
+        *output = conn->MultiBulkString(keys);
       } else {
         return {Status::RedisExecErr, "Command subcommand must be one of COUNT, GETKEYS, INFO"};
       }
@@ -807,7 +809,8 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  static std::string GenerateOutput(Server *srv, const std::vector<std::string> &keys, const std::string &end_cursor) {
+  static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
+                                    const std::string &end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
       list.emplace_back(
@@ -816,7 +819,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(redis::MultiBulkString(keys, false));
+    list.emplace_back(conn->MultiBulkString(keys, false));
 
     return redis::Array(list);
   }
@@ -831,7 +834,7 @@ class CommandScan : public CommandScanBase {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = GenerateOutput(srv, keys, end_key);
+    *output = GenerateOutput(srv, conn, keys, end_key);
     return Status::OK();
   }
 };

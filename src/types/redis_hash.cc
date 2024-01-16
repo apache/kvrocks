@@ -421,8 +421,9 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
     // Case 3: Requested count is less than the number of elements inside the hash
     std::vector<uint64_t> indices(size);
     std::iota(indices.begin(), indices.end(), 0);
-    std::shuffle(indices.begin(), indices.end(),
-                 std::random_device{});  // use Fisher-Yates shuffle algorithm to randomize the order
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(indices.begin(), indices.end(), gen);  // use Fisher-Yates shuffle algorithm to randomize the order
     for (uint64_t i = 0; i < count; i++) {
       uint64_t index = indices[i];
       append_field_with_index(index);

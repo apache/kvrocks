@@ -55,7 +55,7 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
   });
 
   auto s = metadata->Decode(bytes);
-  if (!s.ok()) return s;
+  if (!s.ok() && !s.IsInvalidArgument()) return s;
 
   if (metadata->Expired()) {
     // error discarded here since it already failed

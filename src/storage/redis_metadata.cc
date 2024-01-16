@@ -335,13 +335,13 @@ rocksdb::Status ListMetadata::Decode(Slice *input) {
   if (auto s = Metadata::Decode(input); !s.ok()) {
     return s;
   }
-  if (Type() == kRedisList) {
-    if (input->size() < 8 + 8) {
-      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-    }
-    GetFixed64(input, &head);
-    GetFixed64(input, &tail);
+
+  if (input->size() < 8 + 8) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
+  GetFixed64(input, &head);
+  GetFixed64(input, &tail);
+
   return rocksdb::Status::OK();
 }
 
@@ -372,31 +372,29 @@ rocksdb::Status StreamMetadata::Decode(Slice *input) {
     return s;
   }
 
-  if (Type() == kRedisStream) {
-    if (input->size() < 8 * 11) {
-      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-    }
+  if (input->size() < 8 * 11) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
 
-    GetFixed64(input, &last_generated_id.ms);
-    GetFixed64(input, &last_generated_id.seq);
+  GetFixed64(input, &last_generated_id.ms);
+  GetFixed64(input, &last_generated_id.seq);
 
-    GetFixed64(input, &recorded_first_entry_id.ms);
-    GetFixed64(input, &recorded_first_entry_id.seq);
+  GetFixed64(input, &recorded_first_entry_id.ms);
+  GetFixed64(input, &recorded_first_entry_id.seq);
 
-    GetFixed64(input, &max_deleted_entry_id.ms);
-    GetFixed64(input, &max_deleted_entry_id.seq);
+  GetFixed64(input, &max_deleted_entry_id.ms);
+  GetFixed64(input, &max_deleted_entry_id.seq);
 
-    GetFixed64(input, &first_entry_id.ms);
-    GetFixed64(input, &first_entry_id.seq);
+  GetFixed64(input, &first_entry_id.ms);
+  GetFixed64(input, &first_entry_id.seq);
 
-    GetFixed64(input, &last_entry_id.ms);
-    GetFixed64(input, &last_entry_id.seq);
+  GetFixed64(input, &last_entry_id.ms);
+  GetFixed64(input, &last_entry_id.seq);
 
-    GetFixed64(input, &entries_added);
+  GetFixed64(input, &entries_added);
 
-    if (input->size() >= 8) {
-      GetFixed64(input, &group_number);
-    }
+  if (input->size() >= 8) {
+    GetFixed64(input, &group_number);
   }
 
   return rocksdb::Status::OK();
@@ -418,18 +416,16 @@ rocksdb::Status BloomChainMetadata::Decode(Slice *input) {
     return s;
   }
 
-  if (Type() == kRedisBloomFilter) {
-    if (input->size() < 20) {
-      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-    }
-
-    GetFixed16(input, &n_filters);
-    GetFixed16(input, &expansion);
-
-    GetFixed32(input, &base_capacity);
-    GetDouble(input, &error_rate);
-    GetFixed32(input, &bloom_bytes);
+  if (input->size() < 20) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
+
+  GetFixed16(input, &n_filters);
+  GetFixed16(input, &expansion);
+
+  GetFixed32(input, &base_capacity);
+  GetDouble(input, &error_rate);
+  GetFixed32(input, &bloom_bytes);
 
   return rocksdb::Status::OK();
 }
@@ -458,7 +454,7 @@ rocksdb::Status JsonMetadata::Decode(Slice *input) {
     return s;
   }
 
-  if (Type() == kRedisJson && !GetFixed8(input, reinterpret_cast<uint8_t *>(&format))) {
+  if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&format))) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 

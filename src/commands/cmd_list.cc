@@ -119,9 +119,9 @@ class CommandPop : public Commander {
       }
 
       if (s.IsNotFound()) {
-        *output = redis::MultiLen(-1);
+        *output = conn->NilArray();
       } else {
-        *output = redis::MultiBulkString(elems);
+        *output = conn->MultiBulkString(elems);
       }
     } else {
       std::string elem;
@@ -131,7 +131,7 @@ class CommandPop : public Commander {
       }
 
       if (s.IsNotFound()) {
-        *output = redis::NilString();
+        *output = conn->NilString();
       } else {
         *output = redis::BulkString(elem);
       }
@@ -209,9 +209,9 @@ class CommandLMPop : public Commander {
     }
 
     if (elems.empty()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
-      std::string elems_bulk = redis::MultiBulkString(elems);
+      std::string elems_bulk = conn->MultiBulkString(elems);
       *output = redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)});
     }
 
@@ -298,10 +298,10 @@ class CommandBPop : public BlockingCommander {
 
     if (s.ok()) {
       if (!last_key_ptr) {
-        conn_->Reply(redis::MultiBulkString({"", ""}));
+        conn_->Reply(conn_->MultiBulkString({"", ""}));
       } else {
         conn_->GetServer()->UpdateWatchedKeysManually({*last_key_ptr});
-        conn_->Reply(redis::MultiBulkString({*last_key_ptr, std::move(elem)}));
+        conn_->Reply(conn_->MultiBulkString({*last_key_ptr, std::move(elem)}));
       }
     } else if (!s.IsNotFound()) {
       conn_->Reply(redis::Error("ERR " + s.ToString()));
@@ -315,7 +315,7 @@ class CommandBPop : public BlockingCommander {
     return !s.IsNotFound();
   }
 
-  std::string NoopReply() override { return redis::NilString(); }
+  std::string NoopReply(const Connection *conn) override { return conn->NilString(); }
 
  private:
   bool left_ = false;
@@ -410,7 +410,7 @@ class CommandBLMPop : public BlockingCommander {
     if (s.ok()) {
       if (!elems.empty()) {
         conn_->GetServer()->UpdateWatchedKeysManually({chosen_key});
-        std::string elems_bulk = redis::MultiBulkString(elems);
+        std::string elems_bulk = conn_->MultiBulkString(elems);
         conn_->Reply(redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)}));
       }
     } else if (!s.IsNotFound()) {
@@ -437,7 +437,7 @@ class CommandBLMPop : public BlockingCommander {
     return !s.IsNotFound();
   }
 
-  std::string NoopReply() override { return redis::NilString(); }
+  std::string NoopReply(const Connection *conn) override { return conn->NilString(); }
 
   static const inline CommandKeyRangeGen keyRangeGen = [](const std::vector<std::string> &args) {
     CommandKeyRange range;
@@ -536,7 +536,7 @@ class CommandLRange : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::MultiBulkString(elems, false);
+    *output = conn->MultiBulkString(elems, false);
     return Status::OK();
   }
 
@@ -580,7 +580,7 @@ class CommandLIndex : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(elem);
     }
@@ -663,7 +663,7 @@ class CommandRPopLPUSH : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(elem);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(elem);
     return Status::OK();
   }
 };
@@ -694,7 +694,7 @@ class CommandLMove : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(elem);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(elem);
     return Status::OK();
   }
 
@@ -769,7 +769,7 @@ class CommandBLMove : public BlockingCommander {
     return !empty;
   }
 
-  std::string NoopReply() override { return redis::MultiLen(-1); }
+  std::string NoopReply(const Connection *conn) override { return conn->NilArray(); }
 
  private:
   bool src_left_;
@@ -826,7 +826,7 @@ class CommandLPos : public Commander {
     // We return nil or a single value if `COUNT` option is not given.
     if (!spec_.count.has_value()) {
       if (s.IsNotFound() || indexes.empty()) {
-        *output = redis::NilString();
+        *output = conn->NilString();
       } else {
         assert(indexes.size() == 1);
         *output = redis::Integer(indexes[0]);
@@ -839,7 +839,7 @@ class CommandLPos : public Commander {
       for (const auto &index : indexes) {
         values.emplace_back(std::to_string(index));
       }
-      *output = redis::MultiBulkString(values, false);
+      *output = conn->MultiBulkString(values, false);
     }
     return Status::OK();
   }

@@ -37,7 +37,7 @@ class CommandHGet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 };
@@ -208,9 +208,9 @@ class CommandHMGet : public Commander {
 
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
-      *output = redis::MultiBulkString(values);
+      *output = conn->MultiBulkString(values);
     } else {
-      *output = redis::MultiBulkString(values, statuses);
+      *output = conn->MultiBulkString(values, statuses);
     }
     return Status::OK();
   }
@@ -263,7 +263,7 @@ class CommandHKeys : public Commander {
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
-    *output = redis::MultiBulkString(keys);
+    *output = conn->MultiBulkString(keys);
 
     return Status::OK();
   }
@@ -284,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = MultiBulkString(values, false);
+    *output = conn->MultiBulkString(values, false);
 
     return Status::OK();
   }
@@ -306,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs, false);
+    *output = conn->MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }
@@ -350,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs, false);
+    *output = conn->MultiBulkString(kv_pairs, false);
 
     return Status::OK();
   }
@@ -372,7 +372,7 @@ class CommandHScan : public CommandSubkeyScanBase {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = GenerateOutput(srv, fields, values, CursorType::kTypeHash);
+    *output = GenerateOutput(srv, conn, fields, values, CursorType::kTypeHash);
     return Status::OK();
   }
 };
@@ -415,9 +415,9 @@ class CommandHRandField : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = redis::MultiBulkString(result_entries, false);
+      *output = conn->MultiBulkString(result_entries, false);
     return Status::OK();
   }
 

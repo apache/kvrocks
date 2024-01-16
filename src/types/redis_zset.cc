@@ -920,7 +920,8 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
     }
   } else {
     // first shuffle the samples
-    std::shuffle(samples.begin(), samples.end(), std::mt19937{std::random_device{}()});
+    std::mt19937 gen(std::random_device{}());
+    std::shuffle(samples.begin(), samples.end(), gen);
     // then pick the first `count` ones.
     for (uint64_t i = 0; i < count; i++) {
       member_scores->emplace_back(std::move(samples[i]));

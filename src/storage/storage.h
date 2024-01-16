@@ -39,6 +39,7 @@
 #include "config/config.h"
 #include "lock_manager.h"
 #include "observer_or_unique.h"
+#include "rocksdb/cache.h"
 #include "status.h"
 
 enum class StorageEngineType : uint16_t {
@@ -92,6 +93,17 @@ inline const std::vector<CompressionOption> CompressionOptions = {
     {rocksdb::kZlibCompression, "zlib", "kZlibCompression"},
     {rocksdb::kLZ4Compression, "lz4", "kLZ4Compression"},
     {rocksdb::kZSTD, "zstd", "kZSTD"},
+};
+
+struct CacheOption {
+  rocksdb::PrimaryCacheType type;
+  const std::string name;
+  const std::string val;
+};
+
+inline const std::vector<CacheOption> CacheOptions = {
+    {rocksdb::PrimaryCacheType::kCacheTypeLRU, "lru", "kCacheTypeLRU"},
+    {rocksdb::PrimaryCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
 };
 
 enum class StatType {

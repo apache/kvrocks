@@ -37,10 +37,12 @@
 #include "config_type.h"
 #include "config_util.h"
 #include "parse_util.h"
+#include "rocksdb/cache.h"
 #include "rocksdb/compression_type.h"
 #include "server/server.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
+#include "storage/storage.h"
 
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
@@ -69,6 +71,15 @@ const std::vector<ConfigEnum<rocksdb::CompressionType>> compression_types{[] {
   std::vector<ConfigEnum<rocksdb::CompressionType>> res;
   res.reserve(engine::CompressionOptions.size());
   for (const auto &e : engine::CompressionOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
+
+const std::vector<ConfigEnum<rocksdb::PrimaryCacheType>> cache_types{[] {
+  std::vector<ConfigEnum<rocksdb::PrimaryCacheType>> res;
+  res.reserve(engine::CacheOptions.size());
+  for (const auto &e : engine::CacheOptions) {
     res.push_back({e.name, e.type});
   }
   return res;
@@ -191,11 +202,16 @@ Config::Config() {
       {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, true)},
       {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
+      {"rocksdb.block_cache_type", true,
+       new EnumField<rocksdb::PrimaryCacheType>(&rocks_db.block_cache_type, cache_types,
+                                                rocksdb::PrimaryCacheType::kCacheTypeLRU)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
        new YesNoField(&rocks_db.share_metadata_and_subkey_block_cache, true)},
       {"rocksdb.row_cache_size", true, new IntField(&rocks_db.row_cache_size, 0, 0, INT_MAX)},
+      {"rocksdb.row_cache_type", true,
+       new EnumField(&rocks_db.row_cache_type, cache_types, rocksdb::PrimaryCacheType::kCacheTypeLRU)},
       {"rocksdb.compaction_readahead_size", false,
        new IntField(&rocks_db.compaction_readahead_size, 2 * MiB, 0, 64 * MiB)},
       {"rocksdb.level0_slowdown_writes_trigger", false,

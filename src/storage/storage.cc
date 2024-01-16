@@ -42,6 +42,7 @@
 #include "event_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
+#include "rocksdb/cache.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
@@ -152,9 +153,16 @@ rocksdb::Options Storage::InitRocksDBOptions() {
       options.compression_per_level[i] = config_->rocks_db.compression;
     }
   }
+
   if (config_->rocks_db.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
+    if (config_->rocks_db.row_cache_type == rocksdb::PrimaryCacheType::kCacheTypeLRU) {
+      options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
+    } else {
+      rocksdb::HyperClockCacheOptions hcc_cache_options(config_->rocks_db.row_cache_size * MiB, 0);
+      options.row_cache = hcc_cache_options.MakeSharedCache();
+    }
   }
+
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
   options.target_file_size_base = config_->rocks_db.target_file_size_base * MiB;
   options.max_manifest_file_size = 64 * MiB;
@@ -256,7 +264,14 @@ Status Storage::Open(DBOpenMode mode) {
     }
   }
 
-  std::shared_ptr<rocksdb::Cache> shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+  std::shared_ptr<rocksdb::Cache> shared_block_cache;
+
+  if (config_->rocks_db.block_cache_type == rocksdb::PrimaryCacheType::kCacheTypeLRU) {
+    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+  } else {
+    rocksdb::HyperClockCacheOptions hll_cache_options(block_cache_size, 0);
+    shared_block_cache = hll_cache_options.MakeSharedCache();
+  }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
   metadata_table_opts.block_cache = shared_block_cache;

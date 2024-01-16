@@ -612,6 +612,11 @@ class CommandDebug : public Commander {
         for (int i = 0; i < 3; i++) {
           *output += redis::Integer(i);
         }
+      } else if (protocol_type_ == "set") {
+        *output = conn->SetLen(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+        }
       } else if (protocol_type_ == "true") {
         *output = conn->Bool(true);
       } else if (protocol_type_ == "false") {
@@ -619,8 +624,8 @@ class CommandDebug : public Commander {
       } else if (protocol_type_ == "null") {
         *output = conn->NilString();
       } else {
-        *output =
-            redis::Error("Wrong protocol type name. Please use one of the following: string|int|array|true|false|null");
+        *output = redis::Error(
+            "Wrong protocol type name. Please use one of the following: string|int|array|set|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};

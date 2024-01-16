@@ -70,6 +70,11 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true) const;
   std::string MultiBulkString(const std::vector<std::string> &values,
                               const std::vector<rocksdb::Status> &statuses) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string SetLen(T len) const {
+    return protocol_version_ == RESP::v3 ? "~" + std::to_string(len) + CRLF : MultiLen(len);
+  }
+  std::string ArrayOfSet(const std::vector<std::string> &elems) const;
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

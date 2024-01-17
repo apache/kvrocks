@@ -44,6 +44,7 @@ func TestDebugProtocolV2(t *testing.T) {
 			"string":  "Hello World",
 			"integer": int64(12345),
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"true":    int64(1),
 			"false":   int64(0),
 		}
@@ -85,6 +86,7 @@ func TestDebugProtocolV3(t *testing.T) {
 			"string":  "Hello World",
 			"integer": int64(12345),
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"true":    true,
 			"false":   false,
 		}

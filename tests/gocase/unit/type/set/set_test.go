@@ -57,7 +57,17 @@ func GetArrayUnion(arrays ...[]string) []string {
 }
 
 func TestSet(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	setTests(t, "no")
+}
+
+func TestSetWithRESP3(t *testing.T) {
+	setTests(t, "yes")
+}
+
+var setTests = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()

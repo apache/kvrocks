@@ -93,7 +93,7 @@ class CommandSMembers : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = conn->MultiBulkString(members, false);
+    *output = conn->ArrayOfSet(members);
     return Status::OK();
   }
 };
@@ -171,7 +171,7 @@ class CommandSPop : public Commander {
     }
 
     if (with_count_) {
-      *output = conn->MultiBulkString(members, false);
+      *output = conn->ArrayOfSet(members);
     } else {
       if (members.size() > 0) {
         *output = redis::BulkString(members.front());
@@ -211,7 +211,7 @@ class CommandSRandMember : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = conn->MultiBulkString(members, false);
+    *output = conn->ArrayOfSet(members);
     return Status::OK();
   }
 
@@ -249,7 +249,7 @@ class CommandSDiff : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = conn->MultiBulkString(members, false);
+    *output = conn->ArrayOfSet(members);
     return Status::OK();
   }
 };
@@ -269,7 +269,7 @@ class CommandSUnion : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = conn->MultiBulkString(members, false);
+    *output = conn->ArrayOfSet(members);
     return Status::OK();
   }
 };
@@ -289,7 +289,7 @@ class CommandSInter : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = conn->MultiBulkString(members, false);
+    *output = conn->ArrayOfSet(members);
     return Status::OK();
   }
 };

@@ -613,7 +613,7 @@ class CommandDebug : public Commander {
           *output += redis::Integer(i);
         }
       } else if (protocol_type_ == "set") {
-        *output = conn->SetLen(3);
+        *output = conn->SizeOfSet(3);
         for (int i = 0; i < 3; i++) {
           *output += redis::Integer(i);
         }

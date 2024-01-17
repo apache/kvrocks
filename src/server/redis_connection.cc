@@ -165,7 +165,7 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values,
 
 std::string Connection::ArrayOfSet(const std::vector<std::string> &elems) const {
   std::string result;
-  result += SetLen(elems.size());
+  result += SizeOfSet(elems.size());
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

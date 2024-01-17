@@ -1609,7 +1609,6 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{Score: 4, Member: "e"},
 		})
 		rdb.Del(ctx, "zsetc")
-		rdb.Del(ctx, "zsetc")
 		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, int64(2), cmd.Val())

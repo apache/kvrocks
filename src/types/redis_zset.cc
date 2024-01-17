@@ -938,6 +938,10 @@ rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members
   auto s = RangeByScore(keys[0], spec, &source_member_scores, &size);
   if (!s.ok()) return s;
 
+  if (size == 0) {
+    return rocksdb::Status::OK();
+  }
+
   std::map<std::string, bool> exclude_members;
   MemberScores target_member_scores;
   for (size_t i = 1; i < keys.size(); i++) {

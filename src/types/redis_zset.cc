@@ -931,4 +931,42 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {
+  members->clear();
+  MemberScores source_member_scores;
+  RangeScoreSpec spec;
+  uint64_t size = 0;
+  auto s = RangeByScore(keys[0], spec, &source_member_scores, &size);
+  if (!s.ok()) return s;
+
+  if (size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  std::map<std::string, bool> exclude_members;
+  MemberScores target_member_scores;
+  for (size_t i = 1; i < keys.size(); i++) {
+    uint64_t size = 0;
+    s = RangeByScore(keys[i], spec, &target_member_scores, &size);
+    if (!s.ok()) return s;
+    for (const auto &member_score : target_member_scores) {
+      exclude_members[member_score.member] = true;
+    }
+  }
+  for (const auto &member_score : source_member_scores) {
+    if (exclude_members.find(member_score.member) == exclude_members.end()) {
+      members->push_back(member_score);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count) {
+  MemberScores mscores;
+  auto s = Diff(keys, &mscores);
+  if (!s.ok()) return s;
+  *stored_count = mscores.size();
+  return Overwrite(dst, mscores);
+}
+
 }  // namespace redis

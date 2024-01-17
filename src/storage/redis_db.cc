@@ -55,7 +55,8 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
   });
 
   auto s = metadata->Decode(bytes);
-  if (!s.ok()) return s;
+  // delay InvalidArgument error check after type match check
+  if (!s.ok() && !s.IsInvalidArgument()) return s;
 
   if (metadata->Expired()) {
     // error discarded here since it already failed
@@ -69,6 +70,8 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
+  if (s.IsInvalidArgument()) return s;
+
   if (metadata->size == 0 && !metadata->IsEmptyableType()) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);

@@ -29,6 +29,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
+#include "rocksdb/status.h"
 #include "server/server.h"
 #include "storage/iterator.h"
 #include "storage/redis_metadata.h"
@@ -702,6 +703,7 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
   auto s = Type(key, &type);
   if (!s.ok()) return s;
+  if (type == kRedisNone) return rocksdb::Status::InvalidArgument("ERR no such key");
 
   if (nx) {
     int exist = 0;

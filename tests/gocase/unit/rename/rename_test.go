@@ -1027,3 +1027,18 @@ func TestRename_Stream(t *testing.T) {
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 	})
 }
+
+func TestRename_Error(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Rename from empty key", func(t *testing.T) {
+		require.Error(t, rdb.Rename(ctx, ".empty", "a").Err())
+		require.Error(t, rdb.RenameNX(ctx, ".empty", "a").Err())
+	})
+
+}

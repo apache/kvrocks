@@ -931,14 +931,6 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
 }
 
 rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {
-  std::vector<std::string> lock_keys;
-  lock_keys.reserve(keys.size());
-  for (const auto key : keys) {
-    std::string ns_key = AppendNamespacePrefix(key);
-    lock_keys.emplace_back(std::move(ns_key));
-  }
-  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
-
   members->clear();
   MemberScores source_member_scores;
   RangeScoreSpec spec;

@@ -1529,6 +1529,48 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
 	})
 
+	t.Run(fmt.Sprintf("ZDIFF with empty sets - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{})
+		createZset(rdb, ctx, "zsetb", []redis.Z{})
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []string([]string{}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with non existing sets - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []string([]string{}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with missing set with scores - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with empty sets with scores - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{})
+		createZset(rdb, ctx, "zsetb", []redis.Z{})
+		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []redis.Z([]redis.Z{}), cmd.Val())
+	})
+
 	t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},
@@ -1546,9 +1588,42 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			{Score: 4, Member: "c"},
 			{Score: 5, Member: "e"},
 		})
-		require.NoError(t, rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc").Err())
-		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb", "zsetc")
-		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(2), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
+	})
+
+	t.Run("ZDIFFSTORE with missing sets - ", func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+			{Score: 4, Member: "e"},
+		})
+		rdb.Del(ctx, "zsetc")
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(2), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
+	})
+
+	t.Run("ZDIFFSTORE with missing sets - ", func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(0), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
 	})
 }
 

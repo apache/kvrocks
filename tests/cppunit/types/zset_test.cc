@@ -568,6 +568,48 @@ TEST_F(RedisZSetTest, Diff) {
   }
 
   s = zset_->Del(k1);
+  EXPECT_TRUE(s.ok());
   s = zset_->Del(k2);
+  EXPECT_TRUE(s.ok());
   s = zset_->Del(k3);
+  EXPECT_TRUE(s.ok());
+}
+
+TEST_F(RedisZSetTest, DiffStore) {
+  uint64_t ret = 0;
+
+  std::string k1 = "key1";
+  std::vector<MemberScore> k1_mscores = {{"a", -100.1}, {"b", -100.1}, {"c", 0}, {"d", 1.234}};
+
+  std::string k2 = "key2";
+  std::vector<MemberScore> k2_mscores = {{"c", -150.1}};
+
+  auto s = zset_->Add(k1, ZAddFlags::Default(), &k1_mscores, &ret);
+  EXPECT_EQ(ret, 4);
+  zset_->Add(k2, ZAddFlags::Default(), &k2_mscores, &ret);
+  EXPECT_EQ(ret, 1);
+
+  uint64_t stored_count = 0;
+  zset_->DiffStore("zsetdiff", {k1, k2}, &stored_count);
+  EXPECT_EQ(stored_count, 3);
+
+  RangeScoreSpec spec;
+  std::vector<MemberScore> mscores;
+  zset_->RangeByScore("zsetdiff", spec, &mscores, nullptr);
+  EXPECT_EQ(mscores.size(), 3);
+
+  std::vector<MemberScore> expected_mscores = {{"a", -100.1}, {"b", -100.1}, {"d", 1.234}};
+  int index = 0;
+  for (const auto &mscore : expected_mscores) {
+    EXPECT_EQ(mscore.member, mscores[index].member);
+    EXPECT_EQ(mscore.score, mscores[index].score);
+    index++;
+  }
+
+  s = zset_->Del(k1);
+  EXPECT_TRUE(s.ok());
+  s = zset_->Del(k2);
+  EXPECT_TRUE(s.ok());
+  s = zset_->Del("zsetdiff");
+  EXPECT_TRUE(s.ok());
 }

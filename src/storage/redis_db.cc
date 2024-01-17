@@ -696,11 +696,13 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
 
 rocksdb::Status Database::Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret) {
   *ret = true;
-  RedisType type = kRedisNone;
   std::string ns_key = AppendNamespacePrefix(key);
   std::string new_ns_key = AppendNamespacePrefix(new_key);
+
   std::vector<std::string> lock_keys = {ns_key, new_ns_key};
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  RedisType type = kRedisNone;
   auto s = Type(key, &type);
   if (!s.ok()) return s;
   if (type == kRedisNone) return rocksdb::Status::InvalidArgument("ERR no such key");
@@ -730,6 +732,8 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
   auto subkey_iter = iter.GetSubKeyIterator();
 
   if (subkey_iter != nullptr) {
+    auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName) : nullptr;
+
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
       std::string to_ikey =
@@ -743,7 +747,7 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
         // copy score key
         std::string score_key =
             InternalKey(new_ns_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
-        batch->Put(storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName), score_key, Slice());
+        batch->Put(zset_score_cf, score_key, Slice());
       }
     }
   }

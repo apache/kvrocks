@@ -163,6 +163,15 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values,
   return result;
 }
 
+std::string Connection::ArrayOfSet(const std::vector<std::string> &elems) const {
+  std::string result;
+  result += SizeOfSet(elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
 void Connection::SendFile(int fd) {
   // NOTE: we don't need to close the fd, the libevent will do that
   auto output = bufferevent_get_output(bev_);

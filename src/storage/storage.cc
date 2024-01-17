@@ -155,12 +155,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   }
 
   if (config_->rocks_db.row_cache_size) {
-    if (config_->rocks_db.row_cache_type == rocksdb::PrimaryCacheType::kCacheTypeLRU) {
-      options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
-    } else {
-      rocksdb::HyperClockCacheOptions hcc_cache_options(config_->rocks_db.row_cache_size * MiB, 0);
-      options.row_cache = hcc_cache_options.MakeSharedCache();
-    }
+    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
   }
 
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
@@ -269,8 +264,8 @@ Status Storage::Open(DBOpenMode mode) {
   if (config_->rocks_db.block_cache_type == rocksdb::PrimaryCacheType::kCacheTypeLRU) {
     shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
   } else {
-    rocksdb::HyperClockCacheOptions hll_cache_options(block_cache_size, 0);
-    shared_block_cache = hll_cache_options.MakeSharedCache();
+    rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, 0);
+    shared_block_cache = hcc_cache_options.MakeSharedCache();
   }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();

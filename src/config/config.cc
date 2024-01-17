@@ -208,8 +208,6 @@ Config::Config() {
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
        new YesNoField(&rocks_db.share_metadata_and_subkey_block_cache, true)},
       {"rocksdb.row_cache_size", true, new IntField(&rocks_db.row_cache_size, 0, 0, INT_MAX)},
-      {"rocksdb.row_cache_type", true,
-       new EnumField(&rocks_db.row_cache_type, cache_types, rocksdb::PrimaryCacheType::kCacheTypeLRU)},
       {"rocksdb.compaction_readahead_size", false,
        new IntField(&rocks_db.compaction_readahead_size, 2 * MiB, 0, 64 * MiB)},
       {"rocksdb.level0_slowdown_writes_trigger", false,

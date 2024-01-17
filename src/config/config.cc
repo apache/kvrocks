@@ -37,12 +37,10 @@
 #include "config_type.h"
 #include "config_util.h"
 #include "parse_util.h"
-#include "rocksdb/cache.h"
 #include "rocksdb/compression_type.h"
 #include "server/server.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
-#include "storage/storage.h"
 
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 

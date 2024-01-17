@@ -64,7 +64,8 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(Server *srv, const std::vector<std::string> &keys, CursorType cursor_type) const {
+  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
+                             CursorType cursor_type) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit_)) {
       auto end_cursor = srv->GenerateCursorFromKeyName(keys.back(), cursor_type);
@@ -73,7 +74,7 @@ class CommandScanBase : public Commander {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(redis::MultiBulkString(keys, false));
+    list.emplace_back(conn->MultiBulkString(keys, false));
 
     return redis::Array(list);
   }
@@ -111,7 +112,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(Server *srv, const std::vector<std::string> &fields,
+  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &fields,
                              const std::vector<std::string> &values, CursorType cursor_type) {
     std::vector<std::string> list;
     auto items_count = fields.size();
@@ -128,7 +129,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
         fvs.emplace_back(values[i]);
       }
     }
-    list.emplace_back(redis::MultiBulkString(fvs, false));
+    list.emplace_back(conn->MultiBulkString(fvs, false));
     return redis::Array(list);
   }
 

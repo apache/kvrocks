@@ -44,6 +44,7 @@ func TestDebugProtocolV2(t *testing.T) {
 			"string":  "Hello World",
 			"integer": int64(12345),
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"true":    int64(1),
 			"false":   int64(0),
 		}
@@ -52,6 +53,9 @@ func TestDebugProtocolV2(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.EqualValues(t, expectedValue, r.Val())
 		}
+
+		r := rdb.Do(ctx, "DEBUG", "PROTOCOL", "null")
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {
@@ -82,6 +86,7 @@ func TestDebugProtocolV3(t *testing.T) {
 			"string":  "Hello World",
 			"integer": int64(12345),
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"true":    true,
 			"false":   false,
 		}
@@ -90,6 +95,8 @@ func TestDebugProtocolV3(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.EqualValues(t, expectedValue, r.Val())
 		}
+		r := rdb.Do(ctx, "DEBUG", "PROTOCOL", "null")
+		require.EqualError(t, r.Err(), redis.Nil.Error())
 	})
 
 	t.Run("lua script return value type", func(t *testing.T) {

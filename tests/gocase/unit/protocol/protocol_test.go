@@ -137,3 +137,103 @@ func TestProtocolNetwork(t *testing.T) {
 		c.MustRead(t, "+string")
 	})
 }
+
+func TestProtocolRESP2(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "no",
+	})
+	defer srv.Close()
+
+	c := srv.NewTCPClient()
+	defer func() {
+		require.NoError(t, c.Close())
+	}()
+
+	t.Run("debug protocol string", func(t *testing.T) {
+		types := map[string][]string{
+			"string":  {"$11", "Hello World"},
+			"integer": {":12345"},
+			"array":   {"*3", ":0", ":1", ":2"},
+			"set":     {"*3", ":0", ":1", ":2"},
+			"true":    {":1"},
+			"false":   {":0"},
+			"null":    {"$-1"},
+		}
+		for typ, expected := range types {
+			args := []string{"DEBUG", "PROTOCOL", typ}
+			require.NoError(t, c.WriteArgs(args...))
+			for _, line := range expected {
+				c.MustRead(t, line)
+			}
+		}
+	})
+
+	t.Run("multi bulk strings with null string", func(t *testing.T) {
+		require.NoError(t, c.WriteArgs("HSET", "hash", "f1", "v1"))
+		c.MustRead(t, ":1")
+
+		require.NoError(t, c.WriteArgs("HMGET", "hash", "f1", "f2"))
+		c.MustRead(t, "*2")
+		c.MustRead(t, "$2")
+		c.MustRead(t, "v1")
+		c.MustRead(t, "$-1")
+	})
+
+	t.Run("null array", func(t *testing.T) {
+		require.NoError(t, c.WriteArgs("ZRANK", "no-exists-zset", "m0", "WITHSCORE"))
+		c.MustRead(t, "*-1")
+	})
+}
+
+func TestProtocolRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	c := srv.NewTCPClient()
+	defer func() {
+		require.NoError(t, c.Close())
+	}()
+
+	t.Run("debug protocol string", func(t *testing.T) {
+		require.NoError(t, c.WriteArgs("HELLO", "3"))
+		values := []string{"*6", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
+		for _, line := range values {
+			c.MustRead(t, line)
+		}
+
+		types := map[string][]string{
+			"string":  {"$11", "Hello World"},
+			"integer": {":12345"},
+			"array":   {"*3", ":0", ":1", ":2"},
+			"set":     {"~3", ":0", ":1", ":2"},
+			"true":    {"#t"},
+			"false":   {"#f"},
+			"null":    {"_"},
+		}
+		for typ, expected := range types {
+			args := []string{"DEBUG", "PROTOCOL", typ}
+			require.NoError(t, c.WriteArgs(args...))
+			for _, line := range expected {
+				c.MustRead(t, line)
+			}
+		}
+	})
+
+	t.Run("multi bulk strings with null", func(t *testing.T) {
+		require.NoError(t, c.WriteArgs("HSET", "hash", "f1", "v1"))
+		c.MustRead(t, ":1")
+
+		require.NoError(t, c.WriteArgs("HMGET", "hash", "f1", "f2"))
+		c.MustRead(t, "*2")
+		c.MustRead(t, "$2")
+		c.MustRead(t, "v1")
+		c.MustRead(t, "_")
+	})
+
+	t.Run("null array", func(t *testing.T) {
+		require.NoError(t, c.WriteArgs("ZRANK", "no-exists-zset", "m0", "WITHSCORE"))
+		c.MustRead(t, "_")
+	})
+}

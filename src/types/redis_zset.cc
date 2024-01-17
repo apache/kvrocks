@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 
 #include "db_util.h"
@@ -849,6 +850,123 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
     (*mscores)[member.ToString()] = target_score;
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::GetAllMemberScores(const Slice &user_key, std::vector<MemberScore> *member_scores) {
+  member_scores->clear();
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  ZSetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
+
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    Slice score_key = ikey.GetSubKey();
+    double score = NAN;
+    GetDouble(&score_key, &score);
+    member_scores->emplace_back(MemberScore{score_key.ToString(), score});
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
+                                 std::vector<MemberScore> *member_scores) {
+  if (command_count == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  uint64_t count = command_count > 0 ? static_cast<uint64_t>(command_count) : static_cast<uint64_t>(-command_count);
+  bool unique = (command_count >= 0);
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  ZSetMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (metadata.size == 0) return rocksdb::Status::OK();
+
+  std::vector<MemberScore> samples;
+  s = GetAllMemberScores(user_key, &samples);
+  if (!s.ok() || samples.empty()) return s;
+
+  uint64_t size = samples.size();
+  member_scores->reserve(std::min(size, count));
+
+  if (!unique || count == 1) {
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist(0, size - 1);
+    for (uint64_t i = 0; i < count; i++) {
+      uint64_t index = dist(gen);
+      member_scores->emplace_back(samples[index]);
+    }
+  } else if (size <= count) {
+    for (auto &sample : samples) {
+      member_scores->push_back(std::move(sample));
+    }
+  } else {
+    // first shuffle the samples
+    std::mt19937 gen(std::random_device{}());
+    std::shuffle(samples.begin(), samples.end(), gen);
+    // then pick the first `count` ones.
+    for (uint64_t i = 0; i < count; i++) {
+      member_scores->emplace_back(std::move(samples[i]));
+    }
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {
+  members->clear();
+  MemberScores source_member_scores;
+  RangeScoreSpec spec;
+  uint64_t size = 0;
+  auto s = RangeByScore(keys[0], spec, &source_member_scores, &size);
+  if (!s.ok()) return s;
+
+  if (size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  std::map<std::string, bool> exclude_members;
+  MemberScores target_member_scores;
+  for (size_t i = 1; i < keys.size(); i++) {
+    uint64_t size = 0;
+    s = RangeByScore(keys[i], spec, &target_member_scores, &size);
+    if (!s.ok()) return s;
+    for (const auto &member_score : target_member_scores) {
+      exclude_members[member_score.member] = true;
+    }
+  }
+  for (const auto &member_score : source_member_scores) {
+    if (exclude_members.find(member_score.member) == exclude_members.end()) {
+      members->push_back(member_score);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count) {
+  MemberScores mscores;
+  auto s = Diff(keys, &mscores);
+  if (!s.ok()) return s;
+  *stored_count = mscores.size();
+  return Overwrite(dst, mscores);
 }
 
 }  // namespace redis

@@ -1429,6 +1429,7 @@ class CommandZDiff : public Commander {
     if (numkeys_ > args.size() - 2) return {Status::RedisParseErr, errInvalidSyntax};
 
     size_t j = 0;
+    keys_.reserve(numkeys_);
     while (j < numkeys_) {
       keys_.emplace_back(args[j + 2]);
       j++;

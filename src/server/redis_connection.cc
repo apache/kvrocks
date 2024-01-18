@@ -163,9 +163,18 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values,
   return result;
 }
 
-std::string Connection::SetOfBulkString(const std::vector<std::string> &elems) const {
+std::string Connection::SetOfBulkStrings(const std::vector<std::string> &elems) const {
   std::string result;
   result += SizeOfSet(elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
+std::string Connection::MapOfBulkStrings(const std::vector<std::string> &elems) const {
+  std::string result;
+  result += SizeOfMap(elems.size() / 2);
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

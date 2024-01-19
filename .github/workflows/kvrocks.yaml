@@ -328,6 +328,8 @@ jobs:
           sonar-scanner \
             --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" \
             --define sonar.coverageReportPaths=coverage.xml
+            --define sonar.projectKey=apache_kvrocks
+            --define sonar.organization=apache
 
   check-docker:
     name: Check Docker image

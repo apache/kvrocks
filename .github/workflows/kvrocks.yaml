@@ -196,6 +196,8 @@ jobs:
             with_speedb: -DENABLE_SPEEDB=ON
 
     runs-on: ${{ matrix.os }}
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory
     steps:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}

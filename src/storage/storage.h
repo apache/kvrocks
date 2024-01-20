@@ -39,7 +39,6 @@
 #include "config/config.h"
 #include "lock_manager.h"
 #include "observer_or_unique.h"
-#include "rocksdb/cache.h"
 #include "status.h"
 
 enum class StorageEngineType : uint16_t {

@@ -31,7 +31,6 @@
 
 #include "config_type.h"
 #include "cron.h"
-#include "rocksdb/cache.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 

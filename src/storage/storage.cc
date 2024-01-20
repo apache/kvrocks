@@ -53,6 +53,20 @@ namespace engine {
 
 constexpr const char *kReplicationIdKey = "replication_id_";
 
+// used in creating rocksdb::LRUCache, set `num_shard_bits` to -1 means let rocksdb choose a good default shard count
+// based on the capacity and the implementation.
+constexpr int kRocksdbLRUAutoAdjustShardBits = -1;
+
+// used as the default argument for `strict_capacity_limit` in creating rocksdb::Cache.
+constexpr bool kRocksdbCacheStrictCapacityLimit = false;
+
+// used as the default argument for `high_pri_pool_ratio` in creating rocksdb::LRUCache.
+constexpr double kRocksdbLRUBlockCacheHighPriPoolRatio = 0.75;
+
+// used in creating rocksdb::HyperClockCache, set`estimated_entry_charge` to 0 means let rocksdb dynamically and
+// automacally adjust the table size for the cache.
+constexpr size_t kRockdbHCCAutoAdjustCharge = 0;
+
 const int64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
@@ -262,9 +276,10 @@ Status Storage::Open(DBOpenMode mode) {
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
 
   if (config_->rocks_db.block_cache_type == BlockCacheType::kCacheTypeLRU) {
-    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, kRocksdbLRUAutoAdjustShardBits,
+                                              kRocksdbCacheStrictCapacityLimit, kRocksdbLRUBlockCacheHighPriPoolRatio);
   } else {
-    rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, 0);
+    rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, kRockdbHCCAutoAdjustCharge);
     shared_block_cache = hcc_cache_options.MakeSharedCache();
   }
 

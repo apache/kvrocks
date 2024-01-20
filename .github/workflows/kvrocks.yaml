@@ -197,7 +197,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory
+      SONARCLOUD_OUTPUT_DIR: sonarcloud-data
     steps:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
@@ -228,6 +228,8 @@ jobs:
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v4
         with:
           python-version: 3.x
@@ -253,7 +255,7 @@ jobs:
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -317,19 +319,14 @@ jobs:
       - name: Collect coverage into one XML report
         if: ${{ matrix.sonarcloud }}
         run: |
-          gcovr --sonarqube > coverage.xml
-
-      - name: Run sonar-scanner
+          gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
+      
+      - name: Upload SonarCloud data
         if: ${{ matrix.sonarcloud }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-        run: |
-          sonar-scanner \
-            --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" \
-            --define sonar.coverageReportPaths=coverage.xml \
-            --define sonar.projectKey=apache_kvrocks \
-            --define sonar.organization=apache
+        uses: actions/upload-artifact@v3
+        with:
+          name: sonarcloud-data
+          path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
 
   check-docker:
     name: Check Docker image

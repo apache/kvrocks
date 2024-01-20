@@ -173,6 +173,8 @@ std::string Connection::SetOfBulkStrings(const std::vector<std::string> &elems) 
 }
 
 std::string Connection::MapOfBulkStrings(const std::vector<std::string> &elems) const {
+  CHECK(elems.size() % 2 == 0);
+
   std::string result;
   result += SizeOfMap(elems.size() / 2);
   for (const auto &elem : elems) {

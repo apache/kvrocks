@@ -155,7 +155,10 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   }
 
   if (config_->rocks_db.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
+    // Parameters for the rocksdb::LRUCacheOptions here are set in line with the default parameters for the
+    // rocksdb::NewLRUCache function, which is now deprecated
+    rocksdb::LRUCacheOptions lru_cache_options(config_->rocks_db.row_cache_size * MiB, -1, false, 0.5);
+    options.row_cache = lru_cache_options.MakeSharedCache();
   }
 
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
@@ -262,7 +265,8 @@ Status Storage::Open(DBOpenMode mode) {
   std::shared_ptr<rocksdb::Cache> shared_block_cache;
 
   if (config_->rocks_db.block_cache_type == rocksdb::PrimaryCacheType::kCacheTypeLRU) {
-    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+    rocksdb::LRUCacheOptions lru_cache_options(block_cache_size, -1, false, 0.75);
+    shared_block_cache = lru_cache_options.MakeSharedCache();
   } else {
     rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, 0);
     shared_block_cache = hcc_cache_options.MakeSharedCache();

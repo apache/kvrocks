@@ -21,6 +21,7 @@
 #pragma once
 
 #include <event2/bufferevent.h>
+#include <rocksdb/cache.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>

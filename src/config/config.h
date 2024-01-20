@@ -54,6 +54,8 @@ constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
 
+enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
+
 struct CompactionCheckerRange {
  public:
   int start;
@@ -169,7 +171,7 @@ struct Config {
     int block_size;
     bool cache_index_and_filter_blocks;
     int block_cache_size;
-    rocksdb::PrimaryCacheType block_cache_type;
+    BlockCacheType block_cache_type;
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;

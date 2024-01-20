@@ -21,7 +21,6 @@
 #pragma once
 
 #include <event2/bufferevent.h>
-#include <rocksdb/cache.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
 #include <rocksdb/table.h>
@@ -96,14 +95,14 @@ inline const std::vector<CompressionOption> CompressionOptions = {
 };
 
 struct CacheOption {
-  rocksdb::PrimaryCacheType type;
+  BlockCacheType type;
   const std::string name;
   const std::string val;
 };
 
 inline const std::vector<CacheOption> CacheOptions = {
-    {rocksdb::PrimaryCacheType::kCacheTypeLRU, "lru", "kCacheTypeLRU"},
-    {rocksdb::PrimaryCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
+    {BlockCacheType::kCacheTypeLRU, "lru", "kCacheTypeLRU"},
+    {BlockCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
 };
 
 enum class StatType {

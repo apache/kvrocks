@@ -34,8 +34,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStream(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+func TestStreamWithRESP2(t *testing.T) {
+	streamTests(t, "no")
+}
+
+func TestStreamWithRESP3(t *testing.T) {
+	streamTests(t, "yes")
+}
+
+var streamTests = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()

@@ -53,18 +53,18 @@ struct CommandFunction : Commander {
         with_code = true;
       }
 
-      return lua::FunctionList(srv, libname, with_code, output);
+      return lua::FunctionList(srv, conn, libname, with_code, output);
     } else if (parser.EatEqICase("listfunc")) {
       std::string funcname;
       if (parser.EatEqICase("funcname")) {
         funcname = GET_OR_RET(parser.TakeStr());
       }
 
-      return lua::FunctionListFunc(srv, funcname, output);
+      return lua::FunctionListFunc(srv, conn, funcname, output);
     } else if (parser.EatEqICase("listlib")) {
       auto libname = GET_OR_RET(parser.TakeStr().Prefixed("expect a library name"));
 
-      return lua::FunctionListLib(srv, libname, output);
+      return lua::FunctionListLib(srv, conn, libname, output);
     } else if (parser.EatEqICase("delete")) {
       auto libname = GET_OR_RET(parser.TakeStr());
       if (!lua::FunctionIsLibExist(conn, libname)) {

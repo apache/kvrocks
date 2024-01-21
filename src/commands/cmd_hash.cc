@@ -306,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(kv_pairs, false);
+    *output = conn->MapOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }

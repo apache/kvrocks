@@ -835,6 +835,30 @@ func TestHash(t *testing.T) {
 	}
 }
 
+func TestHGetAllWithRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	ctx := context.Background()
+
+	testKey := "test-hash-1"
+	require.NoError(t, rdb.Del(ctx, testKey).Err())
+	require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
+	result, err := rdb.HGetAll(ctx, testKey).Result()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+	require.EqualValues(t, map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+		"key3": "value3",
+	}, result)
+}
+
 func TestHashWithAsyncIOEnabled(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"rocksdb.read_options.async_io": "yes",

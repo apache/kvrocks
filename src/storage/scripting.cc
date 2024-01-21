@@ -1080,7 +1080,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
-  int j, mbulklen;
+  int j = 0, mbulklen = 0;
 
   int t = lua_type(lua, -1);
   switch (t) {

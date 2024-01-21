@@ -65,7 +65,7 @@ jobs:
           python-version: 3.x
       - name: Configure Kvrocks
         run: |
-          ./x.py build -j$NPROC --compiler gcc --skip-build
+          ./x.py build -j$(nproc) --compiler gcc --skip-build
 
       - name: Run sonar-scanner
         env:

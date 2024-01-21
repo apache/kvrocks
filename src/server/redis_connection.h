@@ -65,6 +65,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
   std::string Bool(bool b) const;
+  std::string BigNumber(const std::string &n) const {
+    return protocol_version_ == RESP::v3 ? "(" + n + CRLF : BulkString(n);
+  }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
   std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true) const;

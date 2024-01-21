@@ -1080,6 +1080,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
+  int j = 0, mbulklen = 0;
 
   int t = lua_type(lua, -1);
   switch (t) {
@@ -1113,6 +1114,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
         return output;
       }
       lua_pop(lua, 1); /* Discard field name pushed before. */
+
       /* Handle status reply. */
       lua_pushstring(lua, "ok");
       lua_gettable(lua, -2);
@@ -1122,23 +1124,35 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
         output = redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
-      } else {
-        int j = 1, mbulklen = 0;
-        lua_pop(lua, 1); /* Discard the 'ok' field value we popped */
-        while (true) {
-          lua_pushnumber(lua, j++);
-          lua_gettable(lua, -2);
-          t = lua_type(lua, -1);
-          if (t == LUA_TNIL) {
-            lua_pop(lua, 1);
-            break;
-          }
-          mbulklen++;
-          output += ReplyToRedisReply(conn, lua);
-          lua_pop(lua, 1);
-        }
-        output = redis::MultiLen(mbulklen) + output;
       }
+      lua_pop(lua, 1); /* Discard the 'ok' field value we pushed */
+
+      /* Handle big number reply. */
+      lua_pushstring(lua, "big_number");
+      lua_gettable(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TSTRING) {
+        obj_s = lua_tolstring(lua, -1, &obj_len);
+        output = conn->BigNumber(std::string(obj_s, obj_len));
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'big_number' field value we pushed */
+
+      j = 1, mbulklen = 0;
+      while (true) {
+        lua_pushnumber(lua, j++);
+        lua_gettable(lua, -2);
+        t = lua_type(lua, -1);
+        if (t == LUA_TNIL) {
+          lua_pop(lua, 1);
+          break;
+        }
+        mbulklen++;
+        output += ReplyToRedisReply(conn, lua);
+        lua_pop(lua, 1);
+      }
+      output = redis::MultiLen(mbulklen) + output;
       break;
     default:
       output = conn->NilString();

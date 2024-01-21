@@ -25,7 +25,7 @@ on:
 jobs:
   sonarcloud:
     name: Upload to SonarCloud
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v3
@@ -59,6 +59,14 @@ jobs:
         run: |
           unzip sonarcloud-data.zip -d sonarcloud-data
           ls -a sonarcloud-data
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+      - name: Configure Kvrocks
+        run: |
+          ./x.py build -j$NPROC --compiler gcc --skip-build
+
       - name: Run sonar-scanner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

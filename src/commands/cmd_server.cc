@@ -623,6 +623,8 @@ class CommandDebug : public Commander {
           *output += redis::Integer(i);
           *output += conn->Bool(i == 1);
         }
+      } else if (protocol_type_ == "bignum") {
+        *output = conn->BigNumber("1234567999999999999999999999999999999");
       } else if (protocol_type_ == "true") {
         *output = conn->Bool(true);
       } else if (protocol_type_ == "false") {
@@ -631,7 +633,7 @@ class CommandDebug : public Commander {
         *output = conn->NilString();
       } else {
         *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: string|int|array|set|true|false|null");
+            "Wrong protocol type name. Please use one of the following: string|int|array|set|bignum|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};

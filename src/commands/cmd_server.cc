@@ -613,12 +613,12 @@ class CommandDebug : public Commander {
           *output += redis::Integer(i);
         }
       } else if (protocol_type_ == "set") {
-        *output = conn->SizeOfSet(3);
+        *output = conn->HeaderOfSet(3);
         for (int i = 0; i < 3; i++) {
           *output += redis::Integer(i);
         }
       } else if (protocol_type_ == "map") {
-        *output = conn->SizeOfMap(3);
+        *output = conn->HeaderOfMap(3);
         for (int i = 0; i < 3; i++) {
           *output += redis::Integer(i);
           *output += conn->Bool(i == 1);
@@ -789,7 +789,7 @@ class CommandHello final : public Commander {
     } else {
       output_list.push_back(redis::BulkString("standalone"));
     }
-    *output = conn->SizeOfMap(output_list.size() / 2);
+    *output = conn->HeaderOfMap(output_list.size() / 2);
     for (const auto &item : output_list) {
       *output += item;
     }

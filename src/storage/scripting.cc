@@ -448,7 +448,7 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
 
   output->append(redis::MultiLen(result.size()));
   for (const auto &[lib, code] : result) {
-    output->append(conn->SizeOfMap(with_code ? 2 : 1));
+    output->append(conn->HeaderOfMap(with_code ? 2 : 1));
     output->append(redis::BulkString("library_name"));
     output->append(redis::BulkString(lib));
     if (with_code) {
@@ -484,7 +484,7 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
 
   output->append(redis::MultiLen(result.size()));
   for (const auto &[func, lib] : result) {
-    output->append(conn->SizeOfMap(2));
+    output->append(conn->HeaderOfMap(2));
     output->append(redis::BulkString("function_name"));
     output->append(redis::BulkString(func));
     output->append(redis::BulkString("from_library"));
@@ -514,7 +514,7 @@ Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::st
     return {Status::NotOK, "The library is not found or not loaded from storage"};
   }
 
-  output->append(conn->SizeOfMap(3));
+  output->append(conn->HeaderOfMap(3));
   output->append(redis::BulkString("library_name"));
   output->append(redis::BulkString(libname));
   output->append(redis::BulkString("engine"));

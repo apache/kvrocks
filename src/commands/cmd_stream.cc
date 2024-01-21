@@ -445,9 +445,9 @@ class CommandXInfo : public Commander {
     }
 
     if (!full_) {
-      output->append(conn->SizeOfMap(7));
+      output->append(conn->HeaderOfMap(7));
     } else {
-      output->append(conn->SizeOfMap(6));
+      output->append(conn->HeaderOfMap(6));
     }
     output->append(redis::BulkString("length"));
     output->append(redis::Integer(info.size));
@@ -503,7 +503,7 @@ class CommandXInfo : public Commander {
 
     output->append(redis::MultiLen(result_vector.size()));
     for (auto const &it : result_vector) {
-      output->append(conn->SizeOfMap(6));
+      output->append(conn->HeaderOfMap(6));
       output->append(redis::BulkString("name"));
       output->append(redis::BulkString(it.first));
       output->append(redis::BulkString("consumers"));
@@ -545,7 +545,7 @@ class CommandXInfo : public Commander {
     output->append(redis::MultiLen(result_vector.size()));
     auto now = util::GetTimeStampMS();
     for (auto const &it : result_vector) {
-      output->append(conn->SizeOfMap(4));
+      output->append(conn->HeaderOfMap(4));
       output->append(redis::BulkString("name"));
       output->append(redis::BulkString(it.first));
       output->append(redis::BulkString("pending"));

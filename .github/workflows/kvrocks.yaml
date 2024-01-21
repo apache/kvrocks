@@ -128,7 +128,7 @@ jobs:
             os: ubuntu-20.04
             compiler: gcc
           - name: SonarCloud with Coverage
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
           - name: Ubuntu Clang

@@ -247,8 +247,8 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
       batch->Delete(key);
     }
   }
-  if (pop && n > 0) {
-    metadata.size -= n;
+  if (pop && !iter_keys.empty()) {
+    metadata.size -= iter_keys.size();
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);

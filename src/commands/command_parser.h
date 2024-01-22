@@ -47,12 +47,12 @@ struct CommandParser {
 
   CommandParser(Iter begin, Iter end) : begin_(std::move(begin)), end_(std::move(end)) {}
 
-  template <typename Container, std::enable_if<std::is_lvalue_reference_v<Container>, int> = 0>
+  template <typename Container, std::enable_if_t<std::is_lvalue_reference_v<Container>, int> = 0>
   explicit CommandParser(Container&& con, size_t skip_num = 0) : CommandParser(std::begin(con), std::end(con)) {
     std::advance(begin_, skip_num);
   }
 
-  template <typename Container, std::enable_if<!std::is_lvalue_reference_v<Container>, int> = 0>
+  template <typename Container, std::enable_if_t<!std::is_lvalue_reference_v<Container>, int> = 0>
   explicit CommandParser(Container&& con, size_t skip_num = 0)
       : CommandParser(MoveIterator(std::begin(con)), MoveIterator(std::end(con))) {
     std::advance(begin_, skip_num);

@@ -252,7 +252,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
-      *output = conn->MultiBulkString(values);
+      *output = conn->MapOfBulkStrings(values);
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->Set(srv, args_[2], args_[3]);
       if (!s.IsOK()) {
@@ -613,10 +613,18 @@ class CommandDebug : public Commander {
           *output += redis::Integer(i);
         }
       } else if (protocol_type_ == "set") {
-        *output = conn->SizeOfSet(3);
+        *output = conn->HeaderOfSet(3);
         for (int i = 0; i < 3; i++) {
           *output += redis::Integer(i);
         }
+      } else if (protocol_type_ == "map") {
+        *output = conn->HeaderOfMap(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+          *output += conn->Bool(i == 1);
+        }
+      } else if (protocol_type_ == "bignum") {
+        *output = conn->BigNumber("1234567999999999999999999999999999999");
       } else if (protocol_type_ == "true") {
         *output = conn->Bool(true);
       } else if (protocol_type_ == "false") {
@@ -625,7 +633,7 @@ class CommandDebug : public Commander {
         *output = conn->NilString();
       } else {
         *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: string|int|array|set|true|false|null");
+            "Wrong protocol type name. Please use one of the following: string|int|array|set|bignum|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
@@ -783,7 +791,10 @@ class CommandHello final : public Commander {
     } else {
       output_list.push_back(redis::BulkString("standalone"));
     }
-    *output = redis::Array(output_list);
+    *output = conn->HeaderOfMap(output_list.size() / 2);
+    for (const auto &item : output_list) {
+      *output += item;
+    }
     return Status::OK();
   }
 };

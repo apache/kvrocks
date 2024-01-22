@@ -25,6 +25,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
@@ -38,8 +40,74 @@ var luaMylib2 string
 //go:embed mylib3.lua
 var luaMylib3 string
 
-func TestFunction(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+type ListFuncResult struct {
+	Name    string
+	Library string
+}
+
+func decodeListFuncResult(t *testing.T, v interface{}) ListFuncResult {
+	switch res := v.(type) {
+	case []interface{}:
+		require.EqualValues(t, 4, len(res))
+		require.EqualValues(t, "function_name", res[0])
+		require.EqualValues(t, "from_library", res[2])
+		return ListFuncResult{
+			Name:    res[1].(string),
+			Library: res[3].(string),
+		}
+	case map[interface{}]interface{}:
+		require.EqualValues(t, 2, len(res))
+		return ListFuncResult{
+			Name:    res["function_name"].(string),
+			Library: res["from_library"].(string),
+		}
+	}
+	require.Fail(t, "unexpected type")
+	return ListFuncResult{}
+}
+
+type ListLibResult struct {
+	Name      string
+	Engine    string
+	Functions []interface{}
+}
+
+func decodeListLibResult(t *testing.T, v interface{}) ListLibResult {
+	switch res := v.(type) {
+	case []interface{}:
+		require.EqualValues(t, 6, len(res))
+		require.EqualValues(t, "library_name", res[0])
+		require.EqualValues(t, "engine", res[2])
+		require.EqualValues(t, "functions", res[4])
+		return ListLibResult{
+			Name:      res[1].(string),
+			Engine:    res[3].(string),
+			Functions: res[5].([]interface{}),
+		}
+	case map[interface{}]interface{}:
+		require.EqualValues(t, 3, len(res))
+		return ListLibResult{
+			Name:      res["library_name"].(string),
+			Engine:    res["engine"].(string),
+			Functions: res["functions"].([]interface{}),
+		}
+	}
+	require.Fail(t, "unexpected type")
+	return ListLibResult{}
+}
+
+func TestFunctionsWithRESP3(t *testing.T) {
+	testFunctions(t, "yes")
+}
+
+func TestFunctionsWithoutRESP2(t *testing.T) {
+	testFunctions(t, "no")
+}
+
+var testFunctions = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -65,17 +133,22 @@ func TestFunction(t *testing.T) {
 	})
 
 	t.Run("FUNCTION LIST and FUNCTION LISTFUNC mylib1", func(t *testing.T) {
-		list := rdb.Do(ctx, "FUNCTION", "LIST", "WITHCODE").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[3].(string), luaMylib1)
-		require.Equal(t, len(list), 4)
+		libraries, err := rdb.FunctionList(ctx, redis.FunctionListQuery{
+			WithCode: true,
+		}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(libraries))
+		require.Equal(t, "mylib1", libraries[0].Name)
+		require.Equal(t, luaMylib1, libraries[0].Code)
 
-		list = rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
-		require.Equal(t, list[1].(string), "add")
-		require.Equal(t, list[3].(string), "mylib1")
-		require.Equal(t, list[5].(string), "inc")
-		require.Equal(t, list[7].(string), "mylib1")
-		require.Equal(t, len(list), 8)
+		list := rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
+		require.EqualValues(t, 2, len(list))
+		f1 := decodeListFuncResult(t, list[0])
+		require.Equal(t, "add", f1.Name)
+		require.Equal(t, "mylib1", f1.Library)
+		f2 := decodeListFuncResult(t, list[1])
+		require.Equal(t, "inc", f2.Name)
+		require.Equal(t, "mylib1", f2.Library)
 	})
 
 	t.Run("FUNCTION LOAD and FCALL mylib2", func(t *testing.T) {
@@ -87,23 +160,25 @@ func TestFunction(t *testing.T) {
 	})
 
 	t.Run("FUNCTION LIST and FUNCTION LISTFUNC mylib2", func(t *testing.T) {
-		list := rdb.Do(ctx, "FUNCTION", "LIST", "WITHCODE").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[3].(string), luaMylib1)
-		require.Equal(t, list[5].(string), "mylib2")
-		require.Equal(t, list[7].(string), luaMylib2)
-		require.Equal(t, len(list), 8)
+		libraries, err := rdb.FunctionList(ctx, redis.FunctionListQuery{
+			WithCode: true,
+		}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, len(libraries))
 
-		list = rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
-		require.Equal(t, list[1].(string), "add")
-		require.Equal(t, list[3].(string), "mylib1")
-		require.Equal(t, list[5].(string), "hello")
-		require.Equal(t, list[7].(string), "mylib2")
-		require.Equal(t, list[9].(string), "inc")
-		require.Equal(t, list[11].(string), "mylib1")
-		require.Equal(t, list[13].(string), "reverse")
-		require.Equal(t, list[15].(string), "mylib2")
-		require.Equal(t, len(list), 16)
+		list := rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
+		expected := []ListFuncResult{
+			{Name: "add", Library: "mylib1"},
+			{Name: "hello", Library: "mylib2"},
+			{Name: "inc", Library: "mylib1"},
+			{Name: "reverse", Library: "mylib2"},
+		}
+		require.EqualValues(t, len(expected), len(list))
+		for i, f := range expected {
+			actual := decodeListFuncResult(t, list[i])
+			require.Equal(t, f.Name, actual.Name)
+			require.Equal(t, f.Library, actual.Library)
+		}
 	})
 
 	t.Run("FUNCTION DELETE", func(t *testing.T) {
@@ -113,17 +188,24 @@ func TestFunction(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "reverse", 0, "x").Err(), ".*No such function name.*")
 		require.Equal(t, rdb.Do(ctx, "FCALL", "inc", 0, 3).Val(), int64(4))
 
-		list := rdb.Do(ctx, "FUNCTION", "LIST", "WITHCODE").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[3].(string), luaMylib1)
-		require.Equal(t, len(list), 4)
+		libraries, err := rdb.FunctionList(ctx, redis.FunctionListQuery{
+			WithCode: true,
+		}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(libraries))
+		require.Equal(t, "mylib1", libraries[0].Name)
 
-		list = rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
-		require.Equal(t, list[1].(string), "add")
-		require.Equal(t, list[3].(string), "mylib1")
-		require.Equal(t, list[5].(string), "inc")
-		require.Equal(t, list[7].(string), "mylib1")
-		require.Equal(t, len(list), 8)
+		list := rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
+		expected := []ListFuncResult{
+			{Name: "add", Library: "mylib1"},
+			{Name: "inc", Library: "mylib1"},
+		}
+		require.EqualValues(t, len(expected), len(list))
+		for i, f := range expected {
+			actual := decodeListFuncResult(t, list[i])
+			require.Equal(t, f.Name, actual.Name)
+			require.Equal(t, f.Library, actual.Library)
+		}
 	})
 
 	t.Run("FUNCTION LOAD REPLACE", func(t *testing.T) {
@@ -135,17 +217,24 @@ func TestFunction(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "FCALL", "reverse", 0, "xyz").Val(), "zyx")
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", 0, 1).Err(), ".*No such function name.*")
 
-		list := rdb.Do(ctx, "FUNCTION", "LIST", "WITHCODE").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[3].(string), code)
-		require.Equal(t, len(list), 4)
+		libraries, err := rdb.FunctionList(ctx, redis.FunctionListQuery{
+			WithCode: true,
+		}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, len(libraries))
+		require.Equal(t, "mylib1", libraries[0].Name)
 
-		list = rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
-		require.Equal(t, list[1].(string), "hello")
-		require.Equal(t, list[3].(string), "mylib1")
-		require.Equal(t, list[5].(string), "reverse")
-		require.Equal(t, list[7].(string), "mylib1")
-		require.Equal(t, len(list), 8)
+		list := rdb.Do(ctx, "FUNCTION", "LISTFUNC").Val().([]interface{})
+		expected := []ListFuncResult{
+			{Name: "hello", Library: "mylib1"},
+			{Name: "reverse", Library: "mylib1"},
+		}
+		require.EqualValues(t, len(expected), len(list))
+		for i, f := range expected {
+			actual := decodeListFuncResult(t, list[i])
+			require.Equal(t, f.Name, actual.Name)
+			require.Equal(t, f.Library, actual.Library)
+		}
 	})
 
 	t.Run("FCALL_RO", func(t *testing.T) {
@@ -167,19 +256,24 @@ func TestFunction(t *testing.T) {
 		require.Equal(t, rdb.Do(ctx, "FCALL", "myget", 1, "x").Val(), "2")
 		require.Equal(t, rdb.Do(ctx, "FCALL", "hello", 0, "xxx").Val(), "Hello, xxx!")
 
-		list := rdb.Do(ctx, "FUNCTION", "LIST").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[3].(string), "mylib3")
-		require.Equal(t, len(list), 4)
+		libraries, err := rdb.FunctionList(ctx, redis.FunctionListQuery{
+			WithCode: true,
+		}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, len(libraries))
+		require.Equal(t, libraries[0].Name, "mylib1")
+		require.Equal(t, libraries[1].Name, "mylib3")
 	})
 
 	t.Run("FUNCTION LISTLIB", func(t *testing.T) {
-		list := rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib1").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib1")
-		require.Equal(t, list[5].([]interface{}), []interface{}{"hello", "reverse"})
+		r := rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib1").Val()
+		require.EqualValues(t, ListLibResult{
+			Name: "mylib1", Engine: "lua", Functions: []interface{}{"hello", "reverse"},
+		}, decodeListLibResult(t, r))
 
-		list = rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib3").Val().([]interface{})
-		require.Equal(t, list[1].(string), "mylib3")
-		require.Equal(t, list[5].([]interface{}), []interface{}{"myget", "myset"})
+		r = rdb.Do(ctx, "FUNCTION", "LISTLIB", "mylib3").Val()
+		require.EqualValues(t, ListLibResult{
+			Name: "mylib3", Engine: "lua", Functions: []interface{}{"myget", "myset"},
+		}, decodeListLibResult(t, r))
 	})
 }

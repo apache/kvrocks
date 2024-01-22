@@ -26,7 +26,7 @@ jobs:
   sonarcloud:
     name: Upload to SonarCloud
     runs-on: ubuntu-22.04
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'apache'
     steps:
       - uses: actions/checkout@v3
         with:

@@ -105,7 +105,7 @@ class CommandNamespace : public Commander {
         }
         namespaces.emplace_back(kDefaultNamespace);
         namespaces.emplace_back(config->requirepass);
-        *output = conn->MultiBulkString(namespaces, false);
+        *output = ArrayOfBulkStrings(namespaces);
       } else {
         auto token = srv->GetNamespace()->Get(args_[2]);
         if (token.Is<Status::NotFound>()) {
@@ -835,7 +835,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(conn->MultiBulkString(keys, false));
+    list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
   }

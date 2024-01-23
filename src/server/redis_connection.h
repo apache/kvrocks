@@ -70,7 +70,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
-  std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true) const;
+  std::string MultiBulkString(const std::vector<std::string> &values) const;
   std::string MultiBulkString(const std::vector<std::string> &values,
                               const std::vector<rocksdb::Status> &statuses) const;
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>

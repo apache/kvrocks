@@ -137,7 +137,8 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
 
 class WALIterator {
  public:
-  explicit WALIterator(engine::Storage *storage, int slot = -1) : storage_(storage), slot_(slot){};
+  explicit WALIterator(engine::Storage *storage, int slot = -1)
+      : storage_(storage), slot_(slot), extractor_(slot), next_batch_seq_(0){};
   ~WALIterator() = default;
 
   bool Valid() const;
@@ -145,7 +146,7 @@ class WALIterator {
   void Next();
   WALItem Item();
 
-  rocksdb::SequenceNumber NextSequenceNumber();
+  rocksdb::SequenceNumber NextSequenceNumber() const;
   void Reset();
 
  private:

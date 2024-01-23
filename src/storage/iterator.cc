@@ -263,7 +263,7 @@ WALItem WALIterator::Item() {
   return {};
 }
 
-rocksdb::SequenceNumber WALIterator::NextSequenceNumber() { return next_batch_seq_; }
+rocksdb::SequenceNumber WALIterator::NextSequenceNumber() const { return next_batch_seq_; }
 
 void WALIterator::Next() {
   if (!Valid()) {

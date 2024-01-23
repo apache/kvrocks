@@ -19,6 +19,7 @@
  */
 
 #include <cluster/redis_slot.h>
+#include <fmt/format.h>
 #include <storage/iterator.h>
 #include <types/redis_bitmap.h>
 #include <types/redis_bloom_chain.h>
@@ -32,10 +33,10 @@
 #include "test_base.h"
 #include "types/redis_string.h"
 
-class IteratorTest : public TestBase {
+class DBIteratorTest : public TestBase {
  protected:
-  explicit IteratorTest() = default;
-  ~IteratorTest() override = default;
+  explicit DBIteratorTest() = default;
+  ~DBIteratorTest() override = default;
 
   void SetUp() override {
     {  // string
@@ -112,7 +113,7 @@ class IteratorTest : public TestBase {
   }
 };
 
-TEST_F(IteratorTest, AllKeys) {
+TEST_F(DBIteratorTest, AllKeys) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   std::vector<std::string> live_keys = {"a",        "b",        "d",      "hash-1", "set-1",  "zset-1",     "list-1",
                                         "stream-1", "bitmap-1", "json-1", "json-2", "json-3", "sortedint-1"};
@@ -126,7 +127,7 @@ TEST_F(IteratorTest, AllKeys) {
   ASSERT_TRUE(live_keys.empty());
 }
 
-TEST_F(IteratorTest, BasicString) {
+TEST_F(DBIteratorTest, BasicString) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
 
   std::vector<std::string> expected_keys = {"a", "b", "d"};
@@ -148,7 +149,7 @@ TEST_F(IteratorTest, BasicString) {
   ASSERT_TRUE(expected_keys.empty());
 }
 
-TEST_F(IteratorTest, BasicHash) {
+TEST_F(DBIteratorTest, BasicHash) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns1", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -171,7 +172,7 @@ TEST_F(IteratorTest, BasicHash) {
   }
 }
 
-TEST_F(IteratorTest, BasicSet) {
+TEST_F(DBIteratorTest, BasicSet) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns2", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -194,7 +195,7 @@ TEST_F(IteratorTest, BasicSet) {
   }
 }
 
-TEST_F(IteratorTest, BasicZSet) {
+TEST_F(DBIteratorTest, BasicZSet) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns3", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -217,7 +218,7 @@ TEST_F(IteratorTest, BasicZSet) {
   }
 }
 
-TEST_F(IteratorTest, BasicList) {
+TEST_F(DBIteratorTest, BasicList) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns4", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -240,7 +241,7 @@ TEST_F(IteratorTest, BasicList) {
   }
 }
 
-TEST_F(IteratorTest, BasicStream) {
+TEST_F(DBIteratorTest, BasicStream) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns5", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -266,7 +267,7 @@ TEST_F(IteratorTest, BasicStream) {
   }
 }
 
-TEST_F(IteratorTest, BasicBitmap) {
+TEST_F(DBIteratorTest, BasicBitmap) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns6", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -288,7 +289,7 @@ TEST_F(IteratorTest, BasicBitmap) {
   }
 }
 
-TEST_F(IteratorTest, BasicJSON) {
+TEST_F(DBIteratorTest, BasicJSON) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
 
   std::vector<std::string> expected_keys = {"json-1", "json-2", "json-3"};
@@ -310,7 +311,7 @@ TEST_F(IteratorTest, BasicJSON) {
   ASSERT_TRUE(expected_keys.empty());
 }
 
-TEST_F(IteratorTest, BasicSortedInt) {
+TEST_F(DBIteratorTest, BasicSortedInt) {
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
 
   auto prefix = ComposeNamespaceKey("test_ns8", "", storage_->IsSlotIdEncoded());
@@ -343,6 +344,7 @@ class SlotIteratorTest : public TestBase {
 
 TEST_F(SlotIteratorTest, LiveKeys) {
   redis::String string(storage_, kDefaultNamespace);
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
   std::vector<std::string> keys = {"{x}a", "{x}b", "{y}c", "{y}d", "{x}e"};
   for (const auto &key : keys) {
     string.Set(key, "1");
@@ -363,4 +365,149 @@ TEST_F(SlotIteratorTest, LiveKeys) {
     count++;
   }
   ASSERT_EQ(count, same_slot_keys.size());
+
+  engine::WALIterator wal_iter(storage_, slot_id);
+  count = 0;
+  for (wal_iter.Seek(start_seq + 1); wal_iter.Valid(); wal_iter.Next()) {
+    auto item = wal_iter.Item();
+    if (item.type == engine::WALItem::Type::kTypePut) {
+      auto [_, user_key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+      ASSERT_EQ(slot_id, GetSlotIdFromKey(user_key.ToString())) << user_key.ToString();
+      count++;
+    }
+  }
+  ASSERT_EQ(count, same_slot_keys.size());
+}
+
+class WALIteratorTest : public TestBase {
+ protected:
+  explicit WALIteratorTest() = default;
+  ~WALIteratorTest() override = default;
+  void SetUp() override {}
+};
+
+TEST_F(WALIteratorTest, BasicType) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  redis::String string(storage_, "test_ns0");
+  string.Set("a", "1");
+  string.MSet({{"b", "2"}, {"c", "3"}});
+  ASSERT_TRUE(string.Del("b").ok());
+
+  std::vector<std::string> put_keys, delete_keys;
+  auto expected_put_keys = {"a", "b", "c"};
+  auto expected_delete_keys = {"b"};
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+        ASSERT_EQ(ns.ToString(), "test_ns0");
+        put_keys.emplace_back(key.ToString());
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisString);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+        ASSERT_EQ(ns.ToString(), "test_ns0");
+        delete_keys.emplace_back(key.ToString());
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_keys.begin(), expected_delete_keys.end(), delete_keys.begin()));
+}
+
+TEST_F(WALIteratorTest, ComplexType) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  redis::Hash hash(storage_, "test_ns1");
+  uint64_t ret = 0;
+  hash.MSet("hash-1", {{"f0", "v0"}, {"f1", "v1"}, {"f2", "v2"}, {"f3", "v3"}}, false, &ret);
+  uint64_t deleted_cnt = 0;
+  hash.Delete("hash-1", {"f0"}, &deleted_cnt);
+
+  GTEST_LOG_(INFO) << "start sequence: " << start_seq;
+
+  // Delete will put meta key again
+  auto expected_put_keys = {"hash-1", "hash-1"};
+  // Sub key will be putted in reverse order
+  auto expected_put_fields = {"f3", "f2", "f1", "f0"};
+  auto expected_delete_fileds = {"f0"};
+  std::vector<std::string> put_keys, put_fields, delete_fields;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+          put_fields.emplace_back(internal_key.GetSubKey().ToString());
+        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+          auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+          ASSERT_EQ(ns.ToString(), "test_ns1");
+          put_keys.emplace_back(key.ToString());
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisHash);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+        delete_fields.emplace_back(internal_key.GetSubKey().ToString());
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_put_fields.size(), put_fields.size());
+  ASSERT_EQ(expected_delete_fileds.size(), delete_fields.size());
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_put_fields.begin(), expected_put_fields.end(), put_fields.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_fileds.begin(), expected_delete_fileds.end(), delete_fields.begin()));
+}
+
+TEST_F(WALIteratorTest, NextSequence) {
+  std::vector<rocksdb::SequenceNumber> expected_next_sequences;
+  std::set<rocksdb::SequenceNumber> next_sequences_set;
+
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  uint64_t ret = 0;
+  redis::List list(storage_, "test_ns2");
+  list.Push("list-1", {"l0", "l1", "l2", "l3", "l4"}, false, &ret);
+  expected_next_sequences.emplace_back(storage_->GetDB()->GetLatestSequenceNumber() + 1);
+  list.Push("list-2", {"l0", "l1", "l2"}, false, &ret);
+  expected_next_sequences.emplace_back(storage_->GetDB()->GetLatestSequenceNumber() + 1);
+  ASSERT_TRUE(list.Trim("list-1", 2, 4).ok());
+  expected_next_sequences.emplace_back(storage_->GetDB()->GetLatestSequenceNumber() + 1);
+
+  engine::WALIterator iter(storage_);
+
+  ASSERT_EQ(iter.NextSequenceNumber(), 0);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    next_sequences_set.emplace(iter.NextSequenceNumber());
+  }
+
+  std::vector<rocksdb::SequenceNumber> next_sequences(next_sequences_set.begin(), next_sequences_set.end());
+
+  ASSERT_EQ(expected_next_sequences.size(), next_sequences.size());
+  ASSERT_TRUE(std::equal(expected_next_sequences.begin(), expected_next_sequences.end(), next_sequences.begin()));
 }

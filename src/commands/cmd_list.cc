@@ -536,7 +536,7 @@ class CommandLRange : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = conn->MultiBulkString(elems, false);
+    *output = ArrayOfBulkStrings(elems);
     return Status::OK();
   }
 
@@ -839,7 +839,7 @@ class CommandLPos : public Commander {
       for (const auto &index : indexes) {
         values.emplace_back(std::to_string(index));
       }
-      *output = conn->MultiBulkString(values, false);
+      *output = ArrayOfBulkStrings(values);
     }
     return Status::OK();
   }

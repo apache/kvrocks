@@ -284,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(values, false);
+    *output = ArrayOfBulkStrings(values);
 
     return Status::OK();
   }
@@ -350,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(kv_pairs, false);
+    *output = ArrayOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }
@@ -417,7 +417,7 @@ class CommandHRandField : public Commander {
     if (no_parameters_)
       *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = conn->MultiBulkString(result_entries, false);
+      *output = ArrayOfBulkStrings(result_entries);
     return Status::OK();
   }
 

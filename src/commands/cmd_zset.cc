@@ -1409,7 +1409,7 @@ class CommandZRandMember : public Commander {
     if (no_parameters_)
       *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = conn->MultiBulkString(result_entries, false);
+      *output = ArrayOfBulkStrings(result_entries);
     return Status::OK();
   }
 

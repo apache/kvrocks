@@ -74,7 +74,7 @@ class CommandScanBase : public Commander {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(conn->MultiBulkString(keys, false));
+    list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
   }
@@ -129,7 +129,7 @@ class CommandSubkeyScanBase : public CommandScanBase {
         fvs.emplace_back(values[i]);
       }
     }
-    list.emplace_back(conn->MultiBulkString(fvs, false));
+    list.emplace_back(ArrayOfBulkStrings(fvs));
     return redis::Array(list);
   }
 

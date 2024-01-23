@@ -226,7 +226,7 @@ class CommandJsonObjkeys : public Commander {
     *output = redis::MultiLen(results.size());
     for (const auto &item : results) {
       if (item.has_value()) {
-        *output += conn->MultiBulkString(item.value(), false);
+        *output += ArrayOfBulkStrings(item.value());
       } else {
         *output += conn->NilString();
       }

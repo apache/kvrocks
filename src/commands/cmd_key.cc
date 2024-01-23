@@ -307,6 +307,36 @@ class CommandDel : public Commander {
   }
 };
 
+class CommandRename : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    bool ret = true;
+
+    auto s = redis.Rename(args_[1], args_[2], false, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandRenameNX : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    bool ret = true;
+    auto s = redis.Rename(args_[1], args_[2], true, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (ret) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
@@ -321,6 +351,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandExpireTime>("expiretime", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1), )
+                        MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1), )
 
 }  // namespace redis

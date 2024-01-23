@@ -151,11 +151,10 @@ Status SlotMigrator::CreateMigrationThread() {
 
 void SlotMigrator::loop() {
   while (true) {
-    std::unique_lock<std::mutex> ul(job_mutex_);
-    while (!isTerminated() && !migration_job_) {
-      job_cv_.wait(ul);
+    {
+      std::unique_lock<std::mutex> ul(job_mutex_);
+      job_cv_.wait(ul, [&] { return isTerminated() || migration_job_; });
     }
-    ul.unlock();
 
     if (isTerminated()) {
       clean();

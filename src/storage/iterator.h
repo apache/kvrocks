@@ -37,6 +37,7 @@ class SubKeyIterator {
   Slice Key() const;
   // return the user key without prefix
   Slice UserKey() const;
+  rocksdb::ColumnFamilyHandle *ColumnFamilyHandle() const;
   Slice Value() const;
   void Reset();
 

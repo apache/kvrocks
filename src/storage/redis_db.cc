@@ -29,8 +29,11 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
+#include "rocksdb/status.h"
 #include "server/server.h"
+#include "storage/iterator.h"
 #include "storage/redis_metadata.h"
+#include "storage/storage.h"
 #include "time_util.h"
 
 namespace redis {
@@ -694,5 +697,68 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   args_ = std::vector<std::string>(args.begin() + 1, args.end());
 
   return Status::OK();
+}
+
+rocksdb::Status Database::Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret) {
+  *ret = true;
+  std::string ns_key = AppendNamespacePrefix(key);
+  std::string new_ns_key = AppendNamespacePrefix(new_key);
+
+  std::vector<std::string> lock_keys = {ns_key, new_ns_key};
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  RedisType type = kRedisNone;
+  auto s = Type(key, &type);
+  if (!s.ok()) return s;
+  if (type == kRedisNone) return rocksdb::Status::InvalidArgument("ERR no such key");
+
+  if (nx) {
+    int exist = 0;
+    if (s = Exists({new_key}, &exist), !s.ok()) return s;
+    if (exist > 0) {
+      *ret = false;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (key == new_key) return rocksdb::Status::OK();
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(type);
+  batch->PutLogData(log_data.Encode());
+
+  engine::DBIterator iter(storage_, rocksdb::ReadOptions());
+  iter.Seek(ns_key);
+
+  // copy metadata
+  batch->Delete(metadata_cf_handle_, ns_key);
+  batch->Put(metadata_cf_handle_, new_ns_key, iter.Value());
+
+  auto subkey_iter = iter.GetSubKeyIterator();
+
+  if (subkey_iter != nullptr) {
+    auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName) : nullptr;
+
+    for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+      InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
+      std::string to_ikey =
+          InternalKey(new_ns_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+      // copy sub key
+      batch->Put(subkey_iter->ColumnFamilyHandle(), to_ikey, subkey_iter->Value());
+
+      // The ZSET type stores an extra score and member field inside `zset_score` column family
+      // while compared to other composed data structures. The purpose is to allow to seek by score.
+      if (type == kRedisZSet) {
+        std::string score_bytes = subkey_iter->Value().ToString();
+        score_bytes.append(from_ikey.GetSubKey().ToString());
+        // copy score key
+        std::string score_key =
+            InternalKey(new_ns_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+        batch->Put(zset_score_cf, score_key, Slice());
+      }
+    }
+  }
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 }  // namespace redis

@@ -1409,7 +1409,7 @@ class CommandZRandMember : public Commander {
     if (no_parameters_)
       *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = conn->MultiBulkString(result_entries, false);
+      *output = ArrayOfBulkStrings(result_entries);
     return Status::OK();
   }
 
@@ -1429,6 +1429,7 @@ class CommandZDiff : public Commander {
     if (numkeys_ > args.size() - 2) return {Status::RedisParseErr, errInvalidSyntax};
 
     size_t j = 0;
+    keys_.reserve(numkeys_);
     while (j < numkeys_) {
       keys_.emplace_back(args[j + 2]);
       j++;

@@ -335,13 +335,13 @@ rocksdb::Status ListMetadata::Decode(Slice *input) {
   if (auto s = Metadata::Decode(input); !s.ok()) {
     return s;
   }
-  if (Type() == kRedisList) {
-    if (input->size() < 8 + 8) {
-      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
-    }
-    GetFixed64(input, &head);
-    GetFixed64(input, &tail);
+
+  if (input->size() < 8 + 8) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
+  GetFixed64(input, &head);
+  GetFixed64(input, &tail);
+
   return rocksdb::Status::OK();
 }
 

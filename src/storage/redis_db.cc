@@ -58,7 +58,8 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
   });
 
   auto s = metadata->Decode(bytes);
-  if (!s.ok()) return s;
+  // delay InvalidArgument error check after type match check
+  if (!s.ok() && !s.IsInvalidArgument()) return s;
 
   if (metadata->Expired()) {
     // error discarded here since it already failed
@@ -72,6 +73,8 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
   }
+  if (s.IsInvalidArgument()) return s;
+
   if (metadata->size == 0 && !metadata->IsEmptyableType()) {
     // error discarded here since it already failed
     auto _ [[maybe_unused]] = metadata->Decode(old_metadata);
@@ -185,7 +188,9 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
     if (statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
-    auto s = metadata.Decode(pin_values[i]);
+    // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
+    // PinnableSlice to Slice.
+    auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
     if (!s.ok()) continue;
     if (metadata.Expired()) continue;
 

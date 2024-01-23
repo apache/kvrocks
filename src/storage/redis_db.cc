@@ -746,6 +746,8 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
       // copy sub key
       batch->Put(subkey_iter->ColumnFamilyHandle(), to_ikey, subkey_iter->Value());
 
+      // The ZSET type stores an extra score and member field inside `zset_score` column family
+      // while compared to other composed data structures. The purpose is to allow to seek by score.
       if (type == kRedisZSet) {
         std::string score_bytes = subkey_iter->Value().ToString();
         score_bytes.append(from_ikey.GetSubKey().ToString());

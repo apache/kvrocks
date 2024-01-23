@@ -442,7 +442,7 @@ TEST_F(WALIteratorTest, ComplexType) {
   auto expected_put_keys = {"hash-1", "hash-1"};
   // Sub key will be putted in reverse order
   auto expected_put_fields = {"f3", "f2", "f1", "f0"};
-  auto expected_delete_fileds = {"f0"};
+  auto expected_delete_fields = {"f0"};
   std::vector<std::string> put_keys, put_fields, delete_fields;
 
   engine::WALIterator iter(storage_);
@@ -478,10 +478,10 @@ TEST_F(WALIteratorTest, ComplexType) {
   }
   ASSERT_EQ(expected_put_keys.size(), put_keys.size());
   ASSERT_EQ(expected_put_fields.size(), put_fields.size());
-  ASSERT_EQ(expected_delete_fileds.size(), delete_fields.size());
+  ASSERT_EQ(expected_delete_fields.size(), delete_fields.size());
   ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
   ASSERT_TRUE(std::equal(expected_put_fields.begin(), expected_put_fields.end(), put_fields.begin()));
-  ASSERT_TRUE(std::equal(expected_delete_fileds.begin(), expected_delete_fileds.end(), delete_fields.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_fields.begin(), expected_delete_fields.end(), delete_fields.begin()));
 }
 
 TEST_F(WALIteratorTest, NextSequence) {

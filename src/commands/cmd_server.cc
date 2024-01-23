@@ -633,7 +633,8 @@ class CommandDebug : public Commander {
         *output = conn->NilString();
       } else {
         *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: string|integer|array|set|bignum|true|false|null");
+            "Wrong protocol type name. Please use one of the following: "
+            "string|integer|array|set|bignum|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};

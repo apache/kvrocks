@@ -544,7 +544,7 @@ rocksdb::Status ZSet::Remove(const Slice &user_key, const std::vector<Slice> &me
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank,

@@ -147,7 +147,8 @@ class Storage {
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
-  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates,
+                                      bool ignore_max_db_size = false);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
@@ -263,7 +264,8 @@ class Storage {
 
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 
-  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates,
+                            bool ignore_max_db_size = false);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
 };
 

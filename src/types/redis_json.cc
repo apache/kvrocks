@@ -95,7 +95,7 @@ rocksdb::Status Json::del(const Slice &ns_key) {
 
   batch->Delete(metadata_cf_handle_, ns_key);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *storage_format) {

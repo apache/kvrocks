@@ -250,7 +250,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
   }
 
   *removed_cnt = to_delete_indexes.size();
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *new_size) {
@@ -658,6 +658,6 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 }  // namespace redis

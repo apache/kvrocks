@@ -550,7 +550,7 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 // If `options` is StreamLenOptions{} the function just returns the number of entries in the stream.
@@ -950,7 +950,7 @@ rocksdb::Status Stream::Trim(const Slice &stream_name, const StreamTrimOptions &
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
   }
 
   return rocksdb::Status::OK();

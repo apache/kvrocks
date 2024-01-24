@@ -200,7 +200,7 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
 
   if (*deleted_cnt == 0) return rocksdb::Status::OK();
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {

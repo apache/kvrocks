@@ -122,7 +122,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
       batch->Delete(metadata_cf_handle_, ns_key);
     }
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status Set::Card(const Slice &user_key, uint64_t *size) {

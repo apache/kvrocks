@@ -93,7 +93,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
 }
 
 rocksdb::Status Sortedint::Card(const Slice &user_key, uint64_t *size) {

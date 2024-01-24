@@ -335,7 +335,7 @@ jobs:
           echo "number=${{ github.event.number }}" >> ./pr/info
           
       - name: Upload PR info
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         if: ${{ matrix.sonarcloud }}
         with:
           name: pr

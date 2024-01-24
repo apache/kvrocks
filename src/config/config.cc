@@ -74,6 +74,15 @@ const std::vector<ConfigEnum<rocksdb::CompressionType>> compression_types{[] {
   return res;
 }()};
 
+const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
+  std::vector<ConfigEnum<BlockCacheType>> res;
+  res.reserve(engine::CacheOptions.size());
+  for (const auto &e : engine::CacheOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
+
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
   return s.substr(8, s.size() - 8);
@@ -191,6 +200,8 @@ Config::Config() {
       {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, true)},
       {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
+      {"rocksdb.block_cache_type", true,
+       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeLRU)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,

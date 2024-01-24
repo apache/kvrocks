@@ -94,6 +94,17 @@ inline const std::vector<CompressionOption> CompressionOptions = {
     {rocksdb::kZSTD, "zstd", "kZSTD"},
 };
 
+struct CacheOption {
+  BlockCacheType type;
+  const std::string name;
+  const std::string val;
+};
+
+inline const std::vector<CacheOption> CacheOptions = {
+    {BlockCacheType::kCacheTypeLRU, "lru", "kCacheTypeLRU"},
+    {BlockCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
+};
+
 enum class StatType {
   CompactionCount,
   FlushCount,

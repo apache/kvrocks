@@ -42,6 +42,7 @@
 #include "event_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
+#include "rocksdb/cache.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
@@ -51,6 +52,23 @@
 namespace engine {
 
 constexpr const char *kReplicationIdKey = "replication_id_";
+
+// used in creating rocksdb::LRUCache, set `num_shard_bits` to -1 means let rocksdb choose a good default shard count
+// based on the capacity and the implementation.
+constexpr int kRocksdbLRUAutoAdjustShardBits = -1;
+
+// used as the default argument for `strict_capacity_limit` in creating rocksdb::Cache.
+constexpr bool kRocksdbCacheStrictCapacityLimit = false;
+
+// used as the default argument for `high_pri_pool_ratio` in creating block cache.
+constexpr double kRocksdbLRUBlockCacheHighPriPoolRatio = 0.75;
+
+// used as the default argument for `high_pri_pool_ratio` in creating row cache.
+constexpr double kRocksdbLRURowCacheHighPriPoolRatio = 0.5;
+
+// used in creating rocksdb::HyperClockCache, set`estimated_entry_charge` to 0 means let rocksdb dynamically and
+// automacally adjust the table size for the cache.
+constexpr size_t kRockdbHCCAutoAdjustCharge = 0;
 
 const int64_t kIORateLimitMaxMb = 1024000;
 
@@ -152,9 +170,12 @@ rocksdb::Options Storage::InitRocksDBOptions() {
       options.compression_per_level[i] = config_->rocks_db.compression;
     }
   }
+
   if (config_->rocks_db.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB);
+    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB, kRocksdbLRUAutoAdjustShardBits,
+                                             kRocksdbCacheStrictCapacityLimit, kRocksdbLRURowCacheHighPriPoolRatio);
   }
+
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
   options.target_file_size_base = config_->rocks_db.target_file_size_base * MiB;
   options.max_manifest_file_size = 64 * MiB;
@@ -256,7 +277,15 @@ Status Storage::Open(DBOpenMode mode) {
     }
   }
 
-  std::shared_ptr<rocksdb::Cache> shared_block_cache = rocksdb::NewLRUCache(block_cache_size, -1, false, 0.75);
+  std::shared_ptr<rocksdb::Cache> shared_block_cache;
+
+  if (config_->rocks_db.block_cache_type == BlockCacheType::kCacheTypeLRU) {
+    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, kRocksdbLRUAutoAdjustShardBits,
+                                              kRocksdbCacheStrictCapacityLimit, kRocksdbLRUBlockCacheHighPriPoolRatio);
+  } else {
+    rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, kRockdbHCCAutoAdjustCharge);
+    shared_block_cache = hcc_cache_options.MakeSharedCache();
+  }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
   metadata_table_opts.block_cache = shared_block_cache;

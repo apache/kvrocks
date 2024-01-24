@@ -35,7 +35,7 @@ TEST(BitfieldUtil, Get) {
   ArrayBitfieldBitmap bitfield(0);
   auto s = bitfield.Set(0, big_endian_bitmap.size(), big_endian_bitmap.data());
 
-  for (int bits = 16; bits < 64; bits *= 2) {
+  for (uint8_t bits = 16; bits < 64; bits *= 2) {
     for (uint64_t offset = 0; bits + offset <= big_endian_bitmap.size() * 8; offset += bits) {
       uint64_t value = bitfield.GetUnsignedBitfield(offset, bits).GetValue();
       if (IsBigEndian()) {

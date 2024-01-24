@@ -205,7 +205,7 @@ class ArrayBitfieldBitmap {
 
   void Reset() { memset(buf_, 0, sizeof(buf_)); }
 
-  Status Set(uint32_t byte_offset, uint32_t bytes, const uint8_t *src) {
+  [[nodiscard]] Status Set(uint32_t byte_offset, uint32_t bytes, const uint8_t *src) {
     Status bound_status(checkLegalBound(byte_offset, bytes));
     if (!bound_status) {
       return bound_status;
@@ -215,7 +215,7 @@ class ArrayBitfieldBitmap {
     return Status::OK();
   }
 
-  Status Get(uint32_t byte_offset, uint32_t bytes, uint8_t *dst) const {
+  [[nodiscard]] Status Get(uint32_t byte_offset, uint32_t bytes, uint8_t *dst) const {
     Status bound_status(checkLegalBound(byte_offset, bytes));
     if (!bound_status) {
       return bound_status;
@@ -226,7 +226,7 @@ class ArrayBitfieldBitmap {
   }
 
   StatusOr<uint64_t> GetUnsignedBitfield(uint64_t bit_offset, uint64_t bits) const {
-    Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits));
+    Status bits_status = BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kUnsigned, bits);
     if (!bits_status) {
       return bits_status;
     }
@@ -234,7 +234,7 @@ class ArrayBitfieldBitmap {
   }
 
   StatusOr<int64_t> GetSignedBitfield(uint64_t bit_offset, uint64_t bits) const {
-    Status bits_status(BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits));
+    Status bits_status = BitfieldEncoding::CheckSupportedBitLengths(BitfieldEncoding::Type::kSigned, bits);
     if (!bits_status) {
       return bits_status;
     }
@@ -257,10 +257,10 @@ class ArrayBitfieldBitmap {
     return value;
   }
 
-  Status SetBitfield(uint32_t bit_offset, uint32_t bits, uint64_t value) {
+  [[nodiscard]] Status SetBitfield(uint32_t bit_offset, uint32_t bits, uint64_t value) {
     uint32_t first_byte = bit_offset / 8;
     uint32_t last_byte = (bit_offset + bits - 1) / 8 + 1;
-    Status bound_status(checkLegalBound(first_byte, last_byte - first_byte));
+    Status bound_status = checkLegalBound(first_byte, last_byte - first_byte);
     if (!bound_status) {
       return bound_status;
     }

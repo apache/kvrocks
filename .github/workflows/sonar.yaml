@@ -1,0 +1,83 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: SonarCloud Analysis
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+jobs:
+  sonarcloud:
+    name: Upload to SonarCloud
+    runs-on: ubuntu-22.04
+    if: github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'apache'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v2
+      - name: 'Download code coverage'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "sonarcloud-data"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/sonarcloud-data.zip`, Buffer.from(download.data));
+      - name: 'Unzip code coverage'
+        run: |
+          unzip sonarcloud-data.zip -d sonarcloud-data
+          ls -a sonarcloud-data
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+      - name: Configure Kvrocks
+        run: |
+          ./x.py build -j$(nproc) --compiler gcc --skip-build
+
+      - name: Run sonar-scanner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
+        run: |
+          sonar-scanner \
+            --define sonar.cfamily.build-wrapper-output="sonarcloud-data" \
+            --define sonar.coverageReportPaths=sonarcloud-data/coverage.xml \
+            --define sonar.projectKey=apache_kvrocks \
+            --define sonar.organization=apache \
+            --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
+            --define sonar.pullrequest.key=${{ github.event.workflow_run.pull_requests[0].number }} \
+            --define sonar.pullrequest.branch=${{ github.event.workflow_run.pull_requests[0].head.ref }} \
+            --define sonar.pullrequest.base=${{ github.event.workflow_run.pull_requests[0].base.ref }}

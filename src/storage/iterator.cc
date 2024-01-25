@@ -145,6 +145,8 @@ Slice SubKeyIterator::UserKey() const {
   return internal_key.GetSubKey();
 }
 
+rocksdb::ColumnFamilyHandle* SubKeyIterator::ColumnFamilyHandle() const { return Valid() ? this->cf_handle_ : nullptr; }
+
 Slice SubKeyIterator::Value() const { return Valid() ? iter_->value() : Slice(); }
 
 void SubKeyIterator::Seek() {

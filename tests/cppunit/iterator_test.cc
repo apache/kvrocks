@@ -789,7 +789,7 @@ TEST_F(WALIteratorTest, BasicSortedInt) {
   redis::Sortedint sortedint(storage_, "test_ns8");
   uint64_t ret = 0;
   sortedint.Add("sortedint-1", {1, 2, 3}, &ret);
-  uint64_t removed_cnt;
+  uint64_t removed_cnt = 0;
   sortedint.Remove("sortedint-1", {2}, &removed_cnt);
 
   std::vector<uint64_t> expected_values = {1, 2, 3}, put_values;

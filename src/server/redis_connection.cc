@@ -137,11 +137,10 @@ std::string Connection::Bool(bool b) const {
   return Integer(b ? 1 : 0);
 }
 
-std::string Connection::MultiBulkString(const std::vector<std::string> &values,
-                                        bool output_nil_for_empty_string) const {
+std::string Connection::MultiBulkString(const std::vector<std::string> &values) const {
   std::string result = "*" + std::to_string(values.size()) + CRLF;
   for (const auto &value : values) {
-    if (value.empty() && output_nil_for_empty_string) {
+    if (value.empty()) {
       result += NilString();
     } else {
       result += BulkString(value);
@@ -163,9 +162,20 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values,
   return result;
 }
 
-std::string Connection::ArrayOfSet(const std::vector<std::string> &elems) const {
+std::string Connection::SetOfBulkStrings(const std::vector<std::string> &elems) const {
   std::string result;
-  result += SizeOfSet(elems.size());
+  result += HeaderOfSet(elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
+std::string Connection::MapOfBulkStrings(const std::vector<std::string> &elems) const {
+  CHECK(elems.size() % 2 == 0);
+
+  std::string result;
+  result += HeaderOfMap(elems.size() / 2);
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

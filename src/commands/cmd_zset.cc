@@ -87,7 +87,7 @@ class CommandZAdd : public Commander {
         return Status::OK();
       }
 
-      *output = redis::BulkString(util::Float2String(new_score));
+      *output = conn->Double(new_score);
     } else {
       *output = redis::Integer(ret);
     }
@@ -192,7 +192,7 @@ class CommandZIncrBy : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::BulkString(util::Float2String(score));
+    *output = conn->Double(score);
     return Status::OK();
   }
 
@@ -258,7 +258,7 @@ class CommandZPop : public Commander {
     output->append(redis::MultiLen(member_scores.size() * 2));
     for (const auto &ms : member_scores) {
       output->append(redis::BulkString(ms.member));
-      output->append(redis::BulkString(util::Float2String(ms.score)));
+      output->append(conn->Double(ms.score));
     }
 
     return Status::OK();
@@ -329,7 +329,7 @@ class CommandBZPop : public BlockingCommander {
     }
 
     if (!member_scores.empty()) {
-      SendMembersWithScores(member_scores, user_key);
+      SendMembersWithScores(conn, member_scores, user_key);
       return Status::OK();
     }
 
@@ -350,13 +350,14 @@ class CommandBZPop : public BlockingCommander {
     }
   }
 
-  void SendMembersWithScores(const std::vector<MemberScore> &member_scores, const std::string &user_key) {
+  void SendMembersWithScores(const Connection *conn, const std::vector<MemberScore> &member_scores,
+                             const std::string &user_key) {
     std::string output;
     output.append(redis::MultiLen(member_scores.size() * 2 + 1));
     output.append(redis::BulkString(user_key));
     for (const auto &ms : member_scores) {
       output.append(redis::BulkString(ms.member));
-      output.append(redis::BulkString(util::Float2String(ms.score)));
+      output.append(conn->Double(ms.score));
     }
     conn_->Reply(output);
   }
@@ -374,7 +375,7 @@ class CommandBZPop : public BlockingCommander {
 
     bool empty = member_scores.empty();
     if (!empty) {
-      SendMembersWithScores(member_scores, user_key);
+      SendMembersWithScores(conn_, member_scores, user_key);
     }
 
     return !empty;
@@ -405,7 +406,7 @@ static void SendMembersWithScoresForZMpop(Connection *conn, const std::string &u
   output.append(redis::MultiLen(member_scores.size() * 2));
   for (const auto &ms : member_scores) {
     output.append(redis::BulkString(ms.member));
-    output.append(redis::BulkString(util::Float2String(ms.score)));
+    output.append(conn->Double(ms.score));
   }
   conn->Reply(output);
 }
@@ -817,7 +818,7 @@ class CommandZRangeGeneric : public Commander {
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &ms : member_scores) {
       output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      if (with_scores_) output->append(conn->Double(ms.score));
     }
     return Status::OK();
   }
@@ -904,7 +905,7 @@ class CommandZRank : public Commander {
       if (with_score_) {
         output->append(redis::MultiLen(2));
         output->append(redis::Integer(rank));
-        output->append(redis::BulkString(util::Float2String(score)));
+        output->append(conn->Double(score));
       } else {
         *output = redis::Integer(rank);
       }
@@ -1047,7 +1048,7 @@ class CommandZScore : public Commander {
     if (s.IsNotFound()) {
       *output = conn->NilString();
     } else {
-      *output = redis::BulkString(util::Float2String(score));
+      *output = conn->Double(score);
     }
     return Status::OK();
   }
@@ -1074,9 +1075,9 @@ class CommandZMScore : public Commander {
       for (const auto &member : members) {
         auto iter = mscores.find(member.ToString());
         if (iter == mscores.end()) {
-          values.emplace_back("");
+          values.emplace_back(conn->NilString());
         } else {
-          values.emplace_back(util::Float2String(iter->second));
+          values.emplace_back(conn->Double(iter->second));
         }
       }
     }
@@ -1142,7 +1143,7 @@ class CommandZUnion : public Commander {
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &ms : member_scores) {
       output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      if (with_scores_) output->append(conn->Double(ms.score));
     }
     return Status::OK();
   }
@@ -1276,7 +1277,7 @@ class CommandZInter : public CommandZUnion {
     output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &member_score : member_scores) {
       output->append(redis::BulkString(member_score.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(member_score.score)));
+      if (with_scores_) output->append(conn->Double(member_score.score));
     }
     return Status::OK();
   }
@@ -1350,12 +1351,13 @@ class CommandZScan : public CommandSubkeyScanBase {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    std::vector<std::string> score_strings;
-    score_strings.reserve(scores.size());
-    for (const auto &score : scores) {
-      score_strings.emplace_back(util::Float2String(score));
+    auto cursor = GetNextCursor(srv, members, CursorType::kTypeHash);
+    std::vector<std::string> entries;
+    for (size_t i = 0; i < members.size(); i++) {
+      entries.emplace_back(redis::BulkString(members[i]));
+      entries.emplace_back(conn->Double(scores[i]));
     }
-    *output = GenerateOutput(srv, conn, members, score_strings, CursorType::kTypeZSet);
+    *output = redis::Array({redis::BulkString(cursor), redis::Array(entries)});
     return Status::OK();
   }
 };
@@ -1402,14 +1404,14 @@ class CommandZRandMember : public Commander {
     result_entries.reserve(member_scores.size());
 
     for (const auto &[member, score] : member_scores) {
-      result_entries.emplace_back(member);
-      if (with_scores_) result_entries.emplace_back(util::Float2String(score));
+      result_entries.emplace_back(BulkString(member));
+      if (with_scores_) result_entries.emplace_back(conn->Double(score));
     }
 
     if (no_parameters_)
       *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = ArrayOfBulkStrings(result_entries);
+      *output = Array(result_entries);
     return Status::OK();
   }
 
@@ -1456,7 +1458,7 @@ class CommandZDiff : public Commander {
     output->append(redis::MultiLen(members_with_scores.size() * (with_scores_ ? 2 : 1)));
     for (const auto &ms : members_with_scores) {
       output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(redis::BulkString(util::Float2String(ms.score)));
+      if (with_scores_) output->append(conn->Double(ms.score));
     }
 
     return Status::OK();

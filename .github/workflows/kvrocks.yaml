@@ -321,6 +321,13 @@ jobs:
         run: |
           gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
       
+      - name: Add event information
+        if: ${{ matrix.sonarcloud }}
+        env:
+          GITHUB_EVENT_JSON: ${{ toJson(github.event) }}
+        run: |
+          echo "$GITHUB_EVENT_JSON" | tee ${{ env.SONARCLOUD_OUTPUT_DIR }}/github-event.json
+      
       - name: Upload SonarCloud data
         if: ${{ matrix.sonarcloud }}
         uses: actions/upload-artifact@v3

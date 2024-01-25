@@ -386,7 +386,7 @@ class WALIteratorTest : public TestBase {
   void SetUp() override {}
 };
 
-TEST_F(WALIteratorTest, BasicType) {
+TEST_F(WALIteratorTest, BasicString) {
   auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
   redis::String string(storage_, "test_ns0");
   string.Set("a", "1");
@@ -424,19 +424,19 @@ TEST_F(WALIteratorTest, BasicType) {
         FAIL() << "Unexpected wal item type" << uint8_t(item.type);
     }
   }
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_delete_keys.size(), delete_keys.size());
   ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
   ASSERT_TRUE(std::equal(expected_delete_keys.begin(), expected_delete_keys.end(), delete_keys.begin()));
 }
 
-TEST_F(WALIteratorTest, ComplexType) {
+TEST_F(WALIteratorTest, BasicHash) {
   auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
   redis::Hash hash(storage_, "test_ns1");
   uint64_t ret = 0;
   hash.MSet("hash-1", {{"f0", "v0"}, {"f1", "v1"}, {"f2", "v2"}, {"f3", "v3"}}, false, &ret);
   uint64_t deleted_cnt = 0;
   hash.Delete("hash-1", {"f0"}, &deleted_cnt);
-
-  GTEST_LOG_(INFO) << "start sequence: " << start_seq;
 
   // Delete will put meta key again
   auto expected_put_keys = {"hash-1", "hash-1"};
@@ -482,6 +482,352 @@ TEST_F(WALIteratorTest, ComplexType) {
   ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
   ASSERT_TRUE(std::equal(expected_put_fields.begin(), expected_put_fields.end(), put_fields.begin()));
   ASSERT_TRUE(std::equal(expected_delete_fields.begin(), expected_delete_fields.end(), delete_fields.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicSet) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+
+  uint64_t ret = 0;
+  redis::Set set(storage_, "test_ns2");
+  set.Add("set-1", {"e0", "e1", "e2"}, &ret);
+  uint64_t removed_cnt = 0;
+  set.Remove("set-1", {"e0", "e1"}, &removed_cnt);
+
+  auto expected_put_keys = {"set-1", "set-1"};
+  auto expected_put_members = {"e0", "e1", "e2"};
+  auto expected_delete_members = {"e0", "e1"};
+  std::vector<std::string> put_keys, put_members, delete_members;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+          put_members.emplace_back(internal_key.GetSubKey().ToString());
+        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+          auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+          ASSERT_EQ(ns.ToString(), "test_ns2");
+          put_keys.emplace_back(key.ToString());
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisSet);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+        delete_members.emplace_back(internal_key.GetSubKey().ToString());
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_put_members.size(), put_members.size());
+  ASSERT_EQ(expected_delete_members.size(), delete_members.size());
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_put_members.begin(), expected_put_members.end(), put_members.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_members.begin(), expected_delete_members.end(), delete_members.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicZSet) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  uint64_t ret = 0;
+  redis::ZSet zset(storage_, "test_ns3");
+  auto mscores = std::vector<MemberScore>{{"z0", 0}, {"z1", 1}, {"z2", 2}};
+  zset.Add("zset-1", ZAddFlags(), &mscores, &ret);
+  uint64_t removed_cnt = 0;
+  zset.Remove("zset-1", {"z0"}, &removed_cnt);
+
+  auto expected_put_keys = {"zset-1", "zset-1"};
+  auto expected_put_members = {"z2", "z1", "z0"};
+  // member and score
+  int expected_delete_count = 2, delete_count = 0;
+  std::vector<std::string> put_keys, put_members;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+          put_members.emplace_back(internal_key.GetSubKey().ToString());
+        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+          auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+          ASSERT_EQ(ns.ToString(), "test_ns3");
+          put_keys.emplace_back(key.ToString());
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisZSet);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        delete_count++;
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_put_members.size(), put_members.size());
+  ASSERT_EQ(expected_delete_count, delete_count);
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_put_members.begin(), expected_put_members.end(), put_members.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicList) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  uint64_t ret = 0;
+  redis::List list(storage_, "test_ns4");
+  list.Push("list-1", {"l0", "l1", "l2", "l3", "l4"}, false, &ret);
+  ASSERT_TRUE(list.Trim("list-1", 2, 4).ok());
+
+  auto expected_put_keys = {"list-1", "list-1"};
+  auto expected_put_values = {"l0", "l1", "l2", "l3", "l4"};
+  auto expected_delete_count = 2, delete_count = 0;
+  std::vector<std::string> put_keys, put_values;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          put_values.emplace_back(item.value);
+        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+          auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+          ASSERT_EQ(ns.ToString(), "test_ns4");
+          put_keys.emplace_back(key.ToString());
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisList);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        delete_count++;
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_put_values.size(), put_values.size());
+  ASSERT_EQ(expected_delete_count, delete_count);
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_put_values.begin(), expected_put_values.end(), put_values.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicStream) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  redis::Stream stream(storage_, "test_ns5");
+  redis::StreamEntryID ret;
+  redis::StreamAddOptions options;
+  options.next_id_strategy = std::make_unique<redis::AutoGeneratedEntryID>();
+  stream.Add("stream-1", options, {"x0"}, &ret);
+  stream.Add("stream-1", options, {"x1"}, &ret);
+  stream.Add("stream-1", options, {"x2"}, &ret);
+  uint64_t deleted = 0;
+  ASSERT_TRUE(stream.DeleteEntries("stream-1", {ret}, &deleted).ok());
+
+  auto expected_put_keys = {"stream-1", "stream-1", "stream-1", "stream-1"};
+  auto expected_put_values = {"x0", "x1", "x2"};
+  int delete_count = 0;
+  std::vector<std::string> put_keys, put_values;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDStream) {
+          std::vector<std::string> elems;
+          auto s = redis::DecodeRawStreamEntryValue(item.value, &elems);
+          ASSERT_TRUE(s.IsOK() && !elems.empty());
+          put_values.emplace_back(elems[0]);
+        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+          auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+          ASSERT_EQ(ns.ToString(), "test_ns5");
+          put_keys.emplace_back(key.ToString());
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisStream);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        delete_count++;
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_put_values.size(), put_values.size());
+  ASSERT_EQ(deleted, delete_count);
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_put_values.begin(), expected_put_values.end(), put_values.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicBitmap) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+
+  redis::Bitmap bitmap(storage_, "test_ns6");
+  bool ret = false;
+  bitmap.SetBit("bitmap-1", 0, true, &ret);
+  bitmap.SetBit("bitmap-1", 8 * 1024, true, &ret);
+  bitmap.SetBit("bitmap-1", 2 * 8 * 1024, true, &ret);
+
+  auto expected_put_values = {"\x1", "\x1", "\x1"};
+  std::vector<std::string> put_values;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          put_values.emplace_back(item.value);
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisBitmap);
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+  ASSERT_EQ(expected_put_values.size(), put_values.size());
+  ASSERT_TRUE(std::equal(expected_put_values.begin(), expected_put_values.end(), put_values.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicJSON) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  redis::Json json(storage_, "test_ns7");
+  json.Set("json-1", "$", "{\"a\": 1, \"b\": 2}");
+  json.Set("json-2", "$", "{\"a\": 1, \"b\": 2}");
+  json.Set("json-3", "$", "{\"a\": 1, \"b\": 2}");
+
+  size_t result = 0;
+  ASSERT_TRUE(json.Del("json-3", "$", &result).ok());
+
+  auto expected_put_keys = {"json-1", "json-2", "json-3"};
+  auto expected_delete_keys = {"json-3"};
+  std::vector<std::string> put_keys, delete_keys;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        ASSERT_EQ(item.column_family_id, kColumnFamilyIDMetadata);
+        auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+        ASSERT_EQ(ns.ToString(), "test_ns7");
+        put_keys.emplace_back(key.ToString());
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisJson);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        ASSERT_EQ(item.column_family_id, kColumnFamilyIDMetadata);
+        auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
+        ASSERT_EQ(ns.ToString(), "test_ns7");
+        delete_keys.emplace_back(key.ToString());
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+
+  ASSERT_EQ(expected_put_keys.size(), put_keys.size());
+  ASSERT_EQ(expected_delete_keys.size(), delete_keys.size());
+  ASSERT_TRUE(std::equal(expected_put_keys.begin(), expected_put_keys.end(), put_keys.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_keys.begin(), expected_delete_keys.end(), delete_keys.begin()));
+}
+
+TEST_F(WALIteratorTest, BasicSortedInt) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  redis::Sortedint sortedint(storage_, "test_ns8");
+  uint64_t ret = 0;
+  sortedint.Add("sortedint-1", {1, 2, 3}, &ret);
+  uint64_t removed_cnt;
+  sortedint.Remove("sortedint-1", {2}, &removed_cnt);
+
+  std::vector<uint64_t> expected_values = {1, 2, 3}, put_values;
+  std::vector<uint64_t> expected_delete_values = {2}, delete_values;
+
+  engine::WALIterator iter(storage_);
+
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    auto item = iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypePut: {
+        if (item.column_family_id == kColumnFamilyIDDefault) {
+          const InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+          auto value = DecodeFixed64(internal_key.GetSubKey().data());
+          put_values.emplace_back(value);
+        }
+        break;
+      }
+      case engine::WALItem::Type::kTypeLogData: {
+        redis::WriteBatchLogData log_data;
+        ASSERT_TRUE(log_data.Decode(item.key).IsOK());
+        ASSERT_EQ(log_data.GetRedisType(), kRedisSortedint);
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        const InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
+        auto value = DecodeFixed64(internal_key.GetSubKey().data());
+        delete_values.emplace_back(value);
+        break;
+      }
+      default:
+        FAIL() << "Unexpected wal item type" << uint8_t(item.type);
+    }
+  }
+  ASSERT_EQ(expected_values.size(), put_values.size());
+  ASSERT_EQ(expected_delete_values.size(), delete_values.size());
+  ASSERT_TRUE(std::equal(expected_values.begin(), expected_values.end(), put_values.begin()));
+  ASSERT_TRUE(std::equal(expected_delete_values.begin(), expected_delete_values.end(), delete_values.begin()));
 }
 
 TEST_F(WALIteratorTest, NextSequence) {

@@ -72,11 +72,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
         run: |
-          pr_number=$(jq -r '.number' sonarcloud-data/github-event.json)
+          PR_NUMBER=$(jq -r '.number | select (.!=null)' sonarcloud-data/github-event.json)
+          echo "The PR number is $PR_NUMBER"
+
           sonar-scanner \
             --define sonar.cfamily.build-wrapper-output="sonarcloud-data" \
             --define sonar.coverageReportPaths=sonarcloud-data/coverage.xml \
             --define sonar.projectKey=apache_kvrocks \
             --define sonar.organization=apache \
             --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
-            --define sonar.pullrequest.key="$pr_number"
+            --define sonar.pullrequest.key=$PR_NUMBER

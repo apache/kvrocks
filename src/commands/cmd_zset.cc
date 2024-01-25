@@ -561,7 +561,7 @@ class CommandBZMPop : public BlockingCommander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[2], 10);
-    return {3, 1 + num_key, 1};
+    return {3, 2 + num_key, 1};
   }
 
  private:
@@ -1223,7 +1223,7 @@ class CommandZUnionStore : public Commander {
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
-    int num_key = *ParseInt<int>(args[1], 10);
+    int num_key = *ParseInt<int>(args[2], 10);
     return {3, 2 + num_key, 1};
   }
 
@@ -1250,7 +1250,7 @@ class CommandZInterStore : public CommandZUnionStore {
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
-    int num_key = *ParseInt<int>(args[1], 10);
+    int num_key = *ParseInt<int>(args[2], 10);
     return {3, 2 + num_key, 1};
   }
 };
@@ -1464,7 +1464,7 @@ class CommandZDiff : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[1], 10);
-    return {2, 2 + num_key, 1};
+    return {2, 1 + num_key, 1};
   }
 
  protected:
@@ -1504,7 +1504,7 @@ class CommandZDiffStore : public Commander {
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
-    int num_key = *ParseInt<int>(args[1], 10);
+    int num_key = *ParseInt<int>(args[2], 10);
     return {3, 2 + num_key, 1};
   }
 

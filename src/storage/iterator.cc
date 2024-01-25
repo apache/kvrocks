@@ -165,20 +165,16 @@ void SubKeyIterator::Reset() {
 }
 
 rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
-  if (slot_ != -1) {
-    if (slot_ != ExtractSlotId(key)) {
-      return rocksdb::Status::OK();
-    }
+  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+    return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypePut, column_family_id, key.ToString(), value.ToString());
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status WALBatchExtractor::DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) {
-  if (slot_ != -1) {
-    if (slot_ != ExtractSlotId(key)) {
-      return rocksdb::Status::OK();
-    }
+  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+    return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypeDelete, column_family_id, key.ToString(), std::string{});
   return rocksdb::Status::OK();
@@ -202,7 +198,12 @@ bool WALBatchExtractor::Iter::Valid() { return items_ && cur_ < items_->size(); 
 
 void WALBatchExtractor::Iter::Next() { cur_++; }
 
-WALItem WALBatchExtractor::Iter::Value() { return (*items_)[cur_]; }
+WALItem WALBatchExtractor::Iter::Value() {
+  if (!Valid()) {
+    return {};
+  }
+  return (*items_)[cur_];
+}
 
 void WALIterator::Reset() {
   if (iter_) {

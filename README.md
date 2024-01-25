@@ -64,6 +64,12 @@ sudo bash cmake.sh --skip-license --prefix=/usr
 # enable gcc and make in devtoolset-11
 source /opt/rh/devtoolset-11/enable
 
+# openSUSE / SUSE Linux Enterprise
+sudo zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl cmake
+
+# Arch Linux
+sudo pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
+
 # macOS
 brew install git cmake autoconf automake libtool openssl
 # please link openssl by force if it still cannot be found after installing

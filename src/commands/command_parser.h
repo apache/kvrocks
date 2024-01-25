@@ -29,6 +29,7 @@
 #include "parse_util.h"
 #include "status.h"
 #include "string_util.h"
+#include "type_util.h"
 
 template <typename Iter>
 struct MoveIterator : Iter {
@@ -47,22 +48,26 @@ struct CommandParser {
 
   CommandParser(Iter begin, Iter end) : begin_(std::move(begin)), end_(std::move(end)) {}
 
-  template <typename Container, std::enable_if_t<std::is_lvalue_reference_v<Container>, int> = 0>
+  template <typename Container, std::enable_if_t<std::is_lvalue_reference_v<Container> &&
+                                                     !std::is_same_v<RemoveCVRef<Container>, CommandParser>,
+                                                 int> = 0>
   explicit CommandParser(Container&& con, size_t skip_num = 0) : CommandParser(std::begin(con), std::end(con)) {
     std::advance(begin_, skip_num);
   }
 
-  template <typename Container, std::enable_if_t<!std::is_lvalue_reference_v<Container>, int> = 0>
+  template <typename Container, std::enable_if_t<!std::is_lvalue_reference_v<Container> &&
+                                                     !std::is_same_v<RemoveCVRef<Container>, CommandParser>,
+                                                 int> = 0>
   explicit CommandParser(Container&& con, size_t skip_num = 0)
       : CommandParser(MoveIterator(std::begin(con)), MoveIterator(std::end(con))) {
     std::advance(begin_, skip_num);
   }
 
   CommandParser(const CommandParser&) = default;
-  CommandParser(CommandParser&&) = default;
+  CommandParser(CommandParser&&) noexcept = default;
 
   CommandParser& operator=(const CommandParser&) = default;
-  CommandParser& operator=(CommandParser&&) = default;
+  CommandParser& operator=(CommandParser&&) noexcept = default;
 
   ~CommandParser() = default;
 

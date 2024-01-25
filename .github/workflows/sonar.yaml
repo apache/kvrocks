@@ -39,45 +39,30 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            async function getData(name) {
-              let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: context.payload.workflow_run.id,
-              });
-              let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-                return artifact.name == name
-              })[0];
-              if(!matchArtifact) return;
-              let download = await github.rest.actions.downloadArtifact({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                artifact_id: matchArtifact.id,
-                archive_format: 'zip',
-              });
-              let fs = require('fs');
-              fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${name}.zip`, Buffer.from(download.data));
-            }
-            await getData("sonarcloud-data");
-            await getData("pr");
-            
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "sonarcloud-data"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/sonarcloud-data.zip`, Buffer.from(download.data));
       - name: 'Unzip code coverage'
         run: |
           unzip sonarcloud-data.zip -d sonarcloud-data
           ls -a sonarcloud-data
-          
-      - name: 'Unzip PR info'
-        id: info
-        run: |
-          if [ -f pr.zip ]; then
-            unzip pr.zip
-            cat info >> "$GITHUB_OUTPUT" 
-          fi
-          
+
       - uses: actions/setup-python@v4
         with:
           python-version: 3.x
-          
       - name: Configure Kvrocks
         run: |
           ./x.py build -j$(nproc) --compiler gcc --skip-build
@@ -87,10 +72,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
         run: |
+          pr_number=$(jq -r '.number' sonarcloud-data/github-event.json)
           sonar-scanner \
             --define sonar.cfamily.build-wrapper-output="sonarcloud-data" \
             --define sonar.coverageReportPaths=sonarcloud-data/coverage.xml \
             --define sonar.projectKey=apache_kvrocks \
             --define sonar.organization=apache \
             --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
-            --define sonar.pullrequest.key=${{ steps.info.outputs.number }} 
+            --define sonar.pullrequest.key="$pr_number"

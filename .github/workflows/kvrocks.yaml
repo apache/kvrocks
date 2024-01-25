@@ -334,20 +334,7 @@ jobs:
         with:
           name: sonarcloud-data
           path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
-          
-      - name: Save PR info
-        if: ${{ (github.event_name == 'pull_request') && matrix.sonarcloud }}
-        run: |
-          mkdir -p ./pr
-          echo "number=${{ github.event.number }}" >> ./pr/info
-          
-      - name: Upload PR info
-        uses: actions/upload-artifact@v3
-        if: ${{ matrix.sonarcloud }}
-        with:
-          name: pr
-          path: pr/
-          
+
   check-docker:
     name: Check Docker image
     needs: [precondition, check-and-lint, check-typos]

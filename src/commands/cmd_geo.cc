@@ -624,9 +624,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     return Status::OK();
   }
 
-  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
-    return {{1, 1, 1}, {2, 2, 1}};
-  }
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) { return {{1, 1, 1}, {2, 2, 1}}; }
 
  private:
   bool store_distance_ = false;

@@ -178,13 +178,22 @@ func TestCommand(t *testing.T) {
 	})
 
 	t.Run("COMMAND GETKEYS GEORADIUS", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst")
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km")
 		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst")
+		vs, err = r.Slice()
 		require.NoError(t, err)
 		require.Len(t, vs, 2)
 		require.Equal(t, "src", vs[0])
 		require.Equal(t, "dst", vs[1])
 
+		// storedist
 		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "storedist", "dst")
 		vs, err = r.Slice()
 		require.NoError(t, err)
@@ -192,6 +201,7 @@ func TestCommand(t *testing.T) {
 		require.Equal(t, "src", vs[0])
 		require.Equal(t, "dst", vs[1])
 
+		// store + storedist
 		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst1", "storedist", "dst2")
 		vs, err = r.Slice()
 		require.NoError(t, err)
@@ -201,13 +211,22 @@ func TestCommand(t *testing.T) {
 	})
 
 	t.Run("COMMAND GETKEYS GEORADIUSBYMEMBER", func(t *testing.T) {
-		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst")
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m")
 		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst")
+		vs, err = r.Slice()
 		require.NoError(t, err)
 		require.Len(t, vs, 2)
 		require.Equal(t, "src", vs[0])
 		require.Equal(t, "dst", vs[1])
 
+		// storedist
 		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "storedist", "dst")
 		vs, err = r.Slice()
 		require.NoError(t, err)
@@ -215,6 +234,7 @@ func TestCommand(t *testing.T) {
 		require.Equal(t, "src", vs[0])
 		require.Equal(t, "dst", vs[1])
 
+		// store + storedist
 		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst1", "storedist", "dst2")
 		vs, err = r.Slice()
 		require.NoError(t, err)

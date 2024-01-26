@@ -344,7 +344,7 @@ class CommandGeoRadius : public CommandGeoBase {
     return redis::Array(list);
   }
 
-  static CommandKeyRange Range(const std::vector<std::string> &args) {
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
     int store_key = 0;
 
     // Check for the presence of the stored key in the command args.
@@ -358,7 +358,10 @@ class CommandGeoRadius : public CommandGeoBase {
       }
     }
 
-    return {1, 1, 1, store_key};
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
   }
 
  protected:
@@ -622,6 +625,10 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     return Status::OK();
   }
 
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
+    return {{1, 1, 1}, {2, 2, 1}};
+  }
+
  private:
   bool store_distance_ = false;
   std::string store_key_;
@@ -665,7 +672,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     return Status::OK();
   }
 
-  static CommandKeyRange Range(const std::vector<std::string> &args) {
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
     int store_key = 0;
 
     // Check for the presence of the stored key in the command args.
@@ -679,7 +686,10 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
       }
     }
 
-    return {1, 1, 1, store_key};
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
   }
 };
 
@@ -703,6 +713,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoSearch>("geosearch", -7, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoSearchStore>("geosearchstore", -8, "write", 2, 2, 1, 1))
+                        MakeCmdAttr<CommandGeoSearchStore>("geosearchstore", -8, "write", CommandGeoSearchStore::Range))
 
 }  // namespace redis

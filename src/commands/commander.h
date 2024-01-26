@@ -93,22 +93,18 @@ class CommanderWithParseMove : Commander {
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
 
 struct CommandKeyRange {
-  // index of the first key (non-store key) in command tokens
+  // index of the first key in command tokens
   // 0 stands for no key, since the first index of command arguments is command name
   int first_key;
 
-  // index of the last key (non-store key) in command tokens
+  // index of the last key in command tokens
   // in normal one-key commands, first key and last key index are both 1
   // -n stands for the n-th last index of the sequence, i.e. args.size() - n
   int last_key;
 
-  // step length of key (non-store key) position
+  // step length of key position
   // e.g. key step 2 means "key other key other ..." sequence
   int key_step;
-
-  // index of the store key in command tokens
-  // 0 stands for no store key, since the first index of command arguments is command name
-  int store_key;
 };
 
 using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
@@ -201,33 +197,12 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          description,
                          ParseCommandFlags(description, name),
                          flag_gen,
-                         {first_key, last_key, key_step, 0},
+                         {first_key, last_key, key_step},
                          {},
                          {},
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   if ((first_key > 0 && key_step <= 0) || (first_key > 0 && last_key >= 0 && last_key < first_key)) {
-    std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
-    std::abort();
-  }
-
-  return attr;
-}
-
-template <typename T>
-auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step, int store_key, const AdditionalFlagGen &flag_gen = {}) {
-  CommandAttributes attr{name,
-                         arity,
-                         description,
-                         ParseCommandFlags(description, name),
-                         flag_gen,
-                         {first_key, last_key, key_step, store_key},
-                         {},
-                         {},
-                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
-
-  if ((first_key > 0 && key_step <= 0) || (first_key > 0 && last_key >= 0 && last_key < first_key) || (store_key < 0)) {
     std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
     std::abort();
   }
@@ -243,7 +218,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          description,
                          ParseCommandFlags(description, name),
                          flag_gen,
-                         {-1, 0, 0, 0},
+                         {-1, 0, 0},
                          gen,
                          {},
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
@@ -259,7 +234,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          description,
                          ParseCommandFlags(description, name),
                          flag_gen,
-                         {-2, 0, 0, 0},
+                         {-2, 0, 0},
                          {},
                          vec_gen,
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};

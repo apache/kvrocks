@@ -365,7 +365,6 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
  protected:
-  int option_start_index_ = 6;
   double radius_ = 0;
   bool with_coord_ = false;
   bool with_dist_ = false;

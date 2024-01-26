@@ -607,6 +607,8 @@ class CommandDebug : public Commander {
         *output = redis::BulkString("Hello World");
       } else if (protocol_type_ == "integer") {
         *output = redis::Integer(12345);
+      } else if (protocol_type_ == "double") {
+        *output = conn->Double(3.141);
       } else if (protocol_type_ == "array") {
         *output = redis::MultiLen(3);
         for (int i = 0; i < 3; i++) {
@@ -634,7 +636,7 @@ class CommandDebug : public Commander {
       } else {
         *output = redis::Error(
             "Wrong protocol type name. Please use one of the following: "
-            "string|integer|array|set|bignum|true|false|null");
+            "string|integer|double|array|set|bignum|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};

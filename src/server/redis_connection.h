@@ -68,6 +68,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string BigNumber(const std::string &n) const {
     return protocol_version_ == RESP::v3 ? "(" + n + CRLF : BulkString(n);
   }
+  std::string Double(double d) const {
+    return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
+  }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
   std::string MultiBulkString(const std::vector<std::string> &values) const;

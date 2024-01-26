@@ -112,25 +112,11 @@ class CommandSubkeyScanBase : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &fields,
-                             const std::vector<std::string> &values, CursorType cursor_type) {
-    std::vector<std::string> list;
-    auto items_count = fields.size();
-    if (items_count == static_cast<size_t>(limit_)) {
-      auto end_cursor = srv->GenerateCursorFromKeyName(fields.back(), cursor_type);
-      list.emplace_back(redis::BulkString(end_cursor));
-    } else {
-      list.emplace_back(redis::BulkString("0"));
+  std::string GetNextCursor(Server *srv, std::vector<std::string> &fields, CursorType cursor_type) const {
+    if (fields.size() == static_cast<size_t>(limit_)) {
+      return srv->GenerateCursorFromKeyName(fields.back(), cursor_type);
     }
-    std::vector<std::string> fvs;
-    if (items_count > 0) {
-      for (size_t i = 0; i < items_count; i++) {
-        fvs.emplace_back(fields[i]);
-        fvs.emplace_back(values[i]);
-      }
-    }
-    list.emplace_back(ArrayOfBulkStrings(fvs));
-    return redis::Array(list);
+    return "0";
   }
 
  protected:

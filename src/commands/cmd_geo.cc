@@ -150,7 +150,7 @@ class CommandGeoDist : public CommandGeoBase {
     if (s.IsNotFound()) {
       *output = conn->NilString();
     } else {
-      *output = redis::BulkString(util::Float2String(GetDistanceByUnit(distance)));
+      *output = conn->Double(GetDistanceByUnit(distance));
     }
     return Status::OK();
   }
@@ -215,8 +215,7 @@ class CommandGeoPos : public Commander {
       if (iter == geo_points.end()) {
         list.emplace_back(conn->NilString());
       } else {
-        list.emplace_back(conn->MultiBulkString(
-            {util::Float2String(iter->second.longitude), util::Float2String(iter->second.latitude)}));
+        list.emplace_back(redis::Array({conn->Double(iter->second.longitude), conn->Double(iter->second.latitude)}));
       }
     }
     *output = redis::Array(list);
@@ -331,14 +330,13 @@ class CommandGeoRadius : public CommandGeoBase {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(conn->Double(GetDistanceByUnit(geo_point.dist)));
         }
         if (with_hash_) {
-          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+          one.emplace_back(conn->Double(geo_point.score));
         }
         if (with_coord_) {
-          one.emplace_back(
-              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(redis::Array({conn->Double(geo_point.longitude), conn->Double(geo_point.latitude)}));
         }
         list.emplace_back(redis::Array(one));
       }
@@ -527,14 +525,13 @@ class CommandGeoSearch : public CommandGeoBase {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(conn->Double(GetDistanceByUnit(geo_point.dist)));
         }
         if (with_hash_) {
-          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+          one.emplace_back(conn->Double(geo_point.score));
         }
         if (with_coord_) {
-          one.emplace_back(
-              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(redis::Array({conn->Double(geo_point.longitude), conn->Double(geo_point.latitude)}));
         }
         output.emplace_back(redis::Array(one));
       }

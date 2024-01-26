@@ -101,6 +101,17 @@ bool InternalKey::operator==(const InternalKey &that) const {
   return version_ == that.version_;
 }
 
+// Must slot encoded
+uint16_t ExtractSlotId(Slice ns_key) {
+  uint8_t namespace_size = 0;
+  GetFixed8(&ns_key, &namespace_size);
+  ns_key.remove_prefix(namespace_size);
+
+  uint16_t slot_id = HASH_SLOTS_SIZE;
+  GetFixed16(&ns_key, &slot_id);
+  return slot_id;
+}
+
 template <typename T>
 std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded) {
   uint8_t namespace_size = 0;

@@ -1224,7 +1224,7 @@ class CommandZUnionStore : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[2], 10);
-    return {3, 2 + num_key, 1};
+    return {3, 2 + num_key, 1, 1};
   }
 
  protected:
@@ -1251,7 +1251,7 @@ class CommandZInterStore : public CommandZUnionStore {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[2], 10);
-    return {3, 2 + num_key, 1};
+    return {3, 2 + num_key, 1, 1};
   }
 };
 
@@ -1505,7 +1505,7 @@ class CommandZDiffStore : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_key = *ParseInt<int>(args[2], 10);
-    return {3, 2 + num_key, 1};
+    return {3, 2 + num_key, 1, 1};
   }
 
  protected:

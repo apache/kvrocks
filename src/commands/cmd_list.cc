@@ -225,6 +225,7 @@ class CommandLMPop : public Commander {
     // This parsing would always succeed as this cmd has been parsed before.
     auto num_key = *ParseInt<int32_t>(args[1], 10);
     range.last_key = range.first_key + num_key - 1;
+    range.store_key = 0;
     return range;
   };
 
@@ -446,6 +447,7 @@ class CommandBLMPop : public BlockingCommander {
     // This parsing would always succeed as this cmd has been parsed before.
     auto num_key = *ParseInt<int32_t>(args[2], 10);
     range.last_key = range.first_key + num_key - 1;
+    range.store_key = 0;
     return range;
   };
 

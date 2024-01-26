@@ -81,8 +81,18 @@ void DumpKeyRange(std::vector<int> &keys_index, int argc, const CommandKeyRange 
   auto last = range.last_key;
   if (last < 0) last = argc + last;
 
+  // The index of store key is before the first key
+  if (range.store_key > 0 && range.store_key < range.first_key) {
+    keys_index.emplace_back(range.store_key);
+  }
+
   for (int i = range.first_key; i <= last; i += range.key_step) {
     keys_index.emplace_back(i);
+  }
+
+  // The index of store key is after the last key
+  if (range.store_key > 0 && range.store_key > last) {
+    keys_index.emplace_back(range.store_key);
   }
 }
 

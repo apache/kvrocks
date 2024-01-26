@@ -601,21 +601,15 @@ void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamil
   }
 }
 
-rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates,
-                               bool ignore_max_db_size) {
+rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   if (is_txn_mode_) {
     // The batch won't be flushed until the transaction was committed or rollback
     return rocksdb::Status::OK();
   }
-  return writeToDB(options, updates, ignore_max_db_size);
+  return writeToDB(options, updates);
 }
 
-rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates,
-                                   bool ignore_max_db_size) {
-  if (!ignore_max_db_size && db_size_limit_reached_) {
-    return rocksdb::Status::SpaceLimit();
-  }
-
+rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
   // Put replication id logdata at the end of write batch
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
@@ -628,7 +622,7 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::C
                                 const rocksdb::Slice &key) {
   auto batch = GetWriteBatchBase();
   batch->Delete(cf_handle, key);
-  return Write(options, batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
+  return Write(options, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
@@ -644,7 +638,7 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
     return s;
   }
 
-  return Write(write_opts_, batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
+  return Write(write_opts_, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -659,7 +653,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
     return s;
   }
 
-  return Write(options, batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
+  return Write(options, batch->GetWriteBatch());
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -818,7 +812,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);
-  auto s = Write(write_opts_, batch->GetWriteBatch(), /*ignore_max_db_size*/ true);
+  auto s = Write(write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return {Status::NotOK, s.ToString()};
   }

@@ -501,6 +501,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
+    if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {
+      Reply(redis::Error("ERR write command not allowed when reached max-db-size."));
+      continue;
+    }
+
     if (!config->slave_serve_stale_data && srv_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         srv_->GetReplicationState() != kReplConnected) {
       Reply(

@@ -432,7 +432,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHDel>("hdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),

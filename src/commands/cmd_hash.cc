@@ -374,6 +374,7 @@ class CommandHScan : public CommandSubkeyScanBase {
 
     auto cursor = GetNextCursor(srv, fields, CursorType::kTypeHash);
     std::vector<std::string> entries;
+    entries.reserve(2 * fields.size());
     for (size_t i = 0; i < fields.size(); i++) {
       entries.emplace_back(redis::BulkString(fields[i]));
       entries.emplace_back(redis::BulkString(values[i]));

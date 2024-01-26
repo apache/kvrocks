@@ -1351,8 +1351,9 @@ class CommandZScan : public CommandSubkeyScanBase {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    auto cursor = GetNextCursor(srv, members, CursorType::kTypeHash);
+    auto cursor = GetNextCursor(srv, members, CursorType::kTypeZSet);
     std::vector<std::string> entries;
+    entries.reserve(2 * members.size());
     for (size_t i = 0; i < members.size(); i++) {
       entries.emplace_back(redis::BulkString(members[i]));
       entries.emplace_back(conn->Double(scores[i]));

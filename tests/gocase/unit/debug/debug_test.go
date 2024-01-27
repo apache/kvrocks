@@ -21,6 +21,7 @@ package debug
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -43,7 +44,11 @@ func TestDebugProtocolV2(t *testing.T) {
 		types := map[string]interface{}{
 			"string":  "Hello World",
 			"integer": int64(12345),
+			"double":  "3.141",
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
+			"map":     []interface{}{int64(0), int64(0), int64(1), int64(1), int64(2), int64(0)},
+			"bignum":  "1234567999999999999999999999999999999",
 			"true":    int64(1),
 			"false":   int64(0),
 		}
@@ -81,10 +86,15 @@ func TestDebugProtocolV3(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("debug protocol type", func(t *testing.T) {
+		bignum, _ := big.NewInt(0).SetString("1234567999999999999999999999999999999", 10)
 		types := map[string]interface{}{
 			"string":  "Hello World",
 			"integer": int64(12345),
+			"double":  3.141,
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
+			"set":     []interface{}{int64(0), int64(1), int64(2)},
+			"map":     map[interface{}]interface{}{int64(0): false, int64(1): true, int64(2): false},
+			"bignum":  bignum,
 			"true":    true,
 			"false":   false,
 		}

@@ -284,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(values, false);
+    *output = ArrayOfBulkStrings(values);
 
     return Status::OK();
   }
@@ -306,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(kv_pairs, false);
+    *output = conn->MapOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }
@@ -350,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = conn->MultiBulkString(kv_pairs, false);
+    *output = ArrayOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }
@@ -372,7 +372,14 @@ class CommandHScan : public CommandSubkeyScanBase {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = GenerateOutput(srv, conn, fields, values, CursorType::kTypeHash);
+    auto cursor = GetNextCursor(srv, fields, CursorType::kTypeHash);
+    std::vector<std::string> entries;
+    entries.reserve(2 * fields.size());
+    for (size_t i = 0; i < fields.size(); i++) {
+      entries.emplace_back(redis::BulkString(fields[i]));
+      entries.emplace_back(redis::BulkString(values[i]));
+    }
+    *output = redis::Array({redis::BulkString(cursor), redis::Array(entries)});
     return Status::OK();
   }
 };
@@ -417,7 +424,7 @@ class CommandHRandField : public Commander {
     if (no_parameters_)
       *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = conn->MultiBulkString(result_entries, false);
+      *output = ArrayOfBulkStrings(result_entries);
     return Status::OK();
   }
 

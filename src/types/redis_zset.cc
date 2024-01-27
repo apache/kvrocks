@@ -179,7 +179,7 @@ rocksdb::Status ZSet::Pop(const Slice &user_key, int count, bool min, MemberScor
 
   auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
-  // see comment in rangebyscore()
+  // see comment in RangeByScore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
@@ -249,7 +249,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   auto batch = storage_->GetWriteBatchBase();
   auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
-  // see comment in rangebyscore()
+  // see comment in RangeByScore()
   if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
@@ -583,7 +583,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
 
   auto iter = util::UniqueIterator(storage_, read_options, score_cf_handle_);
   iter->Seek(start_key);
-  // see comment in rangebyscore()
+  // see comment in RangeByScore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
     iter->SeekForPrev(start_key);
   }
@@ -716,7 +716,7 @@ rocksdb::Status ZSet::InterCard(const std::vector<std::string> &user_keys, uint6
     MemberScores mscores;
     auto s = RangeByScore(user_key, spec, &mscores, nullptr);
     if (!s.ok() || mscores.empty()) return s;
-    mscores_list.emplace_back(mscores);
+    mscores_list.emplace_back(std::move(mscores));
   }
   std::sort(mscores_list.begin(), mscores_list.end(),
             [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
@@ -897,13 +897,14 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok() || metadata.size == 0) return s;
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (metadata.size == 0) return rocksdb::Status::OK();
 
   std::vector<MemberScore> samples;
   s = GetAllMemberScores(user_key, &samples);
   if (!s.ok() || samples.empty()) return s;
 
-  auto size = static_cast<uint64_t>(samples.size());
+  uint64_t size = samples.size();
   member_scores->reserve(std::min(size, count));
 
   if (!unique || count == 1) {
@@ -915,19 +916,58 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
     }
   } else if (size <= count) {
     for (auto &sample : samples) {
-      member_scores->push_back(sample);
+      member_scores->push_back(std::move(sample));
     }
   } else {
     // first shuffle the samples
-    std::shuffle(samples.begin(), samples.end(), std::random_device{});
-
+    std::mt19937 gen(std::random_device{}());
+    std::shuffle(samples.begin(), samples.end(), gen);
     // then pick the first `count` ones.
     for (uint64_t i = 0; i < count; i++) {
-      member_scores->emplace_back(samples[i]);
+      member_scores->emplace_back(std::move(samples[i]));
     }
   }
 
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {
+  members->clear();
+  MemberScores source_member_scores;
+  RangeScoreSpec spec;
+  uint64_t first_element_size = 0;
+  auto s = RangeByScore(keys[0], spec, &source_member_scores, &first_element_size);
+  if (!s.ok()) return s;
+
+  if (first_element_size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  std::set<std::string> exclude_members;
+  MemberScores target_member_scores;
+  for (size_t i = 1; i < keys.size(); i++) {
+    uint64_t size = 0;
+    s = RangeByScore(keys[i], spec, &target_member_scores, &size);
+    if (!s.ok()) return s;
+    for (auto &member_score : target_member_scores) {
+      exclude_members.emplace(std::move(member_score.member));
+    }
+    target_member_scores.clear();
+  }
+  for (const auto &member_score : source_member_scores) {
+    if (exclude_members.find(member_score.member) == exclude_members.end()) {
+      members->push_back(member_score);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ZSet::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count) {
+  MemberScores mscores;
+  auto s = Diff(keys, &mscores);
+  if (!s.ok()) return s;
+  *stored_count = mscores.size();
+  return Overwrite(dst, mscores);
 }
 
 }  // namespace redis

@@ -127,6 +127,10 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
+          - name: SonarCloud with Coverage
+            os: ubuntu-22.04
+            compiler: gcc
+            sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
@@ -192,6 +196,8 @@ jobs:
             with_speedb: -DENABLE_SPEEDB=ON
 
     runs-on: ${{ matrix.os }}
+    env:
+      SONARCLOUD_OUTPUT_DIR: sonarcloud-data
     steps:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
@@ -222,6 +228,8 @@ jobs:
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v4
         with:
           python-version: 3.x
@@ -229,10 +237,25 @@ jobs:
         with:
           go-version-file: 'tests/gocase/go.mod'
 
+      - name: Install gcovr 5.0
+        run: pip install gcovr==5.0 # 5.1 is not supported
+        if: ${{ matrix.sonarcloud }}
+
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v2
+        if: ${{ matrix.sonarcloud }}
+
       - name: Build Kvrocks
+        if: ${{ !matrix.sonarcloud }}
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
-            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
+            ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
+            ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+
+      - name: Build Kvrocks (SonarCloud)
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -292,6 +315,25 @@ jobs:
           path: |
             ./build/kvrocks
             ./coredumps/*
+      
+      - name: Collect coverage into one XML report
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
+      
+      - name: Add event information
+        if: ${{ matrix.sonarcloud }}
+        env:
+          GITHUB_EVENT_JSON: ${{ toJson(github.event) }}
+        run: |
+          echo "$GITHUB_EVENT_JSON" | tee ${{ env.SONARCLOUD_OUTPUT_DIR }}/github-event.json
+      
+      - name: Upload SonarCloud data
+        if: ${{ matrix.sonarcloud }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: sonarcloud-data
+          path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
 
   check-docker:
     name: Check Docker image

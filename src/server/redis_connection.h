@@ -65,11 +65,27 @@ class Connection : public EvbufCallbackBase<Connection> {
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
   std::string Bool(bool b) const;
+  std::string BigNumber(const std::string &n) const {
+    return protocol_version_ == RESP::v3 ? "(" + n + CRLF : BulkString(n);
+  }
+  std::string Double(double d) const {
+    return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
+  }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
-  std::string MultiBulkString(const std::vector<std::string> &values, bool output_nil_for_empty_string = true) const;
+  std::string MultiBulkString(const std::vector<std::string> &values) const;
   std::string MultiBulkString(const std::vector<std::string> &values,
                               const std::vector<rocksdb::Status> &statuses) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfSet(T len) const {
+    return protocol_version_ == RESP::v3 ? "~" + std::to_string(len) + CRLF : MultiLen(len);
+  }
+  std::string SetOfBulkStrings(const std::vector<std::string> &elems) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfMap(T len) const {
+    return protocol_version_ == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
+  }
+  std::string MapOfBulkStrings(const std::vector<std::string> &elems) const;
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

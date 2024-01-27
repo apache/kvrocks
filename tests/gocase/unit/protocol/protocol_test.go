@@ -153,7 +153,11 @@ func TestProtocolRESP2(t *testing.T) {
 		types := map[string][]string{
 			"string":  {"$11", "Hello World"},
 			"integer": {":12345"},
+			"double":  {"$5", "3.141"},
 			"array":   {"*3", ":0", ":1", ":2"},
+			"set":     {"*3", ":0", ":1", ":2"},
+			"map":     {"*6", ":0", ":0", ":1", ":1", ":2", ":0"},
+			"bignum":  {"$37", "1234567999999999999999999999999999999"},
 			"true":    {":1"},
 			"false":   {":0"},
 			"null":    {"$-1"},
@@ -197,7 +201,7 @@ func TestProtocolRESP3(t *testing.T) {
 
 	t.Run("debug protocol string", func(t *testing.T) {
 		require.NoError(t, c.WriteArgs("HELLO", "3"))
-		values := []string{"*6", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
+		values := []string{"%3", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
 		for _, line := range values {
 			c.MustRead(t, line)
 		}
@@ -205,7 +209,11 @@ func TestProtocolRESP3(t *testing.T) {
 		types := map[string][]string{
 			"string":  {"$11", "Hello World"},
 			"integer": {":12345"},
+			"double":  {",3.141"},
 			"array":   {"*3", ":0", ":1", ":2"},
+			"set":     {"~3", ":0", ":1", ":2"},
+			"map":     {"%3", ":0", "#f", ":1", "#t", ":2", "#f"},
+			"bignum":  {"(1234567999999999999999999999999999999"},
 			"true":    {"#t"},
 			"false":   {"#f"},
 			"null":    {"_"},

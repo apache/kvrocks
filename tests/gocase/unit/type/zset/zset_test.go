@@ -67,7 +67,8 @@ func createDefaultLexZset(rdb *redis.Client, ctx context.Context) {
 		{0, "omega"}})
 }
 
-func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string, srv *util.KvrocksServer) {
+func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRESP3, encoding string, srv *util.KvrocksServer) {
+	isRESP3 := enabledRESP3 == "yes"
 	t.Run(fmt.Sprintf("Check encoding - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
 		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "x"})
@@ -103,9 +104,15 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 
 	t.Run(fmt.Sprintf("ZSET ZADD IncrMixedOtherOptions - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "ztmp")
-		require.Equal(t, "1.5", rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Val())
-		require.Equal(t, redis.Nil, rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Err())
-		require.Equal(t, "3", rdb.Do(ctx, "zadd", "ztmp", "xx", "xx", "xx", "xx", "incr", "1.5", "abc").Val())
+		if isRESP3 {
+			require.Equal(t, 1.5, rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Val())
+			require.Equal(t, redis.Nil, rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Err())
+			require.EqualValues(t, 3, rdb.Do(ctx, "zadd", "ztmp", "xx", "xx", "xx", "xx", "incr", "1.5", "abc").Val())
+		} else {
+			require.Equal(t, "1.5", rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Val())
+			require.Equal(t, redis.Nil, rdb.Do(ctx, "zadd", "ztmp", "nx", "nx", "nx", "nx", "incr", "1.5", "abc").Err())
+			require.Equal(t, "3", rdb.Do(ctx, "zadd", "ztmp", "xx", "xx", "xx", "xx", "incr", "1.5", "abc").Val())
+		}
 
 		rdb.Del(ctx, "ztmp")
 		require.Equal(t, 1.5, rdb.ZAddArgsIncr(ctx, "ztmp", redis.ZAddArgs{NX: true, Members: []redis.Z{{Member: "abc", Score: 1.5}}}).Val())
@@ -684,14 +691,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
 		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
 
-		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
-		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrank", "zranktmp", "y", "withscore").Val())
-		require.Equal(t, []interface{}{int64(2), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
-		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
-		require.Equal(t, []interface{}{int64(2), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
-		require.Equal(t, []interface{}{int64(1), "20"}, rdb.Do(ctx, "zrevrank", "zranktmp", "y", "withscore").Val())
-		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
-		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, redis.RankScore{Rank: 0, Score: 10}, rdb.ZRankWithScore(ctx, "zranktmp", "x").Val())
+		require.Equal(t, redis.RankScore{Rank: 1, Score: 20}, rdb.ZRankWithScore(ctx, "zranktmp", "y").Val())
+		require.Equal(t, redis.RankScore{Rank: 2, Score: 30}, rdb.ZRankWithScore(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRankWithScore(ctx, "zranktmp", "foo").Err())
+		require.Equal(t, redis.RankScore{Rank: 2, Score: 10}, rdb.ZRevRankWithScore(ctx, "zranktmp", "x").Val())
+		require.Equal(t, redis.RankScore{Rank: 1, Score: 20}, rdb.ZRevRankWithScore(ctx, "zranktmp", "y").Val())
+		require.Equal(t, redis.RankScore{Rank: 0, Score: 30}, rdb.ZRevRankWithScore(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRankWithScore(ctx, "zranktmp", "foo").Err())
 	})
 
 	t.Run(fmt.Sprintf("ZRANK/ZREVRANK - after deletion -%s", encoding), func(t *testing.T) {
@@ -704,12 +711,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 		require.Equal(t, int64(0), rdb.ZRevRank(ctx, "zranktmp", "z").Val())
 		require.Equal(t, redis.Nil, rdb.ZRevRank(ctx, "zranktmp", "foo").Err())
 
-		require.Equal(t, []interface{}{int64(0), "10"}, rdb.Do(ctx, "zrank", "zranktmp", "x", "withscore").Val())
-		require.Equal(t, []interface{}{int64(1), "30"}, rdb.Do(ctx, "zrank", "zranktmp", "z", "withscore").Val())
-		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrank", "zranktmp", "foo", "withscore").Err())
-		require.Equal(t, []interface{}{int64(1), "10"}, rdb.Do(ctx, "zrevrank", "zranktmp", "x", "withscore").Val())
-		require.Equal(t, []interface{}{int64(0), "30"}, rdb.Do(ctx, "zrevrank", "zranktmp", "z", "withscore").Val())
-		require.Equal(t, redis.Nil, rdb.Do(ctx, "zrevrank", "zranktmp", "foo", "withscore").Err())
+		require.Equal(t, redis.RankScore{Rank: 0, Score: 10}, rdb.ZRankWithScore(ctx, "zranktmp", "x").Val())
+		require.Equal(t, redis.RankScore{Rank: 1, Score: 30}, rdb.ZRankWithScore(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRankWithScore(ctx, "zranktmp", "foo").Err())
+		require.Equal(t, redis.RankScore{Rank: 1, Score: 10}, rdb.ZRevRankWithScore(ctx, "zranktmp", "x").Val())
+		require.Equal(t, redis.RankScore{Rank: 0, Score: 30}, rdb.ZRevRankWithScore(ctx, "zranktmp", "z").Val())
+		require.Equal(t, redis.Nil, rdb.ZRevRankWithScore(ctx, "zranktmp", "foo").Err())
 	})
 
 	t.Run(fmt.Sprintf("ZINCRBY - can create a new sorted set - %s", encoding), func(t *testing.T) {
@@ -1463,6 +1470,167 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding s
 			).Err(), ".*weight.*not.*double.*")
 		})
 	}
+
+	t.Run(fmt.Sprintf("ZDIFF with two sets - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a", "d", "e"}, cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with three sets - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		createZset(rdb, ctx, "zsetc", []redis.Z{
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 5, Member: "e"},
+		})
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		sort.Strings(cmd.Val())
+		require.EqualValues(t, []string{"a"}, cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with three sets with scores - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		createZset(rdb, ctx, "zsetc", []redis.Z{
+			{Score: 4, Member: "c"},
+			{Score: 5, Member: "e"},
+		})
+		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with empty sets - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{})
+		createZset(rdb, ctx, "zsetb", []redis.Z{})
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []string([]string{}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with non existing sets - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		cmd := rdb.ZDiff(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []string([]string{}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with missing set with scores - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
+	})
+
+	t.Run(fmt.Sprintf("ZDIFF with empty sets with scores - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{})
+		createZset(rdb, ctx, "zsetb", []redis.Z{})
+		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, []redis.Z([]redis.Z{}), cmd.Val())
+	})
+
+	t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+		})
+		createZset(rdb, ctx, "zsetc", []redis.Z{
+			{Score: 4, Member: "c"},
+			{Score: 5, Member: "e"},
+		})
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(2), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
+	})
+
+	t.Run("ZDIFFSTORE with missing sets - ", func(t *testing.T) {
+		createZset(rdb, ctx, "zseta", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 3, Member: "d"},
+			{Score: 4, Member: "e"},
+		})
+		createZset(rdb, ctx, "zsetb", []redis.Z{
+			{Score: 1, Member: "b"},
+			{Score: 2, Member: "c"},
+			{Score: 4, Member: "f"},
+			{Score: 4, Member: "e"},
+		})
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(2), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
+	})
+
+	t.Run("ZDIFFSTORE with missing sets - ", func(t *testing.T) {
+		rdb.Del(ctx, "zseta")
+		rdb.Del(ctx, "zsetb")
+		rdb.Del(ctx, "zsetc")
+		cmd := rdb.ZDiffStore(ctx, "setres", "zseta", "zsetb", "zsetc")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, int64(0), cmd.Val())
+		require.Equal(t, []redis.Z([]redis.Z{}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
+	})
 }
 
 func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
@@ -1732,14 +1900,24 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 	})
 }
 
-func TestZset(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+func TestZSetWithRESP2(t *testing.T) {
+	testZSet(t, "no")
+}
+
+func TestZSetWithRESP3(t *testing.T) {
+	testZSet(t, "yes")
+}
+
+var testZSet = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	basicTests(t, rdb, ctx, "skiplist", srv)
+	basicTests(t, rdb, ctx, enabledRESP3, "skiplist", srv)
 
 	t.Run("ZUNIONSTORE regression, should not create NaN in scores", func(t *testing.T) {
 		rdb.ZAdd(ctx, "z", redis.Z{Score: math.Inf(-1), Member: "neginf"})

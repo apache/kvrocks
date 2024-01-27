@@ -86,8 +86,18 @@ func compareLists(list1, list2 []string) []string {
 	return result
 }
 
-func TestGeo(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+func TestGeoWithRESP2(t *testing.T) {
+	testGeo(t, "no")
+}
+
+func TestGeoWithRESP3(t *testing.T) {
+	testGeo(t, "yes")
+}
+
+var testGeo = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()

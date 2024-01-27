@@ -153,6 +153,7 @@ func TestProtocolRESP2(t *testing.T) {
 		types := map[string][]string{
 			"string":  {"$11", "Hello World"},
 			"integer": {":12345"},
+			"double":  {"$5", "3.141"},
 			"array":   {"*3", ":0", ":1", ":2"},
 			"set":     {"*3", ":0", ":1", ":2"},
 			"map":     {"*6", ":0", ":0", ":1", ":1", ":2", ":0"},
@@ -208,6 +209,7 @@ func TestProtocolRESP3(t *testing.T) {
 		types := map[string][]string{
 			"string":  {"$11", "Hello World"},
 			"integer": {":12345"},
+			"double":  {",3.141"},
 			"array":   {"*3", ":0", ":1", ":2"},
 			"set":     {"~3", ":0", ":1", ":2"},
 			"map":     {"%3", ":0", "#f", ":1", "#t", ":2", "#f"},

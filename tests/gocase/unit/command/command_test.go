@@ -88,9 +88,10 @@ func TestCommand(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTERSTORE", "dst", "2", "src1", "src2")
 		vs, err := r.Slice()
 		require.NoError(t, err)
-		require.Len(t, vs, 2)
-		require.Equal(t, "src1", vs[0])
-		require.Equal(t, "src2", vs[1])
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
 	})
 
 	t.Run("COMMAND GETKEYS ZINTERCARD", func(t *testing.T) {
@@ -115,9 +116,10 @@ func TestCommand(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZUNIONSTORE", "dst", "2", "src1", "src2")
 		vs, err := r.Slice()
 		require.NoError(t, err)
-		require.Len(t, vs, 2)
-		require.Equal(t, "src1", vs[0])
-		require.Equal(t, "src2", vs[1])
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
 	})
 
 	t.Run("COMMAND GETKEYS ZDIFF", func(t *testing.T) {
@@ -133,9 +135,10 @@ func TestCommand(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZDIFFSTORE", "dst", "2", "src1", "src2")
 		vs, err := r.Slice()
 		require.NoError(t, err)
-		require.Len(t, vs, 2)
-		require.Equal(t, "src1", vs[0])
-		require.Equal(t, "src2", vs[1])
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
 	})
 
 	t.Run("COMMAND GETKEYS ZMPOP", func(t *testing.T) {
@@ -172,5 +175,80 @@ func TestCommand(t *testing.T) {
 		require.Len(t, vs, 2)
 		require.Equal(t, "key1", vs[0])
 		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEORADIUS", func(t *testing.T) {
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "storedist", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// store + storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst1", "storedist", "dst2")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEORADIUSBYMEMBER", func(t *testing.T) {
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "storedist", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// store + storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst1", "storedist", "dst2")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEOSEARCHSTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEOSEARCHSTORE", "dst", "src", "frommember", "member", "byradius", "10", "m")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src", vs[1])
 	})
 }

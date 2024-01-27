@@ -27,7 +27,7 @@
 
 class RedisBloomChainTest : public TestBase {
  protected:
-  explicit RedisBloomChainTest() { sb_chain_ = std::make_unique<redis::BloomChain>(storage_, "sb_chain_ns"); }
+  explicit RedisBloomChainTest() { sb_chain_ = std::make_unique<redis::BloomChain>(storage_.get(), "sb_chain_ns"); }
   ~RedisBloomChainTest() override = default;
 
   void SetUp() override { key_ = "test_sb_chain_key"; }

@@ -28,7 +28,7 @@
 
 class RedisGeoTest : public TestBase {
  protected:
-  RedisGeoTest() { geo_ = std::make_unique<redis::Geo>(storage_, "geo_ns"); }
+  RedisGeoTest() { geo_ = std::make_unique<redis::Geo>(storage_.get(), "geo_ns"); }
   ~RedisGeoTest() override = default;
 
   void SetUp() override {

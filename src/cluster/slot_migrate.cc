@@ -28,6 +28,7 @@
 #include "fmt/format.h"
 #include "io_util.h"
 #include "storage/batch_extractor.h"
+#include "storage/iterator.h"
 #include "sync_migrate_context.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -36,14 +37,21 @@
 const char *errFailedToSendCommands = "failed to send commands to restore a key";
 const char *errMigrationTaskCanceled = "key migration stopped due to a task cancellation";
 const char *errFailedToSetImportStatus = "failed to set import status on destination node";
+const char *errUnsupportedMigrationType = "unsupported migration type";
 
 static std::map<RedisType, std::string> type_to_cmd = {
     {kRedisString, "set"}, {kRedisList, "rpush"},    {kRedisHash, "hmset"},      {kRedisSet, "sadd"},
     {kRedisZSet, "zadd"},  {kRedisBitmap, "setbit"}, {kRedisSortedint, "siadd"}, {kRedisStream, "xadd"},
 };
 
-SlotMigrator::SlotMigrator(Server *srv, int max_migration_speed, int max_pipeline_size, int seq_gap_limit)
-    : Database(srv->storage, kDefaultNamespace), srv_(srv) {
+SlotMigrator::SlotMigrator(Server *srv)
+    : Database(srv->storage, kDefaultNamespace),
+      srv_(srv),
+      max_migration_speed_(srv->GetConfig()->migrate_speed),
+      max_pipeline_size_(srv->GetConfig()->pipeline_size),
+      seq_gap_limit_(srv->GetConfig()->sequence_gap),
+      migrate_batch_bytes_per_sec_(srv->GetConfig()->migrate_batch_rate_limit_mb * MiB),
+      migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -60,16 +68,6 @@ SlotMigrator::SlotMigrator(Server *srv, int max_migration_speed, int max_pipelin
   // [Note]:
   // This problem may exist in all functions of Database called in slot migration process.
   metadata_cf_handle_ = nullptr;
-
-  if (max_migration_speed >= 0) {
-    max_migration_speed_ = max_migration_speed;
-  }
-  if (max_pipeline_size > 0) {
-    max_pipeline_size_ = max_pipeline_size;
-  }
-  if (seq_gap_limit > 0) {
-    seq_gap_limit_ = seq_gap_limit;
-  }
 
   if (srv->IsSlave()) {
     SetStopMigrationFlag(true);
@@ -210,7 +208,7 @@ void SlotMigrator::runMigrationProcess() {
         break;
       }
       case SlotMigrationStage::kWAL: {
-        auto s = syncWal();
+        auto s = syncWAL();
         if (s.IsOK()) {
           LOG(INFO) << "[migrate] Succeed to sync from WAL for a slot " << migrating_slot_;
           current_stage_ = SlotMigrationStage::kSuccess;
@@ -298,6 +296,26 @@ Status SlotMigrator::startMigration() {
 }
 
 Status SlotMigrator::sendSnapshot() {
+  auto type = static_cast<MigrationType>(srv_->GetConfig()->migrate_type);
+  if (type == MigrationType::kRedisCommand) {
+    return sendSnapshotByCmd();
+  } else if (type == MigrationType::kRawKeyValue) {
+    return sendSnapshotByRawKV();
+  }
+  return {Status::NotOK, errUnsupportedMigrationType};
+}
+
+Status SlotMigrator::syncWAL() {
+  auto type = static_cast<MigrationType>(srv_->GetConfig()->migrate_type);
+  if (type == MigrationType::kRedisCommand) {
+    return syncWALByCmd();
+  } else if (type == MigrationType::kRawKeyValue) {
+    return syncWALByRawKV();
+  }
+  return {Status::NotOK, errUnsupportedMigrationType};
+}
+
+Status SlotMigrator::sendSnapshotByCmd() {
   uint64_t migrated_key_cnt = 0;
   uint64_t expired_key_cnt = 0;
   uint64_t empty_key_cnt = 0;
@@ -365,7 +383,7 @@ Status SlotMigrator::sendSnapshot() {
   return Status::OK();
 }
 
-Status SlotMigrator::syncWal() {
+Status SlotMigrator::syncWALByCmd() {
   // Send incremental data from WAL circularly until new increment less than a certain amount
   auto s = syncWalBeforeForbiddingSlot();
   if (!s.IsOK()) {
@@ -1129,4 +1147,155 @@ void SlotMigrator::resumeSyncCtx(const Status &migrate_result) {
 
     blocking_context_ = nullptr;
   }
+}
+
+Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
+  // user may dynamically change some configs, apply it when send data
+  batch->SetMaxBytes(migrate_batch_size_bytes_);
+  batch->SetBytesPerSecond(migrate_batch_bytes_per_sec_);
+  return batch->Send();
+}
+
+Status SlotMigrator::sendSnapshotByRawKV() {
+  uint64_t start_ts = util::GetTimeStampMS();
+  LOG(INFO) << "[migrate] Migrating snapshot of slot " << migrating_slot_ << " by raw key value";
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  read_options.snapshot = slot_snapshot_;
+  engine::DBIterator iter(storage_, read_options);
+  auto prefix = ComposeSlotKeyPrefix(namespace_, migrating_slot_);
+
+  BatchSender batch_sender(migrating_slot_, *dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+
+  for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
+    auto redis_type = iter.Type();
+    std::string log_data;
+    if (redis_type == RedisType::kRedisList) {
+      redis::WriteBatchLogData batch_log_data(redis_type, {std::to_string(RedisCommand::kRedisCmdRPush)});
+      log_data = batch_log_data.Encode();
+    } else {
+      redis::WriteBatchLogData batch_log_data(redis_type);
+      log_data = batch_log_data.Encode();
+    }
+    batch_sender.SetPrefixLogData(log_data);
+
+    GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(engine::kMetadataColumnFamilyName), iter.Key(), iter.Value()));
+
+    auto subkey_iter = iter.GetSubKeyIterator();
+    if (!subkey_iter) {
+      continue;
+    }
+
+    for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+      GET_OR_RET(batch_sender.Put(subkey_iter->ColumnFamilyHandle(), subkey_iter->Key(), subkey_iter->Value()));
+      if (batch_sender.IsFull()) {
+        GET_OR_RET(sendMigrationBatch(&batch_sender));
+      }
+    }
+
+    if (batch_sender.IsFull()) {
+      GET_OR_RET(sendMigrationBatch(&batch_sender));
+    }
+  }
+
+  GET_OR_RET(sendMigrationBatch(&batch_sender));
+
+  auto elapsed = util::GetTimeStampMS() - start_ts;
+  LOG(INFO) << fmt::format(
+      "[migrate] Succeed to migrate snapshot, slot: {}, elapsed: {} ms, "
+      "sent: {} bytes, rate: {:.2f} kb/s, batches: {}, entries: {}",
+      migrating_slot_.load(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
+      batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
+
+  return Status::OK();
+}
+
+Status SlotMigrator::syncWALByRawKV() {
+  uint64_t start_ts = util::GetTimeStampMS();
+  LOG(INFO) << "[migrate] Syncing WAL of slot " << migrating_slot_ << " by raw key value";
+  BatchSender batch_sender(migrating_slot_, *dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+
+  int epoch = 1;
+  uint64_t wal_incremental_seq = 0;
+
+  while (epoch <= kMaxLoopTimes) {
+    if (catchUpIncrementalWAL()) {
+      break;
+    }
+    wal_incremental_seq = storage_->GetDB()->GetLatestSequenceNumber();
+    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &batch_sender);
+    if (!s.IsOK()) {
+      return {Status::NotOK, fmt::format("migrate incremental data failed, {}", s.Msg())};
+    }
+    LOG(INFO) << fmt::format("[migrate] Migrated incremental data, epoch: {}, seq from {} to {}", epoch, wal_begin_seq_,
+                             wal_incremental_seq);
+    wal_begin_seq_ = wal_incremental_seq;
+    epoch++;
+  }
+
+  setForbiddenSlot(migrating_slot_);
+
+  wal_incremental_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  if (wal_incremental_seq > wal_begin_seq_) {
+    auto s = migrateIncrementalDataByRawKV(wal_incremental_seq, &batch_sender);
+    if (!s.IsOK()) {
+      return {Status::NotOK, fmt::format("migrate last incremental data failed, {}", s.Msg())};
+    }
+    LOG(INFO) << fmt::format("[migrate] Migrated last incremental data after set forbidden slot, seq from {} to {}",
+                             wal_begin_seq_, wal_incremental_seq);
+  }
+
+  auto elapsed = util::GetTimeStampMS() - start_ts;
+  LOG(INFO) << fmt::format(
+      "[migrate] Succeed to migrate incremental data, slot: {}, elapsed: {} ms, "
+      "sent: {} bytes, rate: {:.2f} kb/s, batches: {}, entries: {}",
+      migrating_slot_.load(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
+      batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
+
+  return Status::OK();
+}
+
+bool SlotMigrator::catchUpIncrementalWAL() {
+  uint64_t gap = storage_->GetDB()->GetLatestSequenceNumber() - wal_begin_seq_;
+  if (gap <= seq_gap_limit_) {
+    LOG(INFO) << fmt::format("[migrate] Incremental data sequence gap: {}, less than limit: {}, set forbidden slot: {}",
+                             gap, seq_gap_limit_, migrating_slot_.load());
+    return true;
+  }
+  return false;
+}
+
+Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender) {
+  engine::WALIterator wal_iter(storage_, migrating_slot_);
+  uint64_t start_seq = wal_begin_seq_ + 1;
+  for (wal_iter.Seek(start_seq); wal_iter.Valid(); wal_iter.Next()) {
+    if (wal_iter.NextSequenceNumber() > end_seq + 1) {
+      break;
+    }
+    auto item = wal_iter.Item();
+    switch (item.type) {
+      case engine::WALItem::Type::kTypeLogData: {
+        GET_OR_RET(batch_sender->PutLogData(item.key));
+        break;
+      }
+      case engine::WALItem::Type::kTypePut: {
+        GET_OR_RET(batch_sender->Put(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)),
+                                     item.key, item.value));
+        break;
+      }
+      case engine::WALItem::Type::kTypeDelete: {
+        GET_OR_RET(
+            batch_sender->Delete(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)), item.key));
+        break;
+      }
+      default:
+        break;
+    }
+    if (batch_sender->IsFull()) {
+      GET_OR_RET(sendMigrationBatch(batch_sender));
+    }
+  }
+
+  // send the remaining data
+  return sendMigrationBatch(batch_sender);
 }

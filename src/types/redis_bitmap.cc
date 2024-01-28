@@ -188,7 +188,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t offset, bool new_
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
   uint64_t used_size = index + byte_index + 1;
   uint64_t bitmap_size = std::max(used_size, metadata.size);
-  // NOTE: value.size() might be greater than bitmap_size.
+  // NOTE: value.size() might be greater than metadata.size.
   ExpandBitmapSegment(&value, byte_index + 1);
   uint32_t bit_offset = offset % 8;
   *old_bit = (value[byte_index] & (1 << bit_offset)) != 0;
@@ -252,7 +252,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     // Counting bits in [start_in_segment, start_in_segment + length_in_segment)
     size_t start_in_segment = 0;
     if (i == start_index) start_in_segment = u_start % kBitmapSegmentBytes;
-    auto length_in_segment = static_cast<int64_t>(metadata.size);
+    // Though `ExpandBitmapSegment` might generate a segment with logical size less than pin_value.size(),
+    // the `RawPopcount` will always return 0 on these padding bytes, so we don't need to worry about it.
+    auto length_in_segment = static_cast<int64_t>(pin_value.size());
     if (i == stop_index) length_in_segment = u_stop % kBitmapSegmentBytes + 1;
     *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + start_in_segment,
                                       length_in_segment);
@@ -319,7 +321,12 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
       }
     }
     if (!bit && pin_value.size() < kBitmapSegmentBytes) {
-      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + metadata.size * 8);
+      // ExpandBitmapSegment might generate a segment with size less than kBitmapSegmentBytes,
+      // but larger than logical size, so we need to align the last segment with `metadata.size`
+      // rather than `pin_value.size()`.
+      auto last_segment_bytes = metadata.size % kBitmapSegmentBytes;
+      DCHECK_LE(last_segment_bytes, pin_value.size());
+      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + last_segment_bytes * 8);
       return rocksdb::Status::OK();
     }
     pin_value.Reset();

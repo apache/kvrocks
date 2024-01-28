@@ -40,7 +40,7 @@ class RedisStreamTest : public TestBase {  // NOLINT
   }
 
  protected:
-  RedisStreamTest() : name_("test_stream") { stream_ = new redis::Stream(storage_, "stream_ns"); }
+  RedisStreamTest() : name_("test_stream") { stream_ = new redis::Stream(storage_.get(), "stream_ns"); }
 
   ~RedisStreamTest() override { delete stream_; }
 

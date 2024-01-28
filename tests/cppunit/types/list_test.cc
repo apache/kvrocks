@@ -27,7 +27,7 @@
 
 class RedisListTest : public TestBase {
  protected:
-  explicit RedisListTest() { list_ = std::make_unique<redis::List>(storage_, "list_ns"); }
+  explicit RedisListTest() { list_ = std::make_unique<redis::List>(storage_.get(), "list_ns"); }
   ~RedisListTest() override = default;
 
   void SetUp() override {

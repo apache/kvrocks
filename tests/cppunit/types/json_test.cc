@@ -28,7 +28,7 @@
 
 class RedisJsonTest : public TestBase {
  protected:
-  explicit RedisJsonTest() : json_(std::make_unique<redis::Json>(storage_, "json_ns")) {}
+  explicit RedisJsonTest() : json_(std::make_unique<redis::Json>(storage_.get(), "json_ns")) {}
   ~RedisJsonTest() override = default;
 
   void SetUp() override { key_ = "test_json_key"; }

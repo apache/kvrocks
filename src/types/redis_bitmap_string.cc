@@ -222,7 +222,10 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
 
     ArrayBitfieldBitmap bitfield(first_byte);
     auto str = reinterpret_cast<const uint8_t *>(string_value.data() + first_byte);
-    auto s = bitfield.Set(first_byte, last_byte - first_byte, str);
+    auto s = bitfield.Set(/*byte_offset=*/first_byte, /*bytes=*/last_byte - first_byte, /*src=*/str);
+    if (!s.IsOK()) {
+      return rocksdb::Status::IOError(s.Msg());
+    }
 
     uint64_t unsigned_old_value = 0;
     if (op.encoding.IsSigned()) {
@@ -232,13 +235,19 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
     }
 
     uint64_t unsigned_new_value = 0;
-    auto &ret = rets->emplace_back();
-    if (BitfieldOp(op, unsigned_old_value, &unsigned_new_value).GetValue()) {
+    std::optional<BitfieldValue> &ret = rets->emplace_back();
+    StatusOr<bool> bitfield_op = BitfieldOp(op, unsigned_old_value, &unsigned_new_value);
+    if (!bitfield_op.IsOK()) {
+      return rocksdb::Status::InvalidArgument(bitfield_op.Msg());
+    }
+    if (bitfield_op.GetValue()) {
       if (op.type != BitfieldOperation::Type::kGet) {
         // never failed.
         s = bitfield.SetBitfield(op.offset, op.encoding.Bits(), unsigned_new_value);
+        CHECK(s.IsOK());
         auto dst = reinterpret_cast<uint8_t *>(string_value.data()) + first_byte;
         s = bitfield.Get(first_byte, last_byte - first_byte, dst);
+        CHECK(s.IsOK());
       }
 
       if (op.type == BitfieldOperation::Type::kSet) {
@@ -276,6 +285,9 @@ rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::s
     ArrayBitfieldBitmap bitfield(first_byte);
     auto s = bitfield.Set(first_byte, last_byte - first_byte,
                           reinterpret_cast<const uint8_t *>(string_value.data() + first_byte));
+    if (!s.IsOK()) {
+      return rocksdb::Status::IOError(s.Msg());
+    }
 
     if (op.encoding.IsSigned()) {
       int64_t value = bitfield.GetSignedBitfield(op.offset, op.encoding.Bits()).GetValue();

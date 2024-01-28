@@ -150,7 +150,7 @@ class CommandGeoDist : public CommandGeoBase {
     if (s.IsNotFound()) {
       *output = conn->NilString();
     } else {
-      *output = redis::BulkString(util::Float2String(GetDistanceByUnit(distance)));
+      *output = conn->Double(GetDistanceByUnit(distance));
     }
     return Status::OK();
   }
@@ -215,8 +215,7 @@ class CommandGeoPos : public Commander {
       if (iter == geo_points.end()) {
         list.emplace_back(conn->NilString());
       } else {
-        list.emplace_back(conn->MultiBulkString(
-            {util::Float2String(iter->second.longitude), util::Float2String(iter->second.latitude)}));
+        list.emplace_back(redis::Array({conn->Double(iter->second.longitude), conn->Double(iter->second.latitude)}));
       }
     }
     *output = redis::Array(list);
@@ -331,19 +330,38 @@ class CommandGeoRadius : public CommandGeoBase {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(conn->Double(GetDistanceByUnit(geo_point.dist)));
         }
         if (with_hash_) {
-          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+          one.emplace_back(conn->Double(geo_point.score));
         }
         if (with_coord_) {
-          one.emplace_back(
-              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(redis::Array({conn->Double(geo_point.longitude), conn->Double(geo_point.latitude)}));
         }
         list.emplace_back(redis::Array(one));
       }
     }
     return redis::Array(list);
+  }
+
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
+    int store_key = 0;
+
+    // Check for the presence of the stored key in the command args.
+    for (size_t i = 6; i < args.size(); i++) {
+      // For the case when a user specifies both "store" and "storedist" options,
+      // the second key will override the first key. The behavior is kept the same
+      // as in ParseRadiusExtraOption method.
+      if ((util::ToLower(args[i]) == "store" || util::ToLower(args[i]) == "storedist") && i + 1 < args.size()) {
+        store_key = (int)i + 1;
+        i++;
+      }
+    }
+
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
   }
 
  protected:
@@ -509,14 +527,13 @@ class CommandGeoSearch : public CommandGeoBase {
         std::vector<std::string> one;
         one.emplace_back(redis::BulkString(geo_point.member));
         if (with_dist_) {
-          one.emplace_back(redis::BulkString(util::Float2String(GetDistanceByUnit(geo_point.dist))));
+          one.emplace_back(conn->Double(GetDistanceByUnit(geo_point.dist)));
         }
         if (with_hash_) {
-          one.emplace_back(redis::BulkString(util::Float2String(geo_point.score)));
+          one.emplace_back(conn->Double(geo_point.score));
         }
         if (with_coord_) {
-          one.emplace_back(
-              conn->MultiBulkString({util::Float2String(geo_point.longitude), util::Float2String(geo_point.latitude)}));
+          one.emplace_back(redis::Array({conn->Double(geo_point.longitude), conn->Double(geo_point.latitude)}));
         }
         output.emplace_back(redis::Array(one));
       }
@@ -607,6 +624,8 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     return Status::OK();
   }
 
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) { return {{1, 1, 1}, {2, 2, 1}}; }
+
  private:
   bool store_distance_ = false;
   std::string store_key_;
@@ -649,6 +668,26 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
 
     return Status::OK();
   }
+
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
+    int store_key = 0;
+
+    // Check for the presence of the stored key in the command args.
+    for (size_t i = 5; i < args.size(); i++) {
+      // For the case when a user specifies both "store" and "storedist" options,
+      // the second key will override the first key. The behavior is kept the same
+      // as in ParseRadiusExtraOption method.
+      if ((util::ToLower(args[i]) == "store" || util::ToLower(args[i]) == "storedist") && i + 1 < args.size()) {
+        store_key = (int)i + 1;
+        i++;
+      }
+    }
+
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
+  }
 };
 
 class CommandGeoRadiusReadonly : public CommandGeoRadius {
@@ -665,11 +704,12 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 
                         MakeCmdAttr<CommandGeoDist>("geodist", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoHash>("geohash", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoPos>("geopos", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandGeoRadius>("georadius", -6, "write", CommandGeoRadius::Range),
+                        MakeCmdAttr<CommandGeoRadiusByMember>("georadiusbymember", -5, "write",
+                                                              CommandGeoRadiusByMember::Range),
                         MakeCmdAttr<CommandGeoRadiusReadonly>("georadius_ro", -6, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoRadiusByMemberReadonly>("georadiusbymember_ro", -5, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoSearch>("geosearch", -7, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandGeoSearchStore>("geosearchstore", -8, "write", 1, 1, 1))
+                        MakeCmdAttr<CommandGeoSearchStore>("geosearchstore", -8, "write", CommandGeoSearchStore::Range))
 
 }  // namespace redis

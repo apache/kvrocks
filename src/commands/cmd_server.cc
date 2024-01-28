@@ -105,7 +105,7 @@ class CommandNamespace : public Commander {
         }
         namespaces.emplace_back(kDefaultNamespace);
         namespaces.emplace_back(config->requirepass);
-        *output = conn->MultiBulkString(namespaces, false);
+        *output = ArrayOfBulkStrings(namespaces);
       } else {
         auto token = srv->GetNamespace()->Get(args_[2]);
         if (token.Is<Status::NotFound>()) {
@@ -607,6 +607,8 @@ class CommandDebug : public Commander {
         *output = redis::BulkString("Hello World");
       } else if (protocol_type_ == "integer") {
         *output = redis::Integer(12345);
+      } else if (protocol_type_ == "double") {
+        *output = conn->Double(3.141);
       } else if (protocol_type_ == "array") {
         *output = redis::MultiLen(3);
         for (int i = 0; i < 3; i++) {
@@ -633,7 +635,8 @@ class CommandDebug : public Commander {
         *output = conn->NilString();
       } else {
         *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: string|int|array|set|bignum|true|false|null");
+            "Wrong protocol type name. Please use one of the following: "
+            "string|integer|double|array|set|bignum|true|false|null");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
@@ -835,7 +838,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(conn->MultiBulkString(keys, false));
+    list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
   }

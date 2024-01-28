@@ -44,6 +44,7 @@ func TestDebugProtocolV2(t *testing.T) {
 		types := map[string]interface{}{
 			"string":  "Hello World",
 			"integer": int64(12345),
+			"double":  "3.141",
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
 			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"map":     []interface{}{int64(0), int64(0), int64(1), int64(1), int64(2), int64(0)},
@@ -89,6 +90,7 @@ func TestDebugProtocolV3(t *testing.T) {
 		types := map[string]interface{}{
 			"string":  "Hello World",
 			"integer": int64(12345),
+			"double":  3.141,
 			"array":   []interface{}{int64(0), int64(1), int64(2)},
 			"set":     []interface{}{int64(0), int64(1), int64(2)},
 			"map":     map[interface{}]interface{}{int64(0): false, int64(1): true, int64(2): false},

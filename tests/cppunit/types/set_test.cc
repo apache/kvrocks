@@ -27,7 +27,7 @@
 
 class RedisSetTest : public TestBase {
  protected:
-  explicit RedisSetTest() { set_ = std::make_unique<redis::Set>(storage_, "set_ns"); }
+  explicit RedisSetTest() { set_ = std::make_unique<redis::Set>(storage_.get(), "set_ns"); }
   ~RedisSetTest() override = default;
 
   void SetUp() override {

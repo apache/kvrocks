@@ -100,10 +100,12 @@ TEST_F(RedisBitmapTest, BitCount2) {
     bool bit = false;
     bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
     EXPECT_FALSE(bit);
+    bitmap_->SetBit(key_, 8 * 1024, true, &bit);
+    EXPECT_FALSE(bit);
   }
 
   bitmap_->BitCount(key_, 0, 1024, &cnt);
-  EXPECT_EQ(cnt, 3);
+  EXPECT_EQ(cnt, 4);
 
   bitmap_->BitCount(key_, 0, 1023, &cnt);
   EXPECT_EQ(cnt, 3);

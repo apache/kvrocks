@@ -388,6 +388,12 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.SetBit(ctx, "mykey", maxOffset, 1).Err())
 		require.EqualValues(t, 1, rdb.GetBit(ctx, "mykey", maxOffset).Val())
 		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 0, End: maxOffset / 8}).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: -1, End: -1}).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: -100, End: -1}).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 0, End: 1000}).Val())
+		require.EqualValues(t, 1, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 0, End: 0}).Val())
+		require.EqualValues(t, 0, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 2, End: 0}).Val())
+		require.EqualValues(t, 0, rdb.BitCount(ctx, "mykey", &redis.BitCount{Start: 2, End: 10}).Val())
 		require.EqualValues(t, maxOffset, rdb.BitPos(ctx, "mykey", 1).Val())
 	})
 

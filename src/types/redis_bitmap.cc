@@ -229,7 +229,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   if (stop < 0) stop += static_cast<int64_t>(metadata.size);
   if (stop < 0) stop = 0;
   if (start < 0) start = 0;
-  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size) - 1;
+  if (stop >= static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size) - 1;
   if (start > stop) {
     // Always return 0.
     return rocksdb::Status::OK();

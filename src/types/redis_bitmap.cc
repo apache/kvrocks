@@ -223,10 +223,17 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);
   }
 
-  if (start < 0) start += static_cast<int64_t>(metadata.size) + 1;
-  if (stop < 0) stop += static_cast<int64_t>(metadata.size) + 1;
-  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size);
-  if (start < 0 || stop <= 0 || start >= stop) return rocksdb::Status::OK();
+  // Counting bits in byte [start, stop].
+
+  if (start < 0) start += static_cast<int64_t>(metadata.size);
+  if (stop < 0) stop += static_cast<int64_t>(metadata.size);
+  if (stop < 0) stop = 0;
+  if (start < 0) start = 0;
+  if (stop > static_cast<int64_t>(metadata.size)) stop = static_cast<int64_t>(metadata.size) - 1;
+  if (start > stop) {
+    // Always return 0.
+    return rocksdb::Status::OK();
+  }
 
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);
@@ -244,12 +251,15 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
             .Encode();
     s = storage_->Get(read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
+    // NotFound means all bits in this segment are 0.
     if (s.IsNotFound()) continue;
-    size_t j = 0;
-    if (i == start_index) j = u_start % kBitmapSegmentBytes;
-    auto k = static_cast<int64_t>(pin_value.size());
-    if (i == stop_index) k = u_stop % kBitmapSegmentBytes + 1;
-    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + j, k);
+    // Counting bits in [start_in_segment, start_in_segment + length_in_segment)
+    size_t start_in_segment = 0;
+    if (i == start_index) start_in_segment = u_start % kBitmapSegmentBytes;
+    auto length_in_segment = static_cast<int64_t>(pin_value.size());
+    if (i == stop_index) length_in_segment = u_stop % kBitmapSegmentBytes + 1;
+    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + start_in_segment,
+                                      length_in_segment);
   }
   return rocksdb::Status::OK();
 }

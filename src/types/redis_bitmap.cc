@@ -226,10 +226,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
 
   // Counting bits in byte [start, stop].
   std::tie(start, stop) = BitmapString::NormalizeRange(start, stop, static_cast<int64_t>(metadata.size));
-  if (start > stop) {
-    // Always return 0.
-    return rocksdb::Status::OK();
-  }
+  // Always return 0 if start is greater than stop after normalization.
+  if (start > stop) return rocksdb::Status::OK();
 
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);

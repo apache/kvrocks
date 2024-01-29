@@ -68,7 +68,7 @@ TEST_F(RedisBitmapTest, BitCount) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitCount2) {
+TEST_F(RedisBitmapTest, BitCountNegative) {
   {
     bool bit = false;
     bitmap_->SetBit(key_, 0, true, &bit);
@@ -137,6 +137,32 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
     bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
     EXPECT_EQ(pos, offsets[i]);
   }
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_F(RedisBitmapTest, BitPosNegative) {
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  // First bit is negative
+  bitmap_->BitPos(key_, false, 0, -1, true, &pos);
+  EXPECT_EQ(0, pos);
+  // 8 * 1024 - 1 bit is positive
+  bitmap_->BitPos(key_, true, 0, -1, true, &pos);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // First bit in 1023 byte is negative
+  bitmap_->BitPos(key_, false, -1, -1, true, &pos);
+  EXPECT_EQ(8 * 1023, pos);
+  // Last Bit in 1023 byte is positive
+  bitmap_->BitPos(key_, true, -1, -1, true, &pos);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // Large negative number will be normalized.
+  bitmap_->BitPos(key_, false, -10000, -10000, true, &pos);
+  EXPECT_EQ(0, pos);
+
   auto s = bitmap_->Del(key_);
 }
 

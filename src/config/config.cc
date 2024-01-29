@@ -515,6 +515,18 @@ void Config::initFieldCallback() {
              if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
              return Status::OK();
            }},
+          {"migrate-batch-rate-limit-mb",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateBatchRateLimit(migrate_batch_rate_limit_mb * MiB);
+             return Status::OK();
+           }},
+          {"migrate-batch-size-kb",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateBatchSize(migrate_batch_size_kb * KiB);
+             return Status::OK();
+           }},
           {"log-level",
            [this](Server *srv, const std::string &k, const std::string &v) -> Status {
              if (!srv) return Status::OK();

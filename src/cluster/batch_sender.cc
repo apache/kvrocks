@@ -18,8 +18,6 @@
  *
  */
 
-//#include <rocksdb/env.h>
-
 #include "batch_sender.h"
 
 #include "io_util.h"
@@ -102,9 +100,9 @@ Status BatchSender::sendApplyBatchCmd(int16_t slot, int fd, const rocksdb::Write
 
   GET_OR_RET(util::SockSend(fd, redis::ArrayOfBulkStrings({"APPLYBATCH", write_batch.Data()})));
 
-  std::string line = GET_OR_RET(util::SockReadLine(fd).Prefixed("read APPLYBATCH command response error"));
+  std::string line = GET_OR_RET(util::SockReadLine(fd));
 
-  LOG(INFO) << "[debug] read response: " << line;
+  // line = .Prefixed("read APPLYBATCH command response error"));
 
   if (line.compare(0, 1, "-") == 0) {
     return {Status::NotOK, line};

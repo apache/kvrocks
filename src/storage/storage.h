@@ -177,7 +177,7 @@ class Storage {
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
-  rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID name);
+  rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID id);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);

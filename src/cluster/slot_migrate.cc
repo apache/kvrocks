@@ -1188,6 +1188,16 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       GET_OR_RET(batch_sender.Put(subkey_iter->ColumnFamilyHandle(), subkey_iter->Key(), subkey_iter->Value()));
+
+      if (redis_type == RedisType::kRedisZSet) {
+        InternalKey internal_key(subkey_iter->Key(), storage_->IsSlotIdEncoded());
+        auto score_key = subkey_iter->Value().ToString();
+        score_key.append(subkey_iter->UserKey().ToString());
+        auto score_key_bytes =
+            InternalKey(iter.Key(), score_key, internal_key.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+        GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(kColumnFamilyIDZSetScore), score_key_bytes, Slice()));
+      }
+
       if (batch_sender.IsFull()) {
         GET_OR_RET(sendMigrationBatch(&batch_sender));
       }

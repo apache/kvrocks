@@ -70,17 +70,13 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
 
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {
   *cnt = 0;
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   /* Convert negative indexes */
   if (start < 0 && stop < 0 && start > stop) {
     return rocksdb::Status::OK();
   }
   auto strlen = static_cast<int64_t>(string_value.size());
-  if (start < 0) start = strlen + start;
-  if (stop < 0) stop = strlen + stop;
-  if (start < 0) start = 0;
-  if (stop < 0) stop = 0;
-  if (stop >= strlen) stop = strlen - 1;
+  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
    * zero can be returned is: start > stop. */
@@ -95,12 +91,8 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
                                      bool stop_given, int64_t *pos) {
   auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
-  /* Convert negative indexes */
-  if (start < 0) start = strlen + start;
-  if (stop < 0) stop = strlen + stop;
-  if (start < 0) start = 0;
-  if (stop < 0) stop = 0;
-  if (stop >= strlen) stop = strlen - 1;
+  /* Convert negative and out-of-bound indexes */
+  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
 
   if (start > stop) {
     *pos = -1;
@@ -203,6 +195,15 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   }
 
   return res;
+}
+
+std::pair<int64_t, int64_t> BitmapString::NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length) {
+  if (origin_start < 0) origin_start = length + origin_start;
+  if (origin_end < 0) origin_end = length + origin_end;
+  if (origin_start < 0) origin_start = 0;
+  if (origin_end < 0) origin_end = 0;
+  if (origin_end >= length) origin_end = length - 1;
+  return {origin_start, origin_end};
 }
 
 rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_value,

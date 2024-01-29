@@ -46,6 +46,16 @@ class BitmapString : public Database {
 
   static size_t RawPopcount(const uint8_t *p, int64_t count);
   static int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit);
+
+  // NormalizeRange converts a range to a normalized range, which is a range with start and stop in [0, length).
+  //
+  // If start/end is negative, it will be converted to positive by adding length to it, and if the result is still
+  // negative, it will be converted to 0.
+  // If start/end is larger than length, it will be converted to length - 1.
+  //
+  // Return:
+  //  The normalized [start, end] range.
+  static std::pair<int64_t, int64_t> NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length);
 };
 
 }  // namespace redis

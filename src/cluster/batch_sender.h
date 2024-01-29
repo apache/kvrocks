@@ -28,9 +28,8 @@
 class BatchSender {
  public:
   BatchSender() = default;
-  BatchSender(int16_t slot, int fd, size_t max_bytes, size_t bytes_per_sec)
-      : slot_(slot),
-        dst_fd_(fd),
+  BatchSender(int fd, size_t max_bytes, size_t bytes_per_sec)
+      : dst_fd_(fd),
         max_bytes_(max_bytes),
         bytes_per_sec_(bytes_per_sec),
         rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(
@@ -55,7 +54,7 @@ class BatchSender {
   double GetRate(uint64_t since) const;
 
  private:
-  static Status sendApplyBatchCmd(int16_t slot, int fd, const rocksdb::WriteBatch &write_batch);
+  static Status sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_batch);
 
   rocksdb::WriteBatch write_batch_{};
   std::string prefix_logdata_{};
@@ -64,7 +63,6 @@ class BatchSender {
   uint32_t entries_num_ = 0;
   uint32_t pending_entries_ = 0;
 
-  int16_t slot_;
   int dst_fd_;
   size_t max_bytes_;
 

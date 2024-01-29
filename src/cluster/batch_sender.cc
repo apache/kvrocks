@@ -81,7 +81,7 @@ Status BatchSender::Send() {
     }
   }
 
-  auto s = sendApplyBatchCmd(slot_, dst_fd_, write_batch_);
+  auto s = sendApplyBatchCmd(dst_fd_, write_batch_);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send APPLYBATCH command");
   }
@@ -93,7 +93,7 @@ Status BatchSender::Send() {
   return Status::OK();
 }
 
-Status BatchSender::sendApplyBatchCmd(int16_t slot, int fd, const rocksdb::WriteBatch &write_batch) {
+Status BatchSender::sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_batch) {
   if (fd <= 0) {
     return {Status::NotOK, "invalid fd"};
   }
@@ -101,8 +101,6 @@ Status BatchSender::sendApplyBatchCmd(int16_t slot, int fd, const rocksdb::Write
   GET_OR_RET(util::SockSend(fd, redis::ArrayOfBulkStrings({"APPLYBATCH", write_batch.Data()})));
 
   std::string line = GET_OR_RET(util::SockReadLine(fd));
-
-  // line = .Prefixed("read APPLYBATCH command response error"));
 
   if (line.compare(0, 1, "-") == 0) {
     return {Status::NotOK, line};

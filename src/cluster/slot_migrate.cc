@@ -1165,7 +1165,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   engine::DBIterator iter(storage_, read_options);
   auto prefix = ComposeSlotKeyPrefix(namespace_, migrating_slot_);
 
-  BatchSender batch_sender(migrating_slot_, *dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+  BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     auto redis_type = iter.Type();
@@ -1223,7 +1223,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 Status SlotMigrator::syncWALByRawKV() {
   uint64_t start_ts = util::GetTimeStampMS();
   LOG(INFO) << "[migrate] Syncing WAL of slot " << migrating_slot_ << " by raw key value";
-  BatchSender batch_sender(migrating_slot_, *dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+  BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 
   int epoch = 1;
   uint64_t wal_incremental_seq = 0;

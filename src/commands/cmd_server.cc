@@ -594,8 +594,16 @@ class CommandDebug : public Commander {
     } else if (subcommand_ == "protocol" && args.size() == 3) {
       protocol_type_ = util::ToLower(args[2]);
       return Status::OK();
+    } else if (subcommand_ == "dbsize-limit" && args.size() == 3) {
+      auto val = ParseInt<int32_t>(args[2], {0, 1}, 10);
+      if (!val) {
+        return {Status::RedisParseErr, "invalid debug dbsize-limit value"};
+      }
+
+      dbsize_limit_ = static_cast<bool>(val);
+      return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>|PROTOCOL <type>"};
+    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>|PROTOCOL <type>|DBSIZE-LIMIT <0|1>"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -638,8 +646,11 @@ class CommandDebug : public Commander {
             "Wrong protocol type name. Please use one of the following: "
             "string|integer|double|array|set|bignum|true|false|null");
       }
+    } else if (subcommand_ == "dbsize-limit") {
+      srv->storage->SetDBSizeLimit(dbsize_limit_);
+      *output = redis::SimpleString("OK");
     } else {
-      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG, PROTOCOL or DBSIZE-LIMIT"};
     }
     return Status::OK();
   }
@@ -648,6 +659,7 @@ class CommandDebug : public Commander {
   std::string subcommand_;
   std::string protocol_type_;
   uint64_t microsecond_ = 0;
+  bool dbsize_limit_ = false;
 };
 
 class CommandCommand : public Commander {
@@ -1318,8 +1330,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0, GenerateConfigFlag),
                         MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write", 0, 0, 0),
-                        MakeCmdAttr<CommandFlushAll>("flushall", 1, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check", 0, 0, 0),
+                        MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check", 0, 0, 0),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),

@@ -626,7 +626,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGetDel>("getdel", 2, "write no-dbsize-check", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),

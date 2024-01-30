@@ -119,3 +119,27 @@ func TestDebugProtocolV3(t *testing.T) {
 		require.EqualValues(t, false, val)
 	})
 }
+
+func TestDebugDBSizeLimit(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("debug ignore dbsize check", func(t *testing.T) {
+		r := rdb.Do(ctx, "SET", "k1", "v1")
+		require.NoError(t, r.Err())
+
+		r = rdb.Do(ctx, "DEBUG", "DBSIZE-LIMIT", "1")
+		require.NoError(t, r.Err())
+
+		r = rdb.Do(ctx, "SET", "k2", "v2")
+		require.Error(t, r.Err())
+		util.ErrorRegexp(t, r.Err(), "ERR.*not allowed.*")
+
+		r = rdb.Do(ctx, "DEL", "k1")
+		require.NoError(t, r.Err())
+	})
+}

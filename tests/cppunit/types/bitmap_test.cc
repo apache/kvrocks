@@ -29,8 +29,8 @@
 class RedisBitmapTest : public TestBase {
  protected:
   explicit RedisBitmapTest() {
-    bitmap_ = std::make_unique<redis::Bitmap>(storage_, "bitmap_ns");
-    string_ = std::make_unique<redis::String>(storage_, "bitmap_ns");
+    bitmap_ = std::make_unique<redis::Bitmap>(storage_.get(), "bitmap_ns");
+    string_ = std::make_unique<redis::String>(storage_.get(), "bitmap_ns");
   }
   ~RedisBitmapTest() override = default;
 
@@ -68,6 +68,51 @@ TEST_F(RedisBitmapTest, BitCount) {
   auto s = bitmap_->Del(key_);
 }
 
+TEST_F(RedisBitmapTest, BitCountNegative) {
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 0, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 0, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, -1, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, -1, -1, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 1, 1, &cnt);
+  EXPECT_EQ(cnt, 0);
+  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  EXPECT_EQ(cnt, 1);
+
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 5, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  EXPECT_EQ(cnt, 2);
+
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
+    EXPECT_FALSE(bit);
+    bitmap_->SetBit(key_, 8 * 1024, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+
+  bitmap_->BitCount(key_, 0, 1024, &cnt);
+  EXPECT_EQ(cnt, 4);
+
+  bitmap_->BitCount(key_, 0, 1023, &cnt);
+  EXPECT_EQ(cnt, 3);
+
+  auto s = bitmap_->Del(key_);
+}
+
 TEST_F(RedisBitmapTest, BitPosClearBit) {
   int64_t pos = 0;
   bool old_bit = false;
@@ -92,6 +137,32 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
     bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
     EXPECT_EQ(pos, offsets[i]);
   }
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_F(RedisBitmapTest, BitPosNegative) {
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  // First bit is negative
+  bitmap_->BitPos(key_, false, 0, -1, true, &pos);
+  EXPECT_EQ(0, pos);
+  // 8 * 1024 - 1 bit is positive
+  bitmap_->BitPos(key_, true, 0, -1, true, &pos);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // First bit in 1023 byte is negative
+  bitmap_->BitPos(key_, false, -1, -1, true, &pos);
+  EXPECT_EQ(8 * 1023, pos);
+  // Last Bit in 1023 byte is positive
+  bitmap_->BitPos(key_, true, -1, -1, true, &pos);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // Large negative number will be normalized.
+  bitmap_->BitPos(key_, false, -10000, -10000, true, &pos);
+  EXPECT_EQ(0, pos);
+
   auto s = bitmap_->Del(key_);
 }
 

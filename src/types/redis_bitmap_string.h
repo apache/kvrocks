@@ -44,9 +44,6 @@ class BitmapString : public Database {
                                           const std::vector<BitfieldOperation> &ops,
                                           std::vector<std::optional<BitfieldValue>> *rets);
 
-  static size_t RawPopcount(const uint8_t *p, int64_t count);
-  static int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit);
-
   // NormalizeRange converts a range to a normalized range, which is a range with start and stop in [0, length).
   //
   // If start/end is negative, it will be converted to positive by adding length to it, and if the result is still

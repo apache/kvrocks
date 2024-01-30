@@ -35,7 +35,10 @@ class RedisBitmapTest : public TestBase {
   ~RedisBitmapTest() override = default;
 
   void SetUp() override { key_ = "test_bitmap_key"; }
-  void TearDown() override {}
+  void TearDown() override {
+    [[maybe_unused]] auto s = bitmap_->Del(key_);
+    s = string_->Del(key_);
+  }
 
   std::unique_ptr<redis::Bitmap> bitmap_;
   std::unique_ptr<redis::String> string_;
@@ -51,7 +54,6 @@ TEST_F(RedisBitmapTest, GetAndSetBit) {
     bitmap_->GetBit(key_, offset, &bit);
     EXPECT_TRUE(bit);
   }
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitCount) {
@@ -65,7 +67,6 @@ TEST_F(RedisBitmapTest, BitCount) {
   EXPECT_EQ(cnt, 6);
   bitmap_->BitCount(key_, 0, -1, &cnt);
   EXPECT_EQ(cnt, 6);
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitCountNegative) {
@@ -109,8 +110,6 @@ TEST_F(RedisBitmapTest, BitCountNegative) {
 
   bitmap_->BitCount(key_, 0, 1023, &cnt);
   EXPECT_EQ(cnt, 3);
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitPosClearBit) {
@@ -118,11 +117,10 @@ TEST_F(RedisBitmapTest, BitPosClearBit) {
   bool old_bit = false;
   for (int i = 0; i < 1024 + 16; i++) {
     bitmap_->BitPos(key_, false, 0, -1, true, &pos);
-    EXPECT_EQ(pos, i);
+    ASSERT_EQ(pos, i);
     bitmap_->SetBit(key_, i, true, &old_bit);
-    EXPECT_FALSE(old_bit);
+    ASSERT_FALSE(old_bit);
   }
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitPosSetBit) {
@@ -135,9 +133,8 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
   int start_indexes[] = {0, 1, 124, 1025, 1027, 3 * 1024 + 1};
   for (size_t i = 0; i < sizeof(start_indexes) / sizeof(start_indexes[0]); i++) {
     bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
-    EXPECT_EQ(pos, offsets[i]);
+    ASSERT_EQ(pos, offsets[i]);
   }
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitPosNegative) {
@@ -162,8 +159,6 @@ TEST_F(RedisBitmapTest, BitPosNegative) {
   // Large negative number will be normalized.
   bitmap_->BitPos(key_, false, -10000, -10000, true, &pos);
   EXPECT_EQ(0, pos);
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitfieldGetSetTest) {
@@ -192,8 +187,6 @@ TEST_F(RedisBitmapTest, BitfieldGetSetTest) {
     rets.clear();
     op.offset++;
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, UnsignedBitfieldTest) {
@@ -221,8 +214,6 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldTest) {
     EXPECT_EQ(i - 1, rets[0].value());
     rets.clear();
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, SignedBitfieldTest) {
@@ -250,7 +241,6 @@ TEST_F(RedisBitmapTest, SignedBitfieldTest) {
     EXPECT_EQ(i - 1, rets[0].value());
     rets.clear();
   }
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, SignedBitfieldWrapSetTest) {
@@ -284,8 +274,6 @@ TEST_F(RedisBitmapTest, SignedBitfieldWrapSetTest) {
   EXPECT_EQ(1, rets.size());
   EXPECT_EQ(min, rets[0].value());
   rets.clear();
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, UnsignedBitfieldWrapSetTest) {
@@ -319,8 +307,6 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldWrapSetTest) {
   EXPECT_EQ(1, rets.size());
   EXPECT_EQ(0, rets[0].value());
   rets.clear();
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, SignedBitfieldSatSetTest) {
@@ -355,8 +341,6 @@ TEST_F(RedisBitmapTest, SignedBitfieldSatSetTest) {
     EXPECT_EQ(max, rets[0].value());
     rets.clear();
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
@@ -392,8 +376,6 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
     EXPECT_EQ(max, rets[0].value());
     rets.clear();
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, SignedBitfieldFailSetTest) {
@@ -428,8 +410,6 @@ TEST_F(RedisBitmapTest, SignedBitfieldFailSetTest) {
     EXPECT_FALSE(rets[0].has_value());
     rets.clear();
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, UnsignedBitfieldFailSetTest) {
@@ -464,8 +444,6 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldFailSetTest) {
     EXPECT_FALSE(rets[0].has_value());
     rets.clear();
   }
-
-  auto s = bitmap_->Del(key_);
 }
 
 TEST_F(RedisBitmapTest, BitfieldStringGetSetTest) {

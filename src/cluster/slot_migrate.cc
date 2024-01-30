@@ -1298,6 +1298,10 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
             batch_sender->Delete(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)), item.key));
         break;
       }
+      case engine::WALItem::Type::kTypeDeleteRange: {
+        // Do nothing in DeleteRange due to it might cross multiple slots. It's only used in
+        // FLUSHDB/FLUSHALL commands for now and maybe we can disable them while migrating.
+      }
       default:
         break;
     }

@@ -34,10 +34,11 @@ namespace redis {
 
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
   std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
-  if (util::BytesForBits(offset) > static_cast<int64_t>(string_value.size())) {
+  if (util::BytesForBits(offset) >= static_cast<int64_t>(string_value.size())) {
     // When offset is beyond the string length, the string is assumed to be a contiguous space with 0 bits.
     return rocksdb::Status::OK();
   }
+  DCHECK(string_value.size() * 8 > offset);
   *bit = util::GetBit(reinterpret_cast<const uint8_t *>(string_value.data()), offset);
   return rocksdb::Status::OK();
 }

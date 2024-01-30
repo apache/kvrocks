@@ -90,23 +90,23 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
 
   if (start > stop) {
     *pos = -1;
-  } else {
-    int64_t bytes = stop - start + 1;
-    *pos = util::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
-
-    /* If we are looking for clear bits, and the user specified an exact
-     * range with start-end, we can't consider the right of the range as
-     * zero padded (as we do when no explicit end is given).
-     *
-     * So if redisBitpos() returns the first bit outside the range,
-     * we return -1 to the caller, to mean, in the specified range there
-     * is not a single "0" bit. */
-    if (stop_given && bit == 0 && *pos == bytes * 8) {
-      *pos = -1;
-      return rocksdb::Status::OK();
-    }
-    if (*pos != -1) *pos += start * 8; /* Adjust for the bytes we skipped. */
+    return rocksdb::Status::OK();
   }
+  // Searching bitpos within the range [start, stop].
+  int64_t bytes = stop - start + 1;
+  *pos = util::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
+  /* If we are looking for clear bits, and the user specified an exact
+   * range with start-end, we can't consider the right of the range as
+   * zero padded (as we do when no explicit end is given).
+   *
+   * So if redisBitpos() returns the first bit outside the range,
+   * we return -1 to the caller, to mean, in the specified range there
+   * is not a single "0" bit. */
+  if (stop_given && bit == 0 && *pos == bytes * 8) {
+    *pos = -1;
+    return rocksdb::Status::OK();
+  }
+  if (*pos != -1) *pos += start * 8; /* Adjust for the bytes we skipped. */
   return rocksdb::Status::OK();
 }
 

@@ -33,6 +33,14 @@ inline int ClzllWithEndian(uint64_t x) {
   }
 }
 
+/* Return the position of the first bit set to one (if 'bit' is 1) or
+ * zero (if 'bit' is 0) in the bitmap starting at 's' and long 'count' bytes.
+ *
+ * The function is guaranteed to return a value >= 0 if 'bit' is 0 since if
+ * no zero bit is found, it returns count*8 assuming the string is zero
+ * padded on the right. However if 'bit' is 1 it is possible that there is
+ * not a single set bit in the bitmap. In this special case -1 is returned.
+ * */
 inline int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   int64_t res = 0;
 

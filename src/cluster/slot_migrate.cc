@@ -296,20 +296,18 @@ Status SlotMigrator::startMigration() {
 }
 
 Status SlotMigrator::sendSnapshot() {
-  auto type = static_cast<MigrationType>(srv_->GetConfig()->migrate_type);
-  if (type == MigrationType::kRedisCommand) {
+  if (srv_->GetConfig()->migrate_type == MigrationType::kRedisCommand) {
     return sendSnapshotByCmd();
-  } else if (type == MigrationType::kRawKeyValue) {
+  } else if (srv_->GetConfig()->migrate_type == MigrationType::kRawKeyValue) {
     return sendSnapshotByRawKV();
   }
   return {Status::NotOK, errUnsupportedMigrationType};
 }
 
 Status SlotMigrator::syncWAL() {
-  auto type = static_cast<MigrationType>(srv_->GetConfig()->migrate_type);
-  if (type == MigrationType::kRedisCommand) {
+  if (srv_->GetConfig()->migrate_type == MigrationType::kRedisCommand) {
     return syncWALByCmd();
-  } else if (type == MigrationType::kRawKeyValue) {
+  } else if (srv_->GetConfig()->migrate_type == MigrationType::kRawKeyValue) {
     return syncWALByRawKV();
   }
   return {Status::NotOK, errUnsupportedMigrationType};

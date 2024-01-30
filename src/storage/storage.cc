@@ -639,10 +639,6 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 }
 
 rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
-  if (db_size_limit_reached_) {
-    return rocksdb::Status::SpaceLimit();
-  }
-
   // Put replication id logdata at the end of write batch
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());

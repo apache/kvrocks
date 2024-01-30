@@ -141,7 +141,11 @@ TEST_P(RedisBitmapTest, BitPosClearBit) {
     /// String will set a empty string value when initializing, so, when first
     /// querying, it should return -1.
     bitmap_->BitPos(key_, false, 0, -1, /*stop_given=*/false, &pos);
-    if (i == 0 && !use_bitmap) {EXPECT_EQ(pos, -1);} else {EXPECT_EQ(pos, i);}
+    if (i == 0 && !use_bitmap) {
+      EXPECT_EQ(pos, -1);
+    } else {
+      EXPECT_EQ(pos, i);
+    }
 
     bitmap_->SetBit(key_, i, true, &old_bit);
     EXPECT_FALSE(old_bit);

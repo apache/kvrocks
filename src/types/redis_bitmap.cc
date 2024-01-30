@@ -219,6 +219,11 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
+  /* Convert negative indexes */
+  if (start < 0 && stop < 0 && start > stop) {
+    return rocksdb::Status::OK();
+  }
+
   if (metadata.Type() == kRedisString) {
     redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.BitCount(raw_value, start, stop, cnt);

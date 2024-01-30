@@ -29,6 +29,10 @@
 #include "types/redis_hash.h"
 
 class TestFixture {  // NOLINT
+ public:
+  TestFixture(TestFixture &&) = delete;
+  TestFixture(const TestFixture &) = delete;
+
  protected:
   explicit TestFixture() {
     const char *path = "test.conf";
@@ -59,9 +63,6 @@ class TestFixture {  // NOLINT
     const char *path = "test.conf";
     unlink(path);
   }
-
-  TestFixture(TestFixture&&) = delete;
-  TestFixture(const TestFixture&) = delete;
 
   std::unique_ptr<engine::Storage> storage_;
   Config config_;

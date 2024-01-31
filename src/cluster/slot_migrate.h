@@ -34,6 +34,7 @@
 #include <utility>
 #include <vector>
 
+#include "batch_sender.h"
 #include "config.h"
 #include "encoding.h"
 #include "parse_util.h"
@@ -44,6 +45,8 @@
 #include "status.h"
 #include "storage/redis_db.h"
 #include "unique_fd.h"
+
+enum class MigrationType { kRedisCommand = 0, kRawKeyValue };
 
 enum class MigrationState { kNone = 0, kStarted, kSuccess, kFailed };
 
@@ -75,8 +78,7 @@ class SyncMigrateContext;
 
 class SlotMigrator : public redis::Database {
  public:
-  explicit SlotMigrator(Server *srv, int max_migration_speed = kDefaultMaxMigrationSpeed,
-                        int max_pipeline_size = kDefaultMaxPipelineSize, int seq_gap_limit = kDefaultSequenceGapLimit);
+  explicit SlotMigrator(Server *srv);
   SlotMigrator(const SlotMigrator &other) = delete;
   SlotMigrator &operator=(const SlotMigrator &other) = delete;
   ~SlotMigrator();
@@ -94,6 +96,8 @@ class SlotMigrator : public redis::Database {
   void SetSequenceGapLimit(int value) {
     if (value > 0) seq_gap_limit_ = value;
   }
+  void SetMigrateBatchRateLimit(size_t bytes_per_sec) { migrate_batch_bytes_per_sec_ = bytes_per_sec; }
+  void SetMigrateBatchSize(size_t size) { migrate_batch_size_bytes_ = size; }
   void SetStopMigrationFlag(bool value) { stop_migration_ = value; }
   bool IsMigrationInProgress() const { return migration_state_ == MigrationState::kStarted; }
   SlotMigrationStage GetCurrentSlotMigrationStage() const { return current_stage_; }
@@ -108,13 +112,16 @@ class SlotMigrator : public redis::Database {
   bool isTerminated() { return thread_state_ == ThreadState::Terminated; }
   Status startMigration();
   Status sendSnapshot();
-  Status syncWal();
+  Status syncWAL();
   Status finishSuccessfulMigration();
   Status finishFailedMigration();
   void clean();
 
   Status authOnDstNode(int sock_fd, const std::string &password);
   Status setImportStatusOnDstNode(int sock_fd, int status);
+
+  Status sendSnapshotByCmd();
+  Status syncWALByCmd();
   Status checkSingleResponse(int sock_fd);
   Status checkMultipleResponses(int sock_fd, int total);
 
@@ -133,6 +140,13 @@ class SlotMigrator : public redis::Database {
   Status migrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq);
   Status syncWalBeforeForbiddingSlot();
   Status syncWalAfterForbiddingSlot();
+
+  Status sendMigrationBatch(BatchSender *batch);
+  Status sendSnapshotByRawKV();
+  Status syncWALByRawKV();
+  bool catchUpIncrementalWAL();
+  Status migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender);
+
   void setForbiddenSlot(int16_t slot);
   std::unique_lock<std::mutex> blockingLock() { return std::unique_lock<std::mutex>(blocking_mutex_); }
 
@@ -148,9 +162,12 @@ class SlotMigrator : public redis::Database {
   static const int kMaxLoopTimes = 10;
 
   Server *srv_;
-  int max_migration_speed_;
-  int max_pipeline_size_;
-  int seq_gap_limit_;
+
+  int max_migration_speed_ = kDefaultMaxMigrationSpeed;
+  int max_pipeline_size_ = kDefaultMaxPipelineSize;
+  uint64_t seq_gap_limit_ = kDefaultSequenceGapLimit;
+  std::atomic<size_t> migrate_batch_bytes_per_sec_ = 1 * GiB;
+  std::atomic<size_t> migrate_batch_size_bytes_;
 
   SlotMigrationStage current_stage_ = SlotMigrationStage::kNone;
   ParserState parser_state_ = ParserState::ArrayLen;

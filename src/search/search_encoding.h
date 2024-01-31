@@ -33,9 +33,11 @@ enum class SearchSubkeyType : uint8_t {
 
   // field metadata for different types
   TAG_FIELD_META = 64 + 1,
+  NUMERIC_FIELD_META = 64 + 2,
 
   // field indexing for different types
   TAG_FIELD = 128 + 1,
+  NUMERIC_FIELD = 128 + 2,
 };
 
 inline std::string ConstructSearchPrefixesSubkey() { return {(char)SearchSubkeyType::PREFIXES}; }
@@ -70,8 +72,8 @@ inline std::string ConstructTagFieldMetadataSubkey(std::string_view field_name) 
 }
 
 struct SearchTagFieldMetadata {
-  char separator;
-  bool case_sensitive;
+  char separator = ',';
+  bool case_sensitive = false;
 
   void Encode(std::string *dst) const {
     PutFixed8(dst, separator);
@@ -89,12 +91,28 @@ struct SearchTagFieldMetadata {
   }
 };
 
+inline std::string ConstructNumericFieldMetadataSubkey(std::string_view field_name) {
+  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD_META};
+  res.append(field_name);
+  return res;
+}
+
 inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD};
   PutFixed32(&res, field_name.size());
   res.append(field_name);
   PutFixed32(&res, tag.size());
   res.append(tag);
+  PutFixed32(&res, key.size());
+  res.append(key);
+  return res;
+}
+
+inline std::string ConstructNumericFieldSubkey(std::string_view field_name, double number, std::string_view key) {
+  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD};
+  PutFixed32(&res, field_name.size());
+  res.append(field_name);
+  PutDouble(&res, number);
   PutFixed32(&res, key.size());
   res.append(key);
   return res;

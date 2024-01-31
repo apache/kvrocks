@@ -350,8 +350,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandExpireTime>("expiretime", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandDel>("del", -2, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandDel>("unlink", -2, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
+                        MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1), )
 

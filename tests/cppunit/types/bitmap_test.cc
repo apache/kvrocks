@@ -61,10 +61,27 @@ TEST_F(RedisBitmapTest, BitCount) {
     bitmap_->SetBit(key_, offset, true, &bit);
   }
   uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
   EXPECT_EQ(cnt, 6);
-  bitmap_->BitCount(key_, 0, -1, &cnt);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
   EXPECT_EQ(cnt, 6);
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_F(RedisBitmapTest, BitCountBitmapString) {
+  std::string str = "hello";
+  string_->Set(key_, str);
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
+  EXPECT_EQ(cnt, 21);
+  bitmap_->BitCount(key_, 0, -1, true, &cnt);
+  EXPECT_EQ(cnt, 21);
+  bitmap_->BitCount(key_, -1, -1, false, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, -1, -1, true, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 7, true, &cnt);
+  EXPECT_EQ(cnt, 3);
   auto s = bitmap_->Del(key_);
 }
 
@@ -75,17 +92,17 @@ TEST_F(RedisBitmapTest, BitCountNegative) {
     EXPECT_FALSE(bit);
   }
   uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 0, 0, &cnt);
+  bitmap_->BitCount(key_, 0, 0, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 0, -1, &cnt);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, -1, -1, &cnt);
+  bitmap_->BitCount(key_, -1, -1, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 1, 1, &cnt);
+  bitmap_->BitCount(key_, 1, 1, false, &cnt);
   EXPECT_EQ(cnt, 0);
-  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
   EXPECT_EQ(cnt, 1);
 
   {
@@ -93,7 +110,7 @@ TEST_F(RedisBitmapTest, BitCountNegative) {
     bitmap_->SetBit(key_, 5, true, &bit);
     EXPECT_FALSE(bit);
   }
-  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
   EXPECT_EQ(cnt, 2);
 
   {
@@ -104,12 +121,40 @@ TEST_F(RedisBitmapTest, BitCountNegative) {
     EXPECT_FALSE(bit);
   }
 
-  bitmap_->BitCount(key_, 0, 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 1024, false, &cnt);
   EXPECT_EQ(cnt, 4);
 
-  bitmap_->BitCount(key_, 0, 1023, &cnt);
+  bitmap_->BitCount(key_, 0, 1023, false, &cnt);
   EXPECT_EQ(cnt, 3);
 
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_F(RedisBitmapTest, BitCountBITOption) {
+  uint32_t offsets[] = {0, 100, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
+  for (const auto &offset : offsets) {
+    bool bit = false;
+    bitmap_->SetBit(key_, offset, true, &bit);
+  }
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, 4 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, -1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 1, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 5);
+  bitmap_->BitCount(key_, 0, 0, true, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 100, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 3 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 4);
+  bitmap_->BitCount(key_, -1, -1, true, &cnt);
+  EXPECT_EQ(cnt, 0);  // NOTICE: the min storage unit is byte, the result is the same as Redis.
   auto s = bitmap_->Del(key_);
 }
 

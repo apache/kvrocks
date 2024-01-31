@@ -35,7 +35,8 @@ class BitmapString : public Database {
   BitmapString(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   static rocksdb::Status GetBit(const std::string &raw_value, uint32_t offset, bool *bit);
   rocksdb::Status SetBit(const Slice &ns_key, std::string *raw_value, uint32_t offset, bool new_bit, bool *old_bit);
-  static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt);
+  static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit,
+                                  uint32_t *cnt);
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
                                 int64_t *pos);
   rocksdb::Status Bitfield(const Slice &ns_key, std::string *raw_value, const std::vector<BitfieldOperation> &ops,
@@ -56,6 +57,10 @@ class BitmapString : public Database {
   // Return:
   //  The normalized [start, end] range.
   static std::pair<int64_t, int64_t> NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length);
+
+  // If is_bit is true, adjust the two mask and then adjust origin_start and origin_end
+  static std::pair<int64_t, int64_t> AdjustMaskWithRange(bool is_bit, int64_t origin_start, int64_t origin_end,
+                                                         uint8_t *first_byte_neg_mask, uint8_t *last_byte_neg_mask);
 };
 
 }  // namespace redis

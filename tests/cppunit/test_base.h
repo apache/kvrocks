@@ -28,9 +28,13 @@
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
 
-class TestBase : public testing::Test {  // NOLINT
+class TestFixture {  // NOLINT
+ public:
+  TestFixture(TestFixture &&) = delete;
+  TestFixture(const TestFixture &) = delete;
+
  protected:
-  explicit TestBase() {
+  explicit TestFixture() {
     const char *path = "test.conf";
     unlink(path);
     std::ofstream output_file(path, std::ios::out);
@@ -48,7 +52,7 @@ class TestBase : public testing::Test {  // NOLINT
       assert(s.IsOK());
     }
   }
-  ~TestBase() override {
+  ~TestFixture() {
     storage_.reset();
 
     std::error_code ec;
@@ -66,4 +70,7 @@ class TestBase : public testing::Test {  // NOLINT
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
 };
+
+class TestBase : public TestFixture, public ::testing::Test {};
+
 #endif  // KVROCKS_TEST_BASE_H

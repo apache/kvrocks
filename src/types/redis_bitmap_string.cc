@@ -32,7 +32,7 @@
 namespace redis {
 
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   uint32_t byte_index = offset >> 3;
   uint32_t bit_val = 0;
   uint32_t bit_offset = 7 - (offset & 0x7);
@@ -71,10 +71,6 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {
   *cnt = 0;
   std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
-  /* Convert negative indexes */
-  if (start < 0 && stop < 0 && start > stop) {
-    return rocksdb::Status::OK();
-  }
   auto strlen = static_cast<int64_t>(string_value.size());
   std::tie(start, stop) = NormalizeRange(start, stop, strlen);
 
@@ -89,7 +85,7 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
 
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
                                      bool stop_given, int64_t *pos) {
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
   /* Convert negative and out-of-bound indexes */
   std::tie(start, stop) = NormalizeRange(start, stop, strlen);

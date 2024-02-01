@@ -58,7 +58,6 @@ class BitmapString : public Database {
   //  The normalized [start, end] range.
   static std::pair<int64_t, int64_t> NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length);
 
-  // If is_bit is true, adjust the two mask and then adjust origin_start and origin_end
   static std::pair<int64_t, int64_t> AdjustMaskWithRange(bool is_bit, int64_t origin_start, int64_t origin_end,
                                                          uint8_t *first_byte_neg_mask, uint8_t *last_byte_neg_mask);
 };

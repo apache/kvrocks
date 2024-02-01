@@ -82,8 +82,7 @@ void EventListener::OnCompactionBegin(rocksdb::DB *db, const rocksdb::Compaction
             << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
             << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
             << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes
-            << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no")
-            << ", elapsed(micro): " << ci.stats.elapsed_micros;
+            << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no");
 }
 
 void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {

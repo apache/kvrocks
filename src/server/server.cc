@@ -160,8 +160,7 @@ Status Server::Start() {
       }
     }
     // Create objects used for slot migration
-    slot_migrator =
-        std::make_unique<SlotMigrator>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
+    slot_migrator = std::make_unique<SlotMigrator>(this);
     auto s = slot_migrator->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");

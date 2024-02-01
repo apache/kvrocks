@@ -51,7 +51,7 @@ inline constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType::KVRO
 const int kReplIdLength = 16;
 
 enum ColumnFamilyID {
-  kColumnFamilyIDDefault,
+  kColumnFamilyIDDefault = 0,
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,
   kColumnFamilyIDPubSub,
@@ -177,11 +177,14 @@ class Storage {
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
+  rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID id);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
   void CheckDBSizeLimit();
+  bool ReachedDBSizeLimit() { return db_size_limit_reached_; }
+  void SetDBSizeLimit(bool limit) { db_size_limit_reached_ = limit; }
   void SetIORateLimit(int64_t max_io_mb);
 
   std::shared_lock<std::shared_mutex> ReadLockGuard();
@@ -254,7 +257,7 @@ class Storage {
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
-  bool db_size_limit_reached_ = false;
+  std::atomic<bool> db_size_limit_reached_{false};
 
   DBStats db_stats_;
 

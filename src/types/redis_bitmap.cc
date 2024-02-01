@@ -107,7 +107,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t offset, bool *bit
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   uint32_t index = (offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
-  std::string value;
+  rocksdb::PinnableSlice value;
   std::string sub_key =
       InternalKey(ns_key, std::to_string(index), metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(read_options, sub_key, &value);
@@ -218,6 +218,11 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   BitmapMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  /* Convert negative indexes */
+  if (start < 0 && stop < 0 && start > stop) {
+    return rocksdb::Status::OK();
+  }
 
   if (metadata.Type() == kRedisString) {
     redis::BitmapString bitmap_string_db(storage_, namespace_);

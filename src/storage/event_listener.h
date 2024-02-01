@@ -31,7 +31,11 @@ class EventListener : public rocksdb::EventListener {
   ~EventListener() override = default;
   void OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) override;
   void OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) override;
+  void OnCompactionBegin(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) override;
   void OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) override;
+  void OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si) override;
+  void OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) override;
+
   void OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) override;
   void OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) override;
   void OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) override;

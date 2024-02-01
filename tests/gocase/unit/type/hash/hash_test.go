@@ -50,8 +50,18 @@ func getVals(hash map[string]string) []string {
 	return r
 }
 
-func TestHash(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+func TestHashWithRESP2(t *testing.T) {
+	testHash(t, "no")
+}
+
+func TestHashWithRESP3(t *testing.T) {
+	testHash(t, "yes")
+}
+
+var testHash = func(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -359,29 +369,15 @@ func TestHash(t *testing.T) {
 	})
 
 	t.Run("HGETALL - small hash}", func(t *testing.T) {
-		res := rdb.Do(ctx, "hgetall", "smallhash").Val().([]interface{})
-		mid := make(map[string]string)
-		for i := 0; i < len(res); i += 2 {
-			if res[i+1] == nil {
-				mid[res[i].(string)] = ""
-			} else {
-				mid[res[i].(string)] = res[i+1].(string)
-			}
-		}
-		require.Equal(t, smallhash, mid)
+		gotHash, err := rdb.HGetAll(ctx, "smallhash").Result()
+		require.NoError(t, err)
+		require.Equal(t, smallhash, gotHash)
 	})
 
 	t.Run("HGETALL - big hash}", func(t *testing.T) {
-		res := rdb.Do(ctx, "hgetall", "bighash").Val().([]interface{})
-		mid := make(map[string]string)
-		for i := 0; i < len(res); i += 2 {
-			if res[i+1] == nil {
-				mid[res[i].(string)] = ""
-			} else {
-				mid[res[i].(string)] = res[i+1].(string)
-			}
-		}
-		require.Equal(t, bighash, mid)
+		gotHash, err := rdb.HGetAll(ctx, "bighash").Result()
+		require.NoError(t, err)
+		require.Equal(t, bighash, gotHash)
 	})
 
 	t.Run("HGETALL - field with empty string as a value", func(t *testing.T) {
@@ -833,6 +829,30 @@ func TestHash(t *testing.T) {
 		})
 
 	}
+}
+
+func TestHGetAllWithRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	ctx := context.Background()
+
+	testKey := "test-hash-1"
+	require.NoError(t, rdb.Del(ctx, testKey).Err())
+	require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
+	result, err := rdb.HGetAll(ctx, testKey).Result()
+	require.NoError(t, err)
+	require.Len(t, result, 3)
+	require.EqualValues(t, map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+		"key3": "value3",
+	}, result)
 }
 
 func TestHashWithAsyncIOEnabled(t *testing.T) {

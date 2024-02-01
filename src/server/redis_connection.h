@@ -58,9 +58,34 @@ class Connection : public EvbufCallbackBase<Connection> {
   void OnRead(bufferevent *bev);
   void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
-  void Reply(const std::string &msg);
   void SendFile(int fd);
   std::string ToString();
+
+  void Reply(const std::string &msg);
+  RESP GetProtocolVersion() const { return protocol_version_; }
+  void SetProtocolVersion(RESP version) { protocol_version_ = version; }
+  std::string Bool(bool b) const;
+  std::string BigNumber(const std::string &n) const {
+    return protocol_version_ == RESP::v3 ? "(" + n + CRLF : BulkString(n);
+  }
+  std::string Double(double d) const {
+    return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
+  }
+  std::string NilString() const { return redis::NilString(protocol_version_); }
+  std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
+  std::string MultiBulkString(const std::vector<std::string> &values) const;
+  std::string MultiBulkString(const std::vector<std::string> &values,
+                              const std::vector<rocksdb::Status> &statuses) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfSet(T len) const {
+    return protocol_version_ == RESP::v3 ? "~" + std::to_string(len) + CRLF : MultiLen(len);
+  }
+  std::string SetOfBulkStrings(const std::vector<std::string> &elems) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfMap(T len) const {
+    return protocol_version_ == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
+  }
+  std::string MapOfBulkStrings(const std::vector<std::string> &elems) const;
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
@@ -71,6 +96,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   void PUnsubscribeChannel(const std::string &pattern);
   void PUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
   int PSubscriptionsCount();
+  void SSubscribeChannel(const std::string &channel, uint16_t slot);
+  void SUnsubscribeChannel(const std::string &channel, uint16_t slot);
+  void SUnsubscribeAll(const UnsubscribeCallback &reply = nullptr);
+  int SSubscriptionsCount();
 
   uint64_t GetAge() const;
   uint64_t GetIdleTime() const;
@@ -156,6 +185,7 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   std::vector<std::string> subscribe_channels_;
   std::vector<std::string> subscribe_patterns_;
+  std::vector<std::string> subscribe_shard_channels_;
 
   Server *srv_;
   bool in_exec_ = false;
@@ -164,6 +194,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::deque<redis::CommandTokens> multi_cmds_;
 
   bool importing_ = false;
+  RESP protocol_version_ = RESP::v2;
 };
 
 }  // namespace redis

@@ -36,6 +36,7 @@
 
 // forward declaration
 class Server;
+enum class MigrationType;
 namespace engine {
 class Storage;
 }
@@ -53,6 +54,8 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+
+enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
 struct CompactionCheckerRange {
  public:
@@ -142,11 +145,16 @@ struct Config {
   bool persist_cluster_nodes_enabled = true;
   bool slot_id_encoded = false;
   bool cluster_enabled = false;
+
   int migrate_speed;
   int pipeline_size;
   int sequence_gap;
+  MigrationType migrate_type;
+  int migrate_batch_size_kb;
+  int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
+  bool resp3_enabled = false;
   int log_retention_days;
 
   // load_tokens is used to buffer the tokens when loading,
@@ -168,6 +176,7 @@ struct Config {
     int block_size;
     bool cache_index_and_filter_blocks;
     int block_cache_size;
+    BlockCacheType block_cache_type;
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;

@@ -153,7 +153,7 @@ class CommandXAdd : public Commander {
     }
 
     if (s.IsNotFound() && nomkstream_) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -445,9 +445,9 @@ class CommandXInfo : public Commander {
     }
 
     if (!full_) {
-      output->append(redis::MultiLen(14));
+      output->append(conn->HeaderOfMap(7));
     } else {
-      output->append(redis::MultiLen(12));
+      output->append(conn->HeaderOfMap(6));
     }
     output->append(redis::BulkString("length"));
     output->append(redis::Integer(info.size));
@@ -464,17 +464,17 @@ class CommandXInfo : public Commander {
       if (info.first_entry) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(info.first_entry->key));
-        output->append(redis::MultiBulkString(info.first_entry->values));
+        output->append(conn->MultiBulkString(info.first_entry->values));
       } else {
-        output->append(redis::NilString());
+        output->append(conn->NilString());
       }
       output->append(redis::BulkString("last-entry"));
       if (info.last_entry) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(info.last_entry->key));
-        output->append(redis::MultiBulkString(info.last_entry->values));
+        output->append(conn->MultiBulkString(info.last_entry->values));
       } else {
-        output->append(redis::NilString());
+        output->append(conn->NilString());
       }
     } else {
       output->append(redis::BulkString("entries"));
@@ -482,7 +482,7 @@ class CommandXInfo : public Commander {
       for (const auto &e : info.entries) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(e.key));
-        output->append(redis::MultiBulkString(e.values));
+        output->append(conn->MultiBulkString(e.values));
       }
     }
 
@@ -503,7 +503,7 @@ class CommandXInfo : public Commander {
 
     output->append(redis::MultiLen(result_vector.size()));
     for (auto const &it : result_vector) {
-      output->append(redis::MultiLen(12));
+      output->append(conn->HeaderOfMap(6));
       output->append(redis::BulkString("name"));
       output->append(redis::BulkString(it.first));
       output->append(redis::BulkString("consumers"));
@@ -514,13 +514,13 @@ class CommandXInfo : public Commander {
       output->append(redis::BulkString(it.second.last_delivered_id.ToString()));
       output->append(redis::BulkString("entries-read"));
       if (it.second.entries_read == -1) {
-        output->append(redis::NilString());
+        output->append(conn->NilString());
       } else {
         output->append(redis::Integer(it.second.entries_read));
       }
       output->append(redis::BulkString("lag"));
       if (it.second.lag == UINT64_MAX) {
-        output->append(redis::NilString());
+        output->append(conn->NilString());
       } else {
         output->append(redis::Integer(it.second.lag));
       }
@@ -545,7 +545,7 @@ class CommandXInfo : public Commander {
     output->append(redis::MultiLen(result_vector.size()));
     auto now = util::GetTimeStampMS();
     for (auto const &it : result_vector) {
-      output->append(redis::MultiLen(8));
+      output->append(conn->HeaderOfMap(4));
       output->append(redis::BulkString("name"));
       output->append(redis::BulkString(it.first));
       output->append(redis::BulkString("pending"));
@@ -611,7 +611,7 @@ class CommandXRange : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (with_count_ && count_ == 0) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -637,7 +637,7 @@ class CommandXRange : public Commander {
     for (const auto &e : result) {
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(e.key));
-      output->append(redis::MultiBulkString(e.values));
+      output->append(conn->MultiBulkString(e.values));
     }
 
     return Status::OK();
@@ -704,7 +704,7 @@ class CommandXRevRange : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (with_count_ && count_ == 0) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -730,7 +730,7 @@ class CommandXRevRange : public Commander {
     for (const auto &e : result) {
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(e.key));
-      output->append(redis::MultiBulkString(e.values));
+      output->append(conn->MultiBulkString(e.values));
     }
 
     return Status::OK();
@@ -862,7 +862,7 @@ class CommandXRead : public Commander,
 
     if (block_ && results.empty()) {
       if (conn->IsInExec()) {
-        *output = redis::MultiLen(-1);
+        *output = conn->NilArray();
         return Status::OK();  // No blocking in multi-exec
       }
 
@@ -870,14 +870,14 @@ class CommandXRead : public Commander,
     }
 
     if (!block_ && results.empty()) {
-      *output = redis::MultiLen(-1);
+      *output = conn->NilArray();
       return Status::OK();
     }
 
-    return SendResults(output, results);
+    return SendResults(conn, output, results);
   }
 
-  static Status SendResults(std::string *output, const std::vector<StreamReadResult> &results) {
+  static Status SendResults(Connection *conn, std::string *output, const std::vector<StreamReadResult> &results) {
     output->append(redis::MultiLen(results.size()));
 
     for (const auto &result : results) {
@@ -887,7 +887,7 @@ class CommandXRead : public Commander,
       for (const auto &entry : result.entries) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(entry.key));
-        output->append(redis::MultiBulkString(entry.values));
+        output->append(conn->MultiBulkString(entry.values));
       }
     }
 
@@ -973,7 +973,7 @@ class CommandXRead : public Commander,
     }
 
     if (results.empty()) {
-      conn_->Reply(redis::MultiLen(-1));
+      conn_->Reply(conn_->NilArray());
     }
 
     SendReply(results);
@@ -991,7 +991,7 @@ class CommandXRead : public Commander,
       for (const auto &entry : result.entries) {
         output.append(redis::MultiLen(2));
         output.append(redis::BulkString(entry.key));
-        output.append(redis::MultiBulkString(entry.values));
+        output.append(conn_->MultiBulkString(entry.values));
       }
     }
 
@@ -1009,7 +1009,7 @@ class CommandXRead : public Commander,
   }
 
   void TimerCB(int, int16_t events) {
-    conn_->Reply(redis::NilString());
+    conn_->Reply(conn_->NilString());
 
     timer_.reset();
 
@@ -1190,14 +1190,14 @@ class CommandXSetId : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXDel>("xdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandXTrim>("xtrim", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXTrim>("xtrim", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
 
 }  // namespace redis

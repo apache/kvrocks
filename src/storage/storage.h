@@ -29,6 +29,7 @@
 
 #include <atomic>
 #include <cinttypes>
+#include <cstddef>
 #include <memory>
 #include <shared_mutex>
 #include <string>
@@ -40,15 +41,28 @@
 #include "observer_or_unique.h"
 #include "status.h"
 
+enum class StorageEngineType : uint16_t {
+  RocksDB,
+  Speedb,
+};
+
+inline constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType::KVROCKS_STORAGE_ENGINE;
+
 const int kReplIdLength = 16;
 
 enum ColumnFamilyID {
-  kColumnFamilyIDDefault,
+  kColumnFamilyIDDefault = 0,
   kColumnFamilyIDMetadata,
   kColumnFamilyIDZSetScore,
   kColumnFamilyIDPubSub,
   kColumnFamilyIDPropagate,
   kColumnFamilyIDStream,
+};
+
+enum DBOpenMode {
+  kDBOpenModeDefault,
+  kDBOpenModeForReadOnly,
+  kDBOpenModeAsSecondaryInstance,
 };
 
 namespace engine {
@@ -80,28 +94,56 @@ inline const std::vector<CompressionOption> CompressionOptions = {
     {rocksdb::kZSTD, "zstd", "kZSTD"},
 };
 
+struct CacheOption {
+  BlockCacheType type;
+  const std::string name;
+  const std::string val;
+};
+
+inline const std::vector<CacheOption> CacheOptions = {
+    {BlockCacheType::kCacheTypeLRU, "lru", "kCacheTypeLRU"},
+    {BlockCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
+};
+
+enum class StatType {
+  CompactionCount,
+  FlushCount,
+  KeyspaceHits,
+  KeyspaceMisses,
+};
+
+struct DBStats {
+  std::atomic<uint64_t> compaction_count = 0;
+  std::atomic<uint64_t> flush_count = 0;
+  std::atomic<uint64_t> keyspace_hits = 0;
+  std::atomic<uint64_t> keyspace_misses = 0;
+};
+
 class Storage {
  public:
   explicit Storage(Config *config);
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
-  Status Open(bool read_only = false);
+  Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
   rocksdb::Options InitRocksDBOptions();
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
-  Status SetOption(const std::string &key, const std::string &value);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
-  Status CreateBackup();
+  // The sequence_number will be pointed to the value of the sequence number in range of DB,
+  // but can't promise it's the latest sequence number. So you must check it by yourself before
+  // using it.
+  Status CreateBackup(uint64_t *sequence_number = nullptr);
   void DestroyBackup();
   Status RestoreFromBackup();
   Status RestoreFromCheckpoint();
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(std::string &&raw_batch);
+  Status ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
   [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
@@ -135,22 +177,24 @@ class Storage {
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
+  rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID id);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
   void CheckDBSizeLimit();
+  bool ReachedDBSizeLimit() { return db_size_limit_reached_; }
+  void SetDBSizeLimit(bool limit) { db_size_limit_reached_ = limit; }
   void SetIORateLimit(int64_t max_io_mb);
 
   std::shared_lock<std::shared_mutex> ReadLockGuard();
   std::unique_lock<std::shared_mutex> WriteLockGuard();
 
-  uint64_t GetFlushCount() const { return flush_count_; }
-  void IncrFlushCount(uint64_t n) { flush_count_.fetch_add(n); }
-  uint64_t GetCompactionCount() const { return compaction_count_; }
-  void IncrCompactionCount(uint64_t n) { compaction_count_.fetch_add(n); }
   bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
   Config *GetConfig() const { return config_; }
+
+  const DBStats *GetDBStats() const { return &db_stats_; }
+  void RecordStat(StatType type, uint64_t v);
 
   Status BeginTxn();
   Status CommitTxn();
@@ -213,9 +257,9 @@ class Storage {
   Config *config_ = nullptr;
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
-  bool db_size_limit_reached_ = false;
-  std::atomic<uint64_t> flush_count_{0};
-  std::atomic<uint64_t> compaction_count_{0};
+  std::atomic<bool> db_size_limit_reached_{false};
+
+  DBStats db_stats_;
 
   std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;
@@ -234,6 +278,7 @@ class Storage {
   rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
 
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
 };
 
 }  // namespace engine

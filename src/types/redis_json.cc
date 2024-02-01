@@ -54,26 +54,30 @@ rocksdb::Status Json::write(Slice ns_key, JsonMetadata *metadata, const JsonValu
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value) {
-  std::string bytes;
-  Slice rest;
-
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, metadata, &rest);
-  if (!s.ok()) return s;
-
-  if (metadata->format == JsonStorageFormat::JSON) {
-    auto origin_res = JsonValue::FromString(rest.ToStringView());
-    if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
-    *value = *std::move(origin_res);
-  } else if (metadata->format == JsonStorageFormat::CBOR) {
-    auto origin_res = JsonValue::FromCBOR(rest.ToStringView());
-    if (!origin_res) return rocksdb::Status::Corruption(origin_res.Msg());
-    *value = *std::move(origin_res);
+rocksdb::Status Json::parse(const JsonMetadata &metadata, const Slice &json_bytes, JsonValue *value) {
+  if (metadata.format == JsonStorageFormat::JSON) {
+    auto res = JsonValue::FromString(json_bytes.ToStringView());
+    if (!res) return rocksdb::Status::Corruption(res.Msg());
+    *value = *std::move(res);
+  } else if (metadata.format == JsonStorageFormat::CBOR) {
+    auto res = JsonValue::FromCBOR(json_bytes.ToStringView());
+    if (!res) return rocksdb::Status::Corruption(res.Msg());
+    *value = *std::move(res);
   } else {
     return rocksdb::Status::NotSupported("JSON storage format not supported");
   }
 
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value) {
+  std::string bytes;
+  Slice rest;
+
+  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, metadata, &rest);
+  if (!s.ok()) return s;
+
+  return parse(*metadata, rest, value);
 }
 
 rocksdb::Status Json::create(const std::string &ns_key, JsonMetadata &metadata, const std::string &value) {
@@ -101,7 +105,7 @@ rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *stora
   Slice rest;
   JsonMetadata metadata;
 
-  auto s = GetMetadata(kRedisJson, ns_key, &bytes, &metadata, &rest);
+  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, &metadata, &rest);
   if (!s.ok()) return s;
 
   *storage_format = metadata.format;
@@ -545,52 +549,23 @@ std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_key
 }
 
 std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values) {
-  std::vector<std::string> raw_values;
-  std::vector<JsonMetadata> meta_data;
-  raw_values.resize(ns_keys.size());
-  meta_data.resize(ns_keys.size());
-
-  auto statuses = getRawMetaData(ns_keys, meta_data, &raw_values);
-  for (size_t i = 0; i < ns_keys.size(); i++) {
-    if (!statuses[i].ok()) continue;
-    if (meta_data[i].format == JsonStorageFormat::JSON) {
-      auto res = JsonValue::FromString(raw_values[i]);
-      if (!res) {
-        statuses[i] = rocksdb::Status::Corruption(res.Msg());
-        continue;
-      }
-      values[i] = *std::move(res);
-    } else if (meta_data[i].format == JsonStorageFormat::CBOR) {
-      auto res = JsonValue::FromCBOR(raw_values[i]);
-      if (!res) {
-        statuses[i] = rocksdb::Status::Corruption(res.Msg());
-        continue;
-      }
-      values[i] = *std::move(res);
-    } else {
-      statuses[i] = rocksdb::Status::NotSupported("JSON storage format not supported");
-    }
-  }
-  return statuses;
-}
-
-std::vector<rocksdb::Status> Json::getRawMetaData(const std::vector<Slice> &ns_keys,
-                                                  std::vector<JsonMetadata> &metadatas,
-                                                  std::vector<std::string> *raw_values) {
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
   LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
-  raw_values->resize(ns_keys.size());
+
   std::vector<rocksdb::Status> statuses(ns_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(ns_keys.size());
   storage_->MultiGet(read_options, metadata_cf_handle_, ns_keys.size(), ns_keys.data(), pin_values.data(),
                      statuses.data());
   for (size_t i = 0; i < ns_keys.size(); i++) {
     if (!statuses[i].ok()) continue;
-    Slice slice(pin_values[i].data(), pin_values[i].size());
-    statuses[i] = ParseMetadata(kRedisJson, &slice, &metadatas[i]);
+    Slice rest(pin_values[i].data(), pin_values[i].size());
+    JsonMetadata metadata;
+    statuses[i] = ParseMetadata({kRedisJson}, &rest, &metadata);
     if (!statuses[i].ok()) continue;
-    (*raw_values)[i].assign(slice.data(), slice.size());
+
+    statuses[i] = parse(metadata, rest, &values[i]);
+    if (!statuses[i].ok()) continue;
   }
   return statuses;
 }

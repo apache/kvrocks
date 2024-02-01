@@ -23,13 +23,14 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 
 #include "db_util.h"
 
 namespace redis {
 
 rocksdb::Status Set::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
-  return Database::GetMetadata(kRedisSet, ns_key, metadata);
+  return Database::GetMetadata({kRedisSet}, ns_key, metadata);
 }
 
 // Make sure members are uniq before use Overwrite
@@ -222,15 +223,32 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
+  std::vector<std::string> iter_keys;
+  iter_keys.reserve(count);
+  std::random_device rd;
+  std::mt19937 gen(rd());
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    members->emplace_back(ikey.GetSubKey().ToString());
-    if (pop) batch->Delete(iter->key());
-    if (++n >= count) break;
+    ++n;
+    if (n <= count) {
+      iter_keys.push_back(iter->key().ToString());
+    } else {  // n > count
+      std::uniform_int_distribution<> distrib(0, n - 1);
+      int random = distrib(gen);  // [0,n-1]
+      if (random < count) {
+        iter_keys[random] = iter->key().ToString();
+      }
+    }
   }
-  if (pop && n > 0) {
-    metadata.size -= n;
+  for (Slice key : iter_keys) {
+    InternalKey ikey(key, storage_->IsSlotIdEncoded());
+    members->emplace_back(ikey.GetSubKey().ToString());
+    if (pop) {
+      batch->Delete(key);
+    }
+  }
+  if (pop && !iter_keys.empty()) {
+    metadata.size -= iter_keys.size();
     std::string bytes;
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);

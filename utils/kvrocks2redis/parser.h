@@ -33,27 +33,10 @@
 #include "storage/storage.h"
 #include "writer.h"
 
-class LatestSnapShot {
- public:
-  explicit LatestSnapShot(rocksdb::DB *db) : db_(db), snapshot_(db_->GetSnapshot()) {}
-  ~LatestSnapShot() { db_->ReleaseSnapshot(snapshot_); }
-
-  LatestSnapShot(const LatestSnapShot &) = delete;
-  LatestSnapShot &operator=(const LatestSnapShot &) = delete;
-
-  const rocksdb::Snapshot *GetSnapShot() { return snapshot_; }
-
- private:
-  rocksdb::DB *db_ = nullptr;
-  const rocksdb::Snapshot *snapshot_ = nullptr;
-};
-
 class Parser {
  public:
   explicit Parser(engine::Storage *storage, Writer *writer)
-      : storage_(storage), writer_(writer), slot_id_encoded_(storage_->IsSlotIdEncoded()) {
-    latest_snapshot_ = std::make_unique<LatestSnapShot>(storage->GetDB());
-  }
+      : storage_(storage), writer_(writer), slot_id_encoded_(storage_->IsSlotIdEncoded()) {}
   ~Parser() = default;
 
   Status ParseFullDB();
@@ -62,7 +45,6 @@ class Parser {
  protected:
   engine::Storage *storage_ = nullptr;
   Writer *writer_ = nullptr;
-  std::unique_ptr<LatestSnapShot> latest_snapshot_;
   bool slot_id_encoded_ = false;
 
   Status parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire);

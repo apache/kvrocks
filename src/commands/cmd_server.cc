@@ -18,6 +18,9 @@
  *
  */
 
+#include <rocksdb/iostats_context.h>
+#include <rocksdb/perf_context.h>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -102,11 +105,11 @@ class CommandNamespace : public Commander {
         }
         namespaces.emplace_back(kDefaultNamespace);
         namespaces.emplace_back(config->requirepass);
-        *output = redis::MultiBulkString(namespaces, false);
+        *output = ArrayOfBulkStrings(namespaces);
       } else {
         auto token = srv->GetNamespace()->Get(args_[2]);
         if (token.Is<Status::NotFound>()) {
-          *output = redis::NilString();
+          *output = conn->NilString();
         } else {
           *output = redis::BulkString(token.GetValue());
         }
@@ -152,7 +155,7 @@ class CommandKeys : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::MultiBulkString(keys);
+    *output = conn->MultiBulkString(keys);
     return Status::OK();
   }
 };
@@ -249,7 +252,7 @@ class CommandConfig : public Commander {
     } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
-      *output = redis::MultiBulkString(values);
+      *output = conn->MapOfBulkStrings(values);
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = config->Set(srv, args_[2], args_[3]);
       if (!s.IsOK()) {
@@ -299,7 +302,7 @@ class CommandDisk : public Commander {
     if (!s.ok()) {
       // Redis returns the Nil string when the key does not exist
       if (s.IsNotFound()) {
-        *output = redis::NilString();
+        *output = conn->NilString();
         return Status::OK();
       }
       return {Status::RedisExecErr, s.ToString()};
@@ -511,7 +514,7 @@ class CommandClient : public Commander {
       return Status::OK();
     } else if (subcommand_ == "getname") {
       std::string name = conn->GetName();
-      *output = name == "" ? redis::NilString() : redis::BulkString(name);
+      *output = name == "" ? conn->NilString() : redis::BulkString(name);
       return Status::OK();
     } else if (subcommand_ == "id") {
       *output = redis::Integer(conn->GetID());
@@ -588,21 +591,75 @@ class CommandDebug : public Commander {
 
       microsecond_ = static_cast<uint64_t>(*second * 1000 * 1000);
       return Status::OK();
+    } else if (subcommand_ == "protocol" && args.size() == 3) {
+      protocol_type_ = util::ToLower(args[2]);
+      return Status::OK();
+    } else if (subcommand_ == "dbsize-limit" && args.size() == 3) {
+      auto val = ParseInt<int32_t>(args[2], {0, 1}, 10);
+      if (!val) {
+        return {Status::RedisParseErr, "invalid debug dbsize-limit value"};
+      }
+
+      dbsize_limit_ = static_cast<bool>(val);
+      return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>"};
+    return {Status::RedisInvalidCmd, "Syntax error, DEBUG SLEEP <seconds>|PROTOCOL <type>|DBSIZE-LIMIT <0|1>"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "sleep") {
       usleep(microsecond_);
+      *output = redis::SimpleString("OK");
+    } else if (subcommand_ == "protocol") {  // protocol type
+      if (protocol_type_ == "string") {
+        *output = redis::BulkString("Hello World");
+      } else if (protocol_type_ == "integer") {
+        *output = redis::Integer(12345);
+      } else if (protocol_type_ == "double") {
+        *output = conn->Double(3.141);
+      } else if (protocol_type_ == "array") {
+        *output = redis::MultiLen(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+        }
+      } else if (protocol_type_ == "set") {
+        *output = conn->HeaderOfSet(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+        }
+      } else if (protocol_type_ == "map") {
+        *output = conn->HeaderOfMap(3);
+        for (int i = 0; i < 3; i++) {
+          *output += redis::Integer(i);
+          *output += conn->Bool(i == 1);
+        }
+      } else if (protocol_type_ == "bignum") {
+        *output = conn->BigNumber("1234567999999999999999999999999999999");
+      } else if (protocol_type_ == "true") {
+        *output = conn->Bool(true);
+      } else if (protocol_type_ == "false") {
+        *output = conn->Bool(false);
+      } else if (protocol_type_ == "null") {
+        *output = conn->NilString();
+      } else {
+        *output = redis::Error(
+            "Wrong protocol type name. Please use one of the following: "
+            "string|integer|double|array|set|bignum|true|false|null");
+      }
+    } else if (subcommand_ == "dbsize-limit") {
+      srv->storage->SetDBSizeLimit(dbsize_limit_);
+      *output = redis::SimpleString("OK");
+    } else {
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG, PROTOCOL or DBSIZE-LIMIT"};
     }
-    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
   std::string subcommand_;
+  std::string protocol_type_;
   uint64_t microsecond_ = 0;
+  bool dbsize_limit_ = false;
 };
 
 class CommandCommand : public Commander {
@@ -641,7 +698,7 @@ class CommandCommand : public Commander {
         for (const auto &key_index : keys_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
-        *output = redis::MultiBulkString(keys);
+        *output = conn->MultiBulkString(keys);
       } else {
         return {Status::RedisExecErr, "Command subcommand must be one of COUNT, GETKEYS, INFO"};
       }
@@ -682,14 +739,15 @@ class CommandHello final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     size_t next_arg = 1;
+    int protocol = 2;  // default protocol version is 2
     if (args_.size() >= 2) {
-      auto parse_result = ParseInt<int64_t>(args_[next_arg], 10);
+      auto parse_result = ParseInt<int>(args_[next_arg], 10);
       ++next_arg;
       if (!parse_result) {
         return {Status::NotOK, "Protocol version is not an integer or out of range"};
       }
 
-      int64_t protocol = *parse_result;
+      protocol = *parse_result;
 
       // In redis, it will check protocol < 2 or protocol > 3,
       // kvrocks only supports REPL2 by now, but for supporting some
@@ -734,7 +792,12 @@ class CommandHello final : public Commander {
     output_list.push_back(redis::BulkString("server"));
     output_list.push_back(redis::BulkString("redis"));
     output_list.push_back(redis::BulkString("proto"));
-    output_list.push_back(redis::Integer(2));
+    if (srv->GetConfig()->resp3_enabled) {
+      output_list.push_back(redis::Integer(protocol));
+      conn->SetProtocolVersion(protocol == 3 ? RESP::v3 : RESP::v2);
+    } else {
+      output_list.push_back(redis::Integer(2));
+    }
 
     output_list.push_back(redis::BulkString("mode"));
     // Note: sentinel is not supported in kvrocks.
@@ -743,7 +806,10 @@ class CommandHello final : public Commander {
     } else {
       output_list.push_back(redis::BulkString("standalone"));
     }
-    *output = redis::Array(output_list);
+    *output = conn->HeaderOfMap(output_list.size() / 2);
+    for (const auto &item : output_list) {
+      *output += item;
+    }
     return Status::OK();
   }
 };
@@ -774,7 +840,8 @@ class CommandScan : public CommandScanBase {
     return Commander::Parse(args);
   }
 
-  static std::string GenerateOutput(Server *srv, const std::vector<std::string> &keys, const std::string &end_cursor) {
+  static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
+                                    const std::string &end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
       list.emplace_back(
@@ -783,7 +850,7 @@ class CommandScan : public CommandScanBase {
       list.emplace_back(redis::BulkString("0"));
     }
 
-    list.emplace_back(redis::MultiBulkString(keys, false));
+    list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
   }
@@ -798,7 +865,7 @@ class CommandScan : public CommandScanBase {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = GenerateOutput(srv, keys, end_key);
+    *output = GenerateOutput(srv, conn, keys, end_key);
     return Status::OK();
   }
 };
@@ -1123,6 +1190,138 @@ class CommandRdb : public Commander {
   uint32_t db_index_ = 0;
 };
 
+class CommandAnalyze : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() <= 1) return {Status::RedisExecErr, errInvalidSyntax};
+    for (unsigned int i = 1; i < args.size(); ++i) {
+      command_args_.push_back(args[i]);
+    }
+    return Status::OK();
+  }
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    auto commands = redis::CommandTable::Get();
+    auto cmd_iter = commands->find(util::ToLower(command_args_[0]));
+    if (cmd_iter == commands->end()) {
+      // unsupported redis command
+      return {Status::RedisExecErr, errInvalidSyntax};
+    }
+    auto redis_cmd = cmd_iter->second;
+    auto cmd = redis_cmd->factory();
+    cmd->SetAttributes(redis_cmd);
+    cmd->SetArgs(command_args_);
+
+    int arity = cmd->GetAttributes()->arity;
+    if ((arity > 0 && static_cast<int>(command_args_.size()) != arity) ||
+        (arity < 0 && static_cast<int>(command_args_.size()) < -arity)) {
+      *output = redis::Error("ERR wrong number of arguments");
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+
+    auto s = cmd->Parse(command_args_);
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    auto prev_perf_level = rocksdb::GetPerfLevel();
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+    rocksdb::get_perf_context()->Reset();
+    rocksdb::get_iostats_context()->Reset();
+
+    std::string command_output;
+    s = cmd->Execute(srv, conn, &command_output);
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    if (command_output[0] == '-') {
+      *output = command_output;
+      return s;
+    }
+
+    std::string perf_context = rocksdb::get_perf_context()->ToString(true);
+    std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
+    rocksdb::get_perf_context()->Reset();
+    rocksdb::get_iostats_context()->Reset();
+    rocksdb::SetPerfLevel(prev_perf_level);
+
+    *output = redis::MultiLen(3);  // command output + perf context + iostats context
+    *output += command_output;
+    *output += redis::BulkString(perf_context);
+    *output += redis::BulkString(iostats_context);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<std::string> command_args_;
+};
+
+class CommandReset : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    // 1. Discards the current MULTI transaction block, if one exists.
+    if (conn->IsFlagEnabled(Connection::kMultiExec)) {
+      conn->ResetMultiExec();
+    }
+    // 2. Unwatches all keys WATCHed by the connection.
+    srv->ResetWatchedKeys(conn);
+    // 3. Disables CLIENT TRACKING, if in use. (not yet supported)
+    // 4. Sets the connection to READWRITE mode.
+    // 5. Cancels the connection's ASKING mode, if previously set. (not yet supported)
+    // 6. Sets CLIENT REPLY to ON. (not yet supported)
+    // 9. Exits MONITOR mode, when applicable.
+    if (conn->IsFlagEnabled(Connection::kMonitor)) {
+      conn->Owner()->QuitMonitorConn(conn);
+    }
+    // 10. Aborts Pub/Sub's subscription state (SUBSCRIBE and PSUBSCRIBE), when appropriate.
+    if (conn->SubscriptionsCount() != 0) {
+      conn->UnsubscribeAll();
+    }
+    if (conn->PSubscriptionsCount() != 0) {
+      conn->PUnsubscribeAll();
+    }
+    // 11. Deauthenticates the connection, requiring a call AUTH to reauthenticate when authentication is enabled.
+    conn->SetNamespace(kDefaultNamespace);
+    conn->BecomeAdmin();
+    // 12. Turns off NO-EVICT / NO-TOUCH mode. (not yet supported)
+    *output = redis::SimpleString("RESET");
+    return Status::OK();
+  }
+};
+
+class CommandApplyBatch : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    raw_batch_ = args[1];
+    if (args.size() > 2) {
+      if (args.size() > 3) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      if (!util::EqualICase(args[2], "lowpri")) {
+        return {Status::RedisParseErr, "only support LOWPRI option"};
+      }
+      low_pri_ = true;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    size_t size = raw_batch_.size();
+    auto options = svr->storage->DefaultWriteOptions();
+    options.low_pri = low_pri_;
+    auto s = svr->storage->ApplyWriteBatch(options, std::move(raw_batch_));
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, s.Msg()};
+    }
+    *output = redis::Integer(size);
+    return Status::OK();
+  }
+
+ private:
+  std::string raw_batch_;
+  bool low_pri_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1131,8 +1330,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0, GenerateConfigFlag),
                         MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write", 0, 0, 0),
-                        MakeCmdAttr<CommandFlushAll>("flushall", 1, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check", 0, 0, 0),
+                        MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check", 0, 0, 0),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", 0, 0, 0),
@@ -1157,6 +1356,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script", 0, 0, 0),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0), )
-
+                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
+                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
+                        MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
+                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
 }  // namespace redis

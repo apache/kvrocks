@@ -23,6 +23,8 @@
 #include <rocksdb/status.h>
 
 #include <atomic>
+#include <bitset>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -35,7 +37,7 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 // explicitly since it cannot be changed once confirmed
 // Note that if you want to add a new redis type in `RedisType`
 // you should also add a type name to the `RedisTypeNames` below
-enum RedisType {
+enum RedisType : uint8_t {
   kRedisNone = 0,
   kRedisString = 1,
   kRedisHash = 2,
@@ -47,6 +49,30 @@ enum RedisType {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
+  kRedisSearch = 11,
+};
+
+struct RedisTypes {
+  RedisTypes(std::initializer_list<RedisType> list) {
+    for (auto type : list) {
+      types_.set(type);
+    }
+  }
+
+  static RedisTypes All() {
+    UnderlyingType types;
+    types.set();
+    return RedisTypes(types);
+  }
+
+  bool Contains(RedisType type) { return types_[type]; }
+
+ private:
+  using UnderlyingType = std::bitset<128>;
+
+  explicit RedisTypes(UnderlyingType types) : types_(types) {}
+
+  UnderlyingType types_;
 };
 
 enum RedisCommand {
@@ -80,6 +106,7 @@ struct KeyNumStats {
   uint64_t avg_ttl = 0;
 };
 
+[[nodiscard]] uint16_t ExtractSlotId(Slice ns_key);
 template <typename T = Slice>
 [[nodiscard]] std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded);
 [[nodiscard]] std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded);
@@ -283,6 +310,21 @@ class JsonMetadata : public Metadata {
   JsonStorageFormat format = JsonStorageFormat::JSON;
 
   explicit JsonMetadata(bool generate_version = true) : Metadata(kRedisJson, generate_version) {}
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
+};
+
+enum class SearchOnDataType : uint8_t {
+  HASH = kRedisHash,
+  JSON = kRedisJson,
+};
+
+class SearchMetadata : public Metadata {
+ public:
+  SearchOnDataType on_data_type;
+
+  explicit SearchMetadata(bool generate_version = true) : Metadata(kRedisSearch, generate_version) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

@@ -68,7 +68,7 @@ void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::str
   for (const auto &cmd_name : cmd_names) {
     auto cmd_iter = original_commands.find(util::ToLower(cmd_name));
     if (cmd_iter == original_commands.end()) {
-      info->append(redis::NilString());
+      info->append(NilString(RESP::v2));
     } else {
       auto command_attribute = cmd_iter->second;
       auto command_info = GetCommandInfo(command_attribute);

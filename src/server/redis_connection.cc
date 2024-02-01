@@ -126,8 +126,60 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  owner_->srv->stats.IncrOutbondBytes(msg.size());
+  owner_->srv->stats.IncrOutboundBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
+}
+
+std::string Connection::Bool(bool b) const {
+  if (protocol_version_ == RESP::v3) {
+    return b ? "#t" CRLF : "#f" CRLF;
+  }
+  return Integer(b ? 1 : 0);
+}
+
+std::string Connection::MultiBulkString(const std::vector<std::string> &values) const {
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  for (const auto &value : values) {
+    if (value.empty()) {
+      result += NilString();
+    } else {
+      result += BulkString(value);
+    }
+  }
+  return result;
+}
+
+std::string Connection::MultiBulkString(const std::vector<std::string> &values,
+                                        const std::vector<rocksdb::Status> &statuses) const {
+  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  for (size_t i = 0; i < values.size(); i++) {
+    if (i < statuses.size() && !statuses[i].ok()) {
+      result += NilString();
+    } else {
+      result += BulkString(values[i]);
+    }
+  }
+  return result;
+}
+
+std::string Connection::SetOfBulkStrings(const std::vector<std::string> &elems) const {
+  std::string result;
+  result += HeaderOfSet(elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
+std::string Connection::MapOfBulkStrings(const std::vector<std::string> &elems) const {
+  CHECK(elems.size() % 2 == 0);
+
+  std::string result;
+  result += HeaderOfMap(elems.size() / 2);
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
 }
 
 void Connection::SendFile(int fd) {
@@ -260,6 +312,45 @@ void Connection::PUnsubscribeAll(const UnsubscribeCallback &reply) {
 }
 
 int Connection::PSubscriptionsCount() { return static_cast<int>(subscribe_patterns_.size()); }
+
+void Connection::SSubscribeChannel(const std::string &channel, uint16_t slot) {
+  for (const auto &chan : subscribe_shard_channels_) {
+    if (channel == chan) return;
+  }
+
+  subscribe_shard_channels_.emplace_back(channel);
+  owner_->srv->SSubscribeChannel(channel, this, slot);
+}
+
+void Connection::SUnsubscribeChannel(const std::string &channel, uint16_t slot) {
+  for (auto iter = subscribe_shard_channels_.begin(); iter != subscribe_shard_channels_.end(); iter++) {
+    if (*iter == channel) {
+      subscribe_shard_channels_.erase(iter);
+      owner_->srv->SUnsubscribeChannel(channel, this, slot);
+      return;
+    }
+  }
+}
+
+void Connection::SUnsubscribeAll(const UnsubscribeCallback &reply) {
+  if (subscribe_shard_channels_.empty()) {
+    if (reply) reply("", 0);
+    return;
+  }
+
+  int removed = 0;
+  for (const auto &chan : subscribe_shard_channels_) {
+    owner_->srv->SUnsubscribeChannel(chan, this,
+                                     owner_->srv->GetConfig()->cluster_enabled ? GetSlotIdFromKey(chan) : 0);
+    removed++;
+    if (reply) {
+      reply(chan, static_cast<int>(subscribe_shard_channels_.size() - removed));
+    }
+  }
+  subscribe_shard_channels_.clear();
+}
+
+int Connection::SSubscriptionsCount() { return static_cast<int>(subscribe_shard_channels_.size()); }
 
 bool Connection::IsProfilingEnabled(const std::string &cmd) {
   auto config = srv_->GetConfig();
@@ -407,6 +498,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
       Reply(redis::Error("READONLY You can't write against a read only slave."));
+      continue;
+    }
+
+    if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {
+      Reply(redis::Error("ERR write command not allowed when reached max-db-size."));
       continue;
     }
 

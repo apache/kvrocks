@@ -78,6 +78,9 @@ Server::Server(engine::Storage *storage, Config *config)
   // Init cluster
   cluster = std::make_unique<Cluster>(this, config_->binds, config_->port);
 
+  // init shard pub/sub channels
+  pubsub_shard_channels_.resize(config->cluster_enabled ? HASH_SLOTS_SIZE : 1);
+
   for (int i = 0; i < config->workers; i++) {
     auto worker = std::make_unique<Worker>(this, config);
     // multiple workers can't listen to the same unix socket, so
@@ -157,8 +160,7 @@ Status Server::Start() {
       }
     }
     // Create objects used for slot migration
-    slot_migrator =
-        std::make_unique<SlotMigrator>(this, config_->migrate_speed, config_->pipeline_size, config_->sequence_gap);
+    slot_migrator = std::make_unique<SlotMigrator>(this);
     auto s = slot_migrator->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");
@@ -497,6 +499,64 @@ void Server::PUnsubscribeChannel(const std::string &pattern, redis::Connection *
   }
 }
 
+void Server::SSubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot) {
+  assert((config_->cluster_enabled && slot < HASH_SLOTS_SIZE) || slot == 0);
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
+  if (auto iter = pubsub_shard_channels_[slot].find(channel); iter == pubsub_shard_channels_[slot].end()) {
+    pubsub_shard_channels_[slot].emplace(channel, std::list<ConnContext>{conn_ctx});
+  } else {
+    iter->second.emplace_back(conn_ctx);
+  }
+}
+
+void Server::SUnsubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot) {
+  assert((config_->cluster_enabled && slot < HASH_SLOTS_SIZE) || slot == 0);
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  auto iter = pubsub_shard_channels_[slot].find(channel);
+  if (iter == pubsub_shard_channels_[slot].end()) {
+    return;
+  }
+
+  for (const auto &conn_ctx : iter->second) {
+    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
+      iter->second.remove(conn_ctx);
+      if (iter->second.empty()) {
+        pubsub_shard_channels_[slot].erase(iter);
+      }
+      break;
+    }
+  }
+}
+
+void Server::GetSChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels) {
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  for (const auto &shard_channels : pubsub_shard_channels_) {
+    for (const auto &iter : shard_channels) {
+      if (pattern.empty() || util::StringMatch(pattern, iter.first, 0)) {
+        channels->emplace_back(iter.first);
+      }
+    }
+  }
+}
+
+void Server::ListSChannelSubscribeNum(const std::vector<std::string> &channels,
+                                      std::vector<ChannelSubscribeNum> *channel_subscribe_nums) {
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  for (const auto &chan : channels) {
+    uint16_t slot = config_->cluster_enabled ? GetSlotIdFromKey(chan) : 0;
+    if (auto iter = pubsub_shard_channels_[slot].find(chan); iter != pubsub_shard_channels_[slot].end()) {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{iter->first, iter->second.size()});
+    } else {
+      channel_subscribe_nums->emplace_back(ChannelSubscribeNum{chan, 0});
+    }
+  }
+}
+
 void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
@@ -801,8 +861,8 @@ void Server::GetRocksDBInfo(std::string *info) {
                   << "]:" << cf_stats_map["memtable-limit-stops"] << "\r\n";
   }
 
-  auto db_stats = storage->GetDB()->GetDBOptions().statistics;
-  if (db_stats) {
+  auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
+  if (rocksdb_stats) {
     std::map<std::string, uint32_t> block_cache_stats = {
         {"block_cache_hit", rocksdb::Tickers::BLOCK_CACHE_HIT},
         {"block_cache_index_hit", rocksdb::Tickers::BLOCK_CACHE_INDEX_HIT},
@@ -814,7 +874,7 @@ void Server::GetRocksDBInfo(std::string *info) {
         {"block_cache_data_miss", rocksdb::Tickers::BLOCK_CACHE_DATA_MISS},
     };
     for (const auto &iter : block_cache_stats) {
-      string_stream << iter.first << ":" << db_stats->getTickerCount(iter.second) << "\r\n";
+      string_stream << iter.first << ":" << rocksdb_stats->getTickerCount(iter.second) << "\r\n";
     }
   }
 
@@ -829,8 +889,9 @@ void Server::GetRocksDBInfo(std::string *info) {
   string_stream << "num_live_versions:" << num_live_versions << "\r\n";
   string_stream << "num_super_version:" << num_super_version << "\r\n";
   string_stream << "num_background_errors:" << num_background_errors << "\r\n";
-  string_stream << "flush_count:" << storage->GetFlushCount() << "\r\n";
-  string_stream << "compaction_count:" << storage->GetCompactionCount() << "\r\n";
+  auto db_stats = storage->GetDBStats();
+  string_stream << "flush_count:" << db_stats->flush_count << "\r\n";
+  string_stream << "compaction_count:" << db_stats->compaction_count << "\r\n";
   string_stream << "put_per_sec:" << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT) << "\r\n";
   string_stream << "get_per_sec:"
                 << stats.GetInstantaneousMetric(STATS_METRIC_ROCKSDB_GET) +
@@ -962,7 +1023,7 @@ void Server::GetRoleInfo(std::string *info) {
       roles.emplace_back("connecting");
     }
     roles.emplace_back(std::to_string(storage->LatestSeqNumber()));
-    *info = redis::MultiBulkString(roles);
+    *info = redis::ArrayOfBulkStrings(roles);
   } else {
     std::vector<std::string> list;
 
@@ -970,7 +1031,7 @@ void Server::GetRoleInfo(std::string *info) {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
-      list.emplace_back(redis::MultiBulkString({
+      list.emplace_back(redis::ArrayOfBulkStrings({
           slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
           std::to_string(slave->GetCurrentReplSeq()),
@@ -1027,9 +1088,14 @@ void Server::GetStatsInfo(std::string *info) {
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_INPUT) / 1024) << "\r\n";
   string_stream << "instantaneous_output_kbps:"
                 << static_cast<float>(stats.GetInstantaneousMetric(STATS_METRIC_NET_OUTPUT) / 1024) << "\r\n";
-  string_stream << "sync_full:" << stats.fullsync_counter << "\r\n";
-  string_stream << "sync_partial_ok:" << stats.psync_ok_counter << "\r\n";
-  string_stream << "sync_partial_err:" << stats.psync_err_counter << "\r\n";
+  string_stream << "sync_full:" << stats.fullsync_count << "\r\n";
+  string_stream << "sync_partial_ok:" << stats.psync_ok_count << "\r\n";
+  string_stream << "sync_partial_err:" << stats.psync_err_count << "\r\n";
+
+  auto db_stats = storage->GetDBStats();
+  string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";
+  string_stream << "keyspace_misses:" << db_stats->keyspace_misses << "\r\n";
+
   {
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
@@ -1163,7 +1229,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     if (section_cnt++) string_stream << "\r\n";
     string_stream << "# Keyspace\r\n";
-    string_stream << "# Last scan db time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    if (last_scan_time == 0) {
+      string_stream << "# WARN: DBSIZE SCAN never performed yet\r\n";
+    } else {
+      string_stream << "# Last DBSIZE SCAN time: " << std::put_time(&last_scan_tm, "%a %b %e %H:%M:%S %Y") << "\r\n";
+    }
     string_stream << "db0:keys=" << stats.n_key << ",expires=" << stats.n_expires << ",avg_ttl=" << stats.avg_ttl
                   << ",expired=" << stats.n_expired << "\r\n";
     string_stream << "sequence:" << storage->GetDB()->GetLatestSequenceNumber() << "\r\n";

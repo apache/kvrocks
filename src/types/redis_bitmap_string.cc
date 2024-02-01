@@ -32,7 +32,7 @@
 namespace redis {
 
 rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t offset, bool *bit) {
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   uint32_t byte_index = offset >> 3;
   uint32_t bit_val = 0;
   uint32_t bit_offset = 7 - (offset & 0x7);
@@ -70,17 +70,9 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
 
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {
   *cnt = 0;
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
-  /* Convert negative indexes */
-  if (start < 0 && stop < 0 && start > stop) {
-    return rocksdb::Status::OK();
-  }
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
-  if (start < 0) start = strlen + start;
-  if (stop < 0) stop = strlen + stop;
-  if (start < 0) start = 0;
-  if (stop < 0) stop = 0;
-  if (stop >= strlen) stop = strlen - 1;
+  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
    * zero can be returned is: start > stop. */
@@ -93,14 +85,10 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
 
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
                                      bool stop_given, int64_t *pos) {
-  auto string_value = raw_value.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
+  std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
-  /* Convert negative indexes */
-  if (start < 0) start = strlen + start;
-  if (stop < 0) stop = strlen + stop;
-  if (start < 0) start = 0;
-  if (stop < 0) stop = 0;
-  if (stop >= strlen) stop = strlen - 1;
+  /* Convert negative and out-of-bound indexes */
+  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
 
   if (start > stop) {
     *pos = -1;
@@ -205,6 +193,15 @@ int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   return res;
 }
 
+std::pair<int64_t, int64_t> BitmapString::NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length) {
+  if (origin_start < 0) origin_start = length + origin_start;
+  if (origin_end < 0) origin_end = length + origin_end;
+  if (origin_start < 0) origin_start = 0;
+  if (origin_end < 0) origin_end = 0;
+  if (origin_end >= length) origin_end = length - 1;
+  return {origin_start, origin_end};
+}
+
 rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_value,
                                        const std::vector<BitfieldOperation> &ops,
                                        std::vector<std::optional<BitfieldValue>> *rets) {
@@ -222,7 +219,10 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
 
     ArrayBitfieldBitmap bitfield(first_byte);
     auto str = reinterpret_cast<const uint8_t *>(string_value.data() + first_byte);
-    auto s = bitfield.Set(first_byte, last_byte - first_byte, str);
+    auto s = bitfield.Set(/*byte_offset=*/first_byte, /*bytes=*/last_byte - first_byte, /*src=*/str);
+    if (!s.IsOK()) {
+      return rocksdb::Status::IOError(s.Msg());
+    }
 
     uint64_t unsigned_old_value = 0;
     if (op.encoding.IsSigned()) {
@@ -232,13 +232,19 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
     }
 
     uint64_t unsigned_new_value = 0;
-    auto &ret = rets->emplace_back();
-    if (BitfieldOp(op, unsigned_old_value, &unsigned_new_value).GetValue()) {
+    std::optional<BitfieldValue> &ret = rets->emplace_back();
+    StatusOr<bool> bitfield_op = BitfieldOp(op, unsigned_old_value, &unsigned_new_value);
+    if (!bitfield_op.IsOK()) {
+      return rocksdb::Status::InvalidArgument(bitfield_op.Msg());
+    }
+    if (bitfield_op.GetValue()) {
       if (op.type != BitfieldOperation::Type::kGet) {
         // never failed.
         s = bitfield.SetBitfield(op.offset, op.encoding.Bits(), unsigned_new_value);
+        CHECK(s.IsOK());
         auto dst = reinterpret_cast<uint8_t *>(string_value.data()) + first_byte;
         s = bitfield.Get(first_byte, last_byte - first_byte, dst);
+        CHECK(s.IsOK());
       }
 
       if (op.type == BitfieldOperation::Type::kSet) {
@@ -276,6 +282,9 @@ rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::s
     ArrayBitfieldBitmap bitfield(first_byte);
     auto s = bitfield.Set(first_byte, last_byte - first_byte,
                           reinterpret_cast<const uint8_t *>(string_value.data() + first_byte));
+    if (!s.IsOK()) {
+      return rocksdb::Status::IOError(s.Msg());
+    }
 
     if (op.encoding.IsSigned()) {
       int64_t value = bitfield.GetSignedBitfield(op.offset, op.encoding.Bits()).GetValue();

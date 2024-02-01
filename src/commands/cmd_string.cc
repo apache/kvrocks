@@ -54,7 +54,7 @@ class CommandGet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 };
@@ -101,7 +101,7 @@ class CommandGetEx : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 
@@ -142,7 +142,7 @@ class CommandGetSet : public Commander {
     if (old_value.has_value()) {
       *output = redis::BulkString(old_value.value());
     } else {
-      *output = redis::NilString();
+      *output = conn->NilString();
     }
     return Status::OK();
   }
@@ -159,7 +159,7 @@ class CommandGetDel : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(value);
     }
@@ -190,7 +190,7 @@ class CommandGetRange : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -199,7 +199,7 @@ class CommandGetRange : public Commander {
     if (start_ < 0) start_ = 0;
     if (stop_ > static_cast<int>(value.size())) stop_ = static_cast<int>(value.size());
     if (start_ > stop_) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(value.substr(start_, stop_ - start_ + 1));
     }
@@ -255,7 +255,7 @@ class CommandMGet : public Commander {
     std::vector<std::string> values;
     // always return OK
     auto statuses = string_db.MGet(keys, &values);
-    *output = redis::MultiBulkString(values, statuses);
+    *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }
 };
@@ -323,13 +323,13 @@ class CommandSet : public Commander {
       if (ret.has_value()) {
         *output = redis::BulkString(ret.value());
       } else {
-        *output = redis::NilString();
+        *output = conn->NilString();
       }
     } else {
       if (ret.has_value()) {
         *output = redis::SimpleString("OK");
       } else {
-        *output = redis::NilString();
+        *output = conn->NilString();
       }
     }
     return Status::OK();
@@ -626,7 +626,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGetDel>("getdel", 2, "write no-dbsize-check", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),

@@ -417,7 +417,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_pop(lua, 2);
     return {Status::NotOK, fmt::format("Error while running function `{}`: {}", name, err_msg)};
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
 
@@ -425,7 +425,8 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
 }
 
 // list all library names and their code (enabled via `with_code`)
-Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output) {
+Status FunctionList(Server *srv, const redis::Connection *conn, const std::string &libname, bool with_code,
+                    std::string *output) {
   std::string start_key = engine::kLuaLibCodePrefix + libname;
   std::string end_key = start_key;
   end_key.back()++;
@@ -445,12 +446,13 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
     result.emplace_back(lib.ToString(), iter->value().ToString());
   }
 
-  output->append(redis::MultiLen(result.size() * (with_code ? 4 : 2)));
+  output->append(redis::MultiLen(result.size()));
   for (const auto &[lib, code] : result) {
-    output->append(redis::SimpleString("library_name"));
-    output->append(redis::SimpleString(lib));
+    output->append(conn->HeaderOfMap(with_code ? 2 : 1));
+    output->append(redis::BulkString("library_name"));
+    output->append(redis::BulkString(lib));
     if (with_code) {
-      output->append(redis::SimpleString("library_code"));
+      output->append(redis::BulkString("library_code"));
       output->append(redis::BulkString(code));
     }
   }
@@ -460,7 +462,7 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
 
 // extension to Redis Function
 // list all function names and their corresponding library names
-Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output) {
+Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output) {
   std::string start_key = engine::kLuaFuncLibPrefix + funcname;
   std::string end_key = start_key;
   end_key.back()++;
@@ -480,12 +482,13 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
     result.emplace_back(func.ToString(), iter->value().ToString());
   }
 
-  output->append(redis::MultiLen(result.size() * 4));
+  output->append(redis::MultiLen(result.size()));
   for (const auto &[func, lib] : result) {
-    output->append(redis::SimpleString("function_name"));
-    output->append(redis::SimpleString(func));
-    output->append(redis::SimpleString("from_library"));
-    output->append(redis::SimpleString(lib));
+    output->append(conn->HeaderOfMap(2));
+    output->append(redis::BulkString("function_name"));
+    output->append(redis::BulkString(func));
+    output->append(redis::BulkString("from_library"));
+    output->append(redis::BulkString(lib));
   }
 
   return Status::OK();
@@ -495,7 +498,7 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
 // list detailed informantion of a specific library
 // NOTE: it is required to load the library to lua runtime before listing (calling this function)
 // i.e. it will output nothing if the library is only in storage but not loaded
-Status FunctionListLib(Server *srv, const std::string &libname, std::string *output) {
+Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::string &libname, std::string *output) {
   auto lua = srv->Lua();
 
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
@@ -511,11 +514,11 @@ Status FunctionListLib(Server *srv, const std::string &libname, std::string *out
     return {Status::NotOK, "The library is not found or not loaded from storage"};
   }
 
-  output->append(redis::MultiLen(6));
-  output->append(redis::SimpleString("library_name"));
-  output->append(redis::SimpleString(libname));
-  output->append(redis::SimpleString("engine"));
-  output->append(redis::SimpleString("lua"));
+  output->append(conn->HeaderOfMap(3));
+  output->append(redis::BulkString("library_name"));
+  output->append(redis::BulkString(libname));
+  output->append(redis::BulkString("engine"));
+  output->append(redis::BulkString("lua"));
 
   auto count = lua_objlen(lua, -1);
   output->append(redis::SimpleString("functions"));
@@ -524,7 +527,7 @@ Status FunctionListLib(Server *srv, const std::string &libname, std::string *out
   for (size_t i = 1; i <= count; ++i) {
     lua_rawgeti(lua, -1, static_cast<int>(i));
     auto func = lua_tostring(lua, -1);
-    output->append(redis::SimpleString(func));
+    output->append(redis::BulkString(func));
     lua_pop(lua, 1);
   }
 
@@ -628,7 +631,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     *output = redis::Error(msg);
     lua_pop(lua, 2);
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
 
@@ -1073,10 +1076,11 @@ void PushError(lua_State *lua, const char *err) {
 }
 
 // this function does not pop any element on the stack
-std::string ReplyToRedisReply(lua_State *lua) {
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
+  int j = 0, mbulklen = 0;
 
   int t = lua_type(lua, -1);
   switch (t) {
@@ -1085,7 +1089,11 @@ std::string ReplyToRedisReply(lua_State *lua) {
       output = redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
-      output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
+      if (conn->GetProtocolVersion() == redis::RESP::v2) {
+        output = lua_toboolean(lua, -1) ? redis::Integer(1) : conn->NilString();
+      } else {
+        output = conn->Bool(lua_toboolean(lua, -1));
+      }
       break;
     case LUA_TNUMBER:
       output = redis::Integer((int64_t)(lua_tonumber(lua, -1)));
@@ -1106,6 +1114,7 @@ std::string ReplyToRedisReply(lua_State *lua) {
         return output;
       }
       lua_pop(lua, 1); /* Discard field name pushed before. */
+
       /* Handle status reply. */
       lua_pushstring(lua, "ok");
       lua_gettable(lua, -2);
@@ -1115,26 +1124,38 @@ std::string ReplyToRedisReply(lua_State *lua) {
         output = redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
-      } else {
-        int j = 1, mbulklen = 0;
-        lua_pop(lua, 1); /* Discard the 'ok' field value we popped */
-        while (true) {
-          lua_pushnumber(lua, j++);
-          lua_gettable(lua, -2);
-          t = lua_type(lua, -1);
-          if (t == LUA_TNIL) {
-            lua_pop(lua, 1);
-            break;
-          }
-          mbulklen++;
-          output += ReplyToRedisReply(lua);
-          lua_pop(lua, 1);
-        }
-        output = redis::MultiLen(mbulklen) + output;
       }
+      lua_pop(lua, 1); /* Discard the 'ok' field value we pushed */
+
+      /* Handle big number reply. */
+      lua_pushstring(lua, "big_number");
+      lua_gettable(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TSTRING) {
+        obj_s = lua_tolstring(lua, -1, &obj_len);
+        output = conn->BigNumber(std::string(obj_s, obj_len));
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'big_number' field value we pushed */
+
+      j = 1, mbulklen = 0;
+      while (true) {
+        lua_pushnumber(lua, j++);
+        lua_gettable(lua, -2);
+        t = lua_type(lua, -1);
+        if (t == LUA_TNIL) {
+          lua_pop(lua, 1);
+          break;
+        }
+        mbulklen++;
+        output += ReplyToRedisReply(conn, lua);
+        lua_pop(lua, 1);
+      }
+      output = redis::MultiLen(mbulklen) + output;
       break;
     default:
-      output = redis::NilString();
+      output = conn->NilString();
   }
   return output;
 }

@@ -28,33 +28,35 @@
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
 
-class TestBase : public testing::Test {  // NOLINT
+class TestFixture {  // NOLINT
+ public:
+  TestFixture(TestFixture &&) = delete;
+  TestFixture(const TestFixture &) = delete;
+
  protected:
-  explicit TestBase() : config_(new Config()) {
+  explicit TestFixture() {
     const char *path = "test.conf";
     unlink(path);
     std::ofstream output_file(path, std::ios::out);
     output_file << "";
 
-    auto s = config_->Load(CLIOptions(path));
-    config_->db_dir = "testdb";
-    config_->rocks_db.compression = rocksdb::CompressionType::kNoCompression;
-    config_->rocks_db.write_buffer_size = 1;
-    config_->rocks_db.block_size = 100;
-    storage_ = new engine::Storage(config_);
+    auto s = config_.Load(CLIOptions(path));
+    config_.db_dir = "testdb";
+    config_.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+    config_.rocks_db.write_buffer_size = 1;
+    config_.rocks_db.block_size = 100;
+    storage_ = std::make_unique<engine::Storage>(&config_);
     s = storage_->Open();
     if (!s.IsOK()) {
       std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
       assert(s.IsOK());
     }
   }
-  ~TestBase() override {
-    auto db_dir = config_->db_dir;
-    delete storage_;
-    delete config_;
+  ~TestFixture() {
+    storage_.reset();
 
     std::error_code ec;
-    std::filesystem::remove_all(db_dir, ec);
+    std::filesystem::remove_all(config_.db_dir, ec);
     if (ec) {
       std::cout << "Encounter filesystem error: " << ec << std::endl;
     }
@@ -62,10 +64,13 @@ class TestBase : public testing::Test {  // NOLINT
     unlink(path);
   }
 
-  engine::Storage *storage_;
-  Config *config_ = nullptr;
+  std::unique_ptr<engine::Storage> storage_;
+  Config config_;
   std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
 };
+
+class TestBase : public TestFixture, public ::testing::Test {};
+
 #endif  // KVROCKS_TEST_BASE_H

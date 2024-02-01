@@ -111,10 +111,13 @@ class ZSet : public SubKeyScanner {
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
   rocksdb::Status Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
                         std::vector<MemberScore> *members);
+  rocksdb::Status InterCard(const std::vector<std::string> &user_keys, uint64_t limit, uint64_t *inter_cnt);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
   rocksdb::Status Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
                         std::vector<MemberScore> *members);
+  rocksdb::Status Diff(const std::vector<Slice> &keys, MemberScores *members);
+  rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members, std::map<std::string, double> *scores);
   rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
 
@@ -125,6 +128,8 @@ class ZSet : public SubKeyScanner {
                                uint64_t *removed_cnt);
   rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
                              uint64_t *removed_cnt);
+  rocksdb::Status GetAllMemberScores(const Slice &user_key, std::vector<MemberScore> *member_scores);
+  rocksdb::Status RandMember(const Slice &user_key, int64_t command_count, std::vector<MemberScore> *member_scores);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

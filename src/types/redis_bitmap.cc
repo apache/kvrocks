@@ -260,7 +260,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     // NotFound means all bits in this segment are 0.
     if (s.IsNotFound()) continue;
     // Counting bits in [start_in_segment, stop_in_segment]
-    int64_t start_in_segment = 0;                                          // start_index int 1024 bytes segment
+    int64_t start_in_segment = 0;                                       // start_index int 1024 bytes segment
     auto stop_in_segment = static_cast<int64_t>(pin_value.size() - 1);  // stop_index int 1024 bytes segment
     if (i == start_index) {
       start_in_segment = u_start % kBitmapSegmentBytes;

@@ -239,6 +239,34 @@ TEST_P(RedisBitmapTest, BitPosNegative) {
   auto s = bitmap_->Del(key_);
 }
 
+// When `stop_given` is true, even searching for 0,
+// we cannot exceeds the stop position.
+TEST_P(RedisBitmapTest, BitPosStopGiven) {
+  for (int i = 0; i < 8; ++i) {
+    bool bit = true;
+    bitmap_->SetBit(key_, i, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/false, &pos);
+  EXPECT_EQ(8, pos);
+
+  // Set a bit at 8 not affect that
+  {
+    bool bit = true;
+    bitmap_->SetBit(key_, 8, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos);
+  EXPECT_EQ(9, pos);
+
+  auto s = bitmap_->Del(key_);
+}
+
 TEST_P(RedisBitmapTest, BitfieldGetSetTest) {
   constexpr uint32_t magic = 0xdeadbeef;
 

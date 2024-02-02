@@ -229,7 +229,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     return bitmap_string_db.BitCount(raw_value, start, stop, is_bit, cnt);
   }
 
-  int64_t totlen = static_cast<int64_t>(metadata.size);
+  auto totlen = static_cast<int64_t>(metadata.size);
   if (is_bit) totlen <<= 3;
   // Counting bits in byte [start, stop].
   std::tie(start, stop) = BitmapString::NormalizeRange(start, stop, totlen);
@@ -261,7 +261,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     if (s.IsNotFound()) continue;
     // Counting bits in [start_in_segment, stop_in_segment]
     int64_t start_in_segment = 0;                                          // start_index int 1024 bytes segment
-    int64_t stop_in_segment = static_cast<int64_t>(pin_value.size() - 1);  // stop_index int 1024 bytes segment
+    auto stop_in_segment = static_cast<int64_t>(pin_value.size() - 1);  // stop_index int 1024 bytes segment
     if (i == start_index) {
       start_in_segment = u_start % kBitmapSegmentBytes;
       if (is_bit && start_in_segment <= stop_in_segment && first_byte_neg_mask != 0) {

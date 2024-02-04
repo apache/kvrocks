@@ -639,10 +639,6 @@ rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::Wr
 }
 
 rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
-  if (db_size_limit_reached_) {
-    return rocksdb::Status::SpaceLimit();
-  }
-
   // Put replication id logdata at the end of write batch
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
@@ -736,6 +732,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
   }
   return cf_handles_[0];
 }
+
+rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(ColumnFamilyID id) { return cf_handles_[static_cast<size_t>(id)]; }
 
 rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;

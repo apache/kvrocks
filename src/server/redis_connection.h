@@ -86,6 +86,10 @@ class Connection : public EvbufCallbackBase<Connection> {
     return protocol_version_ == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
   }
   std::string MapOfBulkStrings(const std::vector<std::string> &elems) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfAttribute(T len) const {
+    return "|" + std::to_string(len) + CRLF;
+  }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

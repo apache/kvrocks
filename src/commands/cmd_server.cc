@@ -633,10 +633,17 @@ class CommandDebug : public Commander {
         *output = conn->Bool(false);
       } else if (protocol_type_ == "null") {
         *output = conn->NilString();
+      } else if (protocol_type_ == "attrib") {
+        *output = conn->HeaderOfAttribute(1);
+        *output += redis::BulkString("key-popularity");
+        *output += redis::Array({
+            redis::BulkString("key:123"),
+            redis::Integer(90),
+        });
       } else {
         *output = redis::Error(
             "Wrong protocol type name. Please use one of the following: "
-            "string|integer|double|array|set|bignum|true|false|null");
+            "string|integer|double|array|set|bignum|true|false|null|attrib");
       }
     } else {
       return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG or PROTOCOL"};

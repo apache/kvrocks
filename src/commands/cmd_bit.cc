@@ -120,8 +120,9 @@ class CommandBitCount : public Commander {
 
     if (args.size() == 5) {
       if (util::EqualICase(args[4], "BYTE")) {
+        is_bit_index_ = false;
       } else if (util::EqualICase(args[4], "BIT")) {
-        is_bit_ = true;
+        is_bit_index_ = true;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -133,7 +134,7 @@ class CommandBitCount : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint32_t cnt = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitCount(args_[1], start_, stop_, is_bit_, &cnt);
+    auto s = bitmap_db.BitCount(args_[1], start_, stop_, is_bit_index_, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(cnt);
@@ -143,7 +144,7 @@ class CommandBitCount : public Commander {
  private:
   int64_t start_ = 0;
   int64_t stop_ = -1;
-  bool is_bit_ = false;
+  bool is_bit_index_ = false;
 };
 
 class CommandBitPos : public Commander {

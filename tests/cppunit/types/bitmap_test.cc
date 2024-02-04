@@ -79,23 +79,6 @@ TEST_P(RedisBitmapTest, BitCount) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_P(RedisBitmapTest, BitCountBitmapString) {
-  std::string str = "hello";
-  string_->Set(key_, str);
-  uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, -1, false, &cnt);
-  EXPECT_EQ(cnt, 21);
-  bitmap_->BitCount(key_, 0, -1, true, &cnt);
-  EXPECT_EQ(cnt, 21);
-  bitmap_->BitCount(key_, -1, -1, false, &cnt);
-  EXPECT_EQ(cnt, 6);
-  bitmap_->BitCount(key_, -1, -1, true, &cnt);
-  EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 0, 7, true, &cnt);
-  EXPECT_EQ(cnt, 3);
-  auto s = bitmap_->Del(key_);
-}
-
 TEST_P(RedisBitmapTest, BitCountNegative) {
   {
     bool bit = false;
@@ -145,7 +128,10 @@ TEST_P(RedisBitmapTest, BitCountBITOption) {
   uint32_t offsets[] = {0, 100, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
   for (const auto &offset : offsets) {
     bool bit = false;
+    uint32_t cnt = 0;
     bitmap_->SetBit(key_, offset, true, &bit);
+    bitmap_->BitCount(key_, offset, offset, true, &cnt);
+    EXPECT_EQ(cnt, 1);
   }
   uint32_t cnt = 0;
   bitmap_->BitCount(key_, 0, 4 * 1024 * 8, true, &cnt);

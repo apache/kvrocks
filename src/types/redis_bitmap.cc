@@ -262,11 +262,12 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     // NotFound means all bits in this segment are 0.
     if (s.IsNotFound()) continue;
     // Counting bits in [start_in_segment, stop_in_segment]
-    int64_t start_in_segment = 0;                                       // start_index int 1024 bytes segment
-    auto stop_in_segment = static_cast<int64_t>(pin_value.size() - 1);  // stop_index int 1024 bytes segment
+    int64_t start_in_segment = 0;                                                // start_index in 1024 bytes segment
+    auto readable_stop_in_segment = static_cast<int64_t>(pin_value.size() - 1);  // stop_index  in 1024 bytes segment
+    auto stop_in_segment = readable_stop_in_segment;
     if (i == start_index) {
       start_in_segment = u_start % kBitmapSegmentBytes;
-      if (is_bit_index && start_in_segment <= stop_in_segment && first_byte_neg_mask != 0) {
+      if (is_bit_index && start_in_segment <= readable_stop_in_segment && first_byte_neg_mask != 0) {
         uint8_t first_mask_byte =
             kBitSwapTable[static_cast<uint8_t>(pin_value[start_in_segment])] & first_byte_neg_mask;
         mask_cnt += BitmapString::RawPopcount(&first_mask_byte, 1);
@@ -274,16 +275,16 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
     }
     if (i == stop_index) {
       stop_in_segment = u_stop % kBitmapSegmentBytes;
-      if (is_bit_index && start_in_segment <= stop_in_segment && last_byte_neg_mask != 0) {
+      if (is_bit_index && stop_in_segment <= readable_stop_in_segment && last_byte_neg_mask != 0) {
         uint8_t last_mask_byte = kBitSwapTable[static_cast<uint8_t>(pin_value[stop_in_segment])] & last_byte_neg_mask;
         mask_cnt += BitmapString::RawPopcount(&last_mask_byte, 1);
       }
     }
-    int64_t bytes = 0;
-    if (stop_in_segment >= start_in_segment) {
-      bytes = stop_in_segment - start_in_segment + 1;
+    if (stop_in_segment >= start_in_segment && readable_stop_in_segment >= start_in_segment) {
+      int64_t bytes = 0;
+      bytes = std::min(stop_in_segment, readable_stop_in_segment) - start_in_segment + 1;
+      *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + start_in_segment, bytes);
     }
-    *cnt += BitmapString::RawPopcount(reinterpret_cast<const uint8_t *>(pin_value.data()) + start_in_segment, bytes);
   }
   *cnt -= mask_cnt;
   return rocksdb::Status::OK();

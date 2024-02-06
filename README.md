@@ -225,6 +225,7 @@ Apache Kvrocks is licensed under the Apache License Version 2.0. See the [LICENS
 ## Social Media
 
 - [Medium](https://kvrocks.medium.com/)
+- [X (Twitter)](https://twitter.com/apache_kvrocks)
 - [Zhihu](https://www.zhihu.com/people/kvrocks) (in Chinese)
 - WeChat Official Account (in Chinese, scan the QR code to follow)
 

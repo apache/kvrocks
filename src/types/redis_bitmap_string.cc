@@ -68,18 +68,38 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, uint32_t *cnt) {
+rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit_index,
+                                       uint32_t *cnt) {
   *cnt = 0;
   std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
-  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
+  int64_t totlen = strlen;
+  if (is_bit_index) totlen <<= 3;
+  std::tie(start, stop) = NormalizeRange(start, stop, totlen);
+  // Always return 0 if start is greater than stop after normalization.
+  if (start > stop) return rocksdb::Status::OK();
+
+  /* By default:
+   * start means start byte in bitmap, stop means stop byte in bitmap.
+   * When is_bit_index is true, start and stop means start bit and stop bit.
+   * So it should be normalized bit range to byte range. */
+  int64_t start_byte = start;
+  int64_t stop_byte = stop;
+  uint8_t first_byte_neg_mask = 0, last_byte_neg_mask = 0;
+  std::tie(start_byte, stop_byte) =
+      NormalizeToByteRangeWithPaddingMask(is_bit_index, start, stop, &first_byte_neg_mask, &last_byte_neg_mask);
 
   /* Precondition: end >= 0 && end < strlen, so the only condition where
    * zero can be returned is: start > stop. */
-  if (start <= stop) {
-    int64_t bytes = stop - start + 1;
-    *cnt = RawPopcount(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes);
+  int64_t bytes = stop_byte - start_byte + 1;
+  *cnt = RawPopcount(reinterpret_cast<const uint8_t *>(string_value.data()) + start_byte, bytes);
+  if (first_byte_neg_mask != 0 || last_byte_neg_mask != 0) {
+    uint8_t firstlast[2] = {0, 0};
+    if (first_byte_neg_mask != 0) firstlast[0] = string_value[start_byte] & first_byte_neg_mask;
+    if (last_byte_neg_mask != 0) firstlast[1] = string_value[stop_byte] & last_byte_neg_mask;
+    *cnt -= RawPopcount(firstlast, 2);
   }
+
   return rocksdb::Status::OK();
 }
 
@@ -199,6 +219,20 @@ std::pair<int64_t, int64_t> BitmapString::NormalizeRange(int64_t origin_start, i
   if (origin_start < 0) origin_start = 0;
   if (origin_end < 0) origin_end = 0;
   if (origin_end >= length) origin_end = length - 1;
+  return {origin_start, origin_end};
+}
+
+std::pair<int64_t, int64_t> BitmapString::NormalizeToByteRangeWithPaddingMask(bool is_bit, int64_t origin_start,
+                                                                              int64_t origin_end,
+                                                                              uint8_t *first_byte_neg_mask,
+                                                                              uint8_t *last_byte_neg_mask) {
+  DCHECK(origin_start <= origin_end);
+  if (is_bit) {
+    *first_byte_neg_mask = ~((1 << (8 - (origin_start & 7))) - 1) & 0xFF;
+    *last_byte_neg_mask = (1 << (7 - (origin_end & 7))) - 1;
+    origin_start >>= 3;
+    origin_end >>= 3;
+  }
   return {origin_start, origin_end};
 }
 

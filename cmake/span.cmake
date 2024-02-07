@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(span
-  martinmoene/span-lite v0.10.3
-  MD5=ee5c6721d4f4f56a6e6f250c68ad4132
+  martinmoene/span-lite v0.11.0
+  MD5=9786933d03cda33ac7dccbfe85f771dd
 )
 
 FetchContent_MakeAvailableWithArgs(span)

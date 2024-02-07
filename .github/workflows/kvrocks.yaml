@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install typos
-        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.16.3/typos-v1.16.3-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.18.1/typos-v1.18.1-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - name: Run typos check
         run: typos --config .github/config/typos.toml
 

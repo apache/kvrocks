@@ -760,7 +760,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   cmd->SetArgs(args);
-  auto s = cmd->Parse(args);
+  auto s = cmd->Parse();
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;

@@ -65,22 +65,48 @@ struct SearchPrefixesMetadata {
   }
 };
 
+struct SearchFieldMetadata {
+  bool noindex = false;
+
+  // flag: <noindex: 1 bit> <reserved: 7 bit>
+  uint8_t MakeFlag() const { return noindex; }
+
+  void DecodeFlag(uint8_t flag) { noindex = flag & 1; }
+
+  void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
+
+  rocksdb::Status Decode(Slice *input) {
+    uint8_t flag = 0;
+    if (!GetFixed8(input, &flag)) {
+      return rocksdb::Status::Corruption(kErrorInsufficientLength);
+    }
+
+    DecodeFlag(flag);
+    return rocksdb::Status::OK();
+  }
+};
+
 inline std::string ConstructTagFieldMetadataSubkey(std::string_view field_name) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD_META};
   res.append(field_name);
   return res;
 }
 
-struct SearchTagFieldMetadata {
+struct SearchTagFieldMetadata : SearchFieldMetadata {
   char separator = ',';
   bool case_sensitive = false;
 
   void Encode(std::string *dst) const {
+    SearchFieldMetadata::Encode(dst);
     PutFixed8(dst, separator);
     PutFixed8(dst, case_sensitive);
   }
 
   rocksdb::Status Decode(Slice *input) {
+    if (auto s = SearchFieldMetadata::Decode(input); !s.ok()) {
+      return s;
+    }
+
     if (input->size() < 8 + 8) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
@@ -96,6 +122,8 @@ inline std::string ConstructNumericFieldMetadataSubkey(std::string_view field_na
   res.append(field_name);
   return res;
 }
+
+struct SearchNumericFieldMetadata : SearchFieldMetadata {};
 
 inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD};

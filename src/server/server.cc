@@ -679,7 +679,7 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
 void Server::updateCachedTime() { unix_time.store(util::GetTimeStamp()); }
 
 int Server::IncrClientNum() {
-  total_clients_.fetch_add(1, std::memory_order::memory_order_relaxed);
+  total_clients_.fetch_add(1, std::memory_order_relaxed);
   return connected_clients_.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -1597,7 +1597,7 @@ ReplState Server::GetReplicationState() {
   return kReplConnecting;
 }
 
-Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd) {
+StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const std::string &cmd_name) {
   if (cmd_name.empty()) return {Status::RedisUnknownCmd};
 
   auto commands = redis::CommandTable::Get();
@@ -1606,11 +1606,11 @@ Status Server::LookupAndCreateCommand(const std::string &cmd_name, std::unique_p
     return {Status::RedisUnknownCmd};
   }
 
-  auto redis_cmd = cmd_iter->second;
-  *cmd = redis_cmd->factory();
-  (*cmd)->SetAttributes(redis_cmd);
+  auto cmd_attr = cmd_iter->second;
+  auto cmd = cmd_attr->factory();
+  cmd->SetAttributes(cmd_attr);
 
-  return Status::OK();
+  return cmd;
 }
 
 Status Server::ScriptExists(const std::string &sha) {

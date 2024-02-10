@@ -707,36 +707,32 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto commands = redis::CommandTable::Get();
-  auto cmd_iter = commands->find(util::ToLower(args[0]));
-  if (cmd_iter == commands->end()) {
+  auto cmd_s = Server::LookupAndCreateCommand(args[0]);
+  if (!cmd_s) {
     PushError(lua, "Unknown Redis command called from Lua script");
     return raise_error ? RaiseError(lua) : 1;
   }
+  auto cmd = *std::move(cmd_s);
 
-  auto redis_cmd = cmd_iter->second;
-  if (read_only && !(redis_cmd->flags & redis::kCmdReadOnly)) {
+  auto attributes = cmd->GetAttributes();
+  auto cmd_flags = attributes->GenerateFlags(args);
+
+  if (read_only && !(cmd_flags & redis::kCmdReadOnly)) {
     PushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  auto cmd = redis_cmd->factory();
-  cmd->SetAttributes(redis_cmd);
-  cmd->SetArgs(args);
-
-  int arity = cmd->GetAttributes()->arity;
-  if (((arity > 0 && argc != arity) || (arity < 0 && argc < -arity))) {
+  if (!attributes->CheckArity(argc)) {
     PushError(lua, "Wrong number of args calling Redis command From Lua script");
     return raise_error ? RaiseError(lua) : 1;
   }
-  auto attributes = cmd->GetAttributes();
-  auto cmd_flags = attributes->GenerateFlags(args);
+
   if (cmd_flags & redis::kCmdNoScript) {
     PushError(lua, "This Redis command is not allowed from scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  std::string cmd_name = util::ToLower(args[0]);
+  std::string cmd_name = attributes->name;
 
   auto srv = GetServer(lua);
   Config *config = srv->GetConfig();
@@ -763,23 +759,15 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  auto s = cmd->Parse(args);
+  cmd->SetArgs(args);
+  auto s = cmd->Parse();
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  srv->stats.IncrCalls(cmd_name);
-  auto start = std::chrono::high_resolution_clock::now();
-  bool is_profiling = conn->IsProfilingEnabled(cmd_name);
   std::string output;
-  s = cmd->Execute(srv, srv->GetCurrentConnection(), &output);
-  auto end = std::chrono::high_resolution_clock::now();
-  uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  if (is_profiling) conn->RecordProfilingSampleIfNeed(cmd_name, duration);
-  srv->SlowlogPushEntryIfNeeded(&args, duration, conn);
-  srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
-  srv->FeedMonitorConns(conn, args);
+  s = conn->ExecuteCommand(cmd_name, args, cmd.get(), &output);
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;

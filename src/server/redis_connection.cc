@@ -428,22 +428,21 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
     auto current_cmd = std::move(*cmd_s);
 
-    if (GetNamespace().empty()) {
-      if (!password.empty() && util::ToLower(cmd_tokens.front()) != "auth" &&
-          util::ToLower(cmd_tokens.front()) != "hello") {
-        Reply(redis::Error("NOAUTH Authentication required."));
-        continue;
-      }
+    const auto attributes = current_cmd->GetAttributes();
+    auto cmd_name = attributes->name;
+    auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
-      if (password.empty()) {
+    if (GetNamespace().empty()) {
+      if (!password.empty()) {
+        if (cmd_name != "auth" && cmd_name != "hello") {
+          Reply(redis::Error("NOAUTH Authentication required."));
+          continue;
+        }
+      } else {
         BecomeAdmin();
         SetNamespace(kDefaultNamespace);
       }
     }
-
-    const auto attributes = current_cmd->GetAttributes();
-    auto cmd_name = attributes->name;
-    auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
     std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
@@ -451,7 +450,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (is_multi_exec && attributes->name != "exec") {
+    if (is_multi_exec && cmd_name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (cmd_flags & kCmdExclusive) {
       exclusivity = srv_->WorkExclusivityGuard();
@@ -490,8 +489,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
-      std::string no_multi_err = "ERR Can't execute " + attributes->name + " in MULTI";
-      Reply(redis::Error(no_multi_err));
+      Reply(redis::Error("ERR Can't execute " + cmd_name + " in MULTI"));
       multi_error_ = true;
       continue;
     }

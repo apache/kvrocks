@@ -72,6 +72,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
       - name: Prepare Dependencies
         run: |
           sudo apt update
@@ -236,7 +237,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
-
+          cache: false
+          
       - name: Install gcovr 5.0
         run: pip install gcovr==5.0 # 5.1 is not supported
         if: ${{ matrix.sonarcloud }}
@@ -443,6 +445,7 @@ jobs:
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
 
       - name: Build Kvrocks
         run: |

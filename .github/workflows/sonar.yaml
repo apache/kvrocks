@@ -60,7 +60,7 @@ jobs:
           unzip sonarcloud-data.zip -d sonarcloud-data
           ls -a sonarcloud-data
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.x
       - name: Configure Kvrocks

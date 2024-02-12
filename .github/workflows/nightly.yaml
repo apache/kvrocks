@@ -30,7 +30,7 @@ jobs:
     if: github.repository_owner == 'apache'
     steps:
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Login Docker Hub
         if: (github.event_name != 'pull_request')
         uses: docker/login-action@v3

@@ -39,7 +39,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: changes
         with:
@@ -56,7 +56,7 @@ jobs:
     env:
       FORCE_COLOR: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install typos
         run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.18.1/typos-v1.18.1-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - name: Run typos check
@@ -68,7 +68,7 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -228,7 +228,7 @@ jobs:
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
@@ -343,7 +343,7 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
       - uses: docker/build-push-action@v5
@@ -440,7 +440,7 @@ jobs:
           wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:

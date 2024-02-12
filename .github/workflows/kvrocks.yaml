@@ -441,7 +441,7 @@ jobs:
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v4 #v5 use Node 20 too
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'

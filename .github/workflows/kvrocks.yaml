@@ -40,7 +40,7 @@ jobs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v3
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: .github/config/changes.yml

@@ -252,7 +252,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
       return Status::OK();
     }
 
-    return res;
+    return std::move(res);
   }
 
   return Status::OK();
@@ -434,7 +434,8 @@ Status Storage::RestoreFromBackup() {
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupEngineOptions bk_option(config_->backup_sync_dir);
   auto bes = util::BackupEngineOpen(db_->GetEnv(), bk_option);
-  if (!bes) return bes;
+  if (!bes) return std::move(bes);
+
   backup_ = std::move(*bes);
 
   auto s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);

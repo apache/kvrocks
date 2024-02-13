@@ -80,11 +80,11 @@ func TestJson(t *testing.T) {
 
 	t.Run("JSON.GET with options", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", ` {"x":1, "y":2} `).Err())
-		EqualJSON(t, `{ "x":1, "y":2}`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ").Val())
-		EqualJSON(t, `{ "x":1, "y":2}`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "SPACE", " ").Val())
-		EqualJSON(t, `{ "x":1, "y":2 }`, rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n").Val())
-		EqualJSON(t, `{ "x":1, "y":2 }`, rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n", "INDENT", " ", "SPACE", " ").Val())
-		EqualJSON(t, `[{ "x":1, "y":2 }]`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "$").Val())
+		require.Equal(t, `{ "x":1, "y":2}`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ").Val())
+		require.Equal(t, `{ "x": 1, "y": 2}`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "SPACE", " ").Val())
+		require.Equal(t, "{\n\"x\":1,\n\"y\":2\n}", rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n").Val())
+		require.Equal(t, "{\n \"x\": 1,\n \"y\": 2\n}", rdb.Do(ctx, "JSON.GET", "a", "NEWLINE", "\n", "INDENT", " ", "SPACE", " ").Val())
+		require.Equal(t, `[ {  "x":1,  "y":2 }]`, rdb.Do(ctx, "JSON.GET", "a", "INDENT", " ", "$").Val())
 	})
 
 	t.Run("JSON storage format CBOR", func(t *testing.T) {

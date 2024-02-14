@@ -648,16 +648,18 @@ class CommandDebug : public Commander {
             redis::BulkString("key:123"),
             redis::Integer(90),
         });
+      } else if (protocol_type_ == "verbatim") {  // verbatim string
+        *output = conn->VerbatimString("txt", "verbatim string");
       } else {
         *output = redis::Error(
             "Wrong protocol type name. Please use one of the following: "
-            "string|integer|double|array|set|bignum|true|false|null|attrib");
+            "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
       }
     } else if (subcommand_ == "dbsize-limit") {
       srv->storage->SetDBSizeLimit(dbsize_limit_);
       *output = redis::SimpleString("OK");
     } else {
-      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG, PROTOCOL or DBSIZE-LIMIT"};
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be SLEEP, PROTOCOL or DBSIZE-LIMIT"};
     }
     return Status::OK();
   }

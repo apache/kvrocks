@@ -71,12 +71,16 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string Double(double d) const {
     return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
   }
-  // type should be "txt" or "mkd"
+  // ext is the extension of file to send, 'txt' for text file, 'md ' for markdown file
+  // at most 3 chars, padded with space
   // if RESP is V2, treat verbatim string as blob string
-  std::string VerbatimString(const std::string &type, const std::string &data) const {
-    return protocol_version_ == RESP::v3
-               ? "=" + std::to_string(type.size() + data.size()) + CRLF + type + ":" + data + CRLF
-               : BulkString(data);
+  // https://github.com/redis/redis/blob/7.2/src/networking.c#L1099
+  std::string VerbatimString(std::string ext, const std::string &data) const {
+    CHECK(ext.size() <= 3);
+    int padded_len = 3 - ext.size();
+    ext = ext + std::string(padded_len, ' ');
+    return protocol_version_ == RESP::v3 ? "=" + std::to_string(3 + data.size() + 1) + CRLF + ext + ":" + data + CRLF
+                                         : BulkString(data);
   }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }

@@ -220,7 +220,7 @@ func TestProtocolRESP3(t *testing.T) {
 			"false":   {"#f"},
 			"null":    {"_"},
 			"attrib":  {"|1", "$14", "key-popularity", "*2", "$7", "key:123", ":90"},
-			"verbatim": {"=18", "txt:verbatim string"},
+			"verbatim": {"=19", "txt:verbatim string"},
 		}
 		for typ, expected := range types {
 			args := []string{"DEBUG", "PROTOCOL", typ}

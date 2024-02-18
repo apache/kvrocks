@@ -41,6 +41,9 @@ enum BitOpFlags {
 
 namespace redis {
 
+// We use least-significant bit (LSB) numbering (also known as bit-endianness).
+// This means that within a group of 8 bits, we read right-to-left.
+// This is different from applying "bit" commands to string.
 class Bitmap : public Database {
  public:
   class SegmentCacheStore;

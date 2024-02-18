@@ -31,10 +31,10 @@
 
 namespace redis {
 
-const uint32_t kBitmapSegmentBits = 1024 * 8;
-const uint32_t kBitmapSegmentBytes = 1024;
+constexpr uint32_t kBitmapSegmentBits = 1024 * 8;
+constexpr uint32_t kBitmapSegmentBytes = 1024;
 
-const char kErrBitmapStringOutOfRange[] =
+constexpr char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
     "configuration item max-bitmap-to-string-mb";
 
@@ -124,7 +124,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t bit_offset, bool 
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   uint32_t bit_offset_in_segment = bit_offset % kBitmapSegmentBits;
   if (bit_offset_in_segment / 8 < value.size() &&
-      util::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset_in_segment)) {
+      util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset_in_segment)) {
     *bit = true;
   }
   return rocksdb::Status::OK();
@@ -202,8 +202,8 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t bit_offset, bool 
   uint64_t bitmap_size = std::max(used_size, metadata.size);
   // NOTE: value.size() might be greater than metadata.size.
   ExpandBitmapSegment(&value, byte_index + 1);
-  *old_bit = util::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset_in_segment);
-  util::SetBitTo(reinterpret_cast<uint8_t *>(value.data()), bit_offset_in_segment, new_bit);
+  *old_bit = util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset_in_segment);
+  util::lsb::SetBitTo(reinterpret_cast<uint8_t *>(value.data()), bit_offset_in_segment, new_bit);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(bit_offset)});
   batch->PutLogData(log_data.Encode());
@@ -919,7 +919,7 @@ bool Bitmap::bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatch
 bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {
   bool bit = false;
   uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  if (byte_index < value.size() && util::GetBit(reinterpret_cast<const uint8_t *>(value.data()), offset)) {
+  if (byte_index < value.size() && util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), offset)) {
     bit = true;
   }
   return bit;

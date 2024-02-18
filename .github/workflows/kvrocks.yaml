@@ -39,8 +39,8 @@ jobs:
     outputs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: dorny/paths-filter@v2
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3.0.0
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -56,7 +56,7 @@ jobs:
     env:
       FORCE_COLOR: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install typos
         run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.18.2/typos-v1.18.2-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - name: Run typos check
@@ -68,15 +68,16 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
       - name: Prepare Dependencies
         run: |
           sudo apt update
           sudo apt install -y clang-format-14 clang-tidy-14
-      - uses: apache/skywalking-eyes/header@v0.4.0
+      - uses: apache/skywalking-eyes/header@v0.5.0
         with:
           config: .github/config/licenserc.yml
       - name: Check with clang-format
@@ -96,7 +97,7 @@ jobs:
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
@@ -214,7 +215,7 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/local/bin/redis-cli
@@ -227,16 +228,17 @@ jobs:
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
-
+          cache: false
+          
       - name: Install gcovr 5.0
         run: pip install gcovr==5.0 # 5.1 is not supported
         if: ${{ matrix.sonarcloud }}
@@ -308,7 +310,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
           name: kvrocks-coredumps-${{ matrix.name }}
@@ -330,7 +332,7 @@ jobs:
       
       - name: Upload SonarCloud data
         if: ${{ matrix.sonarcloud }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sonarcloud-data
           path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
@@ -341,10 +343,10 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v3
+      - uses: docker/build-push-action@v5
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
@@ -438,11 +440,12 @@ jobs:
           wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
           bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
 
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
+      - uses: actions/setup-go@v4 #v5 use Node 20 too
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
 
       - name: Build Kvrocks
         run: |

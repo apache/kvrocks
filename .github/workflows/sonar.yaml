@@ -36,7 +36,7 @@ jobs:
       - name: Install sonar-scanner and build-wrapper
         uses: SonarSource/sonarcloud-github-c-cpp@v2
       - name: 'Download code coverage'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
@@ -60,7 +60,7 @@ jobs:
           unzip sonarcloud-data.zip -d sonarcloud-data
           ls -a sonarcloud-data
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.x
       - name: Configure Kvrocks

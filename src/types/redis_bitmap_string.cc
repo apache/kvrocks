@@ -24,7 +24,7 @@
 
 #include <cstdint>
 
-#include "common/bitutil.h"
+#include "common/bit_util.h"
 #include "redis_string.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"

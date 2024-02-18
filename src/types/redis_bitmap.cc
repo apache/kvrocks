@@ -24,7 +24,7 @@
 #include <memory>
 #include <vector>
 
-#include "common/bitutil.h"
+#include "common/bit_util.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "redis_bitmap_string.h"

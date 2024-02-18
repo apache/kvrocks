@@ -278,7 +278,7 @@ class CommandInfo : public Commander {
     }
     std::string info;
     srv->GetInfo(conn->GetNamespace(), section, &info);
-    *output = redis::BulkString(info);
+    *output = conn->VerbatimString("txt", info);
     return Status::OK();
   }
 };
@@ -503,10 +503,10 @@ class CommandClient : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "list") {
-      *output = redis::BulkString(srv->GetClientsStr());
+      *output = conn->VerbatimString("txt", srv->GetClientsStr());
       return Status::OK();
     } else if (subcommand_ == "info") {
-      *output = redis::BulkString(conn->ToString());
+      *output = conn->VerbatimString("txt", conn->ToString());
       return Status::OK();
     } else if (subcommand_ == "setname") {
       conn->SetName(conn_name_);

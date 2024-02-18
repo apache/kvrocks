@@ -85,7 +85,7 @@ class CommandCluster : public Commander {
       std::string nodes_desc;
       Status s = srv->cluster->GetClusterNodes(&nodes_desc);
       if (s.IsOK()) {
-        *output = redis::BulkString(nodes_desc);
+        *output = conn->VerbatimString("txt", nodes_desc);
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
@@ -93,7 +93,7 @@ class CommandCluster : public Commander {
       std::string cluster_info;
       Status s = srv->cluster->GetClusterInfo(&cluster_info);
       if (s.IsOK()) {
-        *output = redis::BulkString(cluster_info);
+        *output = conn->VerbatimString("txt", cluster_info);
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }

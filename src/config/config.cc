@@ -541,7 +541,9 @@ void Config::initFieldCallback() {
              }
 
              if (log_retention_days != -1) {
-               google::EnableLogCleaner(log_retention_days);
+               auto minutes =
+                   std::chrono::duration_cast<std::chrono::minutes>(std::chrono::hours(24) * log_retention_days);
+               google::EnableLogCleaner(minutes);
              } else {
                google::DisableLogCleaner();
              }

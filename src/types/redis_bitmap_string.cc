@@ -24,6 +24,7 @@
 
 #include <cstdint>
 
+#include "common/bitutil.h"
 #include "redis_string.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
@@ -114,7 +115,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
     *pos = -1;
   } else {
     int64_t bytes = stop - start + 1;
-    *pos = RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
+    *pos = util::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
      * range with start-end, we can't consider the right of the range as
@@ -150,67 +151,6 @@ size_t BitmapString::RawPopcount(const uint8_t *p, int64_t count) {
   }
 
   return bits;
-}
-
-template <typename T = void>
-inline int ClzllWithEndian(uint64_t x) {
-  if constexpr (IsLittleEndian()) {
-    return __builtin_clzll(__builtin_bswap64(x));
-  } else if constexpr (IsBigEndian()) {
-    return __builtin_clzll(x);
-  } else {
-    static_assert(AlwaysFalse<T>);
-  }
-}
-
-/* Return the position of the first bit set to one (if 'bit' is 1) or
- * zero (if 'bit' is 0) in the bitmap starting at 's' and long 'count' bytes.
- *
- * The function is guaranteed to return a value >= 0 if 'bit' is 0 since if
- * no zero bit is found, it returns count*8 assuming the string is zero
- * padded on the right. However if 'bit' is 1 it is possible that there is
- * not a single set bit in the bitmap. In this special case -1 is returned.
- * */
-int64_t BitmapString::RawBitpos(const uint8_t *c, int64_t count, bool bit) {
-  int64_t res = 0;
-
-  if (bit) {
-    int64_t ct = count;
-
-    for (; count >= 8; c += 8, count -= 8) {
-      uint64_t x = *reinterpret_cast<const uint64_t *>(c);
-      if (x != 0) {
-        return res + ClzllWithEndian(x);
-      }
-      res += 64;
-    }
-
-    if (count > 0) {
-      uint64_t v = 0;
-      __builtin_memcpy(&v, c, count);
-      res += v == 0 ? count * 8 : ClzllWithEndian(v);
-    }
-
-    if (res == ct * 8) {
-      return -1;
-    }
-  } else {
-    for (; count >= 8; c += 8, count -= 8) {
-      uint64_t x = *reinterpret_cast<const uint64_t *>(c);
-      if (x != (uint64_t)-1) {
-        return res + ClzllWithEndian(~x);
-      }
-      res += 64;
-    }
-
-    if (count > 0) {
-      uint64_t v = -1;
-      __builtin_memcpy(&v, c, count);
-      res += v == (uint64_t)-1 ? count * 8 : ClzllWithEndian(~v);
-    }
-  }
-
-  return res;
 }
 
 std::pair<int64_t, int64_t> BitmapString::NormalizeRange(int64_t origin_start, int64_t origin_end, int64_t length) {

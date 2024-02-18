@@ -46,9 +46,9 @@ class Bitmap : public Database {
   class SegmentCacheStore;
 
   Bitmap(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status GetBit(const Slice &user_key, uint32_t offset, bool *bit);
+  rocksdb::Status GetBit(const Slice &user_key, uint32_t bit_offset, bool *bit);
   rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
-  rocksdb::Status SetBit(const Slice &user_key, uint32_t offset, bool new_bit, bool *old_bit);
+  rocksdb::Status SetBit(const Slice &user_key, uint32_t bit_offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, bool is_bit_index, uint32_t *cnt);
   rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
   rocksdb::Status BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,

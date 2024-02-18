@@ -43,7 +43,7 @@ namespace redis {
 
 // We use least-significant bit (LSB) numbering (also known as bit-endianness).
 // This means that within a group of 8 bits, we read right-to-left.
-// This is different from applying "bit" commands to string.
+// This is different from applying "bit" commands to string, which uses MSB.
 class Bitmap : public Database {
  public:
   class SegmentCacheStore;
@@ -66,7 +66,7 @@ class Bitmap : public Database {
                                    std::vector<std::optional<BitfieldValue>> *rets) {
     return bitfield<true>(user_key, ops, rets);
   }
-  static bool GetBitFromValueAndOffset(const std::string &value, uint32_t offset);
+  static bool GetBitFromValueAndOffset(std::string_view value, uint32_t bit_offset);
   static bool IsEmptySegment(const Slice &segment);
 
  private:

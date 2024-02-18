@@ -202,8 +202,9 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t bit_offset, bool 
   uint64_t bitmap_size = std::max(used_size, metadata.size);
   // NOTE: value.size() might be greater than metadata.size.
   ExpandBitmapSegment(&value, byte_index + 1);
-  *old_bit = util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset_in_segment);
-  util::lsb::SetBitTo(reinterpret_cast<uint8_t *>(value.data()), bit_offset_in_segment, new_bit);
+  auto *data_ptr = reinterpret_cast<uint8_t *>(value.data());
+  *old_bit = util::lsb::GetBit(data_ptr, bit_offset_in_segment);
+  util::lsb::SetBitTo(data_ptr, bit_offset_in_segment, new_bit);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(bit_offset)});
   batch->PutLogData(log_data.Encode());
@@ -916,10 +917,11 @@ bool Bitmap::bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatch
   return false;
 }
 
-bool Bitmap::GetBitFromValueAndOffset(const std::string &value, uint32_t offset) {
+bool Bitmap::GetBitFromValueAndOffset(std::string_view value, uint32_t bit_offset) {
   bool bit = false;
-  uint32_t byte_index = (offset / 8) % kBitmapSegmentBytes;
-  if (byte_index < value.size() && util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), offset)) {
+  uint32_t byte_index = (bit_offset / 8) % kBitmapSegmentBytes;
+  if (byte_index < value.size() &&
+      util::lsb::GetBit(reinterpret_cast<const uint8_t *>(value.data()), bit_offset % kBitmapSegmentBits)) {
     bit = true;
   }
   return bit;

@@ -214,8 +214,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
               return rocksdb::Status::InvalidArgument(
                   fmt::format("failed to parse an offset of SETBIT: {}", parsed_offset.Msg()));
             }
-
-            bool bit_value = redis::Bitmap::GetBitFromValueAndOffset(value.ToString(), *parsed_offset);
+            bool bit_value = redis::Bitmap::GetBitFromValueAndOffset(value.ToStringView(), *parsed_offset);
             command_args = {"SETBIT", user_key, (*args)[1], bit_value ? "1" : "0"};
             break;
           }

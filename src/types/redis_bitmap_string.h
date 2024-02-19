@@ -30,11 +30,12 @@
 
 namespace redis {
 
+// BitmapString handling bits using MSB numbering (also known as bit-endianness).
 class BitmapString : public Database {
  public:
   BitmapString(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  static rocksdb::Status GetBit(const std::string &raw_value, uint32_t offset, bool *bit);
-  rocksdb::Status SetBit(const Slice &ns_key, std::string *raw_value, uint32_t offset, bool new_bit, bool *old_bit);
+  static rocksdb::Status GetBit(const std::string &raw_value, uint32_t bit_offset, bool *bit);
+  rocksdb::Status SetBit(const Slice &ns_key, std::string *raw_value, uint32_t bit_offset, bool new_bit, bool *old_bit);
   static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit_index,
                                   uint32_t *cnt);
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
@@ -44,9 +45,6 @@ class BitmapString : public Database {
   static rocksdb::Status BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
                                           const std::vector<BitfieldOperation> &ops,
                                           std::vector<std::optional<BitfieldValue>> *rets);
-
-  static size_t RawPopcount(const uint8_t *p, int64_t count);
-  static int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit);
 
   // NormalizeRange converts a range to a normalized range, which is a range with start and stop in [0, length).
   //

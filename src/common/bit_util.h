@@ -53,6 +53,47 @@ inline int ClzllWithEndian(uint64_t x) {
   }
 }
 
+// Return the number of bytes needed to fit the given number of bits
+constexpr int64_t BytesForBits(int64_t bits) {
+  // This formula avoids integer overflow on very large `bits`
+  return (bits >> 3) + ((bits & 7) != 0);
+}
+
+namespace lsb {
+static constexpr bool GetBit(const uint8_t *bits, uint64_t i) { return (bits[i >> 3] >> (i & 0x07)) & 1; }
+
+// Bitmask selecting the k-th bit in a byte
+static constexpr uint8_t kBitmask[] = {1, 2, 4, 8, 16, 32, 64, 128};
+
+// Gets the i-th bit from a byte. Should only be used with i <= 7.
+static constexpr bool GetBitFromByte(uint8_t byte, uint8_t i) { return byte & kBitmask[i]; }
+
+static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
+  // https://graphics.stanford.edu/~seander/bithacks.html
+  // "Conditionally set or clear bits without branching"
+  // NOTE: this seems to confuse Valgrind as it reads from potentially
+  // uninitialized memory
+  bits[i / 8] ^= static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) & kBitmask[i % 8];
+}
+}  // namespace lsb
+
+namespace msb {
+static constexpr bool GetBit(const uint8_t *bits, uint64_t i) { return (bits[i >> 3] >> (7 - (i & 0x07))) & 1; }
+
+// Bitmask selecting the k-th bit in a byte
+static constexpr uint8_t kBitmask[] = {128, 64, 32, 16, 8, 4, 2, 1};
+
+// Gets the i-th bit from a byte. Should only be used with i <= 7.
+static constexpr bool GetBitFromByte(uint8_t byte, uint8_t i) { return byte & kBitmask[i]; }
+
+static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
+  // https://graphics.stanford.edu/~seander/bithacks.html
+  // "Conditionally set or clear bits without branching"
+  // NOTE: this seems to confuse Valgrind as it reads from potentially
+  // uninitialized memory
+  bits[i / 8] ^= static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) & kBitmask[i % 8];
+}
+
 /* Return the position of the first bit set to one (if 'bit' is 1) or
  * zero (if 'bit' is 0) in the bitmap starting at 's' and long 'count' bytes.
  *
@@ -103,46 +144,6 @@ inline int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit) {
   return res;
 }
 
-// Return the number of bytes needed to fit the given number of bits
-constexpr int64_t BytesForBits(int64_t bits) {
-  // This formula avoids integer overflow on very large `bits`
-  return (bits >> 3) + ((bits & 7) != 0);
-}
-
-namespace lsb {
-static constexpr bool GetBit(const uint8_t *bits, uint64_t i) { return (bits[i >> 3] >> (i & 0x07)) & 1; }
-
-// Bitmask selecting the k-th bit in a byte
-static constexpr uint8_t kBitmask[] = {1, 2, 4, 8, 16, 32, 64, 128};
-
-// Gets the i-th bit from a byte. Should only be used with i <= 7.
-static constexpr bool GetBitFromByte(uint8_t byte, uint8_t i) { return byte & kBitmask[i]; }
-
-static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
-  // https://graphics.stanford.edu/~seander/bithacks.html
-  // "Conditionally set or clear bits without branching"
-  // NOTE: this seems to confuse Valgrind as it reads from potentially
-  // uninitialized memory
-  bits[i / 8] ^= static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) & kBitmask[i % 8];
-}
-}  // namespace lsb
-
-namespace msb {
-static constexpr bool GetBit(const uint8_t *bits, uint64_t i) { return (bits[i >> 3] >> (7 - (i & 0x07))) & 1; }
-
-// Bitmask selecting the k-th bit in a byte
-static constexpr uint8_t kBitmask[] = {128, 64, 32, 16, 8, 4, 2, 1};
-
-// Gets the i-th bit from a byte. Should only be used with i <= 7.
-static constexpr bool GetBitFromByte(uint8_t byte, uint8_t i) { return byte & kBitmask[i]; }
-
-static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
-  // https://graphics.stanford.edu/~seander/bithacks.html
-  // "Conditionally set or clear bits without branching"
-  // NOTE: this seems to confuse Valgrind as it reads from potentially
-  // uninitialized memory
-  bits[i / 8] ^= static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) & kBitmask[i % 8];
-}
 }  // namespace msb
 
 }  // namespace util

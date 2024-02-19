@@ -110,7 +110,7 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
     *pos = -1;
   } else {
     int64_t bytes = stop - start + 1;
-    *pos = util::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
+    *pos = util::msb::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
      * range with start-end, we can't consider the right of the range as

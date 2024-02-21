@@ -412,7 +412,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   std::vector<std::pair<std::string, BitmapMetadata>> meta_pairs;
-  uint64_t max_size = 0, num_keys = op_keys.size();
+  uint64_t max_bitmap_size = 0;
 
   for (const auto &op_key : op_keys) {
     BitmapMetadata metadata(false);
@@ -420,7 +420,6 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
     auto s = GetMetadata(ns_op_key, &metadata, &raw_value);
     if (!s.ok()) {
       if (s.IsNotFound()) {
-        --num_keys;
         continue;
       }
       return s;
@@ -429,12 +428,13 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
       // Currently, we don't support bitop between bitmap and bitmap string.
       return rocksdb::Status::NotSupported(kErrMsgWrongType);
     }
-    if (metadata.size > max_size) max_size = metadata.size;
+    if (metadata.size > max_bitmap_size) max_bitmap_size = metadata.size;
     meta_pairs.emplace_back(std::move(ns_op_key), metadata);
   }
+  size_t num_keys = meta_pairs.size();
 
   auto batch = storage_->GetWriteBatchBase();
-  if (max_size == 0) {
+  if (max_bitmap_size == 0) {
     /* Compute the bit operation, if all bitmap is empty. cleanup the dest bitmap. */
     batch->Delete(metadata_cf_handle_, ns_key);
     return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -447,8 +447,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   batch->PutLogData(log_data.Encode());
 
   BitmapMetadata res_metadata;
-  if (num_keys == op_keys.size() || op_flag != kBitOpAnd) {
-    uint64_t stop_index = (max_size - 1) / kBitmapSegmentBytes;
+  // If the operation is AND and the number of keys is less than the number of op_keys,
+  // we can skip setting the subkeys of the result bitmap and just set the metadata.
+  const bool can_skip_op = op_flag == kBitOpAnd && num_keys != op_keys.size();
+  if (!can_skip_op) {
+    uint64_t stop_index = (max_bitmap_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
 
     LatestSnapShot ss(storage_);
@@ -503,7 +506,8 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
           }
           memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
           auto apply_fast_path_op = [&](auto op) {
-            // Note: kBitOpNot cannot use fast path.
+            // Note: kBitOpNot cannot use this op, it only applying
+            // to kBitOpAnd, kBitOpOr, kBitOpXor.
             DCHECK(op_flag != kBitOpNot);
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               for (uint64_t i = 1; i < frag_numkeys; i++) {
@@ -564,13 +568,15 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 
         if (op_flag == kBitOpNot) {
           if (frag_index == stop_index) {
-            if (max_size == (frag_index + 1) * kBitmapSegmentBytes) {
-              // If the last fragment is full, `max_size % kBitmapSegmentBytes`
+            // We should not set the extra bytes to 0xff. So we should limit
+            // `frag_maxlen` for the last segment.
+            if (max_bitmap_size == (frag_index + 1) * kBitmapSegmentBytes) {
+              // If the last fragment is full, `max_bitmap_size % kBitmapSegmentBytes`
               // would be 0. In this case, we should set `frag_maxlen` to
               // `kBitmapSegmentBytes` to avoid writing an empty fragment.
               frag_maxlen = kBitmapSegmentBytes;
             } else {
-              frag_maxlen = max_size % kBitmapSegmentBytes;
+              frag_maxlen = max_bitmap_size % kBitmapSegmentBytes;
             }
           } else {
             frag_maxlen = kBitmapSegmentBytes;
@@ -585,10 +591,10 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   }
 
   std::string bytes;
-  res_metadata.size = max_size;
+  res_metadata.size = max_bitmap_size;
   res_metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  *len = static_cast<int64_t>(max_size);
+  *len = static_cast<int64_t>(max_bitmap_size);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

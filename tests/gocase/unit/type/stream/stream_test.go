@@ -997,7 +997,7 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, group, "0").Err())
 		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, group, "consumer").Err())
 		require.NoError(t, rdb.XRead(ctx, &redis.XReadArgs{
-			Streams: []string{"mystream", "0-0"},
+			Streams: []string{streamName, "0"},
 		}).Err())
 	})
 }

@@ -51,20 +51,20 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type,
 }
 
 rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::string *output) {
-  if (std::holds_alternative<HashInterm>(db)) {
-    auto &[hash, metadata, key] = std::get<HashInterm>(db);
+  if (std::holds_alternative<HashData>(db)) {
+    auto &[hash, metadata, key] = std::get<HashData>(db);
     std::string ns_key = hash.AppendNamespacePrefix(key);
     LatestSnapShot ss(hash.storage_);
     rocksdb::ReadOptions read_options;
     read_options.snapshot = ss.GetSnapShot();
     std::string sub_key = InternalKey(ns_key, field, metadata.version, hash.storage_->IsSlotIdEncoded()).Encode();
     return hash.storage_->Get(read_options, sub_key, output);
-  } else if (std::holds_alternative<JsonInterm>(db)) {
-    auto &value = std::get<JsonInterm>(db);
+  } else if (std::holds_alternative<JsonData>(db)) {
+    auto &value = std::get<JsonData>(db);
     auto s = value.Get(field);
     if (!s.IsOK()) return rocksdb::Status::Corruption(s.Msg());
     if (s->value.size() != 1)
-      return rocksdb::Status::NotSupported("json value specified by the field (json path) should exist and be unique");
+      return rocksdb::Status::NotFound("json value specified by the field (json path) should exist and be unique");
     *output = s->value[0].as_string();
     return rocksdb::Status::OK();
   } else {

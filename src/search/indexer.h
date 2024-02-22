@@ -41,26 +41,26 @@ namespace redis {
 struct GlobalIndexer;
 
 struct FieldValueRetriever {
-  struct HashInterm {
+  struct HashData {
     Hash hash;
     HashMetadata metadata;
     std::string_view key;
 
-    HashInterm(Hash hash, HashMetadata metadata, std::string_view key)
+    HashData(Hash hash, HashMetadata metadata, std::string_view key)
         : hash(std::move(hash)), metadata(std::move(metadata)), key(key) {}
   };
-  using JsonInterm = JsonValue;
+  using JsonData = JsonValue;
 
-  using Variant = std::variant<HashInterm, JsonInterm>;
+  using Variant = std::variant<HashData, JsonData>;
   Variant db;
 
   static StatusOr<FieldValueRetriever> Create(SearchOnDataType type, std::string_view key, engine::Storage *storage,
                                               const std::string &ns);
 
   explicit FieldValueRetriever(Hash hash, HashMetadata metadata, std::string_view key)
-      : db(std::in_place_type<HashInterm>, std::move(hash), std::move(metadata), key) {}
+      : db(std::in_place_type<HashData>, std::move(hash), std::move(metadata), key) {}
 
-  explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonInterm>, std::move(json)) {}
+  explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonData>, std::move(json)) {}
 
   rocksdb::Status Retrieve(std::string_view field, std::string *output);
 };

@@ -69,12 +69,15 @@ struct FieldValueRetriever {
 struct IndexUpdater {
   using FieldValues = std::map<std::string, std::string>;
 
-  SearchOnDataType on_data_type;
+  std::string name;
+  SearchMetadata metadata;
   std::vector<std::string> prefixes;
   std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
   GlobalIndexer *indexer = nullptr;
 
   StatusOr<FieldValues> Record(std::string_view key, const std::string &ns);
+  Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
+                     std::string_view current, const std::string &ns);
 };
 
 struct GlobalIndexer {

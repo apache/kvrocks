@@ -73,6 +73,8 @@ struct SearchFieldMetadata {
 
   void DecodeFlag(uint8_t flag) { noindex = flag & 1; }
 
+  virtual ~SearchFieldMetadata() = default;
+
   virtual void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
 
   virtual rocksdb::Status Decode(Slice *input) {

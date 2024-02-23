@@ -250,7 +250,7 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
   return consumer_metadata;
 }
 
-StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) {
+StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) const {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice subkey = ikey.GetSubKey();
   const size_t entry_id_size = sizeof(StreamEntryID);
@@ -618,7 +618,9 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
   }
 
   for (; iter->Valid(); options.to_first ? iter->Prev() : iter->Next()) {
-    *size += 1;
+    if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamEntry) {
+      *size += 1;
+    }
   }
 
   return rocksdb::Status::OK();
@@ -674,6 +676,9 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
 
   for (; iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
        options.reverse ? iter->Prev() : iter->Next()) {
+    if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamEntry) {
+      continue;
+    }
     if (options.exclude_start && iter->key().ToString() == start_key) {
       continue;
     }

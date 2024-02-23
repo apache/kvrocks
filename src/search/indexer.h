@@ -33,6 +33,7 @@
 #include "search/search_encoding.h"
 #include "server/server.h"
 #include "storage/redis_metadata.h"
+#include "storage/storage.h"
 #include "types/redis_hash.h"
 #include "types/redis_json.h"
 
@@ -69,6 +70,7 @@ struct IndexUpdater {
   using FieldValues = std::map<std::string, std::string>;
 
   SearchOnDataType on_data_type;
+  std::vector<std::string> prefixes;
   std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
   GlobalIndexer *indexer = nullptr;
 
@@ -81,6 +83,8 @@ struct GlobalIndexer {
 
   engine::Storage *storage = nullptr;
 
+  explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
+  void Add(IndexUpdater updater);
   StatusOr<IndexUpdater::FieldValues> Record(std::string_view key, Connection *conn);
 };
 

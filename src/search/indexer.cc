@@ -99,6 +99,13 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, C
   return values;
 }
 
+void GlobalIndexer::Add(IndexUpdater updater) {
+  const auto &up = updaters.emplace_back(std::move(updater));
+  for (const auto &prefix : up.prefixes) {
+    prefix_map.emplace(prefix, &up);
+  }
+}
+
 StatusOr<IndexUpdater::FieldValues> GlobalIndexer::Record(std::string_view key, Connection *conn) {
   auto iter = prefix_map.longest_prefix(key);
   if (iter != prefix_map.end()) {

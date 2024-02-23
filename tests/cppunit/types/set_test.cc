@@ -275,6 +275,9 @@ TEST_F(RedisSetTest, TakeWithoutPop) {
   s = set_->Take(key_, &members, int(fields_.size() - 1), false);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(members.size(), fields_.size() - 1);
+  s = set_->Take(key_, &members, -int(fields_.size() - 1), false);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(members.size(), fields_.size() - 1);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Del(key_);

@@ -202,8 +202,6 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   if (count == 0) return rocksdb::Status::OK();
   if (count < 0) {
     DCHECK(!pop);
-    // NOTE: Currently, for SRANDMEMBER, we don't
-    // make duplicate members to be returned.
     count = -count;
     unique = false;
   }

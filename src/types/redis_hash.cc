@@ -390,7 +390,6 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s;
 
-  uint64_t size = metadata.size;
   std::vector<FieldValue> samples;
   // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
   if (count == 0) return rocksdb::Status::OK();

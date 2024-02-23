@@ -72,8 +72,8 @@ rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::strin
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, Connection *conn) {
-  Database db(indexer->storage, conn->GetNamespace());
+StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, const std::string &ns) {
+  Database db(indexer->storage, ns);
 
   RedisType type = kRedisNone;
   auto s = db.Type(key, &type);
@@ -84,7 +84,7 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, C
     return {Status::NotOK, "this data type cannot be indexed"};
   }
 
-  auto retriever = GET_OR_RET(FieldValueRetriever::Create(on_data_type, key, indexer->storage, conn->GetNamespace()));
+  auto retriever = GET_OR_RET(FieldValueRetriever::Create(on_data_type, key, indexer->storage, ns));
 
   FieldValues values;
   for (const auto &[field, info] : fields) {
@@ -106,10 +106,10 @@ void GlobalIndexer::Add(IndexUpdater updater) {
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> GlobalIndexer::Record(std::string_view key, Connection *conn) {
+StatusOr<IndexUpdater::FieldValues> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
   auto iter = prefix_map.longest_prefix(key);
   if (iter != prefix_map.end()) {
-    return iter.value()->Record(key, conn);
+    return iter.value()->Record(key, ns);
   }
 
   return {Status::NoPrefixMatched};

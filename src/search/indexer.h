@@ -74,7 +74,7 @@ struct IndexUpdater {
   std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
   GlobalIndexer *indexer = nullptr;
 
-  StatusOr<FieldValues> Record(std::string_view key, Connection *conn);
+  StatusOr<FieldValues> Record(std::string_view key, const std::string &ns);
 };
 
 struct GlobalIndexer {
@@ -84,8 +84,9 @@ struct GlobalIndexer {
   engine::Storage *storage = nullptr;
 
   explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
+
   void Add(IndexUpdater updater);
-  StatusOr<IndexUpdater::FieldValues> Record(std::string_view key, Connection *conn);
+  StatusOr<IndexUpdater::FieldValues> Record(std::string_view key, const std::string &ns);
 };
 
 }  // namespace redis

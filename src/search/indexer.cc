@@ -85,7 +85,7 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
 
   if (type != static_cast<RedisType>(metadata.on_data_type)) {
     // not the expected type, stop record
-    return {Status::NotOK, "this data type cannot be indexed"};
+    return {Status::TypeMismatched};
   }
 
   auto retriever = GET_OR_RET(FieldValueRetriever::Create(metadata.on_data_type, key, indexer->storage, ns));

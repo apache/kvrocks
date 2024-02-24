@@ -66,6 +66,8 @@ class Hash : public SubKeyScanner {
 
  private:
   rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
+
+  friend struct FieldValueRetriever;
 };
 
 }  // namespace redis

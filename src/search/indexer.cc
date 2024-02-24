@@ -152,7 +152,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
 
     auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
-  } else if ([[maybe_unused]] auto numeric = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
+  } else if (auto numeric [[maybe_unused]] = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
     auto batch = storage->GetWriteBatchBase();
 
     if (!original.empty()) {
@@ -180,6 +180,25 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   return Status::OK();
 }
 
+Status IndexUpdater::Update(const FieldValues &original, std::string_view key, const std::string &ns) {
+  auto current = GET_OR_RET(Record(key, ns));
+
+  for (const auto &[field, _] : fields) {
+    std::string_view original_val, current_val;
+
+    if (auto it = original.find(field); it != original.end()) {
+      original_val = it->second;
+    }
+    if (auto it = current.find(field); it != current.end()) {
+      current_val = it->second;
+    }
+
+    GET_OR_RET(UpdateIndex(field, key, original_val, current_val, ns));
+  }
+
+  return Status::OK();
+}
+
 void GlobalIndexer::Add(IndexUpdater updater) {
   auto &up = updaters.emplace_back(std::move(updater));
   for (const auto &prefix : up.prefixes) {
@@ -187,10 +206,11 @@ void GlobalIndexer::Add(IndexUpdater updater) {
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
+StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
   auto iter = prefix_map.longest_prefix(key);
   if (iter != prefix_map.end()) {
-    return iter.value()->Record(key, ns);
+    auto updater = iter.value();
+    return std::make_pair(updater, GET_OR_RET(updater->Record(key, ns)));
   }
 
   return {Status::NoPrefixMatched};

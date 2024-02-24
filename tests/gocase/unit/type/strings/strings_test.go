@@ -895,4 +895,95 @@ func TestString(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "CAD", "cad_key").Err(), "ERR wrong number of arguments")
 		require.ErrorContains(t, rdb.Do(ctx, "CAD", "cad_key", "123", "234").Err(), "ERR wrong number of arguments")
 	})
+
+	rna1 := "CACCTTCCCAGGTAACAAACCAACCAACTTTCGATCTCTTGTAGATCTGTTCTCTAAACGAACTTTAAAATCTGTGTGGCTGTCACTCGGCTGCATGCTTAGTGCACTCACGCAGTATAATTAATAACTAATTACTGTCGTTGACAGGACACGAGTAACTCGTCTATCTTCTGCAGGCTGCTTACGGTTTCGTCCGTGTTGCAGCCGATCATCAGCACATCTAGGTTTCGTCCGGGTGTG"
+	rna2 := "ATTAAAGGTTTATACCTTCCCAGGTAACAAACCAACCAACTTTCGATCTCTTGTAGATCTGTTCTCTAAACGAACTTTAAAATCTGTGTGGCTGTCACTCGGCTGCATGCTTAGTGCACTCACGCAGTATAATTAATAACTAATTACTGTCGTTGACAGGACACGAGTAACTCGTCTATCTTCTGCAGGCTGCTTACGGTTTCGTCCGTGTTGCAGCCGATCATCAGCACATCTAGGTTT"
+	rnalcs := "ACCTTCCCAGGTAACAAACCAACCAACTTTCGATCTCTTGTAGATCTGTTCTCTAAACGAACTTTAAAATCTGTGTGGCTGTCACTCGGCTGCATGCTTAGTGCACTCACGCAGTATAATTAATAACTAATTACTGTCGTTGACAGGACACGAGTAACTCGTCTATCTTCTGCAGGCTGCTTACGGTTTCGTCCGTGTTGCAGCCGATCATCAGCACATCTAGGTTT"
+
+	t.Run("LCS basic", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
+		require.Equal(t, rnalcs, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2"}).Val().MatchString)
+		// require.Equal(t, rnalcs, rdb.Do(ctx, "LCS", "virus1", "virus2").Val())
+	})
+
+	t.Run("LCS len", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
+		require.Equal(t, int64(len(rnalcs)), rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Len: true}).Val().Len)
+	})
+
+	t.Run("LCS indexes", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
+		matches := rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true}).Val().Matches
+		require.Equal(t, []redis.LCSMatchedPosition{
+			{
+				Key1: redis.LCSPosition{Start: 238, End: 238},
+				Key2: redis.LCSPosition{Start: 239, End: 239},
+			},
+			{
+				Key1: redis.LCSPosition{Start: 236, End: 236},
+				Key2: redis.LCSPosition{Start: 238, End: 238},
+			},
+			{
+				Key1: redis.LCSPosition{Start: 229, End: 230},
+				Key2: redis.LCSPosition{Start: 236, End: 237},
+			},
+			{
+				Key1: redis.LCSPosition{Start: 224, End: 224},
+				Key2: redis.LCSPosition{Start: 235, End: 235},
+			},
+			{
+				Key1: redis.LCSPosition{Start: 1, End: 222},
+				Key2: redis.LCSPosition{Start: 13, End: 234},
+			},
+		}, matches)
+	})
+
+	t.Run("LCS indexes with match len", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
+		matches := rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true, WithMatchLen: true}).Val().Matches
+		require.Equal(t, []redis.LCSMatchedPosition{
+			{
+				Key1:     redis.LCSPosition{Start: 238, End: 238},
+				Key2:     redis.LCSPosition{Start: 239, End: 239},
+				MatchLen: 1,
+			},
+			{
+				Key1:     redis.LCSPosition{Start: 236, End: 236},
+				Key2:     redis.LCSPosition{Start: 238, End: 238},
+				MatchLen: 1,
+			},
+			{
+				Key1:     redis.LCSPosition{Start: 229, End: 230},
+				Key2:     redis.LCSPosition{Start: 236, End: 237},
+				MatchLen: 2,
+			},
+			{
+				Key1:     redis.LCSPosition{Start: 224, End: 224},
+				Key2:     redis.LCSPosition{Start: 235, End: 235},
+				MatchLen: 1,
+			},
+			{
+				Key1:     redis.LCSPosition{Start: 1, End: 222},
+				Key2:     redis.LCSPosition{Start: 13, End: 234},
+				MatchLen: 222,
+			},
+		}, matches)
+	})
+
+	t.Run("LCS indexes with match len and minimum match len", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
+		matches := rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true, WithMatchLen: true, MinMatchLen: 5}).Val().Matches
+		require.Equal(t, []redis.LCSMatchedPosition{
+			{
+				Key1:     redis.LCSPosition{Start: 1, End: 222},
+				Key2:     redis.LCSPosition{Start: 13, End: 234},
+				MatchLen: 222,
+			},
+		}, matches)
+	})
 }

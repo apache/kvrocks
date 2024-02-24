@@ -73,9 +73,9 @@ struct SearchFieldMetadata {
 
   void DecodeFlag(uint8_t flag) { noindex = flag & 1; }
 
-  void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
+  virtual void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
 
-  rocksdb::Status Decode(Slice *input) {
+  virtual rocksdb::Status Decode(Slice *input) {
     uint8_t flag = 0;
     if (!GetFixed8(input, &flag)) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
@@ -96,13 +96,13 @@ struct SearchTagFieldMetadata : SearchFieldMetadata {
   char separator = ',';
   bool case_sensitive = false;
 
-  void Encode(std::string *dst) const {
+  void Encode(std::string *dst) const override {
     SearchFieldMetadata::Encode(dst);
     PutFixed8(dst, separator);
     PutFixed8(dst, case_sensitive);
   }
 
-  rocksdb::Status Decode(Slice *input) {
+  rocksdb::Status Decode(Slice *input) override {
     if (auto s = SearchFieldMetadata::Decode(input); !s.ok()) {
       return s;
     }

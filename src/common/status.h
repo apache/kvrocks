@@ -66,6 +66,9 @@ class [[nodiscard]] Status {
 
     // Blocking
     BlockingCmd,
+
+    // Search
+    NoPrefixMatched,
   };
 
   Status() : impl_{nullptr} {}

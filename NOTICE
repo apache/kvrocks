@@ -65,6 +65,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 * fmt(https://github.com/fmtlib/fmt)
 * LuaJIT(https://github.com/KvrocksLabs/LuaJIT)
 * lua(https://github.com/KvrocksLabs/lua, alternative to LuaJIT)
+* hat-trie(https://github.com/Tessil/hat-trie)
 
 ================================================================
 Boost Software License Version 1.0

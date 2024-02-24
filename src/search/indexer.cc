@@ -216,4 +216,8 @@ StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key
   return {Status::NoPrefixMatched};
 }
 
+Status GlobalIndexer::Update(const RecordResult &original, std::string_view key, const std::string &ns) {
+  return original.first->Update(original.second, key, ns);
+}
+
 }  // namespace redis

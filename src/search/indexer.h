@@ -94,6 +94,7 @@ struct GlobalIndexer {
 
   void Add(IndexUpdater updater);
   StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
+  static Status Update(const RecordResult &original, std::string_view key, const std::string &ns);
 };
 
 }  // namespace redis

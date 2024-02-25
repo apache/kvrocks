@@ -135,32 +135,40 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
       }
     }
 
+    if (tags_to_add.empty() && tags_to_delete.empty()) {
+      // no change, skip index updating
+      return Status::OK();
+    }
+
     auto batch = storage->GetWriteBatchBase();
+    auto cf_handle = storage->GetCFHandle(engine::kSearchColumnFamilyName);
+
     for (const auto &tag : tags_to_delete) {
       auto sub_key = ConstructTagFieldSubkey(field, tag, key);
       auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
 
-      batch->Delete(storage->GetCFHandle(engine::kSearchColumnFamilyName), index_key.Encode());
+      batch->Delete(cf_handle, index_key.Encode());
     }
 
     for (const auto &tag : tags_to_add) {
       auto sub_key = ConstructTagFieldSubkey(field, tag, key);
       auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
 
-      batch->Put(storage->GetCFHandle(engine::kSearchColumnFamilyName), index_key.Encode(), Slice());
+      batch->Put(cf_handle, index_key.Encode(), Slice());
     }
 
     auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
     auto batch = storage->GetWriteBatchBase();
+    auto cf_handle = storage->GetCFHandle(engine::kSearchColumnFamilyName);
 
     if (!original.empty()) {
       auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));
       auto sub_key = ConstructNumericFieldSubkey(field, original_num, key);
       auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
 
-      batch->Delete(storage->GetCFHandle(engine::kSearchColumnFamilyName), index_key.Encode());
+      batch->Delete(cf_handle, index_key.Encode());
     }
 
     if (!current.empty()) {
@@ -168,7 +176,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
       auto sub_key = ConstructNumericFieldSubkey(field, current_num, key);
       auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
 
-      batch->Put(storage->GetCFHandle(engine::kSearchColumnFamilyName), index_key.Encode(), Slice());
+      batch->Put(cf_handle, index_key.Encode(), Slice());
     }
 
     auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());

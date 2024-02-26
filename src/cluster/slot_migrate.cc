@@ -498,7 +498,7 @@ Status SlotMigrator::setImportStatusOnDstNode(int sock_fd, int status) {
 }
 
 StatusOr<bool> SlotMigrator::supportedApplyBatchCommandOnDstNode(int sock_fd) {
-  std::string cmd = redis::ArrayOfBulkStrings({"command", "info", "applybatch——"});
+  std::string cmd = redis::ArrayOfBulkStrings({"command", "info", "applybatch"});
   auto s = util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {
     return s.Prefixed("failed to send command info to the destination node");

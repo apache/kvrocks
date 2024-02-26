@@ -32,6 +32,8 @@ class Server;
 
 namespace redis {
 
+const size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
+
 using CommandTokens = std::vector<std::string>;
 
 class Connection;

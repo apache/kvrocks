@@ -26,6 +26,7 @@
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
+#include "server/redis_request.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
 #include "time_util.h"
@@ -680,7 +681,13 @@ class CommandLCS : public Commander {
 
     // Allocate the LCS table.
     uint64_t dp_size = (alen + 1) * (blen + 1);
-    // TODO: Maybe we need to check for insufficient memory
+    uint64_t bulk_size = dp_size * sizeof(uint32_t);
+    if (bulk_size >= SIZE_MAX || bulk_size / dp_size != sizeof(uint32_t)) {
+      return {Status::RedisExecErr, "Insufficient memory, failed allocating transient memory for LCS"};
+    }
+    if (bulk_size > PROTO_BULK_MAX_SIZE) {
+      return {Status::RedisExecErr, "Insufficient memory, transient memory for LCS exceeds proto-max-bulk-len"};
+    }
     std::vector<uint32_t> dp(dp_size, 0);
     auto lcs = [&](const uint32_t i, const uint32_t j) -> uint32_t & { return dp[i * (blen + 1) + j]; };
 

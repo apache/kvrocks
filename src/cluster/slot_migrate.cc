@@ -295,7 +295,7 @@ Status SlotMigrator::startMigration() {
   // If the APPLYBATCH command is not supported on the destination,
   // we will fall back to the redis-command migration type.
   if (migration_type_ == MigrationType::kRawKeyValue) {
-    bool supported = GET_OR_RET(supporttedApplyBatchCommandOnDstNode(*dst_fd_));
+    bool supported = GET_OR_RET(supportedApplyBatchCommandOnDstNode(*dst_fd_));
     if (!supported) {
       LOG(INFO) << "APPLYBATCH command is not supported, use redis command for migration" << s.Msg();
       migration_type_ = MigrationType::kRedisCommand;
@@ -497,7 +497,7 @@ Status SlotMigrator::setImportStatusOnDstNode(int sock_fd, int status) {
   return Status::OK();
 }
 
-StatusOr<bool> SlotMigrator::supporttedApplyBatchCommandOnDstNode(int sock_fd) {
+StatusOr<bool> SlotMigrator::supportedApplyBatchCommandOnDstNode(int sock_fd) {
   std::string cmd = redis::ArrayOfBulkStrings({"command", "info", "applybatch——"});
   auto s = util::SockSend(sock_fd, cmd);
   if (!s.IsOK()) {

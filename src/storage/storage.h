@@ -57,6 +57,7 @@ enum ColumnFamilyID {
   kColumnFamilyIDPubSub,
   kColumnFamilyIDPropagate,
   kColumnFamilyIDStream,
+  kColumnFamilyIDSearch,
 };
 
 enum DBOpenMode {
@@ -73,6 +74,7 @@ constexpr const char *kMetadataColumnFamilyName = "metadata";
 constexpr const char *kSubkeyColumnFamilyName = "default";
 constexpr const char *kPropagateColumnFamilyName = "propagate";
 constexpr const char *kStreamColumnFamilyName = "stream";
+constexpr const char *kSearchColumnFamilyName = "search";
 
 constexpr const char *kPropagateScriptCommand = "script";
 

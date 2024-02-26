@@ -69,15 +69,22 @@ struct FieldValueRetriever {
 struct IndexUpdater {
   using FieldValues = std::map<std::string, std::string>;
 
-  SearchOnDataType on_data_type;
+  std::string name;
+  SearchMetadata metadata;
   std::vector<std::string> prefixes;
   std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
   GlobalIndexer *indexer = nullptr;
 
   StatusOr<FieldValues> Record(std::string_view key, const std::string &ns);
+  Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
+                     std::string_view current, const std::string &ns);
+  Status Update(const FieldValues &original, std::string_view key, const std::string &ns);
 };
 
 struct GlobalIndexer {
+  using FieldValues = IndexUpdater::FieldValues;
+  using RecordResult = std::pair<IndexUpdater *, FieldValues>;
+
   std::deque<IndexUpdater> updaters;
   tsl::htrie_map<char, IndexUpdater *> prefix_map;
 
@@ -86,7 +93,8 @@ struct GlobalIndexer {
   explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
 
   void Add(IndexUpdater updater);
-  StatusOr<IndexUpdater::FieldValues> Record(std::string_view key, const std::string &ns);
+  StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
+  static Status Update(const RecordResult &original, std::string_view key, const std::string &ns);
 };
 
 }  // namespace redis

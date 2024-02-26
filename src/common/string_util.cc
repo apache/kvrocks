@@ -47,7 +47,7 @@ bool EqualICase(std::string_view lhs, std::string_view rhs) {
                                                 [](char l, char r) { return std::tolower(l) == std::tolower(r); });
 }
 
-std::string Trim(std::string in, const std::string &chars) {
+std::string Trim(std::string in, std::string_view chars) {
   if (in.empty()) return in;
 
   in.erase(0, in.find_first_not_of(chars));
@@ -56,7 +56,7 @@ std::string Trim(std::string in, const std::string &chars) {
   return in;
 }
 
-std::vector<std::string> Split(const std::string &in, const std::string &delim) {
+std::vector<std::string> Split(std::string_view in, std::string_view delim) {
   std::vector<std::string> out;
 
   if (in.empty()) {
@@ -71,8 +71,8 @@ std::vector<std::string> Split(const std::string &in, const std::string &delim) 
 
   size_t begin = 0, end = in.find_first_of(delim);
   do {
-    std::string elem = in.substr(begin, end - begin);
-    if (!elem.empty()) out.push_back(std::move(elem));
+    std::string_view elem = in.substr(begin, end - begin);
+    if (!elem.empty()) out.emplace_back(elem.begin(), elem.end());
     if (end == std::string::npos) break;
     begin = end + 1;
     end = in.find_first_of(delim, begin);
@@ -228,7 +228,7 @@ std::vector<std::string> RegexMatch(const std::string &str, const std::string &r
   return out;
 }
 
-std::string StringToHex(const std::string &input) {
+std::string StringToHex(std::string_view input) {
   static const char hex_digits[] = "0123456789ABCDEF";
   std::string output;
   output.reserve(input.length() * 2);
@@ -331,7 +331,7 @@ std::vector<std::string> TokenizeRedisProtocol(const std::string &value) {
 /* escape string where all the non-printable characters
  * (tested with isprint()) are turned into escapes in
  * the form "\n\r\a...." or "\x<hex-number>". */
-std::string EscapeString(const std::string &s) {
+std::string EscapeString(std::string_view s) {
   std::string str;
   str.reserve(s.size());
 

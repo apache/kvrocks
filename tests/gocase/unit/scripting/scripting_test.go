@@ -512,3 +512,22 @@ func TestScriptingMasterSlave(t *testing.T) {
 		require.Equal(t, []bool{false}, slaveClient.ScriptExists(ctx, sha).Val())
 	})
 }
+
+func TestScriptingWithRESP3_Map(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() {
+		require.NoError(t, rdb.Close())
+	}()
+
+	ctx := context.Background()
+	rdb.HSet(ctx, "myhash", "f1", "v1")
+	rdb.HSet(ctx, "myhash", "f2", "v2")
+	val, err := rdb.Eval(ctx, `return redis.call('hgetall', KEYS[1])`, []string{"myhash"}).Result()
+	require.NoError(t, err)
+	require.Equal(t, map[interface{}]interface{}{"f1": "v1", "f2": "v2"}, val)
+}

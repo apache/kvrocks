@@ -23,9 +23,9 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <random>
 
 #include "db_util.h"
+#include "sample_helper.h"
 
 namespace redis {
 
@@ -197,9 +197,14 @@ rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &
 }
 
 rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *members, int count, bool pop) {
-  int n = 0;
   members->clear();
-  if (count <= 0) return rocksdb::Status::OK();
+  bool unique = true;
+  if (count == 0) return rocksdb::Status::OK();
+  if (count < 0) {
+    DCHECK(!pop);
+    count = -count;
+    unique = false;
+  }
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -210,49 +215,30 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisSet);
-  batch->PutLogData(log_data.Encode());
-
-  std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapShot();
-  rocksdb::Slice upper_bound(next_version_prefix);
-  read_options.iterate_upper_bound = &upper_bound;
-
-  std::vector<std::string> iter_keys;
-  iter_keys.reserve(count);
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  auto iter = util::UniqueIterator(storage_, read_options);
-  for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    ++n;
-    if (n <= count) {
-      iter_keys.push_back(iter->key().ToString());
-    } else {  // n > count
-      std::uniform_int_distribution<> distrib(0, n - 1);
-      int random = distrib(gen);  // [0,n-1]
-      if (random < count) {
-        iter_keys[random] = iter->key().ToString();
-      }
-    }
+  ObserverOrUniquePtr<rocksdb::WriteBatchBase> batch = storage_->GetWriteBatchBase();
+  if (pop) {
+    WriteBatchLogData log_data(kRedisSet);
+    batch->PutLogData(log_data.Encode());
   }
-  for (Slice key : iter_keys) {
-    InternalKey ikey(key, storage_->IsSlotIdEncoded());
-    members->emplace_back(ikey.GetSubKey().ToString());
-    if (pop) {
-      batch->Delete(key);
-    }
+  members->clear();
+  s = ExtractRandMemberFromSet<std::string>(
+      unique, count, [this, user_key](std::vector<std::string> *samples) { return this->Members(user_key, samples); },
+      members);
+  if (!s.ok()) {
+    return s;
   }
-  if (pop && !iter_keys.empty()) {
-    metadata.size -= iter_keys.size();
-    std::string bytes;
-    metadata.Encode(&bytes);
-    batch->Put(metadata_cf_handle_, ns_key, bytes);
+  // Avoid to write an empty op-log if just random select some members.
+  if (!pop) return rocksdb::Status::OK();
+  // Avoid to write an empty op-log if the set is empty.
+  if (members->empty()) return rocksdb::Status::OK();
+  for (std::string &user_sub_key : *members) {
+    std::string sub_key = InternalKey(ns_key, user_sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    batch->Delete(sub_key);
   }
+  metadata.size -= members->size();
+  std::string bytes;
+  metadata.Encode(&bytes);
+  batch->Put(metadata_cf_handle_, ns_key, bytes);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

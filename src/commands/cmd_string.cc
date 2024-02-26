@@ -769,13 +769,13 @@ class CommandLCS : public Commander {
         if (get_idx_ && (min_match_len_ == 0 || match_len >= min_match_len_)) {
           matches += redis::MultiLen(with_match_len_ ? 3 : 2);
           matches += redis::MultiLen(2);
-          matches += redis::BulkString(std::to_string(arange_start));
-          matches += redis::BulkString(std::to_string(arange_end));
+          matches += redis::Integer(arange_start);
+          matches += redis::Integer(arange_end);
           matches += redis::MultiLen(2);
-          matches += redis::BulkString(std::to_string(brange_start));
-          matches += redis::BulkString(std::to_string(brange_end));
+          matches += redis::Integer(brange_start);
+          matches += redis::Integer(brange_end);
           if (with_match_len_) {
-            matches += redis::BulkString(std::to_string(match_len));
+            matches += redis::Integer(match_len);
           }
           matches_len++;
         }
@@ -787,7 +787,7 @@ class CommandLCS : public Commander {
 
     // Build output by the given options.
     if (get_idx_) {
-      *output = redis::MultiLen(4);
+      *output = conn->HeaderOfMap(2);
       *output += redis::BulkString("matches");
       *output += redis::MultiLen(matches_len);
       *output += matches;
@@ -826,5 +826,5 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), MakeCmdAttr<CommandLCS>("lcs", -3, "read-only", 1, 1, 1), )
+    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), MakeCmdAttr<CommandLCS>("lcs", -3, "read-only", 1, 2, 1), )
 }  // namespace redis

@@ -119,6 +119,7 @@ class SlotMigrator : public redis::Database {
 
   Status authOnDstNode(int sock_fd, const std::string &password);
   Status setImportStatusOnDstNode(int sock_fd, int status);
+  StatusOr<bool> supporttedApplyBatchCommandOnDstNode(int sock_fd);
 
   Status sendSnapshotByCmd();
   Status syncWALByCmd();
@@ -187,6 +188,7 @@ class SlotMigrator : public redis::Database {
   int dst_port_ = -1;
   UniqueFD dst_fd_;
 
+  MigrationType migration_type_ = MigrationType::kRedisCommand;
   std::atomic<int16_t> forbidden_slot_ = -1;
   std::atomic<int16_t> migrating_slot_ = -1;
   int16_t migrate_failed_slot_ = -1;

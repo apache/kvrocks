@@ -904,7 +904,6 @@ func TestString(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
 		require.NoError(t, rdb.Set(ctx, "virus2", rna2, 0).Err())
 		require.Equal(t, rnalcs, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2"}).Val().MatchString)
-		// require.Equal(t, rnalcs, rdb.Do(ctx, "LCS", "virus1", "virus2").Val())
 	})
 
 	t.Run("LCS len", func(t *testing.T) {

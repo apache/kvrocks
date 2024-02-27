@@ -713,7 +713,7 @@ class CommandLCS : public Commander {
     std::string result;
     uint32_t idx = lcs(alen, blen);
 
-    // Do we need to compute the actual LCS string? Allocate it in that case.
+    // Allocate when we need to compute the actual LCS string.
     bool compute_lcs = get_idx_ || !get_len_;
     if (compute_lcs) result.resize(idx);
 
@@ -732,7 +732,7 @@ class CommandLCS : public Commander {
       if (a[i - 1] == b[j - 1]) {
         // If there is a match, store the character and reduce
         // the indexes to look for a new match.
-        result[idx - 1] = a[i - 1];
+        result.at(idx - 1) = a[i - 1];
 
         // Track the current range.
         if (arange_start == alen) {

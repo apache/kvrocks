@@ -985,4 +985,18 @@ func TestString(t *testing.T) {
 			},
 		}, matches)
 	})
+
+	t.Run("LCS empty", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "virus1", rna1, 0).Err())
+		require.NoError(t, rdb.Set(ctx, "virus2", "", 0).Err())
+
+		require.Equal(t, rna1, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus1"}).Val().MatchString)
+		require.Equal(t, "", rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2"}).Val().MatchString)
+		require.Equal(t, "", rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus2", Key2: "virus1"}).Val().MatchString)
+		require.Equal(t, "", rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus2", Key2: "virus2"}).Val().MatchString)
+
+		require.Equal(t, int64(0), rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2"}).Val().Len)
+		require.Equal(t, []redis.LCSMatchedPosition{}, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true}).Val().Matches)
+		require.Equal(t, []redis.LCSMatchedPosition{}, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true, WithMatchLen: true}).Val().Matches)
+	})
 }

@@ -955,6 +955,12 @@ const char *RedisProtocolToLuaType(lua_State *lua, const char *reply) {
     case ',':
       p = RedisProtocolToLuaTypeDouble(lua, reply);
       break;
+    case '(':
+      p = RedisProtocolToLuaTypeBigNumber(lua, reply);
+      break;
+    case '=':
+      p = RedisProtocolToLuaTypeVerbatimString(lua, reply);
+      break;
   }
   return p;
 }
@@ -1078,6 +1084,27 @@ const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply) {
   return p + 2;
 }
 
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply) {
+  const char *p = strchr(reply + 1, '\r');
+  int64_t bulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
+  p += 2;  // skip \r\n
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "verbatim_string");
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "string");
+  lua_pushlstring(lua, p + 4, bulklen - 4);
+  lua_settable(lua, -3);
+
+  lua_pushstring(lua, "format");
+  lua_pushlstring(lua, p, 3);
+  lua_settable(lua, -3);
+
+  lua_settable(lua, -3);
+  return p + bulklen + 2;
+}
+
 /* This function is used in order to push an error on the Lua stack in the
  * format used by redis.pcall to return errors, which is a lua table
  * with a single "err" field set to the error string. Note that this
@@ -1181,14 +1208,13 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
           if (t == LUA_TSTRING) {
             obj_s = lua_tolstring(lua, -1, &obj_len);
             output = conn->VerbatimString(std::string(format), std::string(obj_s, obj_len));
-            // pop format_string, 'string' and verbatim_string
-            lua_pop(lua, 3);
+            lua_pop(lua, 4);
             return output;
           }
-          // pop 'format'
+          // discard 'string'
           lua_pop(lua, 1);
         }
-        // pop 'verbatim_string'
+        // discard 'format'
         lua_pop(lua, 1);
       }
       lua_pop(lua, 1); /* Discard the 'verbatim_string' field value we pushed */

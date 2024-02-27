@@ -84,6 +84,8 @@ const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBool(lua_State *lua, const char *reply, int tf);
 const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply);
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply);
+
 std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua);
 
 void PushError(lua_State *lua, const char *err);

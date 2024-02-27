@@ -119,7 +119,7 @@ class SlotMigrator : public redis::Database {
 
   Status authOnDstNode(int sock_fd, const std::string &password);
   Status setImportStatusOnDstNode(int sock_fd, int status);
-  StatusOr<bool> supportedApplyBatchCommandOnDstNode(int sock_fd);
+  static StatusOr<bool> supportedApplyBatchCommandOnDstNode(int sock_fd);
 
   Status sendSnapshotByCmd();
   Status syncWALByCmd();

@@ -297,7 +297,7 @@ Status SlotMigrator::startMigration() {
   if (migration_type_ == MigrationType::kRawKeyValue) {
     bool supported = GET_OR_RET(supportedApplyBatchCommandOnDstNode(*dst_fd_));
     if (!supported) {
-      LOG(INFO) << "APPLYBATCH command is not supported, use redis command for migration" << s.Msg();
+      LOG(INFO) << "APPLYBATCH command is not supported, use redis command for migration";
       migration_type_ = MigrationType::kRedisCommand;
     }
   }

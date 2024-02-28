@@ -1063,14 +1063,13 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
       consumergroup_metadata.last_delivered_id = maxid;
     }
   } else {
-    std::string next_version_prefix_key =
-        InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-    std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    std::string prefix_key = internalPelKeyFromGroupAndId(ns_key, metadata, group_name, StreamEntryID::Minimum());
+    std::string end_key = internalPelKeyFromGroupAndId(ns_key, metadata, group_name, StreamEntryID::Maximum());
 
     rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
     LatestSnapShot ss(storage_);
     read_options.snapshot = ss.GetSnapShot();
-    rocksdb::Slice upper_bound(next_version_prefix_key);
+    rocksdb::Slice upper_bound(end_key);
     read_options.iterate_upper_bound = &upper_bound;
     rocksdb::Slice lower_bound(prefix_key);
     read_options.iterate_lower_bound = &lower_bound;

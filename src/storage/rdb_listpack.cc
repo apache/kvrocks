@@ -207,8 +207,8 @@ StatusOr<std::string> ListPack::Next() {
     pos_ += value_len + encodeBackLen(value_len + 2);
   } else if ((c & ListPack32BitStringMask) == ListPack32BitString) {  // 32bit string
     GET_OR_RET(peekOK(5));
-    value_len = (static_cast<uint32_t>(data[pos_])) | (static_cast<uint32_t>(data[pos_ + 1]) << 8) |
-                (static_cast<uint32_t>(data[pos_ + 2]) << 16) | (static_cast<uint32_t>(data[pos_ + 3]) << 24);
+    value_len = (static_cast<uint32_t>(data[pos_ + 1])) | (static_cast<uint32_t>(data[pos_ + 2]) << 8) |
+                (static_cast<uint32_t>(data[pos_ + 3]) << 16) | (static_cast<uint32_t>(data[pos_ + 4]) << 24);
     // skip 5byte encoding type
     pos_ += 5;
     GET_OR_RET(peekOK(value_len));

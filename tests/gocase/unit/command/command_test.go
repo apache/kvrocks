@@ -28,7 +28,10 @@ import (
 )
 
 func TestCommand(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{
+		"rename-command KEYS":   "RENAMED_KEYS",
+		"rename-command CONFIG": "''", // remove CONFIG command
+	})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -48,6 +51,41 @@ func TestCommand(t *testing.T) {
 		require.EqualValues(t, 1, v[3])
 		require.EqualValues(t, 1, v[4])
 		require.EqualValues(t, 1, v[5])
+	})
+
+	t.Run("acquire renamed command info by COMMAND INFO", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "INFO", "KEYS")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Nil(t, vs[0])
+
+		r = rdb.Do(ctx, "COMMAND", "INFO", "RENAMED_KEYS")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		v := vs[0].([]interface{})
+		require.Len(t, v, 6)
+		require.Equal(t, "keys", v[0])
+		require.EqualValues(t, 2, v[1])
+		require.Equal(t, []interface{}{"readonly"}, v[2])
+		require.EqualValues(t, 0, v[3])
+		require.EqualValues(t, 0, v[4])
+		require.EqualValues(t, 0, v[5])
+	})
+
+	t.Run("renamed command can be acquired by COMMAND", func(t *testing.T) {
+		commandInfos := rdb.Command(ctx).Val()
+		require.NotNil(t, commandInfos)
+		_, found := commandInfos["keys"]
+		require.True(t, found)
+	})
+
+	t.Run("removed command can not be acquired by COMMAND", func(t *testing.T) {
+		commandInfos := rdb.Command(ctx).Val()
+		require.NotNil(t, commandInfos)
+		_, found := commandInfos["config"]
+		require.True(t, found)
 	})
 
 	t.Run("command entry length check", func(t *testing.T) {

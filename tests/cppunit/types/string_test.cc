@@ -307,3 +307,54 @@ TEST_F(RedisStringTest, CAD) {
 
   status = string_->Del(key);
 }
+
+TEST_F(RedisStringTest, LCS) {
+  auto expect_result_eq = [](const StringLCSIdxResult &val1, const StringLCSIdxResult &val2) {
+    ASSERT_EQ(val1.len, val2.len);
+    ASSERT_EQ(val1.matches.size(), val2.matches.size());
+    for (auto b1 = val1.matches.begin(), b2 = val2.matches.begin(), e1 = val1.matches.end(); b1 != e1; ++b1, ++b2) {
+      ASSERT_EQ(b1->match_len, b2->match_len);
+      ASSERT_EQ(b1->a.start, b2->a.start);
+      ASSERT_EQ(b1->a.end, b2->a.end);
+      ASSERT_EQ(b1->b.start, b2->b.start);
+      ASSERT_EQ(b1->b.end, b2->b.end);
+    }
+  };
+
+  StringLCSResult rst;
+  std::string key1 = "lcs_key1";
+  std::string key2 = "lcs_key2";
+  std::string value1 = "abcdef";
+  std::string value2 = "acdf";
+
+  auto status = string_->Set(key1, value1);
+  ASSERT_TRUE(status.ok());
+  status = string_->Set(key2, value2);
+  ASSERT_TRUE(status.ok());
+
+  status = string_->LCS(key1, key2, {}, &rst);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ("acdf", std::get<std::string>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::LEN}, &rst);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(4, std::get<uint32_t>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::IDX}, &rst);
+  ASSERT_TRUE(status.ok());
+  expect_result_eq({{
+                        {{5, 5}, {3, 3}, 1},
+                        {{2, 3}, {1, 2}, 2},
+                        {{0, 0}, {0, 0}, 1},
+                    },
+                    4},
+                   std::get<StringLCSIdxResult>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::IDX, 2}, &rst);
+  ASSERT_TRUE(status.ok());
+  expect_result_eq({{
+                        {{2, 3}, {1, 2}, 2},
+                    },
+                    4},
+                   std::get<StringLCSIdxResult>(rst));
+}

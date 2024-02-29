@@ -250,8 +250,8 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
   return consumer_metadata;
 }
 
-std::string Stream::internalPelKeyFromGroupAndId(const std::string &ns_key, const StreamMetadata &metadata,
-                                                 const std::string &group_name, const StreamEntryID &id) {
+std::string Stream::internalPelKeyFromGroupAndEntryId(const std::string &ns_key, const StreamMetadata &metadata,
+                                                      const std::string &group_name, const StreamEntryID &id) {
   std::string sub_key;
   PutFixed64(&sub_key, group_name.size());
   sub_key += group_name;
@@ -261,7 +261,7 @@ std::string Stream::internalPelKeyFromGroupAndId(const std::string &ns_key, cons
   return entry_key;
 }
 
-StreamEntryID Stream::groupandidFromPelInternalkey(rocksdb::Slice key, std::string &group_name) {
+StreamEntryID Stream::groupAndEntryIdFromPelInternalKey(rocksdb::Slice key, std::string &group_name) {
   InternalKey ikey(key, storage_->IsSlotIdEncoded());
   Slice subkey = ikey.GetSubKey();
   uint64_t group_name_len = 0;
@@ -989,6 +989,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   }
 
   std::string ns_key = AppendNamespacePrefix(stream_name);
+  std::unique_lock<std::mutex> lock(*storage_->GetLockManager()->Get(ns_key));
 
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
@@ -1015,19 +1016,23 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   }
   if (s.IsNotFound()) {
     int created_number = 0;
+    lock.unlock();
     s = CreateConsumer(stream_name, group_name, consumer_name, &created_number);
+    lock.lock();
     if (!s.ok()) {
       return s;
     }
   }
 
-  LockGuard guard(storage_->GetLockManager(), ns_key);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
   StreamConsumerGroupMetadata consumergroup_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
   StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
   auto now = util::GetTimeStampMS();
   consumer_metadata.last_idle = now;
@@ -1050,7 +1055,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
         maxid = id;
       }
       if (!noack) {
-        std::string pel_key = internalPelKeyFromGroupAndId(ns_key, metadata, group_name, id);
+        std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
         StreamPelEntry pel_entry = {0, 0, consumer_name};
         std::string pel_value = encodeStreamPelEntryValue(pel_entry);
         batch->Put(stream_cf_handle_, pel_key, pel_value);
@@ -1063,8 +1068,8 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
       consumergroup_metadata.last_delivered_id = maxid;
     }
   } else {
-    std::string prefix_key = internalPelKeyFromGroupAndId(ns_key, metadata, group_name, StreamEntryID::Minimum());
-    std::string end_key = internalPelKeyFromGroupAndId(ns_key, metadata, group_name, StreamEntryID::Maximum());
+    std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Minimum());
+    std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Maximum());
 
     rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
     LatestSnapShot ss(storage_);
@@ -1079,7 +1084,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
         std::string tmp_group_name;
-        StreamEntryID entry_id = groupandidFromPelInternalkey(iter->key(), tmp_group_name);
+        StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
         if (tmp_group_name != group_name) continue;
         StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
         if (pel_entry.consumer_name != consumer_name) continue;

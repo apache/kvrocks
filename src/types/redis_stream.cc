@@ -416,13 +416,12 @@ rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::string &group_name,
-                                       const std::string &consumer_name, int *created_number) {
+rocksdb::Status Stream::createConsumerWithoutLock(const Slice &stream_name, const std::string &group_name,
+                                                  const std::string &consumer_name, int *created_number) {
   if (std::isdigit(consumer_name[0])) {
     return rocksdb::Status::InvalidArgument("consumer name cannot start with number");
   }
   std::string ns_key = AppendNamespacePrefix(stream_name);
-  LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
@@ -467,6 +466,13 @@ rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::stri
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (s.ok()) *created_number = 1;
   return s;
+}
+
+rocksdb::Status Stream::CreateConsumer(const Slice &stream_name, const std::string &group_name,
+                                       const std::string &consumer_name, int *created_number) {
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  return createConsumerWithoutLock(stream_name, group_name, consumer_name, created_number);
 }
 
 rocksdb::Status Stream::GroupSetId(const Slice &stream_name, const std::string &group_name,
@@ -989,7 +995,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   }
 
   std::string ns_key = AppendNamespacePrefix(stream_name);
-  std::unique_lock<std::mutex> lock(*storage_->GetLockManager()->Get(ns_key));
+  LockGuard guard(storage_->GetLockManager(), ns_key);
 
   StreamMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ns_key, &metadata);
@@ -1016,9 +1022,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   }
   if (s.IsNotFound()) {
     int created_number = 0;
-    lock.unlock();
-    s = CreateConsumer(stream_name, group_name, consumer_name, &created_number);
-    lock.lock();
+    s = createConsumerWithoutLock(stream_name, group_name, consumer_name, &created_number);
     if (!s.ok()) {
       return s;
     }

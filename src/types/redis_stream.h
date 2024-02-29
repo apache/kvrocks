@@ -85,6 +85,8 @@ class Stream : public SubKeyScanner {
   std::string consumerNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
   static StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &value);
+  rocksdb::Status createConsumerWithoutLock(const Slice &stream_name, const std::string &group_name,
+                                            const std::string &consumer_name, int *created_number);
   std::string internalPelKeyFromGroupAndEntryId(const std::string &ns_key, const StreamMetadata &metadata,
                                                 const std::string &group_name, const StreamEntryID &id);
   StreamEntryID groupAndEntryIdFromPelInternalKey(rocksdb::Slice key, std::string &group_name);

@@ -545,7 +545,6 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
   std::string b;
   std::string ns_key1 = AppendNamespacePrefix(user_key1);
   std::string ns_key2 = AppendNamespacePrefix(user_key2);
-  MultiLockGuard guard(storage_->GetLockManager(), std::vector{ns_key1, ns_key2});
   auto s1 = getValue(ns_key1, &a);
   auto s2 = getValue(ns_key2, &b);
 

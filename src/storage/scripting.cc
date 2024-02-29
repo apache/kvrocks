@@ -955,6 +955,12 @@ const char *RedisProtocolToLuaType(lua_State *lua, const char *reply) {
     case ',':
       p = RedisProtocolToLuaTypeDouble(lua, reply);
       break;
+    case '(':
+      p = RedisProtocolToLuaTypeBigNumber(lua, reply);
+      break;
+    case '=':
+      p = RedisProtocolToLuaTypeVerbatimString(lua, reply);
+      break;
   }
   return p;
 }
@@ -1009,13 +1015,36 @@ const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, i
     lua_pushboolean(lua, 0);
     return p;
   }
-  lua_newtable(lua);
-  for (j = 0; j < mbulklen; j++) {
-    lua_pushnumber(lua, j + 1);
-    p = RedisProtocolToLuaType(lua, p);
-    lua_settable(lua, -3);
+  if (atype == '*') {
+    lua_newtable(lua);
+    for (j = 0; j < mbulklen; j++) {
+      lua_pushnumber(lua, j + 1);
+      p = RedisProtocolToLuaType(lua, p);
+      lua_settable(lua, -3);
+    }
+    return p;
   }
-  return p;
+
+  CHECK(atype == '%' || atype == '~');
+  if (atype == '%' || atype == '~') {
+    lua_newtable(lua);
+    lua_pushstring(lua, atype == '%' ? "map" : "set");
+    lua_newtable(lua);
+    for (j = 0; j < mbulklen; j++) {
+      p = RedisProtocolToLuaType(lua, p);
+      if (atype == '%') {  // map
+        p = RedisProtocolToLuaType(lua, p);
+      } else {  // set
+        lua_pushboolean(lua, 1);
+      }
+      lua_settable(lua, -3);
+    }
+    lua_settable(lua, -3);
+    return p;
+  }
+
+  // Unreachable, return the original position if it did reach here.
+  return reply;
 }
 
 const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply) {
@@ -1049,6 +1078,36 @@ const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply) {
   lua_pushnumber(lua, d);
   lua_settable(lua, -3);
   return p + 2;
+}
+
+const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply) {
+  const char *p = strchr(reply + 1, '\r');
+  lua_newtable(lua);
+  lua_pushstring(lua, "big_number");
+  lua_pushlstring(lua, reply + 1, p - reply - 1);
+  lua_settable(lua, -3);
+  return p + 2;
+}
+
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply) {
+  const char *p = strchr(reply + 1, '\r');
+  int64_t bulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
+  p += 2;  // skip \r\n
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "verbatim_string");
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "string");
+  lua_pushlstring(lua, p + 4, bulklen - 4);
+  lua_settable(lua, -3);
+
+  lua_pushstring(lua, "format");
+  lua_pushlstring(lua, p, 3);
+  lua_settable(lua, -3);
+
+  lua_settable(lua, -3);
+  return p + bulklen + 2;
 }
 
 /* This function is used in order to push an error on the Lua stack in the
@@ -1094,7 +1153,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
 
       /* Handle error reply. */
       lua_pushstring(lua, "err");
-      lua_gettable(lua, -2);
+      lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         output = redis::Error(lua_tostring(lua, -1));
@@ -1105,7 +1164,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
 
       /* Handle status reply. */
       lua_pushstring(lua, "ok");
-      lua_gettable(lua, -2);
+      lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         obj_s = lua_tolstring(lua, -1, &obj_len);
@@ -1115,9 +1174,20 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       }
       lua_pop(lua, 1); /* Discard the 'ok' field value we pushed */
 
+      /* Handle double reply. */
+      lua_pushstring(lua, "double");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TNUMBER) {
+        output = conn->Double(lua_tonumber(lua, -1));
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'double' field value we pushed */
+
       /* Handle big number reply. */
       lua_pushstring(lua, "big_number");
-      lua_gettable(lua, -2);
+      lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         obj_s = lua_tolstring(lua, -1, &obj_len);
@@ -1127,10 +1197,82 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       }
       lua_pop(lua, 1); /* Discard the 'big_number' field value we pushed */
 
+      /* Handle verbatim reply. */
+      lua_pushstring(lua, "verbatim_string");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        lua_pushstring(lua, "format");
+        lua_rawget(lua, -2);
+        t = lua_type(lua, -1);
+        if (t == LUA_TSTRING) {
+          const char *format = lua_tostring(lua, -1);
+          lua_pushstring(lua, "string");
+          lua_rawget(lua, -3);
+          t = lua_type(lua, -1);
+          if (t == LUA_TSTRING) {
+            obj_s = lua_tolstring(lua, -1, &obj_len);
+            output = conn->VerbatimString(std::string(format), std::string(obj_s, obj_len));
+            lua_pop(lua, 4);
+            return output;
+          }
+          // discard 'string'
+          lua_pop(lua, 1);
+        }
+        // discard 'format'
+        lua_pop(lua, 1);
+      }
+      lua_pop(lua, 1); /* Discard the 'verbatim_string' field value we pushed */
+
+      /* Handle map reply. */
+      lua_pushstring(lua, "map");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        int map_len = 0;
+        std::string map_output;
+        lua_pushnil(lua);
+        while (lua_next(lua, -2)) {
+          lua_pushvalue(lua, -2);
+          // return key
+          map_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          // return value
+          map_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          map_len++;
+        }
+        output = conn->HeaderOfMap(map_len) + std::move(map_output);
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'map' field value we pushed */
+
+      /* Handle set reply. */
+      lua_pushstring(lua, "set");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        int set_len = 0;
+        std::string set_output;
+        lua_pushnil(lua);
+        while (lua_next(lua, -2)) {
+          lua_pop(lua, 1);
+          lua_pushvalue(lua, -1);
+          set_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          set_len++;
+        }
+        output = conn->HeaderOfSet(set_len) + std::move(set_output);
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'set' field value we pushed */
+
       j = 1, mbulklen = 0;
       while (true) {
         lua_pushnumber(lua, j++);
-        lua_gettable(lua, -2);
+        lua_rawget(lua, -2);
         t = lua_type(lua, -1);
         if (t == LUA_TNIL) {
           lua_pop(lua, 1);

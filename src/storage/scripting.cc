@@ -1025,21 +1025,26 @@ const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, i
     return p;
   }
 
-  // atype == '%' or atype == '~'
-  lua_newtable(lua);
-  lua_pushstring(lua, atype == '%' ? "map" : "set");
-  lua_newtable(lua);
-  for (j = 0; j < mbulklen; j++) {
-    p = RedisProtocolToLuaType(lua, p);
-    if (atype == '%') {  // map
+  CHECK(atype == '%' || atype == '~');
+  if (atype == '%' || atype == '~') {
+    lua_newtable(lua);
+    lua_pushstring(lua, atype == '%' ? "map" : "set");
+    lua_newtable(lua);
+    for (j = 0; j < mbulklen; j++) {
       p = RedisProtocolToLuaType(lua, p);
-    } else {  // set
-      lua_pushboolean(lua, 1);
+      if (atype == '%') {  // map
+        p = RedisProtocolToLuaType(lua, p);
+      } else {  // set
+        lua_pushboolean(lua, 1);
+      }
+      lua_settable(lua, -3);
     }
     lua_settable(lua, -3);
+    return p;
   }
-  lua_settable(lua, -3);
-  return p;
+
+  // Unreachable, return the original position if it did reach here.
+  return reply;
 }
 
 const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply) {

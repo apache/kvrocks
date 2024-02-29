@@ -87,6 +87,11 @@ void LoadFuncs(lua_State *lua, bool read_only) {
   lua_pushcfunction(lua, RedisPCallCommand);
   lua_settable(lua, -3);
 
+  /* redis.setresp */
+  lua_pushstring(lua, "setresp");
+  lua_pushcfunction(lua, RedisSetResp);
+  lua_settable(lua, -3);
+
   /* redis.log and log levels. */
   lua_pushstring(lua, "log");
   lua_pushcfunction(lua, RedisLogCommand);
@@ -846,6 +851,29 @@ int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
   lua_pushvalue(lua, -3);
   lua_settable(lua, -3);
   return 1;
+}
+
+int RedisSetResp(lua_State *lua) {
+  auto srv = GetServer(lua);
+  auto conn = srv->GetCurrentConnection();
+  int argc = lua_gettop(lua);
+
+  if (argc != 1) {
+    PushError(lua, "redis.setresp() requires one argument.");
+    return 1;
+  }
+
+  int resp = static_cast<int>(lua_tonumber(lua, -1));
+  if (resp != 2 && resp != 3) {
+    PushError(lua, "RESP version must be 2 or 3.");
+    return 1;
+  }
+  conn->SetProtocolVersion(resp == 2 ? redis::RESP::v2 : redis::RESP::v3);
+  if (resp == 3 && !srv->GetConfig()->resp3_enabled) {
+    PushError(lua, "you need set resp_enabled to yes to enable RESP3.");
+    return 1;
+  }
+  return 0;
 }
 
 /* redis.error_reply() */

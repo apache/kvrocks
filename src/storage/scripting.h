@@ -53,6 +53,7 @@ int RedisStatusReplyCommand(lua_State *lua);
 int RedisErrorReplyCommand(lua_State *lua);
 int RedisLogCommand(lua_State *lua);
 int RedisRegisterFunction(lua_State *lua);
+int RedisSetResp(lua_State *lua);
 
 Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 

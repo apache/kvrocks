@@ -626,6 +626,12 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     lua_getglobal(lua, funcname);
   }
 
+  // For the Lua script, should be always run with RESP2 protocol,
+  // unless users explicitly set the protocol version in the script via `redis.setresp`.
+  // So we need to save the current protocol version and set it to RESP2,
+  // and then restore it after the script execution.
+  auto saved_protocol_version = conn->GetProtocolVersion();
+  conn->SetProtocolVersion(redis::RESP::v2);
   /* Populate the argv and keys table accordingly to the arguments that
    * EVAL received. */
   SetGlobalArray(lua, "KEYS", keys);
@@ -639,6 +645,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
+  conn->SetProtocolVersion(saved_protocol_version);
 
   // clean global variables to prevent information leak in function commands
   lua_pushnil(lua);

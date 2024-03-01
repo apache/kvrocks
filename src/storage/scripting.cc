@@ -87,6 +87,11 @@ void LoadFuncs(lua_State *lua, bool read_only) {
   lua_pushcfunction(lua, RedisPCallCommand);
   lua_settable(lua, -3);
 
+  /* redis.setresp */
+  lua_pushstring(lua, "setresp");
+  lua_pushcfunction(lua, RedisSetResp);
+  lua_settable(lua, -3);
+
   /* redis.log and log levels. */
   lua_pushstring(lua, "log");
   lua_pushcfunction(lua, RedisLogCommand);
@@ -621,6 +626,12 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     lua_getglobal(lua, funcname);
   }
 
+  // For the Lua script, should be always run with RESP2 protocol,
+  // unless users explicitly set the protocol version in the script via `redis.setresp`.
+  // So we need to save the current protocol version and set it to RESP2,
+  // and then restore it after the script execution.
+  auto saved_protocol_version = conn->GetProtocolVersion();
+  conn->SetProtocolVersion(redis::RESP::v2);
   /* Populate the argv and keys table accordingly to the arguments that
    * EVAL received. */
   SetGlobalArray(lua, "KEYS", keys);
@@ -634,6 +645,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
+  conn->SetProtocolVersion(saved_protocol_version);
 
   // clean global variables to prevent information leak in function commands
   lua_pushnil(lua);
@@ -846,6 +858,28 @@ int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
   lua_pushvalue(lua, -3);
   lua_settable(lua, -3);
   return 1;
+}
+
+int RedisSetResp(lua_State *lua) {
+  auto srv = GetServer(lua);
+  auto conn = srv->GetCurrentConnection();
+
+  if (lua_gettop(lua) != 1) {
+    PushError(lua, "redis.setresp() requires one argument.");
+    return RaiseError(lua);
+  }
+
+  auto resp = static_cast<int>(lua_tonumber(lua, -1));
+  if (resp != 2 && resp != 3) {
+    PushError(lua, "RESP version must be 2 or 3.");
+    return RaiseError(lua);
+  }
+  conn->SetProtocolVersion(resp == 2 ? redis::RESP::v2 : redis::RESP::v3);
+  if (resp == 3 && !srv->GetConfig()->resp3_enabled) {
+    PushError(lua, "You need set resp3-enabled to yes to enable RESP3.");
+    return RaiseError(lua);
+  }
+  return 0;
 }
 
 /* redis.error_reply() */

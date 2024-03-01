@@ -1186,7 +1186,7 @@ class CommandXReadGroup : public Commander,
       for (const auto &entry : result.entries) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(entry.key));
-        if (entry.values.size() == 0 && latest_marks_[id] == false) {
+        if (entry.values.size() == 0 && !latest_marks_[id]) {
           output->append(conn->NilString());
           continue;
         }

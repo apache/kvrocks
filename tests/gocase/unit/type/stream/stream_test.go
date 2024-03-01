@@ -1111,6 +1111,32 @@ func TestStreamOffset(t *testing.T) {
 			Stream:   streamName,
 			Messages: []redis.XMessage{{ID: "4-0", Values: map[string]interface{}{"field4": "data4"}}},
 		}}, r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "5-0",
+			Values: []string{"field5", "data5"},
+		}).Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err())
+		require.NoError(t, rdb.XDel(ctx, streamName, "5-0").Err())
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "5"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "5-0", Values: map[string]interface{}(nil)}},
+		}}, r)
 	})
 }
 

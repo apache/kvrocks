@@ -1176,9 +1176,9 @@ class CommandXReadGroup : public Commander,
     return SendResults(conn, output, results);
   }
 
-  static Status SendResults(Connection *conn, std::string *output, const std::vector<StreamReadResult> &results) {
+  Status SendResults(Connection *conn, std::string *output, const std::vector<StreamReadResult> &results) {
     output->append(redis::MultiLen(results.size()));
-
+    int id = 0;
     for (const auto &result : results) {
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(result.name));
@@ -1186,8 +1186,13 @@ class CommandXReadGroup : public Commander,
       for (const auto &entry : result.entries) {
         output->append(redis::MultiLen(2));
         output->append(redis::BulkString(entry.key));
+        if (entry.values.size() == 0 && latest_marks_[id] == false) {
+          output->append(conn->NilString());
+          continue;
+        }
         output->append(conn->MultiBulkString(entry.values));
       }
+      ++id;
     }
 
     return Status::OK();

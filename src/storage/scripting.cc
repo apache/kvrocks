@@ -856,22 +856,21 @@ int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
 int RedisSetResp(lua_State *lua) {
   auto srv = GetServer(lua);
   auto conn = srv->GetCurrentConnection();
-  int argc = lua_gettop(lua);
 
-  if (argc != 1) {
+  if (lua_gettop(lua) != 1) {
     PushError(lua, "redis.setresp() requires one argument.");
-    return 1;
+    return RaiseError(lua);
   }
 
-  int resp = static_cast<int>(lua_tonumber(lua, -1));
+  auto resp = static_cast<int>(lua_tonumber(lua, -1));
   if (resp != 2 && resp != 3) {
     PushError(lua, "RESP version must be 2 or 3.");
-    return 1;
+    return RaiseError(lua);
   }
   conn->SetProtocolVersion(resp == 2 ? redis::RESP::v2 : redis::RESP::v3);
   if (resp == 3 && !srv->GetConfig()->resp3_enabled) {
     PushError(lua, "You need set resp3-enabled to yes to enable RESP3.");
-    return 1;
+    return RaiseError(lua);
   }
   return 0;
 }

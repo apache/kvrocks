@@ -182,6 +182,12 @@ enum class StreamSubkeyType {
   StreamPelEntry = 3,
 };
 
+struct StreamPelEntry {
+  uint64_t last_delivery_time;
+  uint64_t last_delivery_count;
+  std::string consumer_name;
+};
+
 struct StreamInfo {
   uint64_t size;
   uint64_t entries_added;

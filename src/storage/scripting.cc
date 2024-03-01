@@ -870,7 +870,7 @@ int RedisSetResp(lua_State *lua) {
   }
   conn->SetProtocolVersion(resp == 2 ? redis::RESP::v2 : redis::RESP::v3);
   if (resp == 3 && !srv->GetConfig()->resp3_enabled) {
-    PushError(lua, "you need set resp_enabled to yes to enable RESP3.");
+    PushError(lua, "You need set resp3-enabled to yes to enable RESP3.");
     return 1;
   }
   return 0;

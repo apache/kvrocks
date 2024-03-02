@@ -312,12 +312,12 @@ TEST_F(RedisStringTest, LCS) {
   auto expect_result_eq = [](const StringLCSIdxResult &val1, const StringLCSIdxResult &val2) {
     ASSERT_EQ(val1.len, val2.len);
     ASSERT_EQ(val1.matches.size(), val2.matches.size());
-    for (auto b1 = val1.matches.begin(), b2 = val2.matches.begin(), e1 = val1.matches.end(); b1 != e1; ++b1, ++b2) {
-      ASSERT_EQ(b1->match_len, b2->match_len);
-      ASSERT_EQ(b1->a.start, b2->a.start);
-      ASSERT_EQ(b1->a.end, b2->a.end);
-      ASSERT_EQ(b1->b.start, b2->b.start);
-      ASSERT_EQ(b1->b.end, b2->b.end);
+    for (size_t i = 0; i < val1.matches.size(); i++) {
+      ASSERT_EQ(val1.matches[i].match_len, val2.matches[i].match_len);
+      ASSERT_EQ(val1.matches[i].a.start, val2.matches[i].a.start);
+      ASSERT_EQ(val1.matches[i].a.end, val2.matches[i].a.end);
+      ASSERT_EQ(val1.matches[i].b.start, val2.matches[i].b.start);
+      ASSERT_EQ(val1.matches[i].b.end, val2.matches[i].b.end);
     }
   };
 

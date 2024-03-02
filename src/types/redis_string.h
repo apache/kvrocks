@@ -21,7 +21,6 @@
 #pragma once
 
 #include <cstdint>
-#include <list>
 #include <optional>
 #include <string>
 #include <variant>
@@ -60,11 +59,13 @@ struct StringLCSMatchedRange {
   StringLCSRange a;
   StringLCSRange b;
   uint32_t match_len;
+
+  StringLCSMatchedRange(StringLCSRange ra, StringLCSRange rb, uint32_t len) : a(ra), b(rb), match_len(len) {}
 };
 
 struct StringLCSIdxResult {
   // Matched ranges.
-  std::list<StringLCSMatchedRange> matches;
+  std::vector<StringLCSMatchedRange> matches;
   // LCS length.
   uint32_t len;
 };

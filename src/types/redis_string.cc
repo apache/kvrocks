@@ -574,7 +574,7 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
     return rocksdb::Status::Aborted("Insufficient memory, transient memory for LCS exceeds proto-max-bulk-len");
   }
   std::vector<uint32_t> dp(dp_size, 0);
-  auto lcs = [&](const uint32_t i, const uint32_t j) -> uint32_t & { return dp[i * (blen + 1) + j]; };
+  auto lcs = [&dp, blen](const uint32_t i, const uint32_t j) -> uint32_t & { return dp[i * (blen + 1) + j]; };
 
   // Start building the LCS table.
   for (uint32_t i = 1; i <= alen; i++) {
@@ -669,8 +669,8 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
       if (auto result = std::get_if<StringLCSIdxResult>(rst)) {
         // Always emit the range when the `min_match_len` is not set.
         if (args.min_match_len == 0 || match_len >= args.min_match_len) {
-          result->matches.emplace_back(StringLCSMatchedRange{StringLCSRange{arange_start, arange_end},
-                                                             StringLCSRange{brange_start, brange_end}, match_len});
+          result->matches.emplace_back(StringLCSRange{arange_start, arange_end},
+                                       StringLCSRange{brange_start, brange_end}, match_len);
         }
       }
 

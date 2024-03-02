@@ -678,8 +678,7 @@ class CommandLCS : public Commander {
       *output = conn->HeaderOfMap(2);
       *output += redis::BulkString("matches");
       *output += redis::MultiLen(result->matches.size());
-      while (!result->matches.empty()) {
-        auto &match = result->matches.front();
+      for (const auto &match : result->matches) {
         *output += redis::MultiLen(with_match_len_ ? 3 : 2);
         *output += redis::MultiLen(2);
         *output += redis::Integer(match.a.start);
@@ -690,8 +689,6 @@ class CommandLCS : public Commander {
         if (with_match_len_) {
           *output += redis::Integer(match.match_len);
         }
-        // Pop this element.
-        result->matches.pop_front();
       }
       *output += redis::BulkString("len");
       *output += redis::Integer(result->len);

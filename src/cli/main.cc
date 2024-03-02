@@ -107,6 +107,7 @@ static void InitGoogleLog(const Config *config) {
     }
     FLAGS_stderrthreshold = google::ERROR;
     FLAGS_logtostdout = true;
+    std::setbuf(stdout, nullptr);
   } else {
     FLAGS_log_dir = config->log_dir + "/";
     if (config->log_retention_days != -1) {

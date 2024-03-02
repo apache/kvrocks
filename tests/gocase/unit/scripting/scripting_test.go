@@ -22,11 +22,13 @@ package scripting
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func TestScripting(t *testing.T) {
@@ -481,6 +483,11 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 		r := rdb.Do(ctx, "EVALSHA_RO", "a1e63e1cd1bd1d5413851949332cfb9da4ee6dc0", "1", "foo")
 		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
 	})
+
+	t.Run("EVAL - cannot use redis.setresp(3) if RESP3 is disabled", func(t *testing.T) {
+		r := rdb.Eval(ctx, `redis.setresp(3);`, []string{})
+		util.ErrorRegexp(t, r.Err(), ".*ERR.*You need set resp3-enabled to yes to enable RESP3.*")
+	})
 }
 
 func TestScriptingMasterSlave(t *testing.T) {
@@ -510,5 +517,93 @@ func TestScriptingMasterSlave(t *testing.T) {
 		util.WaitForOffsetSync(t, masterClient, slaveClient)
 		require.Equal(t, []bool{false}, masterClient.ScriptExists(ctx, sha).Val())
 		require.Equal(t, []bool{false}, slaveClient.ScriptExists(ctx, sha).Val())
+	})
+}
+
+func TestScriptingWithRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() {
+		require.NoError(t, rdb.Close())
+	}()
+
+	ctx := context.Background()
+	t.Run("EVAL - Redis protocol type map conversion", func(t *testing.T) {
+		rdb.HSet(ctx, "myhash", "f1", "v1")
+		rdb.HSet(ctx, "myhash", "f2", "v2")
+		val, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('hgetall', KEYS[1])`, []string{"myhash"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{"f1": "v1", "f2": "v2"}, val)
+	})
+
+	t.Run("EVAL - Redis protocol type set conversion", func(t *testing.T) {
+		require.NoError(t, rdb.SAdd(ctx, "myset", "m0", "m1", "m2").Err())
+		val, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('smembers', KEYS[1])`, []string{"myset"}).StringSlice()
+		require.NoError(t, err)
+		slices.Sort(val)
+		require.EqualValues(t, []string{"m0", "m1", "m2"}, val)
+	})
+
+	t.Run("EVAL - Redis protocol type double conversion", func(t *testing.T) {
+		require.NoError(t, rdb.ZAdd(ctx, "mydouble", redis.Z{Member: "z0", Score: 1.5}).Err())
+		val, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('zscore', KEYS[1], KEYS[2])`, []string{"mydouble", "z0"}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1.5, val)
+	})
+
+	t.Run("EVAL - Redis protocol type bignumber conversion", func(t *testing.T) {
+		val, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('debug', 'protocol', 'bignum')`, []string{}).Result()
+		require.NoError(t, err)
+
+		bignum, _ := big.NewInt(0).SetString("1234567999999999999999999999999999999", 10)
+		require.EqualValues(t, bignum, val)
+	})
+
+	t.Run("EVAL - Redis protocol type boolean conversion", func(t *testing.T) {
+		val, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('debug', 'protocol', 'true')`, []string{}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, true, val)
+
+		val, err = rdb.Eval(ctx, `redis.setresp(3); return redis.call('debug', 'protocol', 'false')`, []string{}).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, false, val)
+	})
+
+	t.Run("EVAL - Redis protocol type verbatim conversion", func(t *testing.T) {
+		val, err := rdb.Eval(ctx, `return redis.call('debug', 'protocol', 'verbatim')`, []string{}).Result()
+		require.NoError(t, err)
+
+		require.EqualValues(t, "verbatim string", val)
+	})
+
+	t.Run("EVAL - lua redis.setresp function", func(t *testing.T) {
+		err := rdb.Eval(ctx, `return redis.setresp(2, 3);`, []string{}).Err()
+		util.ErrorRegexp(t, err, ".*ERR.*requires one argument.*")
+
+		err = rdb.Eval(ctx, `return redis.setresp(4);`, []string{}).Err()
+		util.ErrorRegexp(t, err, ".*ERR.*RESP version must be 2 or 3.*")
+
+		// set to RESP3
+		err = rdb.Eval(ctx, `return redis.setresp(3);`, []string{}).Err()
+		require.ErrorIs(t, err, redis.Nil)
+
+		rdb.HSet(ctx, "hash0", "f1", "v1")
+		vals, err := rdb.Eval(ctx, `redis.setresp(3); return redis.call('hgetall', KEYS[1])`, []string{"hash0"}).Result()
+		require.NoError(t, err)
+		// return as a map in RESP3
+		require.EqualValues(t, map[interface{}]interface{}{"f1": "v1"}, vals)
+
+		// set to RESP2
+		err = rdb.Eval(ctx, `return redis.setresp(2);`, []string{}).Err()
+		require.ErrorIs(t, err, redis.Nil)
+
+		vals, err = rdb.Eval(ctx, `return redis.call('hgetall', KEYS[1])`, []string{"hash0"}).Result()
+		require.NoError(t, err)
+		// return as an array in RESP2
+		require.EqualValues(t, []interface{}{"f1", "v1"}, vals)
 	})
 }

@@ -28,15 +28,15 @@ std::string Float2String(double d);
 std::string ToLower(std::string in);
 bool EqualICase(std::string_view lhs, std::string_view rhs);
 std::string BytesToHuman(uint64_t n);
-std::string Trim(std::string in, const std::string &chars);
-std::vector<std::string> Split(const std::string &in, const std::string &delim);
+std::string Trim(std::string in, std::string_view chars);
+std::vector<std::string> Split(std::string_view in, std::string_view delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
 int StringMatch(const std::string &pattern, const std::string &in, int nocase);
 int StringMatchLen(const char *p, size_t plen, const char *s, size_t slen, int nocase);
 std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex);
-std::string StringToHex(const std::string &input);
+std::string StringToHex(std::string_view input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
-std::string EscapeString(const std::string &s);
+std::string EscapeString(std::string_view s);
 
 }  // namespace util

@@ -815,8 +815,12 @@ class CommandZRangeGeneric : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+    // RESP3 with scores should return an array of arrays,
+    // so we don't need to multiply the size by 2 here.
+    output->append(redis::MultiLen(member_scores.size() * (with_scores_ && !is_resp3 ? 2 : 1)));
     for (const auto &ms : member_scores) {
+      if (with_scores_ && is_resp3) output->append(MultiLen(2));
       output->append(redis::BulkString(ms.member));
       if (with_scores_) output->append(conn->Double(ms.score));
     }

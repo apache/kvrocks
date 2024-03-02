@@ -33,9 +33,11 @@ enum class SearchSubkeyType : uint8_t {
 
   // field metadata for different types
   TAG_FIELD_META = 64 + 1,
+  NUMERIC_FIELD_META = 64 + 2,
 
   // field indexing for different types
   TAG_FIELD = 128 + 1,
+  NUMERIC_FIELD = 128 + 2,
 };
 
 inline std::string ConstructSearchPrefixesSubkey() { return {(char)SearchSubkeyType::PREFIXES}; }
@@ -63,22 +65,50 @@ struct SearchPrefixesMetadata {
   }
 };
 
+struct SearchFieldMetadata {
+  bool noindex = false;
+
+  // flag: <noindex: 1 bit> <reserved: 7 bit>
+  uint8_t MakeFlag() const { return noindex; }
+
+  void DecodeFlag(uint8_t flag) { noindex = flag & 1; }
+
+  virtual ~SearchFieldMetadata() = default;
+
+  virtual void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
+
+  virtual rocksdb::Status Decode(Slice *input) {
+    uint8_t flag = 0;
+    if (!GetFixed8(input, &flag)) {
+      return rocksdb::Status::Corruption(kErrorInsufficientLength);
+    }
+
+    DecodeFlag(flag);
+    return rocksdb::Status::OK();
+  }
+};
+
 inline std::string ConstructTagFieldMetadataSubkey(std::string_view field_name) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD_META};
   res.append(field_name);
   return res;
 }
 
-struct SearchTagFieldMetadata {
-  char separator;
-  bool case_sensitive;
+struct SearchTagFieldMetadata : SearchFieldMetadata {
+  char separator = ',';
+  bool case_sensitive = false;
 
-  void Encode(std::string *dst) const {
+  void Encode(std::string *dst) const override {
+    SearchFieldMetadata::Encode(dst);
     PutFixed8(dst, separator);
     PutFixed8(dst, case_sensitive);
   }
 
-  rocksdb::Status Decode(Slice *input) {
+  rocksdb::Status Decode(Slice *input) override {
+    if (auto s = SearchFieldMetadata::Decode(input); !s.ok()) {
+      return s;
+    }
+
     if (input->size() < 8 + 8) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
@@ -89,12 +119,30 @@ struct SearchTagFieldMetadata {
   }
 };
 
+inline std::string ConstructNumericFieldMetadataSubkey(std::string_view field_name) {
+  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD_META};
+  res.append(field_name);
+  return res;
+}
+
+struct SearchNumericFieldMetadata : SearchFieldMetadata {};
+
 inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD};
   PutFixed32(&res, field_name.size());
   res.append(field_name);
   PutFixed32(&res, tag.size());
   res.append(tag);
+  PutFixed32(&res, key.size());
+  res.append(key);
+  return res;
+}
+
+inline std::string ConstructNumericFieldSubkey(std::string_view field_name, double number, std::string_view key) {
+  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD};
+  PutFixed32(&res, field_name.size());
+  res.append(field_name);
+  PutDouble(&res, number);
   PutFixed32(&res, key.size());
   res.append(key);
   return res;

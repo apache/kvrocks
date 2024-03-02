@@ -76,6 +76,8 @@ class Json : public Database {
   rocksdb::Status numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
                         const std::string &value, JsonValue *result);
   std::vector<rocksdb::Status> readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values);
+
+  friend struct FieldValueRetriever;
 };
 
 }  // namespace redis

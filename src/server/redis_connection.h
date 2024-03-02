@@ -71,6 +71,17 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string Double(double d) const {
     return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
   }
+  // ext is the extension of file to send, 'txt' for text file, 'md ' for markdown file
+  // at most 3 chars, padded with space
+  // if RESP is V2, treat verbatim string as blob string
+  // https://github.com/redis/redis/blob/7.2/src/networking.c#L1099
+  std::string VerbatimString(std::string ext, const std::string &data) const {
+    CHECK(ext.size() <= 3);
+    size_t padded_len = 3 - ext.size();
+    ext = ext + std::string(padded_len, ' ');
+    return protocol_version_ == RESP::v3 ? "=" + std::to_string(3 + 1 + data.size()) + CRLF + ext + ":" + data + CRLF
+                                         : BulkString(data);
+  }
   std::string NilString() const { return redis::NilString(protocol_version_); }
   std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
   std::string MultiBulkString(const std::vector<std::string> &values) const;
@@ -86,6 +97,10 @@ class Connection : public EvbufCallbackBase<Connection> {
     return protocol_version_ == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
   }
   std::string MapOfBulkStrings(const std::vector<std::string> &elems) const;
+  template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
+  std::string HeaderOfAttribute(T len) const {
+    return "|" + std::to_string(len) + CRLF;
+  }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);
@@ -144,6 +159,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
   void ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
+  Status ExecuteCommand(const std::string &cmd_name, const std::vector<std::string> &cmd_tokens, Commander *current_cmd,
+                        std::string *reply);
   bool IsProfilingEnabled(const std::string &cmd);
   void RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t duration);
   void SetImporting() { importing_ = true; }

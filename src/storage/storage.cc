@@ -231,8 +231,9 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   rocksdb::ColumnFamilyOptions cf_options(options);
   auto res = util::DBOpen(options, config_->db_dir);
   if (res) {
-    std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName, kPubSubColumnFamilyName,
-                                         kPropagateColumnFamilyName, kStreamColumnFamilyName};
+    std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName,
+                                         kPubSubColumnFamilyName,   kPropagateColumnFamilyName,
+                                         kStreamColumnFamilyName,   kSearchColumnFamilyName};
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
     auto s = (*res)->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
     if (!s.ok()) {
@@ -252,7 +253,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
       return Status::OK();
     }
 
-    return res;
+    return std::move(res);
   }
 
   return Status::OK();
@@ -339,6 +340,7 @@ Status Storage::Open(DBOpenMode mode) {
   column_families.emplace_back(kPubSubColumnFamilyName, pubsub_opts);
   column_families.emplace_back(kPropagateColumnFamilyName, propagate_opts);
   column_families.emplace_back(kStreamColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kSearchColumnFamilyName, subkey_opts);
 
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
@@ -434,7 +436,8 @@ Status Storage::RestoreFromBackup() {
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupEngineOptions bk_option(config_->backup_sync_dir);
   auto bes = util::BackupEngineOpen(db_->GetEnv(), bk_option);
-  if (!bes) return bes;
+  if (!bes) return std::move(bes);
+
   backup_ = std::move(*bes);
 
   auto s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
@@ -729,6 +732,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[4];
   } else if (name == kStreamColumnFamilyName) {
     return cf_handles_[5];
+  } else if (name == kSearchColumnFamilyName) {
+    return cf_handles_[6];
   }
   return cf_handles_[0];
 }

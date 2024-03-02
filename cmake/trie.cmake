@@ -19,9 +19,9 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(span
-  martinmoene/span-lite v0.11.0
-  MD5=9786933d03cda33ac7dccbfe85f771dd
+FetchContent_DeclareGitHubWithMirror(trie
+  Tessil/hat-trie 906e6abd1e7063f1dacd3a6b270aa654b525eb0a
+  MD5=a930364e9f6b60371319664bddf78000
 )
 
-FetchContent_MakeAvailableWithArgs(span)
+FetchContent_MakeAvailableWithArgs(trie)

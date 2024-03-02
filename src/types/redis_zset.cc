@@ -25,10 +25,10 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <random>
 #include <set>
 
 #include "db_util.h"
+#include "sample_helper.h"
 
 namespace redis {
 
@@ -900,35 +900,12 @@ rocksdb::Status ZSet::RandMember(const Slice &user_key, int64_t command_count,
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   if (metadata.size == 0) return rocksdb::Status::OK();
 
-  std::vector<MemberScore> samples;
-  s = GetAllMemberScores(user_key, &samples);
-  if (!s.ok() || samples.empty()) return s;
-
-  uint64_t size = samples.size();
-  member_scores->reserve(std::min(size, count));
-
-  if (!unique || count == 1) {
-    std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<uint64_t> dist(0, size - 1);
-    for (uint64_t i = 0; i < count; i++) {
-      uint64_t index = dist(gen);
-      member_scores->emplace_back(samples[index]);
-    }
-  } else if (size <= count) {
-    for (auto &sample : samples) {
-      member_scores->push_back(std::move(sample));
-    }
-  } else {
-    // first shuffle the samples
-    std::mt19937 gen(std::random_device{}());
-    std::shuffle(samples.begin(), samples.end(), gen);
-    // then pick the first `count` ones.
-    for (uint64_t i = 0; i < count; i++) {
-      member_scores->emplace_back(std::move(samples[i]));
-    }
-  }
-
-  return rocksdb::Status::OK();
+  return ExtractRandMemberFromSet<MemberScore>(
+      unique, count,
+      [this, user_key](std::vector<MemberScore> *scores) -> rocksdb::Status {
+        return this->GetAllMemberScores(user_key, scores);
+      },
+      member_scores);
 }
 
 rocksdb::Status ZSet::Diff(const std::vector<Slice> &keys, MemberScores *members) {

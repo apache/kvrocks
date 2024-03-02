@@ -278,7 +278,7 @@ class CommandInfo : public Commander {
     }
     std::string info;
     srv->GetInfo(conn->GetNamespace(), section, &info);
-    *output = redis::BulkString(info);
+    *output = conn->VerbatimString("txt", info);
     return Status::OK();
   }
 };
@@ -503,10 +503,10 @@ class CommandClient : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "list") {
-      *output = redis::BulkString(srv->GetClientsStr());
+      *output = conn->VerbatimString("txt", srv->GetClientsStr());
       return Status::OK();
     } else if (subcommand_ == "info") {
-      *output = redis::BulkString(conn->ToString());
+      *output = conn->VerbatimString("txt", conn->ToString());
       return Status::OK();
     } else if (subcommand_ == "setname") {
       conn->SetName(conn_name_);
@@ -641,16 +641,25 @@ class CommandDebug : public Commander {
         *output = conn->Bool(false);
       } else if (protocol_type_ == "null") {
         *output = conn->NilString();
+      } else if (protocol_type_ == "attrib") {
+        *output = conn->HeaderOfAttribute(1);
+        *output += redis::BulkString("key-popularity");
+        *output += redis::Array({
+            redis::BulkString("key:123"),
+            redis::Integer(90),
+        });
+      } else if (protocol_type_ == "verbatim") {  // verbatim string
+        *output = conn->VerbatimString("txt", "verbatim string");
       } else {
         *output = redis::Error(
             "Wrong protocol type name. Please use one of the following: "
-            "string|integer|double|array|set|bignum|true|false|null");
+            "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
       }
     } else if (subcommand_ == "dbsize-limit") {
       srv->storage->SetDBSizeLimit(dbsize_limit_);
       *output = redis::SimpleString("OK");
     } else {
-      return {Status::RedisInvalidCmd, "Unknown subcommand, should be DEBUG, PROTOCOL or DBSIZE-LIMIT"};
+      return {Status::RedisInvalidCmd, "Unknown subcommand, should be SLEEP, PROTOCOL or DBSIZE-LIMIT"};
     }
     return Status::OK();
   }

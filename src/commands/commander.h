@@ -149,6 +149,10 @@ struct CommandAttributes {
     if (flag_gen) res |= flag_gen(args);
     return res;
   }
+
+  bool CheckArity(int cmd_size) const {
+    return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
+  }
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;

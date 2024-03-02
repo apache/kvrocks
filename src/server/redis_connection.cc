@@ -391,6 +391,23 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   srv_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
+Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
+                                  Commander *current_cmd, std::string *reply) {
+  srv_->stats.IncrCalls(cmd_name);
+
+  auto start = std::chrono::high_resolution_clock::now();
+  bool is_profiling = IsProfilingEnabled(cmd_name);
+  auto s = current_cmd->Execute(srv_, this, reply);
+  auto end = std::chrono::high_resolution_clock::now();
+  uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
+
+  srv_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
+  srv_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+  srv_->FeedMonitorConns(this, cmd_tokens);
+  return s;
+}
+
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   Config *config = srv_->GetConfig();
   std::string reply, password = config->requirepass;
@@ -403,30 +420,29 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
-    std::unique_ptr<Commander> current_cmd;
-    auto s = srv_->LookupAndCreateCommand(cmd_tokens.front(), &current_cmd);
-    if (!s.IsOK()) {
+    auto cmd_s = srv_->LookupAndCreateCommand(cmd_tokens.front());
+    if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
       continue;
     }
-
-    if (GetNamespace().empty()) {
-      if (!password.empty() && util::ToLower(cmd_tokens.front()) != "auth" &&
-          util::ToLower(cmd_tokens.front()) != "hello") {
-        Reply(redis::Error("NOAUTH Authentication required."));
-        continue;
-      }
-
-      if (password.empty()) {
-        BecomeAdmin();
-        SetNamespace(kDefaultNamespace);
-      }
-    }
+    auto current_cmd = std::move(*cmd_s);
 
     const auto attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
+
+    if (GetNamespace().empty()) {
+      if (!password.empty()) {
+        if (cmd_name != "auth" && cmd_name != "hello") {
+          Reply(redis::Error("NOAUTH Authentication required."));
+          continue;
+        }
+      } else {
+        BecomeAdmin();
+        SetNamespace(kDefaultNamespace);
+      }
+    }
 
     std::shared_lock<std::shared_mutex> concurrency;  // Allow concurrency
     std::unique_lock<std::shared_mutex> exclusivity;  // Need exclusivity
@@ -434,7 +450,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (is_multi_exec && attributes->name != "exec") {
+    if (is_multi_exec && cmd_name != "exec") {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (cmd_flags & kCmdExclusive) {
       exclusivity = srv_->WorkExclusivityGuard();
@@ -457,16 +473,15 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    int arity = attributes->arity;
     int tokens = static_cast<int>(cmd_tokens.size());
-    if ((arity > 0 && tokens != arity) || (arity < 0 && tokens < -arity)) {
+    if (!attributes->CheckArity(tokens)) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR wrong number of arguments"));
       continue;
     }
 
     current_cmd->SetArgs(cmd_tokens);
-    s = current_cmd->Parse();
+    auto s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR " + s.Msg()));
@@ -474,8 +489,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
-      std::string no_multi_err = "ERR Can't execute " + attributes->name + " in MULTI";
-      Reply(redis::Error(no_multi_err));
+      Reply(redis::Error("ERR Can't execute " + cmd_name + " in MULTI"));
       multi_error_ = true;
       continue;
     }
@@ -515,18 +529,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
-    srv_->stats.IncrCalls(cmd_name);
-
-    auto start = std::chrono::high_resolution_clock::now();
-    bool is_profiling = IsProfilingEnabled(cmd_name);
-    s = current_cmd->Execute(srv_, this, &reply);
-    auto end = std::chrono::high_resolution_clock::now();
-    uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
-
-    srv_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
-    srv_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
-    srv_->FeedMonitorConns(this, cmd_tokens);
+    s = ExecuteCommand(cmd_name, cmd_tokens, current_cmd.get(), &reply);
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.

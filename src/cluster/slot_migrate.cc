@@ -290,24 +290,36 @@ Status SlotMigrator::startMigration() {
     return s.Prefixed(errFailedToSetImportStatus);
   }
 
+  migration_type_ = srv_->GetConfig()->migrate_type;
+
+  // If the APPLYBATCH command is not supported on the destination,
+  // we will fall back to the redis-command migration type.
+  if (migration_type_ == MigrationType::kRawKeyValue) {
+    bool supported = GET_OR_RET(supportedApplyBatchCommandOnDstNode(*dst_fd_));
+    if (!supported) {
+      LOG(INFO) << "APPLYBATCH command is not supported, use redis command for migration";
+      migration_type_ = MigrationType::kRedisCommand;
+    }
+  }
+
   LOG(INFO) << "[migrate] Start migrating slot " << migrating_slot_ << ", connect destination fd " << *dst_fd_;
 
   return Status::OK();
 }
 
 Status SlotMigrator::sendSnapshot() {
-  if (srv_->GetConfig()->migrate_type == MigrationType::kRedisCommand) {
+  if (migration_type_ == MigrationType::kRedisCommand) {
     return sendSnapshotByCmd();
-  } else if (srv_->GetConfig()->migrate_type == MigrationType::kRawKeyValue) {
+  } else if (migration_type_ == MigrationType::kRawKeyValue) {
     return sendSnapshotByRawKV();
   }
   return {Status::NotOK, errUnsupportedMigrationType};
 }
 
 Status SlotMigrator::syncWAL() {
-  if (srv_->GetConfig()->migrate_type == MigrationType::kRedisCommand) {
+  if (migration_type_ == MigrationType::kRedisCommand) {
     return syncWALByCmd();
-  } else if (srv_->GetConfig()->migrate_type == MigrationType::kRawKeyValue) {
+  } else if (migration_type_ == MigrationType::kRawKeyValue) {
     return syncWALByRawKV();
   }
   return {Status::NotOK, errUnsupportedMigrationType};
@@ -483,6 +495,33 @@ Status SlotMigrator::setImportStatusOnDstNode(int sock_fd, int status) {
   }
 
   return Status::OK();
+}
+
+StatusOr<bool> SlotMigrator::supportedApplyBatchCommandOnDstNode(int sock_fd) {
+  std::string cmd = redis::ArrayOfBulkStrings({"command", "info", "applybatch"});
+  auto s = util::SockSend(sock_fd, cmd);
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to send command info to the destination node");
+  }
+
+  UniqueEvbuf evbuf;
+  if (evbuffer_read(evbuf.get(), sock_fd, -1) <= 0) {
+    return Status::FromErrno("read response error");
+  }
+
+  UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) {
+    return Status::FromErrno("read empty response");
+  }
+
+  if (line[0] == '*') {
+    line = UniqueEvbufReadln(evbuf.get(), EVBUFFER_EOL_LF);
+    if (line && line[0] == '*') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Status SlotMigrator::checkSingleResponse(int sock_fd) { return checkMultipleResponses(sock_fd, 1); }

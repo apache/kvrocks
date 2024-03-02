@@ -151,16 +151,18 @@ func TestProtocolRESP2(t *testing.T) {
 
 	t.Run("debug protocol string", func(t *testing.T) {
 		types := map[string][]string{
-			"string":  {"$11", "Hello World"},
-			"integer": {":12345"},
-			"double":  {"$5", "3.141"},
-			"array":   {"*3", ":0", ":1", ":2"},
-			"set":     {"*3", ":0", ":1", ":2"},
-			"map":     {"*6", ":0", ":0", ":1", ":1", ":2", ":0"},
-			"bignum":  {"$37", "1234567999999999999999999999999999999"},
-			"true":    {":1"},
-			"false":   {":0"},
-			"null":    {"$-1"},
+			"string":   {"$11", "Hello World"},
+			"integer":  {":12345"},
+			"double":   {"$5", "3.141"},
+			"array":    {"*3", ":0", ":1", ":2"},
+			"set":      {"*3", ":0", ":1", ":2"},
+			"map":      {"*6", ":0", ":0", ":1", ":1", ":2", ":0"},
+			"bignum":   {"$37", "1234567999999999999999999999999999999"},
+			"true":     {":1"},
+			"false":    {":0"},
+			"null":     {"$-1"},
+			"attrib":   {"|1", "$14", "key-popularity", "*2", "$7", "key:123", ":90"},
+			"verbatim": {"$15", "verbatim string"},
 		}
 		for typ, expected := range types {
 			args := []string{"DEBUG", "PROTOCOL", typ}
@@ -207,16 +209,18 @@ func TestProtocolRESP3(t *testing.T) {
 		}
 
 		types := map[string][]string{
-			"string":  {"$11", "Hello World"},
-			"integer": {":12345"},
-			"double":  {",3.141"},
-			"array":   {"*3", ":0", ":1", ":2"},
-			"set":     {"~3", ":0", ":1", ":2"},
-			"map":     {"%3", ":0", "#f", ":1", "#t", ":2", "#f"},
-			"bignum":  {"(1234567999999999999999999999999999999"},
-			"true":    {"#t"},
-			"false":   {"#f"},
-			"null":    {"_"},
+			"string":   {"$11", "Hello World"},
+			"integer":  {":12345"},
+			"double":   {",3.141"},
+			"array":    {"*3", ":0", ":1", ":2"},
+			"set":      {"~3", ":0", ":1", ":2"},
+			"map":      {"%3", ":0", "#f", ":1", "#t", ":2", "#f"},
+			"bignum":   {"(1234567999999999999999999999999999999"},
+			"true":     {"#t"},
+			"false":    {"#f"},
+			"null":     {"_"},
+			"attrib":   {"|1", "$14", "key-popularity", "*2", "$7", "key:123", ":90"},
+			"verbatim": {"=19", "txt:verbatim string"},
 		}
 		for typ, expected := range types {
 			args := []string{"DEBUG", "PROTOCOL", typ}

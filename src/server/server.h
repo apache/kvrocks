@@ -177,7 +177,7 @@ class Server {
   bool IsStopped() const { return stop_; }
   bool IsLoading() const { return is_loading_; }
   Config *GetConfig() { return config_; }
-  static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
+  static StatusOr<std::unique_ptr<redis::Commander>> LookupAndCreateCommand(const std::string &cmd_name);
   void AdjustOpenFilesLimit();
   void AdjustWorkerThreads();
 

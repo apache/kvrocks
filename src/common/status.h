@@ -37,35 +37,30 @@ class [[nodiscard]] Status {
   enum Code : unsigned char {
     NotOK = 1,
     NotFound,
+    NotSupported,
+    InvalidArgument,
 
     // DB
     DBOpenErr,
     DBBackupErr,
     DBGetWALErr,
-    DBBackupFileErr,
-
-    // Replication
-    DBMismatched,
 
     // Redis
     RedisUnknownCmd,
     RedisInvalidCmd,
     RedisParseErr,
     RedisExecErr,
-    RedisReplicationConflict,
 
     // Cluster
     ClusterDown,
     ClusterInvalidInfo,
 
-    // Slot
-    SlotImport,
-
-    // Network
-    NetSendErr,
-
     // Blocking
     BlockingCmd,
+
+    // Search
+    NoPrefixMatched,
+    TypeMismatched,
   };
 
   Status() : impl_{nullptr} {}

@@ -72,9 +72,9 @@ TEST_P(RedisBitmapTest, BitCount) {
     bitmap_->SetBit(key_, offset, true, &bit);
   }
   uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
   EXPECT_EQ(cnt, 6);
-  bitmap_->BitCount(key_, 0, -1, &cnt);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
   EXPECT_EQ(cnt, 6);
   auto s = bitmap_->Del(key_);
 }
@@ -86,17 +86,17 @@ TEST_P(RedisBitmapTest, BitCountNegative) {
     EXPECT_FALSE(bit);
   }
   uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 0, 0, &cnt);
+  bitmap_->BitCount(key_, 0, 0, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 0, -1, &cnt);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, -1, -1, &cnt);
+  bitmap_->BitCount(key_, -1, -1, false, &cnt);
   EXPECT_EQ(cnt, 1);
-  bitmap_->BitCount(key_, 1, 1, &cnt);
+  bitmap_->BitCount(key_, 1, 1, false, &cnt);
   EXPECT_EQ(cnt, 0);
-  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
   EXPECT_EQ(cnt, 1);
 
   {
@@ -104,7 +104,7 @@ TEST_P(RedisBitmapTest, BitCountNegative) {
     bitmap_->SetBit(key_, 5, true, &bit);
     EXPECT_FALSE(bit);
   }
-  bitmap_->BitCount(key_, -10000, -10000, &cnt);
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
   EXPECT_EQ(cnt, 2);
 
   {
@@ -115,12 +115,51 @@ TEST_P(RedisBitmapTest, BitCountNegative) {
     EXPECT_FALSE(bit);
   }
 
-  bitmap_->BitCount(key_, 0, 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 1024, false, &cnt);
   EXPECT_EQ(cnt, 4);
 
-  bitmap_->BitCount(key_, 0, 1023, &cnt);
+  bitmap_->BitCount(key_, 0, 1023, false, &cnt);
   EXPECT_EQ(cnt, 3);
 
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_P(RedisBitmapTest, BitCountBITOption) {
+  std::set<uint32_t> offsets = {0, 100, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
+  for (const auto &offset : offsets) {
+    bool bit = false;
+    bitmap_->SetBit(key_, offset, true, &bit);
+  }
+
+  for (uint32_t bit_offset = 0; bit_offset <= 3 * 1024 * 8 + 10; ++bit_offset) {
+    uint32_t cnt = 0;
+    EXPECT_TRUE(bitmap_->BitCount(key_, bit_offset, bit_offset, true, &cnt).ok());
+    if (offsets.count(bit_offset) > 0) {
+      ASSERT_EQ(1, cnt) << "bit_offset: " << bit_offset;
+    } else {
+      ASSERT_EQ(0, cnt) << "bit_offset: " << bit_offset;
+    }
+  }
+
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, 4 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, -1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 1, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 5);
+  bitmap_->BitCount(key_, 0, 0, true, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 100, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 3 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 4);
+  bitmap_->BitCount(key_, -1, -1, true, &cnt);
+  EXPECT_EQ(cnt, 0);  // NOTICE: the min storage unit is byte, the result is the same as Redis.
   auto s = bitmap_->Del(key_);
 }
 
@@ -190,6 +229,34 @@ TEST_P(RedisBitmapTest, BitPosNegative) {
   // Large negative number will be normalized.
   bitmap_->BitPos(key_, false, -10000, -10000, true, &pos);
   EXPECT_EQ(0, pos);
+
+  auto s = bitmap_->Del(key_);
+}
+
+// When `stop_given` is true, even searching for 0,
+// we cannot exceeds the stop position.
+TEST_P(RedisBitmapTest, BitPosStopGiven) {
+  for (int i = 0; i < 8; ++i) {
+    bool bit = true;
+    bitmap_->SetBit(key_, i, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/false, &pos);
+  EXPECT_EQ(8, pos);
+
+  // Set a bit at 8 not affect that
+  {
+    bool bit = true;
+    bitmap_->SetBit(key_, 8, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos);
+  EXPECT_EQ(9, pos);
 
   auto s = bitmap_->Del(key_);
 }

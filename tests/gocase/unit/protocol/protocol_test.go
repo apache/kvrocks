@@ -23,6 +23,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
@@ -145,8 +147,10 @@ func TestProtocolRESP2(t *testing.T) {
 	defer srv.Close()
 
 	c := srv.NewTCPClient()
+	rdb := srv.NewClient()
 	defer func() {
 		require.NoError(t, c.Close())
+		require.NoError(t, rdb.Close())
 	}()
 
 	t.Run("debug protocol string", func(t *testing.T) {
@@ -188,6 +192,36 @@ func TestProtocolRESP2(t *testing.T) {
 		require.NoError(t, c.WriteArgs("ZRANK", "no-exists-zset", "m0", "WITHSCORE"))
 		c.MustRead(t, "*-1")
 	})
+
+	t.Run("command ZRANGE should be always return an array of strings", func(t *testing.T) {
+		rdb.ZAddArgs(context.Background(), "zset", redis.ZAddArgs{
+			Members: []redis.Z{{1, "one"}, {2, "two"}, {3, "three"}},
+		})
+
+		require.NoError(t, c.WriteArgs("ZRANGE", "zset", "0", "-1"))
+		c.MustRead(t, "*3")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "one")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "two")
+		c.MustRead(t, "$5")
+		c.MustRead(t, "three")
+
+		require.NoError(t, c.WriteArgs("ZRANGE", "zset", "0", "-1", "WITHSCORES"))
+		c.MustRead(t, "*6")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "one")
+		c.MustRead(t, "$1")
+		c.MustRead(t, "1")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "two")
+		c.MustRead(t, "$1")
+		c.MustRead(t, "2")
+		c.MustRead(t, "$5")
+		c.MustRead(t, "three")
+		c.MustRead(t, "$1")
+		c.MustRead(t, "3")
+	})
 }
 
 func TestProtocolRESP3(t *testing.T) {
@@ -197,8 +231,10 @@ func TestProtocolRESP3(t *testing.T) {
 	defer srv.Close()
 
 	c := srv.NewTCPClient()
+	rdb := srv.NewClient()
 	defer func() {
 		require.NoError(t, c.Close())
+		require.NoError(t, rdb.Close())
 	}()
 
 	t.Run("debug protocol string", func(t *testing.T) {
@@ -245,5 +281,44 @@ func TestProtocolRESP3(t *testing.T) {
 	t.Run("null array", func(t *testing.T) {
 		require.NoError(t, c.WriteArgs("ZRANK", "no-exists-zset", "m0", "WITHSCORE"))
 		c.MustRead(t, "_")
+	})
+
+	t.Run("command ZRANGE should return an array of arrays if with score", func(t *testing.T) {
+		rdb.ZAddArgs(context.Background(), "zset", redis.ZAddArgs{
+			Members: []redis.Z{{1, "one"}, {2, "two"}, {3, "three"}},
+		})
+
+		require.NoError(t, c.WriteArgs("HELLO", "3"))
+		values := []string{"%3", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
+		for _, line := range values {
+			c.MustRead(t, line)
+		}
+
+		// should return an array of strings if without score
+		require.NoError(t, c.WriteArgs("ZRANGE", "zset", "0", "-1"))
+		c.MustRead(t, "*3")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "one")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "two")
+		c.MustRead(t, "$5")
+		c.MustRead(t, "three")
+
+		// should return an array of arrays if with score,
+		// and the score should be a double type
+		require.NoError(t, c.WriteArgs("ZRANGE", "zset", "0", "-1", "WITHSCORES"))
+		c.MustRead(t, "*3")
+		c.MustRead(t, "*2")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "one")
+		c.MustRead(t, ",1")
+		c.MustRead(t, "*2")
+		c.MustRead(t, "$3")
+		c.MustRead(t, "two")
+		c.MustRead(t, ",2")
+		c.MustRead(t, "*2")
+		c.MustRead(t, "$5")
+		c.MustRead(t, "three")
+		c.MustRead(t, ",3")
 	})
 }

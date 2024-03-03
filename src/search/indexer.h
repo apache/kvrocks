@@ -75,6 +75,14 @@ struct IndexUpdater {
   std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
   GlobalIndexer *indexer = nullptr;
 
+  IndexUpdater(const IndexUpdater &) = delete;
+  IndexUpdater(IndexUpdater &&) = default;
+
+  IndexUpdater &operator=(IndexUpdater &&) = default;
+  IndexUpdater &operator=(const IndexUpdater &) = delete;
+
+  ~IndexUpdater() = default;
+
   StatusOr<FieldValues> Record(std::string_view key, const std::string &ns);
   Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
                      std::string_view current, const std::string &ns);

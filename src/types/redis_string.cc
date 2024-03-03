@@ -664,9 +664,10 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
     }
 
     // Emit the current range if needed.
-    uint32_t match_len = arange_end - arange_start + 1;
     if (emit_range) {
       if (auto result = std::get_if<StringLCSIdxResult>(rst)) {
+        uint32_t match_len = arange_end - arange_start + 1;
+
         // Always emit the range when the `min_match_len` is not set.
         if (args.min_match_len == 0 || match_len >= args.min_match_len) {
           result->matches.emplace_back(StringLCSRange{arange_start, arange_end},

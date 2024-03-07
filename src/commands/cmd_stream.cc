@@ -259,6 +259,15 @@ class CommandXGroup : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "delconsumer") {
+      if (args.size() != 5) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      consumer_name_ = GET_OR_RET(parser.TakeStr());
+
+      return Status::OK();
+    }
+
     if (subcommand_ == "setid") {
       if (args.size() != 5 && args.size() != 7) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -320,6 +329,16 @@ class CommandXGroup : public Commander {
       }
 
       *output = redis::Integer(created_number);
+    }
+
+    if (subcommand_ == "delconsumer") {
+      uint64_t deleted_pel = 0;
+      auto s = stream_db.DestroyConsumer(stream_name_, group_name_, consumer_name_, deleted_pel);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::Integer(deleted_pel);
     }
 
     if (subcommand_ == "setid") {

@@ -250,16 +250,7 @@ class CommandXGroup : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "createconsumer") {
-      if (args.size() != 5) {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-      consumer_name_ = GET_OR_RET(parser.TakeStr());
-
-      return Status::OK();
-    }
-
-    if (subcommand_ == "delconsumer") {
+    if (subcommand_ == "createconsumer" || subcommand_ == "delconsumer") {
       if (args.size() != 5) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }

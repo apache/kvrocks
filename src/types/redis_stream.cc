@@ -527,7 +527,6 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
   read_options.iterate_lower_bound = &lower_bound;
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
-  uint64_t count = 0;
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
       std::string tmp_group_name;
@@ -536,17 +535,13 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
       StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
       if (pel_entry.consumer_name == consumer_name) {
         batch->Delete(stream_cf_handle_, iter->key());
-        ++count;
       }
     }
-  }
-  if (count != deleted_pel) {  // this shouldn't happen
-    return rocksdb::Status::InvalidArgument("Penalty entry count of the consumer is not the same as deleted number");
   }
   batch->Delete(stream_cf_handle_, consumer_key);
   StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   group_metadata.consumer_number -= 1;
-  group_metadata.pending_number -= count;
+  group_metadata.pending_number -= deleted_pel;
   batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_metadata));
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

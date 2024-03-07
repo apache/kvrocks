@@ -39,6 +39,7 @@ class Database {
   [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value,
                                             Metadata *metadata, Slice *rest);
   [[nodiscard]] rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
+  [[nodiscard]] rocksdb::Status GetRawData(const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(const Slice &user_key);
   [[nodiscard]] rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
@@ -62,6 +63,9 @@ class Database {
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
   [[nodiscard]] rocksdb::Status Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret);
+
+ private:
+  rocksdb::Status getRaw(const Slice &ns_key, std::string *bytes);
 
  protected:
   engine::Storage *storage_;

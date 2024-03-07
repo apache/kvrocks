@@ -99,10 +99,18 @@ rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, std
 }
 
 rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
+  return getRaw(ns_key, bytes);
+}
+
+rocksdb::Status Database::GetRawData(const Slice &key, std::string *bytes) {
+  return getRaw(key, bytes);
+}
+
+rocksdb::Status Database::getRaw(const Slice &key, std::string *bytes) {
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
-  return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+  return storage_->Get(read_options, metadata_cf_handle_, key, bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {

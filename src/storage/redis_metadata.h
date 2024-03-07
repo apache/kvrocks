@@ -50,6 +50,7 @@ enum RedisType : uint8_t {
   kRedisBloomFilter = 9,
   kRedisJson = 10,
   kRedisSearch = 11,
+  kRedisHyperloglog = 12,
 };
 
 struct RedisTypes {
@@ -328,4 +329,9 @@ class SearchMetadata : public Metadata {
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;
+};
+
+class HyperloglogMetadata: public Metadata {
+ public:
+  explicit HyperloglogMetadata(bool generate_version = true) : Metadata(kRedisHyperloglog, generate_version) {}
 };

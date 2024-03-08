@@ -25,7 +25,7 @@
 
 namespace redis {
 
-class Hyperloglog: public Database {
+class Hyperloglog : public Database {
  public:
   explicit Hyperloglog(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Add(const Slice &user_key, const std::vector<Slice> &elements, int *ret);

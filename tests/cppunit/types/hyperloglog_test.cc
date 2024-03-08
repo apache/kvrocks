@@ -19,18 +19,20 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <memory>
-#include "types/redis_hyperloglog.h"
+
 #include "test_base.h"
+#include "types/redis_hyperloglog.h"
 
 class RedisHyperloglogTest : public TestBase {
-protected:
+ protected:
   explicit RedisHyperloglogTest() : TestBase() {
     hll_ = std::make_unique<redis::Hyperloglog>(storage_.get(), "hll_ns");
   }
   ~RedisHyperloglogTest() = default;
 
-protected:
+ protected:
   std::unique_ptr<redis::Hyperloglog> hll_;
 };
 
@@ -100,7 +102,7 @@ TEST_F(RedisHyperloglogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
     for (auto j = 0; j < 3; j++) {
       int ret = 0;
       int rint = std::rand() % 20000;
-      ASSERT_TRUE(hll_->Add("hll"+std::to_string(j), {std::to_string(rint)}, &ret).ok());
+      ASSERT_TRUE(hll_->Add("hll" + std::to_string(j), {std::to_string(rint)}, &ret).ok());
       realcard_set.insert(rint);
     }
   }

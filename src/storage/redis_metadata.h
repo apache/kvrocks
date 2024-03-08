@@ -331,7 +331,7 @@ class SearchMetadata : public Metadata {
   rocksdb::Status Decode(Slice *input) override;
 };
 
-class HyperloglogMetadata: public Metadata {
+class HyperloglogMetadata : public Metadata {
  public:
   explicit HyperloglogMetadata(bool generate_version = true) : Metadata(kRedisHyperloglog, generate_version) {}
 };

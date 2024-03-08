@@ -41,6 +41,10 @@
 #include "observer_or_unique.h"
 #include "status.h"
 
+#if defined(__sparc__) || defined(__arm__)
+#define USE_ALIGNED_ACCESS
+#endif
+
 enum class StorageEngineType : uint16_t {
   RocksDB,
   Speedb,

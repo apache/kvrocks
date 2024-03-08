@@ -24,6 +24,7 @@
 #include "storage/redis_metadata.h"
 
 namespace redis {
+
 class Hyperloglog: public Database {
  public:
   explicit Hyperloglog(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -39,4 +40,5 @@ class Hyperloglog: public Database {
   rocksdb::Status GetMetadata(const Slice &ns_key, HyperloglogMetadata *metadata);
   int hllPatLen(unsigned char *ele, size_t elesize, long *regp);
 };
-}  // namespace Redis
+
+}  // namespace redis

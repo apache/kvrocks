@@ -387,4 +387,4 @@ rocksdb::Status Hyperloglog::getRegisters(const Slice &user_key, std::vector<uin
   return rocksdb::Status::OK();
 }
 
-} // namespace
+}  // namespace redis

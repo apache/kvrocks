@@ -58,7 +58,7 @@ class Sync {
   enum IncrementBatchLoopState {
     Incr_batch_size,
     Incr_batch_data,
-  }
+  };
 
   Status
   incrementBatchLoop();

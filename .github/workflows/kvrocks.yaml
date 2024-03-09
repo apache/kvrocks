@@ -113,6 +113,9 @@ jobs:
           - name: Darwin Clang
             os: macos-11
             compiler: auto
+          - name: Darwin Clang arm64
+            os: macos-13-xlarge
+            compiler: auto
           - name: Darwin Clang without Jemalloc
             os: macos-11
             compiler: auto

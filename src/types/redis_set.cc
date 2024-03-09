@@ -90,7 +90,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   for (size_t idx = 0; idx < mget_status.size(); ++idx) {
     const rocksdb::Status &status = mget_status[idx];
     if (!status.ok() && !s.IsNotFound()) return status;
-    if (status.IsNotFound()) continue;
+    if (status.ok()) continue;
     batch->Put(set_member[idx], Slice());
     *added_cnt += 1;
   }

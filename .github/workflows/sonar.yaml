@@ -81,4 +81,5 @@ jobs:
             --define sonar.projectKey=apache_kvrocks \
             --define sonar.organization=apache \
             --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
-            --define sonar.pullrequest.key=$PR_NUMBER
+            --define sonar.pullrequest.key=$PR_NUMBER \
+            --define sonar.newCode.referenceBranch=2.8

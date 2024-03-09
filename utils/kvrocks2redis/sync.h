@@ -60,8 +60,7 @@ class Sync {
     Incr_batch_data,
   };
 
-  Status
-  incrementBatchLoop();
+  Status incrementBatchLoop();
 
   Status tryCatchUpWithPrimary();
   Status checkWalBoundary();

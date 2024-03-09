@@ -175,7 +175,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   enum IncrementBatchLoopState {
     Incr_batch_size,
     Incr_batch_data,
-  }
+  };
 
   size_t incr_bulk_len_ = 0;
 

@@ -68,14 +68,30 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
   WriteBatchLogData log_data(kRedisSet);
   batch->PutLogData(log_data.Encode());
   std::unordered_set<std::string_view> mset;
+  std::vector<std::string_view> set_member;
+  std::vector<std::string> set_subkeys;
+  std::vector<Slice> set_subkeys_slice;
   for (const auto &member : members) {
     if (!mset.insert(member.ToStringView()).second) {
       continue;
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
-    if (s.ok()) continue;
-    batch->Put(sub_key, Slice());
+    set_member.push_back(member.ToStringView());
+    set_subkeys.push_back(std::move(sub_key));
+    set_subkeys_slice.emplace_back(set_subkeys.back());
+  }
+  std::vector<rocksdb::PinnableSlice> dummy_values(set_subkeys_slice.size());
+  std::vector<rocksdb::Status> mget_status(set_subkeys_slice.size());
+  storage_->MultiGet(storage_->DefaultMultiGetOptions(), metadata_cf_handle_, set_subkeys.size(),
+                     set_subkeys_slice.data(), dummy_values.data(), mget_status.data());
+  dummy_values.clear();
+  set_subkeys_slice.clear();
+  set_subkeys.clear();
+  for (size_t idx = 0; idx < mget_status.size(); ++idx) {
+    const rocksdb::Status &status = mget_status[idx];
+    if (!status.ok() && !s.IsNotFound()) return status;
+    if (status.IsNotFound()) continue;
+    batch->Put(set_member[idx], Slice());
     *added_cnt += 1;
   }
   if (*added_cnt > 0) {

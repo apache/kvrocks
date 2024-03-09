@@ -57,10 +57,11 @@ class Sync {
   // Internal states managed by IncrementBatchLoop procedure
   enum IncrementBatchLoopState {
     Incr_batch_size,
-    Incr_batch_data
+    Incr_batch_data,
   }
-  
-  Status incrementBatchLoop();
+
+  Status
+  incrementBatchLoop();
 
   Status tryCatchUpWithPrimary();
   Status checkWalBoundary();

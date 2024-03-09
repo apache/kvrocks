@@ -36,6 +36,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/port.h"
 #include "config/config.h"
 #include "lock_manager.h"
 #include "observer_or_unique.h"
@@ -107,18 +108,18 @@ inline const std::vector<CacheOption> CacheOptions = {
     {BlockCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
 };
 
-enum class StatType {
+enum class StatType : uint_fast8_t {
   CompactionCount,
   FlushCount,
   KeyspaceHits,
   KeyspaceMisses,
 };
 
-struct DBStats {
-  std::atomic<uint64_t> compaction_count = 0;
-  std::atomic<uint64_t> flush_count = 0;
-  std::atomic<uint64_t> keyspace_hits = 0;
-  std::atomic<uint64_t> keyspace_misses = 0;
+struct alignas(CACHE_LINE_SIZE) DBStats {
+  std::atomic<uint_fast64_t> compaction_count = 0;
+  std::atomic<uint_fast64_t> flush_count = 0;
+  std::atomic<uint_fast64_t> keyspace_hits = 0;
+  std::atomic<uint_fast64_t> keyspace_misses = 0;
 };
 
 class Storage {

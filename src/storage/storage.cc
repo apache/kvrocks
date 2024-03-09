@@ -707,16 +707,16 @@ Status Storage::ApplyWriteBatch(const rocksdb::WriteOptions &options, std::strin
 void Storage::RecordStat(StatType type, uint64_t v) {
   switch (type) {
     case StatType::FlushCount:
-      db_stats_.flush_count += v;
+      db_stats_.flush_count.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::CompactionCount:
-      db_stats_.compaction_count += v;
+      db_stats_.compaction_count.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::KeyspaceHits:
-      db_stats_.keyspace_hits += v;
+      db_stats_.keyspace_hits.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::KeyspaceMisses:
-      db_stats_.keyspace_misses += v;
+      db_stats_.keyspace_misses.fetch_add(v, std::memory_order_relaxed);
       break;
   }
 }

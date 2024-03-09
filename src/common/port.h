@@ -25,24 +25,15 @@
 #endif
 
 #ifndef CACHE_LINE_SIZE
-// To test behavior with non-native cache line size, e.g. for
-// Bloom filters, set TEST_CACHE_LINE_SIZE to the desired test size.
-// This disables ALIGN_AS to keep it from failing compilation.
-#ifdef TEST_CACHE_LINE_SIZE
-#define CACHE_LINE_SIZE TEST_CACHE_LINE_SIZE
-#define ALIGN_AS(n) /*empty*/
-#else
 #if defined(__s390__)
 #if defined(__GNUC__) && __GNUC__ < 7
-#define CACHE_LINE_SIZE 64U
+constexpr size_t CACHE_LINE_SIZE = 64U;
 #else
-#define CACHE_LINE_SIZE 256U
+constexpr size_t CACHE_LINE_SIZE = 256U;
 #endif
 #elif defined(__powerpc__) || defined(__aarch64__)
-#define CACHE_LINE_SIZE 128U
+constexpr size_t CACHE_LINE_SIZE = 128U;
 #else
-#define CACHE_LINE_SIZE 64U
-#endif
-#define ALIGN_AS(n) alignas(n)
+constexpr size_t CACHE_LINE_SIZE = 64U;
 #endif
 #endif

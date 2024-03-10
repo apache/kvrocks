@@ -222,7 +222,7 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |

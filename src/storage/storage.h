@@ -36,6 +36,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/port.h"
 #include "config/config.h"
 #include "lock_manager.h"
 #include "observer_or_unique.h"
@@ -107,7 +108,7 @@ inline const std::vector<CacheOption> CacheOptions = {
     {BlockCacheType::kCacheTypeHCC, "hcc", "kCacheTypeHCC"},
 };
 
-enum class StatType {
+enum class StatType : uint_fast8_t {
   CompactionCount,
   FlushCount,
   KeyspaceHits,
@@ -115,10 +116,10 @@ enum class StatType {
 };
 
 struct DBStats {
-  std::atomic<uint64_t> compaction_count = 0;
-  std::atomic<uint64_t> flush_count = 0;
-  std::atomic<uint64_t> keyspace_hits = 0;
-  std::atomic<uint64_t> keyspace_misses = 0;
+  alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> compaction_count = 0;
+  alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> flush_count = 0;
+  alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> keyspace_hits = 0;
+  alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> keyspace_misses = 0;
 };
 
 class Storage {
@@ -195,7 +196,7 @@ class Storage {
   bool IsSlotIdEncoded() const { return config_->slot_id_encoded; }
   Config *GetConfig() const { return config_; }
 
-  const DBStats *GetDBStats() const { return &db_stats_; }
+  const DBStats *GetDBStats() const { return db_stats_.get(); }
   void RecordStat(StatType type, uint64_t v);
 
   Status BeginTxn();
@@ -261,7 +262,7 @@ class Storage {
   LockManager lock_mgr_;
   std::atomic<bool> db_size_limit_reached_{false};
 
-  DBStats db_stats_;
+  std::unique_ptr<DBStats> db_stats_;
 
   std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;

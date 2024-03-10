@@ -82,4 +82,4 @@ jobs:
             --define sonar.organization=apache \
             --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
             --define sonar.pullrequest.key=$PR_NUMBER \
-            --define sonar.newCode.referenceBranch=2.8
+            --define sonar.newCode.referenceBranch=unstable

@@ -25,12 +25,9 @@
 #include <vector>
 
 #include "common/bitfield_util.h"
+#include "common/port.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
-
-#if defined(__sparc__) || defined(__arm__)
-#define USE_ALIGNED_ACCESS
-#endif
 
 enum BitOpFlags {
   kBitOpAnd,

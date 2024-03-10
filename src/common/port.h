@@ -24,7 +24,6 @@
 #define USE_ALIGNED_ACCESS
 #endif
 
-#ifndef CACHE_LINE_SIZE
 #if defined(__s390__)
 #if defined(__GNUC__) && __GNUC__ < 7
 constexpr size_t CACHE_LINE_SIZE = 64U;
@@ -35,5 +34,4 @@ constexpr size_t CACHE_LINE_SIZE = 256U;
 constexpr size_t CACHE_LINE_SIZE = 128U;
 #else
 constexpr size_t CACHE_LINE_SIZE = 64U;
-#endif
 #endif

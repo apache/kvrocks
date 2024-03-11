@@ -51,8 +51,6 @@
 #include "version.h"
 #include "worker.h"
 
-constexpr const char *REDIS_VERSION = "4.0.0";
-
 Server::Server(engine::Storage *storage, Config *config)
     : storage(storage), start_time_(util::GetTimeStamp()), config_(config), namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core

@@ -800,6 +800,9 @@ class CommandHello final : public Commander {
     std::vector<std::string> output_list;
     output_list.push_back(redis::BulkString("server"));
     output_list.push_back(redis::BulkString("redis"));
+    output_list.push_back(redis::BulkString("version"));
+    // What the client want is the Redis compatible version instead of the Kvrocks version.
+    output_list.push_back(redis::BulkString(REDIS_VERSION));
     output_list.push_back(redis::BulkString("proto"));
     if (srv->GetConfig()->resp3_enabled) {
       output_list.push_back(redis::Integer(protocol));
@@ -815,6 +818,11 @@ class CommandHello final : public Commander {
     } else {
       output_list.push_back(redis::BulkString("standalone"));
     }
+    output_list.push_back(redis::BulkString("role"));
+    output_list.push_back(redis::BulkString(srv->IsSlave() ? "slave" : "master"));
+    // For Kvrocks, the modules is not supported.
+    output_list.push_back(redis::BulkString("modules"));
+    output_list.push_back(conn->NilArray());
     *output = conn->HeaderOfMap(output_list.size() / 2);
     for (const auto &item : output_list) {
       *output += item;

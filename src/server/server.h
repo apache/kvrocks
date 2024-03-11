@@ -53,6 +53,8 @@
 #include "tls_util.h"
 #include "worker.h"
 
+constexpr const char *REDIS_VERSION = "4.0.0";
+
 struct DBScanInfo {
   time_t last_scan_time = 0;
   KeyNumStats key_num_stats;

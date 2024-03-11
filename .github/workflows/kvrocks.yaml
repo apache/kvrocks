@@ -125,6 +125,9 @@ jobs:
             os: macos-11
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
+          - name: Darwin Clang Arm64
+            os: macos-14
+            compiler: auto
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc

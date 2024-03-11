@@ -113,6 +113,9 @@ jobs:
           - name: Darwin Clang
             os: macos-11
             compiler: auto
+          - name: Darwin Clang arm64
+            os: macos-14
+            compiler: auto
           - name: Darwin Clang without Jemalloc
             os: macos-11
             compiler: auto
@@ -219,7 +222,7 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |

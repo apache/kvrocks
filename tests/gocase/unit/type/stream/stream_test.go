@@ -1216,6 +1216,30 @@ func TestStreamOffset(t *testing.T) {
 			Messages: []redis.XMessage{{ID: "5-0", Values: map[string]interface{}(nil)}},
 		}}, r)
 	})
+
+	t.Run("Check xreadgroup fetches the newest data after create consumer in the command", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		ri, erri := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(1), ri[0].Consumers)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

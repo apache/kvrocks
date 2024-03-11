@@ -44,6 +44,8 @@ class Stream : public SubKeyScanner {
   rocksdb::Status DestroyGroup(const Slice &stream_name, const std::string &group_name, uint64_t *delete_cnt);
   rocksdb::Status CreateConsumer(const Slice &stream_name, const std::string &group_name,
                                  const std::string &consumer_name, int *created_number);
+  rocksdb::Status DestroyConsumer(const Slice &stream_name, const std::string &group_name,
+                                  const std::string &consumer_name, uint64_t &deleted_pel);
   rocksdb::Status GroupSetId(const Slice &stream_name, const std::string &group_name,
                              const StreamXGroupCreateOptions &options);
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);

@@ -7,7 +7,7 @@ For testing the `kvrocks2redis` utility, manually check generate AOF.
 * Start `kvrocks` and `kvrocks2redis`
     * [ ] TODO automatic create docker env
 * Install dependency::
-    * pip install git+https://github.com/andymccurdy/redis-py.git@2.10.3
+    * pip install redis==4.3.6
 * Usage:
 
 ```bash

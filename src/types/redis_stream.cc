@@ -1097,6 +1097,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
     if (!s.ok()) {
       return s;
     }
+    s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
   }
 
   auto batch = storage_->GetWriteBatchBase();

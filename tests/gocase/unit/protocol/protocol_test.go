@@ -239,7 +239,14 @@ func TestProtocolRESP3(t *testing.T) {
 
 	t.Run("debug protocol string", func(t *testing.T) {
 		require.NoError(t, c.WriteArgs("HELLO", "3"))
-		values := []string{"%3", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
+		values := []string{"%6",
+			"$6", "server", "$5", "redis",
+			"$7", "version", "$5", "4.0.0",
+			"$5", "proto", ":3",
+			"$4", "mode", "$10", "standalone",
+			"$4", "role", "$6", "master",
+			"$7", "modules", "_",
+		}
 		for _, line := range values {
 			c.MustRead(t, line)
 		}
@@ -289,7 +296,14 @@ func TestProtocolRESP3(t *testing.T) {
 		})
 
 		require.NoError(t, c.WriteArgs("HELLO", "3"))
-		values := []string{"%3", "$6", "server", "$5", "redis", "$5", "proto", ":3", "$4", "mode", "$10", "standalone"}
+		values := []string{"%6",
+			"$6", "server", "$5", "redis",
+			"$7", "version", "$5", "4.0.0",
+			"$5", "proto", ":3",
+			"$4", "mode", "$10", "standalone",
+			"$4", "role", "$6", "master",
+			"$7", "modules", "_",
+		}
 		for _, line := range values {
 			c.MustRead(t, line)
 		}

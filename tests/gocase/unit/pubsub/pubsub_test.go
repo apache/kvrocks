@@ -36,8 +36,18 @@ func receiveType[T any](t *testing.T, pubsub *redis.PubSub, typ T) T {
 	return msg.(T)
 }
 
-func TestPubSub(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+func TestPubSubWithRESP2(t *testing.T) {
+	testPubSub(t, "no")
+}
+
+func TestPubSubWithRESP3(t *testing.T) {
+	testPubSub(t, "yes")
+}
+
+func testPubSub(t *testing.T, enabledRESP3 string) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": enabledRESP3,
+	})
 	defer srv.Close()
 
 	ctx := context.Background()

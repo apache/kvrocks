@@ -101,6 +101,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string HeaderOfAttribute(T len) const {
     return "|" + std::to_string(len) + CRLF;
   }
+  std::string HeaderOfPush(int64_t len) const {
+    return protocol_version_ == RESP::v3 ? ">" + std::to_string(len) + CRLF : MultiLen(len);
+  }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

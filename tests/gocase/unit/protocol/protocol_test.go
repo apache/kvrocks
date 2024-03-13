@@ -224,6 +224,21 @@ func TestProtocolRESP2(t *testing.T) {
 	})
 }
 
+func handshakeWithRESP3(t *testing.T, c *util.TCPClient) {
+	require.NoError(t, c.WriteArgs("HELLO", "3"))
+	values := []string{"%6",
+		"$6", "server", "$5", "redis",
+		"$7", "version", "$5", "4.0.0",
+		"$5", "proto", ":3",
+		"$4", "mode", "$10", "standalone",
+		"$4", "role", "$6", "master",
+		"$7", "modules", "_",
+	}
+	for _, line := range values {
+		c.MustRead(t, line)
+	}
+}
+
 func TestProtocolRESP3(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"resp3-enabled": "yes",
@@ -236,20 +251,9 @@ func TestProtocolRESP3(t *testing.T) {
 		require.NoError(t, c.Close())
 		require.NoError(t, rdb.Close())
 	}()
+	handshakeWithRESP3(t, c)
 
 	t.Run("debug protocol string", func(t *testing.T) {
-		require.NoError(t, c.WriteArgs("HELLO", "3"))
-		values := []string{"%6",
-			"$6", "server", "$5", "redis",
-			"$7", "version", "$5", "4.0.0",
-			"$5", "proto", ":3",
-			"$4", "mode", "$10", "standalone",
-			"$4", "role", "$6", "master",
-			"$7", "modules", "_",
-		}
-		for _, line := range values {
-			c.MustRead(t, line)
-		}
 
 		types := map[string][]string{
 			"string":   {"$11", "Hello World"},
@@ -285,6 +289,17 @@ func TestProtocolRESP3(t *testing.T) {
 		c.MustRead(t, "_")
 	})
 
+	t.Run("should return PUSH type", func(t *testing.T) {
+		// use a new client to avoid affecting other tests
+		require.NoError(t, c.WriteArgs("SUBSCRIBE", "test-channel"))
+		c.MustRead(t, ">3")
+		c.MustRead(t, "$9")
+		c.MustRead(t, "subscribe")
+		c.MustRead(t, "$12")
+		c.MustRead(t, "test-channel")
+		c.MustRead(t, ":1")
+	})
+
 	t.Run("null array", func(t *testing.T) {
 		require.NoError(t, c.WriteArgs("ZRANK", "no-exists-zset", "m0", "WITHSCORE"))
 		c.MustRead(t, "_")
@@ -294,19 +309,6 @@ func TestProtocolRESP3(t *testing.T) {
 		rdb.ZAddArgs(context.Background(), "zset", redis.ZAddArgs{
 			Members: []redis.Z{{1, "one"}, {2, "two"}, {3, "three"}},
 		})
-
-		require.NoError(t, c.WriteArgs("HELLO", "3"))
-		values := []string{"%6",
-			"$6", "server", "$5", "redis",
-			"$7", "version", "$5", "4.0.0",
-			"$5", "proto", ":3",
-			"$4", "mode", "$10", "standalone",
-			"$4", "role", "$6", "master",
-			"$7", "modules", "_",
-		}
-		for _, line := range values {
-			c.MustRead(t, line)
-		}
 
 		// should return an array of strings if without score
 		require.NoError(t, c.WriteArgs("ZRANGE", "zset", "0", "-1"))

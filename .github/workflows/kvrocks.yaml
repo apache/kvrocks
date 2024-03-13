@@ -256,6 +256,11 @@ jobs:
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+          
+      # Can remove this once https://github.com/actions/runner-images/issues/9491 was fixed
+      - name: Decrease ASLR entropy due to the issue in 20240310.1.0 Ubuntu 22.04
+        if: ${{ startsWith(matrix.os, 'ubuntu-22.04') }}
+        run: sudo sysctl vm.mmap_rnd_bits=28
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}

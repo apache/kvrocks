@@ -1240,6 +1240,60 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, erri)
 		require.Equal(t, int64(1), ri[0].Consumers)
 	})
+
+	t.Run("XACK with different kinds of commands", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), r)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		r, err = rdb.XAck(ctx, streamName, groupName, "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "4-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    3,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		r, err = rdb.XAck(ctx, streamName, groupName, "2-0", "3-0", "4-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), r)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

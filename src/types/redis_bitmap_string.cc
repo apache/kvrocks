@@ -100,17 +100,24 @@ rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t sta
 }
 
 rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop,
-                                     bool stop_given, int64_t *pos) {
+                                     bool stop_given, int64_t *pos, bool is_bit_index) {
   std::string_view string_value = std::string_view{raw_value}.substr(Metadata::GetOffsetAfterExpire(raw_value[0]));
   auto strlen = static_cast<int64_t>(string_value.size());
   /* Convert negative and out-of-bound indexes */
-  std::tie(start, stop) = NormalizeRange(start, stop, strlen);
+
+  int64_t length = is_bit_index ? strlen * 8 : strlen;
+  std::tie(start, stop) = NormalizeRange(start, stop, length);
 
   if (start > stop) {
     *pos = -1;
   } else {
-    int64_t bytes = stop - start + 1;
-    *pos = util::msb::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + start, bytes, bit);
+    if (!is_bit_index) {
+      start *= 8;
+      stop = (stop * 8) + 7;
+    }
+
+    int64_t count_bits = stop - start + 1;
+    *pos = util::msb::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()), start, stop, bit);
 
     /* If we are looking for clear bits, and the user specified an exact
      * range with start-end, we can't consider the right of the range as
@@ -119,11 +126,10 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
      * So if redisBitpos() returns the first bit outside the range,
      * we return -1 to the caller, to mean, in the specified range there
      * is not a single "0" bit. */
-    if (stop_given && bit == 0 && *pos == bytes * 8) {
+    if (stop_given && bit == 0 && *pos == count_bits) {
       *pos = -1;
       return rocksdb::Status::OK();
     }
-    if (*pos != -1) *pos += start * 8; /* Adjust for the bytes we skipped. */
   }
   return rocksdb::Status::OK();
 }

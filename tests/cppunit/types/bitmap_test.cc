@@ -179,7 +179,7 @@ TEST_P(RedisBitmapTest, BitPosClearBit) {
     ///
     /// String will set a empty string value when initializing, so, when first
     /// querying, it should return -1.
-    bitmap_->BitPos(key_, false, 0, -1, /*stop_given=*/false, &pos);
+    bitmap_->BitPos(key_, false, 0, -1, /*stop_given=*/false, &pos, false);
     if (i == 0 && !use_bitmap) {
       EXPECT_EQ(pos, -1);
     } else {
@@ -201,7 +201,7 @@ TEST_P(RedisBitmapTest, BitPosSetBit) {
   int64_t pos = 0;
   int start_indexes[] = {0, 1, 124, 1025, 1027, 3 * 1024 + 1};
   for (size_t i = 0; i < sizeof(start_indexes) / sizeof(start_indexes[0]); i++) {
-    bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
+    bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos, false);
     EXPECT_EQ(pos, offsets[i]);
   }
   auto s = bitmap_->Del(key_);
@@ -215,19 +215,19 @@ TEST_P(RedisBitmapTest, BitPosNegative) {
   }
   int64_t pos = 0;
   // First bit is negative
-  bitmap_->BitPos(key_, false, 0, -1, true, &pos);
+  bitmap_->BitPos(key_, false, 0, -1, true, &pos, false);
   EXPECT_EQ(0, pos);
   // 8 * 1024 - 1 bit is positive
-  bitmap_->BitPos(key_, true, 0, -1, true, &pos);
+  bitmap_->BitPos(key_, true, 0, -1, true, &pos, false);
   EXPECT_EQ(8 * 1024 - 1, pos);
   // First bit in 1023 byte is negative
-  bitmap_->BitPos(key_, false, -1, -1, true, &pos);
+  bitmap_->BitPos(key_, false, -1, -1, true, &pos, false);
   EXPECT_EQ(8 * 1023, pos);
   // Last Bit in 1023 byte is positive
-  bitmap_->BitPos(key_, true, -1, -1, true, &pos);
+  bitmap_->BitPos(key_, true, -1, -1, true, &pos, false);
   EXPECT_EQ(8 * 1024 - 1, pos);
   // Large negative number will be normalized.
-  bitmap_->BitPos(key_, false, -10000, -10000, true, &pos);
+  bitmap_->BitPos(key_, false, -10000, -10000, true, &pos, false);
   EXPECT_EQ(0, pos);
 
   auto s = bitmap_->Del(key_);
@@ -242,9 +242,9 @@ TEST_P(RedisBitmapTest, BitPosStopGiven) {
     EXPECT_FALSE(bit);
   }
   int64_t pos = 0;
-  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos, false);
   EXPECT_EQ(-1, pos);
-  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/false, &pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/false, &pos, false);
   EXPECT_EQ(8, pos);
 
   // Set a bit at 8 not affect that
@@ -253,9 +253,9 @@ TEST_P(RedisBitmapTest, BitPosStopGiven) {
     bitmap_->SetBit(key_, 8, true, &bit);
     EXPECT_FALSE(bit);
   }
-  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos, false);
   EXPECT_EQ(-1, pos);
-  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos);
+  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos, false);
   EXPECT_EQ(9, pos);
 
   auto s = bitmap_->Del(key_);

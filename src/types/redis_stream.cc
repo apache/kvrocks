@@ -314,8 +314,8 @@ StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) const {
   return StreamSubkeyType::StreamConsumerMetadata;
 }
 
-rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::string group_name,
-                                         const std::vector<StreamEntryID> entry_set, uint64_t &acknowledged) {
+rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::string &group_name,
+                                         const std::vector<StreamEntryID> &entry_set, uint64_t &acknowledged) {
   acknowledged = 0;
 
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -338,7 +338,7 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
-  for (const auto& id : entry_set) {
+  for (const auto &id : entry_set) {
     std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
     std::string value;
     s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &value);

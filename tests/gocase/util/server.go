@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -38,6 +39,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
+
+type RestartOpt struct {
+	Nowait  bool
+	Noclose bool
+}
 
 type KvrocksServer struct {
 	t   testing.TB
@@ -134,8 +140,38 @@ func (s *KvrocksServer) close(keepDir bool) {
 	s.clean(keepDir)
 }
 
-func (s *KvrocksServer) Restart() {
-	s.close(true)
+func (s *KvrocksServer) ForceChangeClusterMode(enable bool) {
+	dir := s.configs["dir"]
+	f, err := os.OpenFile(filepath.Join(dir, "kvrocks.conf"), os.O_RDWR, 0666)
+	require.NoError(s.t, err)
+	defer func() { require.NoError(s.t, f.Close()) }()
+
+	// change the line containing cluster-enabled to no
+	data, err := os.ReadFile(filepath.Join(dir, "kvrocks.conf"))
+	require.NoError(s.t, err)
+
+	content := string(data)
+	var newContent string
+	if !enable {
+		newContent = strings.ReplaceAll(content, "cluster-enabled yes", "cluster-enabled no")
+	} else {
+		newContent = strings.ReplaceAll(content, "cluster-enabled no", "cluster-enabled yes")
+	}
+	err = os.WriteFile(filepath.Join(dir, "kvrocks.conf"), []byte(newContent), 0666)
+	require.NoError(s.t, err)
+}
+
+func (s *KvrocksServer) Restart(opt ...RestartOpt) {
+	nowait := false
+	noclose := false
+	if len(opt) >= 1 {
+		nowait = opt[0].Nowait
+		noclose = opt[0].Noclose
+	}
+
+	if !noclose {
+		s.close(true)
+	}
 
 	b := *binPath
 	require.NotEmpty(s.t, b, "please set the binary path by `-binPath`")
@@ -157,12 +193,14 @@ func (s *KvrocksServer) Restart() {
 
 	require.NoError(s.t, cmd.Start())
 
-	c := redis.NewClient(&redis.Options{Addr: s.addr.String()})
-	defer func() { require.NoError(s.t, c.Close()) }()
-	require.Eventually(s.t, func() bool {
-		err := c.Ping(context.Background()).Err()
-		return err == nil || err.Error() == "NOAUTH Authentication required."
-	}, time.Minute, time.Second)
+	if !nowait {
+		c := redis.NewClient(&redis.Options{Addr: s.addr.String()})
+		defer func() { require.NoError(s.t, c.Close()) }()
+		require.Eventually(s.t, func() bool {
+			err := c.Ping(context.Background()).Err()
+			return err == nil || err.Error() == "NOAUTH Authentication required."
+		}, time.Minute, time.Second)
+	}
 
 	s.cmd = cmd
 	s.clean = func(keepDir bool) {

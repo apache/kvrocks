@@ -83,6 +83,8 @@ constexpr const char *kLuaFuncSHAPrefix = "lua_f_";
 constexpr const char *kLuaFuncLibPrefix = "lua_func_lib_";
 constexpr const char *kLuaLibCodePrefix = "lua_lib_code_";
 
+const std::string kClusterEnabledKey = "config_cluster_enabled";
+
 struct CompressionOption {
   rocksdb::CompressionType type;
   const std::string name;

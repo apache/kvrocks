@@ -37,12 +37,12 @@ class CommandXAck : public Commander {
     stream_name_ = args[1];
     group_name_ = args[2];
     StreamEntryID tmp_id;
-    for (int i = 3; i < args.size(); ++i) {
+    for (size_t i = 3; i < args.size(); ++i) {
       auto s = ParseStreamEntryID(args[i], &tmp_id);
       if (!s.IsOK()) {
         return {Status::RedisParseErr, s.Msg()};
       }
-      entry_set_.emplace_back(tmp_id);
+      entry_ids_.emplace_back(tmp_id);
     }
 
     return Status::OK();
@@ -51,7 +51,7 @@ class CommandXAck : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Stream stream_db(srv->storage, conn->GetNamespace());
     uint64_t acknowledged = 0;
-    auto s = stream_db.DeletePelEntries(stream_name_, group_name_, entry_set_, acknowledged);
+    auto s = stream_db.DeletePelEntries(stream_name_, group_name_, entry_ids_, &acknowledged);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -63,7 +63,7 @@ class CommandXAck : public Commander {
  private:
   std::string stream_name_;
   std::string group_name_;
-  std::vector<StreamEntryID> entry_set_;
+  std::vector<StreamEntryID> entry_ids_;
 };
 
 class CommandXAdd : public Commander {

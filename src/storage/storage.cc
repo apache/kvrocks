@@ -165,6 +165,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.min_write_buffer_number_to_merge = 2;
   options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = 7;
+  options.compression_opts.level = config_->rocks_db.compression_level;
   options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
   for (int i = 0; i < options.num_levels; ++i) {

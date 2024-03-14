@@ -190,6 +190,7 @@ Config::Config() {
       {"rocksdb.compression", false,
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
+      {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 6, INT_MIN, INT_MAX)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
@@ -674,6 +675,7 @@ void Config::initFieldCallback() {
           {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
           {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
           {"rocksdb.compression", set_compression_type_cb},
+          {"rocksdb.compression_level", set_cf_option_cb},
 #ifdef ENABLE_OPENSSL
           {"tls-cert-file", set_tls_option},
           {"tls-key-file", set_tls_option},

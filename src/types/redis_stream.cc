@@ -314,6 +314,48 @@ StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) const {
   return StreamSubkeyType::StreamConsumerMetadata;
 }
 
+rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::string &group_name,
+                                         const std::vector<StreamEntryID> &entry_ids, uint64_t *acknowledged) {
+  *acknowledged = 0;
+
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string get_group_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  for (const auto &id : entry_ids) {
+    std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
+    std::string value;
+    s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &value);
+    if (s.ok()) {
+      *acknowledged += 1;
+      batch->Delete(stream_cf_handle_, entry_key);
+    }
+  }
+  if (*acknowledged > 0) {
+    StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
+    group_metadata.pending_number -= *acknowledged;
+    std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
+    batch->Put(stream_cf_handle_, group_key, group_value);
+  }
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
                                     const std::string &group_name) {
   if (std::isdigit(group_name[0])) {

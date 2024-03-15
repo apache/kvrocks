@@ -378,4 +378,25 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, 't', res.Val()[0])
 		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "INCRBY", "u8", "32", 2).Err(), "BITFIELD_RO only supports the GET subcommand")
 	})
+
+	t.Run("BITPOS BIT option check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 1, 7, 15, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 8, cmd.Val())
+	})
+
+	t.Run("BITPOS BIT not found check check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 0, 0, 5, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+	})
+
+	t.Run("BITPOS BIT not found check check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 0, 2, 3, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+	})
 }

@@ -320,10 +320,10 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos, is_bit_index);
   }
 
-  auto size = static_cast<int64_t>(metadata.size);
-  auto length = is_bit_index ? size * 8 : size;
+  uint32_t to_bit_factor = is_bit_index ? 8 : 1;
+  auto size = static_cast<int64_t>(metadata.size) * static_cast<int64_t>(to_bit_factor);
 
-  std::tie(start, stop) = BitmapString::NormalizeRange(start, stop, length);
+  std::tie(start, stop) = BitmapString::NormalizeRange(start, stop, size);
   auto u_start = static_cast<uint32_t>(start);
   auto u_stop = static_cast<uint32_t>(stop);
   if (u_start > u_stop) {
@@ -350,16 +350,16 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
-  uint32_t start_index = u_start / kBitmapSegmentBytes;
-  uint32_t stop_index = u_stop / kBitmapSegmentBytes;
+  // if bit index, (Eg start = 1, stop = 35), then
+  // u_start = 1/8 = 0, u_stop = 35/8 = 4 (in bytes)
+  uint32_t start_index = (u_start / to_bit_factor) / kBitmapSegmentBytes;
+  uint32_t stop_index = (u_stop / to_bit_factor) / kBitmapSegmentBytes;
   uint32_t start_bit_pos_in_byte = 0;
   uint32_t stop_bit_pos_in_byte = 0;
 
   if (is_bit_index) {
     start_bit_pos_in_byte = u_start % 8;
     stop_bit_pos_in_byte = u_stop % 8;
-    start_index = (u_start / 8) / kBitmapSegmentBytes;
-    stop_index = (u_stop / 8) / kBitmapSegmentBytes;
   }
   // Don't use multi get to prevent large range query, and take too much memory
   // Searching bits in segments [start_index, stop_index].
@@ -380,28 +380,33 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
       continue;
     }
     size_t byte_pos_in_segment = 0;
-    if (i == start_index) byte_pos_in_segment = u_start % kBitmapSegmentBytes;
+    size_t byte_with_bit_start = -1;
+    size_t byte_with_bit_stop = -2;
+    // if bit index, (Eg start = 1, stop = 35), then
+    // byte_pos_in_segment should be calculated in bytes, hence divide by 8
+    if (i == start_index) {
+      byte_pos_in_segment = (u_start / to_bit_factor) % kBitmapSegmentBytes;
+      byte_with_bit_start = byte_pos_in_segment;
+    }
     size_t stop_byte_in_segment = pin_value.size();
     if (i == stop_index) {
-      DCHECK_LE(u_stop % kBitmapSegmentBytes + 1, pin_value.size());
-      stop_byte_in_segment = u_stop % kBitmapSegmentBytes + 1;
+      DCHECK_LE((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1, pin_value.size());
+      stop_byte_in_segment = (u_stop / to_bit_factor) % kBitmapSegmentBytes + 1;
+      byte_with_bit_stop = stop_byte_in_segment;
     }
     // Invariant:
     // 1. pin_value.size() <= kBitmapSegmentBytes.
     // 2. If it's the last segment, metadata.size % kBitmapSegmentBytes <= pin_value.size().
     for (; byte_pos_in_segment < stop_byte_in_segment; byte_pos_in_segment++) {
       int bit_pos_in_byte_value = -1;
-
       if (is_bit_index) {
-        uint32_t start_byte = start_index / 8;
-        uint32_t stop_byte = stop_index / 8;
-        if (start_byte == stop_byte) {
+        if (byte_with_bit_start == byte_with_bit_stop && byte_pos_in_segment == byte_with_bit_start) {
           bit_pos_in_byte_value = bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit_pos_in_byte,
                                                             stop_bit_pos_in_byte);
-        } else if (i == start_index) {
+        } else if (byte_pos_in_segment == byte_with_bit_start) {
           bit_pos_in_byte_value =
               bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit_pos_in_byte, 7);
-        } else if (i == stop_index) {
+        } else if (byte_pos_in_segment == byte_with_bit_stop) {
           bit_pos_in_byte_value =
               bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, 0, stop_bit_pos_in_byte);
         } else {

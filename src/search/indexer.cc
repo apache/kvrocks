@@ -38,7 +38,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type,
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-    auto s = db.GetMetadata(ns_key, &metadata);
+    auto s = db.GetMetadata(Database::GetOptions{}, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == SearchOnDataType::JSON) {

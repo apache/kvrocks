@@ -33,17 +33,18 @@ class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
- struct GetOptions {
-  // If snapshot is not nullptr, read from the specified snapshot,
-  // otherwise read from the "latest" snapshot.
-  const rocksdb::Snapshot* snapshot = nullptr;
- };
+  struct GetOptions {
+    // If snapshot is not nullptr, read from the specified snapshot,
+    // otherwise read from the "latest" snapshot.
+    const rocksdb::Snapshot *snapshot = nullptr;
+  };
 
   explicit Database(engine::Storage *storage, std::string ns = "");
   [[nodiscard]] rocksdb::Status ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, std::string *raw_value,
-                                            Metadata *metadata, Slice *rest);
+  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+                                            Metadata *metadata);
+  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+                                            std::string *raw_value, Metadata *metadata, Slice *rest);
   [[nodiscard]] rocksdb::Status GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(const Slice &user_key);

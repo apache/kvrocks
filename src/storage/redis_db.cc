@@ -90,8 +90,8 @@ rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, cons
   return GetMetadata(options, types, ns_key, &raw_value, metadata, &rest);
 }
 
-rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
-                                      Slice *rest) {
+rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, std::string *raw_value,
+                                      Metadata *metadata, Slice *rest) {
   auto s = GetRawMetadata(options, ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
@@ -99,13 +99,8 @@ rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, cons
 }
 
 rocksdb::Status Database::GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes) {
-  if (options.snapshot == nullptr) {
-    LatestSnapShot ss(storage_);
-    rocksdb::ReadOptions read_options;
-    read_options.snapshot = ss.GetSnapShot();
-    return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
-  }
   rocksdb::ReadOptions opts;
+  // If options.snapshot == nullptr, we can avoid allocating a snapshot here.
   opts.snapshot = options.snapshot;
   return storage_->Get(opts, metadata_cf_handle_, ns_key, bytes);
 }
@@ -252,7 +247,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
 rocksdb::Status Database::GetExpireTime(const Slice &user_key, uint64_t *timestamp) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(kRedisNone, false);
-  auto s = GetMetadata(RedisTypes::All(), ns_key, &metadata);
+  auto s = GetMetadata(GetOptions{}, RedisTypes::All(), ns_key, &metadata);
   if (!s.ok()) return s;
   *timestamp = metadata.expire;
 
@@ -522,7 +517,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
 
   if (metadata.Type() == kRedisList) {
     ListMetadata list_metadata(false);
-    s = GetMetadata({kRedisList}, ns_key, &list_metadata);
+    s = GetMetadata(GetOptions{}, {kRedisList}, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
     infos->emplace_back(std::to_string(list_metadata.head));
@@ -640,12 +635,11 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
-  rocksdb::Status s = GetMetadata({type}, ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
   auto iter = util::UniqueIterator(storage_, read_options);
   std::string match_prefix_key =
       InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();

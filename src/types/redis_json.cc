@@ -74,7 +74,7 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   std::string bytes;
   Slice rest;
 
-  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, metadata, &rest);
+  auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, metadata, &rest);
   if (!s.ok()) return s;
 
   return parse(*metadata, rest, value);
@@ -105,7 +105,7 @@ rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *stora
   Slice rest;
   JsonMetadata metadata;
 
-  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, &metadata, &rest);
+  auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, &metadata, &rest);
   if (!s.ok()) return s;
 
   *storage_format = metadata.format;

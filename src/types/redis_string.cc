@@ -62,7 +62,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
 rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
   raw_value->clear();
 
-  auto s = GetRawMetadata(ns_key, raw_value);
+  auto s = GetRawMetadata(GetOptions{}, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);

@@ -34,8 +34,8 @@
 
 namespace redis {
 
-rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
-  return Database::GetMetadata({kRedisHash}, ns_key, metadata);
+rocksdb::Status Hash::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HashMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisHash}, ns_key, metadata);
 }
 
 rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
@@ -43,7 +43,7 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
   *size = metadata.size;
   return rocksdb::Status::OK();
@@ -52,9 +52,9 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
 rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s;
   LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  if (!s.ok()) return s;
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -69,7 +69,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -116,7 +116,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -159,12 +159,12 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) {
     return s;
   }
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
   read_options.snapshot = ss.GetSnapShot();
   std::vector<rocksdb::Slice> keys;
@@ -205,7 +205,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -238,7 +238,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   int added = 0;
@@ -290,7 +290,8 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   }
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
@@ -299,7 +300,6 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -346,7 +346,8 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -354,7 +355,6 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -387,7 +387,7 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(/*generate_version=*/false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::vector<FieldValue> samples;

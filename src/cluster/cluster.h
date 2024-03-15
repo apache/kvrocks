@@ -68,6 +68,8 @@ class SyncMigrateContext;
 
 class Cluster {
  public:
+  enum class ClusterMode { READONLY, READWRITE };
+
   explicit Cluster(Server *srv, std::vector<std::string> binds, int port);
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);
@@ -92,6 +94,11 @@ class Cluster {
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
+  Status SetClusterMode(ClusterMode mode) {
+    cluster_mode_ = mode;
+    return Status::OK();
+  }
+
  private:
   std::string genNodesDescription();
   std::string genNodesInfo();
@@ -111,4 +118,6 @@ class Cluster {
 
   std::map<int, std::string> migrated_slots_;
   std::set<int> imported_slots_;
+
+  ClusterMode cluster_mode_{ClusterMode::READWRITE};
 };

@@ -292,8 +292,25 @@ static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
   return 0;
 }
 
+class CommandReadOnly : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    *output = redis::SimpleString("READONLY");
+    return srv->cluster->SetClusterMode(Cluster::ClusterMode::READONLY);
+  }
+};
+
+class CommandReadWrite : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    *output = redis::SimpleString("READWRITE");
+    return srv->cluster->SetClusterMode(Cluster::ClusterMode::READWRITE);
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
-                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0,
-                                                     GenerateClusterFlag), )
+                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
+                        MakeCmdAttr<CommandReadOnly>("readonly", 1, "cluster no-multi", 0, 0, 0),
+                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", 0, 0, 0), )
 
 }  // namespace redis

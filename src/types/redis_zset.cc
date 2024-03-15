@@ -32,8 +32,8 @@
 
 namespace redis {
 
-rocksdb::Status ZSet::GetMetadata(const Slice &ns_key, ZSetMetadata *metadata) {
-  return Database::GetMetadata({kRedisZSet}, ns_key, metadata);
+rocksdb::Status ZSet::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ZSetMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisZSet}, ns_key, metadata);
 }
 
 rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt) {
@@ -43,7 +43,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   int added = 0;
@@ -52,7 +52,7 @@ rocksdb::Status ZSet::Add(const Slice &user_key, ZAddFlags flags, MemberScores *
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
   std::unordered_set<std::string_view> added_member_keys;
-  for (auto it = mscores->rbegin(); it != mscores->rend(); it++) {
+  for (auto it = mscores->rbegin(); it != mscores->rend(); ++it) {
     if (!added_member_keys.insert(it->member).second) {
       continue;
     }

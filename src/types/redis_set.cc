@@ -29,8 +29,8 @@
 
 namespace redis {
 
-rocksdb::Status Set::GetMetadata(const Slice &ns_key, SetMetadata *metadata) {
-  return Database::GetMetadata({kRedisSet}, ns_key, metadata);
+rocksdb::Status Set::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, SetMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisSet}, ns_key, metadata);
 }
 
 // Make sure members are uniq before use Overwrite
@@ -60,7 +60,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
@@ -94,7 +94,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -130,7 +130,7 @@ rocksdb::Status Set::Card(const Slice &user_key, uint64_t *size) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *size = metadata.size;
   return rocksdb::Status::OK();
@@ -142,14 +142,15 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+
+  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
@@ -176,11 +177,12 @@ rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot =  ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(storage_);
+
   read_options.snapshot = ss.GetSnapShot();
   std::string value;
   for (const auto &member : members) {
@@ -212,7 +214,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   if (pop) lock_guard.emplace(storage_->GetLockManager(), ns_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   ObserverOrUniquePtr<rocksdb::WriteBatchBase> batch = storage_->GetWriteBatchBase();

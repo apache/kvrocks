@@ -84,25 +84,30 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
   return s;
 }
 
-rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata) {
+rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, Metadata *metadata) {
   std::string raw_value;
   Slice rest;
-  return GetMetadata(types, ns_key, &raw_value, metadata, &rest);
+  return GetMetadata(options, types, ns_key, &raw_value, metadata, &rest);
 }
 
-rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
+rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
                                       Slice *rest) {
-  auto s = GetRawMetadata(ns_key, raw_value);
+  auto s = GetRawMetadata(options, ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
   return ParseMetadata(types, rest, metadata);
 }
 
-rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+rocksdb::Status Database::GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes) {
+  if (options.snapshot == nullptr) {
+    LatestSnapShot ss(storage_);
+    rocksdb::ReadOptions read_options;
+    read_options.snapshot = ss.GetSnapShot();
+    return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+  }
+  rocksdb::ReadOptions opts;
+  opts.snapshot = options.snapshot;
+  return storage_->Get(opts, metadata_cf_handle_, ns_key, bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
@@ -618,8 +623,7 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
 
 rocksdb::Status Database::KeyExist(const std::string &key) {
   int cnt = 0;
-  std::vector<rocksdb::Slice> keys;
-  keys.emplace_back(key);
+  std::vector<rocksdb::Slice> keys{key};
   auto s = Exists(keys, &cnt);
   if (!s.ok()) {
     return s;

@@ -21,7 +21,9 @@
 #include "redis_bitmap.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "common/bit_util.h"
@@ -347,13 +349,21 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return -1;
   };
 
+  auto range_in_byte = [](uint32_t byte_start, uint32_t byte_end, uint32_t curr_byte, uint32_t start_bit,
+                          uint32_t end_bit) -> std::pair<uint32_t, uint32_t> {
+    if (curr_byte == byte_start && curr_byte == byte_end) return {start_bit, end_bit};
+    if (curr_byte == byte_start) return {start_bit, 7};
+    if (curr_byte == byte_end) return {0, end_bit};
+    return {0, 7};
+  };
+
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   // if bit index, (Eg start = 1, stop = 35), then
   // u_start = 1/8 = 0, u_stop = 35/8 = 4 (in bytes)
-  uint32_t start_index = (u_start / to_bit_factor) / kBitmapSegmentBytes;
-  uint32_t stop_index = (u_stop / to_bit_factor) / kBitmapSegmentBytes;
+  uint32_t start_segment_index = (u_start / to_bit_factor) / kBitmapSegmentBytes;
+  uint32_t stop_segment_index = (u_stop / to_bit_factor) / kBitmapSegmentBytes;
   uint32_t start_bit_pos_in_byte = 0;
   uint32_t stop_bit_pos_in_byte = 0;
 
@@ -363,7 +373,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   }
   // Don't use multi get to prevent large range query, and take too much memory
   // Searching bits in segments [start_index, stop_index].
-  for (uint32_t i = start_index; i <= stop_index; i++) {
+  for (uint32_t i = start_segment_index; i <= stop_segment_index; i++) {
     rocksdb::PinnableSlice pin_value;
     std::string sub_key =
         InternalKey(ns_key, std::to_string(i * kBitmapSegmentBytes), metadata.version, storage_->IsSlotIdEncoded())
@@ -384,12 +394,12 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     size_t byte_with_bit_stop = -2;
     // if bit index, (Eg start = 1, stop = 35), then
     // byte_pos_in_segment should be calculated in bytes, hence divide by 8
-    if (i == start_index) {
+    if (i == start_segment_index) {
       byte_pos_in_segment = (u_start / to_bit_factor) % kBitmapSegmentBytes;
       byte_with_bit_start = byte_pos_in_segment;
     }
     size_t stop_byte_in_segment = pin_value.size();
-    if (i == stop_index) {
+    if (i == stop_segment_index) {
       DCHECK_LE((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1, pin_value.size());
       stop_byte_in_segment = (u_stop / to_bit_factor) % kBitmapSegmentBytes + 1;
       byte_with_bit_stop = stop_byte_in_segment;
@@ -400,18 +410,10 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     for (; byte_pos_in_segment < stop_byte_in_segment; byte_pos_in_segment++) {
       int bit_pos_in_byte_value = -1;
       if (is_bit_index) {
-        if (byte_with_bit_start == byte_with_bit_stop && byte_pos_in_segment == byte_with_bit_start) {
-          bit_pos_in_byte_value = bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit_pos_in_byte,
-                                                            stop_bit_pos_in_byte);
-        } else if (byte_pos_in_segment == byte_with_bit_start) {
-          bit_pos_in_byte_value =
-              bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit_pos_in_byte, 7);
-        } else if (byte_pos_in_segment == byte_with_bit_stop) {
-          bit_pos_in_byte_value =
-              bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, 0, stop_bit_pos_in_byte);
-        } else {
-          bit_pos_in_byte_value = bit_pos_in_byte(pin_value[byte_pos_in_segment], bit);
-        }
+        uint32_t start_bit = 0, stop_bit = 7;
+        std::tie(start_bit, stop_bit) = range_in_byte(byte_with_bit_start, byte_with_bit_stop, byte_pos_in_segment,
+                                                      start_bit_pos_in_byte, stop_bit_pos_in_byte);
+        bit_pos_in_byte_value = bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit, stop_bit);
       } else {
         bit_pos_in_byte_value = bit_pos_in_byte(pin_value[byte_pos_in_segment], bit);
       }
@@ -428,7 +430,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     // 1. If it's the last segment, we've done searching in the above loop.
     // 2. If it's not the last segment, we can check if the segment is all 0.
     if (pin_value.size() < kBitmapSegmentBytes) {
-      if (i == stop_index) {
+      if (i == stop_segment_index) {
         continue;
       }
       *pos = static_cast<int64_t>(i * kBitmapSegmentBits + pin_value.size() * 8);

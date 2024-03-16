@@ -119,5 +119,5 @@ class Cluster {
   std::map<int, std::string> migrated_slots_;
   std::set<int> imported_slots_;
 
-  ClusterMode cluster_mode_{ClusterMode::READWRITE};
+  ClusterMode cluster_mode_{ClusterMode::READONLY};
 };

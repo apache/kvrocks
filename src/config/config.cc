@@ -190,6 +190,7 @@ Config::Config() {
       {"rocksdb.compression", false,
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
+      {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},

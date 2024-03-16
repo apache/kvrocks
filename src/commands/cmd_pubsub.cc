@@ -75,7 +75,7 @@ class CommandMPublish : public Commander {
 
 void SubscribeCommandReply(const Connection *conn, std::string *output, const std::string &name,
                            const std::string &sub_name, int num) {
-  output->append(redis::MultiLen(3));
+  output->append(conn->HeaderOfPush(3));
   output->append(redis::BulkString(name));
   output->append(sub_name.empty() ? conn->NilString() : BulkString(sub_name));
   output->append(redis::Integer(num));

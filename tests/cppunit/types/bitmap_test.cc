@@ -255,7 +255,7 @@ TEST_P(RedisBitmapTest, BitPosStopGiven) {
   }
   bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos, /*bit_index=*/false);
   EXPECT_EQ(-1, pos);
-  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos, /*bit_index=*/ false);
+  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos, /*bit_index=*/false);
   EXPECT_EQ(9, pos);
 
   auto s = bitmap_->Del(key_);

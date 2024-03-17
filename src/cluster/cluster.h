@@ -68,8 +68,6 @@ class SyncMigrateContext;
 
 class Cluster {
  public:
-  enum class ClusterMode { READONLY, READWRITE };
-
   explicit Cluster(Server *srv, std::vector<std::string> binds, int port);
   Status SetClusterNodes(const std::string &nodes_str, int64_t version, bool force);
   Status GetClusterNodes(std::string *nodes_str);

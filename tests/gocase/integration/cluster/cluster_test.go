@@ -334,6 +334,11 @@ func TestClusterMultiple(t *testing.T) {
 		require.ErrorContains(t, rdb[3].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), "MOVED")
 		// request a read-only command to node3 that serve slot 16383, that's ok
 		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		//the default option is READWRITE, which will redirect both read and write to master
+		require.ErrorContains(t, rdb[3].Get(ctx, util.SlotTable[16383]).Err(), "MOVED")
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+
 		require.Equal(t, "16383", rdb[3].Get(ctx, util.SlotTable[16383]).Val())
 	})
 
@@ -368,5 +373,19 @@ func TestClusterMultiple(t *testing.T) {
 		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[16383], 0, 0).Err(), fmt.Sprintf("MOVED 16383.*%d.*", srv[2].Port()))
 		require.ErrorContains(t, rdb[1].Do(ctx, "EXEC").Err(), "EXECABORT")
 		require.Equal(t, "no-multi", rdb[1].Get(ctx, util.SlotTable[0]).Val())
+	})
+
+	t.Run("requests on cluster are ok when enable readonly", func(t *testing.T) {
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+		require.NoError(t, rdb[2].Set(ctx, util.SlotTable[8192], 8192, 0).Err())
+		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		// request node3 that serves slot 8192, that's ok
+		require.Equal(t, "8192", rdb[3].Get(ctx, util.SlotTable[8192]).Val())
+
+		require.NoError(t, rdb[3].Do(ctx, "READWRITE").Err())
+
+		// when enable READWRITE, request node3 that serves slot 8192, that's not ok
+		util.ErrorRegexp(t, rdb[3].Get(ctx, util.SlotTable[8192]).Err(), fmt.Sprintf("MOVED 8192.*%d.*", srv[2].Port()))
 	})
 }

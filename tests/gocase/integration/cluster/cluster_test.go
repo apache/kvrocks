@@ -334,6 +334,11 @@ func TestClusterMultiple(t *testing.T) {
 		require.ErrorContains(t, rdb[3].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), "MOVED")
 		// request a read-only command to node3 that serve slot 16383, that's ok
 		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		//the default option is READWRITE, which will redirect both read and write to master
+		require.ErrorContains(t, rdb[3].Get(ctx, util.SlotTable[16383]).Err(), "MOVED")
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+
 		require.Equal(t, "16383", rdb[3].Get(ctx, util.SlotTable[16383]).Val())
 	})
 

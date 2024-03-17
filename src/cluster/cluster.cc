@@ -803,7 +803,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   if (myself_ && myself_->role == kClusterSlave && !(attributes->flags & redis::kCmdWrite) &&
       nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot] &&
-      !conn->IsFlagEnabled(redis::Connection::KReadWrite)) {
+      conn->IsFlagEnabled(redis::Connection::KReadOnly)) {
     return Status::OK();  // My master is serving this slot
   }
 

@@ -94,11 +94,6 @@ class Cluster {
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
-  Status SetClusterMode(ClusterMode mode) {
-    cluster_mode_ = mode;
-    return Status::OK();
-  }
-
  private:
   std::string genNodesDescription();
   std::string genNodesInfo();
@@ -118,6 +113,4 @@ class Cluster {
 
   std::map<int, std::string> migrated_slots_;
   std::set<int> imported_slots_;
-
-  ClusterMode cluster_mode_{ClusterMode::READONLY};
 };

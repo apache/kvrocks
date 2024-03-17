@@ -23,6 +23,7 @@
 #include "cluster/sync_migrate_context.h"
 #include "commander.h"
 #include "error_constants.h"
+#include "status.h"
 
 namespace redis {
 
@@ -295,16 +296,18 @@ static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
 class CommandReadOnly : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    *output = redis::SimpleString("READONLY");
-    return srv->cluster->SetClusterMode(Cluster::ClusterMode::READONLY);
+    *output = redis::SimpleString("OK");
+    conn->DisableFlag(redis::Connection::KReadWrite);
+    return Status::OK();
   }
 };
 
 class CommandReadWrite : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    *output = redis::SimpleString("READWRITE");
-    return srv->cluster->SetClusterMode(Cluster::ClusterMode::READWRITE);
+    *output = redis::SimpleString("OK");
+    conn->EnableFlag(redis::Connection::KReadWrite);
+    return Status::OK();
   }
 };
 

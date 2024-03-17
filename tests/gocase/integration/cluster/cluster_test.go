@@ -369,4 +369,18 @@ func TestClusterMultiple(t *testing.T) {
 		require.ErrorContains(t, rdb[1].Do(ctx, "EXEC").Err(), "EXECABORT")
 		require.Equal(t, "no-multi", rdb[1].Get(ctx, util.SlotTable[0]).Val())
 	})
+
+	t.Run("requests on cluster are ok when enable readonly", func(t *testing.T) {
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+		require.NoError(t, rdb[2].Set(ctx, util.SlotTable[8192], 8192, 0).Err())
+		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		// request node3 that serves slot 8192, that's ok
+		require.Equal(t, "8192", rdb[3].Get(ctx, util.SlotTable[8192]).Val())
+
+		require.NoError(t, rdb[3].Do(ctx, "READWRITE").Err())
+
+		// when enable READWRITE, request node3 that serves slot 8192, that's not ok
+		util.ErrorRegexp(t, rdb[3].Get(ctx, util.SlotTable[8192]).Err(), fmt.Sprintf("MOVED 8192.*%d.*", srv[2].Port()))
+	})
 }

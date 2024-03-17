@@ -94,7 +94,19 @@ static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
   bits[i / 8] ^= static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) & kBitmask[i % 8];
 }
 
-inline int64_t RawBitposBytes(const uint8_t *c, int64_t count, bool bit) {
+/* Return the position of the first bit set to one (if 'bit' is 1) or
+ * zero (if 'bit' is 0) in the bitmap starting at 's' and long 'count' bytes.
+ *
+ * The function is guaranteed to return a value >= 0 if 'bit' is 0 since if
+ * no zero bit is found, it returns count*8 assuming the string is zero
+ * padded on the right. However if 'bit' is 1 it is possible that there is
+ * not a single set bit in the bitmap. In this special case -1 is returned.
+ * */
+inline int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit) {
+  if (count == 0) {
+    return -1;
+  }
+
   int64_t res = 0;
 
   if (bit) {
@@ -134,56 +146,6 @@ inline int64_t RawBitposBytes(const uint8_t *c, int64_t count, bool bit) {
   }
 
   return res;
-}
-
-/* Return the position of the first bit set to one (if 'bit' is 1) or
- * zero (if 'bit' is 0) in the bitmap 's' starting at 'start_bit' and
- * ending at 'end_bit'
- *
- * The function is guaranteed to return a value >= 0 if 'bit' is 0 since if
- * no zero bit is found, it returns count*8 assuming the string is zero
- * padded on the right. However if 'bit' is 1 it is possible that there is
- * not a single set bit in the bitmap. In this special case -1 is returned.
- * */
-inline int64_t RawBitpos(const uint8_t *s, int64_t start_bit, int64_t end_bit, bool bit) {
-  int64_t start_byte = start_bit / 8;
-  int64_t end_byte = end_bit / 8;
-  int64_t start_bit_in_byte = start_bit % 8;
-  int64_t end_bit_in_byte = end_bit % 8;
-
-  // If the range is contained in a single byte
-  if (start_byte == end_byte) {
-    for (int64_t i = start_bit_in_byte; i <= end_bit_in_byte; i++) {
-      if (msb::GetBitFromByte(s[start_byte], i) == bit) {
-        return i + start_byte * 8;
-      }
-    }
-
-    // return count if no bit is found and bit is 0, else return -1
-    return bit ? -1 : (end_bit - start_bit + 1);
-  }
-
-  // Check the start byte
-  for (int64_t i = start_bit_in_byte; i < 8; i++) {
-    if (msb::GetBitFromByte(s[start_byte], i) == bit) {
-      return i + start_byte * 8;
-    }
-  }
-
-  // iterate over long bytes in the middle
-  int64_t res = msb::RawBitposBytes(s + start_byte + 1, end_byte - start_byte - 1, bit);
-  if (res != -1 && res != (end_byte - start_byte - 1) * 8) {
-    return res + (start_byte + 1) * 8;
-  }
-
-  // check the last byte
-  for (int64_t i = 0; i <= end_bit_in_byte; i++) {
-    if (msb::GetBitFromByte(s[end_byte], i) == bit) {
-      return i + end_byte * 8;
-    }
-  }
-
-  return bit ? -1 : (end_bit - start_bit + 1);
 }
 
 }  // namespace msb

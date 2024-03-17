@@ -110,27 +110,70 @@ rocksdb::Status BitmapString::BitPos(const std::string &raw_value, bool bit, int
 
   if (start > stop) {
     *pos = -1;
-  } else {
-    if (!is_bit_index) {
-      start *= 8;
-      stop = (stop * 8) + 7;
+    return rocksdb::Status::OK();
+  }
+
+  int64_t byte_start = is_bit_index ? start / 8 : start;
+  int64_t byte_stop = is_bit_index ? stop / 8 : stop;
+  int64_t bit_in_start_byte = is_bit_index ? start % 8 : 0;
+  int64_t bit_in_stop_byte = is_bit_index ? stop % 8 : 7;
+  int64_t bytes_cnt = byte_stop - byte_start + 1;
+
+  auto bit_pos_in_byte_startstop = [](char byte, bool bit, uint32_t start, uint32_t stop) -> int {
+    for (uint32_t i = start; i <= stop; i++) {
+      if (util::msb::GetBitFromByte(byte, i) == bit) {
+        return (int)i;
+      }
+    }
+    return -1;
+  };
+
+  // if the bit start and bit end are in the same byte, we can process it manually
+  if (is_bit_index && byte_start == byte_stop) {
+    int res = bit_pos_in_byte_startstop(string_value[byte_start], bit, bit_in_start_byte, bit_in_stop_byte);
+    if (res != -1) {
+      *pos = res + byte_start * 8;
+      return rocksdb::Status::OK();
+    }
+    *pos = -1;
+    return rocksdb::Status::OK();
+  }
+
+  if (is_bit_index && bit_in_start_byte != 0) {
+    // process first byte
+    int res = bit_pos_in_byte_startstop(string_value[byte_start], bit, bit_in_start_byte, 7);
+    if (res != -1) {
+      *pos = res + byte_start * 8;
+      return rocksdb::Status::OK();
     }
 
-    int64_t count_bits = stop - start + 1;
-    *pos = util::msb::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()), start, stop, bit);
+    byte_start++;
+    bytes_cnt--;
+  }
 
-    /* If we are looking for clear bits, and the user specified an exact
-     * range with start-end, we can't consider the right of the range as
-     * zero padded (as we do when no explicit end is given).
-     *
-     * So if redisBitpos() returns the first bit outside the range,
-     * we return -1 to the caller, to mean, in the specified range there
-     * is not a single "0" bit. */
-    if (stop_given && bit == 0 && *pos == count_bits) {
+  *pos = util::msb::RawBitpos(reinterpret_cast<const uint8_t *>(string_value.data()) + byte_start, bytes_cnt, bit);
+
+  if (is_bit_index && *pos != -1 && *pos != bytes_cnt * 8) {
+    // if the pos is more than stop bit, then it is not in the range
+    if (*pos > stop) {
       *pos = -1;
       return rocksdb::Status::OK();
     }
   }
+
+  /* If we are looking for clear bits, and the user specified an exact
+   * range with start-end, we tcan' consider the right of the range as
+   * zero padded (as we do when no explicit end is given).
+   *
+   * So if redisBitpos() returns the first bit outside the range,
+   * we return -1 to the caller, to mean, in the specified range there
+   * is not a single "0" bit. */
+  if (stop_given && bit == 0 && *pos == bytes_cnt * 8) {
+    *pos = -1;
+    return rocksdb::Status::OK();
+  }
+  if (*pos != -1) *pos += byte_start * 8; /* Adjust for the bytes we skipped. */
+
   return rocksdb::Status::OK();
 }
 

@@ -550,7 +550,7 @@ func TestBitmap(t *testing.T) {
 
 	t.Run("BITPOS bit=0 fuzzy testing using SETBIT", func(t *testing.T) {
 		var max int64 = 524288
-		var firstZeroPos int64 = max
+		firstZeroPos := max
 		require.NoError(t, rdb.Set(ctx, "str", strings.Repeat("\xff", int(max/8)), 0).Err())
 		for j := 0; j < 1000; j++ {
 			cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")

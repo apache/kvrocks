@@ -29,6 +29,9 @@
 #include "storage.h"
 
 namespace redis {
+
+/// Database is a wrapper of underlying storage engine, it provides
+/// some common operations for redis commands.
 class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
@@ -40,11 +43,38 @@ class Database {
   };
 
   explicit Database(engine::Storage *storage, std::string ns = "");
+  /// Parsing metadata with type of `types` from bytes, the metadata is a base class of all metadata.
+  /// When parsing, the bytes will be consumed.
   [[nodiscard]] rocksdb::Status ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata);
+  /// GetMetadata is a helper function to get metadata from the database. It will read the "raw metadata"
+  /// from underlying storage, and then parse the raw metadata to the specified metadata type.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param types The candidate types of the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param metadata The output metadata.
   [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
                                             Metadata *metadata);
+  /// GetMetadata is a helper function to get metadata from the database. It will read the "raw metadata"
+  /// from underlying storage, and then parse the raw metadata to the specified metadata type.
+  ///
+  /// Compared with the above function, this function will also return the rest of the bytes
+  /// after parsing the metadata.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param types The candidate types of the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param raw_value Holding the raw metadata.
+  /// \param metadata The output metadata.
+  /// \param rest The rest of the bytes after parsing the metadata.
   [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
                                             std::string *raw_value, Metadata *metadata, Slice *rest);
+  /// GetRawMetadata is a helper function to get the "raw metadata" from the database without parsing
+  /// it to the specified metadata type.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param bytes The output raw metadata.
   [[nodiscard]] rocksdb::Status GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(const Slice &user_key);
@@ -77,7 +107,6 @@ class Database {
 
   friend class LatestSnapShot;
 };
-
 class LatestSnapShot {
  public:
   explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}

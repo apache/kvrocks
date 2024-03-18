@@ -349,14 +349,6 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return -1;
   };
 
-  auto range_in_byte = [](uint32_t byte_start, uint32_t byte_end, uint32_t curr_byte, uint32_t start_bit,
-                          uint32_t end_bit) -> std::pair<uint32_t, uint32_t> {
-    if (curr_byte == byte_start && curr_byte == byte_end) return {start_bit, end_bit};
-    if (curr_byte == byte_start) return {start_bit, 7};
-    if (curr_byte == byte_end) return {0, end_bit};
-    return {0, 7};
-  };
-
   LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -371,6 +363,16 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     start_bit_pos_in_byte = u_start % 8;
     stop_bit_pos_in_byte = u_stop % 8;
   }
+
+  auto range_in_byte = [start_bit_pos_in_byte, stop_bit_pos_in_byte](
+                           uint32_t byte_start, uint32_t byte_end,
+                           uint32_t curr_byte) -> std::pair<uint32_t, uint32_t> {
+    if (curr_byte == byte_start && curr_byte == byte_end) return {start_bit_pos_in_byte, stop_bit_pos_in_byte};
+    if (curr_byte == byte_start) return {start_bit_pos_in_byte, 7};
+    if (curr_byte == byte_end) return {0, stop_bit_pos_in_byte};
+    return {0, 7};
+  };
+
   // Don't use multi get to prevent large range query, and take too much memory
   // Searching bits in segments [start_index, stop_index].
   for (uint32_t i = start_segment_index; i <= stop_segment_index; i++) {
@@ -411,8 +413,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
       int bit_pos_in_byte_value = -1;
       if (is_bit_index) {
         uint32_t start_bit = 0, stop_bit = 7;
-        std::tie(start_bit, stop_bit) = range_in_byte(byte_with_bit_start, byte_with_bit_stop, byte_pos_in_segment,
-                                                      start_bit_pos_in_byte, stop_bit_pos_in_byte);
+        std::tie(start_bit, stop_bit) = range_in_byte(byte_with_bit_start, byte_with_bit_stop, byte_pos_in_segment);
         bit_pos_in_byte_value = bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit, stop_bit);
       } else {
         bit_pos_in_byte_value = bit_pos_in_byte(pin_value[byte_pos_in_segment], bit);

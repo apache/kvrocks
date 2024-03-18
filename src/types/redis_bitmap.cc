@@ -306,6 +306,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
 
 rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given,
                                int64_t *pos, bool is_bit_index) {
+  if (is_bit_index) DCHECK(stop_given);
+
   std::string raw_value;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -326,8 +328,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   auto size = static_cast<int64_t>(metadata.size) * static_cast<int64_t>(to_bit_factor);
 
   std::tie(start, stop) = BitmapString::NormalizeRange(start, stop, size);
-  auto u_start = static_cast<uint32_t>(start);
-  auto u_stop = static_cast<uint32_t>(stop);
+  auto u_start = static_cast<uint64_t>(start);
+  auto u_stop = static_cast<uint64_t>(stop);
   if (u_start > u_stop) {
     *pos = -1;
     return rocksdb::Status::OK();

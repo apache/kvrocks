@@ -103,10 +103,6 @@ static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
  * not a single set bit in the bitmap. In this special case -1 is returned.
  * */
 inline int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit) {
-  if (count == 0) {
-    return -1;
-  }
-
   int64_t res = 0;
 
   if (bit) {

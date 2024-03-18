@@ -159,7 +159,7 @@ struct JsonValue {
                                        });
 
       if (!is_set) {
-        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistant paths in jsoncons
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
         // and in this workaround we can only accept normalized path
         // refer to https://github.com/danielaparker/jsoncons/issues/496
         jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
@@ -436,7 +436,7 @@ struct JsonValue {
       bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
       if (not_exists) {
-        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistant paths in jsoncons
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
         // and in this workaround we can only accept normalized path
         // refer to https://github.com/danielaparker/jsoncons/issues/496
         jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);

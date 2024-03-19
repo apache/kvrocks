@@ -218,18 +218,33 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
+        if: ${{ !startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v4
         with:
           path: |
             ~/local/bin/redis-cli
           key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+      - name: Cache redis server
+        id: cache-redis-server
+        if: ${{ !startsWith(matrix.os, 'macos') }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/local/bin/redis-server
+          key: ${{ matrix.os }}-redis-server
       - name: Install redis
-        if: steps.cache-redis.outputs.cache-hit != 'true'
+        if: ${{ !startsWith(matrix.os, 'macos') && (steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true') }}
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
           tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
+
+      - name: Setup redis (macOS)
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: |
+          brew install redis@6.2
 
       - uses: actions/checkout@v4
         with:
@@ -256,7 +271,7 @@ jobs:
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
-          
+
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
@@ -292,6 +307,46 @@ jobs:
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
+
+      - name: Install redis-py
+        run: pip3 install redis==4.3.6
+
+      - name: Run kvrocks2redis Test
+        if: ${{ !startsWith(matrix.os, 'macos') }}
+        run: |
+          ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p data
+          ./build/kvrocks --dir `pwd`/data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 15s
+          echo -en "data-dir `pwd`/data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 15s
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 15s
+          ps aux
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
+      - name: Run kvrocks2redis Test (macOS)
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: |
+          ulimit -c unlimited
+          brew services start redis@6.2
+          mkdir -p data
+          ./build/kvrocks --dir `pwd`/data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 15
+          echo -en "data-dir `pwd`/data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 15
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 15
+          ps aux
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
 
       - name: Find reports and crashes
         if: always()
@@ -397,7 +452,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           yum install -y centos-release-scl-rh
-          yum install -y devtoolset-11 python3 autoconf automake wget git gcc gcc-c++
+          yum install -y devtoolset-11 python3 python3-pip autoconf automake wget git gcc gcc-c++
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
           mv /usr/bin/gcc /usr/bin/gcc-4.8.5
           ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
@@ -408,13 +463,13 @@ jobs:
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
           pacman -Syu --noconfirm
-          pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
+          pacman -Sy --noconfirm autoconf automake python3 python-redis git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake go
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -429,13 +484,22 @@ jobs:
             ~/local/bin/redis-cli
           key: ${{ matrix.image }}-redis-cli
 
+      - name: Cache redis server
+        id: cache-redis-server
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/local/bin/redis-server
+          key: ${{ matrix.image }}-redis-server
+
       - name: Install redis
-        if: steps.cache-redis.outputs.cache-hit != 'true'
+        if: steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true'
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
           tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
@@ -464,6 +528,24 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
           ./x.py test go build $GOCASE_RUN_ARGS
+
+      - name: Install redis-py
+        if: ${{ !startsWith(matrix.image, 'archlinux') }}  # already installed
+        run: pip3 install redis==4.3.6
+
+      - name: Run kvrocks2redis Test
+        run: |
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p data
+          ./build/kvrocks --dir `pwd`/data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 15s
+          echo -en "data-dir `pwd`/data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 15s
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 15s
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
   required:
     if: always()

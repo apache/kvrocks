@@ -26,7 +26,7 @@
 #include <variant>
 #include <vector>
 
-// kqir stands for Kvorcks Query Intermediate Representaion
+// kqir stands for Kvorcks Query Intermediate Representation
 namespace kqir {
 
 struct FieldRef {

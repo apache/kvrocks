@@ -44,15 +44,16 @@ const char *errXGroupSubcommandRequiresKeyExist =
     "The XGROUP subcommand requires the key to exist.\
 Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically.";
 
-rocksdb::Status Stream::GetMetadata(const Slice &stream_name, StreamMetadata *metadata) {
-  return Database::GetMetadata({kRedisStream}, stream_name, metadata);
+rocksdb::Status Stream::GetMetadata(Database::GetOptions get_options, const Slice &stream_name,
+                                    StreamMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisStream}, stream_name, metadata);
 }
 
 rocksdb::Status Stream::GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -99,7 +100,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   if (s.IsNotFound() && options.nomkstream) {
@@ -322,7 +323,7 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -365,7 +366,7 @@ rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroup
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -414,7 +415,7 @@ rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -465,7 +466,7 @@ rocksdb::Status Stream::createConsumerWithoutLock(const Slice &stream_name, cons
   }
   std::string ns_key = AppendNamespacePrefix(stream_name);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -522,7 +523,7 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
   std::string ns_key = AppendNamespacePrefix(stream_name);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -593,7 +594,7 @@ rocksdb::Status Stream::GroupSetId(const Slice &stream_name, const std::string &
   std::string ns_key = AppendNamespacePrefix(stream_name);
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -639,7 +640,7 @@ rocksdb::Status Stream::DeleteEntries(const Slice &stream_name, const std::vecto
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -728,7 +729,7 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -877,7 +878,7 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   info->size = metadata.size;
@@ -1001,7 +1002,7 @@ rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
                                      std::vector<std::pair<std::string, StreamConsumerGroupMetadata>> &group_metadata) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::string next_version_prefix_key =
@@ -1034,7 +1035,7 @@ rocksdb::Status Stream::GetConsumerInfo(
     std::vector<std::pair<std::string, StreamConsumerMetadata>> &consumer_metadata) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::string next_version_prefix_key =
@@ -1082,7 +1083,7 @@ rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -1111,7 +1112,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -1242,7 +1243,7 @@ rocksdb::Status Stream::Trim(const Slice &stream_name, const StreamTrimOptions &
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -1347,7 +1348,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }

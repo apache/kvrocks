@@ -73,7 +73,8 @@ class Bitmap : public Database {
                            std::vector<std::optional<BitfieldValue>> *rets);
   static bool bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                     const std::vector<BitfieldOperation> &ops);
-  rocksdb::Status GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, BitmapMetadata *metadata,
+                              std::string *raw_value);
 
   template <bool ReadOnly>
   static rocksdb::Status runBitfieldOperationsWithCache(SegmentCacheStore &cache,

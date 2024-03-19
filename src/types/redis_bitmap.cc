@@ -95,8 +95,9 @@ uint32_t SegmentSubKeyIndexForBit(uint32_t bit_offset) {
   return (bit_offset / kBitmapSegmentBits) * kBitmapSegmentBytes;
 }
 
-rocksdb::Status Bitmap::GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value) {
-  auto s = GetRawMetadata(ns_key, raw_value);
+rocksdb::Status Bitmap::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, BitmapMetadata *metadata,
+                                    std::string *raw_value) {
+  auto s = GetRawMetadata(get_options, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Slice slice = *raw_value;
@@ -109,7 +110,8 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t bit_offset, bool 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (metadata.Type() == kRedisString) {
@@ -117,7 +119,6 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t bit_offset, bool 
     return bitmap_string_db.GetBit(raw_value, bit_offset, bit);
   }
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::PinnableSlice value;
@@ -144,7 +145,8 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s;
   if (metadata.size > max_btos_size) {
     return rocksdb::Status::Aborted(kErrBitmapStringOutOfRange);
@@ -154,7 +156,6 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
 
   auto iter = util::UniqueIterator(storage_, read_options);
@@ -186,7 +187,7 @@ rocksdb::Status Bitmap::SetBit(const Slice &user_key, uint32_t bit_offset, bool 
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   BitmapMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   if (metadata.Type() == kRedisString) {
@@ -230,7 +231,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  std::optional<LatestSnapShot> ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   /* Convert negative indexes */
@@ -239,6 +241,9 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   }
 
   if (metadata.Type() == kRedisString) {
+    // Release snapshot ahead for performance, this requires
+    // `bitmap_string_db` doesn't get anything.
+    ss = std::nullopt;
     redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.BitCount(raw_value, start, stop, is_bit_index, cnt);
   }
@@ -259,9 +264,8 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
   auto u_start = static_cast<uint32_t>(start_byte);
   auto u_stop = static_cast<uint32_t>(stop_byte);
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ss->GetSnapShot();
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
@@ -312,7 +316,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BitmapMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata, &raw_value);
+  std::optional<LatestSnapShot> ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (s.IsNotFound()) {
     *pos = bit ? -1 : 0;
@@ -320,6 +325,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
   }
 
   if (metadata.Type() == kRedisString) {
+    ss = std::nullopt;
     redis::BitmapString bitmap_string_db(storage_, namespace_);
     return bitmap_string_db.BitPos(raw_value, bit, start, stop, stop_given, pos, is_bit_index);
   }
@@ -351,9 +357,8 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
     return -1;
   };
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ss->GetSnapShot();
   // if bit index, (Eg start = 1, stop = 35), then
   // u_start = 1/8 = 0, u_stop = 35/8 = 4 (in bytes)
   uint32_t start_segment_index = (u_start / to_bit_factor) / kBitmapSegmentBytes;
@@ -468,7 +473,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   for (const auto &op_key : op_keys) {
     BitmapMetadata metadata(false);
     std::string ns_op_key = AppendNamespacePrefix(op_key);
-    auto s = GetMetadata(ns_op_key, &metadata, &raw_value);
+    auto s = GetMetadata(GetOptions{}, ns_op_key, &metadata, &raw_value);
     if (!s.ok()) {
       if (s.IsNotFound()) {
         continue;
@@ -820,7 +825,8 @@ rocksdb::Status Bitmap::bitfield(const Slice &user_key, const std::vector<Bitfie
 
   BitmapMetadata metadata;
   std::string raw_value;
-  auto s = GetMetadata(ns_key, &metadata, &raw_value);
+  // TODO(mwish): maintain snapshot for read-only bitfield.
+  auto s = GetMetadata(GetOptions{}, ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }

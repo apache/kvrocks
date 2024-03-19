@@ -27,8 +27,8 @@
 
 namespace redis {
 
-rocksdb::Status List::GetMetadata(const Slice &ns_key, ListMetadata *metadata) {
-  return Database::GetMetadata({kRedisList}, ns_key, metadata);
+rocksdb::Status List::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ListMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisList}, ns_key, metadata);
 }
 
 rocksdb::Status List::Size(const Slice &user_key, uint64_t *size) {
@@ -36,7 +36,7 @@ rocksdb::Status List::Size(const Slice &user_key, uint64_t *size) {
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *size = metadata.size;
   return rocksdb::Status::OK();
@@ -61,7 +61,7 @@ rocksdb::Status List::push(const Slice &user_key, const std::vector<Slice> &elem
   WriteBatchLogData log_data(kRedisList, {std::to_string(cmd)});
   batch->PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !(create_if_missing && s.IsNotFound())) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
@@ -105,7 +105,7 @@ rocksdb::Status List::PopMulti(const rocksdb::Slice &user_key, bool left, uint32
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   auto batch = storage_->GetWriteBatchBase();
@@ -169,7 +169,7 @@ rocksdb::Status List::Rem(const Slice &user_key, int count, const Slice &elem, u
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   uint64_t index = count >= 0 ? metadata.head : metadata.tail - 1;
@@ -259,7 +259,7 @@ rocksdb::Status List::Insert(const Slice &user_key, const Slice &pivot, const Sl
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::string buf;
@@ -334,14 +334,14 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   if (index < 0) index += static_cast<int>(metadata.size);
   if (index < 0 || index >= static_cast<int>(metadata.size)) return rocksdb::Status::NotFound();
 
   rocksdb::ReadOptions read_options;
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   std::string buf;
   PutFixed64(&buf, metadata.head + index);
@@ -359,7 +359,8 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = static_cast<int>(metadata.size) + start;
@@ -374,7 +375,6 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
@@ -398,7 +398,7 @@ rocksdb::Status List::Pos(const Slice &user_key, const Slice &elem, const PosSpe
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   // A negative rank means start from the tail.
@@ -454,7 +454,7 @@ rocksdb::Status List::Set(const Slice &user_key, int index, Slice elem) {
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
   if (index < 0) index += static_cast<int>(metadata.size);
   if (index < 0 || index >= static_cast<int>(metadata.size)) {
@@ -490,7 +490,7 @@ rocksdb::Status List::lmoveOnSingleList(const rocksdb::Slice &src, bool src_left
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s;
   }
@@ -553,13 +553,13 @@ rocksdb::Status List::lmoveOnTwoLists(const rocksdb::Slice &src, const rocksdb::
   std::vector<std::string> lock_keys{src_ns_key, dst_ns_key};
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
   ListMetadata src_metadata(false);
-  auto s = GetMetadata(src_ns_key, &src_metadata);
+  auto s = GetMetadata(GetOptions{}, src_ns_key, &src_metadata);
   if (!s.ok()) {
     return s;
   }
 
   ListMetadata dst_metadata(false);
-  s = GetMetadata(dst_ns_key, &dst_metadata);
+  s = GetMetadata(GetOptions{}, dst_ns_key, &dst_metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -615,7 +615,7 @@ rocksdb::Status List::Trim(const Slice &user_key, int start, int stop) {
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   ListMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start += static_cast<int>(metadata.size);

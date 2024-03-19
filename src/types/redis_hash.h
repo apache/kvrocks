@@ -65,7 +65,7 @@ class Hash : public SubKeyScanner {
                             HashFetchType type = HashFetchType::kOnlyKey);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, HashMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HashMetadata *metadata);
 
   friend struct FieldValueRetriever;
 };

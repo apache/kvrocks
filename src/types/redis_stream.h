@@ -62,7 +62,7 @@ class Stream : public SubKeyScanner {
                                    std::vector<StreamEntry> *entries, std::string &group_name,
                                    std::string &consumer_name, bool noack, bool latest);
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *delete_cnt);
-  rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &stream_name, StreamMetadata *metadata);
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
   rocksdb::Status SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,
                         std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id);

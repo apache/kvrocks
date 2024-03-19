@@ -56,7 +56,7 @@ class List : public Database {
   rocksdb::Status Pos(const Slice &user_key, const Slice &elem, const PosSpec &spec, std::vector<int64_t> *indexes);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, ListMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ListMetadata *metadata);
   rocksdb::Status push(const Slice &user_key, const std::vector<Slice> &elems, bool create_if_missing, bool left,
                        uint64_t *new_size);
   rocksdb::Status lmoveOnSingleList(const Slice &src, bool src_left, bool dst_left, std::string *elem);

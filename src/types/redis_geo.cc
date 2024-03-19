@@ -128,7 +128,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
-  rocksdb::Status s = ZSet::GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = ZSet::GetMetadata(GetOptions{}, ns_key, &metadata);
   // store key is not empty, try to remove it before returning.
   if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
     auto del_s = ZSet::Del(store_key);

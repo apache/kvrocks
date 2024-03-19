@@ -50,7 +50,7 @@ class Sortedint : public Database {
   static Status ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, SortedintMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, SortedintMetadata *metadata);
 };
 
 }  // namespace redis

@@ -33,19 +33,31 @@ struct FieldRef {
   std::string name;
 };
 
+struct StringLiteral {
+  std::string val;
+};
+
 struct TagContainExpr {
   FieldRef field;
-  std::string tag;
+  StringLiteral tag;
+};
+
+struct NumericLiteral {
+  double val;
 };
 
 struct NumericCompareExpr {
   enum { EQ, NE, LT, LET, GT, GET } op;
   FieldRef field;
-  double num;
+  NumericLiteral num;
 };
 
-struct AtomExpr {
-  std::variant<TagContainExpr, NumericCompareExpr> expr;
+struct BoolLiteral {
+  bool val;
+};
+
+struct BooleanExpr {
+  std::variant<TagContainExpr, NumericCompareExpr, BoolLiteral> expr;
 };
 
 struct QueryExpr;
@@ -62,7 +74,7 @@ struct LogicalBinaryExpr {
 };
 
 struct QueryExpr {
-  std::variant<LogicalUnaryExpr, LogicalBinaryExpr, AtomExpr> expr;
+  std::variant<LogicalUnaryExpr, LogicalBinaryExpr, BooleanExpr> expr;
 };
 
 struct Limit {

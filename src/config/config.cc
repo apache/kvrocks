@@ -778,9 +778,7 @@ Status Config::finish() {
   if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
-  if (backup_dir_.empty()) backup_dir_ = dir + "/backup";
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (pidfile_.empty()) pidfile_ = dir + "/kvrocks.pid";
   if (log_dir.empty()) log_dir = dir;
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {

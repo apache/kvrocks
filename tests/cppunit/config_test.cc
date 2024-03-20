@@ -175,8 +175,8 @@ TEST(Config, Rewrite) {
   redis::CommandTable::Reset();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
-  ASSERT_EQ(config.dir + "/backup", config.GetBackupDir());
-  ASSERT_EQ(config.dir + "/kvrocks.pid", config.GetPidFile());
+  ASSERT_EQ(config.dir + "/backup", config.backup_dir);
+  ASSERT_EQ(config.dir + "/kvrocks.pid", config.pidfile);
   ASSERT_TRUE(config.Rewrite({}).IsOK());
   // Need to re-populate the command table since it has renamed by the previous
   redis::CommandTable::Reset();

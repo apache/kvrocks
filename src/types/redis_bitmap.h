@@ -50,7 +50,8 @@ class Bitmap : public Database {
   rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
   rocksdb::Status SetBit(const Slice &user_key, uint32_t bit_offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, bool is_bit_index, uint32_t *cnt);
-  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
+  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos,
+                         bool is_bit_index);
   rocksdb::Status BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
                         const std::vector<Slice> &op_keys, int64_t *len);
   rocksdb::Status Bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,

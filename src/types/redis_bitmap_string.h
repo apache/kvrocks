@@ -39,7 +39,7 @@ class BitmapString : public Database {
   static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit_index,
                                   uint32_t *cnt);
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
-                                int64_t *pos);
+                                int64_t *pos, bool is_bit_index);
   rocksdb::Status Bitfield(const Slice &ns_key, std::string *raw_value, const std::vector<BitfieldOperation> &ops,
                            std::vector<std::optional<BitfieldValue>> *rets);
   static rocksdb::Status BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,

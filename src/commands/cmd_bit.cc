@@ -22,6 +22,7 @@
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
+#include "status.h"
 #include "types/redis_bitmap.h"
 
 namespace redis {
@@ -171,6 +172,10 @@ class CommandBitPos : public Commander {
       stop_ = *parse_stop;
     }
 
+    if (args.size() >= 6 && util::EqualICase(args[5], "BIT")) {
+      is_bit_index_ = true;
+    }
+
     auto parse_arg = ParseInt<int64_t>(args[2], 10);
     if (!parse_arg) {
       return {Status::RedisParseErr, errValueNotInteger};
@@ -189,7 +194,7 @@ class CommandBitPos : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t pos = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
+    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos, is_bit_index_);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(pos);
@@ -201,6 +206,7 @@ class CommandBitPos : public Commander {
   int64_t stop_ = -1;
   bool bit_ = false;
   bool stop_given_ = false;
+  bool is_bit_index_ = false;
 };
 
 class CommandBitOp : public Commander {

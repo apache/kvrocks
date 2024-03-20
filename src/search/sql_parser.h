@@ -103,7 +103,7 @@ struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 struct WhereClause : seq<Where, QueryExpr> {};
 struct AscOrDesc : WSPad<sor<Asc, Desc>> {};
 struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<AscOrDesc>> {};
-struct LimitClause : seq<Limit, opt<seq<Digits, one<','>>>, Digits> {};
+struct LimitClause : seq<Limit, opt<seq<WSPad<Digits>, one<','>>>, WSPad<Digits>> {};
 
 struct SearchStmt
     : WSPad<seq<Select, SelectExpr, From, FromExpr, opt<WhereClause>, opt<OrderByClause>, opt<LimitClause>>> {};

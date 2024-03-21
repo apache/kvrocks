@@ -20,12 +20,14 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 #include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
+#include "status.h"
 #include "time_util.h"
 #include "types/redis_stream.h"
 
@@ -1531,6 +1533,44 @@ class CommandXSetId : public Commander {
   std::optional<uint64_t> entries_added_;
 };
 
+class CommandXPending : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    stream_name_ = args[2];
+    group_name_ = args[1];
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<std::pair<std::string, int>> pending_infos;
+    StreamGetPendingEntryResult results;
+    auto s = stream_db.GetPendingEntries(stream_name_, group_name_, results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return SendResults(conn, output, results);
+  }
+
+  static Status SendResults(Connection *conn, std::string *output, StreamGetPendingEntryResult &results) {
+    output->append(redis::MultiLen(3));
+    output->append(redis::Integer(results.pending_number));
+    output->append(redis::BulkString(results.smallest_id.ToString()));
+    output->append(redis::BulkString(results.greatest_id.ToString()));
+    for (const auto &entry : results.consumer_infos) {
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(entry.first));
+      output->append(redis::BulkString(std::to_string(entry.second)));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string group_name_;
+  std::string stream_name_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
@@ -1542,6 +1582,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-ch
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandXReadGroup>("xreadgroup", -7, "write", 0, 0, 0),
                         MakeCmdAttr<CommandXTrim>("xtrim", -4, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
+                        MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandXPending>("xpending", -3, "read-only", 1, 1, 1))
 
 }  // namespace redis

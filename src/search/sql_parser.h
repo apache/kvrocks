@@ -22,8 +22,6 @@
 
 namespace kqir {
 
-namespace grammar {
-
 namespace peg = tao::pegtl;
 
 namespace sql {
@@ -40,15 +38,13 @@ struct NumberFrac : seq<one<'.'>, Digits> {};
 struct Number : seq<opt<one<'-'>>, Digits, opt<NumberFrac>, opt<NumberExp>> {};
 
 struct UnicodeXDigit : list<seq<one<'u'>, rep<4, xdigit>>, one<'\\'>> {};
-struct EscapedSingleChar : one<'"', '\\', '/', 'b', 'f', 'n', 'r', 't'> {};
+struct EscapedSingleChar : one<'"', '\\', 'b', 'f', 'n', 'r', 't'> {};
 struct EscapedChar : sor<EscapedSingleChar, UnicodeXDigit> {};
 struct UnescapedChar : utf8::range<0x20, 0x10FFFF> {};
 struct Char : if_then_else<one<'\\'>, EscapedChar, UnescapedChar> {};
 
 struct StringContent : until<at<one<'"'>>, Char> {};
-struct String : seq<one<'"'>, StringContent, any> {
-  using content = StringContent;  // NOLINT
-};
+struct String : seq<one<'"'>, StringContent, any> {};
 
 struct Identifier : identifier {};
 
@@ -69,22 +65,26 @@ struct QueryExpr;
 
 struct ParenExpr : WSPad<seq<one<'('>, QueryExpr, one<')'>>> {};
 
-struct BooleanExpr : sor<BooleanAtomExpr, ParenExpr> {};
+struct NotExpr;
+
+struct BooleanExpr : sor<BooleanAtomExpr, ParenExpr, NotExpr> {};
 
 struct Not : string<'n', 'o', 't'> {};
-struct NotExpr : sor<seq<WSPad<Not>, BooleanExpr>, BooleanExpr> {};
+struct NotExpr : seq<WSPad<Not>, BooleanExpr> {};
 
 struct And : string<'a', 'n', 'd'> {};
 // left recursion elimination
 // struct AndExpr : sor<seq<AndExpr, And, NotExpr>, NotExpr> {};
-struct AndExpr : seq<NotExpr, star<seq<And, NotExpr>>> {};
+struct AndExpr : seq<BooleanExpr, plus<seq<And, BooleanExpr>>> {};
+struct AndExprP : sor<AndExpr, BooleanExpr> {};
 
 struct Or : string<'o', 'r'> {};
 // left recursion elimination
 // struct OrExpr : sor<seq<OrExpr, Or, AndExpr>, AndExpr> {};
-struct OrExpr : seq<AndExpr, star<seq<Or, AndExpr>>> {};
+struct OrExpr : seq<AndExprP, plus<seq<Or, AndExprP>>> {};
+struct OrExprP : sor<OrExpr, AndExprP> {};
 
-struct QueryExpr : OrExpr {};
+struct QueryExpr : seq<OrExprP> {};
 
 struct Select : string<'s', 'e', 'l', 'e', 'c', 't'> {};
 struct From : string<'f', 'r', 'o', 'm'> {};
@@ -95,21 +95,21 @@ struct SelectExpr : WSPad<sor<Wildcard, IdentifierList>> {};
 struct FromExpr : WSPad<Identifier> {};
 
 struct Where : string<'w', 'h', 'e', 'r', 'e'> {};
-struct OrderBy : seq<string<'o', 'r', 'd', 'e', 'r'>, star<WhiteSpace>, string<'b', 'y'>> {};
+struct OrderBy : seq<string<'o', 'r', 'd', 'e', 'r'>, plus<WhiteSpace>, string<'b', 'y'>> {};
 struct Asc : string<'a', 's', 'c'> {};
 struct Desc : string<'d', 'e', 's', 'c'> {};
 struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
+struct Integer : Digits {};
+
 struct WhereClause : seq<Where, QueryExpr> {};
 struct AscOrDesc : WSPad<sor<Asc, Desc>> {};
 struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<AscOrDesc>> {};
-struct LimitClause : seq<Limit, opt<seq<WSPad<Digits>, one<','>>>, WSPad<Digits>> {};
+struct LimitClause : seq<Limit, opt<seq<WSPad<Integer>, one<','>>>, WSPad<Integer>> {};
 
 struct SearchStmt
     : WSPad<seq<Select, SelectExpr, From, FromExpr, opt<WhereClause>, opt<OrderByClause>, opt<LimitClause>>> {};
 
 }  // namespace sql
-
-}  // namespace grammar
 
 }  // namespace kqir

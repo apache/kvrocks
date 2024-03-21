@@ -154,12 +154,12 @@ int main(int argc, char *argv[]) {
   }
   bool is_supervised = IsSupervisedMode(config.supervised_mode);
   if (config.daemonize && !is_supervised) Daemonize();
-  s = CreatePidFile(config.GetPidFile());
+  s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
     return 1;
   }
-  auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.GetPidFile()); });
+  auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
 
 #ifdef ENABLE_OPENSSL
   // initialize OpenSSL

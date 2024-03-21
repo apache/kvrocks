@@ -42,6 +42,9 @@
 #include "status.h"
 #include "storage/redis_metadata.h"
 
+constexpr const char *kDefaultDir = "/tmp/kvrocks";
+constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
+constexpr const char *kDefaultPidfile = "/tmp/kvrocks/kvrocks.pid";
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
 constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
@@ -141,11 +144,11 @@ Config::Config() {
       {"force-compact-file-min-deleted-percentage", false,
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
-      {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", false, new StringField(&backup_dir_, "")},
+      {"dir", true, new StringField(&dir, kDefaultDir)},
+      {"backup-dir", false, new StringField(&backup_dir, kDefaultBackupDir)},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
-      {"pidfile", true, new StringField(&pidfile_, "")},
+      {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
@@ -403,6 +406,8 @@ void Config::initFieldCallback() {
              checkpoint_dir = dir + "/checkpoint";
              sync_checkpoint_dir = dir + "/sync_checkpoint";
              backup_sync_dir = dir + "/backup_for_sync";
+             if (backup_dir == kDefaultBackupDir) backup_dir = dir + "/backup";
+             if (pidfile == kDefaultPidfile) pidfile = dir + "/kvrocks.pid";
              return Status::OK();
            }},
           {"backup-dir",
@@ -412,8 +417,8 @@ void Config::initFieldCallback() {
                // Note: currently, backup_mu_ may block by backing up or purging,
                //  the command may wait for seconds.
                std::lock_guard<std::mutex> lg(this->backup_mu);
-               previous_backup = std::move(backup_dir_);
-               backup_dir_ = v;
+               previous_backup = std::move(backup_dir);
+               backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
                // LOG(INFO) should be called after log is initialized and server is loaded.
@@ -778,9 +783,7 @@ Status Config::finish() {
   if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
-  if (backup_dir_.empty()) backup_dir_ = dir + "/backup";
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (pidfile_.empty()) pidfile_ = dir + "/kvrocks.pid";
   if (log_dir.empty()) log_dir = dir;
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {

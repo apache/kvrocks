@@ -92,11 +92,12 @@ struct NumericLiteral : Node {
 };
 
 // NOLINTNEXTLINE
-#define KQIR_NUMERIC_COMPARE_OPS(X) X(EQ, =, NE) X(NE, !=, EQ) X(LT, <, GET) X(LET, <=, GT) X(GT, >, LET) X(GET, >=, LT)
+#define KQIR_NUMERIC_COMPARE_OPS(X) \
+  X(EQ, =, NE, EQ) X(NE, !=, EQ, NE) X(LT, <, GET, GT) X(LET, <=, GT, GET) X(GT, >, LET, LT) X(GET, >=, LT, LET)
 
 struct NumericCompareExpr : BoolAtomExpr {
   enum Op {
-#define X(n, s, o) n,  // NOLINT
+#define X(n, s, o, f) n,  // NOLINT
     KQIR_NUMERIC_COMPARE_OPS(X)
 #undef X
   } op;
@@ -109,8 +110,8 @@ struct NumericCompareExpr : BoolAtomExpr {
   static constexpr const char *ToOperator(Op op) {
     switch (op) {
 // NOLINTNEXTLINE
-#define X(n, s, o) \
-  case n:          \
+#define X(n, s, o, f) \
+  case n:             \
     return #s;
       KQIR_NUMERIC_COMPARE_OPS(X)
 #undef X
@@ -121,7 +122,7 @@ struct NumericCompareExpr : BoolAtomExpr {
 
   static constexpr std::optional<Op> FromOperator(std::string_view op) {
 // NOLINTNEXTLINE
-#define X(n, s, o) \
+#define X(n, s, o, f) \
   if (op == #s) return n;
     KQIR_NUMERIC_COMPARE_OPS(X)
 #undef X
@@ -131,10 +132,23 @@ struct NumericCompareExpr : BoolAtomExpr {
 
   static constexpr Op Negative(Op op) {
     switch (op) {
-      // NOLINTNEXTLINE
-#define X(n, s, o) \
-  case n:          \
+// NOLINTNEXTLINE
+#define X(n, s, o, f) \
+  case n:             \
     return o;
+      KQIR_NUMERIC_COMPARE_OPS(X)
+#undef X
+    }
+
+    __builtin_unreachable();
+  }
+
+  static constexpr Op Flip(Op op) {
+    switch (op) {
+// NOLINTNEXTLINE
+#define X(n, s, o, f) \
+  case n:             \
+    return f;
       KQIR_NUMERIC_COMPARE_OPS(X)
 #undef X
     }
@@ -169,7 +183,7 @@ struct AndExpr : QueryExpr {
   explicit AndExpr(std::vector<std::unique_ptr<QueryExpr>> &&inners) : inners(std::move(inners)) {}
 
   std::string Dump() const override {
-    return fmt::format("and ({})", util::StringJoin(inners, [](const auto &v) { return v->Dump(); }));
+    return fmt::format("(and {})", util::StringJoin(inners, [](const auto &v) { return v->Dump(); }));
   }
 };
 
@@ -179,7 +193,7 @@ struct OrExpr : QueryExpr {
   explicit OrExpr(std::vector<std::unique_ptr<QueryExpr>> &&inners) : inners(std::move(inners)) {}
 
   std::string Dump() const override {
-    return fmt::format("or ({})", util::StringJoin(inners, [](const auto &v) { return v->Dump(); }));
+    return fmt::format("(or {})", util::StringJoin(inners, [](const auto &v) { return v->Dump(); }));
   }
 };
 
@@ -189,7 +203,7 @@ struct Limit : Node {
 
   Limit(size_t offset, size_t count) : offset(offset), count(count) {}
 
-  std::string Dump() const override { return fmt::format("limit {} {}", offset, count); }
+  std::string Dump() const override { return fmt::format("limit {}, {}", offset, count); }
 };
 
 struct SortBy : Node {
@@ -198,8 +212,8 @@ struct SortBy : Node {
 
   SortBy(Order order, std::unique_ptr<FieldRef> &&field) : order(order), field(std::move(field)) {}
 
-  static constexpr const char *OrderToString(Order order) { return order == ASC ? "ASC" : "DESC"; }
-  std::string Dump() const override { return fmt::format("sortby {} {}", field->Dump(), OrderToString(order)); }
+  static constexpr const char *OrderToString(Order order) { return order == ASC ? "asc" : "desc"; }
+  std::string Dump() const override { return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order)); }
 };
 
 struct SelectExpr : Node {
@@ -209,7 +223,7 @@ struct SelectExpr : Node {
 
   std::string Dump() const override {
     if (fields.empty()) return "select *";
-    return fmt::format("select ({})", util::StringJoin(fields, [](const auto &v) { return v->Dump(); }));
+    return fmt::format("select {}", util::StringJoin(fields, [](const auto &v) { return v->Dump(); }));
   }
 };
 
@@ -223,9 +237,9 @@ struct IndexRef : Node {
 
 struct SearchStmt : Node {
   std::unique_ptr<IndexRef> index;
-  std::unique_ptr<QueryExpr> query_expr;
-  std::unique_ptr<Limit> limit;
-  std::unique_ptr<SortBy> sort_by;
+  std::unique_ptr<QueryExpr> query_expr;  // optional
+  std::unique_ptr<Limit> limit;           // optional
+  std::unique_ptr<SortBy> sort_by;        // optional
   std::unique_ptr<SelectExpr> select_expr;
 
   SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr, std::unique_ptr<Limit> &&limit,
@@ -237,8 +251,11 @@ struct SearchStmt : Node {
         select_expr(std::move(select_expr)) {}
 
   std::string Dump() const override {
-    return fmt::format("search {}: query {} {} {} {}", index->Dump(), query_expr->Dump(), limit->Dump(),
-                       sort_by->Dump(), select_expr->Dump());
+    std::string opt;
+    if (query_expr) opt += " where " + query_expr->Dump();
+    if (sort_by) opt += " " + sort_by->Dump();
+    if (limit) opt += " " + limit->Dump();
+    return fmt::format("{} from {}{}", select_expr->Dump(), index->Dump(), opt);
   }
 };
 

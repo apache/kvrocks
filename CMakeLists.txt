@@ -139,6 +139,7 @@ include(cmake/jsoncons.cmake)
 include(cmake/xxhash.cmake)
 include(cmake/span.cmake)
 include(cmake/trie.cmake)
+include(cmake/pegtl.cmake)
 
 if (ENABLE_LUAJIT)
     include(cmake/luajit.cmake)
@@ -171,6 +172,7 @@ list(APPEND EXTERNAL_LIBS ${Backtrace_LIBRARY})
 list(APPEND EXTERNAL_LIBS xxhash)
 list(APPEND EXTERNAL_LIBS span-lite)
 list(APPEND EXTERNAL_LIBS tsl_hat_trie)
+list(APPEND EXTERNAL_LIBS pegtl)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)

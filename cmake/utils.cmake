@@ -58,3 +58,10 @@ function(FetchContent_DeclareGitHubWithMirror dep repo tag hash)
     ${hash}
   )
 endfunction()
+
+function(FetchContent_DeclareGitHubTarWithMirror dep repo tag hash)
+  FetchContent_DeclareWithMirror(${dep}
+    https://github.com/${repo}/archive/${tag}.tar.gz
+    ${hash}
+  )
+endfunction()

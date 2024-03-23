@@ -357,6 +357,12 @@ std::string EscapeString(std::string_view s) {
       case '\b':
         str += "\\b";
         break;
+      case '\v':
+        str += "\\v";
+        break;
+      case '\f':
+        str += "\\f";
+        break;
       default:
         if (isprint(ch)) {
           str += ch;

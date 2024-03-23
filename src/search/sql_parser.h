@@ -18,39 +18,17 @@
  *
  */
 
+#pragma once
+
 #include <tao/pegtl.hpp>
 
-namespace kqir {
+#include "common_parser.h"
 
-namespace peg = tao::pegtl;
+namespace kqir {
 
 namespace sql {
 
 using namespace peg;
-
-struct True : string<'t', 'r', 'u', 'e'> {};
-struct False : string<'f', 'a', 'l', 's', 'e'> {};
-struct Boolean : sor<True, False> {};
-
-struct Digits : plus<digit> {};
-struct NumberExp : seq<one<'e', 'E'>, opt<one<'-', '+'>>, Digits> {};
-struct NumberFrac : seq<one<'.'>, Digits> {};
-struct Number : seq<opt<one<'-'>>, Digits, opt<NumberFrac>, opt<NumberExp>> {};
-
-struct UnicodeXDigit : list<seq<one<'u'>, rep<4, xdigit>>, one<'\\'>> {};
-struct EscapedSingleChar : one<'"', '\\', 'b', 'f', 'n', 'r', 't'> {};
-struct EscapedChar : sor<EscapedSingleChar, UnicodeXDigit> {};
-struct UnescapedChar : utf8::range<0x20, 0x10FFFF> {};
-struct Char : if_then_else<one<'\\'>, EscapedChar, UnescapedChar> {};
-
-struct StringContent : until<at<one<'"'>>, Char> {};
-struct String : seq<one<'"'>, StringContent, any> {};
-
-struct Identifier : identifier {};
-
-struct WhiteSpace : one<' ', '\t', '\n', '\r'> {};
-template <typename T>
-struct WSPad : pad<T, WhiteSpace> {};
 
 struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
 struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, String>> {};
@@ -74,7 +52,7 @@ struct NotExpr : seq<WSPad<Not>, BooleanExpr> {};
 
 struct And : string<'a', 'n', 'd'> {};
 // left recursion elimination
-// struct AndExpr : sor<seq<AndExpr, And, NotExpr>, NotExpr> {};
+// struct AndExpr : sor<seq<AndExpr, And, BooleanExpr>, BooleanExpr> {};
 struct AndExpr : seq<BooleanExpr, plus<seq<And, BooleanExpr>>> {};
 struct AndExprP : sor<AndExpr, BooleanExpr> {};
 
@@ -100,12 +78,10 @@ struct Asc : string<'a', 's', 'c'> {};
 struct Desc : string<'d', 'e', 's', 'c'> {};
 struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
-struct Integer : Digits {};
-
 struct WhereClause : seq<Where, QueryExpr> {};
 struct AscOrDesc : WSPad<sor<Asc, Desc>> {};
 struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<AscOrDesc>> {};
-struct LimitClause : seq<Limit, opt<seq<WSPad<Integer>, one<','>>>, WSPad<Integer>> {};
+struct LimitClause : seq<Limit, opt<seq<WSPad<UnsignedInteger>, one<','>>>, WSPad<UnsignedInteger>> {};
 
 struct SearchStmt
     : WSPad<seq<Select, SelectExpr, From, FromExpr, opt<WhereClause>, opt<OrderByClause>, opt<LimitClause>>> {};

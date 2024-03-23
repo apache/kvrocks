@@ -1401,7 +1401,7 @@ rocksdb::Status Stream::GetPendingEntries(const Slice &stream_name, const std::s
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   StreamMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) {
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }

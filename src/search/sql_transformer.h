@@ -18,13 +18,13 @@
  *
  */
 
+#pragma once
+
 #include <limits>
 #include <memory>
-#include <tao/pegtl/contrib/parse_tree.hpp>
-#include <tao/pegtl/contrib/unescape.hpp>
-#include <tao/pegtl/demangle.hpp>
 #include <variant>
 
+#include "common_transformer.h"
 #include "ir.h"
 #include "parse_util.h"
 #include "sql_parser.h"
@@ -37,7 +37,8 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
-    Rule, parse_tree::store_content::on<Boolean, Number, String, Identifier, NumericCompareOp, AscOrDesc, Integer>,
+    Rule,
+    parse_tree::store_content::on<Boolean, Number, String, Identifier, NumericCompareOp, AscOrDesc, UnsignedInteger>,
     parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr,
                                    FromExpr, WhereClause, OrderByClause, LimitClause, SearchStmt>>;
 
@@ -51,64 +52,7 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
   }
 }
 
-struct Transformer {
-  using TreeNode = std::unique_ptr<parse_tree::node>;
-
-  template <typename T>
-  static bool Is(const TreeNode& node) {
-    return node->type == demangle<T>();
-  }
-
-  static bool IsRoot(const TreeNode& node) { return node->type.empty(); }
-
-  static StatusOr<std::string> UnescapeString(std::string_view str) {
-    str = str.substr(1, str.size() - 2);
-
-    std::string result;
-    while (!str.empty()) {
-      if (str[0] == '\\') {
-        str.remove_prefix(1);
-        switch (str[0]) {
-          case '\\':
-          case '"':
-            result.push_back(str[0]);
-            break;
-          case 'b':
-            result.push_back('\b');
-            break;
-          case 'f':
-            result.push_back('\f');
-            break;
-          case 'n':
-            result.push_back('\n');
-            break;
-          case 'r':
-            result.push_back('\r');
-            break;
-          case 't':
-            result.push_back('\t');
-            break;
-          case 'u':
-            if (!unescape::utf8_append_utf32(result,
-                                             unescape::unhex_string<unsigned>(str.data() + 1, str.data() + 5))) {
-              return {Status::NotOK,
-                      fmt::format("invalid Unicode code point '{}' in string literal", std::string(str.data() + 1, 4))};
-            }
-            str.remove_prefix(4);
-            break;
-          default:
-            __builtin_unreachable();
-        };
-        str.remove_prefix(1);
-      } else {
-        result.push_back(str[0]);
-        str.remove_prefix(1);
-      }
-    }
-
-    return result;
-  }
-
+struct Transformer : ir::TreeTransformer {
   static auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     if (Is<Boolean>(node)) {
       return Node::Create<ir::BoolLiteral>(node->string_view() == "true");

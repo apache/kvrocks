@@ -21,7 +21,6 @@
 #include <gtest/gtest.h>
 #include <search/sql_transformer.h>
 
-#include "tao/pegtl/contrib/parse_tree_to_dot.hpp"
 #include "tao/pegtl/string_input.hpp"
 
 using namespace kqir::sql;

@@ -35,9 +35,10 @@ namespace redis_query {
 namespace ir = kqir;
 
 template <typename Rule>
-using TreeSelector = parse_tree::selector<
-    Rule, parse_tree::store_content::on<Number, String, Identifier, Inf>,
-    parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr, OrExpr>>;
+using TreeSelector =
+    parse_tree::selector<Rule, parse_tree::store_content::on<Number, String, Identifier, Inf>,
+                         parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr,
+                                                        AndExpr, OrExpr, Wildcard>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -53,6 +54,8 @@ struct Transformer : ir::TreeTransformer {
   static auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
+    } else if (Is<Wildcard>(node)) {
+      return Node::Create<ir::BoolLiteral>(true);
     } else if (Is<FieldQuery>(node)) {
       CHECK(node->children.size() == 2);
 
@@ -143,7 +146,7 @@ struct Transformer : ir::TreeTransformer {
       // UNREACHABLE CODE, just for debugging here
       return {Status::NotOK, fmt::format("encountered invalid node type: {}", node->type)};
     }
-  }
+  }  // NOLINT
 };
 
 template <typename Input>

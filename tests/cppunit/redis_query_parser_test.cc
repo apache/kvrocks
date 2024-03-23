@@ -86,4 +86,7 @@ TEST(RedisQueryParserTest, Simple) {
   AssertIR(Parse("-@a:[(1 +inf]"), "not a > 1");
   AssertIR(Parse("-@a:[1 inf] @b:[inf 2]| -@c:[(3 inf]"), "(or (and not a >= 1, b <= 2), not c > 3)");
   AssertIR(Parse("@a:[1 inf] -(@b:[inf 2]| @c:[(3 inf])"), "(and a >= 1, not (or b <= 2, c > 3))");
+  AssertIR(Parse("*"), "true");
+  AssertIR(Parse("* *"), "(and true, true)");
+  AssertIR(Parse("*|*"), "(or true, true)");
 }

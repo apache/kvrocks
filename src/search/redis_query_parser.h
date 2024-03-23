@@ -42,17 +42,19 @@ struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangeP
 
 struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<TagList, NumericRange>>> {};
 
+struct Wildcard : one<'*'> {};
+
 struct QueryExpr;
 
 struct ParenExpr : WSPad<seq<one<'('>, QueryExpr, one<')'>>> {};
 
 struct NotExpr;
 
-struct BooleanExpr : sor<FieldQuery, ParenExpr, NotExpr> {};
+struct BooleanExpr : sor<FieldQuery, ParenExpr, NotExpr, WSPad<Wildcard>> {};
 
 struct NotExpr : seq<WSPad<one<'-'>>, BooleanExpr> {};
 
-struct AndExpr : seq<BooleanExpr, plus<BooleanExpr>> {};
+struct AndExpr : seq<BooleanExpr, plus<seq<BooleanExpr>>> {};
 struct AndExprP : sor<AndExpr, BooleanExpr> {};
 
 struct OrExpr : seq<AndExprP, plus<seq<one<'|'>, AndExprP>>> {};

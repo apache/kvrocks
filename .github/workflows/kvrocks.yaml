@@ -440,7 +440,7 @@ jobs:
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          VERSION=3.16.9
+          VERSION=3.26.4
           wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
           bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
 

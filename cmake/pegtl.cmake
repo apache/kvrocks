@@ -19,7 +19,7 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(pegtl
+FetchContent_DeclareGitHubWithMirrorTar(pegtl
   taocpp/PEGTL 3.2.7
   MD5=bc94ea721739c1b1bbaa03ea258ad1b2
 )

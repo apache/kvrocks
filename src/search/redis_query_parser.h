@@ -36,7 +36,7 @@ struct Tag : sor<Identifier, String> {};
 struct TagList : seq<one<'{'>, WSPad<Tag>, star<seq<one<'|'>, WSPad<Tag>>>, one<'}'>> {};
 
 struct Inf : seq<opt<one<'+', '-'>>, string<'i', 'n', 'f'>> {};
-struct ExclusiveNumber: seq<one<'('>, Number> {};
+struct ExclusiveNumber : seq<one<'('>, Number> {};
 struct NumericRangePart : sor<Inf, ExclusiveNumber, Number> {};
 struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangePart>, one<']'>> {};
 

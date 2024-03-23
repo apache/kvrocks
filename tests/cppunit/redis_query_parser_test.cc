@@ -21,12 +21,11 @@
 #include <gtest/gtest.h>
 #include <search/redis_query_transformer.h>
 
-#include "tao/pegtl/contrib/parse_tree_to_dot.hpp"
 #include "tao/pegtl/string_input.hpp"
 
 using namespace kqir::redis_query;
 
-static auto Parse(const std::string& in) { return ParseToTree(string_input(in, "test")); }
+static auto Parse(const std::string& in) { return ParseToIR(string_input(in, "test")); }
 
 #define AssertSyntaxError(node) ASSERT_EQ(node.Msg(), "invalid syntax");  // NOLINT
 
@@ -36,7 +35,55 @@ static auto Parse(const std::string& in) { return ParseToTree(string_input(in, "
   ASSERT_EQ(node.GetValue()->Dump(), val);
 
 TEST(RedisQueryParserTest, Simple) {
-    if (auto root = Parse("@a:{ hello | hi } @b:[1 2] | @c:[(3 +inf]")) {
-        parse_tree::print_dot(std::cout, **root);
-    }
+  AssertSyntaxError(Parse(""));
+  AssertSyntaxError(Parse("a"));
+  AssertSyntaxError(Parse("@a"));
+  AssertSyntaxError(Parse("a:"));
+  AssertSyntaxError(Parse("@a:"));
+  AssertSyntaxError(Parse("@a:[]"));
+  AssertSyntaxError(Parse("@a:[1 2"));
+  AssertSyntaxError(Parse("@a:[(inf 1]"));
+  AssertSyntaxError(Parse("@a:[((1 2]"));
+  AssertSyntaxError(Parse("@a:[1]"));
+  AssertSyntaxError(Parse("@a:[1 2 3]"));
+  AssertSyntaxError(Parse("@a:{}"));
+  AssertSyntaxError(Parse("@a:{x"));
+  AssertSyntaxError(Parse("@a:{|}"));
+  AssertSyntaxError(Parse("@a:{x|}"));
+  AssertSyntaxError(Parse("@a:{|y}"));
+  AssertSyntaxError(Parse("@a:{x|y|}"));
+  AssertSyntaxError(Parse("@a:{x}|"));
+  AssertSyntaxError(Parse("@a:{x} -"));
+  AssertSyntaxError(Parse("@a:{x}|@a:{x}|"));
+
+  AssertIR(Parse("@a:[1 2]"), "(and a >= 1, a <= 2)");
+  AssertIR(Parse("@a : [1 2]"), "(and a >= 1, a <= 2)");
+  AssertIR(Parse("@a:[(1 2]"), "(and a > 1, a <= 2)");
+  AssertIR(Parse("@a:[1 (2]"), "(and a >= 1, a < 2)");
+  AssertIR(Parse("@a:[(1 (2]"), "(and a > 1, a < 2)");
+  AssertIR(Parse("@a:[inf 2]"), "a <= 2");
+  AssertIR(Parse("@a:[-inf 2]"), "a <= 2");
+  AssertIR(Parse("@a:[1 inf]"), "a >= 1");
+  AssertIR(Parse("@a:[1 +inf]"), "a >= 1");
+  AssertIR(Parse("@a:[(1 +inf]"), "a > 1");
+  AssertIR(Parse("@a:[-inf +inf]"), "true");
+  AssertIR(Parse("@a:{x}"), "a hastag \"x\"");
+  AssertIR(Parse("@a:{x|y}"), R"((or a hastag "x", a hastag "y"))");
+  AssertIR(Parse("@a:{x|y|z}"), R"((or a hastag "x", a hastag "y", a hastag "z"))");
+  AssertIR(Parse(R"(@a:{"x"|y})"), R"((or a hastag "x", a hastag "y"))");
+  AssertIR(Parse(R"(@a:{"x" | "y"})"), R"((or a hastag "x", a hastag "y"))");
+  AssertIR(Parse("@a:{x} @b:[1 inf]"), "(and a hastag \"x\", b >= 1)");
+  AssertIR(Parse("@a:{x} | @b:[1 inf]"), "(or a hastag \"x\", b >= 1)");
+  AssertIR(Parse("@a:{x} @b:[1 inf] @c:{y}"), "(and a hastag \"x\", b >= 1, c hastag \"y\")");
+  AssertIR(Parse("@a:{x}|@b:[1 inf] | @c:{y}"), "(or a hastag \"x\", b >= 1, c hastag \"y\")");
+  AssertIR(Parse("@a:[1 inf] @b:[inf 2]| @c:[(3 inf]"), "(or (and a >= 1, b <= 2), c > 3)");
+  AssertIR(Parse("@a:[1 inf] | @b:[inf 2] @c:[(3 inf]"), "(or a >= 1, (and b <= 2, c > 3))");
+  AssertIR(Parse("(@a:[1 inf] @b:[inf 2])| @c:[(3 inf]"), "(or (and a >= 1, b <= 2), c > 3)");
+  AssertIR(Parse("@a:[1 inf] | (@b:[inf 2] @c:[(3 inf])"), "(or a >= 1, (and b <= 2, c > 3))");
+  AssertIR(Parse("@a:[1 inf] (@b:[inf 2]| @c:[(3 inf])"), "(and a >= 1, (or b <= 2, c > 3))");
+  AssertIR(Parse("(@a:[1 inf] | @b:[inf 2]) @c:[(3 inf]"), "(and (or a >= 1, b <= 2), c > 3)");
+  AssertIR(Parse("-@a:{x}"), "not a hastag \"x\"");
+  AssertIR(Parse("-@a:[(1 +inf]"), "not a > 1");
+  AssertIR(Parse("-@a:[1 inf] @b:[inf 2]| -@c:[(3 inf]"), "(or (and not a >= 1, b <= 2), not c > 3)");
+  AssertIR(Parse("@a:[1 inf] -(@b:[inf 2]| @c:[(3 inf])"), "(and a >= 1, not (or b <= 2, c > 3))");
 }

@@ -20,10 +20,13 @@
 
 #pragma once
 
+#include <memory>
+
 #include "common_transformer.h"
 #include "ir.h"
 #include "parse_util.h"
 #include "redis_query_parser.h"
+#include "search/common_parser.h"
 
 namespace kqir {
 
@@ -33,8 +36,7 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
-    Rule,
-    parse_tree::store_content::on<Number, String, Identifier, Inf>,
+    Rule, parse_tree::store_content::on<Number, String, Identifier, Inf>,
     parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr, OrExpr>>;
 
 template <typename Input>
@@ -51,8 +53,92 @@ struct Transformer : ir::TreeTransformer {
   static auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
-    } else if (Is<TagList>(node)) {
-      
+    } else if (Is<FieldQuery>(node)) {
+      CHECK(node->children.size() == 2);
+
+      auto field = node->children[0]->string();
+      const auto& query = node->children[1];
+
+      if (Is<TagList>(query)) {
+        std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
+
+        for (const auto& tag : query->children) {
+          auto tag_str = Is<Identifier>(tag) ? tag->string() : GET_OR_RET(UnescapeString(tag->string()));
+          exprs.push_back(std::make_unique<ir::TagContainExpr>(std::make_unique<FieldRef>(field),
+                                                               std::make_unique<StringLiteral>(tag_str)));
+        }
+
+        if (exprs.size() == 1) {
+          return std::move(exprs[0]);
+        } else {
+          return std::make_unique<ir::OrExpr>(std::move(exprs));
+        }
+      } else {  // NumericRange
+        std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
+
+        const auto& lhs = query->children[0];
+        const auto& rhs = query->children[1];
+
+        if (Is<ExclusiveNumber>(lhs)) {
+          exprs.push_back(
+              std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT, std::make_unique<FieldRef>(field),
+                                                   Node::As<NumericLiteral>(GET_OR_RET(Transform(lhs->children[0])))));
+        } else if (Is<Number>(lhs)) {
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GET,
+                                                               std::make_unique<FieldRef>(field),
+                                                               Node::As<NumericLiteral>(GET_OR_RET(Transform(lhs)))));
+        } else {  // Inf
+          if (lhs->string_view() == "+inf") {
+            return {Status::NotOK, "it's not allowed to set the lower bound as positive infinity"};
+          }
+        }
+
+        if (Is<ExclusiveNumber>(rhs)) {
+          exprs.push_back(
+              std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT, std::make_unique<FieldRef>(field),
+                                                   Node::As<NumericLiteral>(GET_OR_RET(Transform(rhs->children[0])))));
+        } else if (Is<Number>(rhs)) {
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::LET,
+                                                               std::make_unique<FieldRef>(field),
+                                                               Node::As<NumericLiteral>(GET_OR_RET(Transform(rhs)))));
+        } else {  // Inf
+          if (rhs->string_view() == "-inf") {
+            return {Status::NotOK, "it's not allowed to set the upper bound as negative infinity"};
+          }
+        }
+
+        if (exprs.empty()) {
+          return std::make_unique<BoolLiteral>(true);
+        } else if (exprs.size() == 1) {
+          return std::move(exprs[0]);
+        } else {
+          return std::make_unique<ir::AndExpr>(std::move(exprs));
+        }
+      }
+    } else if (Is<NotExpr>(node)) {
+      CHECK(node->children.size() == 1);
+
+      return Node::Create<ir::NotExpr>(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+    } else if (Is<AndExpr>(node)) {
+      std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
+
+      for (const auto& child : node->children) {
+        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+      }
+
+      return Node::Create<ir::AndExpr>(std::move(exprs));
+    } else if (Is<OrExpr>(node)) {
+      std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
+
+      for (const auto& child : node->children) {
+        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+      }
+
+      return Node::Create<ir::OrExpr>(std::move(exprs));
+    } else if (IsRoot(node)) {
+      CHECK(node->children.size() == 1);
+
+      return Transform(node->children[0]);
     } else {
       // UNREACHABLE CODE, just for debugging here
       return {Status::NotOK, fmt::format("encountered invalid node type: {}", node->type)};

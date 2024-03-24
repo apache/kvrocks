@@ -312,8 +312,8 @@ jobs:
         run: pip3 install redis==4.3.6
 
       - name: Run kvrocks2redis Test
-        # Currently, when enabling Tsan/Asan or runing in macos 11/14, the value mismatch in destination redis server.
-        # See https://github.com/apache/kvrocks/issues/2195
+        # Currently, when enabling Tsan/Asan or running in macOS 11/14, the value mismatch in destination redis server.
+        # See https://github.com/apache/kvrocks/issues/2195.
         if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') }}
         run: |
           ulimit -c unlimited

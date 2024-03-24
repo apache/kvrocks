@@ -305,6 +305,15 @@ func TestClusterMultiple(t *testing.T) {
 		require.NoError(t, rdb[i].Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
 	}
 
+	t.Run("check if the node id is correct", func(t *testing.T) {
+		// only node1, node2 and node3 was the member of the cluster
+		for i := 1; i < 4; i++ {
+			myid, err := rdb[i].Do(ctx, "clusterx", "myid").Text()
+			require.NoError(t, err)
+			require.Equal(t, nodeID[i], myid)
+		}
+	})
+
 	t.Run("cluster info command", func(t *testing.T) {
 		r := rdb[1].ClusterInfo(ctx).Val()
 		require.Contains(t, r, "cluster_state:ok")

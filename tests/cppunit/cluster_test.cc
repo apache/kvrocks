@@ -114,8 +114,14 @@ TEST_F(ClusterTest, CluseterGetNodes) {
       "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
       "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
       "master - 5461-10922";
-  Config config;
-  Server server(storage_.get(), storage_->GetConfig());
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
   Cluster cluster(&server, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());

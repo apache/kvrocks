@@ -1023,6 +1023,10 @@ func TestSlotMigrateDataType(t *testing.T) {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[testSlot], i).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+
+		clusterNodes := rdb0.ClusterNodes(ctx).Val()
+		require.Contains(t, clusterNodes, fmt.Sprintf("[%d->-%s]", testSlot, id1))
+
 		// should not finish 1.5s
 		time.Sleep(1500 * time.Millisecond)
 		requireMigrateState(t, rdb0, testSlot, SlotMigrationStateStarted)

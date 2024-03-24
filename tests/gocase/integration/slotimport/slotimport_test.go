@@ -92,11 +92,17 @@ func TestImportedServer(t *testing.T) {
 		require.Contains(t, clusterInfo, "importing_slot: 1")
 		require.Contains(t, clusterInfo, "import_state: start")
 
+		clusterNodes := rdb.ClusterNodes(ctx).Val()
+		require.Contains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvID))
 		// import success
 		require.Equal(t, "OK", rdb.Do(ctx, "cluster", "import", slotNum, 1).Val())
 		clusterInfo = rdb.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "importing_slot: 1")
 		require.Contains(t, clusterInfo, "import_state: success")
+
+		// import finish and should not contain the import section
+		clusterNodes = rdb.ClusterNodes(ctx).Val()
+		require.NotContains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvID))
 
 		time.Sleep(50 * time.Millisecond)
 		require.Equal(t, "slot1", rdb.Get(ctx, slotKey).Val())

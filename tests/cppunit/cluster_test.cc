@@ -30,8 +30,15 @@
 #include "cluster/cluster_defs.h"
 #include "commands/commander.h"
 #include "server/server.h"
+#include "test_base.h"
 
-TEST(Cluster, CluseterSetNodes) {
+class ClusterTest : public TestBase {
+ protected:
+  explicit ClusterTest() = default;
+  ~ClusterTest() override = default;
+};
+
+TEST_F(ClusterTest, CluseterSetNodes) {
   Status s;
   Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
 
@@ -101,13 +108,15 @@ TEST(Cluster, CluseterSetNodes) {
   ASSERT_TRUE(cluster.GetVersion() == 1);
 }
 
-TEST(Cluster, CluseterGetNodes) {
+TEST_F(ClusterTest, CluseterGetNodes) {
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
       "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
       "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
       "master - 5461-10922";
-  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
+  Config config;
+  Server server(storage_.get(), storage_->GetConfig());
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
 
@@ -139,7 +148,7 @@ TEST(Cluster, CluseterGetNodes) {
   }
 }
 
-TEST(Cluster, CluseterGetSlotInfo) {
+TEST_F(ClusterTest, CluseterGetSlotInfo) {
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
       "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
@@ -161,7 +170,7 @@ TEST(Cluster, CluseterGetSlotInfo) {
   ASSERT_TRUE(info.nodes[1].id == "07c37dfeb235213a872192d90877d0cd55635b91");
 }
 
-TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
+TEST_F(ClusterTest, TestDumpAndLoadClusterNodesInfo) {
   int64_t version = 2;
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
@@ -200,7 +209,7 @@ TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
   unlink(nodes_filename.c_str());
 }
 
-TEST(Cluster, ClusterParseSlotRanges) {
+TEST_F(ClusterTest, ClusterParseSlotRanges) {
   Status s;
   Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
   const std::string node_id = "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1";

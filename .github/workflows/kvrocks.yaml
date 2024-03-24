@@ -218,7 +218,6 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
-        if: ${{ !startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v4
         with:
           path: |
@@ -226,25 +225,19 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
       - name: Cache redis server
         id: cache-redis-server
-        if: ${{ !startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v4
         with:
           path: |
             ~/local/bin/redis-server
           key: ${{ matrix.os }}-redis-server
       - name: Install redis
-        if: ${{ !startsWith(matrix.os, 'macos') && (steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true') }}
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
           tar -xzvf redis-6.2.7.tar.gz
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
-
-      - name: Setup redis (macOS)
-        if: ${{ startsWith(matrix.os, 'macos') }}
-        run: |
-          brew install redis@6.2
 
       - uses: actions/checkout@v4
         with:

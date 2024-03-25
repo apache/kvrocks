@@ -103,6 +103,7 @@ class SlotMigrator : public redis::Database {
   SlotMigrationStage GetCurrentSlotMigrationStage() const { return current_stage_; }
   int16_t GetForbiddenSlot() const { return forbidden_slot_; }
   int16_t GetMigratingSlot() const { return migrating_slot_; }
+  std::string GetDstNode() const { return dst_node_; }
   void GetMigrationInfo(std::string *info) const;
   void CancelSyncCtx();
 

@@ -64,6 +64,9 @@ func (s *KvrocksServer) Port() uint64 {
 }
 
 func (s *KvrocksServer) TLSPort() uint64 {
+	if s.tlsAddr == nil {
+		return 0
+	}
 	return uint64(s.tlsAddr.AddrPort().Port())
 }
 

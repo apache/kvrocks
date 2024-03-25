@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,22 +43,25 @@ func FindInfoEntry(rdb *redis.Client, key string, section ...string) string {
 }
 
 func WaitForSync(t testing.TB, slave *redis.Client) {
-	require.Eventually(t, func() bool {
-		r := FindInfoEntry(slave, "master_link_status")
-		return r == "up"
-	}, 5*time.Second, 100*time.Millisecond)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Equal(c, "up", FindInfoEntry(slave, "master_link_status"))
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func WaitForOffsetSync(t testing.TB, master, slave *redis.Client) {
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		o1 := FindInfoEntry(master, "master_repl_offset")
 		o2 := FindInfoEntry(slave, "master_repl_offset")
-		return o1 == o2
-	}, 5*time.Second, 100*time.Millisecond)
+		assert.Equal(c, o1, o2)
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 func SlaveOf(t testing.TB, slave *redis.Client, master *KvrocksServer) {
-	require.NoError(t, slave.SlaveOf(context.Background(), master.Host(), fmt.Sprintf("%d", master.Port())).Err())
+	port := master.Port()
+	if master.TLSPort() != 0 {
+		port = master.TLSPort()
+	}
+	require.NoError(t, slave.SlaveOf(context.Background(), master.Host(), fmt.Sprintf("%d", port)).Err())
 }
 
 func Populate(t testing.TB, rdb *redis.Client, prefix string, n, size int) {

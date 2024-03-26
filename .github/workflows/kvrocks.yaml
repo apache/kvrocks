@@ -231,7 +231,7 @@ jobs:
             ~/local/bin/redis-server
           key: ${{ runner.os }}-${{ runner.arch }}-redis-server
       - name: Install redis
-        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' }}
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
           tar -xzvf redis-6.2.14.tar.gz
@@ -470,13 +470,13 @@ jobs:
           key: ${{ matrix.image }}-redis-server
 
       - name: Install redis
-        if: steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true'
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
-          tar -xzvf redis-6.2.7.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
+          tar -xzvf redis-6.2.14.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
-          pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}

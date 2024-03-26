@@ -146,8 +146,10 @@ def run_test(client, cases : list):
         print('******* Some case test fail *******')
         for cmd in fails:
             print(cmd)
+        return False
     else:
         print('All case passed.')
+        return True
 
 
 if __name__ == '__main__':
@@ -155,5 +157,10 @@ if __name__ == '__main__':
     client = redis.Redis(host=args.host, port=args.port, decode_responses=True, password=args.password)
     if args.flushdb:
         client.flushdb()
-    run_test(client, PopulateCases)
-    run_test(client, AppendCases)
+    succ = True
+    if not run_test(client, PopulateCases):
+        succ = False
+    if not run_test(client, AppendCases):
+        succ = False
+    if not succ:
+        raise AssertionError("Test failed. See details above.")

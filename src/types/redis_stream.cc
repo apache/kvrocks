@@ -357,6 +357,52 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::string &group_name, 
+                                  const std::string &consumer_name, const uint64_t min_idle_time_,
+                                  const std::vector<StreamEntryID> &entry_ids, std::vector<StreamEntry> *entries){
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  LockGuard guard(storage_->GetLockManager(), ns_key);
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string get_group_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+  std::string get_consumer_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisStream);
+  batch->PutLogData(log_data.Encode());
+
+  for (const auto &id : entry_ids) {
+    std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
+    std::string value;
+    s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &value);
+    
+    if (s.ok()) {
+      StreamPelEntry pel_entry = decodeStreamPelEntryValue(value);
+      pel_entry.consumer_name = consumer_name;
+      std::string pel_value = encodeStreamPelEntryValue(pel_entry);
+      batch->Put(stream_cf_handle_, entry_key, pel_value);
+    }
+  }
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
                                     const std::string &group_name) {
   if (std::isdigit(group_name[0])) {

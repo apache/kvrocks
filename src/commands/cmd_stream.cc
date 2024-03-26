@@ -242,6 +242,60 @@ class CommandXDel : public Commander {
   std::vector<redis::StreamEntryID> ids_;
 };
 
+class CommandXClaim : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
+    consumer_name_ = GET_OR_RET(parser.TakeStr());
+    min_idle_time_ = GET_OR_RET(parser.TakeInt<uint64_t>());
+
+    while (parser.Good()){
+      redis::StreamEntryID id;
+      std::string raw_id = GET_OR_RET(parser.TakeStr());
+      auto s = ParseStreamEntryID(raw_id, &id);
+      if (!s.IsOK()) {
+        return s;
+      }
+
+      entry_ids_.emplace_back(id);
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<StreamEntry> result;
+    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, 
+                                        min_idle_time_, entry_ids_, &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, errNoSuchKey};
+    }
+
+    output->append(redis::MultiLen(result.size()));
+
+    for (const auto &e : result) {
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(e.key));
+      output->append(conn->MultiBulkString(e.values));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  std::string group_name_;
+  std::string consumer_name_;
+  uint64_t min_idle_time_;
+  std::vector<StreamEntryID> entry_ids_;
+};
+
 class CommandXGroup : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1534,6 +1588,7 @@ class CommandXSetId : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXClaim>("xclaim", -6, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),

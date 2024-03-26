@@ -122,7 +122,7 @@ class CommandClusterX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
+    if (args.size() == 2 && (subcommand_ == "version" || subcommand_ == "myid")) return Status::OK();
 
     if (subcommand_ == "setnodeid" && args_.size() == 3 && args_[2].size() == kClusterNodeIdLen) return Status::OK();
 
@@ -208,7 +208,7 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
+    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -248,6 +248,8 @@ class CommandClusterX : public Commander {
     } else if (subcommand_ == "version") {
       int64_t v = srv->cluster->GetVersion();
       *output = redis::BulkString(std::to_string(v));
+    } else if (subcommand_ == "myid") {
+      *output = redis::BulkString(srv->cluster->GetMyId());
     } else if (subcommand_ == "migrate") {
       if (sync_migrate_) {
         sync_migrate_ctx_ = std::make_unique<SyncMigrateContext>(srv, conn, sync_migrate_timeout_);

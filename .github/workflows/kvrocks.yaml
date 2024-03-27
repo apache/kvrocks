@@ -257,11 +257,6 @@ jobs:
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
           
-      # Can remove this once https://github.com/actions/runner-images/issues/9491 was fixed
-      - name: Decrease ASLR entropy due to the issue in 20240310.1.0 Ubuntu 22.04
-        if: ${{ startsWith(matrix.os, 'ubuntu-22.04') }}
-        run: sudo sysctl vm.mmap_rnd_bits=28
-
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
@@ -445,8 +440,9 @@ jobs:
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
-          bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
+          VERSION=3.26.4
+          wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
+          bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
       - uses: actions/setup-go@v4 #v5 use Node 20 too

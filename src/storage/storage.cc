@@ -75,7 +75,11 @@ const int64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 Storage::Storage(Config *config)
-    : backup_creating_time_(util::GetTimeStamp()), env_(rocksdb::Env::Default()), config_(config), lock_mgr_(16) {
+    : backup_creating_time_(util::GetTimeStamp()),
+      env_(rocksdb::Env::Default()),
+      config_(config),
+      lock_mgr_(16),
+      db_stats_(std::make_unique<DBStats>()) {
   Metadata::InitVersionCounter();
   SetWriteOptions(config->rocks_db.write_options);
 }
@@ -161,6 +165,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.min_write_buffer_number_to_merge = 2;
   options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = 7;
+  options.compression_opts.level = config_->rocks_db.compression_level;
   options.compression_per_level.resize(options.num_levels);
   // only compress levels >= 2
   for (int i = 0; i < options.num_levels; ++i) {
@@ -379,7 +384,7 @@ Status Storage::Open(DBOpenMode mode) {
 Status Storage::CreateBackup(uint64_t *sequence_number) {
   LOG(INFO) << "[storage] Start to create new backup";
   std::lock_guard<std::mutex> lg(config_->backup_mu);
-  std::string task_backup_dir = config_->GetBackupDir();
+  std::string task_backup_dir = config_->backup_dir;
 
   std::string tmpdir = task_backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
@@ -530,7 +535,7 @@ void Storage::EmptyDB() {
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
   time_t now = util::GetTimeStamp();
   std::lock_guard<std::mutex> lg(config_->backup_mu);
-  std::string task_backup_dir = config_->GetBackupDir();
+  std::string task_backup_dir = config_->backup_dir;
 
   // Return if there is no backup
   auto s = env_->FileExists(task_backup_dir);
@@ -707,16 +712,16 @@ Status Storage::ApplyWriteBatch(const rocksdb::WriteOptions &options, std::strin
 void Storage::RecordStat(StatType type, uint64_t v) {
   switch (type) {
     case StatType::FlushCount:
-      db_stats_.flush_count += v;
+      db_stats_->flush_count.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::CompactionCount:
-      db_stats_.compaction_count += v;
+      db_stats_->compaction_count.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::KeyspaceHits:
-      db_stats_.keyspace_hits += v;
+      db_stats_->keyspace_hits.fetch_add(v, std::memory_order_relaxed);
       break;
     case StatType::KeyspaceMisses:
-      db_stats_.keyspace_misses += v;
+      db_stats_->keyspace_misses.fetch_add(v, std::memory_order_relaxed);
       break;
   }
 }

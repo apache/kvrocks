@@ -44,9 +44,13 @@ class Stream : public SubKeyScanner {
   rocksdb::Status DestroyGroup(const Slice &stream_name, const std::string &group_name, uint64_t *delete_cnt);
   rocksdb::Status CreateConsumer(const Slice &stream_name, const std::string &group_name,
                                  const std::string &consumer_name, int *created_number);
+  rocksdb::Status DestroyConsumer(const Slice &stream_name, const std::string &group_name,
+                                  const std::string &consumer_name, uint64_t &deleted_pel);
   rocksdb::Status GroupSetId(const Slice &stream_name, const std::string &group_name,
                              const StreamXGroupCreateOptions &options);
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);
+  rocksdb::Status DeletePelEntries(const Slice &stream_name, const std::string &group_name,
+                                   const std::vector<StreamEntryID> &entry_ids, uint64_t *acknowledged);
   rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
   rocksdb::Status GetGroupInfo(const Slice &stream_name,
@@ -58,7 +62,7 @@ class Stream : public SubKeyScanner {
                                    std::vector<StreamEntry> *entries, std::string &group_name,
                                    std::string &consumer_name, bool noack, bool latest);
   rocksdb::Status Trim(const Slice &stream_name, const StreamTrimOptions &options, uint64_t *delete_cnt);
-  rocksdb::Status GetMetadata(const Slice &stream_name, StreamMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &stream_name, StreamMetadata *metadata);
   rocksdb::Status GetLastGeneratedID(const Slice &stream_name, StreamEntryID *id);
   rocksdb::Status SetId(const Slice &stream_name, const StreamEntryID &last_generated_id,
                         std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id);

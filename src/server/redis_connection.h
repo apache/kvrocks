@@ -45,6 +45,7 @@ class Connection : public EvbufCallbackBase<Connection> {
     kCloseAfterReply = 1 << 6,
     kCloseAsync = 1 << 7,
     kMultiExec = 1 << 8,
+    KReadOnly = 1 << 9,
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);
@@ -100,6 +101,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfAttribute(T len) const {
     return "|" + std::to_string(len) + CRLF;
+  }
+  std::string HeaderOfPush(int64_t len) const {
+    return protocol_version_ == RESP::v3 ? ">" + std::to_string(len) + CRLF : MultiLen(len);
   }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;

@@ -113,6 +113,9 @@ jobs:
           - name: Darwin Clang
             os: macos-11
             compiler: auto
+          - name: Darwin Clang arm64
+            os: macos-14
+            compiler: auto
           - name: Darwin Clang without Jemalloc
             os: macos-11
             compiler: auto
@@ -219,7 +222,7 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
@@ -253,7 +256,7 @@ jobs:
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
-
+          
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
@@ -437,8 +440,9 @@ jobs:
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
-          bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
+          VERSION=3.26.4
+          wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
+          bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
       - uses: actions/setup-go@v4 #v5 use Node 20 too

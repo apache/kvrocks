@@ -20,6 +20,7 @@
 
 #include "indexer.h"
 
+#include <algorithm>
 #include <variant>
 
 #include "parse_util.h"
@@ -37,7 +38,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type,
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-    auto s = db.GetMetadata(ns_key, &metadata);
+    auto s = db.GetMetadata(Database::GetOptions{}, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == SearchOnDataType::JSON) {
@@ -83,6 +84,9 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
   auto s = db.Type(key, &type);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
+  // key not exist
+  if (type == kRedisNone) return FieldValues();
+
   if (type != static_cast<RedisType>(metadata.on_data_type)) {
     // not the expected type, stop record
     return {Status::TypeMismatched};
@@ -123,8 +127,18 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     auto original_tags = util::Split(original, delim);
     auto current_tags = util::Split(current, delim);
 
-    std::set<std::string> tags_to_delete(original_tags.begin(), original_tags.end());
-    std::set<std::string> tags_to_add(current_tags.begin(), current_tags.end());
+    auto to_tag_set = [](const std::vector<std::string> &tags, bool case_sensitive) -> std::set<std::string> {
+      if (case_sensitive) {
+        return {tags.begin(), tags.end()};
+      } else {
+        std::set<std::string> res;
+        std::transform(tags.begin(), tags.end(), std::inserter(res, res.begin()), util::ToLower);
+        return res;
+      }
+    };
+
+    std::set<std::string> tags_to_delete = to_tag_set(original_tags, tag->case_sensitive);
+    std::set<std::string> tags_to_add = to_tag_set(current_tags, tag->case_sensitive);
 
     for (auto it = tags_to_delete.begin(); it != tags_to_delete.end();) {
       if (auto jt = tags_to_add.find(*it); jt != tags_to_add.end()) {
@@ -210,7 +224,7 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
 void GlobalIndexer::Add(IndexUpdater updater) {
   auto &up = updaters.emplace_back(std::move(updater));
   for (const auto &prefix : up.prefixes) {
-    prefix_map.emplace(prefix, &up);
+    prefix_map.insert(prefix, &up);
   }
 }
 

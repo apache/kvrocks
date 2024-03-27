@@ -42,10 +42,10 @@ class SlotImport : public redis::Database {
   explicit SlotImport(Server *srv);
   ~SlotImport() = default;
 
-  bool Start(int fd, int slot);
-  bool Success(int slot);
-  bool Fail(int slot);
-  void StopForLinkError(int fd);
+  Status Start(int slot);
+  Status Success(int slot);
+  Status Fail(int slot);
+  Status StopForLinkError();
   int GetSlot();
   int GetStatus();
   void GetImportInfo(std::string *info);
@@ -55,5 +55,4 @@ class SlotImport : public redis::Database {
   std::mutex mutex_;
   int import_slot_;
   int import_status_;
-  int import_fd_;
 };

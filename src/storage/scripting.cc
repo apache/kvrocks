@@ -30,6 +30,7 @@
 #include <string>
 
 #include "commands/commander.h"
+#include "commands/error_constants.h"
 #include "db_util.h"
 #include "fmt/format.h"
 #include "lua.h"
@@ -610,7 +611,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
+        *output = redis::Error(redis::errNoMatchingScript);
+        return Status::OK();
       }
     } else {
       body = body_or_sha;

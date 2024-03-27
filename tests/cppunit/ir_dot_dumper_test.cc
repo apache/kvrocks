@@ -18,18 +18,18 @@
  *
  */
 
-#include "gtest/gtest.h"
-
-#include "search/sql_transformer.h"
 #include "search/ir_dot_dumper.h"
+
+#include "gtest/gtest.h"
+#include "search/sql_transformer.h"
 
 using namespace kqir;
 
 static auto Parse(const std::string& in) { return sql::ParseToIR(peg::string_input(in, "test")); }
 
 TEST(DotDumperTest, Simple) {
-    auto ir = *Parse("select a from b where c = 1 or d hastag \"x\" and 2 <= e order by e asc limit 0, 10");
+  auto ir = *Parse("select a from b where c = 1 or d hastag \"x\" and 2 <= e order by e asc limit 0, 10");
 
-    DotDumper dumper{std::cout};
-    dumper.Dump(ir.get());
+  DotDumper dumper{std::cout};
+  dumper.Dump(ir.get());
 }

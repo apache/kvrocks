@@ -21,30 +21,34 @@
 #pragma once
 
 #include "ir.h"
+#include "string_util.h"
 
 namespace kqir {
 
 struct DotDumper {
-    std::ostream &os;
+  std::ostream &os;
 
-    void Dump(Node *node) {
-      os << "digraph {\n";
-      dump(node);
-      os << "}\n";
-    }
+  void Dump(Node *node) {
+    os << "digraph {\n";
+    dump(node);
+    os << "}\n";
+  }
 
-  private:
-    static std::string nodeId(Node *node) {
-        return fmt::format("x{:x}", (uint64_t)node);
-    }
+ private:
+  static std::string nodeId(Node *node) { return fmt::format("x{:x}", (uint64_t)node); }
 
-    void dump(Node *node) {
-        os << nodeId(node) << " [ label = " << node->Name() << " ];\n";
-        for (auto i = node->ChildBegin(); i != node->ChildEnd(); ++i) {
-            os << nodeId(node) << " -> " << nodeId(*i) << ";\n";
-            dump(*i);
-        }
+  void dump(Node *node) {
+    os << "  " << nodeId(node) << " [ label = \"" << node->Name();
+    if (auto content = node->Content(); !content.empty()) {
+      os << " (" << util::EscapeString(content) << ")\" ];\n";
+    } else {
+      os << "\" ];\n";
     }
+    for (auto i = node->ChildBegin(); i != node->ChildEnd(); ++i) {
+      os << "  " << nodeId(node) << " -> " << nodeId(*i) << ";\n";
+      dump(*i);
+    }
+  }
 };
 
-}
+}  // namespace kqir

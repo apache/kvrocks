@@ -18,32 +18,18 @@
  *
  */
 
-#pragma once
+#include "gtest/gtest.h"
 
-#include <utility>
+#include "search/sql_transformer.h"
+#include "search/ir_dot_dumper.h"
 
-template <typename F, F *f>
-struct StaticFunction {
-  template <typename... Ts>
-  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
-    return f(std::forward<Ts>(args)...);                                           // NOLINT
-  }
-};
+using namespace kqir;
 
-template <typename... Ts>
-using FirstElement = typename std::tuple_element_t<0, std::tuple<Ts...>>;
+static auto Parse(const std::string& in) { return sql::ParseToIR(peg::string_input(in, "test")); }
 
-template <typename T>
-using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
+TEST(DotDumperTest, Simple) {
+    auto ir = *Parse("select a from b where c = 1 or d hastag \"x\" and 2 <= e order by e asc limit 0, 10");
 
-// dependent false for static_assert with constexpr if, see CWG2518/P2593R1
-template <typename T>
-constexpr bool AlwaysFalse = false;
-
-template <typename>
-struct GetClassFromMember;
-
-template <typename C, typename T>
-struct GetClassFromMember<T C::*> {
-  using type = C;  // NOLINT
-};
+    DotDumper dumper{std::cout};
+    dumper.Dump(ir.get());
+}

@@ -245,30 +245,57 @@ class CommandXDel : public Commander {
 class CommandXClaim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 6) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
     CommandParser parser(args, 1);
     stream_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
     consumer_name_ = GET_OR_RET(parser.TakeStr());
     min_idle_time_ = GET_OR_RET(parser.TakeInt<uint64_t>());
 
-    while (parser.Good()){
+    while (parser.Good() && !isOption(parser.RawPeek())) {
+      auto raw_id = GET_OR_RET(parser.TakeStr());
       redis::StreamEntryID id;
-      std::string raw_id = GET_OR_RET(parser.TakeStr());
       auto s = ParseStreamEntryID(raw_id, &id);
       if (!s.IsOK()) {
         return s;
       }
-
       entry_ids_.emplace_back(id);
+    }
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("idle")) {
+        streamClaimOptions.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+      } else if (parser.EatEqICase("time")) {
+        streamClaimOptions.with_time = true;
+        streamClaimOptions.last_delivery_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+      } else if (parser.EatEqICase("retrycount")) {
+        streamClaimOptions.with_retry_count = true;
+        streamClaimOptions.last_delivery_count = GET_OR_RET(parser.TakeInt<uint64_t>());
+      } else if (parser.EatEqICase("force")) {
+        streamClaimOptions.force = true;
+      } else if (parser.EatEqICase("justid")) {
+        streamClaimOptions.just_id = true;
+      } else if (parser.EatEqICase("lastid")) {
+        auto last_id = GET_OR_RET(parser.TakeStr());
+        auto s = ParseStreamEntryID(last_id, &streamClaimOptions.last_delivered_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      } else {
+        return parser.InvalidSyntax();
+      }
     }
     return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Stream stream_db(srv->storage, conn->GetNamespace());
-    std::vector<StreamEntry> result;
-    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, 
-                                        min_idle_time_, entry_ids_, &result);
+    StreamClaimResult result;
+    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_, entry_ids_,
+                                       streamClaimOptions, &result);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -277,12 +304,19 @@ class CommandXClaim : public Commander {
       return {Status::RedisExecErr, errNoSuchKey};
     }
 
-    output->append(redis::MultiLen(result.size()));
+    if (!streamClaimOptions.just_id) {
+      output->append(redis::MultiLen(result.entries.size()));
 
-    for (const auto &e : result) {
-      output->append(redis::MultiLen(2));
-      output->append(redis::BulkString(e.key));
-      output->append(conn->MultiBulkString(e.values));
+      for (const auto &e : result.entries) {
+        output->append(redis::MultiLen(2));
+        output->append(redis::BulkString(e.key));
+        output->append(conn->MultiBulkString(e.values));
+      }
+    } else {
+      output->append(redis::MultiLen(result.ids.size()));
+      for (const auto &id : result.ids) {
+        output->append(redis::BulkString(id));
+      }
     }
 
     return Status::OK();
@@ -294,6 +328,12 @@ class CommandXClaim : public Commander {
   std::string consumer_name_;
   uint64_t min_idle_time_;
   std::vector<StreamEntryID> entry_ids_;
+  StreamClaimOptions streamClaimOptions;
+
+  bool isOption(const std::string &arg) const {
+    static const std::unordered_set<std::string> options = {"idle", "time", "retrycount", "force", "justid", "lastid"};
+    return options.find(util::ToLower(arg)) != options.end();
+  }
 };
 
 class CommandXGroup : public Commander {
@@ -1588,7 +1628,7 @@ class CommandXSetId : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandXClaim>("xclaim", -6, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),

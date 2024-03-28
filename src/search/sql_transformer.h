@@ -63,8 +63,9 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<HasTagExpr>(node)) {
       CHECK(node->children.size() == 2);
 
-      return Node::Create<ir::TagContainExpr>(std::make_unique<ir::FieldRef>(node->children[0]->string()),
-                                              Node::As<ir::StringLiteral>(GET_OR_RET(Transform(node->children[1]))));
+      return Node::Create<ir::TagContainExpr>(
+          std::make_unique<ir::FieldRef>(node->children[0]->string()),
+          Node::MustAs<ir::StringLiteral>(GET_OR_RET(Transform(node->children[1]))));
     } else if (Is<NumericCompareExpr>(node)) {
       CHECK(node->children.size() == 3);
 
@@ -74,23 +75,23 @@ struct Transformer : ir::TreeTransformer {
       auto op = ir::NumericCompareExpr::FromOperator(node->children[1]->string_view()).value();
       if (Is<Identifier>(lhs) && Is<Number>(rhs)) {
         return Node::Create<ir::NumericCompareExpr>(op, std::make_unique<ir::FieldRef>(lhs->string()),
-                                                    Node::As<ir::NumericLiteral>(GET_OR_RET(Transform(rhs))));
+                                                    Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(rhs))));
       } else if (Is<Number>(lhs) && Is<Identifier>(rhs)) {
         return Node::Create<ir::NumericCompareExpr>(ir::NumericCompareExpr::Flip(op),
                                                     std::make_unique<ir::FieldRef>(rhs->string()),
-                                                    Node::As<ir::NumericLiteral>(GET_OR_RET(Transform(lhs))));
+                                                    Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(lhs))));
       } else {
         return {Status::NotOK, "the left and right side of numeric comparison should be an identifier and a number"};
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
-      return Node::Create<ir::NotExpr>(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+      return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
       }
 
       return Node::Create<ir::AndExpr>(std::move(exprs));
@@ -98,7 +99,7 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
       }
 
       return Node::Create<ir::OrExpr>(std::move(exprs));
@@ -146,8 +147,8 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<SearchStmt>(node)) {  // root node
       CHECK(node->children.size() >= 2 && node->children.size() <= 5);
 
-      auto index = Node::As<ir::IndexRef>(GET_OR_RET(Transform(node->children[1])));
-      auto select = Node::As<ir::SelectExpr>(GET_OR_RET(Transform(node->children[0])));
+      auto index = Node::MustAs<ir::IndexRef>(GET_OR_RET(Transform(node->children[1])));
+      auto select = Node::MustAs<ir::SelectExpr>(GET_OR_RET(Transform(node->children[0])));
 
       std::unique_ptr<ir::QueryExpr> query_expr;
       std::unique_ptr<ir::Limit> limit;
@@ -155,11 +156,11 @@ struct Transformer : ir::TreeTransformer {
 
       for (size_t i = 2; i < node->children.size(); ++i) {
         if (Is<WhereClause>(node->children[i])) {
-          query_expr = Node::As<ir::QueryExpr>(GET_OR_RET(Transform(node->children[i])));
+          query_expr = Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[i])));
         } else if (Is<LimitClause>(node->children[i])) {
-          limit = Node::As<ir::Limit>(GET_OR_RET(Transform(node->children[i])));
+          limit = Node::MustAs<ir::Limit>(GET_OR_RET(Transform(node->children[i])));
         } else if (Is<OrderByClause>(node->children[i])) {
-          sort_by = Node::As<ir::SortBy>(GET_OR_RET(Transform(node->children[i])));
+          sort_by = Node::MustAs<ir::SortBy>(GET_OR_RET(Transform(node->children[i])));
         }
       }
 

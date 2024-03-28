@@ -33,27 +33,40 @@ struct IndexInfo;
 
 struct FieldInfo {
   std::string name;
-  IndexInfo *index;
+  IndexInfo *index = nullptr;
   std::unique_ptr<redis::SearchFieldMetadata> metadata;
+
+  FieldInfo(std::string name, std::unique_ptr<redis::SearchFieldMetadata> &&metadata)
+      : name(std::move(name)), metadata(std::move(metadata)) {}
 };
 
 struct IndexInfo {
+  using FieldMap = std::map<std::string, FieldInfo>;
+
   std::string name;
   SearchMetadata metadata;
-  std::map<std::string, std::unique_ptr<FieldInfo>> fields;
+  FieldMap fields;
+
+  IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
+
+  void Add(FieldInfo &&field) {
+    const auto &name = field.name;
+    field.index = this;
+    fields.emplace(name, std::move(field));
+  }
 };
 
 using IndexMap = std::map<std::string, IndexInfo>;
 
 struct SemaChecker {
-  const IndexMap index_map;
+  const IndexMap &index_map;
 
   const IndexInfo *current_index = nullptr;
 
   using Result = std::map<const Node *, std::variant<const FieldInfo *, const IndexInfo *>>;
   Result result;
 
-  explicit SemaChecker(IndexMap index_map) : index_map(std::move(index_map)) {}
+  explicit SemaChecker(const IndexMap &index_map) : index_map(index_map) {}
 
   Status Check(Node *node) {
     if (auto v = dynamic_cast<SearchStmt *>(node)) {
@@ -69,13 +82,13 @@ struct SemaChecker {
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};
       }
-    } else if (auto v = dynamic_cast<Limit *>(node)) {
+    } else if (auto v [[maybe_unused]] = dynamic_cast<Limit *>(node)) {
       return Status::OK();
     } else if (auto v = dynamic_cast<SortBy *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
-        return {Status::NotOK, fmt::format("field `{}` not found", v->field->name)};
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else {
-        result.emplace(v->field.get(), iter->second.get());
+        result.emplace(v->field.get(), &iter->second);
       }
     } else if (auto v = dynamic_cast<AndExpr *>(node)) {
       for (const auto &n : v->inners) {
@@ -89,29 +102,37 @@ struct SemaChecker {
       GET_OR_RET(Check(v->inner.get()));
     } else if (auto v = dynamic_cast<TagContainExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
-        return {Status::NotOK, fmt::format("field `{}` not found", v->field->name)};
-      } else if (!dynamic_cast<redis::SearchTagFieldMetadata *>(iter->second->metadata.get())) {
-        return {Status::NotOK, "field `{}` is not a tag field"};
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name)};
+      } else if (auto meta = dynamic_cast<redis::SearchTagFieldMetadata *>(iter->second.metadata.get()); !meta) {
+        return {Status::NotOK, fmt::format("field `{}` is not a tag field", v->field->name)};
       } else {
-        result.emplace(v->field.get(), iter->second.get());
+        result.emplace(v->field.get(), &iter->second);
+
+        if (v->tag->val.empty()) {
+          return {Status::NotOK, "tag cannot be an empty string"};
+        }
+
+        if (v->tag->val.find(meta->separator) != std::string::npos) {
+          return {Status::NotOK, fmt::format("tag cannot contain the seperator `{}`", meta->separator)};
+        }
       }
     } else if (auto v = dynamic_cast<NumericCompareExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
-        return {Status::NotOK, fmt::format("field `{}` not found", v->field->name)};
-      } else if (!dynamic_cast<redis::SearchNumericFieldMetadata *>(iter->second->metadata.get())) {
-        return {Status::NotOK, "field `{}` is not a numeric field"};
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!dynamic_cast<redis::SearchNumericFieldMetadata *>(iter->second.metadata.get())) {
+        return {Status::NotOK, fmt::format("field `{}` is not a numeric field", v->field->name)};
       } else {
-        result.emplace(v->field.get(), iter->second.get());
+        result.emplace(v->field.get(), &iter->second);
       }
     } else if (auto v = dynamic_cast<SelectExpr *>(node)) {
       for (const auto &n : v->fields) {
         if (auto iter = current_index->fields.find(n->name); iter == current_index->fields.end()) {
-          return {Status::NotOK, fmt::format("field `{}` not found", n->name)};
+          return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", n->name, current_index->name)};
         } else {
-          result.emplace(n.get(), iter->second.get());
+          result.emplace(n.get(), &iter->second);
         }
       }
-    } else if (auto v = dynamic_cast<BoolLiteral *>(node)) {
+    } else if (auto v [[maybe_unused]] = dynamic_cast<BoolLiteral *>(node)) {
       return Status::OK();
     } else {
       return {Status::NotOK, fmt::format("unexpected IR node type: {}", node->Name())};

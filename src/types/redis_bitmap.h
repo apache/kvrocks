@@ -91,14 +91,6 @@ class Bitmap::SegmentCacheStore {
         metadata_cf_handle_(metadata_cf_handle),
         ns_key_(std::move(namespace_key)),
         metadata_(bitmap_metadata) {}
-
-  // Set a segment by given index
-  void Set(uint32_t index, const std::string &segment) {
-    auto [seg_itor, _] = cache_.try_emplace(index);
-    auto &[__, str] = seg_itor->second;
-    str = segment;
-  }
-
   // Get a read-only segment by given index
   rocksdb::Status Get(uint32_t index, const std::string **cache) {
     std::string *res = nullptr;

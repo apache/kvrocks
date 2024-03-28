@@ -340,8 +340,8 @@ constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow
 class HyperloglogMetadata : public Metadata {
  public:
   enum class EncodeType : uint8_t {
-    DENSE = 0,  // dense encoding implement as sub keys to store registers by segment in data column family.
-    SPARSE = 1, // TODO sparse encoding implement as a compressed string to store registers in metadata column family.
+    DENSE = 0,   // dense encoding implement as sub keys to store registers by segment in data column family.
+    SPARSE = 1,  // TODO sparse encoding implement as a compressed string to store registers in metadata column family.
   };
 
   explicit HyperloglogMetadata(EncodeType encode_type = EncodeType::DENSE, bool generate_version = true)

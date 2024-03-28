@@ -207,6 +207,12 @@ struct StreamReadResult {
       : name(std::move(name)), entries(std::move(result)) {}
 };
 
+struct StreamGetPendingEntryResult {
+  uint64_t pending_number;
+  StreamEntryID smallest_id;
+  StreamEntryID greatest_id;
+  std::vector<std::pair<std::string, int>> consumer_infos;
+};
 Status IncrementStreamEntryID(StreamEntryID *id);
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id);
 StatusOr<std::unique_ptr<NextStreamEntryIDGenerationStrategy>> ParseNextStreamEntryIDStrategy(const std::string &input);

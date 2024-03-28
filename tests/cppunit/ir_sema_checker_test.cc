@@ -67,7 +67,7 @@ TEST(SemaCheckerTest, Simple) {
     ASSERT_EQ(checker.Check(Parse("select f1 from ia where f1 hastag \"\"")->get()).Msg(),
               "tag cannot be an empty string");
     ASSERT_EQ(checker.Check(Parse("select f1 from ia where f1 hastag \",\"")->get()).Msg(),
-              "tag cannot contain the seperator `,`");
+              "tag cannot contain the separator `,`");
     ASSERT_EQ(checker.Check(Parse("select f1 from ia order by a")->get()).Msg(), "field `a` not found in index `ia`");
   }
 

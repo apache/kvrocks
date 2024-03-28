@@ -113,7 +113,7 @@ struct SemaChecker {
         }
 
         if (v->tag->val.find(meta->separator) != std::string::npos) {
-          return {Status::NotOK, fmt::format("tag cannot contain the seperator `{}`", meta->separator)};
+          return {Status::NotOK, fmt::format("tag cannot contain the separator `{}`", meta->separator)};
         }
       }
     } else if (auto v = dynamic_cast<NumericCompareExpr *>(node)) {

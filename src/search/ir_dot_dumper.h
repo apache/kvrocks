@@ -20,30 +20,37 @@
 
 #pragma once
 
-#include <utility>
+#include "ir.h"
+#include "string_util.h"
 
-template <typename F, F *f>
-struct StaticFunction {
-  template <typename... Ts>
-  auto operator()(Ts &&...args) const -> decltype(f(std::forward<Ts>(args)...)) {  // NOLINT
-    return f(std::forward<Ts>(args)...);                                           // NOLINT
+namespace kqir {
+
+struct DotDumper {
+  std::ostream &os;
+
+  explicit DotDumper(std::ostream &os) : os(os) {}
+
+  void Dump(Node *node) {
+    os << "digraph {\n";
+    dump(node);
+    os << "}\n";
+  }
+
+ private:
+  static std::string nodeId(Node *node) { return fmt::format("x{:x}", (uint64_t)node); }
+
+  void dump(Node *node) {
+    os << "  " << nodeId(node) << " [ label = \"" << node->Name();
+    if (auto content = node->Content(); !content.empty()) {
+      os << " (" << util::EscapeString(content) << ")\" ];\n";
+    } else {
+      os << "\" ];\n";
+    }
+    for (auto i = node->ChildBegin(); i != node->ChildEnd(); ++i) {
+      os << "  " << nodeId(node) << " -> " << nodeId(*i) << ";\n";
+      dump(*i);
+    }
   }
 };
 
-template <typename... Ts>
-using FirstElement = typename std::tuple_element_t<0, std::tuple<Ts...>>;
-
-template <typename T>
-using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T>>;
-
-// dependent false for static_assert with constexpr if, see CWG2518/P2593R1
-template <typename T>
-constexpr bool AlwaysFalse = false;
-
-template <typename>
-struct GetClassFromMember;
-
-template <typename C, typename T>
-struct GetClassFromMember<T C::*> {
-  using type = C;  // NOLINT
-};
+}  // namespace kqir

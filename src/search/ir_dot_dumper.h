@@ -28,6 +28,8 @@ namespace kqir {
 struct DotDumper {
   std::ostream &os;
 
+  explicit DotDumper(std::ostream &os) : os(os) {}
+
   void Dump(Node *node) {
     os << "digraph {\n";
     dump(node);

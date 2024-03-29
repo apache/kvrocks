@@ -75,7 +75,7 @@ Status FeedSlaveThread::Start() {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
   }
 
-  return s;
+  return std::move(s);
 }
 
 void FeedSlaveThread::Stop() {
@@ -396,7 +396,7 @@ void ReplicationThread::run() {
 }
 
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev) {
-  SendString(bev, redis::MultiBulkString({"AUTH", srv_->GetConfig()->masterauth}));
+  SendString(bev, redis::ArrayOfBulkStrings({"AUTH", srv_->GetConfig()->masterauth}));
   LOG(INFO) << "[replication] Auth request was sent, waiting for response";
   repl_state_.store(kReplSendAuth, std::memory_order_relaxed);
   return CBState::NEXT;
@@ -418,7 +418,7 @@ ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev) {  //
 }
 
 ReplicationThread::CBState ReplicationThread::checkDBNameWriteCB(bufferevent *bev) {
-  SendString(bev, redis::MultiBulkString({"_db_name"}));
+  SendString(bev, redis::ArrayOfBulkStrings({"_db_name"}));
   repl_state_.store(kReplCheckDBName, std::memory_order_relaxed);
   LOG(INFO) << "[replication] Check db name request was sent, waiting for response";
   return CBState::NEXT;
@@ -456,7 +456,7 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev) 
     data_to_send.emplace_back("ip-address");
     data_to_send.emplace_back(config->replica_announce_ip);
   }
-  SendString(bev, redis::MultiBulkString(data_to_send));
+  SendString(bev, redis::ArrayOfBulkStrings(data_to_send));
   repl_state_.store(kReplReplConf, std::memory_order_relaxed);
   LOG(INFO) << "[replication] replconf request was sent, waiting for response";
   return CBState::NEXT;
@@ -513,11 +513,11 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) 
   // Also use old PSYNC if replica can't find replication id from WAL and DB.
   if (!srv_->GetConfig()->use_rsid_psync || next_try_old_psync_ || replid.length() != kReplIdLength) {
     next_try_old_psync_ = false;  // Reset next_try_old_psync_
-    SendString(bev, redis::MultiBulkString({"PSYNC", std::to_string(next_seq)}));
+    SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", std::to_string(next_seq)}));
     LOG(INFO) << "[replication] Try to use psync, next seq: " << next_seq;
   } else {
     // NEW PSYNC "Unique Replication Sequence ID": replication id and sequence id
-    SendString(bev, redis::MultiBulkString({"PSYNC", replid, std::to_string(next_seq)}));
+    SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", replid, std::to_string(next_seq)}));
     LOG(INFO) << "[replication] Try to use new psync, current unique replication sequence id: " << replid << ":"
               << cur_seq;
   }
@@ -607,7 +607,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
 }
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(bufferevent *bev) {
-  SendString(bev, redis::MultiBulkString({"_fetch_meta"}));
+  SendString(bev, redis::ArrayOfBulkStrings({"_fetch_meta"}));
   repl_state_.store(kReplFetchMeta, std::memory_order_relaxed);
   LOG(INFO) << "[replication] Start syncing data with fullsync";
   return CBState::NEXT;
@@ -835,7 +835,7 @@ Status ReplicationThread::sendAuth(int sock_fd, ssl_st *ssl) {
   std::string auth = srv_->GetConfig()->masterauth;
   if (!auth.empty()) {
     UniqueEvbuf evbuf;
-    const auto auth_command = redis::MultiBulkString({"AUTH", auth});
+    const auto auth_command = redis::ArrayOfBulkStrings({"AUTH", auth});
     auto s = util::SockSend(sock_fd, auth_command, ssl);
     if (!s.IsOK()) return s.Prefixed("send auth command err");
     while (true) {
@@ -921,7 +921,7 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
   }
   files_str.pop_back();
 
-  const auto fetch_command = redis::MultiBulkString({"_fetch_file", files_str});
+  const auto fetch_command = redis::ArrayOfBulkStrings({"_fetch_file", files_str});
   auto s = util::SockSend(sock_fd, fetch_command, ssl);
   if (!s.IsOK()) return s.Prefixed("send fetch file command");
 

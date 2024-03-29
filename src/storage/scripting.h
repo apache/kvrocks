@@ -53,6 +53,7 @@ int RedisStatusReplyCommand(lua_State *lua);
 int RedisErrorReplyCommand(lua_State *lua);
 int RedisLogCommand(lua_State *lua);
 int RedisRegisterFunction(lua_State *lua);
+int RedisSetResp(lua_State *lua);
 
 Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
@@ -66,9 +67,10 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
                     std::string *lib_name, bool read_only = false);
 Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
                     const std::vector<std::string> &argv, std::string *output, bool read_only = false);
-Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output);
-Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output);
-Status FunctionListLib(Server *srv, const std::string &libname, std::string *output);
+Status FunctionList(Server *srv, const redis::Connection *conn, const std::string &libname, bool with_code,
+                    std::string *output);
+Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output);
+Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::string &libname, std::string *output);
 Status FunctionDelete(Server *srv, const std::string &name);
 bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage = true,
                         bool read_only = false);
@@ -82,8 +84,10 @@ const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, i
 const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBool(lua_State *lua, const char *reply, int tf);
 const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply);
+const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply);
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply);
 
-std::string ReplyToRedisReply(lua_State *lua);
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua);
 
 void PushError(lua_State *lua, const char *err);
 [[noreturn]] int RaiseError(lua_State *lua);

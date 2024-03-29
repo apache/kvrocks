@@ -37,7 +37,7 @@ class CommandHGet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 };
@@ -208,9 +208,9 @@ class CommandHMGet : public Commander {
 
     if (s.IsNotFound()) {
       values.resize(fields.size(), "");
-      *output = redis::MultiBulkString(values);
+      *output = conn->MultiBulkString(values);
     } else {
-      *output = redis::MultiBulkString(values, statuses);
+      *output = conn->MultiBulkString(values, statuses);
     }
     return Status::OK();
   }
@@ -263,7 +263,7 @@ class CommandHKeys : public Commander {
     for (const auto &fv : field_values) {
       keys.emplace_back(fv.field);
     }
-    *output = redis::MultiBulkString(keys);
+    *output = conn->MultiBulkString(keys);
 
     return Status::OK();
   }
@@ -284,7 +284,7 @@ class CommandHVals : public Commander {
     for (const auto &p : field_values) {
       values.emplace_back(p.value);
     }
-    *output = MultiBulkString(values, false);
+    *output = ArrayOfBulkStrings(values);
 
     return Status::OK();
   }
@@ -306,7 +306,7 @@ class CommandHGetAll : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs, false);
+    *output = conn->MapOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }
@@ -350,7 +350,7 @@ class CommandHRangeByLex : public Commander {
       kv_pairs.emplace_back(p.field);
       kv_pairs.emplace_back(p.value);
     }
-    *output = MultiBulkString(kv_pairs, false);
+    *output = ArrayOfBulkStrings(kv_pairs);
 
     return Status::OK();
   }
@@ -372,7 +372,14 @@ class CommandHScan : public CommandSubkeyScanBase {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = GenerateOutput(srv, fields, values, CursorType::kTypeHash);
+    auto cursor = GetNextCursor(srv, fields, CursorType::kTypeHash);
+    std::vector<std::string> entries;
+    entries.reserve(2 * fields.size());
+    for (size_t i = 0; i < fields.size(); i++) {
+      entries.emplace_back(redis::BulkString(fields[i]));
+      entries.emplace_back(redis::BulkString(values[i]));
+    }
+    *output = redis::Array({redis::BulkString(cursor), redis::Array(entries)});
     return Status::OK();
   }
 };
@@ -415,9 +422,9 @@ class CommandHRandField : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
     else
-      *output = redis::MultiBulkString(result_entries, false);
+      *output = ArrayOfBulkStrings(result_entries);
     return Status::OK();
   }
 
@@ -432,7 +439,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHDel>("hdel", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHDel>("hdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),

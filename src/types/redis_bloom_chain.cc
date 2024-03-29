@@ -24,8 +24,9 @@
 
 namespace redis {
 
-rocksdb::Status BloomChain::getBloomChainMetadata(const Slice &ns_key, BloomChainMetadata *metadata) {
-  return Database::GetMetadata(kRedisBloomFilter, ns_key, metadata);
+rocksdb::Status BloomChain::getBloomChainMetadata(Database::GetOptions get_options, const Slice &ns_key,
+                                                  BloomChainMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisBloomFilter}, ns_key, metadata);
 }
 
 std::string BloomChain::getBFKey(const Slice &ns_key, const BloomChainMetadata &metadata, uint16_t filters_index) {
@@ -124,7 +125,7 @@ rocksdb::Status BloomChain::Reserve(const Slice &user_key, uint32_t capacity, do
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   BloomChainMetadata bloom_chain_metadata;
-  rocksdb::Status s = getBloomChainMetadata(ns_key, &bloom_chain_metadata);
+  rocksdb::Status s = getBloomChainMetadata(GetOptions{}, ns_key, &bloom_chain_metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (!s.IsNotFound()) {
     return rocksdb::Status::InvalidArgument("the key already exists");
@@ -153,7 +154,7 @@ rocksdb::Status BloomChain::InsertCommon(const Slice &user_key, const std::vecto
   LockGuard guard(storage_->GetLockManager(), ns_key);
 
   BloomChainMetadata metadata;
-  rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
+  rocksdb::Status s = getBloomChainMetadata(GetOptions{}, ns_key, &metadata);
 
   if (s.IsNotFound() && insert_options.auto_create) {
     s = createBloomChain(ns_key, insert_options.error_rate, insert_options.capacity, insert_options.expansion,
@@ -235,7 +236,7 @@ rocksdb::Status BloomChain::MExists(const Slice &user_key, const std::vector<std
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BloomChainMetadata metadata;
-  rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
+  rocksdb::Status s = getBloomChainMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (s.IsNotFound()) {
     std::fill(exists->begin(), exists->end(), false);
     return rocksdb::Status::OK();
@@ -269,7 +270,7 @@ rocksdb::Status BloomChain::Info(const Slice &user_key, BloomFilterInfo *info) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   BloomChainMetadata metadata;
-  rocksdb::Status s = getBloomChainMetadata(ns_key, &metadata);
+  rocksdb::Status s = getBloomChainMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   info->capacity = metadata.GetCapacity();

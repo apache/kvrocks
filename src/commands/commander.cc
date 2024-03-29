@@ -55,8 +55,8 @@ std::string CommandTable::GetCommandInfo(const CommandAttributes *command_attrib
 }
 
 void CommandTable::GetAllCommandsInfo(std::string *info) {
-  info->append(redis::MultiLen(original_commands.size()));
-  for (const auto &iter : original_commands) {
+  info->append(redis::MultiLen(commands.size()));
+  for (const auto &iter : commands) {
     auto command_attribute = iter.second;
     auto command_info = GetCommandInfo(command_attribute);
     info->append(command_info);
@@ -66,9 +66,9 @@ void CommandTable::GetAllCommandsInfo(std::string *info) {
 void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
   info->append(redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
-    auto cmd_iter = original_commands.find(util::ToLower(cmd_name));
-    if (cmd_iter == original_commands.end()) {
-      info->append(redis::NilString());
+    auto cmd_iter = commands.find(util::ToLower(cmd_name));
+    if (cmd_iter == commands.end()) {
+      info->append(NilString(RESP::v2));
     } else {
       auto command_attribute = cmd_iter->second;
       auto command_info = GetCommandInfo(command_attribute);

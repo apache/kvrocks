@@ -126,6 +126,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.subkey_block_cache_size", "100"},
       {"rocksdb.row_cache_size", "100"},
       {"rocksdb.rate_limiter_auto_tuned", "yes"},
+      {"rocksdb.compression_level", "32767"},
   };
   for (const auto &iter : immutable_cases) {
     s = config.Set(nullptr, iter.first, iter.second);
@@ -174,6 +175,8 @@ TEST(Config, Rewrite) {
   redis::CommandTable::Reset();
   Config config;
   ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  ASSERT_EQ(config.dir + "/backup", config.backup_dir);
+  ASSERT_EQ(config.dir + "/kvrocks.pid", config.pidfile);
   ASSERT_TRUE(config.Rewrite({}).IsOK());
   // Need to re-populate the command table since it has renamed by the previous
   redis::CommandTable::Reset();

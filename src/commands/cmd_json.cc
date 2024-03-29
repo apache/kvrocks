@@ -33,13 +33,13 @@
 namespace redis {
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
-std::string OptionalsToString(Optionals<T> &opts) {
+std::string OptionalsToString(const Connection *conn, Optionals<T> &opts) {
   std::string str = MultiLen(opts.size());
   for (const auto &opt : opts) {
     if (opt.has_value()) {
       str += redis::Integer(opt.value());
     } else {
-      str += redis::NilString();
+      str += conn->NilString();
     }
   }
   return str;
@@ -100,7 +100,7 @@ class CommandJsonGet : public Commander {
     JsonValue result;
     auto s = json.Get(args_[1], paths_, &result);
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -129,7 +129,7 @@ class CommandJsonInfo : public Commander {
     auto format_str = storage_format == JsonStorageFormat::JSON   ? "json"
                       : storage_format == JsonStorageFormat::CBOR ? "cbor"
                                                                   : "unknown";
-    output->append(redis::MultiBulkString({"storage_format", format_str}));
+    output->append(conn->MultiBulkString({"storage_format", format_str}));
     return Status::OK();
   }
 };
@@ -144,7 +144,7 @@ class CommandJsonArrAppend : public Commander {
     auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -169,12 +169,12 @@ class CommandJsonArrInsert : public Commander {
 
     auto s = json.ArrInsert(args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &results);
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 
@@ -198,11 +198,11 @@ class CommandJsonType : public Commander {
     auto s = json.Type(args_[1], path, &types);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
-    *output = redis::MultiBulkString(types);
+    *output = conn->MultiBulkString(types);
     return Status::OK();
   }
 };
@@ -219,16 +219,16 @@ class CommandJsonObjkeys : public Commander {
     auto s = json.ObjKeys(args_[1], path, &results);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
     *output = redis::MultiLen(results.size());
     for (const auto &item : results) {
       if (item.has_value()) {
-        *output += redis::MultiBulkString(item.value(), false);
+        *output += ArrayOfBulkStrings(item.value());
       } else {
-        *output += redis::NilString();
+        *output += conn->NilString();
       }
     }
 
@@ -248,7 +248,7 @@ class CommandJsonClear : public Commander {
     auto s = json.Clear(args_[1], path, &result);
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -269,11 +269,11 @@ class CommandJsonToggle : public Commander {
     auto s = json.Toggle(args_[1], path, &results);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -293,12 +293,12 @@ class CommandJsonArrLen : public Commander {
     Optionals<uint64_t> results;
     auto s = json.ArrLen(args_[1], path, &results);
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -320,7 +320,7 @@ class CommandJsonMerge : public Commander {
     }
 
     if (!result) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::SimpleString("OK");
     }
@@ -356,7 +356,7 @@ class CommandJsonArrPop : public Commander {
       if (data.has_value()) {
         *output += redis::BulkString(GET_OR_RET(data->Print()));
       } else {
-        *output += redis::NilString();
+        *output += conn->NilString();
       }
     }
 
@@ -383,12 +383,12 @@ class CommandJsonObjLen : public Commander {
     Optionals<uint64_t> results;
     auto s = json.ObjLen(args_[1], path, &results);
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -411,12 +411,12 @@ class CommandJsonArrTrim : public Commander {
     auto s = json.ArrTrim(args_[1], path_, start_, stop_, &results);
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 
@@ -452,13 +452,13 @@ class CommanderJsonArrIndex : public Commander {
     auto s = json.ArrIndex(args_[1], args_[2], args_[3], start_, end_, &results);
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 
@@ -480,7 +480,7 @@ class CommandJsonDel : public Commander {
     }
     auto s = json.Del(args_[1], path, &result);
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -540,7 +540,7 @@ class CommandJsonStrAppend : public Commander {
     auto s = json.StrAppend(args_[1], path, args_[3], &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -561,7 +561,7 @@ class CommandJsonStrLen : public Commander {
     auto s = json.StrLen(args_[1], path, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(results);
+    *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
@@ -589,7 +589,7 @@ class CommandJsonMGet : public Commander {
       }
     }
 
-    *output = MultiBulkString(values, statuses);
+    *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }
 };
@@ -600,15 +600,15 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonDel>("json.del", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandJsonDel>("json.del", -2, "write no-dbsize-check", 1, 1, 1),
                         // JSON.FORGET is an alias for JSON.DEL, refer: https://redis.io/commands/json.forget/
                         MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),

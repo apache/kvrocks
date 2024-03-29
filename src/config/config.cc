@@ -42,6 +42,9 @@
 #include "status.h"
 #include "storage/redis_metadata.h"
 
+constexpr const char *kDefaultDir = "/tmp/kvrocks";
+constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
+constexpr const char *kDefaultPidfile = "/tmp/kvrocks/kvrocks.pid";
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
 constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
@@ -73,6 +76,18 @@ const std::vector<ConfigEnum<rocksdb::CompressionType>> compression_types{[] {
   }
   return res;
 }()};
+
+const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
+  std::vector<ConfigEnum<BlockCacheType>> res;
+  res.reserve(engine::CacheOptions.size());
+  for (const auto &e : engine::CacheOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
+
+const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
+                                                             {"raw-key-value", MigrationType::kRawKeyValue}};
 
 std::string TrimRocksDbPrefix(std::string s) {
   if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
@@ -129,11 +144,11 @@ Config::Config() {
       {"force-compact-file-min-deleted-percentage", false,
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
-      {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", false, new StringField(&backup_dir_, "")},
+      {"dir", true, new StringField(&dir, kDefaultDir)},
+      {"backup-dir", false, new StringField(&backup_dir, kDefaultBackupDir)},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
-      {"pidfile", true, new StringField(&pidfile_, "")},
+      {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
@@ -159,11 +174,16 @@ Config::Config() {
       {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
       {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
+      {"migrate-type", false,
+       new EnumField<MigrationType>(&migrate_type, migration_types, MigrationType::kRedisCommand)},
+      {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
+      {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 0, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
+      {"resp3-enabled", false, new YesNoField(&resp3_enabled, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
@@ -173,6 +193,7 @@ Config::Config() {
       {"rocksdb.compression", false,
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
+      {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
@@ -190,6 +211,8 @@ Config::Config() {
       {"rocksdb.stats_dump_period_sec", false, new IntField(&rocks_db.stats_dump_period_sec, 0, 0, INT_MAX)},
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, true)},
       {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
+      {"rocksdb.block_cache_type", true,
+       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeLRU)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
@@ -383,6 +406,8 @@ void Config::initFieldCallback() {
              checkpoint_dir = dir + "/checkpoint";
              sync_checkpoint_dir = dir + "/sync_checkpoint";
              backup_sync_dir = dir + "/backup_for_sync";
+             if (backup_dir == kDefaultBackupDir) backup_dir = dir + "/backup";
+             if (pidfile == kDefaultPidfile) pidfile = dir + "/kvrocks.pid";
              return Status::OK();
            }},
           {"backup-dir",
@@ -392,8 +417,8 @@ void Config::initFieldCallback() {
                // Note: currently, backup_mu_ may block by backing up or purging,
                //  the command may wait for seconds.
                std::lock_guard<std::mutex> lg(this->backup_mu);
-               previous_backup = std::move(backup_dir_);
-               backup_dir_ = v;
+               previous_backup = std::move(backup_dir);
+               backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
                // LOG(INFO) should be called after log is initialized and server is loaded.
@@ -494,6 +519,18 @@ void Config::initFieldCallback() {
            [this](Server *srv, const std::string &k, const std::string &v) -> Status {
              if (!srv) return Status::OK();
              if (cluster_enabled) srv->slot_migrator->SetSequenceGapLimit(sequence_gap);
+             return Status::OK();
+           }},
+          {"migrate-batch-rate-limit-mb",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateBatchRateLimit(migrate_batch_rate_limit_mb * MiB);
+             return Status::OK();
+           }},
+          {"migrate-batch-size-kb",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateBatchSize(migrate_batch_size_kb * KiB);
              return Status::OK();
            }},
           {"log-level",
@@ -746,9 +783,7 @@ Status Config::finish() {
   if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
-  if (backup_dir_.empty()) backup_dir_ = dir + "/backup";
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (pidfile_.empty()) pidfile_ = dir + "/kvrocks.pid";
   if (log_dir.empty()) log_dir = dir;
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {

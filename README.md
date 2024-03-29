@@ -64,6 +64,12 @@ sudo bash cmake.sh --skip-license --prefix=/usr
 # enable gcc and make in devtoolset-11
 source /opt/rh/devtoolset-11/enable
 
+# openSUSE / SUSE Linux Enterprise
+sudo zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl cmake
+
+# Arch Linux
+sudo pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
+
 # macOS
 brew install git cmake autoconf automake libtool openssl
 # please link openssl by force if it still cannot be found after installing
@@ -219,6 +225,7 @@ Apache Kvrocks is licensed under the Apache License Version 2.0. See the [LICENS
 ## Social Media
 
 - [Medium](https://kvrocks.medium.com/)
+- [X (Twitter)](https://twitter.com/apache_kvrocks)
 - [Zhihu](https://www.zhihu.com/people/kvrocks) (in Chinese)
 - WeChat Official Account (in Chinese, scan the QR code to follow)
 

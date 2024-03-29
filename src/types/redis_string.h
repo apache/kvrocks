@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "storage/redis_db.h"
@@ -42,8 +43,36 @@ struct StringSetArgs {
   bool keep_ttl;
 };
 
-namespace redis {
+enum class StringLCSType { NONE, LEN, IDX };
 
+struct StringLCSArgs {
+  StringLCSType type;
+  int64_t min_match_len;
+};
+
+struct StringLCSRange {
+  uint32_t start;
+  uint32_t end;
+};
+
+struct StringLCSMatchedRange {
+  StringLCSRange a;
+  StringLCSRange b;
+  uint32_t match_len;
+
+  StringLCSMatchedRange(StringLCSRange ra, StringLCSRange rb, uint32_t len) : a(ra), b(rb), match_len(len) {}
+};
+
+struct StringLCSIdxResult {
+  // Matched ranges.
+  std::vector<StringLCSMatchedRange> matches;
+  // LCS length.
+  uint32_t len;
+};
+
+using StringLCSResult = std::variant<std::string, uint32_t, StringLCSIdxResult>;
+
+namespace redis {
 class String : public Database {
  public:
   explicit String(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -68,9 +97,12 @@ class String : public Database {
   rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
                       uint64_t ttl, int *flag);
   rocksdb::Status CAD(const std::string &user_key, const std::string &value, int *flag);
+  rocksdb::Status LCS(const std::string &user_key1, const std::string &user_key2, StringLCSArgs args,
+                      StringLCSResult *rst);
 
  private:
   rocksdb::Status getValue(const std::string &ns_key, std::string *value);
+  rocksdb::Status getValueAndExpire(const std::string &ns_key, std::string *value, uint64_t *expire);
   std::vector<rocksdb::Status> getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values);
   rocksdb::Status getRawValue(const std::string &ns_key, std::string *raw_value);
   std::vector<rocksdb::Status> getRawValues(const std::vector<Slice> &keys, std::vector<std::string> *raw_values);

@@ -53,6 +53,8 @@
 #include "tls_util.h"
 #include "worker.h"
 
+constexpr const char *REDIS_VERSION = "4.0.0";
+
 struct DBScanInfo {
   time_t last_scan_time = 0;
   KeyNumStats key_num_stats;
@@ -177,7 +179,7 @@ class Server {
   bool IsStopped() const { return stop_; }
   bool IsLoading() const { return is_loading_; }
   Config *GetConfig() { return config_; }
-  static Status LookupAndCreateCommand(const std::string &cmd_name, std::unique_ptr<redis::Commander> *cmd);
+  static StatusOr<std::unique_ptr<redis::Commander>> LookupAndCreateCommand(const std::string &cmd_name);
   void AdjustOpenFilesLimit();
   void AdjustWorkerThreads();
 
@@ -201,6 +203,11 @@ class Server {
   void PSubscribeChannel(const std::string &pattern, redis::Connection *conn);
   void PUnsubscribeChannel(const std::string &pattern, redis::Connection *conn);
   size_t GetPubSubPatternSize() const { return pubsub_patterns_.size(); }
+  void SSubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot);
+  void SUnsubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot);
+  void GetSChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
+  void ListSChannelSubscribeNum(const std::vector<std::string> &channels,
+                                std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
 
   void BlockOnKey(const std::string &key, redis::Connection *conn);
   void UnblockOnKey(const std::string &key, redis::Connection *conn);
@@ -351,6 +358,8 @@ class Server {
   std::map<std::string, std::list<ConnContext>> pubsub_channels_;
   std::map<std::string, std::list<ConnContext>> pubsub_patterns_;
   std::mutex pubsub_channels_mu_;
+  std::vector<std::map<std::string, std::list<ConnContext>>> pubsub_shard_channels_;
+  std::mutex pubsub_shard_channels_mu_;
   std::map<std::string, std::list<ConnContext>> blocking_keys_;
   std::mutex blocking_keys_mu_;
 

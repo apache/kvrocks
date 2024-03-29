@@ -345,7 +345,7 @@ class CommandBFInfo : public Commander {
         *output += redis::SimpleString("Number of items inserted");
         *output += redis::Integer(info.size);
         *output += redis::SimpleString("Expansion rate");
-        *output += info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
+        *output += info.expansion == 0 ? conn->NilString() : redis::Integer(info.expansion);
         break;
       case BloomInfoType::kCapacity:
         *output = redis::Integer(info.capacity);
@@ -360,7 +360,7 @@ class CommandBFInfo : public Commander {
         *output = redis::Integer(info.size);
         break;
       case BloomInfoType::kExpansion:
-        *output = info.expansion == 0 ? redis::NilString() : redis::Integer(info.expansion);
+        *output = info.expansion == 0 ? conn->NilString() : redis::Integer(info.expansion);
         break;
     }
 

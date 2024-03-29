@@ -30,6 +30,7 @@
 #include <string>
 
 #include "commands/commander.h"
+#include "commands/error_constants.h"
 #include "db_util.h"
 #include "fmt/format.h"
 #include "lua.h"
@@ -85,6 +86,11 @@ void LoadFuncs(lua_State *lua, bool read_only) {
   /* redis.pcall */
   lua_pushstring(lua, "pcall");
   lua_pushcfunction(lua, RedisPCallCommand);
+  lua_settable(lua, -3);
+
+  /* redis.setresp */
+  lua_pushstring(lua, "setresp");
+  lua_pushcfunction(lua, RedisSetResp);
   lua_settable(lua, -3);
 
   /* redis.log and log levels. */
@@ -417,7 +423,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_pop(lua, 2);
     return {Status::NotOK, fmt::format("Error while running function `{}`: {}", name, err_msg)};
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
 
@@ -425,7 +431,8 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
 }
 
 // list all library names and their code (enabled via `with_code`)
-Status FunctionList(Server *srv, const std::string &libname, bool with_code, std::string *output) {
+Status FunctionList(Server *srv, const redis::Connection *conn, const std::string &libname, bool with_code,
+                    std::string *output) {
   std::string start_key = engine::kLuaLibCodePrefix + libname;
   std::string end_key = start_key;
   end_key.back()++;
@@ -445,12 +452,13 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
     result.emplace_back(lib.ToString(), iter->value().ToString());
   }
 
-  output->append(redis::MultiLen(result.size() * (with_code ? 4 : 2)));
+  output->append(redis::MultiLen(result.size()));
   for (const auto &[lib, code] : result) {
-    output->append(redis::SimpleString("library_name"));
-    output->append(redis::SimpleString(lib));
+    output->append(conn->HeaderOfMap(with_code ? 2 : 1));
+    output->append(redis::BulkString("library_name"));
+    output->append(redis::BulkString(lib));
     if (with_code) {
-      output->append(redis::SimpleString("library_code"));
+      output->append(redis::BulkString("library_code"));
       output->append(redis::BulkString(code));
     }
   }
@@ -460,7 +468,7 @@ Status FunctionList(Server *srv, const std::string &libname, bool with_code, std
 
 // extension to Redis Function
 // list all function names and their corresponding library names
-Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *output) {
+Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output) {
   std::string start_key = engine::kLuaFuncLibPrefix + funcname;
   std::string end_key = start_key;
   end_key.back()++;
@@ -480,12 +488,13 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
     result.emplace_back(func.ToString(), iter->value().ToString());
   }
 
-  output->append(redis::MultiLen(result.size() * 4));
+  output->append(redis::MultiLen(result.size()));
   for (const auto &[func, lib] : result) {
-    output->append(redis::SimpleString("function_name"));
-    output->append(redis::SimpleString(func));
-    output->append(redis::SimpleString("from_library"));
-    output->append(redis::SimpleString(lib));
+    output->append(conn->HeaderOfMap(2));
+    output->append(redis::BulkString("function_name"));
+    output->append(redis::BulkString(func));
+    output->append(redis::BulkString("from_library"));
+    output->append(redis::BulkString(lib));
   }
 
   return Status::OK();
@@ -495,7 +504,7 @@ Status FunctionListFunc(Server *srv, const std::string &funcname, std::string *o
 // list detailed informantion of a specific library
 // NOTE: it is required to load the library to lua runtime before listing (calling this function)
 // i.e. it will output nothing if the library is only in storage but not loaded
-Status FunctionListLib(Server *srv, const std::string &libname, std::string *output) {
+Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::string &libname, std::string *output) {
   auto lua = srv->Lua();
 
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
@@ -511,11 +520,11 @@ Status FunctionListLib(Server *srv, const std::string &libname, std::string *out
     return {Status::NotOK, "The library is not found or not loaded from storage"};
   }
 
-  output->append(redis::MultiLen(6));
-  output->append(redis::SimpleString("library_name"));
-  output->append(redis::SimpleString(libname));
-  output->append(redis::SimpleString("engine"));
-  output->append(redis::SimpleString("lua"));
+  output->append(conn->HeaderOfMap(3));
+  output->append(redis::BulkString("library_name"));
+  output->append(redis::BulkString(libname));
+  output->append(redis::BulkString("engine"));
+  output->append(redis::BulkString("lua"));
 
   auto count = lua_objlen(lua, -1);
   output->append(redis::SimpleString("functions"));
@@ -524,7 +533,7 @@ Status FunctionListLib(Server *srv, const std::string &libname, std::string *out
   for (size_t i = 1; i <= count; ++i) {
     lua_rawgeti(lua, -1, static_cast<int>(i));
     auto func = lua_tostring(lua, -1);
-    output->append(redis::SimpleString(func));
+    output->append(redis::BulkString(func));
     lua_pop(lua, 1);
   }
 
@@ -602,7 +611,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
+        *output = redis::Error(redis::errNoMatchingScript);
+        return Status::OK();
       }
     } else {
       body = body_or_sha;
@@ -618,6 +628,12 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     lua_getglobal(lua, funcname);
   }
 
+  // For the Lua script, should be always run with RESP2 protocol,
+  // unless users explicitly set the protocol version in the script via `redis.setresp`.
+  // So we need to save the current protocol version and set it to RESP2,
+  // and then restore it after the script execution.
+  auto saved_protocol_version = conn->GetProtocolVersion();
+  conn->SetProtocolVersion(redis::RESP::v2);
   /* Populate the argv and keys table accordingly to the arguments that
    * EVAL received. */
   SetGlobalArray(lua, "KEYS", keys);
@@ -628,9 +644,10 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
     *output = redis::Error(msg);
     lua_pop(lua, 2);
   } else {
-    *output = ReplyToRedisReply(lua);
+    *output = ReplyToRedisReply(conn, lua);
     lua_pop(lua, 2);
   }
+  conn->SetProtocolVersion(saved_protocol_version);
 
   // clean global variables to prevent information leak in function commands
   lua_pushnil(lua);
@@ -704,36 +721,32 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto commands = redis::CommandTable::Get();
-  auto cmd_iter = commands->find(util::ToLower(args[0]));
-  if (cmd_iter == commands->end()) {
+  auto cmd_s = Server::LookupAndCreateCommand(args[0]);
+  if (!cmd_s) {
     PushError(lua, "Unknown Redis command called from Lua script");
     return raise_error ? RaiseError(lua) : 1;
   }
+  auto cmd = *std::move(cmd_s);
 
-  auto redis_cmd = cmd_iter->second;
-  if (read_only && !(redis_cmd->flags & redis::kCmdReadOnly)) {
+  auto attributes = cmd->GetAttributes();
+  auto cmd_flags = attributes->GenerateFlags(args);
+
+  if (read_only && !(cmd_flags & redis::kCmdReadOnly)) {
     PushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  auto cmd = redis_cmd->factory();
-  cmd->SetAttributes(redis_cmd);
-  cmd->SetArgs(args);
-
-  int arity = cmd->GetAttributes()->arity;
-  if (((arity > 0 && argc != arity) || (arity < 0 && argc < -arity))) {
+  if (!attributes->CheckArity(argc)) {
     PushError(lua, "Wrong number of args calling Redis command From Lua script");
     return raise_error ? RaiseError(lua) : 1;
   }
-  auto attributes = cmd->GetAttributes();
-  auto cmd_flags = attributes->GenerateFlags(args);
+
   if (cmd_flags & redis::kCmdNoScript) {
     PushError(lua, "This Redis command is not allowed from scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  std::string cmd_name = util::ToLower(args[0]);
+  std::string cmd_name = attributes->name;
 
   auto srv = GetServer(lua);
   Config *config = srv->GetConfig();
@@ -760,23 +773,15 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  auto s = cmd->Parse(args);
+  cmd->SetArgs(args);
+  auto s = cmd->Parse();
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  srv->stats.IncrCalls(cmd_name);
-  auto start = std::chrono::high_resolution_clock::now();
-  bool is_profiling = conn->IsProfilingEnabled(cmd_name);
   std::string output;
-  s = cmd->Execute(srv, srv->GetCurrentConnection(), &output);
-  auto end = std::chrono::high_resolution_clock::now();
-  uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  if (is_profiling) conn->RecordProfilingSampleIfNeed(cmd_name, duration);
-  srv->SlowlogPushEntryIfNeeded(&args, duration, conn);
-  srv->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
-  srv->FeedMonitorConns(conn, args);
+  s = conn->ExecuteCommand(cmd_name, args, cmd.get(), &output);
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;
@@ -855,6 +860,28 @@ int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
   lua_pushvalue(lua, -3);
   lua_settable(lua, -3);
   return 1;
+}
+
+int RedisSetResp(lua_State *lua) {
+  auto srv = GetServer(lua);
+  auto conn = srv->GetCurrentConnection();
+
+  if (lua_gettop(lua) != 1) {
+    PushError(lua, "redis.setresp() requires one argument.");
+    return RaiseError(lua);
+  }
+
+  auto resp = static_cast<int>(lua_tonumber(lua, -1));
+  if (resp != 2 && resp != 3) {
+    PushError(lua, "RESP version must be 2 or 3.");
+    return RaiseError(lua);
+  }
+  conn->SetProtocolVersion(resp == 2 ? redis::RESP::v2 : redis::RESP::v3);
+  if (resp == 3 && !srv->GetConfig()->resp3_enabled) {
+    PushError(lua, "You need set resp3-enabled to yes to enable RESP3.");
+    return RaiseError(lua);
+  }
+  return 0;
 }
 
 /* redis.error_reply() */
@@ -964,6 +991,12 @@ const char *RedisProtocolToLuaType(lua_State *lua, const char *reply) {
     case ',':
       p = RedisProtocolToLuaTypeDouble(lua, reply);
       break;
+    case '(':
+      p = RedisProtocolToLuaTypeBigNumber(lua, reply);
+      break;
+    case '=':
+      p = RedisProtocolToLuaTypeVerbatimString(lua, reply);
+      break;
   }
   return p;
 }
@@ -1018,13 +1051,36 @@ const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, i
     lua_pushboolean(lua, 0);
     return p;
   }
-  lua_newtable(lua);
-  for (j = 0; j < mbulklen; j++) {
-    lua_pushnumber(lua, j + 1);
-    p = RedisProtocolToLuaType(lua, p);
-    lua_settable(lua, -3);
+  if (atype == '*') {
+    lua_newtable(lua);
+    for (j = 0; j < mbulklen; j++) {
+      lua_pushnumber(lua, j + 1);
+      p = RedisProtocolToLuaType(lua, p);
+      lua_settable(lua, -3);
+    }
+    return p;
   }
-  return p;
+
+  CHECK(atype == '%' || atype == '~');
+  if (atype == '%' || atype == '~') {
+    lua_newtable(lua);
+    lua_pushstring(lua, atype == '%' ? "map" : "set");
+    lua_newtable(lua);
+    for (j = 0; j < mbulklen; j++) {
+      p = RedisProtocolToLuaType(lua, p);
+      if (atype == '%') {  // map
+        p = RedisProtocolToLuaType(lua, p);
+      } else {  // set
+        lua_pushboolean(lua, 1);
+      }
+      lua_settable(lua, -3);
+    }
+    lua_settable(lua, -3);
+    return p;
+  }
+
+  // Unreachable, return the original position if it did reach here.
+  return reply;
 }
 
 const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply) {
@@ -1060,6 +1116,36 @@ const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply) {
   return p + 2;
 }
 
+const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply) {
+  const char *p = strchr(reply + 1, '\r');
+  lua_newtable(lua);
+  lua_pushstring(lua, "big_number");
+  lua_pushlstring(lua, reply + 1, p - reply - 1);
+  lua_settable(lua, -3);
+  return p + 2;
+}
+
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply) {
+  const char *p = strchr(reply + 1, '\r');
+  int64_t bulklen = ParseInt<int64_t>(std::string(reply + 1, p - reply - 1), 10).ValueOr(0);
+  p += 2;  // skip \r\n
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "verbatim_string");
+
+  lua_newtable(lua);
+  lua_pushstring(lua, "string");
+  lua_pushlstring(lua, p + 4, bulklen - 4);
+  lua_settable(lua, -3);
+
+  lua_pushstring(lua, "format");
+  lua_pushlstring(lua, p, 3);
+  lua_settable(lua, -3);
+
+  lua_settable(lua, -3);
+  return p + bulklen + 2;
+}
+
 /* This function is used in order to push an error on the Lua stack in the
  * format used by redis.pcall to return errors, which is a lua table
  * with a single "err" field set to the error string. Note that this
@@ -1073,10 +1159,11 @@ void PushError(lua_State *lua, const char *err) {
 }
 
 // this function does not pop any element on the stack
-std::string ReplyToRedisReply(lua_State *lua) {
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
+  int j = 0, mbulklen = 0;
 
   int t = lua_type(lua, -1);
   switch (t) {
@@ -1085,7 +1172,11 @@ std::string ReplyToRedisReply(lua_State *lua) {
       output = redis::BulkString(std::string(obj_s, obj_len));
       break;
     case LUA_TBOOLEAN:
-      output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString();
+      if (conn->GetProtocolVersion() == redis::RESP::v2) {
+        output = lua_toboolean(lua, -1) ? redis::Integer(1) : conn->NilString();
+      } else {
+        output = conn->Bool(lua_toboolean(lua, -1));
+      }
       break;
     case LUA_TNUMBER:
       output = redis::Integer((int64_t)(lua_tonumber(lua, -1)));
@@ -1098,7 +1189,7 @@ std::string ReplyToRedisReply(lua_State *lua) {
 
       /* Handle error reply. */
       lua_pushstring(lua, "err");
-      lua_gettable(lua, -2);
+      lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         output = redis::Error(lua_tostring(lua, -1));
@@ -1106,35 +1197,131 @@ std::string ReplyToRedisReply(lua_State *lua) {
         return output;
       }
       lua_pop(lua, 1); /* Discard field name pushed before. */
+
       /* Handle status reply. */
       lua_pushstring(lua, "ok");
-      lua_gettable(lua, -2);
+      lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
         obj_s = lua_tolstring(lua, -1, &obj_len);
         output = redis::BulkString(std::string(obj_s, obj_len));
         lua_pop(lua, 1);
         return output;
-      } else {
-        int j = 1, mbulklen = 0;
-        lua_pop(lua, 1); /* Discard the 'ok' field value we popped */
-        while (true) {
-          lua_pushnumber(lua, j++);
-          lua_gettable(lua, -2);
+      }
+      lua_pop(lua, 1); /* Discard the 'ok' field value we pushed */
+
+      /* Handle double reply. */
+      lua_pushstring(lua, "double");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TNUMBER) {
+        output = conn->Double(lua_tonumber(lua, -1));
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'double' field value we pushed */
+
+      /* Handle big number reply. */
+      lua_pushstring(lua, "big_number");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TSTRING) {
+        obj_s = lua_tolstring(lua, -1, &obj_len);
+        output = conn->BigNumber(std::string(obj_s, obj_len));
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'big_number' field value we pushed */
+
+      /* Handle verbatim reply. */
+      lua_pushstring(lua, "verbatim_string");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        lua_pushstring(lua, "format");
+        lua_rawget(lua, -2);
+        t = lua_type(lua, -1);
+        if (t == LUA_TSTRING) {
+          const char *format = lua_tostring(lua, -1);
+          lua_pushstring(lua, "string");
+          lua_rawget(lua, -3);
           t = lua_type(lua, -1);
-          if (t == LUA_TNIL) {
-            lua_pop(lua, 1);
-            break;
+          if (t == LUA_TSTRING) {
+            obj_s = lua_tolstring(lua, -1, &obj_len);
+            output = conn->VerbatimString(std::string(format), std::string(obj_s, obj_len));
+            lua_pop(lua, 4);
+            return output;
           }
-          mbulklen++;
-          output += ReplyToRedisReply(lua);
+          // discard 'string'
           lua_pop(lua, 1);
         }
-        output = redis::MultiLen(mbulklen) + output;
+        // discard 'format'
+        lua_pop(lua, 1);
       }
+      lua_pop(lua, 1); /* Discard the 'verbatim_string' field value we pushed */
+
+      /* Handle map reply. */
+      lua_pushstring(lua, "map");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        int map_len = 0;
+        std::string map_output;
+        lua_pushnil(lua);
+        while (lua_next(lua, -2)) {
+          lua_pushvalue(lua, -2);
+          // return key
+          map_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          // return value
+          map_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          map_len++;
+        }
+        output = conn->HeaderOfMap(map_len) + std::move(map_output);
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'map' field value we pushed */
+
+      /* Handle set reply. */
+      lua_pushstring(lua, "set");
+      lua_rawget(lua, -2);
+      t = lua_type(lua, -1);
+      if (t == LUA_TTABLE) {
+        int set_len = 0;
+        std::string set_output;
+        lua_pushnil(lua);
+        while (lua_next(lua, -2)) {
+          lua_pop(lua, 1);
+          lua_pushvalue(lua, -1);
+          set_output += ReplyToRedisReply(conn, lua);
+          lua_pop(lua, 1);
+          set_len++;
+        }
+        output = conn->HeaderOfSet(set_len) + std::move(set_output);
+        lua_pop(lua, 1);
+        return output;
+      }
+      lua_pop(lua, 1); /* Discard the 'set' field value we pushed */
+
+      j = 1, mbulklen = 0;
+      while (true) {
+        lua_pushnumber(lua, j++);
+        lua_rawget(lua, -2);
+        t = lua_type(lua, -1);
+        if (t == LUA_TNIL) {
+          lua_pop(lua, 1);
+          break;
+        }
+        mbulklen++;
+        output += ReplyToRedisReply(conn, lua);
+        lua_pop(lua, 1);
+      }
+      output = redis::MultiLen(mbulklen) + output;
       break;
     default:
-      output = redis::NilString();
+      output = conn->NilString();
   }
   return output;
 }

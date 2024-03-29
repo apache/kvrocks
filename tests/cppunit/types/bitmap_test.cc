@@ -26,22 +26,33 @@
 #include "types/redis_bitmap.h"
 #include "types/redis_string.h"
 
-class RedisBitmapTest : public TestBase {
+class RedisBitmapTest : public TestFixture, public ::testing::TestWithParam<bool> {
  protected:
   explicit RedisBitmapTest() {
-    bitmap_ = std::make_unique<redis::Bitmap>(storage_, "bitmap_ns");
-    string_ = std::make_unique<redis::String>(storage_, "bitmap_ns");
+    bitmap_ = std::make_unique<redis::Bitmap>(storage_.get(), "bitmap_ns");
+    string_ = std::make_unique<redis::String>(storage_.get(), "bitmap_ns");
   }
   ~RedisBitmapTest() override = default;
 
-  void SetUp() override { key_ = "test_bitmap_key"; }
-  void TearDown() override {}
+  void SetUp() override {
+    key_ = "test_bitmap_key";
+    if (bool use_bitmap = GetParam(); !use_bitmap) {
+      // Set an empty string.
+      string_->Set(key_, "");
+    }
+  }
+  void TearDown() override {
+    [[maybe_unused]] auto s = bitmap_->Del(key_);
+    s = string_->Del(key_);
+  }
 
   std::unique_ptr<redis::Bitmap> bitmap_;
   std::unique_ptr<redis::String> string_;
 };
 
-TEST_F(RedisBitmapTest, GetAndSetBit) {
+INSTANTIATE_TEST_SUITE_P(UseBitmap, RedisBitmapTest, testing::Values(true, false));
+
+TEST_P(RedisBitmapTest, GetAndSetBit) {
   uint32_t offsets[] = {0, 123, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
   for (const auto &offset : offsets) {
     bool bit = false;
@@ -54,33 +65,134 @@ TEST_F(RedisBitmapTest, GetAndSetBit) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitCount) {
+TEST_P(RedisBitmapTest, BitCount) {
   uint32_t offsets[] = {0, 123, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
   for (const auto &offset : offsets) {
     bool bit = false;
     bitmap_->SetBit(key_, offset, true, &bit);
   }
   uint32_t cnt = 0;
-  bitmap_->BitCount(key_, 0, 4 * 1024, &cnt);
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
   EXPECT_EQ(cnt, 6);
-  bitmap_->BitCount(key_, 0, -1, &cnt);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
   EXPECT_EQ(cnt, 6);
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitPosClearBit) {
+TEST_P(RedisBitmapTest, BitCountNegative) {
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 0, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, 4 * 1024, false, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 0, false, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, -1, false, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, -1, -1, false, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 1, 1, false, &cnt);
+  EXPECT_EQ(cnt, 0);
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
+  EXPECT_EQ(cnt, 1);
+
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 5, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  bitmap_->BitCount(key_, -10000, -10000, false, &cnt);
+  EXPECT_EQ(cnt, 2);
+
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
+    EXPECT_FALSE(bit);
+    bitmap_->SetBit(key_, 8 * 1024, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+
+  bitmap_->BitCount(key_, 0, 1024, false, &cnt);
+  EXPECT_EQ(cnt, 4);
+
+  bitmap_->BitCount(key_, 0, 1023, false, &cnt);
+  EXPECT_EQ(cnt, 3);
+
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_P(RedisBitmapTest, BitCountBITOption) {
+  std::set<uint32_t> offsets = {0, 100, 1024 * 8, 1024 * 8 + 1, 3 * 1024 * 8, 3 * 1024 * 8 + 1};
+  for (const auto &offset : offsets) {
+    bool bit = false;
+    bitmap_->SetBit(key_, offset, true, &bit);
+  }
+
+  for (uint32_t bit_offset = 0; bit_offset <= 3 * 1024 * 8 + 10; ++bit_offset) {
+    uint32_t cnt = 0;
+    EXPECT_TRUE(bitmap_->BitCount(key_, bit_offset, bit_offset, true, &cnt).ok());
+    if (offsets.count(bit_offset) > 0) {
+      ASSERT_EQ(1, cnt) << "bit_offset: " << bit_offset;
+    } else {
+      ASSERT_EQ(0, cnt) << "bit_offset: " << bit_offset;
+    }
+  }
+
+  uint32_t cnt = 0;
+  bitmap_->BitCount(key_, 0, 4 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, -1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 0, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 6);
+  bitmap_->BitCount(key_, 1, 3 * 1024 * 8 + 1, true, &cnt);
+  EXPECT_EQ(cnt, 5);
+  bitmap_->BitCount(key_, 0, 0, true, &cnt);
+  EXPECT_EQ(cnt, 1);
+  bitmap_->BitCount(key_, 0, 100, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 2);
+  bitmap_->BitCount(key_, 100, 3 * 1024 * 8, true, &cnt);
+  EXPECT_EQ(cnt, 4);
+  bitmap_->BitCount(key_, -1, -1, true, &cnt);
+  EXPECT_EQ(cnt, 0);  // NOTICE: the min storage unit is byte, the result is the same as Redis.
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_P(RedisBitmapTest, BitPosClearBit) {
   int64_t pos = 0;
   bool old_bit = false;
+  bool use_bitmap = GetParam();
   for (int i = 0; i < 1024 + 16; i++) {
-    bitmap_->BitPos(key_, false, 0, -1, true, &pos);
-    EXPECT_EQ(pos, i);
+    /// ```
+    /// redis> set k1 ""
+    /// "OK"
+    /// redis> bitpos k1 0
+    /// (integer) -1
+    /// redis> bitpos k2 0
+    /// (integer) 0
+    /// ```
+    ///
+    /// String will set a empty string value when initializing, so, when first
+    /// querying, it should return -1.
+    bitmap_->BitPos(key_, false, 0, -1, /*stop_given=*/false, &pos, /*bit_index=*/false);
+    if (i == 0 && !use_bitmap) {
+      EXPECT_EQ(pos, -1);
+    } else {
+      EXPECT_EQ(pos, i);
+    }
+
     bitmap_->SetBit(key_, i, true, &old_bit);
     EXPECT_FALSE(old_bit);
   }
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitPosSetBit) {
+TEST_P(RedisBitmapTest, BitPosSetBit) {
   uint32_t offsets[] = {0, 123, 1024 * 8, 1024 * 8 + 16, 3 * 1024 * 8, 3 * 1024 * 8 + 16};
   for (const auto &offset : offsets) {
     bool bit = false;
@@ -89,13 +201,67 @@ TEST_F(RedisBitmapTest, BitPosSetBit) {
   int64_t pos = 0;
   int start_indexes[] = {0, 1, 124, 1025, 1027, 3 * 1024 + 1};
   for (size_t i = 0; i < sizeof(start_indexes) / sizeof(start_indexes[0]); i++) {
-    bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos);
+    bitmap_->BitPos(key_, true, start_indexes[i], -1, true, &pos, /*bit_index=*/false);
     EXPECT_EQ(pos, offsets[i]);
   }
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitfieldGetSetTest) {
+TEST_P(RedisBitmapTest, BitPosNegative) {
+  {
+    bool bit = false;
+    bitmap_->SetBit(key_, 8 * 1024 - 1, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  // First bit is negative
+  bitmap_->BitPos(key_, false, 0, -1, true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(0, pos);
+  // 8 * 1024 - 1 bit is positive
+  bitmap_->BitPos(key_, true, 0, -1, true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // First bit in 1023 byte is negative
+  bitmap_->BitPos(key_, false, -1, -1, true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(8 * 1023, pos);
+  // Last Bit in 1023 byte is positive
+  bitmap_->BitPos(key_, true, -1, -1, true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(8 * 1024 - 1, pos);
+  // Large negative number will be normalized.
+  bitmap_->BitPos(key_, false, -10000, -10000, true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(0, pos);
+
+  auto s = bitmap_->Del(key_);
+}
+
+// When `stop_given` is true, even searching for 0,
+// we cannot exceeds the stop position.
+TEST_P(RedisBitmapTest, BitPosStopGiven) {
+  for (int i = 0; i < 8; ++i) {
+    bool bit = true;
+    bitmap_->SetBit(key_, i, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  int64_t pos = 0;
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/false, &pos, /*bit_index=*/false);
+  EXPECT_EQ(8, pos);
+
+  // Set a bit at 8 not affect that
+  {
+    bool bit = true;
+    bitmap_->SetBit(key_, 8, true, &bit);
+    EXPECT_FALSE(bit);
+  }
+  bitmap_->BitPos(key_, false, 0, 0, /*stop_given=*/true, &pos, /*bit_index=*/false);
+  EXPECT_EQ(-1, pos);
+  bitmap_->BitPos(key_, false, 0, 1, /*stop_given=*/false, &pos, /*bit_index=*/false);
+  EXPECT_EQ(9, pos);
+
+  auto s = bitmap_->Del(key_);
+}
+
+TEST_P(RedisBitmapTest, BitfieldGetSetTest) {
   constexpr uint32_t magic = 0xdeadbeef;
 
   std::vector<std::optional<BitfieldValue>> rets;
@@ -125,7 +291,7 @@ TEST_F(RedisBitmapTest, BitfieldGetSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, UnsignedBitfieldTest) {
+TEST_P(RedisBitmapTest, UnsignedBitfieldTest) {
   constexpr uint8_t bits = 5;
   static_assert(bits < 64);
   constexpr uint64_t max = (uint64_t(1) << bits) - 1;
@@ -154,7 +320,7 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, SignedBitfieldTest) {
+TEST_P(RedisBitmapTest, SignedBitfieldTest) {
   constexpr uint8_t bits = 10;
   constexpr int64_t max = (uint64_t(1) << (bits - 1)) - 1;
   constexpr int64_t min = -max - 1;
@@ -182,7 +348,7 @@ TEST_F(RedisBitmapTest, SignedBitfieldTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, SignedBitfieldWrapSetTest) {
+TEST_P(RedisBitmapTest, SignedBitfieldWrapSetTest) {
   constexpr uint8_t bits = 6;
   constexpr int64_t max = (int64_t(1) << (bits - 1)) - 1;
   constexpr int64_t min = -max - 1;
@@ -217,7 +383,7 @@ TEST_F(RedisBitmapTest, SignedBitfieldWrapSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, UnsignedBitfieldWrapSetTest) {
+TEST_P(RedisBitmapTest, UnsignedBitfieldWrapSetTest) {
   constexpr uint8_t bits = 6;
   static_assert(bits < 64);
   constexpr uint64_t max = (uint64_t(1) << bits) - 1;
@@ -252,7 +418,7 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldWrapSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, SignedBitfieldSatSetTest) {
+TEST_P(RedisBitmapTest, SignedBitfieldSatSetTest) {
   constexpr uint8_t bits = 6;
   constexpr int64_t max = (int64_t(1) << (bits - 1)) - 1;
 
@@ -288,7 +454,7 @@ TEST_F(RedisBitmapTest, SignedBitfieldSatSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
+TEST_P(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
   constexpr uint8_t bits = 6;
   static_assert(bits < 64);
   constexpr uint64_t max = (uint64_t(1) << bits) - 1;
@@ -325,7 +491,7 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, SignedBitfieldFailSetTest) {
+TEST_P(RedisBitmapTest, SignedBitfieldFailSetTest) {
   constexpr uint8_t bits = 5;
   constexpr int64_t max = (int64_t(1) << (bits - 1)) - 1;
 
@@ -361,7 +527,7 @@ TEST_F(RedisBitmapTest, SignedBitfieldFailSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, UnsignedBitfieldFailSetTest) {
+TEST_P(RedisBitmapTest, UnsignedBitfieldFailSetTest) {
   constexpr uint8_t bits = 5;
   constexpr int64_t max = (int64_t(1) << bits) - 1;
 
@@ -397,7 +563,10 @@ TEST_F(RedisBitmapTest, UnsignedBitfieldFailSetTest) {
   auto s = bitmap_->Del(key_);
 }
 
-TEST_F(RedisBitmapTest, BitfieldStringGetSetTest) {
+TEST_P(RedisBitmapTest, BitfieldStringGetSetTest) {
+  if (bool use_bitmap = GetParam(); use_bitmap) {
+    GTEST_SKIP() << "skip bitmap test for BitfieldStringGetSetTest";
+  }
   std::string str = "dan yuan ren chang jiu, qian li gong chan juan.";
   string_->Set(key_, str);
 

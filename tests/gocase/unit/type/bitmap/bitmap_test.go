@@ -205,6 +205,60 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, maxOffset, cmd.Val())
 	})
 
+	t.Run("BITCOUNT BIT/BYTE option check(type bitmap bitmap_string)", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "foo", "hello").Err())
+		cmd := rdb.Do(ctx, "BITCOUNT", "foo", 0, -1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 21, cmd.Val())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "foo", 1024*8+2, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "foo", 2*1024*8+1, 1).Err())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", 0, -1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 23, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", 0, 1024*8+2, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 22, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", 40, 1024*8+2, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", 0, 0, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", 1024*8+2, 2*1024*8+1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "foo", -1, -1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		require.NoError(t, rdb.Del(ctx, "foo").Err())
+
+		require.NoError(t, rdb.Del(ctx, "bar").Err())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "bar", 0, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "bar", 100, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "bar", 1024*8+2, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "SETBIT", "bar", 2*1024*8+1, 1).Err())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", 0, 0, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", 0, 100, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", 100, 1024*8+2, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", 1024*8+2, 2*1024*8+2, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", 0, -1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 4, cmd.Val())
+		cmd = rdb.Do(ctx, "BITCOUNT", "bar", -1, -1, "BIT")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		require.NoError(t, rdb.Del(ctx, "bar").Err())
+	})
+
 	t.Run("BITOP NOT (known string)", func(t *testing.T) {
 		Set2SetBit(t, rdb, ctx, "s", []byte("\xaa\x00\xff\x55"))
 		require.NoError(t, rdb.BitOpNot(ctx, "dest", "s").Err())
@@ -303,13 +357,215 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, 32, rdb.BitOpOr(ctx, "x", "a", "b").Val())
 	})
 
-	t.Run("BITFIELD on string type", func(t *testing.T) {
+	t.Run("BITFIELD and BITFIELD_RO on string type", func(t *testing.T) {
 		str := "zhe ge ren hen lan, shen me dou mei you liu xia."
 		require.NoError(t, rdb.Set(ctx, "str", str, 0).Err())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, "str", "GET", "u8", "32", "GET", "u8", "40")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(str[4]), int64(str[5])}, res.Val())
+		}
+
 		res := rdb.BitField(ctx, "str", "GET", "u8", "32", "SET", "u8", "32", 'r', "GET", "u8", "32")
 		require.NoError(t, res.Err())
 		require.EqualValues(t, str[4], res.Val()[0])
 		require.EqualValues(t, str[4], res.Val()[1])
 		require.EqualValues(t, 'r', res.Val()[2])
+		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "GET", "u8", "32", "SET", "u8", "32", 'r', "GET", "u8", "32").Err(), "BITFIELD_RO only supports the GET subcommand")
+
+		res = rdb.BitField(ctx, "str", "INCRBY", "u8", "32", 2)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, 't', res.Val()[0])
+		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "INCRBY", "u8", "32", 2).Err(), "BITFIELD_RO only supports the GET subcommand")
 	})
+
+	t.Run("BITPOS BIT option check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 1, 7, 15, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 8, cmd.Val())
+	})
+
+	t.Run("BITPOS BIT not found check check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 0, 0, 5, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+	})
+
+	t.Run("BITPOS BIT not found check check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "mykey", 0, 2, 3, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 2, cmd.Val())
+	})
+
+	/* Test cases adapted from redis test cases : https://github.com/redis/redis/blob/unstable/tests/unit/bitops.tcl
+	 */
+	t.Run("BITPOS bit=0 with empty key returns 0", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "str").Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=0 with string less than 1 word works", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\xff\xf0\x00", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 12, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=1 with string less than 1 word works", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\x00\x0f\x00", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 1, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 12, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=0 starting at unaligned address", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\xff\xf0\x00", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 0, 1, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 12, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=1 starting at unaligned address", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\x00\x0f\xff", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 1, 1, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 12, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=0 unaligned+full word+reminder", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\xff\xff\xff", 0).Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\xff\xff\xff\xff\xff\xff\xff\xff").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\xff\xff\xff\xff\xff\xff\xff\xff").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\xff\xff\xff\xff\xff\xff\xff\xff").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\x0f").Err())
+		// Test values 1, 9, 17, 25, 33, 41, 49, 57, 65
+		for i := 0; i < 9; i++ {
+			if i == 6 {
+				cmd := rdb.BitPosSpan(ctx, "str", 0, 41, -1, "bit")
+				require.NoError(t, cmd.Err())
+				require.EqualValues(t, 216, cmd.Val())
+			} else {
+				cmd := rdb.BitPosSpan(ctx, "str", 0, int64(i*8)+1, -1, "bit")
+				require.NoError(t, cmd.Err())
+				require.EqualValues(t, 216, cmd.Val())
+			}
+		}
+	})
+
+	t.Run("BITPOS bit=1 unaligned+full word+reminder", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\x00\x00\x00", 0).Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\x00\x00\x00\x00\x00\x00\x00\x00").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\x00\x00\x00\x00\x00\x00\x00\x00").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\x00\x00\x00\x00\x00\x00\x00\x00").Err())
+		require.NoError(t, rdb.Append(ctx, "str", "\xf0").Err())
+		// Test values 1, 9, 17, 25, 33, 41, 49, 57, 65
+		for i := 0; i < 9; i++ {
+			if i == 6 {
+				cmd := rdb.BitPosSpan(ctx, "str", 1, 41, -1, "bit")
+				require.NoError(t, cmd.Err())
+				require.EqualValues(t, 216, cmd.Val())
+			} else {
+				cmd := rdb.BitPosSpan(ctx, "str", 1, int64(i*8)+1, -1, "bit")
+				require.NoError(t, cmd.Err())
+				require.EqualValues(t, 216, cmd.Val())
+			}
+		}
+	})
+
+	t.Run("BITPOS bit=1 returns -1 if string is all 0 bits", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "", 0).Err())
+		for i := 0; i < 20; i++ {
+			cmd := rdb.BitPosSpan(ctx, "str", 1, 0, -1, "bit")
+			require.NoError(t, cmd.Err())
+			require.EqualValues(t, -1, cmd.Val())
+			require.NoError(t, rdb.Append(ctx, "str", "\x00").Err())
+		}
+	})
+
+	t.Run("BITPOS bit=0 works with intervals", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\x00\xff\x00", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 0, 8, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 16, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 0, 16, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 16, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 0, 16, 200, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 16, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 0, 8, 8, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, -1, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=1 works with intervals", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\x00\xff\x00", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 1, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 8, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 1, 8, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 8, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 1, 16, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, -1, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 1, 16, 200, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, -1, cmd.Val())
+		cmd = rdb.BitPosSpan(ctx, "str", 1, 8, 8, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 8, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=0 changes behavior if end is given", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str", "\xff\xff\xff", 0).Err())
+		cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, -1, cmd.Val())
+	})
+
+	t.Run("BITPOS bit=1 fuzzy testing using SETBIT", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "str").Err())
+		var max int64 = 524288
+		var firstOnePos int64 = -1
+		for j := 0; j < 1000; j++ {
+			cmd := rdb.BitPosSpan(ctx, "str", 1, 0, -1, "bit")
+			require.NoError(t, cmd.Err())
+			require.EqualValues(t, firstOnePos, cmd.Val())
+			pos := util.RandomInt(max)
+			require.NoError(t, rdb.SetBit(ctx, "str", int64(pos), 1).Err())
+			if firstOnePos == -1 || firstOnePos > pos {
+				firstOnePos = pos
+			}
+		}
+	})
+
+	t.Run("BITPOS bit=0 fuzzy testing using SETBIT", func(t *testing.T) {
+		var max int64 = 524288
+		firstZeroPos := max
+		require.NoError(t, rdb.Set(ctx, "str", strings.Repeat("\xff", int(max/8)), 0).Err())
+		for j := 0; j < 1000; j++ {
+			cmd := rdb.BitPosSpan(ctx, "str", 0, 0, -1, "bit")
+			require.NoError(t, cmd.Err())
+			if firstZeroPos == max {
+				require.EqualValues(t, -1, cmd.Val())
+			} else {
+				require.EqualValues(t, firstZeroPos, cmd.Val())
+			}
+			pos := util.RandomInt(max)
+			require.NoError(t, rdb.SetBit(ctx, "str", int64(pos), 0).Err())
+			if firstZeroPos > pos {
+				firstZeroPos = pos
+			}
+		}
+	})
+
 }

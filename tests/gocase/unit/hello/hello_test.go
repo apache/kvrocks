@@ -44,15 +44,19 @@ func TestHello(t *testing.T) {
 	t.Run("hello with protocol 2", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "2")
 		rList := r.Val().([]interface{})
-		require.EqualValues(t, rList[2], "proto")
-		require.EqualValues(t, rList[3], 2)
+		require.EqualValues(t, "version", rList[2])
+		require.EqualValues(t, "4.0.0", rList[3])
+		require.EqualValues(t, "proto", rList[4])
+		require.EqualValues(t, 2, rList[5])
 	})
 
 	t.Run("hello with protocol 3", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3")
 		rList := r.Val().([]interface{})
-		require.EqualValues(t, rList[2], "proto")
-		require.EqualValues(t, rList[3], 2)
+		require.EqualValues(t, "version", rList[2])
+		require.EqualValues(t, "4.0.0", rList[3])
+		require.EqualValues(t, "proto", rList[4])
+		require.EqualValues(t, 2, rList[5])
 	})
 
 	t.Run("hello with wrong protocol", func(t *testing.T) {
@@ -68,12 +72,34 @@ func TestHello(t *testing.T) {
 	t.Run("hello with non protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "2", "SETNAME", "kvrocks")
 		rList := r.Val().([]interface{})
-		require.EqualValues(t, rList[2], "proto")
-		require.EqualValues(t, rList[3], 2)
+		require.EqualValues(t, "proto", rList[4])
+		require.EqualValues(t, 2, rList[5])
 
 		r = rdb.Do(ctx, "CLIENT", "GETNAME")
 		require.EqualValues(t, r.Val(), "kvrocks")
 	})
+}
+
+func TestEnableRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	r, err := rdb.Do(ctx, "HELLO", "2").Result()
+	require.NoError(t, err)
+	rList := r.([]interface{})
+	require.EqualValues(t, "proto", rList[4])
+	require.EqualValues(t, 2, rList[5])
+
+	r, err = rdb.Do(ctx, "HELLO", "3").Result()
+	require.NoError(t, err)
+	rMap := r.(map[interface{}]interface{})
+	require.EqualValues(t, rMap["proto"], 3)
 }
 
 func TestHelloWithAuth(t *testing.T) {
@@ -119,8 +145,8 @@ func TestHelloWithAuth(t *testing.T) {
 	t.Run("hello with non protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "2", "AUTH", "foobar", "SETNAME", "kvrocks")
 		rList := r.Val().([]interface{})
-		require.EqualValues(t, rList[2], "proto")
-		require.EqualValues(t, rList[3], 2)
+		require.EqualValues(t, "proto", rList[4])
+		require.EqualValues(t, 2, rList[5])
 
 		r = rdb.Do(ctx, "CLIENT", "GETNAME")
 		require.EqualValues(t, r.Val(), "kvrocks")
@@ -129,8 +155,8 @@ func TestHelloWithAuth(t *testing.T) {
 	t.Run("hello with non protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "2", "AUTH", "default", "foobar", "SETNAME", "kvrocks")
 		rList := r.Val().([]interface{})
-		require.EqualValues(t, rList[2], "proto")
-		require.EqualValues(t, rList[3], 2)
+		require.EqualValues(t, "proto", rList[4])
+		require.EqualValues(t, 2, rList[5])
 
 		r = rdb.Do(ctx, "CLIENT", "GETNAME")
 		require.EqualValues(t, r.Val(), "kvrocks")

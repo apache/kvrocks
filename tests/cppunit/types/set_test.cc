@@ -27,13 +27,15 @@
 
 class RedisSetTest : public TestBase {
  protected:
-  explicit RedisSetTest() { set_ = std::make_unique<redis::Set>(storage_, "set_ns"); }
+  explicit RedisSetTest() { set_ = std::make_unique<redis::Set>(storage_.get(), "set_ns"); }
   ~RedisSetTest() override = default;
 
   void SetUp() override {
     key_ = "test-set-key";
     fields_ = {"set-key-1", "set-key-2", "set-key-3", "set-key-4"};
   }
+
+  void TearDown() override { [[maybe_unused]] auto s = set_->Del(key_); }
 
   std::unique_ptr<redis::Set> set_;
 };
@@ -48,7 +50,6 @@ TEST_F(RedisSetTest, AddAndRemove) {
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Card(key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, AddAndRemoveRepeated) {
@@ -65,8 +66,6 @@ TEST_F(RedisSetTest, AddAndRemoveRepeated) {
   EXPECT_TRUE(s.ok() && (remembers.size() - 1) == ret);
   set_->Card(key_, &card);
   EXPECT_EQ(card, allmembers.size() - 1 - ret);
-
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Members) {
@@ -82,7 +81,6 @@ TEST_F(RedisSetTest, Members) {
   }
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, IsMember) {
@@ -98,7 +96,6 @@ TEST_F(RedisSetTest, IsMember) {
   EXPECT_TRUE(s.ok() && !flag);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, MIsMember) {
@@ -118,7 +115,6 @@ TEST_F(RedisSetTest, MIsMember) {
   for (size_t i = 1; i < fields_.size(); i++) {
     EXPECT_TRUE(exists[i] == 1);
   }
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Move) {
@@ -139,7 +135,6 @@ TEST_F(RedisSetTest, Move) {
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = set_->Remove(dst, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  s = set_->Del(key_);
   s = set_->Del(dst);
 }
 
@@ -157,7 +152,6 @@ TEST_F(RedisSetTest, TakeWithPop) {
   s = set_->Take(key_, &members, 1, true);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(s.ok() && members.size() == 0);
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, Diff) {
@@ -261,7 +255,6 @@ TEST_F(RedisSetTest, Overwrite) {
   set_->Overwrite(key_, {"a"});
   set_->Card(key_, &ret);
   EXPECT_EQ(ret, 1);
-  s = set_->Del(key_);
 }
 
 TEST_F(RedisSetTest, TakeWithoutPop) {
@@ -275,7 +268,9 @@ TEST_F(RedisSetTest, TakeWithoutPop) {
   s = set_->Take(key_, &members, int(fields_.size() - 1), false);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(members.size(), fields_.size() - 1);
+  s = set_->Take(key_, &members, -int(fields_.size() - 1), false);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(members.size(), fields_.size() - 1);
   s = set_->Remove(key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
-  s = set_->Del(key_);
 }

@@ -39,8 +39,8 @@ jobs:
     outputs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: dorny/paths-filter@v2
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3.0.0
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -56,9 +56,9 @@ jobs:
     env:
       FORCE_COLOR: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install typos
-        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.16.3/typos-v1.16.3-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.18.2/typos-v1.18.2-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
       - name: Run typos check
         run: typos --config .github/config/typos.toml
 
@@ -68,15 +68,16 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
       - name: Prepare Dependencies
         run: |
           sudo apt update
           sudo apt install -y clang-format-14 clang-tidy-14
-      - uses: apache/skywalking-eyes/header@v0.4.0
+      - uses: apache/skywalking-eyes/header@v0.5.0
         with:
           config: .github/config/licenserc.yml
       - name: Check with clang-format
@@ -96,7 +97,7 @@ jobs:
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
@@ -111,6 +112,9 @@ jobs:
         include:
           - name: Darwin Clang
             os: macos-11
+            compiler: auto
+          - name: Darwin Clang arm64
+            os: macos-14
             compiler: auto
           - name: Darwin Clang without Jemalloc
             os: macos-11
@@ -127,6 +131,10 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
+          - name: SonarCloud with Coverage
+            os: ubuntu-22.04
+            compiler: gcc
+            sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
           - name: Ubuntu Clang
             os: ubuntu-20.04
             compiler: clang
@@ -192,6 +200,8 @@ jobs:
             with_speedb: -DENABLE_SPEEDB=ON
 
     runs-on: ${{ matrix.os }}
+    env:
+      SONARCLOUD_OUTPUT_DIR: sonarcloud-data
     steps:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
@@ -208,11 +218,11 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
       - name: Install redis
         if: steps.cache-redis.outputs.cache-hit != 'true'
         run: |
@@ -221,18 +231,36 @@ jobs:
           mkdir -p $HOME/local/bin
           pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
 
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
+          
+      - name: Install gcovr 5.0
+        run: pip install gcovr==5.0 # 5.1 is not supported
+        if: ${{ matrix.sonarcloud }}
+
+      - name: Install sonar-scanner and build-wrapper
+        uses: SonarSource/sonarcloud-github-c-cpp@v2
+        if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
+        if: ${{ !matrix.sonarcloud }}
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} ${{ matrix.without_luajit }} \
-            ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
+            ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
+            ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+          
+      - name: Build Kvrocks (SonarCloud)
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -285,13 +313,32 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
           name: kvrocks-coredumps-${{ matrix.name }}
           path: |
             ./build/kvrocks
             ./coredumps/*
+      
+      - name: Collect coverage into one XML report
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
+      
+      - name: Add event information
+        if: ${{ matrix.sonarcloud }}
+        env:
+          GITHUB_EVENT_JSON: ${{ toJson(github.event) }}
+        run: |
+          echo "$GITHUB_EVENT_JSON" | tee ${{ env.SONARCLOUD_OUTPUT_DIR }}/github-event.json
+      
+      - name: Upload SonarCloud data
+        if: ${{ matrix.sonarcloud }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarcloud-data
+          path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
 
   check-docker:
     name: Check Docker image
@@ -299,10 +346,10 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v3
+      - uses: docker/build-push-action@v5
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
@@ -393,14 +440,16 @@ jobs:
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
-          bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
+          VERSION=3.26.4
+          wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
+          bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
 
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
+      - uses: actions/setup-go@v4 #v5 use Node 20 too
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
+          cache: false
 
       - name: Build Kvrocks
         run: |

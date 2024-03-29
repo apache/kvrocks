@@ -26,6 +26,7 @@
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
+#include "server/redis_request.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
 #include "time_util.h"
@@ -54,7 +55,7 @@ class CommandGet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 };
@@ -101,7 +102,7 @@ class CommandGetEx : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = s.IsNotFound() ? redis::NilString() : redis::BulkString(value);
+    *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(value);
     return Status::OK();
   }
 
@@ -142,7 +143,7 @@ class CommandGetSet : public Commander {
     if (old_value.has_value()) {
       *output = redis::BulkString(old_value.value());
     } else {
-      *output = redis::NilString();
+      *output = conn->NilString();
     }
     return Status::OK();
   }
@@ -159,7 +160,7 @@ class CommandGetDel : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(value);
     }
@@ -190,7 +191,7 @@ class CommandGetRange : public Commander {
     }
 
     if (s.IsNotFound()) {
-      *output = redis::NilString();
+      *output = conn->NilString();
       return Status::OK();
     }
 
@@ -199,7 +200,7 @@ class CommandGetRange : public Commander {
     if (start_ < 0) start_ = 0;
     if (stop_ > static_cast<int>(value.size())) stop_ = static_cast<int>(value.size());
     if (start_ > stop_) {
-      *output = redis::NilString();
+      *output = conn->NilString();
     } else {
       *output = redis::BulkString(value.substr(start_, stop_ - start_ + 1));
     }
@@ -255,7 +256,7 @@ class CommandMGet : public Commander {
     std::vector<std::string> values;
     // always return OK
     auto statuses = string_db.MGet(keys, &values);
-    *output = redis::MultiBulkString(values, statuses);
+    *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }
 };
@@ -323,13 +324,13 @@ class CommandSet : public Commander {
       if (ret.has_value()) {
         *output = redis::BulkString(ret.value());
       } else {
-        *output = redis::NilString();
+        *output = conn->NilString();
       }
     } else {
       if (ret.has_value()) {
         *output = redis::SimpleString("OK");
       } else {
-        *output = redis::NilString();
+        *output = conn->NilString();
       }
     }
     return Status::OK();
@@ -620,13 +621,95 @@ class CommandCAD : public Commander {
   }
 };
 
+class CommandLCS : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 3);
+    bool get_idx = false;
+    bool get_len = false;
+    while (parser.Good()) {
+      if (parser.EatEqICase("IDX")) {
+        get_idx = true;
+      } else if (parser.EatEqICase("LEN")) {
+        get_len = true;
+      } else if (parser.EatEqICase("WITHMATCHLEN")) {
+        with_match_len_ = true;
+      } else if (parser.EatEqICase("MINMATCHLEN")) {
+        min_match_len_ = GET_OR_RET(parser.TakeInt<int64_t>());
+        if (min_match_len_ < 0) {
+          min_match_len_ = 0;
+        }
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    // Complain if the user passed ambiguous parameters.
+    if (get_idx && get_len) {
+      return {Status::RedisParseErr,
+              "If you want both the length and indexes, "
+              "please just use IDX."};
+    }
+
+    if (get_len) {
+      type_ = StringLCSType::LEN;
+    } else if (get_idx) {
+      type_ = StringLCSType::IDX;
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::String string_db(srv->storage, conn->GetNamespace());
+
+    StringLCSResult rst;
+    auto s = string_db.LCS(args_[1], args_[2], {type_, min_match_len_}, &rst);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    // Build output by the rst type.
+    if (auto lcs = std::get_if<std::string>(&rst)) {
+      *output = redis::BulkString(*lcs);
+    } else if (auto len = std::get_if<uint32_t>(&rst)) {
+      *output = redis::Integer(*len);
+    } else if (auto result = std::get_if<StringLCSIdxResult>(&rst)) {
+      *output = conn->HeaderOfMap(2);
+      *output += redis::BulkString("matches");
+      *output += redis::MultiLen(result->matches.size());
+      for (const auto &match : result->matches) {
+        *output += redis::MultiLen(with_match_len_ ? 3 : 2);
+        *output += redis::MultiLen(2);
+        *output += redis::Integer(match.a.start);
+        *output += redis::Integer(match.a.end);
+        *output += redis::MultiLen(2);
+        *output += redis::Integer(match.b.start);
+        *output += redis::Integer(match.b.end);
+        if (with_match_len_) {
+          *output += redis::Integer(match.match_len);
+        }
+      }
+      *output += redis::BulkString("len");
+      *output += redis::Integer(result->len);
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  StringLCSType type_ = StringLCSType::NONE;
+  bool with_match_len_ = false;
+  int64_t min_match_len_ = 0;
+};
+
 REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandGetDel>("getdel", 2, "write", 1, 1, 1),
+    MakeCmdAttr<CommandGetDel>("getdel", 2, "write no-dbsize-check", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
@@ -637,6 +720,5 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandIncr>("incr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandDecrBy>("decrby", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandDecr>("decr", 2, "write", 1, 1, 1), MakeCmdAttr<CommandCAS>("cas", -4, "write", 1, 1, 1),
-    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), )
-
+    MakeCmdAttr<CommandCAD>("cad", 3, "write", 1, 1, 1), MakeCmdAttr<CommandLCS>("lcs", -3, "read-only", 1, 2, 1), )
 }  // namespace redis

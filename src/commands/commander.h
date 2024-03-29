@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "error_constants.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "status.h"
@@ -51,18 +52,19 @@ class Connection;
 struct CommandAttributes;
 
 enum CommandFlags : uint64_t {
-  kCmdWrite = 1ULL << 0,        // "write" flag
-  kCmdReadOnly = 1ULL << 1,     // "read-only" flag
-  kCmdReplication = 1ULL << 2,  // "replication" flag
-  kCmdPubSub = 1ULL << 3,       // "pub-sub" flag
-  kCmdScript = 1ULL << 4,       // "script" flag
-  kCmdLoading = 1ULL << 5,      // "ok-loading" flag
-  kCmdMulti = 1ULL << 6,        // "multi" flag
-  kCmdExclusive = 1ULL << 7,    // "exclusive" flag
-  kCmdNoMulti = 1ULL << 8,      // "no-multi" flag
-  kCmdNoScript = 1ULL << 9,     // "no-script" flag
-  kCmdROScript = 1ULL << 10,    // "ro-script" flag for read-only script commands
-  kCmdCluster = 1ULL << 11,     // "cluster" flag
+  kCmdWrite = 1ULL << 0,           // "write" flag
+  kCmdReadOnly = 1ULL << 1,        // "read-only" flag
+  kCmdReplication = 1ULL << 2,     // "replication" flag
+  kCmdPubSub = 1ULL << 3,          // "pub-sub" flag
+  kCmdScript = 1ULL << 4,          // "script" flag
+  kCmdLoading = 1ULL << 5,         // "ok-loading" flag
+  kCmdMulti = 1ULL << 6,           // "multi" flag
+  kCmdExclusive = 1ULL << 7,       // "exclusive" flag
+  kCmdNoMulti = 1ULL << 8,         // "no-multi" flag
+  kCmdNoScript = 1ULL << 9,        // "no-script" flag
+  kCmdROScript = 1ULL << 10,       // "ro-script" flag for read-only script commands
+  kCmdCluster = 1ULL << 11,        // "cluster" flag
+  kCmdNoDBSizeCheck = 1ULL << 12,  // "no-dbsize-check" flag
 };
 
 class Commander {
@@ -73,7 +75,7 @@ class Commander {
   virtual Status Parse() { return Parse(args_); }
   virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
   virtual Status Execute(Server *srv, Connection *conn, std::string *output) {
-    return {Status::RedisExecErr, "not implemented"};
+    return {Status::RedisExecErr, errNotImplemented};
   }
 
   virtual ~Commander() = default;
@@ -147,6 +149,10 @@ struct CommandAttributes {
     if (flag_gen) res |= flag_gen(args);
     return res;
   }
+
+  bool CheckArity(int cmd_size) const {
+    return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
+  }
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
@@ -177,6 +183,8 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
       flags |= kCmdROScript;
     else if (flag == "cluster")
       flags |= kCmdCluster;
+    else if (flag == "no-dbsize-check")
+      flags |= kCmdNoDBSizeCheck;
     else {
       std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
                                cmd_name)

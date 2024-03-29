@@ -28,7 +28,7 @@
 
 class NamespaceTest : public TestBase {
  protected:
-  explicit NamespaceTest() { config_->requirepass = "123"; }
+  explicit NamespaceTest() { config_.requirepass = "123"; }
 
   void SetUp() override {}
   void TearDown() override {}
@@ -36,10 +36,10 @@ class NamespaceTest : public TestBase {
 
 TEST_F(NamespaceTest, AddAndDelete) {
   for (const auto &v : {true, false}) {
-    auto ns = std::make_unique<Namespace>(storage_);
+    auto ns = std::make_unique<Namespace>(storage_.get());
     std::map<std::string, std::string> tokens = {
         {"tokens2", "test_ns"}, {"tokens", "test_ns2"}, {"tokens3", "test_ns3"}};
-    config_->repl_namespace_enabled = v;
+    config_.repl_namespace_enabled = v;
     for (const auto &iter : tokens) {
       ASSERT_TRUE(ns->Add(iter.second, iter.first).IsOK());
     }

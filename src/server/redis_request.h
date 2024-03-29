@@ -32,6 +32,10 @@ class Server;
 
 namespace redis {
 
+constexpr size_t PROTO_INLINE_MAX_SIZE = 16 * 1024L;
+constexpr size_t PROTO_BULK_MAX_SIZE = 512 * 1024L * 1024L;
+constexpr size_t PROTO_MULTI_MAX_SIZE = 1024 * 1024L;
+
 using CommandTokens = std::vector<std::string>;
 
 class Connection;

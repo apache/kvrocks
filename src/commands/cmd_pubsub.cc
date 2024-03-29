@@ -73,10 +73,11 @@ class CommandMPublish : public Commander {
   }
 };
 
-void SubscribeCommandReply(std::string *output, const std::string &name, const std::string &sub_name, int num) {
-  output->append(redis::MultiLen(3));
+void SubscribeCommandReply(const Connection *conn, std::string *output, const std::string &name,
+                           const std::string &sub_name, int num) {
+  output->append(conn->HeaderOfPush(3));
   output->append(redis::BulkString(name));
-  output->append(sub_name.empty() ? redis::NilString() : redis::BulkString(sub_name));
+  output->append(sub_name.empty() ? conn->NilString() : BulkString(sub_name));
   output->append(redis::Integer(num));
 }
 
@@ -85,7 +86,8 @@ class CommandSubscribe : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
-      SubscribeCommandReply(output, "subscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      SubscribeCommandReply(conn, output, "subscribe", args_[i],
+                            conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -95,13 +97,13 @@ class CommandUnSubscribe : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->UnsubscribeAll([output](const std::string &sub_name, int num) {
-        SubscribeCommandReply(output, "unsubscribe", sub_name, num);
+      conn->UnsubscribeAll([conn, output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(conn, output, "unsubscribe", sub_name, num);
       });
     } else {
       for (size_t i = 1; i < args_.size(); i++) {
         conn->UnsubscribeChannel(args_[i]);
-        SubscribeCommandReply(output, "unsubscribe", args_[i],
+        SubscribeCommandReply(conn, output, "unsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
       }
     }
@@ -114,7 +116,8 @@ class CommandPSubscribe : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     for (size_t i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
-      SubscribeCommandReply(output, "psubscribe", args_[i], conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      SubscribeCommandReply(conn, output, "psubscribe", args_[i],
+                            conn->SubscriptionsCount() + conn->PSubscriptionsCount());
     }
     return Status::OK();
   }
@@ -124,14 +127,52 @@ class CommandPUnSubscribe : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
-      conn->PUnsubscribeAll([output](const std::string &sub_name, int num) {
-        SubscribeCommandReply(output, "punsubscribe", sub_name, num);
+      conn->PUnsubscribeAll([conn, output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(conn, output, "punsubscribe", sub_name, num);
       });
     } else {
       for (size_t i = 1; i < args_.size(); i++) {
         conn->PUnsubscribeChannel(args_[i]);
-        SubscribeCommandReply(output, "punsubscribe", args_[i],
+        SubscribeCommandReply(conn, output, "punsubscribe", args_[i],
                               conn->SubscriptionsCount() + conn->PSubscriptionsCount());
+      }
+    }
+    return Status::OK();
+  }
+};
+
+class CommandSSubscribe : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    uint16_t slot = 0;
+    if (srv->GetConfig()->cluster_enabled) {
+      slot = GetSlotIdFromKey(args_[1]);
+      for (unsigned int i = 2; i < args_.size(); i++) {
+        if (GetSlotIdFromKey(args_[i]) != slot) {
+          return {Status::RedisExecErr, "CROSSSLOT Keys in request don't hash to the same slot"};
+        }
+      }
+    }
+
+    for (unsigned int i = 1; i < args_.size(); i++) {
+      conn->SSubscribeChannel(args_[i], slot);
+      SubscribeCommandReply(conn, output, "ssubscribe", args_[i], conn->SSubscriptionsCount());
+    }
+    return Status::OK();
+  }
+};
+
+class CommandSUnSubscribe : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    if (args_.size() == 1) {
+      conn->SUnsubscribeAll([conn, output](const std::string &sub_name, int num) {
+        SubscribeCommandReply(conn, output, "sunsubscribe", sub_name, num);
+      });
+    } else {
+      for (size_t i = 1; i < args_.size(); i++) {
+        conn->SUnsubscribeChannel(args_[i], srv->GetConfig()->cluster_enabled ? GetSlotIdFromKey(args_[i]) : 0);
+        SubscribeCommandReply(conn, output, "sunsubscribe", args_[i], conn->SSubscriptionsCount());
       }
     }
     return Status::OK();
@@ -146,14 +187,14 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if ((subcommand_ == "numsub") && args.size() >= 2) {
+    if ((subcommand_ == "numsub" || subcommand_ == "shardnumsub") && args.size() >= 2) {
       if (args.size() > 2) {
         channels_ = std::vector<std::string>(args.begin() + 2, args.end());
       }
       return Status::OK();
     }
 
-    if ((subcommand_ == "channels") && args.size() <= 3) {
+    if ((subcommand_ == "channels" || subcommand_ == "shardchannels") && args.size() <= 3) {
       if (args.size() == 3) {
         pattern_ = args[2];
       }
@@ -169,9 +210,13 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "numsub") {
+    if (subcommand_ == "numsub" || subcommand_ == "shardnumsub") {
       std::vector<ChannelSubscribeNum> channel_subscribe_nums;
-      srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      if (subcommand_ == "numsub") {
+        srv->ListChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      } else {
+        srv->ListSChannelSubscribeNum(channels_, &channel_subscribe_nums);
+      }
 
       output->append(redis::MultiLen(channel_subscribe_nums.size() * 2));
       for (const auto &chan_subscribe_num : channel_subscribe_nums) {
@@ -182,10 +227,14 @@ class CommandPubSub : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "channels") {
+    if (subcommand_ == "channels" || subcommand_ == "shardchannels") {
       std::vector<std::string> channels;
-      srv->GetChannelsByPattern(pattern_, &channels);
-      *output = redis::MultiBulkString(channels);
+      if (subcommand_ == "channels") {
+        srv->GetChannelsByPattern(pattern_, &channels);
+      } else {
+        srv->GetSChannelsByPattern(pattern_, &channels);
+      }
+      *output = conn->MultiBulkString(channels);
       return Status::OK();
     }
 
@@ -205,6 +254,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSSubscribe>("ssubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandSUnSubscribe>("sunsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
     MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0), )
 
 }  // namespace redis

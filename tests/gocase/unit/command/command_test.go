@@ -28,7 +28,10 @@ import (
 )
 
 func TestCommand(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{
+		"rename-command KEYS":   "RENAMED_KEYS",
+		"rename-command CONFIG": "''", // remove CONFIG command
+	})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -50,6 +53,41 @@ func TestCommand(t *testing.T) {
 		require.EqualValues(t, 1, v[5])
 	})
 
+	t.Run("acquire renamed command info by COMMAND INFO", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "INFO", "KEYS")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Nil(t, vs[0])
+
+		r = rdb.Do(ctx, "COMMAND", "INFO", "RENAMED_KEYS")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		v := vs[0].([]interface{})
+		require.Len(t, v, 6)
+		require.Equal(t, "keys", v[0])
+		require.EqualValues(t, 2, v[1])
+		require.Equal(t, []interface{}{"readonly"}, v[2])
+		require.EqualValues(t, 0, v[3])
+		require.EqualValues(t, 0, v[4])
+		require.EqualValues(t, 0, v[5])
+	})
+
+	t.Run("renamed command can be acquired by COMMAND", func(t *testing.T) {
+		commandInfos := rdb.Command(ctx).Val()
+		require.NotNil(t, commandInfos)
+		_, found := commandInfos["keys"]
+		require.True(t, found)
+	})
+
+	t.Run("removed command can not be acquired by COMMAND", func(t *testing.T) {
+		commandInfos := rdb.Command(ctx).Val()
+		require.NotNil(t, commandInfos)
+		_, found := commandInfos["config"]
+		require.True(t, found)
+	})
+
 	t.Run("command entry length check", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND")
 		vs, err := r.Slice()
@@ -64,5 +102,191 @@ func TestCommand(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, vs, 1)
 		require.Equal(t, "test", vs[0])
+	})
+
+	t.Run("COMMAND GETKEYS SINTERCARD", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "SINTERCARD", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS ZINTER", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTER", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS ZINTERSTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTERSTORE", "dst", "2", "src1", "src2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
+	})
+
+	t.Run("COMMAND GETKEYS ZINTERCARD", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTERCARD", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS ZUNION", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZUNION", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS ZUNIONSTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZUNIONSTORE", "dst", "2", "src1", "src2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
+	})
+
+	t.Run("COMMAND GETKEYS ZDIFF", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZDIFF", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS ZDIFFSTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZDIFFSTORE", "dst", "2", "src1", "src2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 3)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src1", vs[1])
+		require.Equal(t, "src2", vs[2])
+	})
+
+	t.Run("COMMAND GETKEYS ZMPOP", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZMPOP", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS BZMPOP", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "BZMPOP", "0", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS LMPOP", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "LMPOP", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS BLMPOP", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "BLMPOP", "0", "2", "key1", "key2")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "key1", vs[0])
+		require.Equal(t, "key2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEORADIUS", func(t *testing.T) {
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "storedist", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// store + storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUS", "src", "1", "1", "1", "km", "store", "dst1", "storedist", "dst2")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEORADIUSBYMEMBER", func(t *testing.T) {
+		// non-store
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		require.Equal(t, "src", vs[0])
+
+		// store
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "storedist", "dst")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst", vs[1])
+
+		// store + storedist
+		r = rdb.Do(ctx, "COMMAND", "GETKEYS", "GEORADIUSBYMEMBER", "src", "member", "radius", "m", "store", "dst1", "storedist", "dst2")
+		vs, err = r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "src", vs[0])
+		require.Equal(t, "dst2", vs[1])
+	})
+
+	t.Run("COMMAND GETKEYS GEOSEARCHSTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "GEOSEARCHSTORE", "dst", "src", "frommember", "member", "byradius", "10", "m")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "dst", vs[0])
+		require.Equal(t, "src", vs[1])
 	})
 }

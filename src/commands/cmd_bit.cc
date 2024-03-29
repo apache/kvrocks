@@ -22,6 +22,7 @@
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/server.h"
+#include "status.h"
 #include "types/redis_bitmap.h"
 
 namespace redis {
@@ -91,6 +92,7 @@ class CommandSetBit : public Commander {
   bool bit_ = false;
 };
 
+// BITCOUNT key [start end [BYTE | BIT]]
 class CommandBitCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -98,7 +100,11 @@ class CommandBitCount : public Commander {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
 
-    if (args.size() == 4) {
+    if (args.size() > 5) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    if (args.size() >= 4) {
       auto parse_start = ParseInt<int64_t>(args[2], 10);
       if (!parse_start) {
         return {Status::RedisParseErr, errValueNotInteger};
@@ -113,13 +119,23 @@ class CommandBitCount : public Commander {
       stop_ = *parse_stop;
     }
 
+    if (args.size() == 5) {
+      if (util::EqualICase(args[4], "BYTE")) {
+        is_bit_index_ = false;
+      } else if (util::EqualICase(args[4], "BIT")) {
+        is_bit_index_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
     return Commander::Parse(args);
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint32_t cnt = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitCount(args_[1], start_, stop_, &cnt);
+    auto s = bitmap_db.BitCount(args_[1], start_, stop_, is_bit_index_, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(cnt);
@@ -129,6 +145,7 @@ class CommandBitCount : public Commander {
  private:
   int64_t start_ = 0;
   int64_t stop_ = -1;
+  bool is_bit_index_ = false;
 };
 
 class CommandBitPos : public Commander {
@@ -155,6 +172,10 @@ class CommandBitPos : public Commander {
       stop_ = *parse_stop;
     }
 
+    if (args.size() >= 6 && util::EqualICase(args[5], "BIT")) {
+      is_bit_index_ = true;
+    }
+
     auto parse_arg = ParseInt<int64_t>(args[2], 10);
     if (!parse_arg) {
       return {Status::RedisParseErr, errValueNotInteger};
@@ -173,7 +194,7 @@ class CommandBitPos : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t pos = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos);
+    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos, is_bit_index_);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(pos);
@@ -185,6 +206,7 @@ class CommandBitPos : public Commander {
   int64_t stop_ = -1;
   bool bit_ = false;
   bool stop_given_ = false;
+  bool is_bit_index_ = false;
 };
 
 class CommandBitOp : public Commander {
@@ -228,6 +250,7 @@ class CommandBitOp : public Commander {
   BitOpFlags op_flag_;
 };
 
+template <bool ReadOnly>
 class CommandBitfield : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -300,6 +323,12 @@ class CommandBitfield : public Commander {
       cmds_.push_back(cmd);
     }
 
+    if constexpr (ReadOnly) {
+      if (!read_only_) {
+        return {Status::RedisParseErr, "BITFIELD_RO only supports the GET subcommand"};
+      }
+    }
+
     return Commander::Parse(args);
   }
 
@@ -321,7 +350,7 @@ class CommandBitfield : public Commander {
           str_rets[i] = redis::Integer(rets[i]->Value());
         }
       } else {
-        str_rets[i] = redis::NilString();
+        str_rets[i] = conn->NilString();
       }
     }
     *output = redis::Array(str_rets);
@@ -380,6 +409,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 
                         MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitOp>("bitop", -4, "write", 2, -1, 1),
-                        MakeCmdAttr<CommandBitfield>("bitfield", -2, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandBitfield<false>>("bitfield", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandBitfield<true>>("bitfield_ro", -2, "read-only", 1, 1, 1), )
 
 }  // namespace redis

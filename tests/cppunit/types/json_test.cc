@@ -28,7 +28,7 @@
 
 class RedisJsonTest : public TestBase {
  protected:
-  explicit RedisJsonTest() : json_(std::make_unique<redis::Json>(storage_, "json_ns")) {}
+  explicit RedisJsonTest() : json_(std::make_unique<redis::Json>(storage_.get(), "json_ns")) {}
   ~RedisJsonTest() override = default;
 
   void SetUp() override { key_ = "test_json_key"; }
@@ -96,6 +96,14 @@ TEST_F(RedisJsonTest, Set) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "[{},[]]");
   ASSERT_THAT(json_->Set(key_, "$[1]", "invalid").ToString(), MatchesRegex(".*syntax_error.*"));
   ASSERT_TRUE(json_->Del(key_, "$", &result).ok());
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":1})").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.b", "2").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.c", R"({"x":3})").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.c.y", "4").ok());
+
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.value, jsoncons::json::parse(R"({"a":1,"b":2,"c":{"x":3,"y":4}})"));
 }
 
 TEST_F(RedisJsonTest, Get) {

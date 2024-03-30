@@ -1536,8 +1536,8 @@ class CommandXSetId : public Commander {
 class CommandXPending : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    stream_name_ = args[2];
-    group_name_ = args[1];
+    stream_name_ = args[1];
+    group_name_ = args[2];
     return Status::OK();
   }
 
@@ -1553,11 +1553,12 @@ class CommandXPending : public Commander {
   }
 
   static Status SendResults(Connection *conn, std::string *output, StreamGetPendingEntryResult &results) {
-    output->append(redis::MultiLen(3));
+    output->append(redis::MultiLen(3 + results.consumer_infos.size()));
     output->append(redis::Integer(results.pending_number));
     output->append(redis::BulkString(results.smallest_id.ToString()));
     output->append(redis::BulkString(results.greatest_id.ToString()));
     for (const auto &entry : results.consumer_infos) {
+      output->append(redis::MultiLen(1));
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(entry.first));
       output->append(redis::BulkString(std::to_string(entry.second)));

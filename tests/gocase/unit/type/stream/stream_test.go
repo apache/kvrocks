@@ -1294,6 +1294,83 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(3), r)
 	})
+
+	t.Run("XPending with different kinds of commands", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), r)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+
+		r1, err1 := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     1,
+			Lower:     "1-0",
+			Higher:    "1-0",
+			Consumers: map[string]int64{"myconsumer": 1},
+		}, r1)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-2",
+			Values: []string{"field1", "data1"},
+		}).Err())
+
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    2,
+			NoAck:    false,
+		}).Err())
+
+		r1, err1 = rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     3,
+			Lower:     "1-0",
+			Higher:    "2-2",
+			Consumers: map[string]int64{"myconsumer": 3},
+		}, r1)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "2-0").Err())
+
+		r1, err1 = rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     2,
+			Lower:     "1-0",
+			Higher:    "2-2",
+			Consumers: map[string]int64{"myconsumer": 2},
+		}, r1)
+
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

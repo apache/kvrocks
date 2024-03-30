@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "db_util.h"
+#include "storage/redis_metadata.h"
 #include "time_util.h"
 #include "types/redis_stream_base.h"
 
@@ -345,8 +346,26 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
     std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
     std::string value;
     s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &value);
+
     if (s.ok()) {
       *acknowledged += 1;
+      StreamPelEntry pel_entry = decodeStreamPelEntryValue(value);
+
+      const std::string &consumer_name = pel_entry.consumer_name;
+      std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+      std::string get_consumer_value;
+      s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (s.IsNotFound()) {
+        return rocksdb::Status::OK();
+      }
+
+      StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
+      consumer_metadata.pending_number -= 1;
+
+      batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(consumer_metadata));
       batch->Delete(stream_cf_handle_, entry_key);
     }
   }
@@ -1413,11 +1432,10 @@ rocksdb::Status Stream::GetPendingEntries(const Slice &stream_name, const std::s
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  StreamConsumerGroupMetadata consumergroup_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
+  // StreamConsumerGroupMetadata consumergroup_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
 
   std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Minimum());
-  std::string end_key =
-      internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, consumergroup_metadata.last_delivered_id);
+  std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Maximum());
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   LatestSnapShot ss(storage_);
@@ -1430,14 +1448,12 @@ rocksdb::Status Stream::GetPendingEntries(const Slice &stream_name, const std::s
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
   std::unordered_set<std::string> consumer_names;
   StreamEntryID smallest_id{StreamEntryID::Maximum()};
-  StreamEntryID greatest_id{consumergroup_metadata.last_delivered_id};
-  LOG(INFO) << "last_delivered_id " << greatest_id.ToString();
+  StreamEntryID greatest_id{StreamEntryID::Minimum()};
   uint64_t count = 0;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
     if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
       std::string tmp_group_name;
       StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
-      LOG(INFO) << tmp_group_name << " group_name " << group_name;
       if (tmp_group_name != group_name) continue;
 
       if (smallest_id > entry_id) {

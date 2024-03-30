@@ -28,7 +28,7 @@
 namespace redis {
 
 class CommandCluster : public Commander {
-public:
+ public:
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 

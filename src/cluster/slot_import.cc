@@ -31,6 +31,10 @@ SlotImport::SlotImport(Server *srv)
 Status SlotImport::Start(int slot) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_status_ == kImportStart) {
+    // return ok if the same slot is importing
+    if (import_slot_ == slot) {
+      return Status::OK();
+    }
     return {Status::NotOK, fmt::format("only one importing slot is allowed, current slot is: {}", import_slot_)};
   }
 

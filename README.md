@@ -113,6 +113,8 @@ $ docker run -it -p 6666:6666 apache/kvrocks --bind 0.0.0.0
 $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```
 
+Please visit [Apache Kvrocks on DockerHub](https://hub.docker.com/r/apache/kvrocks) for additional details about images.
+
 ### Connect Kvrocks service
 
 ```sh

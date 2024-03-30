@@ -28,11 +28,12 @@
 namespace redis {
 
 class CommandCluster : public Commander {
- public:
+public:
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
+    if (args.size() == 2 &&
+        (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info" || subcommand_ == "reset"))
       return Status::OK();
 
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
@@ -105,6 +106,14 @@ class CommandCluster : public Commander {
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
+    } else if (subcommand_ == "reset") {
+      Status s = srv->cluster->Reset();
+      if (s.IsOK()) {
+        *output = redis::SimpleString("OK");
+      } else {
+        return {Status::RedisExecErr, s.Msg()};
+      }
+      return Status::OK();
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }

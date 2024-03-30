@@ -1273,6 +1273,48 @@ class CommandApplyBatch : public Commander {
   bool low_pri_ = false;
 };
 
+class CommandDump : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 2) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    rocksdb::Status db_status;
+    std::string &key = args_[1];
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    int count = 0;
+    db_status = redis.Exists({key}, &count);
+    if (!db_status.ok()) {
+      if (db_status.IsNotFound()) {
+        *output = conn->NilString();
+        return Status::OK();
+      }
+      return {Status::RedisExecErr, db_status.ToString()};
+    }
+    if (count == 0) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    RedisType type = kRedisNone;
+    db_status = redis.Type(key, &type);
+    if (!db_status.ok()) return {Status::RedisExecErr, db_status.ToString()};
+
+    std::string result;
+    auto stream_ptr = std::make_unique<RdbStringStream>(result);
+    RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
+    auto s = rdb.Dump(key, type);
+    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+    CHECK(dynamic_cast<RdbStringStream *>(rdb.GetStream().get()) != nullptr);
+    *output = redis::BulkString(static_cast<RdbStringStream *>(rdb.GetStream().get())->GetInput());
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1309,5 +1351,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
-                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
+                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0),
+                        MakeCmdAttr<CommandDump>("dump", 2, "read-only", 0, 0, 0), )
 }  // namespace redis

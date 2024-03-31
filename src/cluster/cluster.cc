@@ -318,41 +318,39 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
   if (!IsValidSlot(slot)) {
     return {Status::NotOK, errSlotOutOfRange};
   }
+  auto source_node = srv_->cluster->slots_nodes_[slot];
+  if (source_node && source_node->id == myid_) {
+    return {Status::NotOK, "Can't import slot which belongs to me"};
+  }
 
+  Status s;
   switch (state) {
     case kImportStart:
-      if (!srv_->slot_import->Start(conn->GetFD(), slot)) {
-        return {Status::NotOK, fmt::format("Can't start importing slot {}", slot)};
-      }
+      s = srv_->slot_import->Start(slot);
+      if (!s.IsOK()) return s;
 
       // Set link importing
       conn->SetImporting();
       myself_->importing_slot = slot;
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get(), capture_fd = conn->GetFD()](int fd) {
-        object_ptr->StopForLinkError(capture_fd);
-      };
-      // Stop forbidding writing slot to accept write commands
+      conn->close_cb = [object_ptr = srv_->slot_import.get()](int fd) {
+        auto s = object_ptr->StopForLinkError();
+        if (!s.IsOK()) {
+          LOG(ERROR) << "[import] Failed to stop importing slot: " << s.Msg();
+        }
+      };  // Stop forbidding writing slot to accept write commands
       if (slot == srv_->slot_migrator->GetForbiddenSlot()) srv_->slot_migrator->ReleaseForbiddenSlot();
       LOG(INFO) << "[import] Start importing slot " << slot;
       break;
     case kImportSuccess:
-      if (!srv_->slot_import->Success(slot)) {
-        LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
-        return {Status::NotOK, fmt::format("Failed to set slot {} importing success", slot)};
-      }
-
-      LOG(INFO) << "[import] Succeed to import slot " << slot;
+      s = srv_->slot_import->Success(slot);
+      if (!s.IsOK()) return s;
+      LOG(INFO) << "[import] Mark the importing slot as succeed" << slot;
       break;
     case kImportFailed:
-      if (!srv_->slot_import->Fail(slot)) {
-        LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
-        return {Status::NotOK, fmt::format("Failed to set slot {} importing error", slot)};
-      }
-
-      LOG(INFO) << "[import] Failed to import slot " << slot;
+      s = srv_->slot_import->Fail(slot);
+      if (!s.IsOK()) return s;
+      LOG(INFO) << "[import] Mark the importing slot as failed" << slot;
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -471,6 +469,11 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
   return Status::OK();
 }
 
+std::string Cluster::getNodeIDBySlot(int slot) const {
+  if (slot < 0 || slot >= kClusterSlots || !slots_nodes_[slot]) return "";
+  return slots_nodes_[slot]->id;
+}
+
 std::string Cluster::genNodesDescription() {
   auto slots_infos = getClusterNodeSlots();
 
@@ -502,6 +505,21 @@ std::string Cluster::genNodesDescription() {
       }
     }
 
+    // Just for MYSELF node to show the importing/migrating slot
+    if (n->id == myid_) {
+      if (srv_->slot_migrator) {
+        auto migrating_slot = srv_->slot_migrator->GetMigratingSlot();
+        if (migrating_slot != -1) {
+          node_str.append(fmt::format(" [{}->-{}]", migrating_slot, srv_->slot_migrator->GetDstNode()));
+        }
+      }
+      if (srv_->slot_import) {
+        auto importing_slot = srv_->slot_import->GetSlot();
+        if (importing_slot != -1) {
+          node_str.append(fmt::format(" [{}-<-{}]", importing_slot, getNodeIDBySlot(importing_slot)));
+        }
+      }
+    }
     nodes_desc.append(node_str + "\n");
   }
   return nodes_desc;

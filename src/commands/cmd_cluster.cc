@@ -113,7 +113,6 @@ class CommandCluster : public Commander {
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
-      return Status::OK();
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }

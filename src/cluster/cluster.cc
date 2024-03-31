@@ -826,20 +826,20 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 }
 
 Status Cluster::Reset() {
-  version_ = -1;
-  size_ = 0;
-  myid_.clear();
-  myself_.reset();
-
-  if (!srv_->storage->IsEmptyDB()) {
-    return {Status::NotOK, "Can't reset cluster while database is not empty"};
-  }
   if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlot() != -1) {
     return {Status::NotOK, "Can't reset cluster while migrating slot"};
   }
   if (srv_->slot_import && srv_->slot_import->GetSlot() != -1) {
     return {Status::NotOK, "Can't reset cluster while importing slot"};
   }
+  if (!srv_->storage->IsEmptyDB()) {
+    return {Status::NotOK, "Can't reset cluster while database is not empty"};
+  }
+
+  version_ = -1;
+  size_ = 0;
+  myid_.clear();
+  myself_.reset();
 
   nodes_.clear();
   for (auto &node : nodes_) {

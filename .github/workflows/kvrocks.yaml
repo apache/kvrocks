@@ -175,7 +175,7 @@ jobs:
             compiler: gcc
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang with OpenSSL
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: clang
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
@@ -191,7 +191,7 @@ jobs:
             compiler: gcc
             new_encoding: -DENABLE_NEW_ENCODING=TRUE
           - name: Ubuntu Clang with new encoding
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=TRUE
           - name: Ubuntu GCC with speedb enabled

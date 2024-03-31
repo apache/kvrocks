@@ -55,16 +55,17 @@ struct Node {
     return std::unique_ptr<U>(new T(std::forward<Args>(args)...));
   }
 
-  template <typename T>
-  static std::unique_ptr<T> MustAs(std::unique_ptr<Node> &&original) {
+  template <typename T, typename U>
+  static std::unique_ptr<T> MustAs(std::unique_ptr<U> &&original) {
     auto casted = As<T>(std::move(original));
     CHECK(casted != nullptr);
     return casted;
   }
 
-  template <typename T>
-  static std::unique_ptr<T> As(std::unique_ptr<Node> &&original) {
-    auto casted = dynamic_cast<T *>(original.release());
+  template <typename T, typename U>
+  static std::unique_ptr<T> As(std::unique_ptr<U> &&original) {
+    auto casted = dynamic_cast<T *>(original.get());
+    if (casted) original.release();
     return std::unique_ptr<T>(casted);
   }
 };

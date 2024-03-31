@@ -1576,9 +1576,15 @@ class CommandXPending : public Commander {
     redis::Stream stream_db(srv->storage, conn->GetNamespace());
     std::vector<std::pair<std::string, int>> pending_infos;
     StreamGetPendingEntryResult results;
-    auto s = stream_db.GetPendingEntries(stream_name_, group_name_, results);
+    options_.stream_name = stream_name_;
+    options_.group_name = group_name_;
+    std::vector<StreamGetExtPendingEntryResult> ext_results;
+    auto s = stream_db.GetPendingEntries(options_, results, ext_results);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+    if (options_.with_count) {
+      return SendExtResults(conn, output, ext_results);
     }
     return SendResults(conn, output, results);
   }
@@ -1593,6 +1599,20 @@ class CommandXPending : public Commander {
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(entry.first));
       output->append(redis::BulkString(std::to_string(entry.second)));
+    }
+
+    return Status::OK();
+  }
+
+  static Status SendExtResults(Connection *conn, std::string *output,
+                               std::vector<StreamGetExtPendingEntryResult> &ext_results) {
+    output->append(redis::MultiLen(ext_results.size()));
+    for (const auto &entry : ext_results) {
+      output->append(redis::MultiLen(4));
+      output->append(redis::BulkString(entry.id.ToString()));
+      output->append(redis::BulkString(entry.consumer_name));
+      output->append(redis::Integer(entry.delivered_time));
+      output->append(redis::Integer(entry.delivered_count));
     }
 
     return Status::OK();

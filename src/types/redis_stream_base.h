@@ -151,6 +151,8 @@ struct StreamPendingOptions {
   bool with_consumer = false;
 
   std::string consumer;
+  std::string stream_name;
+  std::string group_name;
 };
 
 struct StreamRangeOptions {
@@ -227,6 +229,16 @@ struct StreamGetPendingEntryResult {
   StreamEntryID greatest_id;
   std::vector<std::pair<std::string, int>> consumer_infos;
 };
+
+struct StreamGetExtPendingEntryResult {
+  StreamGetExtPendingEntryResult() = default;
+
+  StreamEntryID id;
+  std::string consumer_name;
+  uint64_t delivered_time;
+  uint64_t delivered_count;
+};
+
 Status IncrementStreamEntryID(StreamEntryID *id);
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id);
 StatusOr<std::unique_ptr<NextStreamEntryIDGenerationStrategy>> ParseNextStreamEntryIDStrategy(const std::string &input);

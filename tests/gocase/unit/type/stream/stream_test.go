@@ -1294,6 +1294,125 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(3), r)
 	})
+
+	t.Run("Simple XCLAIM command tests", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		consumerName := "myconsumer"
+		consumer1Name := "myconsumer1"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		r, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}}},
+		}}, r)
+
+		claimedMessages, err := rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumer1Name,
+			MinIdle:  0,
+			Messages: []string{"1-0"},
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, claimedMessages, 1, "Expected to claim 1 message")
+		require.Equal(t, "1-0", claimedMessages[0].ID, "Expected claimed message ID to match")
+
+		time.Sleep(2000 * time.Millisecond)
+		minIdleTime := 1000 * time.Millisecond
+		claimedMessages, err = rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumerName,
+			MinIdle:  minIdleTime,
+			Messages: []string{"1-0"},
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, claimedMessages, 1, "Expected to claim 1 message if idle time is large enough")
+		require.Equal(t, "1-0", claimedMessages[0].ID, "Expected claimed message ID to match")
+
+
+		minIdleTime = 60000 * time.Millisecond
+		claimedMessages, err = rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumer1Name,
+			MinIdle:  minIdleTime,
+			Messages: []string{"1-0"},
+		}).Result()
+
+		require.NoError(t, err)
+		require.Empty(t, claimedMessages, "Expected no messages to be claimed due to insufficient idle time")
+	})
+
+	t.Run("XCLAIM with different timing options", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		consumerName := "myconsumer"
+		consumer1Name := "myconsumer1"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		r, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}}},
+		}}, r)
+
+		claimedMessages, err := rdb.Do(ctx, "XCLAIM", streamName, groupName, consumer1Name, "0", "1-0", "IDLE", "5000").Result()
+		require.NoError(t, err)
+
+		claimedMessages, err = rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumerName,
+			MinIdle:  2000 * time.Millisecond,
+			Messages: []string{"1-0"},
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, claimedMessages, 1, "Expected to claim 1 message if idle time is large enough")
+		require.Equal(t, "1-0", claimedMessages[0].ID, "Expected claimed message ID to match")
+
+		tenSecondsAgo := time.Now().Add(-10 * time.Second).UnixMilli()
+		claimedMessages, err = rdb.Do(ctx, "XCLAIM", streamName, groupName, consumer1Name, "0", "1-0", "TIME", tenSecondsAgo).Result()
+		require.NoError(t, err)
+
+		claimedMessages, err = rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumerName,
+			MinIdle:  5000 * time.Millisecond,
+			Messages: []string{"1-0"},
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, claimedMessages, 1, "Expected to claim 1 message if idle time is large enough")
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

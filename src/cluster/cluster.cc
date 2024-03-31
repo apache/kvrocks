@@ -846,12 +846,8 @@ Status Cluster::Reset() {
   myself_.reset();
 
   nodes_.clear();
-  for (auto &node : nodes_) {
-    node.second.reset();
-  }
-  slots_nodes_->reset();
-  for (auto &slots_node : slots_nodes_) {
-    slots_node.reset();
+  for (auto &n : slots_nodes_) {
+    n = nullptr;
   }
   migrated_slots_.clear();
   imported_slots_.clear();

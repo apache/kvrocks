@@ -1536,8 +1536,39 @@ class CommandXSetId : public Commander {
 class CommandXPending : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    stream_name_ = args[1];
-    group_name_ = args[2];
+    CommandParser parser(args, 1);
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
+    if (parser.EatEqICase("idle")) {
+      options_.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+      options_.with_time = true;
+    }
+
+    if (parser.Good()) {
+      std::string start_id, end_id;
+      start_id = GET_OR_RET(parser.TakeStr());
+      end_id = GET_OR_RET(parser.TakeStr());
+      if (start_id != "-") {
+        auto s = ParseStreamEntryID(start_id, &options_.start_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      }
+
+      if (end_id != "+") {
+        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      }
+
+      options_.count = GET_OR_RET(parser.TakeInt<uint64_t>());
+      options_.with_count = true;
+      if (parser.Good()) {
+        options_.consumer = GET_OR_RET(parser.TakeStr());
+        options_.with_consumer = true;
+      }
+    }
     return Status::OK();
   }
 
@@ -1570,6 +1601,8 @@ class CommandXPending : public Commander {
  private:
   std::string group_name_;
   std::string stream_name_;
+  std::string consumer_name_;
+  StreamPendingOptions options_;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),

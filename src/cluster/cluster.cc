@@ -318,6 +318,10 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
   if (!IsValidSlot(slot)) {
     return {Status::NotOK, errSlotOutOfRange};
   }
+  auto source_node = srv_->cluster->slots_nodes_[slot];
+  if (source_node && source_node->id == myid_) {
+    return {Status::NotOK, "Can't import slot which belongs to me"};
+  }
 
   Status s;
   switch (state) {

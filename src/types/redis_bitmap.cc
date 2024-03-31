@@ -111,7 +111,7 @@ rocksdb::Status Bitmap::GetBit(const Slice &user_key, uint32_t bit_offset, bool 
 
   BitmapMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (metadata.Type() == kRedisString) {
@@ -146,7 +146,7 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
 
   BitmapMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s;
   if (metadata.size > max_btos_size) {
     return rocksdb::Status::Aborted(kErrBitmapStringOutOfRange);
@@ -232,7 +232,7 @@ rocksdb::Status Bitmap::BitCount(const Slice &user_key, int64_t start, int64_t s
 
   BitmapMetadata metadata(false);
   std::optional<LatestSnapShot> ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
+  rocksdb::Status s = GetMetadata(GetOptions{ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   /* Convert negative indexes */
@@ -317,7 +317,7 @@ rocksdb::Status Bitmap::BitPos(const Slice &user_key, bool bit, int64_t start, i
 
   BitmapMetadata metadata(false);
   std::optional<LatestSnapShot> ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
+  rocksdb::Status s = GetMetadata(GetOptions{ss->GetSnapShot()}, ns_key, &metadata, &raw_value);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (s.IsNotFound()) {
     *pos = bit ? -1 : 0;

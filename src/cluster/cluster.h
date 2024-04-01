@@ -89,6 +89,7 @@ class Cluster {
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);
+  Status Reset();
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 

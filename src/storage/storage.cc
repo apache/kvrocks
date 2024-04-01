@@ -521,6 +521,19 @@ Status Storage::RestoreFromCheckpoint() {
   return Status::OK();
 }
 
+bool Storage::IsEmptyDB() {
+  std::unique_ptr<rocksdb::Iterator> iter(
+      db_->NewIterator(rocksdb::ReadOptions(), GetCFHandle(kMetadataColumnFamilyName)));
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Metadata metadata(kRedisNone, false);
+    // If cannot decode the metadata we think the key is alive, so the db is not empty
+    if (!metadata.Decode(iter->value()).ok() || !metadata.Expired()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void Storage::EmptyDB() {
   // Clean old backups and checkpoints
   PurgeOldBackups(0, 0);

@@ -144,7 +144,7 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   SetMetadata metadata(false);
   LatestSnapShot ss(storage_);
 
-  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -178,7 +178,7 @@ rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &
 
   SetMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;

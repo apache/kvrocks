@@ -335,7 +335,7 @@ rocksdb::Status List::Index(const Slice &user_key, int index, std::string *elem)
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   if (index < 0) index += static_cast<int>(metadata.size);
@@ -360,7 +360,7 @@ rocksdb::Status List::Range(const Slice &user_key, int start, int stop, std::vec
   std::string ns_key = AppendNamespacePrefix(user_key);
   ListMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   if (start < 0) start = static_cast<int>(metadata.size) + start;

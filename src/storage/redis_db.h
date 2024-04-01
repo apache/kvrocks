@@ -40,6 +40,9 @@ class Database {
     // If snapshot is not nullptr, read from the specified snapshot,
     // otherwise read from the "latest" snapshot.
     const rocksdb::Snapshot *snapshot = nullptr;
+
+    GetOptions() = default;
+    explicit GetOptions(const rocksdb::Snapshot *ss) : snapshot(ss) {}
   };
 
   explicit Database(engine::Storage *storage, std::string ns = "");

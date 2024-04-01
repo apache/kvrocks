@@ -217,7 +217,7 @@ rocksdb::Status ZSet::RangeByRank(const Slice &user_key, const RangeRankSpec &sp
   if (spec.with_deletion) lock_guard.emplace(storage_->GetLockManager(), ns_key);
   ZSetMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   int start = spec.start;
@@ -555,7 +555,7 @@ rocksdb::Status ZSet::Rank(const Slice &user_key, const Slice &member, bool reve
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
@@ -832,7 +832,7 @@ rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &memb
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
@@ -857,7 +857,7 @@ rocksdb::Status ZSet::GetAllMemberScores(const Slice &user_key, std::vector<Memb
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();

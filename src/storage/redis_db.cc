@@ -636,7 +636,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, {type}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();

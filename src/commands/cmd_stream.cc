@@ -267,20 +267,20 @@ class CommandXClaim : public Commander {
 
     while (parser.Good()) {
       if (parser.EatEqICase("idle")) {
-        streamClaimOptions.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+        stream_claim_options_.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
       } else if (parser.EatEqICase("time")) {
-        streamClaimOptions.with_time = true;
-        streamClaimOptions.last_delivery_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+        stream_claim_options_.with_time = true;
+        stream_claim_options_.last_delivery_time = GET_OR_RET(parser.TakeInt<uint64_t>());
       } else if (parser.EatEqICase("retrycount")) {
-        streamClaimOptions.with_retry_count = true;
-        streamClaimOptions.last_delivery_count = GET_OR_RET(parser.TakeInt<uint64_t>());
+        stream_claim_options_.with_retry_count = true;
+        stream_claim_options_.last_delivery_count = GET_OR_RET(parser.TakeInt<uint64_t>());
       } else if (parser.EatEqICase("force")) {
-        streamClaimOptions.force = true;
+        stream_claim_options_.force = true;
       } else if (parser.EatEqICase("justid")) {
-        streamClaimOptions.just_id = true;
+        stream_claim_options_.just_id = true;
       } else if (parser.EatEqICase("lastid")) {
         auto last_id = GET_OR_RET(parser.TakeStr());
-        auto s = ParseStreamEntryID(last_id, &streamClaimOptions.last_delivered_id);
+        auto s = ParseStreamEntryID(last_id, &stream_claim_options_.last_delivered_id);
         if (!s.IsOK()) {
           return s;
         }
@@ -295,7 +295,7 @@ class CommandXClaim : public Commander {
     redis::Stream stream_db(srv->storage, conn->GetNamespace());
     StreamClaimResult result;
     auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_, entry_ids_,
-                                       streamClaimOptions, &result);
+                                       stream_claim_options_, &result);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -304,7 +304,7 @@ class CommandXClaim : public Commander {
       return {Status::RedisExecErr, errNoSuchKey};
     }
 
-    if (!streamClaimOptions.just_id) {
+    if (!stream_claim_options_.just_id) {
       output->append(redis::MultiLen(result.entries.size()));
 
       for (const auto &e : result.entries) {
@@ -328,9 +328,9 @@ class CommandXClaim : public Commander {
   std::string consumer_name_;
   uint64_t min_idle_time_;
   std::vector<StreamEntryID> entry_ids_;
-  StreamClaimOptions streamClaimOptions;
+  StreamClaimOptions stream_claim_options_;
 
-  bool isOption(const std::string &arg) const {
+  bool static isOption(const std::string &arg) {
     static const std::unordered_set<std::string> options = {"idle", "time", "retrycount", "force", "justid", "lastid"};
     return options.find(util::ToLower(arg)) != options.end();
   }

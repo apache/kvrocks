@@ -1345,7 +1345,6 @@ func TestStreamOffset(t *testing.T) {
 		require.Len(t, claimedMessages, 1, "Expected to claim 1 message if idle time is large enough")
 		require.Equal(t, "1-0", claimedMessages[0].ID, "Expected claimed message ID to match")
 
-
 		minIdleTime = 60000 * time.Millisecond
 		claimedMessages, err = rdb.XClaim(ctx, &redis.XClaimArgs{
 			Stream:   streamName,

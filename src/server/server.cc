@@ -755,6 +755,22 @@ void Server::cron() {
         Status s = AsyncBgSaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
+      if (config_->dbsize_scan_cron.IsEnabled() && config_->dbsize_scan_cron.IsTimeMatch(&now)) {
+        std::vector<std::string> namespaces;
+
+        auto tokens = namespace_.List();
+        for (auto &token : tokens) {
+          namespaces.emplace_back(token.second);  // namespace
+        }
+
+        // add default namespace as fallback
+        namespaces.emplace_back(kDefaultNamespace);
+
+        for (auto &ns : namespaces) {
+          Status s = AsyncScanDBSize(ns);
+          LOG(INFO) << "[server] Schedule to recalculate the db size on namespace: " << ns << ", result: " << s.Msg();
+        }
+      }
     }
     // check every 10s
     if (counter != 0 && counter % 100 == 0) {

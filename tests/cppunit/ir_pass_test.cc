@@ -21,6 +21,7 @@
 #include "search/ir_pass.h"
 
 #include "gtest/gtest.h"
+#include "search/passes/simplify_and_or_expr.h"
 #include "search/passes/simplify_boolean.h"
 #include "search/sql_transformer.h"
 
@@ -61,4 +62,21 @@ TEST(IRPassTest, SimplifyBoolean) {
   ASSERT_EQ(sb.Transform(*Parse("select a from b where true or false or true"))->Dump(), "select a from b where true");
   ASSERT_EQ(sb.Transform(*Parse("select a from b where not ((x < 1 or true) and (y > 2 and true))"))->Dump(),
             "select a from b where not y > 2");
+}
+
+TEST(IRPassTest, SimplifyAndOrExpr) {
+  SimplifyAndOrExpr saoe;
+
+  ASSERT_EQ(Parse("select a from b where true and (false and true)").GetValue()->Dump(),
+            "select a from b where (and true, (and false, true))");
+  ASSERT_EQ(saoe.Transform(*Parse("select a from b where true and (false and true)"))->Dump(),
+            "select a from b where (and true, false, true)");
+  ASSERT_EQ(saoe.Transform(*Parse("select a from b where true or (false or true)"))->Dump(),
+            "select a from b where (or true, false, true)");
+  ASSERT_EQ(saoe.Transform(*Parse("select a from b where true and (false or true)"))->Dump(),
+            "select a from b where (and true, (or false, true))");
+  ASSERT_EQ(saoe.Transform(*Parse("select a from b where true or (false and true)"))->Dump(),
+            "select a from b where (or true, (and false, true))");
+  ASSERT_EQ(saoe.Transform(*Parse("select a from b where x > 1 or (y < 2 or z = 3)"))->Dump(),
+            "select a from b where (or x > 1, y < 2, z = 3)");
 }

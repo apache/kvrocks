@@ -756,9 +756,11 @@ void Server::cron() {
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
       if (config_->dbsize_scan_cron.IsEnabled() && config_->dbsize_scan_cron.IsTimeMatch(&now)) {
+        auto tokens = namespace_.List();
         std::vector<std::string> namespaces;
 
-        auto tokens = namespace_.List();
+        // Number of namespaces (custom namespaces + default one)
+        namespaces.reserve(tokens.size() + 1);
         for (auto &token : tokens) {
           namespaces.emplace_back(token.second);  // namespace
         }

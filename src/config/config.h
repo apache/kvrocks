@@ -137,6 +137,7 @@ struct Config {
   uint32_t master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
+  Cron dbsize_scan_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   int64_t force_compact_file_age;
   int force_compact_file_min_deleted_percentage;
@@ -246,6 +247,7 @@ struct Config {
   std::string slaveof_;
   std::string compact_cron_str_;
   std::string bgsave_cron_str_;
+  std::string dbsize_scan_cron_str_;
   std::string compaction_checker_range_str_;
   std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;

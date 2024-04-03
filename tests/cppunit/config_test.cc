@@ -46,6 +46,7 @@ TEST(Config, GetAndSet) {
       {"masterauth", "mytest_masterauth"},
       {"compact-cron", "1 2 3 4 5"},
       {"bgsave-cron", "5 4 3 2 1"},
+      {"dbsize-scan-cron", "1 2 3 2 1"},
       {"max-io-mb", "5000"},
       {"max-db-size", "6000"},
       {"max-replication-mb", "7000"},

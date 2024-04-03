@@ -137,6 +137,7 @@ Config::Config() {
       {"slaveof", true, new StringField(&slaveof_, "")},
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
+      {"dbsize-scan-cron", false, new StringField(&dbsize_scan_cron_str_, "")},
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
@@ -291,6 +292,11 @@ void Config::initFieldValidator() {
        [this](const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = util::Split(v, " \t");
          return bgsave_cron.SetScheduleTime(args);
+       }},
+      {"dbsize-scan-cron",
+       [this](const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> args = util::Split(v, " \t");
+         return dbsize_scan_cron.SetScheduleTime(args);
        }},
       {"compaction-checker-range",
        [this](const std::string &k, const std::string &v) -> Status {

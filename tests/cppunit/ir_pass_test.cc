@@ -21,6 +21,7 @@
 #include "search/ir_pass.h"
 
 #include "gtest/gtest.h"
+#include "search/passes/push_down_not_expr.h"
 #include "search/passes/simplify_and_or_expr.h"
 #include "search/passes/simplify_boolean.h"
 #include "search/sql_transformer.h"
@@ -79,4 +80,19 @@ TEST(IRPassTest, SimplifyAndOrExpr) {
             "select a from b where (or true, (and false, true))");
   ASSERT_EQ(saoe.Transform(*Parse("select a from b where x > 1 or (y < 2 or z = 3)"))->Dump(),
             "select a from b where (or x > 1, y < 2, z = 3)");
+}
+
+TEST(IRPassTest, PushDownNotExpr) {
+  PushDownNotExpr pdne;
+
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not a > 1"))->Dump(), "select * from a where a <= 1");
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not a hastag \"\""))->Dump(),
+            "select * from a where not a hastag \"\"");
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not not a > 1"))->Dump(), "select * from a where a > 1");
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not (a > 1 and b <= 3)"))->Dump(),
+            "select * from a where (or a <= 1, b > 3)");
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not (a > 1 or b <= 3)"))->Dump(),
+            "select * from a where (and a <= 1, b > 3)");
+  ASSERT_EQ(pdne.Transform(*Parse("select * from a where not (not a > 1 or (b < 3 and c hastag \"\"))"))->Dump(),
+            "select * from a where (and a > 1, (or b >= 3, not c hastag \"\"))");
 }

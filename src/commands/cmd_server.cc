@@ -331,7 +331,7 @@ class CommandDBSize : public Commander {
       KeyNumStats stats;
       srv->GetLatestKeyNumStats(ns, &stats);
       *output = redis::Integer(stats.n_key);
-    } else if (args_.size() == 2 && args_[1] == "scan") {
+    } else if (args_.size() == 2 && util::EqualICase(args_[1], "scan")) {
       Status s = srv->AsyncScanDBSize(ns);
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");

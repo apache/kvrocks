@@ -168,8 +168,6 @@ rocksdb::Status HyperLogLog::Merge(const std::vector<Slice> &user_keys) {
   }
 
   Bitmap::SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, metadata);
-  // TODO debug
-  std::cout << "merge key: " << user_keys[0] << std::endl;
   for (uint32_t segment_index = 0; segment_index < kHyperLogLogSegmentCount; segment_index++) {
     std::string registers(max.begin() + segment_index * kHyperLogLogRegisterBytesPerSegment,
                           max.begin() + (segment_index + 1) * kHyperLogLogRegisterBytesPerSegment);
@@ -178,14 +176,6 @@ rocksdb::Status HyperLogLog::Merge(const std::vector<Slice> &user_keys) {
     if (!s.ok()) return s;
     if (segment->size() == 0) {
       *segment = registers;
-    }
-    // TODO debug
-    for (uint32_t i = 0; i < kHyperLogLogRegisterCountPerSegment; i++) {
-      uint8_t v = 0;
-      HllDenseGetRegister(&v, reinterpret_cast<uint8_t *>(segment->data()), i);
-      if (v > 0)
-        std::cout << "put reg index: " << segment_index * kHyperLogLogRegisterCountPerSegment + i << ", val: " << int(v)
-                  << std::endl;
     }
   }
   cache.BatchForFlush(batch);
@@ -340,8 +330,6 @@ rocksdb::Status HyperLogLog::getRegisters(const Slice &user_key, std::vector<uin
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
-  // TODO debug
-  std::cout << "scan subkey: " << user_key.ToString() << std::endl;
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -353,12 +341,6 @@ rocksdb::Status HyperLogLog::getRegisters(const Slice &user_key, std::vector<uin
     }
     auto register_byte_offset = register_index / 8 * kHyperLogLogBits;
     std::copy(val.begin(), val.end(), registers->data() + register_byte_offset);
-    // TODO debug
-    for (uint32_t i = 0; i < kHyperLogLogRegisterCountPerSegment; i++) {
-      uint8_t v = 0;
-      HllDenseGetRegister(&v, reinterpret_cast<uint8_t *>(val.data()), i);
-      if (v > 0) std::cout << "scan: reg index: " << register_index + i << ", val: " << (int)v << std::endl;
-    }
   }
   return rocksdb::Status::OK();
 }

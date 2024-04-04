@@ -112,7 +112,7 @@ using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::
 
 using CommandKeyRangeVecGen = std::function<std::vector<CommandKeyRange>(const std::vector<std::string> &)>;
 
-using AdditionalFlagGen = std::function<uint64_t(const std::vector<std::string> &)>;
+using AdditionalFlagGen = std::function<uint64_t(uint64_t, const std::vector<std::string> &)>;
 
 struct CommandAttributes {
   // command name
@@ -146,7 +146,7 @@ struct CommandAttributes {
 
   auto GenerateFlags(const std::vector<std::string> &args) const {
     uint64_t res = flags;
-    if (flag_gen) res |= flag_gen(args);
+    if (flag_gen) res = flag_gen(res, args);
     return res;
   }
 

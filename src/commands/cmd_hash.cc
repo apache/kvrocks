@@ -367,7 +367,7 @@ class CommandHScan : public CommandSubkeyScanBase {
     std::vector<std::string> fields;
     std::vector<std::string> values;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeHash);
-    auto s = hash_db.Scan(key_, key_name, limit_, prefix_, &fields, &values);
+    auto s = hash_db.Scan(key_, key_name, limit_, prefix_, &fields, &values, pm_);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

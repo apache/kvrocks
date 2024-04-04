@@ -177,7 +177,7 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.Equal(t, []string{"foo", "foobar"}, keys)
 	})
 
-	t.Run("HSCAN with PATTERN", func(t *testing.T) {
+	t.Run("HSCAN with prefix PATTERN", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mykey").Err())
 		require.NoError(t, rdb.HMSet(ctx, "mykey", "foo", 1, "fab", 2, "fiz", 3, "foobar", 10, 1, "a", 2, "b", 3, "c", 4, "d").Err())
 		keys, _, err := rdb.HScan(ctx, "mykey", 0, "foo*", 10000).Result()
@@ -187,7 +187,27 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
 
-	t.Run("ZSCAN with PATTERN", func(t *testing.T) {
+	t.Run("HSCAN with subkey PATTERN", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mykey").Err())
+		require.NoError(t, rdb.HMSet(ctx, "mykey", "foo", 1, "fab", 2, "fiz", 3, "foobar", 10, "a", 2, "b", 3, "c", 4).Err())
+		keys, _, err := rdb.HScan(ctx, "mykey", 0, "*oo*", 10000).Result()
+		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
+		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
+	})
+
+	t.Run("HSCAN with suffix PATTERN", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mykey").Err())
+		require.NoError(t, rdb.HMSet(ctx, "mykey", "foo", 1, "fab", 2, "fiz", 3, "foobar", 10, "a", 2, "b", 3, "c", 4).Err())
+		keys, _, err := rdb.HScan(ctx, "mykey", 0, "*b", 10000).Result()
+		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
+		require.Equal(t, []string{"2", "3", "b", "fab"}, keys)
+	})
+
+	t.Run("ZSCAN with prefix PATTERN", func(t *testing.T) {
 		members := []redis.Z{
 			{Score: 1, Member: "foo"},
 			{Score: 2, Member: "fab"},
@@ -201,6 +221,38 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		slices.Sort(keys)
 		keys = slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
+	})
+
+	t.Run("ZSCAN with subkey PATTERN", func(t *testing.T) {
+		members := []redis.Z{
+			{Score: 1, Member: "foo"},
+			{Score: 2, Member: "fab"},
+			{Score: 3, Member: "fiz"},
+			{Score: 10, Member: "foobar"},
+		}
+		require.NoError(t, rdb.Del(ctx, "mykey").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "mykey", members...).Err())
+		keys, _, err := rdb.ZScan(ctx, "mykey", 0, "*oo*", 10000).Result()
+		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
+		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
+	})
+
+	t.Run("ZSCAN with suffix PATTERN", func(t *testing.T) {
+		members := []redis.Z{
+			{Score: 1, Member: "foo"},
+			{Score: 2, Member: "fab"},
+			{Score: 3, Member: "fiz"},
+			{Score: 10, Member: "foobar"},
+		}
+		require.NoError(t, rdb.Del(ctx, "mykey").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "mykey", members...).Err())
+		keys, _, err := rdb.ZScan(ctx, "mykey", 0, "*b", 10000).Result()
+		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
+		require.Equal(t, []string{"2", "fab"}, keys)
 	})
 
 	for _, test := range []struct {

@@ -20,8 +20,10 @@
 
 #include "redis_db.h"
 
+#include <cassert>
 #include <ctime>
 #include <map>
+#include <string>
 #include <utility>
 
 #include "cluster/redis_slot.h"
@@ -29,6 +31,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "server/server.h"
 #include "storage/iterator.h"
@@ -315,8 +318,8 @@ rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::strin
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                               std::vector<std::string> *keys, std::string *end_cursor, RedisType type) {
+rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &fix,
+                               std::vector<std::string> *keys, std::string *end_cursor, RedisType type, const int pm) {
   end_cursor->clear();
   uint64_t cnt = 0;
   uint16_t slot_start = 0;
@@ -329,17 +332,14 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   std::string ns_cursor = AppendNamespacePrefix(cursor);
+  ns_prefix = ComposeNamespaceKey(namespace_, "", false);
   if (storage_->IsSlotIdEncoded()) {
     slot_start = cursor.empty() ? 0 : GetSlotIdFromKey(cursor);
-    ns_prefix = ComposeNamespaceKey(namespace_, "", false);
-    if (!prefix.empty()) {
+    if (!fix.empty()) {
       PutFixed16(&ns_prefix, slot_start);
-      ns_prefix.append(prefix);
     }
-  } else {
-    ns_prefix = AppendNamespacePrefix(prefix);
   }
-
+  if (pm == 0) ns_prefix.append(fix);
   if (!cursor.empty()) {
     iter->Seek(ns_cursor);
     if (iter->Valid()) {
@@ -354,8 +354,14 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   uint16_t slot_id = slot_start;
   while (true) {
     for (; iter->Valid() && cnt < limit; iter->Next()) {
-      if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
-        break;
+      if (!ns_prefix.empty()) {
+        if (!iter->key().starts_with(ns_prefix)) break;
+        auto key_view = iter->key().ToStringView();
+        auto sub_key_view = static_cast<Slice>(key_view.substr(ns_prefix.size(), key_view.size() - ns_prefix.size()));
+        if (pm == 1 && !sub_key_view.ends_with(fix))
+          continue;
+        else if (pm == 2 && sub_key_view.ToStringView().find(fix) == std::string::npos)
+          continue;
       }
       Metadata metadata(kRedisNone, false);
       auto s = metadata.Decode(iter->value());
@@ -368,7 +374,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       keys->emplace_back(user_key);
       cnt++;
     }
-    if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
+    if (!storage_->IsSlotIdEncoded() || fix.empty()) {
       if (!keys->empty() && cnt >= limit) {
         end_cursor->append(user_key);
       }
@@ -388,14 +394,13 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       if (keys->empty()) {
         if (iter->Valid()) {
           std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
-          auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
-          if (res.first == prefix.end()) {
+          auto res = std::mismatch(fix.begin(), fix.end(), user_key.begin());
+          if (res.first == fix.end()) {
             keys->emplace_back(user_key);
           }
 
           end_cursor->append(user_key);
         }
-      } else {
         end_cursor->append(user_key);
       }
       break;
@@ -403,7 +408,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
 
     ns_prefix = ComposeNamespaceKey(namespace_, "", false);
     PutFixed16(&ns_prefix, slot_id);
-    ns_prefix.append(prefix);
+    if (pm == 0) ns_prefix.append(fix);
     iter->Seek(ns_prefix);
   }
   return rocksdb::Status::OK();
@@ -599,8 +604,8 @@ rocksdb::Status Database::KeyExist(const std::string &key) {
 }
 
 rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
-                                    const std::string &subkey_prefix, std::vector<std::string> *keys,
-                                    std::vector<std::string> *values) {
+                                    const std::string &subkey_fix, std::vector<std::string> *keys,
+                                    std::vector<std::string> *values, const int pm) {
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
@@ -611,7 +616,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   auto iter = util::UniqueIterator(storage_, read_options);
   std::string match_prefix_key =
-      InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+      InternalKey(ns_key, pm == 0 ? subkey_fix : "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   std::string start_key;
   if (!cursor.empty()) {
@@ -625,10 +630,17 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
       // because we already return that key in the last scan
       continue;
     }
-    if (!iter->key().starts_with(match_prefix_key)) {
-      break;
+    if (pm == 0 && !iter->key().starts_with(match_prefix_key)) {
+      std::cout << iter->key() << " " << match_prefix_key << "\n";
+      continue;
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    auto sub_key = ikey.GetSubKey();
+    if (pm == 1 && !sub_key.ends_with(subkey_fix)) {
+      continue;
+    } else if (pm == 2 && sub_key.ToString().find(subkey_fix) == std::string::npos) {
+      continue;
+    }
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
       values->emplace_back(iter->value().ToString());

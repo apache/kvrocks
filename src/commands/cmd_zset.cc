@@ -1350,7 +1350,7 @@ class CommandZScan : public CommandSubkeyScanBase {
     std::vector<std::string> members;
     std::vector<double> scores;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeZSet);
-    auto s = zset_db.Scan(key_, key_name, limit_, prefix_, &members, &scores);
+    auto s = zset_db.Scan(key_, key_name, limit_, prefix_, &members, &scores, pm_);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

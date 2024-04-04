@@ -39,15 +39,22 @@ class CommandScanBase : public Commander {
 
     return ParseAdditionalFlags<true>(parser);
   }
-
   template <bool IsScan, typename Parser>
   Status ParseAdditionalFlags(Parser &parser) {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
-        if (!prefix_.empty() && prefix_.back() == '*') {
+        if(prefix_.size()>=2&&prefix_.front() == '*'&&prefix_.back() =='*'){
+          prefix_ = prefix_.substr(1,prefix_.size()-2);
+          pm_ = 2;
+        }else if (!prefix_.empty() && prefix_.back() == '*') {
           prefix_ = prefix_.substr(0, prefix_.size() - 1);
-        } else {
+          pm_ = 0;
+        } else if(!prefix_.empty()&& prefix_.front()=='*'){
+          prefix_ = prefix_.substr(1, prefix_.size() - 1);
+          pm_ = 1;
+        }
+        else {
           return {Status::RedisParseErr, "currently only key prefix matching is supported"};
         }
       } else if (parser.EatEqICase("count")) {
@@ -100,6 +107,7 @@ class CommandScanBase : public Commander {
   std::string prefix_;
   int limit_ = 20;
   RedisType type_ = kRedisNone;
+  int pm_ = 0;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {

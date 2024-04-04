@@ -840,7 +840,7 @@ class CommandScan : public CommandScanBase {
 
     std::vector<std::string> keys;
     std::string end_key;
-    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_);
+    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_, pm_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

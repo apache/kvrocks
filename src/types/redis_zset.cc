@@ -810,10 +810,10 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, Aggregat
 
 rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                            const std::string &member_prefix, std::vector<std::string> *members,
-                           std::vector<double> *scores) {
+                           std::vector<double> *scores, const int pm) {
   if (scores != nullptr) {
     std::vector<std::string> values;
-    auto s = SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members, &values);
+    auto s = SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members, &values, pm);
     if (!s.ok()) return s;
 
     for (const auto &value : values) {
@@ -822,7 +822,7 @@ rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uin
     }
     return s;
   }
-  return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members);
+  return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members, nullptr, pm);
 }
 
 rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &members,

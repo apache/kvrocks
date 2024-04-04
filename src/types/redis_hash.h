@@ -60,7 +60,7 @@ class Hash : public SubKeyScanner {
                          HashFetchType type = HashFetchType::kAll);
   rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &field_prefix, std::vector<std::string> *fields,
-                       std::vector<std::string> *values = nullptr);
+                       std::vector<std::string> *values = nullptr, int pm = 0);
   rocksdb::Status RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
                             HashFetchType type = HashFetchType::kOnlyKey);
 

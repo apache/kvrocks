@@ -1066,12 +1066,12 @@ class CommandStats : public Commander {
   }
 };
 
-static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateConfigFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && util::EqualICase(args[1], "set")) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandLastSave : public Commander {

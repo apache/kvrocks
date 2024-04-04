@@ -1066,12 +1066,12 @@ class CommandStats : public Commander {
   }
 };
 
-static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateConfigFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && util::EqualICase(args[1], "set")) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandLastSave : public Commander {
@@ -1228,9 +1228,7 @@ class CommandAnalyze : public Commander {
     cmd->SetAttributes(redis_cmd);
     cmd->SetArgs(command_args_);
 
-    int arity = cmd->GetAttributes()->arity;
-    if ((arity > 0 && static_cast<int>(command_args_.size()) != arity) ||
-        (arity < 0 && static_cast<int>(command_args_.size()) < -arity)) {
+    if (!cmd->GetAttributes()->CheckArity(static_cast<int>(command_args_.size()))) {
       *output = redis::Error("ERR wrong number of arguments");
       return {Status::RedisExecErr, errWrongNumOfArguments};
     }

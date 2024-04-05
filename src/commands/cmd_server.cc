@@ -1207,70 +1207,6 @@ class CommandRdb : public Commander {
   uint32_t db_index_ = 0;
 };
 
-class CommandAnalyze : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() <= 1) return {Status::RedisExecErr, errInvalidSyntax};
-    for (unsigned int i = 1; i < args.size(); ++i) {
-      command_args_.push_back(args[i]);
-    }
-    return Status::OK();
-  }
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    auto commands = redis::CommandTable::Get();
-    auto cmd_iter = commands->find(util::ToLower(command_args_[0]));
-    if (cmd_iter == commands->end()) {
-      // unsupported redis command
-      return {Status::RedisExecErr, errInvalidSyntax};
-    }
-    auto redis_cmd = cmd_iter->second;
-    auto cmd = redis_cmd->factory();
-    cmd->SetAttributes(redis_cmd);
-    cmd->SetArgs(command_args_);
-
-    if (!cmd->GetAttributes()->CheckArity(static_cast<int>(command_args_.size()))) {
-      *output = redis::Error("ERR wrong number of arguments");
-      return {Status::RedisExecErr, errWrongNumOfArguments};
-    }
-
-    auto s = cmd->Parse(command_args_);
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    auto prev_perf_level = rocksdb::GetPerfLevel();
-    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
-    rocksdb::get_perf_context()->Reset();
-    rocksdb::get_iostats_context()->Reset();
-
-    std::string command_output;
-    s = cmd->Execute(srv, conn, &command_output);
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    if (command_output[0] == '-') {
-      *output = command_output;
-      return s;
-    }
-
-    std::string perf_context = rocksdb::get_perf_context()->ToString(true);
-    std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
-    rocksdb::get_perf_context()->Reset();
-    rocksdb::get_iostats_context()->Reset();
-    rocksdb::SetPerfLevel(prev_perf_level);
-
-    *output = redis::MultiLen(3);  // command output + perf context + iostats context
-    *output += command_output;
-    *output += redis::BulkString(perf_context);
-    *output += redis::BulkString(iostats_context);
-    return Status::OK();
-  }
-
- private:
-  std::vector<std::string> command_args_;
-};
-
 class CommandReset : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -1372,7 +1308,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
-                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
 }  // namespace redis

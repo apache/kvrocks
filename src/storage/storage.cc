@@ -863,6 +863,9 @@ ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
 }
 
 Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  if (config_->IsSlave()) {
+    return {Status::NotOK, "cannot write to propagate column family in slave mode"};
+  }
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);

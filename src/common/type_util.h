@@ -39,3 +39,11 @@ using RemoveCVRef = typename std::remove_cv_t<typename std::remove_reference_t<T
 // dependent false for static_assert with constexpr if, see CWG2518/P2593R1
 template <typename T>
 constexpr bool AlwaysFalse = false;
+
+template <typename>
+struct GetClassFromMember;
+
+template <typename C, typename T>
+struct GetClassFromMember<T C::*> {
+  using type = C;  // NOLINT
+};

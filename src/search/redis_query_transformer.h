@@ -83,13 +83,13 @@ struct Transformer : ir::TreeTransformer {
         const auto& rhs = query->children[1];
 
         if (Is<ExclusiveNumber>(lhs)) {
-          exprs.push_back(
-              std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT, std::make_unique<FieldRef>(field),
-                                                   Node::As<NumericLiteral>(GET_OR_RET(Transform(lhs->children[0])))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(
+              NumericCompareExpr::GT, std::make_unique<FieldRef>(field),
+              Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(lhs->children[0])))));
         } else if (Is<Number>(lhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GET,
-                                                               std::make_unique<FieldRef>(field),
-                                                               Node::As<NumericLiteral>(GET_OR_RET(Transform(lhs)))));
+          exprs.push_back(
+              std::make_unique<NumericCompareExpr>(NumericCompareExpr::GET, std::make_unique<FieldRef>(field),
+                                                   Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(lhs)))));
         } else {  // Inf
           if (lhs->string_view() == "+inf") {
             return {Status::NotOK, "it's not allowed to set the lower bound as positive infinity"};
@@ -97,13 +97,13 @@ struct Transformer : ir::TreeTransformer {
         }
 
         if (Is<ExclusiveNumber>(rhs)) {
-          exprs.push_back(
-              std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT, std::make_unique<FieldRef>(field),
-                                                   Node::As<NumericLiteral>(GET_OR_RET(Transform(rhs->children[0])))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(
+              NumericCompareExpr::LT, std::make_unique<FieldRef>(field),
+              Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(rhs->children[0])))));
         } else if (Is<Number>(rhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::LET,
-                                                               std::make_unique<FieldRef>(field),
-                                                               Node::As<NumericLiteral>(GET_OR_RET(Transform(rhs)))));
+          exprs.push_back(
+              std::make_unique<NumericCompareExpr>(NumericCompareExpr::LET, std::make_unique<FieldRef>(field),
+                                                   Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(rhs)))));
         } else {  // Inf
           if (rhs->string_view() == "-inf") {
             return {Status::NotOK, "it's not allowed to set the upper bound as negative infinity"};
@@ -121,12 +121,12 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
-      return Node::Create<ir::NotExpr>(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+      return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
       }
 
       return Node::Create<ir::AndExpr>(std::move(exprs));
@@ -134,7 +134,7 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::As<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
       }
 
       return Node::Create<ir::OrExpr>(std::move(exprs));

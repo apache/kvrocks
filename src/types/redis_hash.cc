@@ -53,7 +53,7 @@ rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s;
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
@@ -160,7 +160,7 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) {
     return s;
   }
@@ -291,7 +291,7 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
@@ -347,7 +347,7 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{.snapshot = ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();

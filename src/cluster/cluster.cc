@@ -53,7 +53,7 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  for (auto v : {"setnodes", "setnodeid", "setslot", "import"}) {
+  for (auto v : {"setnodes", "setnodeid", "setslot", "import", "reset"}) {
     if (util::EqualICase(v, subcommand)) return true;
   }
   return false;
@@ -317,6 +317,10 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
 
   if (!IsValidSlot(slot)) {
     return {Status::NotOK, errSlotOutOfRange};
+  }
+  auto source_node = srv_->cluster->slots_nodes_[slot];
+  if (source_node && source_node->id == myid_) {
+    return {Status::NotOK, "Can't import slot which belongs to me"};
   }
 
   Status s;
@@ -823,4 +827,32 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   return {Status::RedisExecErr,
           fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+}
+
+Status Cluster::Reset() {
+  if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlot() != -1) {
+    return {Status::NotOK, "Can't reset cluster while migrating slot"};
+  }
+  if (srv_->slot_import && srv_->slot_import->GetSlot() != -1) {
+    return {Status::NotOK, "Can't reset cluster while importing slot"};
+  }
+  if (!srv_->storage->IsEmptyDB()) {
+    return {Status::NotOK, "Can't reset cluster while database is not empty"};
+  }
+
+  version_ = -1;
+  size_ = 0;
+  myid_.clear();
+  myself_.reset();
+
+  nodes_.clear();
+  for (auto &n : slots_nodes_) {
+    n = nullptr;
+  }
+  migrated_slots_.clear();
+  imported_slots_.clear();
+
+  // unlink the cluster nodes file if exists
+  unlink(srv_->GetConfig()->NodesFilePath().data());
+  return Status::OK();
 }

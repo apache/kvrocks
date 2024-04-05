@@ -18,17 +18,39 @@
  *
  */
 
-#include "redis_pubsub.h"
+#pragma once
 
-namespace redis {
+#include "ir.h"
+#include "string_util.h"
 
-rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
-  if (storage_->GetConfig()->IsSlave()) {
-    return rocksdb::Status::NotSupported("can't publish to db in slave mode");
+namespace kqir {
+
+struct DotDumper {
+  std::ostream &os;
+
+  explicit DotDumper(std::ostream &os) : os(os) {}
+
+  void Dump(Node *node) {
+    os << "digraph {\n";
+    dump(node);
+    os << "}\n";
   }
-  auto batch = storage_->GetWriteBatchBase();
-  batch->Put(pubsub_cf_handle_, channel, value);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-}
 
-}  // namespace redis
+ private:
+  static std::string nodeId(Node *node) { return fmt::format("x{:x}", (uint64_t)node); }
+
+  void dump(Node *node) {
+    os << "  " << nodeId(node) << " [ label = \"" << node->Name();
+    if (auto content = node->Content(); !content.empty()) {
+      os << " (" << util::EscapeString(content) << ")\" ];\n";
+    } else {
+      os << "\" ];\n";
+    }
+    for (auto i = node->ChildBegin(); i != node->ChildEnd(); ++i) {
+      os << "  " << nodeId(node) << " -> " << nodeId(*i) << ";\n";
+      dump(*i);
+    }
+  }
+};
+
+}  // namespace kqir

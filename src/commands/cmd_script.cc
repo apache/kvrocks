@@ -116,6 +116,14 @@ CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args) {
   return {3, 2 + numkeys, 1};
 }
 
+uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &args) {
+  if (util::EqualICase(args[1], "load") || util::EqualICase(args[1], "flush")) {
+    return flags | kCmdWrite;
+  }
+
+  return flags;
+}
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
                         MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
                         MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script",

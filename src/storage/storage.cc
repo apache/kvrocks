@@ -521,6 +521,19 @@ Status Storage::RestoreFromCheckpoint() {
   return Status::OK();
 }
 
+bool Storage::IsEmptyDB() {
+  std::unique_ptr<rocksdb::Iterator> iter(
+      db_->NewIterator(rocksdb::ReadOptions(), GetCFHandle(kMetadataColumnFamilyName)));
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    Metadata metadata(kRedisNone, false);
+    // If cannot decode the metadata we think the key is alive, so the db is not empty
+    if (!metadata.Decode(iter->value()).ok() || !metadata.Expired()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void Storage::EmptyDB() {
   // Clean old backups and checkpoints
   PurgeOldBackups(0, 0);
@@ -850,6 +863,9 @@ ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
 }
 
 Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+  if (config_->IsSlave()) {
+    return {Status::NotOK, "cannot write to propagate column family in slave mode"};
+  }
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);

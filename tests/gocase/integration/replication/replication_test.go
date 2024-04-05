@@ -32,6 +32,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestClusterReplication(t *testing.T) {
+	ctx := context.Background()
+
+	masterSrv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { masterSrv.Close() }()
+	masterClient := masterSrv.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+	masterNodeID := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODEID", masterNodeID).Err())
+
+	replicaSrv := util.StartServer(t, map[string]string{
+		"cluster-enabled": "yes",
+		// enabled the replication namespace to reproduce the issue #2214
+		"repl-namespace-enabled": "yes",
+	})
+	defer func() { replicaSrv.Close() }()
+	replicaClient := replicaSrv.NewClient()
+	// allow to run the read-only command in the replica
+	require.NoError(t, replicaClient.ReadOnly(ctx).Err())
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+	replicaNodeID := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, replicaClient.Do(ctx, "clusterx", "SETNODEID", replicaNodeID).Err())
+
+	clusterNodes := fmt.Sprintf("%s 127.0.0.1 %d master - 0-16383", masterNodeID, masterSrv.Port())
+	clusterNodes = fmt.Sprintf("%s\n%s 127.0.0.1 %d slave %s", clusterNodes, replicaNodeID, replicaSrv.Port(), masterNodeID)
+
+	require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, replicaClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	t.Run("Cluster replication should work", func(t *testing.T) {
+		util.WaitForSync(t, replicaClient)
+		require.Equal(t, "slave", util.FindInfoEntry(replicaClient, "role"))
+		masterClient.Set(ctx, "k0", "v0", 0)
+		masterClient.LPush(ctx, "k1", "e0", "e1", "e2")
+		util.WaitForOffsetSync(t, masterClient, replicaClient)
+
+		require.Equal(t, "v0", replicaClient.Get(ctx, "k0").Val())
+		require.Equal(t, []string{"e2", "e1", "e0"}, replicaClient.LRange(ctx, "k1", 0, -1).Val())
+	})
+
+	t.Run("Cluster replication should work normally after restart(issue #2214)", func(t *testing.T) {
+		replicaSrv.Close()
+		masterClient.Set(ctx, "k0", "v1", 0)
+		masterClient.HSet(ctx, "k2", "f0", "v0", "f1", "v1")
+
+		// start the replica server again
+		replicaSrv.Start()
+		_ = replicaClient.Close()
+		replicaClient = replicaSrv.NewClient()
+		// allow to run the read-only command in the replica
+		require.NoError(t, replicaClient.ReadOnly(ctx).Err())
+
+		util.WaitForOffsetSync(t, masterClient, replicaClient)
+		require.Equal(t, "v1", replicaClient.Get(ctx, "k0").Val())
+		require.Equal(t, map[string]string{"f0": "v0", "f1": "v1"}, replicaClient.HGetAll(ctx, "k2").Val())
+	})
+}
+
 func TestReplicationWithHostname(t *testing.T) {
 	srvA := util.StartServer(t, map[string]string{})
 	defer srvA.Close()

@@ -23,6 +23,9 @@
 namespace redis {
 
 rocksdb::Status PubSub::Publish(const Slice &channel, const Slice &value) {
+  if (storage_->GetConfig()->IsSlave()) {
+    return rocksdb::Status::NotSupported("can't publish to db in slave mode");
+  }
   auto batch = storage_->GetWriteBatchBase();
   batch->Put(pubsub_cf_handle_, channel, value);
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());

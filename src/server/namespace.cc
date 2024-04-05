@@ -53,6 +53,9 @@ bool Namespace::IsAllowModify() const {
 
 Status Namespace::LoadAndRewrite() {
   auto config = storage_->GetConfig();
+  // Namespace is NOT allowed in the cluster mode, so we don't need to rewrite here.
+  if (config->cluster_enabled) return Status::OK();
+
   // Load from the configuration file first
   tokens_ = config->load_tokens;
 

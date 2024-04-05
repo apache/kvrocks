@@ -721,7 +721,7 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
 
   if (key == new_key) return rocksdb::Status::OK();
 
-  return MoveInternal(ns_key, new_ns_key, type);
+  return moveInternal(ns_key, new_ns_key, type);
 }
 
 rocksdb::Status Database::Move(const std::string &key, const std::string &new_ns, bool *ret) {
@@ -762,10 +762,10 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ns
     }
   }
 
-  return MoveInternal(ns_key, new_ns_key, type);
+  return moveInternal(ns_key, new_ns_key, type);
 }
 
-rocksdb::Status Database::MoveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type) {
+rocksdb::Status Database::moveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(type);
   batch->PutLogData(log_data.Encode());

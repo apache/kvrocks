@@ -110,7 +110,7 @@ func TestMove(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token1").Err())
 		require.EqualValues(t, "value1", rdb.Get(ctx, "key1").Val())
 		require.NoError(t, rdb.Do(ctx, "AUTH", password).Err())
-		
+
 		// move key2 to ns2, with wrong token first
 		r = rdb.Do(ctx, "MOVE", "key2", "ns2", "token1")
 		require.EqualError(t, r.Err(), "ERR Incorrect namespace or token")

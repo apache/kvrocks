@@ -105,7 +105,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_ns, bool *ret);
 
  protected:
-  [[nodiscard]] rocksdb::Status MoveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type);
+  [[nodiscard]] rocksdb::Status moveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type);
 
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;

@@ -55,7 +55,7 @@ class CommandMove : public Commander {
     } else if (args.size() == 4) {
       move_type_ = MoveType::kNormal;
     } else {
-      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     return Status::OK();
   }

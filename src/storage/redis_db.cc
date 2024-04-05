@@ -39,7 +39,7 @@
 namespace redis {
 
 Database::Database(engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
-  metadata_cf_handle_ = storage->GetCFHandle("metadata");
+  metadata_cf_handle_ = storage->GetCFHandle(engine::kMetadataColumnFamilyName);
 }
 
 // Some data types may support reading multiple types of metadata.
@@ -721,6 +721,51 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
 
   if (key == new_key) return rocksdb::Status::OK();
 
+  return MoveInternal(ns_key, new_ns_key, type);
+}
+
+rocksdb::Status Database::Move(const std::string &key, const std::string &new_ns, bool *ret) {
+  *ret = true;
+
+  std::string ns_key = AppendNamespacePrefix(key);
+  std::string new_ns_key = ComposeNamespaceKey(new_ns, key, storage_->IsSlotIdEncoded());
+
+  std::vector<std::string> lock_keys = {ns_key, new_ns_key};
+  MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
+
+  RedisType type = kRedisNone;
+  auto s = Type(key, &type);
+  if (!s.ok()) return s;
+  if (type == kRedisNone) {
+    *ret = false;
+    return rocksdb::Status::OK();
+  }
+
+  // Similar to `Exists`, except for different namespace key
+  {
+    LatestSnapShot ss(storage_);
+    rocksdb::ReadOptions read_options;
+    read_options.snapshot = ss.GetSnapShot();
+
+    rocksdb::Status s;
+    std::string value;
+    s = storage_->Get(read_options, metadata_cf_handle_, new_ns_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone, false);
+      s = metadata.Decode(value);
+      if (!s.ok()) return s;
+      if (!metadata.Expired()) {
+        *ret = false;
+        return rocksdb::Status::OK();
+      }
+    }
+  }
+
+  return MoveInternal(ns_key, new_ns_key, type);
+}
+
+rocksdb::Status Database::MoveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(type);
   batch->PutLogData(log_data.Encode());
@@ -759,4 +804,5 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+
 }  // namespace redis

@@ -102,8 +102,11 @@ class Database {
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
   [[nodiscard]] rocksdb::Status Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret);
+  [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_ns, bool *ret);
 
  protected:
+  [[nodiscard]] rocksdb::Status MoveInternal(const std::string &ns_key, const std::string &new_ns_key, RedisType type);
+
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;

@@ -96,6 +96,10 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
 
   FieldValues values;
   for (const auto &[field, info] : fields) {
+    if (info->noindex) {
+      continue;
+    }
+
     std::string value;
     auto s = retriever.Retrieve(field, &value);
     if (s.IsNotFound()) continue;
@@ -205,7 +209,11 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
 Status IndexUpdater::Update(const FieldValues &original, std::string_view key, const std::string &ns) {
   auto current = GET_OR_RET(Record(key, ns));
 
-  for (const auto &[field, _] : fields) {
+  for (const auto &[field, info] : fields) {
+    if (info->noindex) {
+      continue;
+    }
+
     std::string_view original_val, current_val;
 
     if (auto it = original.find(field); it != original.end()) {

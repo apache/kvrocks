@@ -67,30 +67,33 @@ class CommandMove : public Commander {
 class CommandMoveX : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    std::string &key = args_[1], &ns = args_[2], &token = args_[3];
+    std::string &key = args_[1], &new_ns = args_[2], &token = args_[3];
 
     redis::Database redis(srv->storage, conn->GetNamespace());
-    // auth
-    const auto &requirepass = srv->GetConfig()->requirepass;
-    if (requirepass.empty()) {
-      return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
-    }
-    auto get_ns = srv->GetNamespace()->GetByToken(token);
-    if (get_ns.IsOK()) {
-      if (get_ns.GetValue() != ns) {
-        return {Status::NotOK, "Incorrect namespace or token"};
-      }
-    } else {
-      if (!(ns == kDefaultNamespace && token == requirepass)) {
-        return {Status::NotOK, "Incorrect namespace or token"};
-      }
+
+    std::string ns;
+    AuthResult auth_result = srv->AuthenticateUser(token, &ns);
+    switch (auth_result) {
+      case AuthResult::NO_REQUIRE_PASS:
+        return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::NotOK, "Invalid password"};
+      case AuthResult::IS_USER:
+      case AuthResult::IS_ADMIN:
+        if (ns != new_ns) {
+          return {Status::NotOK, "Incorrect namespace"};
+        }
+        break;
     }
 
     bool ret = true;
-    rocksdb::Status s = redis.Move(key, ns, &ret);
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(key);
+    std::string new_ns_key = ComposeNamespaceKey(new_ns, key, srv->storage->IsSlotIdEncoded());
+    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret) {
+    if (ret && key_exist) {
       *output = redis::Integer(1);
     } else {
       *output = redis::Integer(0);
@@ -347,9 +350,12 @@ class CommandRename : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     bool ret = true;
-
-    auto s = redis.Rename(args_[1], args_[2], false, &ret);
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Move(ns_key, new_ns_key, false, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
 
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -361,8 +367,12 @@ class CommandRenameNX : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     bool ret = true;
-    auto s = redis.Rename(args_[1], args_[2], true, &ret);
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Move(args_[1], args_[2], true, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
     if (ret) {
       *output = redis::Integer(1);
     } else {
@@ -376,7 +386,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandMove>("movex", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMoveX>("movex", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),

@@ -113,7 +113,7 @@ func TestMoveX(t *testing.T) {
 
 		// move key2 to ns2, with wrong token first
 		r = rdb.Do(ctx, "MOVEX", "key2", "ns2", "token1")
-		require.EqualError(t, r.Err(), "ERR Incorrect namespace or token")
+		require.EqualError(t, r.Err(), "ERR Incorrect namespace")
 		r = rdb.Do(ctx, "MOVEX", "key2", "ns2", "token2")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())

@@ -370,7 +370,7 @@ class CommandRenameNX : public Commander {
     bool key_exist = true;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(args_[1], args_[2], true, &ret, &key_exist);
+    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
     if (ret) {

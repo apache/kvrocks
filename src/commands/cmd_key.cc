@@ -49,59 +49,54 @@ class CommandType : public Commander {
 class CommandMove : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() == 3) {
-      // When the args' size is 3, we treat it as a dummy command to keep compatibility with Redis
-      move_type_ = MoveType::kDummy;
-    } else if (args.size() == 4) {
-      move_type_ = MoveType::kNormal;
-    } else {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
+    GET_OR_RET(ParseInt<int64_t>(args[2], 10));
     return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    int count = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
-    if (move_type_ == MoveType::kDummy) {
-      int count = 0;
-      rocksdb::Status s = redis.Exists({args_[1]}, &count);
-      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-      *output = count ? redis::Integer(1) : redis::Integer(0);
+    rocksdb::Status s = redis.Exists({args_[1]}, &count);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = count ? redis::Integer(1) : redis::Integer(0);
+    return Status::OK();
+  }
+};
+
+class CommandMoveX : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    std::string &key = args_[1], &ns = args_[2], &token = args_[3];
+
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    // auth
+    const auto &requirepass = srv->GetConfig()->requirepass;
+    if (requirepass.empty()) {
+      return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
+    }
+    auto get_ns = srv->GetNamespace()->GetByToken(token);
+    if (get_ns.IsOK()) {
+      if (get_ns.GetValue() != ns) {
+        return {Status::NotOK, "Incorrect namespace or token"};
+      }
     } else {
-      std::string &key = args_[1], &ns = args_[2], &token = args_[3];
-
-      // auth
-      const auto &requirepass = srv->GetConfig()->requirepass;
-      if (requirepass.empty()) {
-        return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
+      if (!(ns == kDefaultNamespace && token == requirepass)) {
+        return {Status::NotOK, "Incorrect namespace or token"};
       }
-      auto get_ns = srv->GetNamespace()->GetByToken(token);
-      if (get_ns.IsOK()) {
-        if (get_ns.GetValue() != ns) {
-          return {Status::NotOK, "Incorrect namespace or token"};
-        }
-      } else {
-        if (!(ns == kDefaultNamespace && token == requirepass)) {
-          return {Status::NotOK, "Incorrect namespace or token"};
-        }
-      }
+    }
 
-      bool ret = true;
-      rocksdb::Status s = redis.Move(key, ns, &ret);
-      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    bool ret = true;
+    rocksdb::Status s = redis.Move(key, ns, &ret);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-      if (ret) {
-        *output = redis::Integer(1);
-      } else {
-        *output = redis::Integer(0);
-      }
+    if (ret) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
     }
     return Status::OK();
   }
-
- private:
-  enum class MoveType { kDummy, kNormal };
-  MoveType move_type_;
 };
 
 class CommandObject : public Commander {
@@ -380,7 +375,8 @@ class CommandRenameNX : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandMove>("move", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMove>("movex", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),

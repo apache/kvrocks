@@ -64,19 +64,19 @@ func TestMoveWithoutPwd(t *testing.T) {
 }
 
 func TestMove(t *testing.T) {
-	password := "pwd"
+	token := "pwd"
 	srv := util.StartServer(t, map[string]string{
-		"requirepass": password,
+		"requirepass": token,
 	})
 	defer srv.Close()
 
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{
-		Password: password,
+		Password: token,
 	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Move", func(t *testing.T) {
+	t.Run("Move test", func(t *testing.T) {
 		nsTokens := map[string]string{
 			"ns1": "token1",
 			"ns2": "token2",
@@ -109,7 +109,7 @@ func TestMove(t *testing.T) {
 		require.EqualValues(t, "", rdb.Get(ctx, "key1").Val())
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token1").Err())
 		require.EqualValues(t, "value1", rdb.Get(ctx, "key1").Val())
-		require.NoError(t, rdb.Do(ctx, "AUTH", password).Err())
+		require.NoError(t, rdb.Do(ctx, "AUTH", token).Err())
 
 		// move key2 to ns2, with wrong token first
 		r = rdb.Do(ctx, "MOVE", "key2", "ns2", "token1")
@@ -120,7 +120,7 @@ func TestMove(t *testing.T) {
 		require.EqualValues(t, "", rdb.Get(ctx, "key2").Val())
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token2").Err())
 		require.EqualValues(t, "value2", rdb.Get(ctx, "key2").Val())
-		require.NoError(t, rdb.Do(ctx, "AUTH", password).Err())
+		require.NoError(t, rdb.Do(ctx, "AUTH", token).Err())
 
 		// move non-existent keys
 		r = rdb.Do(ctx, "MOVE", "key2", "ns2", "token2")
@@ -140,11 +140,11 @@ func TestMove(t *testing.T) {
 		require.EqualValues(t, "", rdb.Get(ctx, "key3").Val())
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token3").Err())
 		require.EqualValues(t, "value3", rdb.Get(ctx, "key3").Val())
-		r = rdb.Do(ctx, "MOVE", "key3", "__namespace", password)
+		r = rdb.Do(ctx, "MOVE", "key3", "__namespace", token)
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "key3").Val())
-		require.NoError(t, rdb.Do(ctx, "AUTH", password).Err())
+		require.NoError(t, rdb.Do(ctx, "AUTH", token).Err())
 		require.EqualValues(t, "value3", rdb.Get(ctx, "key3").Val())
 
 		// move in place

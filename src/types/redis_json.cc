@@ -548,7 +548,8 @@ std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_key
   return statuses;
 }
 
-rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths, const std::vector<std::string> &values) {
+rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths,
+                           const std::vector<std::string> &values) {
   std::optional<MultiLockGuard> guard;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(user_keys.size());

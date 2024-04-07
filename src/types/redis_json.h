@@ -66,6 +66,7 @@ class Json : public Database {
 
   std::vector<rocksdb::Status> MGet(const std::vector<std::string> &user_keys, const std::string &path,
                                     std::vector<JsonValue> &results);
+  rocksdb::Status MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths, const std::vector<std::string> &values);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

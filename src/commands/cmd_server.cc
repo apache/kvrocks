@@ -37,48 +37,26 @@
 
 namespace redis {
 
-enum class AuthResult {
-  OK,
-  INVALID_PASSWORD,
-  NO_REQUIRE_PASS,
-};
-
-AuthResult AuthenticateUser(Server *srv, Connection *conn, const std::string &user_password) {
-  auto ns = srv->GetNamespace()->GetByToken(user_password);
-  if (ns.IsOK()) {
-    conn->SetNamespace(ns.GetValue());
-    conn->BecomeUser();
-    return AuthResult::OK;
-  }
-
-  const auto &requirepass = srv->GetConfig()->requirepass;
-  if (!requirepass.empty() && user_password != requirepass) {
-    return AuthResult::INVALID_PASSWORD;
-  }
-
-  conn->SetNamespace(kDefaultNamespace);
-  conn->BecomeAdmin();
-  if (requirepass.empty()) {
-    return AuthResult::NO_REQUIRE_PASS;
-  }
-
-  return AuthResult::OK;
-}
-
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     auto &user_password = args_[1];
-    AuthResult result = AuthenticateUser(srv, conn, user_password);
+    std::string ns;
+    AuthResult result = srv->AuthenticateUser(user_password, &ns);
     switch (result) {
-      case AuthResult::OK:
-        *output = redis::SimpleString("OK");
-        break;
-      case AuthResult::INVALID_PASSWORD:
-        return {Status::RedisExecErr, "invalid password"};
       case AuthResult::NO_REQUIRE_PASS:
         return {Status::RedisExecErr, "Client sent AUTH, but no password is set"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::RedisExecErr, "Invalid password"};
+      case AuthResult::IS_USER:
+        conn->BecomeUser();
+        break;
+      case AuthResult::IS_ADMIN:
+        conn->BecomeAdmin();
+        break;
     }
+    conn->SetNamespace(ns);
+    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 };
@@ -773,20 +751,26 @@ class CommandHello final : public Commander {
       if (util::ToLower(opt) == "auth" && more_args != 0) {
         if (more_args == 2 || more_args == 4) {
           if (args_[next_arg + 1] != "default") {
-            return {Status::NotOK, "invalid password"};
+            return {Status::NotOK, "Invalid password"};
           }
           next_arg++;
         }
         const auto &user_password = args_[next_arg + 1];
-        auto auth_result = AuthenticateUser(srv, conn, user_password);
+        std::string ns;
+        AuthResult auth_result = srv->AuthenticateUser(user_password, &ns);
         switch (auth_result) {
-          case AuthResult::INVALID_PASSWORD:
-            return {Status::NotOK, "invalid password"};
           case AuthResult::NO_REQUIRE_PASS:
             return {Status::NotOK, "Client sent AUTH, but no password is set"};
-          case AuthResult::OK:
+          case AuthResult::INVALID_PASSWORD:
+            return {Status::NotOK, "Invalid password"};
+          case AuthResult::IS_USER:
+            conn->BecomeUser();
+            break;
+          case AuthResult::IS_ADMIN:
+            conn->BecomeAdmin();
             break;
         }
+        conn->SetNamespace(ns);
         next_arg += 1;
       } else if (util::ToLower(opt) == "setname" && more_args != 0) {
         const std::string &name = args_[next_arg + 1];
@@ -1066,12 +1050,12 @@ class CommandStats : public Commander {
   }
 };
 
-static uint64_t GenerateConfigFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateConfigFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && util::EqualICase(args[1], "set")) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandLastSave : public Commander {
@@ -1207,72 +1191,6 @@ class CommandRdb : public Commander {
   uint32_t db_index_ = 0;
 };
 
-class CommandAnalyze : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() <= 1) return {Status::RedisExecErr, errInvalidSyntax};
-    for (unsigned int i = 1; i < args.size(); ++i) {
-      command_args_.push_back(args[i]);
-    }
-    return Status::OK();
-  }
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    auto commands = redis::CommandTable::Get();
-    auto cmd_iter = commands->find(util::ToLower(command_args_[0]));
-    if (cmd_iter == commands->end()) {
-      // unsupported redis command
-      return {Status::RedisExecErr, errInvalidSyntax};
-    }
-    auto redis_cmd = cmd_iter->second;
-    auto cmd = redis_cmd->factory();
-    cmd->SetAttributes(redis_cmd);
-    cmd->SetArgs(command_args_);
-
-    int arity = cmd->GetAttributes()->arity;
-    if ((arity > 0 && static_cast<int>(command_args_.size()) != arity) ||
-        (arity < 0 && static_cast<int>(command_args_.size()) < -arity)) {
-      *output = redis::Error("ERR wrong number of arguments");
-      return {Status::RedisExecErr, errWrongNumOfArguments};
-    }
-
-    auto s = cmd->Parse(command_args_);
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    auto prev_perf_level = rocksdb::GetPerfLevel();
-    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
-    rocksdb::get_perf_context()->Reset();
-    rocksdb::get_iostats_context()->Reset();
-
-    std::string command_output;
-    s = cmd->Execute(srv, conn, &command_output);
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    if (command_output[0] == '-') {
-      *output = command_output;
-      return s;
-    }
-
-    std::string perf_context = rocksdb::get_perf_context()->ToString(true);
-    std::string iostats_context = rocksdb::get_iostats_context()->ToString(true);
-    rocksdb::get_perf_context()->Reset();
-    rocksdb::get_iostats_context()->Reset();
-    rocksdb::SetPerfLevel(prev_perf_level);
-
-    *output = redis::MultiLen(3);  // command output + perf context + iostats context
-    *output += command_output;
-    *output += redis::BulkString(perf_context);
-    *output += redis::BulkString(iostats_context);
-    return Status::OK();
-  }
-
- private:
-  std::vector<std::string> command_args_;
-};
-
 class CommandReset : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -1374,7 +1292,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script", 0, 0, 0),
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
-                        MakeCmdAttr<CommandAnalyze>("analyze", -1, "", 0, 0, 0),
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
 }  // namespace redis

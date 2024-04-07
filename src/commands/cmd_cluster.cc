@@ -295,12 +295,12 @@ class CommandClusterX : public Commander {
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
-static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && Cluster::SubCommandIsExecExclusive(args[1])) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandReadOnly : public Commander {

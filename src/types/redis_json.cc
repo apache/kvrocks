@@ -553,8 +553,8 @@ rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std:
   std::optional<MultiLockGuard> guard;
   std::vector<std::string> lock_keys;
   lock_keys.reserve(user_keys.size());
-  for (size_t i = 0; i < user_keys.size(); i++) {
-    std::string ns_key = AppendNamespacePrefix(user_keys[i]);
+  for (const auto & user_key : user_keys) {
+    std::string ns_key = AppendNamespacePrefix(user_key);
     lock_keys.emplace_back(std::move(ns_key));
   }
   guard.emplace(storage_->GetLockManager(), lock_keys);

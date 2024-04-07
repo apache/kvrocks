@@ -206,7 +206,7 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
   std::vector<std::string> ns_keys;
   ns_keys.reserve(keys.size());
-  for (const auto& key : keys) {
+  for (const auto &key : keys) {
     ns_keys.emplace_back(AppendNamespacePrefix(key));
   }
   return existsInternal(ns_keys, ret);

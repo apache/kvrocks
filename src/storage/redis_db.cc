@@ -203,31 +203,13 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret, bool internal_key) {
-  *ret = 0;
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-
-  rocksdb::Status s;
-  std::string value;
-  for (const auto &key : keys) {
-    std::string ns_key;
-    if (internal_key) {
-      ns_key = key.ToString();
-    } else {
-      ns_key = AppendNamespacePrefix(key);
-    }
-    s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-    if (!s.ok() && !s.IsNotFound()) return s;
-    if (s.ok()) {
-      Metadata metadata(kRedisNone, false);
-      s = metadata.Decode(value);
-      if (!s.ok()) return s;
-      if (!metadata.Expired()) *ret += 1;
-    }
+rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
+  std::vector<std::string> ns_keys;
+  ns_keys.reserve(keys.size());
+  for (const auto& key : keys) {
+    ns_keys.emplace_back(AppendNamespacePrefix(key));
   }
-  return rocksdb::Status::OK();
+  return existsInternal(ns_keys, ret);
 }
 
 rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
@@ -533,31 +515,9 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Type(const Slice &key, RedisType *type, bool internal_key) {
-  std::string ns_key;
-  if (internal_key) {
-    ns_key = key.ToString();
-  } else {
-    ns_key = AppendNamespacePrefix(key);
-  }
-
-  *type = kRedisNone;
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  std::string value;
-  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-
-  Metadata metadata(kRedisNone, false);
-  s = metadata.Decode(value);
-  if (!s.ok()) return s;
-  if (metadata.Expired()) {
-    *type = kRedisNone;
-  } else {
-    *type = metadata.Type();
-  }
-  return rocksdb::Status::OK();
+rocksdb::Status Database::Type(const Slice &key, RedisType *type) {
+  std::string ns_key = AppendNamespacePrefix(key);
+  return typeInternal(ns_key, type);
 }
 
 std::string Database::AppendNamespacePrefix(const Slice &user_key) {
@@ -707,6 +667,47 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
+rocksdb::Status Database::existsInternal(const std::vector<std::string> &keys, int *ret) {
+  *ret = 0;
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+
+  rocksdb::Status s;
+  std::string value;
+  for (const auto &key : keys) {
+    s = storage_->Get(read_options, metadata_cf_handle_, key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone, false);
+      s = metadata.Decode(value);
+      if (!s.ok()) return s;
+      if (!metadata.Expired()) *ret += 1;
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::typeInternal(const Slice &key, RedisType *type) {
+  *type = kRedisNone;
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  std::string value;
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, key, &value);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  Metadata metadata(kRedisNone, false);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
+  if (metadata.Expired()) {
+    *type = kRedisNone;
+  } else {
+    *type = metadata.Type();
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Database::Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
                                bool *key_exist) {
   *ret = true;
@@ -715,7 +716,7 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 
   RedisType type = kRedisNone;
-  auto s = Type(key, &type, true);
+  auto s = typeInternal(key, &type);
   if (!s.ok()) return s;
   if (type == kRedisNone) {
     *key_exist = false;
@@ -724,7 +725,7 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
 
   if (nx) {
     int exist = 0;
-    if (s = Exists({new_key}, &exist, true), !s.ok()) return s;
+    if (s = existsInternal({new_key}, &exist), !s.ok()) return s;
     if (exist > 0) {
       *ret = false;
       return rocksdb::Status::OK();

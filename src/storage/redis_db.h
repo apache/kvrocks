@@ -82,10 +82,10 @@ class Database {
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(const Slice &user_key);
   [[nodiscard]] rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
-  [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret, bool internal_key = false);
+  [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(const Slice &user_key, uint64_t *timestamp);
-  [[nodiscard]] rocksdb::Status Type(const Slice &key, RedisType *type, bool internal_key = false);
+  [[nodiscard]] rocksdb::Status Type(const Slice &key, RedisType *type);
   [[nodiscard]] rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   [[nodiscard]] rocksdb::Status FlushDB();
   [[nodiscard]] rocksdb::Status FlushAll();
@@ -111,6 +111,11 @@ class Database {
   std::string namespace_;
 
   friend class LatestSnapShot;
+
+ private:
+  // Already internal keys
+  [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
 };
 class LatestSnapShot {
  public:

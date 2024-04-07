@@ -67,7 +67,7 @@ class CommandMove : public Commander {
 class CommandMoveX : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    std::string &key = args_[1], &new_ns = args_[2], &token = args_[3];
+    std::string &key = args_[1], &token = args_[2];
 
     redis::Database redis(srv->storage, conn->GetNamespace());
 
@@ -80,16 +80,13 @@ class CommandMoveX : public Commander {
         return {Status::NotOK, "Invalid password"};
       case AuthResult::IS_USER:
       case AuthResult::IS_ADMIN:
-        if (ns != new_ns) {
-          return {Status::NotOK, "Incorrect namespace"};
-        }
         break;
     }
 
     bool ret = true;
     bool key_exist = true;
     std::string ns_key = redis.AppendNamespacePrefix(key);
-    std::string new_ns_key = ComposeNamespaceKey(new_ns, key, srv->storage->IsSlotIdEncoded());
+    std::string new_ns_key = ComposeNamespaceKey(ns, key, srv->storage->IsSlotIdEncoded());
     auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -386,7 +383,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandMoveX>("movex", 4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),

@@ -58,7 +58,7 @@ func TestMoveXWithoutPwd(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("MoveX without password", func(t *testing.T) {
-		r := rdb.Do(ctx, "MOVEX", "key1", "ns1", "token1")
+		r := rdb.Do(ctx, "MOVEX", "key1", "token1")
 		require.EqualError(t, r.Err(), "ERR Forbidden to move key when requirepass is empty")
 	})
 }
@@ -103,7 +103,7 @@ func TestMoveX(t *testing.T) {
 		require.EqualValues(t, "value3", rdb.Get(ctx, "key3").Val())
 
 		// move key1 to ns1
-		r := rdb.Do(ctx, "MOVEX", "key1", "ns1", "token1")
+		r := rdb.Do(ctx, "MOVEX", "key1", "token1")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "key1").Val())
@@ -112,9 +112,9 @@ func TestMoveX(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "AUTH", token).Err())
 
 		// move key2 to ns2, with wrong token first
-		r = rdb.Do(ctx, "MOVEX", "key2", "ns2", "token1")
-		require.EqualError(t, r.Err(), "ERR Incorrect namespace")
-		r = rdb.Do(ctx, "MOVEX", "key2", "ns2", "token2")
+		r = rdb.Do(ctx, "MOVEX", "key2", "token4")
+		require.EqualError(t, r.Err(), "ERR Invalid password")
+		r = rdb.Do(ctx, "MOVEX", "key2", "token2")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "key2").Val())
@@ -123,24 +123,24 @@ func TestMoveX(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "AUTH", token).Err())
 
 		// move non-existent keys
-		r = rdb.Do(ctx, "MOVEX", "key2", "ns2", "token2")
+		r = rdb.Do(ctx, "MOVEX", "key2", "token2")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(0), r.Val())
 
 		// move key that exists in the target namespace
 		require.NoError(t, rdb.Set(ctx, "key1", "value4", 0).Err())
-		r = rdb.Do(ctx, "MOVEX", "key1", "ns1", "token1")
+		r = rdb.Do(ctx, "MOVEX", "key1", "token1")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(0), r.Val())
 
 		// move key3 to ns3, and move back
-		r = rdb.Do(ctx, "MOVEX", "key3", "ns3", "token3")
+		r = rdb.Do(ctx, "MOVEX", "key3", "token3")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "key3").Val())
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token3").Err())
 		require.EqualValues(t, "value3", rdb.Get(ctx, "key3").Val())
-		r = rdb.Do(ctx, "MOVEX", "key3", "__namespace", token)
+		r = rdb.Do(ctx, "MOVEX", "key3", token)
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(1), r.Val())
 		require.EqualValues(t, "", rdb.Get(ctx, "key3").Val())
@@ -150,7 +150,7 @@ func TestMoveX(t *testing.T) {
 		// move in place
 		require.NoError(t, rdb.Do(ctx, "AUTH", "token1").Err())
 		require.EqualValues(t, "value1", rdb.Get(ctx, "key1").Val())
-		r = rdb.Do(ctx, "MOVEX", "key1", "ns1", "token1")
+		r = rdb.Do(ctx, "MOVEX", "key1", "token1")
 		require.NoError(t, r.Err())
 		require.EqualValues(t, int64(0), r.Val())
 	})

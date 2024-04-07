@@ -614,6 +614,7 @@ func TestJson(t *testing.T) {
 	})
 
 	t.Run("JSON.MSET basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.DEL", "a0").Err())
 		require.Error(t, rdb.Do(ctx, "JSON.MSET", "a0", "$.a", `{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}`, "a1", "$", `{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.MSET", "a0", "$", `{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}`, "a1", "$", `{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
 

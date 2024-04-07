@@ -64,6 +64,41 @@ class CommandMove : public Commander {
   }
 };
 
+class CommandMoveX : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    std::string &key = args_[1], &token = args_[2];
+
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    std::string ns;
+    AuthResult auth_result = srv->AuthenticateUser(token, &ns);
+    switch (auth_result) {
+      case AuthResult::NO_REQUIRE_PASS:
+        return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::NotOK, "Invalid password"};
+      case AuthResult::IS_USER:
+      case AuthResult::IS_ADMIN:
+        break;
+    }
+
+    bool ret = true;
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(key);
+    std::string new_ns_key = ComposeNamespaceKey(ns, key, srv->storage->IsSlotIdEncoded());
+    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (ret && key_exist) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+};
+
 class CommandObject : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -312,9 +347,12 @@ class CommandRename : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     bool ret = true;
-
-    auto s = redis.Rename(args_[1], args_[2], false, &ret);
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Move(ns_key, new_ns_key, false, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
 
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -326,8 +364,12 @@ class CommandRenameNX : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     bool ret = true;
-    auto s = redis.Rename(args_[1], args_[2], true, &ret);
+    bool key_exist = true;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
     if (ret) {
       *output = redis::Integer(1);
     } else {
@@ -341,6 +383,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),

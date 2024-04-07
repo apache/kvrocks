@@ -738,7 +738,7 @@ void Config::ClearMaster() {
 
 Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
   std::string field_key = util::ToLower(input.first);
-  const char ns_str[] = "namespace.";
+  constexpr const char ns_str[] = "namespace.";
   size_t ns_str_size = sizeof(ns_str) - 1;
   if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
     // namespace should keep key case-sensitive

@@ -139,6 +139,13 @@ enum ClientType {
 
 enum ServerLogType { kServerLogNone, kReplIdLog };
 
+enum class AuthResult {
+  IS_USER,
+  IS_ADMIN,
+  INVALID_PASSWORD,
+  NO_REQUIRE_PASS,
+};
+
 class ServerLogData {
  public:
   // Redis::WriteBatchLogData always starts with digit ascii, we use alphabetic to
@@ -298,6 +305,8 @@ class Server {
   void ResetWatchedKeys(redis::Connection *conn);
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
   Namespace *GetNamespace() { return &namespace_; }
+
+  AuthResult AuthenticateUser(const std::string &user_password, std::string *ns);
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;

@@ -2037,3 +2037,22 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
 
   return {};
 }
+
+AuthResult Server::AuthenticateUser(const std::string &user_password, std::string *ns) {
+  const auto &requirepass = GetConfig()->requirepass;
+  if (requirepass.empty()) {
+    return AuthResult::NO_REQUIRE_PASS;
+  }
+
+  auto get_ns = GetNamespace()->GetByToken(user_password);
+  if (get_ns.IsOK()) {
+    *ns = get_ns.GetValue();
+    return AuthResult::IS_USER;
+  }
+
+  if (user_password != requirepass) {
+    return AuthResult::INVALID_PASSWORD;
+  }
+  *ns = kDefaultNamespace;
+  return AuthResult::IS_ADMIN;
+}

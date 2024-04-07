@@ -114,12 +114,12 @@ func TestHelloWithAuth(t *testing.T) {
 
 	t.Run("AUTH fails when a wrong password is given", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "wrong!")
-		require.ErrorContains(t, r.Err(), "invalid password")
+		require.ErrorContains(t, r.Err(), "Invalid password")
 	})
 
 	t.Run("AUTH fails when a wrong username is given", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "wrong!", "foobar")
-		require.ErrorContains(t, r.Err(), "invalid password")
+		require.ErrorContains(t, r.Err(), "Invalid password")
 	})
 
 	t.Run("Arbitrary command gives an error when AUTH is required", func(t *testing.T) {

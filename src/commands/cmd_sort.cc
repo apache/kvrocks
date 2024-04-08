@@ -61,7 +61,7 @@ class CommandSort : public Commander {
         }
         offset_ = GET_OR_RET(parser.TakeInt<long>());
         count_ = GET_OR_RET(parser.TakeInt<long>());
-      } else if (parser.EatEqICase("GET") && parser.Remains() >= 1) {  // 有嵌套
+      } else if (parser.EatEqICase("GET") && parser.Remains() >= 1) {
         if (parser.Remains() < 1) {
           return parser.InvalidSyntax();
         }

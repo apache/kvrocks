@@ -571,9 +571,8 @@ rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std:
 
     JsonMetadata metadata;
     JsonValue value;
-    auto s = read(ns_key, &metadata, &value);
 
-    if (s.IsNotFound()) {
+    if (auto s = read(ns_key, &metadata, &value); s.IsNotFound()) {
       if (paths[i] != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
       value = *std::move(json_res);

@@ -612,8 +612,7 @@ class CommandJsonMSet : public Commander {
       values.emplace_back(args_[i * 3 + 3]);
     }
 
-    auto s = json.MSet(user_keys, paths, values);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (auto s = json.MSet(user_keys, paths, values); !s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::SimpleString("OK");
     return Status::OK();

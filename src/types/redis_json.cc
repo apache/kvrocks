@@ -550,29 +550,26 @@ std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_key
 
 rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths,
                            const std::vector<std::string> &values) {
-  std::optional<MultiLockGuard> guard;
-  std::vector<std::string> lock_keys;
-  lock_keys.reserve(user_keys.size());
+  std::vector<std::string> ns_keys;
+  ns_keys.reserve(user_keys.size());
   for (const auto &user_key : user_keys) {
     std::string ns_key = AppendNamespacePrefix(user_key);
-    lock_keys.emplace_back(std::move(ns_key));
+    ns_keys.emplace_back(std::move(ns_key));
   }
-  guard.emplace(storage_->GetLockManager(), lock_keys);
+  MultiLockGuard guard(storage_->GetLockManager(), ns_keys);
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
   batch->PutLogData(log_data.Encode());
 
   for (size_t i = 0; i < user_keys.size(); i++) {
-    std::string ns_key = AppendNamespacePrefix(user_keys[i]);
-
     auto json_res = JsonValue::FromString(values[i], storage_->GetConfig()->json_max_nesting_depth);
     if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
 
     JsonMetadata metadata;
     JsonValue value;
 
-    if (auto s = read(ns_key, &metadata, &value); s.IsNotFound()) {
+    if (auto s = read(ns_keys[i], &metadata, &value); s.IsNotFound()) {
       if (paths[i] != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
 
       value = *std::move(json_res);
@@ -602,7 +599,7 @@ rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std:
       return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + res.Msg());
     }
 
-    batch->Put(metadata_cf_handle_, ns_key, val);
+    batch->Put(metadata_cf_handle_, ns_keys[i], val);
   }
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());

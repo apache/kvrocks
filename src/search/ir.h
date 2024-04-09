@@ -243,26 +243,26 @@ struct OrExpr : QueryExpr {
   NodeIterator ChildEnd() override { return NodeIterator(inners.end()); };
 };
 
-struct Limit : Node {
+struct LimitClause : Node {
   size_t offset = 0;
   size_t count = std::numeric_limits<size_t>::max();
 
-  Limit(size_t offset, size_t count) : offset(offset), count(count) {}
+  LimitClause(size_t offset, size_t count) : offset(offset), count(count) {}
 
-  std::string_view Name() const override { return "Limit"; }
+  std::string_view Name() const override { return "LimitClause"; }
   std::string Dump() const override { return fmt::format("limit {}, {}", offset, count); }
   std::string Content() const override { return fmt::format("{}, {}", offset, count); }
 };
 
-struct SortBy : Node {
+struct SortByClause : Node {
   enum Order { ASC, DESC } order = ASC;
   std::unique_ptr<FieldRef> field;
 
-  SortBy(Order order, std::unique_ptr<FieldRef> &&field) : order(order), field(std::move(field)) {}
+  SortByClause(Order order, std::unique_ptr<FieldRef> &&field) : order(order), field(std::move(field)) {}
 
   static constexpr const char *OrderToString(Order order) { return order == ASC ? "asc" : "desc"; }
 
-  std::string_view Name() const override { return "SortBy"; }
+  std::string_view Name() const override { return "SortByClause"; }
   std::string Dump() const override { return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order)); }
   std::string Content() const override { return OrderToString(order); }
 
@@ -299,11 +299,12 @@ struct SearchStmt : Node {
   std::unique_ptr<SelectExpr> select_expr;
   std::unique_ptr<IndexRef> index;
   std::unique_ptr<QueryExpr> query_expr;
-  std::unique_ptr<Limit> limit;           // optional
-  std::unique_ptr<SortBy> sort_by;        // optional
+  std::unique_ptr<LimitClause> limit;     // optional
+  std::unique_ptr<SortByClause> sort_by;  // optional
 
-  SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr, std::unique_ptr<Limit> &&limit,
-             std::unique_ptr<SortBy> &&sort_by, std::unique_ptr<SelectExpr> &&select_expr)
+  SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr,
+             std::unique_ptr<LimitClause> &&limit, std::unique_ptr<SortByClause> &&sort_by,
+             std::unique_ptr<SelectExpr> &&select_expr)
       : select_expr(std::move(select_expr)),
         index(std::move(index)),
         query_expr(std::move(query_expr)),

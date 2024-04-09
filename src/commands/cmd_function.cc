@@ -99,7 +99,16 @@ struct CommandFCall : Commander {
 
 CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args);
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFunction>("function", -2, "exclusive no-script", 0, 0, 0),
+uint64_t GenerateFunctionFlags(uint64_t flags, const std::vector<std::string> &args) {
+  if (util::EqualICase(args[1], "load") || util::EqualICase(args[1], "delete")) {
+    return flags | kCmdWrite;
+  }
+
+  return flags;
+}
+
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFunction>("function", -2, "exclusive no-script", 0, 0, 0,
+                                                     GenerateFunctionFlags),
                         MakeCmdAttr<CommandFCall<>>("fcall", -3, "exclusive write no-script", GetScriptEvalKeyRange),
                         MakeCmdAttr<CommandFCall<true>>("fcall_ro", -3, "read-only ro-script no-script",
                                                         GetScriptEvalKeyRange));

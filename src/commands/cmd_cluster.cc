@@ -32,7 +32,8 @@ class CommandCluster : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
+    if (args.size() == 2 &&
+        (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info" || subcommand_ == "reset"))
       return Status::OK();
 
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
@@ -48,7 +49,7 @@ class CommandCluster : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT"};
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -100,6 +101,13 @@ class CommandCluster : public Commander {
       }
     } else if (subcommand_ == "import") {
       Status s = srv->cluster->ImportSlot(conn, static_cast<int>(slot_), state_);
+      if (s.IsOK()) {
+        *output = redis::SimpleString("OK");
+      } else {
+        return {Status::RedisExecErr, s.Msg()};
+      }
+    } else if (subcommand_ == "reset") {
+      Status s = srv->cluster->Reset();
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
       } else {
@@ -287,12 +295,12 @@ class CommandClusterX : public Commander {
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
-static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && Cluster::SubCommandIsExecExclusive(args[1])) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandReadOnly : public Commander {

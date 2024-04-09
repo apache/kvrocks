@@ -82,9 +82,9 @@ struct SemaChecker {
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};
       }
-    } else if (auto v [[maybe_unused]] = dynamic_cast<Limit *>(node)) {
+    } else if (auto v [[maybe_unused]] = dynamic_cast<LimitClause *>(node)) {
       return Status::OK();
-    } else if (auto v = dynamic_cast<SortBy *>(node)) {
+    } else if (auto v = dynamic_cast<SortByClause *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else {

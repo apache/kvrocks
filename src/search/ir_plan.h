@@ -29,8 +29,6 @@
 
 namespace kqir {
 
-namespace plan {
-
 struct PlanOperator : Node {};
 
 struct FullIndexScan : PlanOperator {
@@ -111,7 +109,5 @@ struct Projection : PlanOperator {
   NodeIterator ChildBegin() override { return {source.get(), select.get()}; }
   NodeIterator ChildEnd() override { return {}; }
 };
-
-}  // namespace plan
 
 }  // namespace kqir

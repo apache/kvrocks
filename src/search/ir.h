@@ -298,7 +298,7 @@ struct IndexRef : Node {
 struct SearchStmt : Node {
   std::unique_ptr<SelectExpr> select_expr;
   std::unique_ptr<IndexRef> index;
-  std::unique_ptr<QueryExpr> query_expr;  // optional
+  std::unique_ptr<QueryExpr> query_expr;
   std::unique_ptr<Limit> limit;           // optional
   std::unique_ptr<SortBy> sort_by;        // optional
 
@@ -313,10 +313,9 @@ struct SearchStmt : Node {
   std::string_view Name() const override { return "SearchStmt"; }
   std::string Dump() const override {
     std::string opt;
-    if (query_expr) opt += " where " + query_expr->Dump();
     if (sort_by) opt += " " + sort_by->Dump();
     if (limit) opt += " " + limit->Dump();
-    return fmt::format("{} from {}{}", select_expr->Dump(), index->Dump(), opt);
+    return fmt::format("{} from {} where {}{}", select_expr->Dump(), index->Dump(), query_expr->Dump(), opt);
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {

@@ -315,13 +315,13 @@ jobs:
           $HOME/local/bin/redis-server --daemonize yes
           mkdir -p kvrocks2redis-ci-data
           ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
-          sleep 15s
+          sleep 10s
           echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
           cat ./kvrocks2redis-ci.conf
           ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          sleep 15s
+          sleep 10s
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
-          sleep 15s
+          sleep 10s
           ps aux
           python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
@@ -515,13 +515,13 @@ jobs:
           $HOME/local/bin/redis-server --daemonize yes
           mkdir -p kvrocks2redis-ci-data
           ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
-          sleep 15s
+          sleep 10s
           echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
           cat ./kvrocks2redis-ci.conf
           ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          sleep 15s
+          sleep 10s
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
-          sleep 15s
+          sleep 10s
           python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
   required:

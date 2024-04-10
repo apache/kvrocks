@@ -76,7 +76,7 @@ struct Visitor : Pass {
   virtual std::unique_ptr<Node> Visit(std::unique_ptr<SearchStmt> node) {
     node->index = VisitAs<IndexRef>(std::move(node->index));
     node->select_expr = VisitAs<SelectExpr>(std::move(node->select_expr));
-    if (node->query_expr) node->query_expr = TransformAs<QueryExpr>(std::move(node->query_expr));
+    node->query_expr = TransformAs<QueryExpr>(std::move(node->query_expr));
     if (node->sort_by) node->sort_by = VisitAs<SortByClause>(std::move(node->sort_by));
     if (node->limit) node->limit = VisitAs<LimitClause>(std::move(node->limit));
     return node;

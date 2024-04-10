@@ -76,7 +76,7 @@ struct SemaChecker {
         result.emplace(v->index.get(), current_index);
 
         GET_OR_RET(Check(v->select_expr.get()));
-        if (v->query_expr) GET_OR_RET(Check(v->query_expr.get()));
+        GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
       } else {

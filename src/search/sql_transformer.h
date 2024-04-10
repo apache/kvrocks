@@ -164,6 +164,10 @@ struct Transformer : ir::TreeTransformer {
         }
       }
 
+      if (!query_expr) {
+        query_expr = std::make_unique<BoolLiteral>(true);
+      }
+
       return Node::Create<ir::SearchStmt>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),
                                           std::move(select));
     } else if (IsRoot(node)) {

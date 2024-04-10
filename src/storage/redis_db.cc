@@ -708,7 +708,7 @@ rocksdb::Status Database::typeInternal(const Slice &key, RedisType *type) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
+rocksdb::Status Database::Move(const std::string &key, const std::string &new_key, bool nx, bool delete_old, bool *ret,
                                bool *key_exist) {
   *ret = true;
   *key_exist = true;
@@ -720,6 +720,7 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
   if (!s.ok()) return s;
   if (type == kRedisNone) {
     *key_exist = false;
+    *ret = false;
     return rocksdb::Status::OK();
   }
 
@@ -741,8 +742,10 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   iter.Seek(key);
 
+  if (delete_old) {
+    batch->Delete(metadata_cf_handle_, key);
+  }
   // copy metadata
-  batch->Delete(metadata_cf_handle_, key);
   batch->Put(metadata_cf_handle_, new_key, iter.Value());
 
   auto subkey_iter = iter.GetSubKeyIterator();

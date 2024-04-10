@@ -102,8 +102,8 @@ class Database {
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
   // Move <key,value> to <new_key,value> (already an internal key)
-  [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
-                                     bool *key_exist);
+  [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
+                                     bool *ret, bool *key_exist);
 
  protected:
   engine::Storage *storage_;

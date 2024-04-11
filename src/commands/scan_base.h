@@ -32,7 +32,7 @@ inline constexpr const char *kCursorPrefix = "_";
 struct ScanParameters {
   // SCAN command format cursor [MATCH pattern] [COUNT count] [TYPE type] type Currently not implemented
   std::string match;
-  int64_t count = 20;
+  int count = 20;
 };
 
 class CommandScanBase : public Commander {
@@ -85,10 +85,10 @@ class CommandScanBase : public Commander {
     return redis::Array(list);
   }
 
-  Status ParseScanParameters(const std::vector<std::string> &args, ScanParameters *params) {
+  static Status ParseScanParameters(const std::vector<std::string> &args, ScanParameters *params) {
     for (size_t i = 2; i < args.size(); i = i + 2) {
       if (util::ToLower(args[i]) == "match") {
-        params->match = std::move(args[i + 1]);
+        params->match = args[i + 1];
         if (!params->match.empty() && params->match[params->match.size() - 1] == '*') {
           params->match = params->match.substr(0, params->match.size() - 1);
         } else {

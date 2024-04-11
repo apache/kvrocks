@@ -842,7 +842,11 @@ class CommandScan : public CommandScanBase {
 
     ParseCursor(args[1]);
     if (args.size() >= 4) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[2]), args_[3]);
+      std::string match_flag= util::ToLower(args[2]);
+      if (match_flag!="match"){
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      Status s = ParseMatchAndCountParam(match_flag, args_[3]);
       if (!s.IsOK()) {
         return s;
       }

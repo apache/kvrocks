@@ -397,7 +397,7 @@ class CommandCopy : public Commander {
       }
       auto db_num = ParseInt<int64_t>(args[4], 10);
       // DB num should only be 1, just a placeholder
-      if (!db_num.IsOK() || db_num.GetValue() != 1) {
+      if (!db_num.IsOK() || db_num.GetValue() != 0) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
       if (args.size() == 6) {

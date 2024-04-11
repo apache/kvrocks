@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package copy
+package copycmd
 
 import (
 	"context"

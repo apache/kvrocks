@@ -83,14 +83,13 @@ class CommandMoveX : public Commander {
         break;
     }
 
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(key);
     std::string new_ns_key = ComposeNamespaceKey(ns, key, srv->storage->IsSlotIdEncoded());
-    auto s = redis.Move(ns_key, new_ns_key, true, true, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret) {
+    if (res == Database::CopyResult::DONE) {
       *output = redis::Integer(1);
     } else {
       *output = redis::Integer(0);
@@ -346,14 +345,13 @@ class CommandRename : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(ns_key, new_ns_key, false, true, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, false, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
-
+    if (res == Database::CopyResult::KEY_NOT_EXIST)
+      return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -363,17 +361,20 @@ class CommandRenameNX : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(ns_key, new_ns_key, true, true, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
-    if (ret) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
     }
     return Status::OK();
   }
@@ -414,16 +415,20 @@ class CommandCopy : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(ns_key, new_ns_key, !replace_, false, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, !replace_, false, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (ret) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
     }
     return Status::OK();
   }

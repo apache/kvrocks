@@ -32,7 +32,7 @@ inline constexpr const char *kCursorPrefix = "_";
 struct ScanParameters {
   // SCAN command format cursor [MATCH pattern] [COUNT count] [TYPE type] type Currently not implemented
   std::string match;
-  int64_t count;
+  int64_t count = 20;
 };
 
 class CommandScanBase : public Commander {

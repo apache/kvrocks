@@ -112,7 +112,7 @@ class CommandScanBase : public Commander {
 
     return Status::OK();
   }
-  void FillScanAttributes(ScanParameters *params) {
+  void FillScanAttributes(const ScanParameters *params) {
     prefix_ = params->match;
     limit_ = params->count;
   }

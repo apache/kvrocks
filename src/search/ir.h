@@ -383,8 +383,8 @@ struct SearchStmt : Node {
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {
-      NodeIterator::MemFn<&SearchStmt::select>, NodeIterator::MemFn<&SearchStmt::index>,
-      NodeIterator::MemFn<&SearchStmt::query_expr>,  NodeIterator::MemFn<&SearchStmt::limit>,
+      NodeIterator::MemFn<&SearchStmt::select>,     NodeIterator::MemFn<&SearchStmt::index>,
+      NodeIterator::MemFn<&SearchStmt::query_expr>, NodeIterator::MemFn<&SearchStmt::limit>,
       NodeIterator::MemFn<&SearchStmt::sort_by>,
   };
 

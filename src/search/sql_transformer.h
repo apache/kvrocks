@@ -132,18 +132,18 @@ struct Transformer : ir::TreeTransformer {
         count = *ParseInt(node->children[1]->string());
       }
 
-      return Node::Create<ir::Limit>(offset, count);
+      return Node::Create<ir::LimitClause>(offset, count);
     }
     if (Is<OrderByClause>(node)) {
       CHECK(node->children.size() == 1 || node->children.size() == 2);
 
       auto field = std::make_unique<FieldRef>(node->children[0]->string());
-      auto order = SortBy::Order::ASC;
+      auto order = SortByClause::Order::ASC;
       if (node->children.size() == 2 && node->children[1]->string_view() == "desc") {
-        order = SortBy::Order::DESC;
+        order = SortByClause::Order::DESC;
       }
 
-      return Node::Create<SortBy>(order, std::move(field));
+      return Node::Create<SortByClause>(order, std::move(field));
     } else if (Is<SearchStmt>(node)) {  // root node
       CHECK(node->children.size() >= 2 && node->children.size() <= 5);
 
@@ -151,17 +151,21 @@ struct Transformer : ir::TreeTransformer {
       auto select = Node::MustAs<ir::SelectExpr>(GET_OR_RET(Transform(node->children[0])));
 
       std::unique_ptr<ir::QueryExpr> query_expr;
-      std::unique_ptr<ir::Limit> limit;
-      std::unique_ptr<ir::SortBy> sort_by;
+      std::unique_ptr<ir::LimitClause> limit;
+      std::unique_ptr<ir::SortByClause> sort_by;
 
       for (size_t i = 2; i < node->children.size(); ++i) {
         if (Is<WhereClause>(node->children[i])) {
           query_expr = Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[i])));
         } else if (Is<LimitClause>(node->children[i])) {
-          limit = Node::MustAs<ir::Limit>(GET_OR_RET(Transform(node->children[i])));
+          limit = Node::MustAs<ir::LimitClause>(GET_OR_RET(Transform(node->children[i])));
         } else if (Is<OrderByClause>(node->children[i])) {
-          sort_by = Node::MustAs<ir::SortBy>(GET_OR_RET(Transform(node->children[i])));
+          sort_by = Node::MustAs<ir::SortByClause>(GET_OR_RET(Transform(node->children[i])));
         }
+      }
+
+      if (!query_expr) {
+        query_expr = std::make_unique<BoolLiteral>(true);
       }
 
       return Node::Create<ir::SearchStmt>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),

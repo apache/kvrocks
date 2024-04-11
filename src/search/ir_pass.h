@@ -36,9 +36,9 @@ struct Visitor : Pass {
       return Visit(std::move(v));
     } else if (auto v = Node::As<IndexRef>(std::move(node))) {
       return Visit(std::move(v));
-    } else if (auto v = Node::As<Limit>(std::move(node))) {
+    } else if (auto v = Node::As<LimitClause>(std::move(node))) {
       return Visit(std::move(v));
-    } else if (auto v = Node::As<SortBy>(std::move(node))) {
+    } else if (auto v = Node::As<SortByClause>(std::move(node))) {
       return Visit(std::move(v));
     } else if (auto v = Node::As<AndExpr>(std::move(node))) {
       return Visit(std::move(v));
@@ -76,9 +76,9 @@ struct Visitor : Pass {
   virtual std::unique_ptr<Node> Visit(std::unique_ptr<SearchStmt> node) {
     node->index = VisitAs<IndexRef>(std::move(node->index));
     node->select_expr = VisitAs<SelectExpr>(std::move(node->select_expr));
-    if (node->query_expr) node->query_expr = TransformAs<QueryExpr>(std::move(node->query_expr));
-    if (node->sort_by) node->sort_by = VisitAs<SortBy>(std::move(node->sort_by));
-    if (node->limit) node->limit = VisitAs<Limit>(std::move(node->limit));
+    node->query_expr = TransformAs<QueryExpr>(std::move(node->query_expr));
+    if (node->sort_by) node->sort_by = VisitAs<SortByClause>(std::move(node->sort_by));
+    if (node->limit) node->limit = VisitAs<LimitClause>(std::move(node->limit));
     return node;
   }
 
@@ -133,9 +133,9 @@ struct Visitor : Pass {
     return node;
   }
 
-  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Limit> node) { return node; }
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<LimitClause> node) { return node; }
 
-  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SortBy> node) {
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SortByClause> node) {
     node->field = VisitAs<FieldRef>(std::move(node->field));
     return node;
   }

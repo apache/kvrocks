@@ -37,48 +37,26 @@
 
 namespace redis {
 
-enum class AuthResult {
-  OK,
-  INVALID_PASSWORD,
-  NO_REQUIRE_PASS,
-};
-
-AuthResult AuthenticateUser(Server *srv, Connection *conn, const std::string &user_password) {
-  auto ns = srv->GetNamespace()->GetByToken(user_password);
-  if (ns.IsOK()) {
-    conn->SetNamespace(ns.GetValue());
-    conn->BecomeUser();
-    return AuthResult::OK;
-  }
-
-  const auto &requirepass = srv->GetConfig()->requirepass;
-  if (!requirepass.empty() && user_password != requirepass) {
-    return AuthResult::INVALID_PASSWORD;
-  }
-
-  conn->SetNamespace(kDefaultNamespace);
-  conn->BecomeAdmin();
-  if (requirepass.empty()) {
-    return AuthResult::NO_REQUIRE_PASS;
-  }
-
-  return AuthResult::OK;
-}
-
 class CommandAuth : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     auto &user_password = args_[1];
-    AuthResult result = AuthenticateUser(srv, conn, user_password);
+    std::string ns;
+    AuthResult result = srv->AuthenticateUser(user_password, &ns);
     switch (result) {
-      case AuthResult::OK:
-        *output = redis::SimpleString("OK");
-        break;
-      case AuthResult::INVALID_PASSWORD:
-        return {Status::RedisExecErr, "invalid password"};
       case AuthResult::NO_REQUIRE_PASS:
         return {Status::RedisExecErr, "Client sent AUTH, but no password is set"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::RedisExecErr, "Invalid password"};
+      case AuthResult::IS_USER:
+        conn->BecomeUser();
+        break;
+      case AuthResult::IS_ADMIN:
+        conn->BecomeAdmin();
+        break;
     }
+    conn->SetNamespace(ns);
+    *output = redis::SimpleString("OK");
     return Status::OK();
   }
 };
@@ -773,20 +751,26 @@ class CommandHello final : public Commander {
       if (util::ToLower(opt) == "auth" && more_args != 0) {
         if (more_args == 2 || more_args == 4) {
           if (args_[next_arg + 1] != "default") {
-            return {Status::NotOK, "invalid password"};
+            return {Status::NotOK, "Invalid password"};
           }
           next_arg++;
         }
         const auto &user_password = args_[next_arg + 1];
-        auto auth_result = AuthenticateUser(srv, conn, user_password);
+        std::string ns;
+        AuthResult auth_result = srv->AuthenticateUser(user_password, &ns);
         switch (auth_result) {
-          case AuthResult::INVALID_PASSWORD:
-            return {Status::NotOK, "invalid password"};
           case AuthResult::NO_REQUIRE_PASS:
             return {Status::NotOK, "Client sent AUTH, but no password is set"};
-          case AuthResult::OK:
+          case AuthResult::INVALID_PASSWORD:
+            return {Status::NotOK, "Invalid password"};
+          case AuthResult::IS_USER:
+            conn->BecomeUser();
+            break;
+          case AuthResult::IS_ADMIN:
+            conn->BecomeAdmin();
             break;
         }
+        conn->SetNamespace(ns);
         next_arg += 1;
       } else if (util::ToLower(opt) == "setname" && more_args != 0) {
         const std::string &name = args_[next_arg + 1];
@@ -1277,6 +1261,48 @@ class CommandApplyBatch : public Commander {
   bool low_pri_ = false;
 };
 
+class CommandDump : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 2) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    rocksdb::Status db_status;
+    std::string &key = args_[1];
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    int count = 0;
+    db_status = redis.Exists({key}, &count);
+    if (!db_status.ok()) {
+      if (db_status.IsNotFound()) {
+        *output = conn->NilString();
+        return Status::OK();
+      }
+      return {Status::RedisExecErr, db_status.ToString()};
+    }
+    if (count == 0) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    RedisType type = kRedisNone;
+    db_status = redis.Type(key, &type);
+    if (!db_status.ok()) return {Status::RedisExecErr, db_status.ToString()};
+
+    std::string result;
+    auto stream_ptr = std::make_unique<RdbStringStream>(result);
+    RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
+    auto s = rdb.Dump(key, type);
+    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+    CHECK(dynamic_cast<RdbStringStream *>(rdb.GetStream().get()) != nullptr);
+    *output = redis::BulkString(static_cast<RdbStringStream *>(rdb.GetStream().get())->GetInput());
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
@@ -1313,5 +1339,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandStats>("stats", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
-                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0), )
+                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0),
+                        MakeCmdAttr<CommandDump>("dump", 2, "read-only", 0, 0, 0), )
 }  // namespace redis

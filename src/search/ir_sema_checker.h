@@ -76,15 +76,15 @@ struct SemaChecker {
         result.emplace(v->index.get(), current_index);
 
         GET_OR_RET(Check(v->select_expr.get()));
-        if (v->query_expr) GET_OR_RET(Check(v->query_expr.get()));
+        GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};
       }
-    } else if (auto v [[maybe_unused]] = dynamic_cast<Limit *>(node)) {
+    } else if (auto v [[maybe_unused]] = dynamic_cast<LimitClause *>(node)) {
       return Status::OK();
-    } else if (auto v = dynamic_cast<SortBy *>(node)) {
+    } else if (auto v = dynamic_cast<SortByClause *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else {

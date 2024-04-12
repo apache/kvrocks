@@ -29,8 +29,6 @@ namespace redis {
 
 inline constexpr const char *kCursorPrefix = "_";
 
-
-
 class CommandScanBase : public Commander {
  public:
   Status ParseMatchAndCountParam(const std::string &type, std::string value) {

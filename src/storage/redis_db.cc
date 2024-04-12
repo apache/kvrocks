@@ -708,10 +708,8 @@ rocksdb::Status Database::typeInternal(const Slice &key, RedisType *type) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
-                               bool *key_exist) {
-  *ret = true;
-  *key_exist = true;
+rocksdb::Status Database::Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
+                               CopyResult *res) {
   std::vector<std::string> lock_keys = {key, new_key};
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 
@@ -719,7 +717,7 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
   auto s = typeInternal(key, &type);
   if (!s.ok()) return s;
   if (type == kRedisNone) {
-    *key_exist = false;
+    *res = CopyResult::KEY_NOT_EXIST;
     return rocksdb::Status::OK();
   }
 
@@ -727,10 +725,12 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
     int exist = 0;
     if (s = existsInternal({new_key}, &exist), !s.ok()) return s;
     if (exist > 0) {
-      *ret = false;
+      *res = CopyResult::KEY_ALREADY_EXIST;
       return rocksdb::Status::OK();
     }
   }
+
+  *res = CopyResult::DONE;
 
   if (key == new_key) return rocksdb::Status::OK();
 
@@ -741,8 +741,10 @@ rocksdb::Status Database::Move(const std::string &key, const std::string &new_ke
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
   iter.Seek(key);
 
+  if (delete_old) {
+    batch->Delete(metadata_cf_handle_, key);
+  }
   // copy metadata
-  batch->Delete(metadata_cf_handle_, key);
   batch->Put(metadata_cf_handle_, new_key, iter.Value());
 
   auto subkey_iter = iter.GetSubKeyIterator();

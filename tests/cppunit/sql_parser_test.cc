@@ -78,13 +78,13 @@ TEST(SQLParserTest, Simple) {
   AssertSyntaxError(Parse("select a from b order asc"));
   AssertSyntaxError(Parse("select a from b order by a limit"));
 
-  AssertIR(Parse("select a from b"), "select a from b");
-  AssertIR(Parse(" select  a  from  b "), "select a from b");
-  AssertIR(Parse("\nselect\n  a\t \tfrom \n\nb "), "select a from b");
-  AssertIR(Parse("select * from b"), "select * from b");
-  AssertIR(Parse("select a, b from c"), "select a, b from c");
-  AssertIR(Parse("select a, b, c from d"), "select a, b, c from d");
-  AssertIR(Parse("select  xY_z12_3 ,  X00  from  b"), "select xY_z12_3, X00 from b");
+  AssertIR(Parse("select a from b"), "select a from b where true");
+  AssertIR(Parse(" select  a  from  b "), "select a from b where true");
+  AssertIR(Parse("\nselect\n  a\t \tfrom \n\nb "), "select a from b where true");
+  AssertIR(Parse("select * from b"), "select * from b where true");
+  AssertIR(Parse("select a, b from c"), "select a, b from c where true");
+  AssertIR(Parse("select a, b, c from d"), "select a, b, c from d where true");
+  AssertIR(Parse("select  xY_z12_3 ,  X00  from  b"), "select xY_z12_3, X00 from b where true");
   AssertIR(Parse("select a from b where true"), "select a from b where true");
   AssertIR(Parse("select a from b where false"), "select a from b where false");
   AssertIR(Parse("select a from b where true and true"), "select a from b where (and true, true)");
@@ -121,11 +121,11 @@ TEST(SQLParserTest, Simple) {
   AssertIR(Parse("select a from b where x > 1 and y < 33"), "select a from b where (and x > 1, y < 33)");
   AssertIR(Parse("select a from b where x >= 1 and y hastag \"hi\" or c <= 233"),
            "select a from b where (or (and x >= 1, y hastag \"hi\"), c <= 233)");
-  AssertIR(Parse("select a from b limit 10"), "select a from b limit 0, 10");
-  AssertIR(Parse("select a from b limit 2, 3"), "select a from b limit 2, 3");
-  AssertIR(Parse("select a from b order by a"), "select a from b sortby a, asc");
-  AssertIR(Parse("select a from b order by c desc"), "select a from b sortby c, desc");
-  AssertIR(Parse("select a from b order by a limit 10"), "select a from b sortby a, asc limit 0, 10");
+  AssertIR(Parse("select a from b limit 10"), "select a from b where true limit 0, 10");
+  AssertIR(Parse("select a from b limit 2, 3"), "select a from b where true limit 2, 3");
+  AssertIR(Parse("select a from b order by a"), "select a from b where true sortby a, asc");
+  AssertIR(Parse("select a from b order by c desc"), "select a from b where true sortby c, desc");
+  AssertIR(Parse("select a from b order by a limit 10"), "select a from b where true sortby a, asc limit 0, 10");
   AssertIR(Parse("select a from b where c = 1 limit 10"), "select a from b where c = 1 limit 0, 10");
   AssertIR(Parse("select a from b where c = 1 and d hastag \"x\" order by e"),
            "select a from b where (and c = 1, d hastag \"x\") sortby e, asc");

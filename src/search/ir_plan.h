@@ -145,9 +145,9 @@ struct Limit : PlanOperator {
 
 struct Projection : PlanOperator {
   std::unique_ptr<PlanOperator> source;
-  std::unique_ptr<SelectExpr> select;
+  std::unique_ptr<SelectClause> select;
 
-  Projection(std::unique_ptr<PlanOperator> &&source, std::unique_ptr<SelectExpr> &&select)
+  Projection(std::unique_ptr<PlanOperator> &&source, std::unique_ptr<SelectClause> &&select)
       : source(std::move(source)), select(std::move(select)) {}
 
   std::string_view Name() const override { return "Projection"; };
@@ -158,7 +158,7 @@ struct Projection : PlanOperator {
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<Projection>(Node::MustAs<PlanOperator>(source->Clone()),
-                                        Node::MustAs<SelectExpr>(select->Clone()));
+                                        Node::MustAs<SelectClause>(select->Clone()));
   }
 };
 

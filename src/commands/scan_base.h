@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
 #include "parse_util.h"
@@ -90,23 +91,24 @@ class CommandSubkeyScanBase : public CommandScanBase {
   CommandSubkeyScanBase() : CommandScanBase() {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 == 0) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-
-    key_ = args[1];
-    ParseCursor(args[2]);
-    if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[3]), args_[4]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-
-    if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[5]), args_[6]);
-      if (!s.IsOK()) {
-        return s;
+    CommandParser parser(args, 1);
+    key_ = GET_OR_RET(parser.TakeStr());
+    ParseCursor(GET_OR_RET(parser.TakeStr()));
+    while (parser.Good()) {
+      if (parser.EatEqICase("match")) {
+        prefix_ = GET_OR_RET(parser.TakeStr());
+        if (!prefix_.empty() && prefix_.back() == '*') {
+          prefix_ = prefix_.substr(0, prefix_.size() - 1);
+        } else {
+          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
+        }
+      } else if (parser.EatEqICase("count")) {
+        limit_ = GET_OR_RET(parser.TakeInt());
+        if (limit_ <= 0) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
       }
     }
     return Commander::Parse(args);

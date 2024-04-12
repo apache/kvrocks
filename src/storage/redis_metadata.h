@@ -66,7 +66,7 @@ struct RedisTypes {
     return RedisTypes(types);
   }
 
-  bool Contains(RedisType type) { return types_[type]; }
+  bool Contains(RedisType type) const { return types_[type]; }
 
  private:
   using UnderlyingType = std::bitset<128>;

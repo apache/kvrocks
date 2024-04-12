@@ -39,7 +39,7 @@
 namespace redis {
 
 Database::Database(engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
-  metadata_cf_handle_ = storage->GetCFHandle("metadata");
+  metadata_cf_handle_ = storage->GetCFHandle(engine::kMetadataColumnFamilyName);
 }
 
 // Some data types may support reading multiple types of metadata.
@@ -84,25 +84,25 @@ rocksdb::Status Database::ParseMetadata(RedisTypes types, Slice *bytes, Metadata
   return s;
 }
 
-rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata) {
+rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, Metadata *metadata) {
   std::string raw_value;
   Slice rest;
-  return GetMetadata(types, ns_key, &raw_value, metadata, &rest);
+  return GetMetadata(options, types, ns_key, &raw_value, metadata, &rest);
 }
 
-rocksdb::Status Database::GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value, Metadata *metadata,
-                                      Slice *rest) {
-  auto s = GetRawMetadata(ns_key, raw_value);
+rocksdb::Status Database::GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key, std::string *raw_value,
+                                      Metadata *metadata, Slice *rest) {
+  auto s = GetRawMetadata(options, ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
   return ParseMetadata(types, rest, metadata);
 }
 
-rocksdb::Status Database::GetRawMetadata(const Slice &ns_key, std::string *bytes) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  return storage_->Get(read_options, metadata_cf_handle_, ns_key, bytes);
+rocksdb::Status Database::GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes) {
+  rocksdb::ReadOptions opts;
+  // If options.snapshot == nullptr, we can avoid allocating a snapshot here.
+  opts.snapshot = options.snapshot;
+  return storage_->Get(opts, metadata_cf_handle_, ns_key, bytes);
 }
 
 rocksdb::Status Database::Expire(const Slice &user_key, uint64_t timestamp) {
@@ -204,25 +204,12 @@ rocksdb::Status Database::MDel(const std::vector<Slice> &keys, uint64_t *deleted
 }
 
 rocksdb::Status Database::Exists(const std::vector<Slice> &keys, int *ret) {
-  *ret = 0;
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-
-  rocksdb::Status s;
-  std::string value;
+  std::vector<std::string> ns_keys;
+  ns_keys.reserve(keys.size());
   for (const auto &key : keys) {
-    std::string ns_key = AppendNamespacePrefix(key);
-    s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-    if (!s.ok() && !s.IsNotFound()) return s;
-    if (s.ok()) {
-      Metadata metadata(kRedisNone, false);
-      s = metadata.Decode(value);
-      if (!s.ok()) return s;
-      if (!metadata.Expired()) *ret += 1;
-    }
+    ns_keys.emplace_back(AppendNamespacePrefix(key));
   }
-  return rocksdb::Status::OK();
+  return existsInternal(ns_keys, ret);
 }
 
 rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
@@ -247,7 +234,7 @@ rocksdb::Status Database::TTL(const Slice &user_key, int64_t *ttl) {
 rocksdb::Status Database::GetExpireTime(const Slice &user_key, uint64_t *timestamp) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(kRedisNone, false);
-  auto s = GetMetadata(RedisTypes::All(), ns_key, &metadata);
+  auto s = GetMetadata(GetOptions{}, RedisTypes::All(), ns_key, &metadata);
   if (!s.ok()) return s;
   *timestamp = metadata.expire;
 
@@ -517,7 +504,7 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
 
   if (metadata.Type() == kRedisList) {
     ListMetadata list_metadata(false);
-    s = GetMetadata({kRedisList}, ns_key, &list_metadata);
+    s = GetMetadata(GetOptions{}, {kRedisList}, ns_key, &list_metadata);
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
     infos->emplace_back("head");
     infos->emplace_back(std::to_string(list_metadata.head));
@@ -528,26 +515,9 @@ rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Type(const Slice &user_key, RedisType *type) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  *type = kRedisNone;
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  std::string value;
-  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, ns_key, &value);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
-
-  Metadata metadata(kRedisNone, false);
-  s = metadata.Decode(value);
-  if (!s.ok()) return s;
-  if (metadata.Expired()) {
-    *type = kRedisNone;
-  } else {
-    *type = metadata.Type();
-  }
-  return rocksdb::Status::OK();
+rocksdb::Status Database::Type(const Slice &key, RedisType *type) {
+  std::string ns_key = AppendNamespacePrefix(key);
+  return typeInternal(ns_key, type);
 }
 
 std::string Database::AppendNamespacePrefix(const Slice &user_key) {
@@ -618,8 +588,7 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
 
 rocksdb::Status Database::KeyExist(const std::string &key) {
   int cnt = 0;
-  std::vector<rocksdb::Slice> keys;
-  keys.emplace_back(key);
+  std::vector<rocksdb::Slice> keys{key};
   auto s = Exists(keys, &cnt);
   if (!s.ok()) {
     return s;
@@ -636,12 +605,11 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
-  rocksdb::Status s = GetMetadata({type}, ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
   auto iter = util::UniqueIterator(storage_, read_options);
   std::string match_prefix_key =
       InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -699,22 +667,65 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
-rocksdb::Status Database::Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret) {
-  *ret = true;
-  std::string ns_key = AppendNamespacePrefix(key);
-  std::string new_ns_key = AppendNamespacePrefix(new_key);
+rocksdb::Status Database::existsInternal(const std::vector<std::string> &keys, int *ret) {
+  *ret = 0;
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
 
-  std::vector<std::string> lock_keys = {ns_key, new_ns_key};
+  rocksdb::Status s;
+  std::string value;
+  for (const auto &key : keys) {
+    s = storage_->Get(read_options, metadata_cf_handle_, key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone, false);
+      s = metadata.Decode(value);
+      if (!s.ok()) return s;
+      if (!metadata.Expired()) *ret += 1;
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::typeInternal(const Slice &key, RedisType *type) {
+  *type = kRedisNone;
+  LatestSnapShot ss(storage_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  std::string value;
+  rocksdb::Status s = storage_->Get(read_options, metadata_cf_handle_, key, &value);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  Metadata metadata(kRedisNone, false);
+  s = metadata.Decode(value);
+  if (!s.ok()) return s;
+  if (metadata.Expired()) {
+    *type = kRedisNone;
+  } else {
+    *type = metadata.Type();
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
+                               bool *key_exist) {
+  *ret = true;
+  *key_exist = true;
+  std::vector<std::string> lock_keys = {key, new_key};
   MultiLockGuard guard(storage_->GetLockManager(), lock_keys);
 
   RedisType type = kRedisNone;
-  auto s = Type(key, &type);
+  auto s = typeInternal(key, &type);
   if (!s.ok()) return s;
-  if (type == kRedisNone) return rocksdb::Status::InvalidArgument("ERR no such key");
+  if (type == kRedisNone) {
+    *key_exist = false;
+    return rocksdb::Status::OK();
+  }
 
   if (nx) {
     int exist = 0;
-    if (s = Exists({new_key}, &exist), !s.ok()) return s;
+    if (s = existsInternal({new_key}, &exist), !s.ok()) return s;
     if (exist > 0) {
       *ret = false;
       return rocksdb::Status::OK();
@@ -728,11 +739,11 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
   batch->PutLogData(log_data.Encode());
 
   engine::DBIterator iter(storage_, rocksdb::ReadOptions());
-  iter.Seek(ns_key);
+  iter.Seek(key);
 
   // copy metadata
-  batch->Delete(metadata_cf_handle_, ns_key);
-  batch->Put(metadata_cf_handle_, new_ns_key, iter.Value());
+  batch->Delete(metadata_cf_handle_, key);
+  batch->Put(metadata_cf_handle_, new_key, iter.Value());
 
   auto subkey_iter = iter.GetSubKeyIterator();
 
@@ -742,7 +753,7 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
       std::string to_ikey =
-          InternalKey(new_ns_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+          InternalKey(new_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
       // copy sub key
       batch->Put(subkey_iter->ColumnFamilyHandle(), to_ikey, subkey_iter->Value());
 
@@ -753,7 +764,7 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
         score_bytes.append(from_ikey.GetSubKey().ToString());
         // copy score key
         std::string score_key =
-            InternalKey(new_ns_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+            InternalKey(new_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
         batch->Put(zset_score_cf, score_key, Slice());
       }
     }
@@ -761,4 +772,5 @@ rocksdb::Status Database::Rename(const std::string &key, const std::string &new_
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+
 }  // namespace redis

@@ -30,11 +30,12 @@
 
 #include "db_util.h"
 #include "parse_util.h"
+#include "sample_helper.h"
 
 namespace redis {
 
-rocksdb::Status Hash::GetMetadata(const Slice &ns_key, HashMetadata *metadata) {
-  return Database::GetMetadata({kRedisHash}, ns_key, metadata);
+rocksdb::Status Hash::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HashMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisHash}, ns_key, metadata);
 }
 
 rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
@@ -42,7 +43,7 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
   *size = metadata.size;
   return rocksdb::Status::OK();
@@ -51,9 +52,9 @@ rocksdb::Status Hash::Size(const Slice &user_key, uint64_t *size) {
 rocksdb::Status Hash::Get(const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
-  if (!s.ok()) return s;
   LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  if (!s.ok()) return s;
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -68,7 +69,7 @@ rocksdb::Status Hash::IncrBy(const Slice &user_key, const Slice &field, int64_t 
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -115,7 +116,7 @@ rocksdb::Status Hash::IncrByFloat(const Slice &user_key, const Slice &field, dou
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -158,12 +159,12 @@ rocksdb::Status Hash::MGet(const Slice &user_key, const std::vector<Slice> &fiel
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) {
     return s;
   }
 
-  LatestSnapShot ss(storage_);
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
   read_options.snapshot = ss.GetSnapShot();
   std::vector<rocksdb::Slice> keys;
@@ -204,7 +205,7 @@ rocksdb::Status Hash::Delete(const Slice &user_key, const std::vector<Slice> &fi
   WriteBatchLogData log_data(kRedisHash);
   batch->PutLogData(log_data.Encode());
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -237,7 +238,7 @@ rocksdb::Status Hash::MSet(const Slice &user_key, const std::vector<FieldValue> 
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   int added = 0;
@@ -289,7 +290,8 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   }
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
@@ -298,7 +300,6 @@ rocksdb::Status Hash::RangeByLex(const Slice &user_key, const RangeLexSpec &spec
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -345,7 +346,8 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -353,7 +355,6 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -386,46 +387,33 @@ rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, st
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(/*generate_version=*/false);
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  uint64_t size = metadata.size;
   std::vector<FieldValue> samples;
   // TODO: Getting all values in Hash might be heavy, consider lazy-loading these values later
   if (count == 0) return rocksdb::Status::OK();
-  s = GetAll(user_key, &samples, type);
-  if (!s.ok()) return s;
-  auto append_field_with_index = [field_values, &samples, type](uint64_t index) {
-    if (type == HashFetchType::kAll) {
-      field_values->emplace_back(samples[index].field, samples[index].value);
-    } else {
-      field_values->emplace_back(samples[index].field, "");
+  s = ExtractRandMemberFromSet<FieldValue>(
+      unique, count,
+      [this, user_key, type](std::vector<FieldValue> *elements) { return this->GetAll(user_key, elements, type); },
+      field_values);
+  if (!s.ok()) {
+    return s;
+  }
+  switch (type) {
+    case HashFetchType::kAll:
+      break;
+    case HashFetchType::kOnlyKey: {
+      // GetAll should only fetching the key, checking all the values is empty
+      for (const FieldValue &value : *field_values) {
+        DCHECK(value.value.empty());
+      }
+      break;
     }
-  };
-  field_values->reserve(std::min(size, count));
-  if (!unique || count == 1) {
-    // Case 1: Negative count, randomly select elements or without parameter
-    std::mt19937 gen(std::random_device{}());
-    std::uniform_int_distribution<uint64_t> dis(0, size - 1);
-    for (uint64_t i = 0; i < count; i++) {
-      uint64_t index = dis(gen);
-      append_field_with_index(index);
-    }
-  } else if (size <= count) {
-    // Case 2: Requested count is greater than or equal to the number of elements inside the hash
-    for (uint64_t i = 0; i < size; i++) {
-      append_field_with_index(i);
-    }
-  } else {
-    // Case 3: Requested count is less than the number of elements inside the hash
-    std::vector<uint64_t> indices(size);
-    std::iota(indices.begin(), indices.end(), 0);
-    std::mt19937 gen(std::random_device{}());
-    std::shuffle(indices.begin(), indices.end(), gen);  // use Fisher-Yates shuffle algorithm to randomize the order
-    for (uint64_t i = 0; i < count; i++) {
-      uint64_t index = indices[i];
-      append_field_with_index(index);
-    }
+    case HashFetchType::kOnlyValue:
+      // Unreachable.
+      DCHECK(false);
+      break;
   }
   return rocksdb::Status::OK();
 }

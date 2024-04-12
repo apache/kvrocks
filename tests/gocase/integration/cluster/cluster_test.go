@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -305,6 +306,15 @@ func TestClusterMultiple(t *testing.T) {
 		require.NoError(t, rdb[i].Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
 	}
 
+	t.Run("check if the node id is correct", func(t *testing.T) {
+		// only node1, node2 and node3 was the member of the cluster
+		for i := 1; i < 4; i++ {
+			myid, err := rdb[i].Do(ctx, "clusterx", "myid").Text()
+			require.NoError(t, err)
+			require.Equal(t, nodeID[i], myid)
+		}
+	})
+
 	t.Run("cluster info command", func(t *testing.T) {
 		r := rdb[1].ClusterInfo(ctx).Val()
 		require.Contains(t, r, "cluster_state:ok")
@@ -334,6 +344,11 @@ func TestClusterMultiple(t *testing.T) {
 		require.ErrorContains(t, rdb[3].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), "MOVED")
 		// request a read-only command to node3 that serve slot 16383, that's ok
 		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		//the default option is READWRITE, which will redirect both read and write to master
+		require.ErrorContains(t, rdb[3].Get(ctx, util.SlotTable[16383]).Err(), "MOVED")
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+
 		require.Equal(t, "16383", rdb[3].Get(ctx, util.SlotTable[16383]).Val())
 	})
 
@@ -368,5 +383,98 @@ func TestClusterMultiple(t *testing.T) {
 		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[16383], 0, 0).Err(), fmt.Sprintf("MOVED 16383.*%d.*", srv[2].Port()))
 		require.ErrorContains(t, rdb[1].Do(ctx, "EXEC").Err(), "EXECABORT")
 		require.Equal(t, "no-multi", rdb[1].Get(ctx, util.SlotTable[0]).Val())
+	})
+
+	t.Run("requests on cluster are ok when enable readonly", func(t *testing.T) {
+
+		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
+		require.NoError(t, rdb[2].Set(ctx, util.SlotTable[8192], 8192, 0).Err())
+		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		// request node3 that serves slot 8192, that's ok
+		require.Equal(t, "8192", rdb[3].Get(ctx, util.SlotTable[8192]).Val())
+
+		require.NoError(t, rdb[3].Do(ctx, "READWRITE").Err())
+
+		// when enable READWRITE, request node3 that serves slot 8192, that's not ok
+		util.ErrorRegexp(t, rdb[3].Get(ctx, util.SlotTable[8192]).Err(), fmt.Sprintf("MOVED 8192.*%d.*", srv[2].Port()))
+	})
+}
+
+func TestClusterReset(t *testing.T) {
+	ctx := context.Background()
+
+	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { srv0.Close() }()
+	rdb0 := srv0.NewClientWithOption(&redis.Options{PoolSize: 1})
+	defer func() { require.NoError(t, rdb0.Close()) }()
+	id0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODEID", id0).Err())
+
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { srv1.Close() }()
+	rdb1 := srv1.NewClientWithOption(&redis.Options{PoolSize: 1})
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-8191\n", id0, srv0.Host(), srv0.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	t.Run("cannot reset cluster if the db is not empty", func(t *testing.T) {
+		key := util.SlotTable[0]
+		require.NoError(t, rdb0.Set(ctx, key, "value", 0).Err())
+		require.Contains(t, rdb0.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while database is not empty")
+		require.NoError(t, rdb0.Del(ctx, key).Err())
+		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
+		// reset the cluster topology to avoid breaking other test cases
+		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	})
+
+	t.Run("cannot reset cluster if the db is importing the slot", func(t *testing.T) {
+		slotNum := 1
+		require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 0).Val())
+		clusterInfo := rdb1.ClusterInfo(ctx).Val()
+		require.Contains(t, clusterInfo, "importing_slot: 1")
+		require.Contains(t, clusterInfo, "import_state: start")
+		require.Contains(t, rdb1.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while importing slot")
+		require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 1).Val())
+		clusterInfo = rdb1.ClusterInfo(ctx).Val()
+		require.Contains(t, clusterInfo, "import_state: success")
+		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
+		// reset the cluster topology to avoid breaking other test cases
+		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	})
+
+	t.Run("cannot reset cluster if the db is migrating the slot", func(t *testing.T) {
+		slotNum := 2
+		// slow down the migration speed to avoid breaking other test cases
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "128").Err())
+		for i := 0; i < 1024; i++ {
+			require.NoError(t, rdb0.RPush(ctx, "my-list", fmt.Sprintf("element%d", i)).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotNum, id1).Val())
+		clusterInfo := rdb0.ClusterInfo(ctx).Val()
+		require.Contains(t, clusterInfo, "migrating_slot: 2")
+		require.Contains(t, clusterInfo, "migrating_state: start")
+		require.Contains(t, rdb0.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while migrating slot")
+
+		// wait for the migration to finish
+		require.Eventually(t, func() bool {
+			clusterInfo := rdb0.ClusterInfo(context.Background()).Val()
+			return strings.Contains(clusterInfo, fmt.Sprintf("migrating_state: %s", "success"))
+		}, 10*time.Second, 100*time.Millisecond)
+		// Need to flush keys in the source node since the success migration will not mean
+		// the keys are removed from the source node right now.
+		require.NoError(t, rdb0.FlushAll(ctx).Err())
+
+		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
+		// reset the cluster topology to avoid breaking other test cases
+		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	})
 }

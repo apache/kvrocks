@@ -919,6 +919,84 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, int64(0), r)
 	})
 
+	t.Run("XGROUP DELCONSUMER with different kinds of commands", func(t *testing.T) {
+		streamName := "test-stream"
+		groupName := "test-group"
+		consumerName := "test-consumer"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		//No such stream
+		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"data", "a"},
+		}).Err())
+		//no such group
+		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"data1", "a1"},
+		}).Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err())
+		ri, erri := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(1), ri[0].Consumers)
+		require.Equal(t, int64(1), ri[0].Pending)
+
+		r, err := rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r)
+		ri, erri = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(0), ri[0].Consumers)
+		require.Equal(t, int64(0), ri[0].Pending)
+
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"data2", "a2"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"data3", "a3"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"data4", "a4"},
+		}).Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    3,
+			NoAck:    false,
+		}).Err())
+		ri, erri = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(1), ri[0].Consumers)
+		require.Equal(t, int64(3), ri[0].Pending)
+		r, err = rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), r)
+		ri, erri = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(0), ri[0].Consumers)
+		require.Equal(t, int64(0), ri[0].Pending)
+	})
+
 	t.Run("XGROUP SETID with different kinds of commands", func(t *testing.T) {
 		streamName := "test-stream"
 		groupName := "test-group"
@@ -984,6 +1062,237 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, consumer2, r1[1].Name)
 		r1 = rdb.XInfoConsumers(ctx, streamName, group2).Val()
 		require.Equal(t, consumer3, r1[0].Name)
+	})
+
+	t.Run("XREAD After XGroupCreate and XGroupCreateConsumer, for issue #2109", func(t *testing.T) {
+		streamName := "test-stream"
+		group := "group"
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"data1", "b"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, group, "0").Err())
+		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, group, "consumer").Err())
+		require.NoError(t, rdb.XRead(ctx, &redis.XReadArgs{
+			Streams: []string{streamName, "0"},
+		}).Err())
+	})
+
+	t.Run("XREADGROUP with different kinds of commands", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		r, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}}},
+		}}, r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"field2", "data2"},
+		}).Err())
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}}},
+		}}, r)
+
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "0"},
+			Count:    2,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream: streamName,
+			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
+				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}}},
+		}}, r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: []string{"field3", "data3"},
+		}).Err())
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    true,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "3-0", Values: map[string]interface{}{"field3": "data3"}}},
+		}}, r)
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "0"},
+			Count:    2,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream: streamName,
+			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
+				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}}},
+		}}, r)
+
+		c := srv.NewClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		ch := make(chan []redis.XStream)
+		go func() {
+			ch <- c.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: consumerName,
+				Streams:  []string{streamName, ">"},
+				Count:    2,
+				Block:    10 * time.Second,
+				NoAck:    false,
+			}).Val()
+		}()
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "4-0",
+			Values: []string{"field4", "data4"},
+		}).Err())
+		r = <-ch
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "4-0", Values: map[string]interface{}{"field4": "data4"}}},
+		}}, r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "5-0",
+			Values: []string{"field5", "data5"},
+		}).Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err())
+		require.NoError(t, rdb.XDel(ctx, streamName, "5-0").Err())
+		r, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "5"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []redis.XStream{{
+			Stream:   streamName,
+			Messages: []redis.XMessage{{ID: "5-0", Values: map[string]interface{}(nil)}},
+		}}, r)
+	})
+
+	t.Run("Check xreadgroup fetches the newest data after create consumer in the command", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		ri, erri := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, erri)
+		require.Equal(t, int64(1), ri[0].Consumers)
+	})
+
+	t.Run("XACK with different kinds of commands", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), r)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		r, err = rdb.XAck(ctx, streamName, groupName, "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "4-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    3,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+		r, err = rdb.XAck(ctx, streamName, groupName, "2-0", "3-0", "4-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), r)
 	})
 }
 

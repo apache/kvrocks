@@ -103,6 +103,7 @@ class SlotMigrator : public redis::Database {
   SlotMigrationStage GetCurrentSlotMigrationStage() const { return current_stage_; }
   int16_t GetForbiddenSlot() const { return forbidden_slot_; }
   int16_t GetMigratingSlot() const { return migrating_slot_; }
+  std::string GetDstNode() const { return dst_node_; }
   void GetMigrationInfo(std::string *info) const;
   void CancelSyncCtx();
 
@@ -119,6 +120,7 @@ class SlotMigrator : public redis::Database {
 
   Status authOnDstNode(int sock_fd, const std::string &password);
   Status setImportStatusOnDstNode(int sock_fd, int status);
+  static StatusOr<bool> supportedApplyBatchCommandOnDstNode(int sock_fd);
 
   Status sendSnapshotByCmd();
   Status syncWALByCmd();
@@ -187,6 +189,7 @@ class SlotMigrator : public redis::Database {
   int dst_port_ = -1;
   UniqueFD dst_fd_;
 
+  MigrationType migration_type_ = MigrationType::kRedisCommand;
   std::atomic<int16_t> forbidden_slot_ = -1;
   std::atomic<int16_t> migrating_slot_ = -1;
   int16_t migrate_failed_slot_ = -1;

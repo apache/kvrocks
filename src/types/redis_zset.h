@@ -90,7 +90,7 @@ namespace redis {
 class ZSet : public SubKeyScanner {
  public:
   explicit ZSet(engine::Storage *storage, const std::string &ns)
-      : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle("zset_score")) {}
+      : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle(engine::kZSetScoreColumnFamilyName)) {}
 
   using Members = std::vector<std::string>;
   using MemberScores = std::vector<MemberScore>;
@@ -119,7 +119,7 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Diff(const std::vector<Slice> &keys, MemberScores *members);
   rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count);
   rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members, std::map<std::string, double> *scores);
-  rocksdb::Status GetMetadata(const Slice &ns_key, ZSetMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ZSetMetadata *metadata);
 
   rocksdb::Status Count(const Slice &user_key, const RangeScoreSpec &spec, uint64_t *size);
   rocksdb::Status RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,

@@ -63,8 +63,8 @@ StatusOr<std::string> ZipList::Next() {
     } else if ((encoding) == ZIP_STR_32B) {
       GET_OR_RET(peekOK(5));
       len_bytes = 5;
-      len = (static_cast<uint32_t>(data[pos_]) << 24) | (static_cast<uint32_t>(data[pos_ + 1]) << 16) |
-            (static_cast<uint32_t>(data[pos_ + 2]) << 8) | static_cast<uint32_t>(data[pos_ + 3]);
+      len = (static_cast<uint32_t>(data[pos_ + 1]) << 24) | (static_cast<uint32_t>(data[pos_ + 2]) << 16) |
+            (static_cast<uint32_t>(data[pos_ + 3]) << 8) | static_cast<uint32_t>(data[pos_ + 4]);
     } else {
       return {Status::NotOK, "invalid ziplist encoding"};
     }

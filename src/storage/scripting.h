@@ -53,6 +53,7 @@ int RedisStatusReplyCommand(lua_State *lua);
 int RedisErrorReplyCommand(lua_State *lua);
 int RedisLogCommand(lua_State *lua);
 int RedisRegisterFunction(lua_State *lua);
+int RedisSetResp(lua_State *lua);
 
 Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
@@ -83,6 +84,8 @@ const char *RedisProtocolToLuaTypeAggregate(lua_State *lua, const char *reply, i
 const char *RedisProtocolToLuaTypeNull(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBool(lua_State *lua, const char *reply, int tf);
 const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply);
+const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply);
+const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply);
 
 std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua);
 

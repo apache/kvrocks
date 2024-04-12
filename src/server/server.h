@@ -53,6 +53,8 @@
 #include "tls_util.h"
 #include "worker.h"
 
+constexpr const char *REDIS_VERSION = "4.0.0";
+
 struct DBScanInfo {
   time_t last_scan_time = 0;
   KeyNumStats key_num_stats;
@@ -136,6 +138,13 @@ enum ClientType {
 };
 
 enum ServerLogType { kServerLogNone, kReplIdLog };
+
+enum class AuthResult {
+  IS_USER,
+  IS_ADMIN,
+  INVALID_PASSWORD,
+  NO_REQUIRE_PASS,
+};
 
 class ServerLogData {
  public:
@@ -296,6 +305,8 @@ class Server {
   void ResetWatchedKeys(redis::Connection *conn);
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
   Namespace *GetNamespace() { return &namespace_; }
+
+  AuthResult AuthenticateUser(const std::string &user_password, std::string *ns);
 
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;

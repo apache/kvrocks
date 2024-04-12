@@ -29,23 +29,63 @@
 #include "storage.h"
 
 namespace redis {
+
+/// Database is a wrapper of underlying storage engine, it provides
+/// some common operations for redis commands.
 class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
+  struct GetOptions {
+    // If snapshot is not nullptr, read from the specified snapshot,
+    // otherwise read from the "latest" snapshot.
+    const rocksdb::Snapshot *snapshot = nullptr;
+
+    GetOptions() = default;
+    explicit GetOptions(const rocksdb::Snapshot *ss) : snapshot(ss) {}
+  };
+
   explicit Database(engine::Storage *storage, std::string ns = "");
+  /// Parsing metadata with type of `types` from bytes, the metadata is a base class of all metadata.
+  /// When parsing, the bytes will be consumed.
   [[nodiscard]] rocksdb::Status ParseMetadata(RedisTypes types, Slice *bytes, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, Metadata *metadata);
-  [[nodiscard]] rocksdb::Status GetMetadata(RedisTypes types, const Slice &ns_key, std::string *raw_value,
-                                            Metadata *metadata, Slice *rest);
-  [[nodiscard]] rocksdb::Status GetRawMetadata(const Slice &ns_key, std::string *bytes);
+  /// GetMetadata is a helper function to get metadata from the database. It will read the "raw metadata"
+  /// from underlying storage, and then parse the raw metadata to the specified metadata type.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param types The candidate types of the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param metadata The output metadata.
+  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+                                            Metadata *metadata);
+  /// GetMetadata is a helper function to get metadata from the database. It will read the "raw metadata"
+  /// from underlying storage, and then parse the raw metadata to the specified metadata type.
+  ///
+  /// Compared with the above function, this function will also return the rest of the bytes
+  /// after parsing the metadata.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param types The candidate types of the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param raw_value Holding the raw metadata.
+  /// \param metadata The output metadata.
+  /// \param rest The rest of the bytes after parsing the metadata.
+  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+                                            std::string *raw_value, Metadata *metadata, Slice *rest);
+  /// GetRawMetadata is a helper function to get the "raw metadata" from the database without parsing
+  /// it to the specified metadata type.
+  ///
+  /// \param options The read options, including whether uses a snapshot during reading the metadata.
+  /// \param ns_key The key with namespace of the metadata.
+  /// \param bytes The output raw metadata.
+  [[nodiscard]] rocksdb::Status GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(const Slice &user_key);
   [[nodiscard]] rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
   [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(const Slice &user_key, uint64_t *timestamp);
-  [[nodiscard]] rocksdb::Status Type(const Slice &user_key, RedisType *type);
+  [[nodiscard]] rocksdb::Status Type(const Slice &key, RedisType *type);
   [[nodiscard]] rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   [[nodiscard]] rocksdb::Status FlushDB();
   [[nodiscard]] rocksdb::Status FlushAll();
@@ -61,7 +101,9 @@ class Database {
                                                        rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
-  [[nodiscard]] rocksdb::Status Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret);
+  // Move <key,value> to <new_key,value> (already an internal key)
+  [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
+                                     bool *key_exist);
 
  protected:
   engine::Storage *storage_;
@@ -69,8 +111,12 @@ class Database {
   std::string namespace_;
 
   friend class LatestSnapShot;
-};
 
+ private:
+  // Already internal keys
+  [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
+};
 class LatestSnapShot {
  public:
   explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}

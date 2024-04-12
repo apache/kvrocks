@@ -74,7 +74,7 @@ rocksdb::Status Json::read(const Slice &ns_key, JsonMetadata *metadata, JsonValu
   std::string bytes;
   Slice rest;
 
-  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, metadata, &rest);
+  auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, metadata, &rest);
   if (!s.ok()) return s;
 
   return parse(*metadata, rest, value);
@@ -105,7 +105,7 @@ rocksdb::Status Json::Info(const std::string &user_key, JsonStorageFormat *stora
   Slice rest;
   JsonMetadata metadata;
 
-  auto s = GetMetadata({kRedisJson}, ns_key, &bytes, &metadata, &rest);
+  auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, &metadata, &rest);
   if (!s.ok()) return s;
 
   *storage_format = metadata.format;
@@ -546,6 +546,63 @@ std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_key
     }
   }
   return statuses;
+}
+
+rocksdb::Status Json::MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths,
+                           const std::vector<std::string> &values) {
+  std::vector<std::string> ns_keys;
+  ns_keys.reserve(user_keys.size());
+  for (const auto &user_key : user_keys) {
+    std::string ns_key = AppendNamespacePrefix(user_key);
+    ns_keys.emplace_back(std::move(ns_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), ns_keys);
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisJson);
+  batch->PutLogData(log_data.Encode());
+
+  for (size_t i = 0; i < user_keys.size(); i++) {
+    auto json_res = JsonValue::FromString(values[i], storage_->GetConfig()->json_max_nesting_depth);
+    if (!json_res) return rocksdb::Status::InvalidArgument(json_res.Msg());
+
+    JsonMetadata metadata;
+    JsonValue value;
+
+    if (auto s = read(ns_keys[i], &metadata, &value); s.IsNotFound()) {
+      if (paths[i] != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+
+      value = *std::move(json_res);
+    } else {
+      if (!s.ok()) return s;
+
+      JsonValue new_val = *std::move(json_res);
+      auto set_res = value.Set(paths[i], std::move(new_val));
+      if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
+    }
+
+    auto format = storage_->GetConfig()->json_storage_format;
+    metadata.format = format;
+
+    std::string val;
+    metadata.Encode(&val);
+
+    Status res;
+    if (format == JsonStorageFormat::JSON) {
+      res = value.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
+    } else if (format == JsonStorageFormat::CBOR) {
+      res = value.DumpCBOR(&val, storage_->GetConfig()->json_max_nesting_depth);
+    } else {
+      return rocksdb::Status::InvalidArgument("JSON storage format not supported");
+    }
+    if (!res) {
+      return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + res.Msg());
+    }
+
+    batch->Put(metadata_cf_handle_, ns_keys[i], val);
+  }
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values) {

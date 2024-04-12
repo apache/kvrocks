@@ -1023,6 +1023,10 @@ func TestSlotMigrateDataType(t *testing.T) {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[testSlot], i).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+
+		clusterNodes := rdb0.ClusterNodes(ctx).Val()
+		require.Contains(t, clusterNodes, fmt.Sprintf("[%d->-%s]", testSlot, id1))
+
 		// should not finish 1.5s
 		time.Sleep(1500 * time.Millisecond)
 		requireMigrateState(t, rdb0, testSlot, SlotMigrationStateStarted)
@@ -1113,6 +1117,50 @@ func TestSlotMigrateDataType(t *testing.T) {
 			rdb1.LRange(ctx, srcListName, 0, 4).Val())
 		require.EqualValues(t, []string{"element985", "element986", "element987", "element988", "element989"},
 			rdb1.LRange(ctx, srcListName, -5, -1).Val())
+	})
+}
+
+func TestSlotMigrateTypeFallback(t *testing.T) {
+	ctx := context.Background()
+
+	srv0 := util.StartServer(t, map[string]string{
+		"cluster-enabled": "yes",
+		"migrate-type":    "raw-key-value",
+	})
+
+	defer srv0.Close()
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+	id0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "setnodeid", id0).Err())
+
+	srv1 := util.StartServer(t, map[string]string{
+		"cluster-enabled": "yes",
+		"rename-command":  "APPLYBATCH APPLYBATCH_RENAMED",
+	})
+	defer srv1.Close()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setnodeid", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", id0, srv0.Host(), srv0.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master -", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
+
+	t.Run("MIGRATE - Fall back to redis-command migration type when the destination does not support APPLYBATCH", func(t *testing.T) {
+		info, err := rdb1.Do(ctx, "command", "info", "applybatch").Slice()
+		require.NoError(t, err)
+		require.Len(t, info, 1)
+		require.Nil(t, info[0])
+		testSlot += 1
+		key := util.SlotTable[testSlot]
+		value := "value"
+		require.NoError(t, rdb0.Set(ctx, key, value, 0).Err())
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+		waitForMigrateState(t, rdb0, testSlot, SlotMigrationStateSuccess)
+		require.Equal(t, value, rdb1.Get(ctx, key).Val())
 	})
 }
 

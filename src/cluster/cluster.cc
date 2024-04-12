@@ -53,7 +53,7 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  for (auto v : {"setnodes", "setnodeid", "setslot", "import"}) {
+  for (auto v : {"setnodes", "setnodeid", "setslot", "import", "reset"}) {
     if (util::EqualICase(v, subcommand)) return true;
   }
   return false;
@@ -318,41 +318,39 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
   if (!IsValidSlot(slot)) {
     return {Status::NotOK, errSlotOutOfRange};
   }
+  auto source_node = srv_->cluster->slots_nodes_[slot];
+  if (source_node && source_node->id == myid_) {
+    return {Status::NotOK, "Can't import slot which belongs to me"};
+  }
 
+  Status s;
   switch (state) {
     case kImportStart:
-      if (!srv_->slot_import->Start(conn->GetFD(), slot)) {
-        return {Status::NotOK, fmt::format("Can't start importing slot {}", slot)};
-      }
+      s = srv_->slot_import->Start(slot);
+      if (!s.IsOK()) return s;
 
       // Set link importing
       conn->SetImporting();
       myself_->importing_slot = slot;
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get(), capture_fd = conn->GetFD()](int fd) {
-        object_ptr->StopForLinkError(capture_fd);
-      };
-      // Stop forbidding writing slot to accept write commands
+      conn->close_cb = [object_ptr = srv_->slot_import.get()](int fd) {
+        auto s = object_ptr->StopForLinkError();
+        if (!s.IsOK()) {
+          LOG(ERROR) << "[import] Failed to stop importing slot: " << s.Msg();
+        }
+      };  // Stop forbidding writing slot to accept write commands
       if (slot == srv_->slot_migrator->GetForbiddenSlot()) srv_->slot_migrator->ReleaseForbiddenSlot();
       LOG(INFO) << "[import] Start importing slot " << slot;
       break;
     case kImportSuccess:
-      if (!srv_->slot_import->Success(slot)) {
-        LOG(ERROR) << "[import] Failed to set slot importing success, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
-        return {Status::NotOK, fmt::format("Failed to set slot {} importing success", slot)};
-      }
-
-      LOG(INFO) << "[import] Succeed to import slot " << slot;
+      s = srv_->slot_import->Success(slot);
+      if (!s.IsOK()) return s;
+      LOG(INFO) << "[import] Mark the importing slot as succeed" << slot;
       break;
     case kImportFailed:
-      if (!srv_->slot_import->Fail(slot)) {
-        LOG(ERROR) << "[import] Failed to set slot importing error, maybe slot is wrong"
-                   << ", received slot: " << slot << ", current slot: " << srv_->slot_import->GetSlot();
-        return {Status::NotOK, fmt::format("Failed to set slot {} importing error", slot)};
-      }
-
-      LOG(INFO) << "[import] Failed to import slot " << slot;
+      s = srv_->slot_import->Fail(slot);
+      if (!s.IsOK()) return s;
+      LOG(INFO) << "[import] Mark the importing slot as failed" << slot;
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -471,6 +469,11 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
   return Status::OK();
 }
 
+std::string Cluster::getNodeIDBySlot(int slot) const {
+  if (slot < 0 || slot >= kClusterSlots || !slots_nodes_[slot]) return "";
+  return slots_nodes_[slot]->id;
+}
+
 std::string Cluster::genNodesDescription() {
   auto slots_infos = getClusterNodeSlots();
 
@@ -502,6 +505,21 @@ std::string Cluster::genNodesDescription() {
       }
     }
 
+    // Just for MYSELF node to show the importing/migrating slot
+    if (n->id == myid_) {
+      if (srv_->slot_migrator) {
+        auto migrating_slot = srv_->slot_migrator->GetMigratingSlot();
+        if (migrating_slot != -1) {
+          node_str.append(fmt::format(" [{}->-{}]", migrating_slot, srv_->slot_migrator->GetDstNode()));
+        }
+      }
+      if (srv_->slot_import) {
+        auto importing_slot = srv_->slot_import->GetSlot();
+        if (importing_slot != -1) {
+          node_str.append(fmt::format(" [{}-<-{}]", importing_slot, getNodeIDBySlot(importing_slot)));
+        }
+      }
+    }
     nodes_desc.append(node_str + "\n");
   }
   return nodes_desc;
@@ -802,10 +820,39 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
   }
 
   if (myself_ && myself_->role == kClusterSlave && !(attributes->flags & redis::kCmdWrite) &&
-      nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot]) {
+      nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot] &&
+      conn->IsFlagEnabled(redis::Connection::KReadOnly)) {
     return Status::OK();  // My master is serving this slot
   }
 
   return {Status::RedisExecErr,
           fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+}
+
+Status Cluster::Reset() {
+  if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlot() != -1) {
+    return {Status::NotOK, "Can't reset cluster while migrating slot"};
+  }
+  if (srv_->slot_import && srv_->slot_import->GetSlot() != -1) {
+    return {Status::NotOK, "Can't reset cluster while importing slot"};
+  }
+  if (!srv_->storage->IsEmptyDB()) {
+    return {Status::NotOK, "Can't reset cluster while database is not empty"};
+  }
+
+  version_ = -1;
+  size_ = 0;
+  myid_.clear();
+  myself_.reset();
+
+  nodes_.clear();
+  for (auto &n : slots_nodes_) {
+    n = nullptr;
+  }
+  migrated_slots_.clear();
+  imported_slots_.clear();
+
+  // unlink the cluster nodes file if exists
+  unlink(srv_->GetConfig()->NodesFilePath().data());
+  return Status::OK();
 }

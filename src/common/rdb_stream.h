@@ -33,6 +33,7 @@ class RdbStream {
   virtual ~RdbStream() = default;
 
   virtual Status Read(char *buf, size_t len) = 0;
+  virtual Status Write(const char *buf, size_t len) = 0;
   virtual StatusOr<uint64_t> GetCheckSum() const = 0;
   StatusOr<uint8_t> ReadByte() {
     uint8_t value = 0;
@@ -52,7 +53,9 @@ class RdbStringStream : public RdbStream {
   ~RdbStringStream() override = default;
 
   Status Read(char *buf, size_t len) override;
+  Status Write(const char *buf, size_t len) override;
   StatusOr<uint64_t> GetCheckSum() const override;
+  std::string &GetInput() { return input_; }
 
  private:
   std::string input_;
@@ -69,6 +72,7 @@ class RdbFileStream : public RdbStream {
 
   Status Open();
   Status Read(char *buf, size_t len) override;
+  Status Write(const char *buf, size_t len) override { return {Status::NotOK, fmt::format("No implement")}; };
   StatusOr<uint64_t> GetCheckSum() const override {
     uint64_t crc = check_sum_;
     memrev64ifbe(&crc);

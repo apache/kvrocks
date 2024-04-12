@@ -23,6 +23,7 @@
 #include "cluster/sync_migrate_context.h"
 #include "commander.h"
 #include "error_constants.h"
+#include "status.h"
 
 namespace redis {
 
@@ -31,7 +32,8 @@ class CommandCluster : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
+    if (args.size() == 2 &&
+        (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info" || subcommand_ == "reset"))
       return Status::OK();
 
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
@@ -47,7 +49,7 @@ class CommandCluster : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT"};
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -104,6 +106,13 @@ class CommandCluster : public Commander {
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
+    } else if (subcommand_ == "reset") {
+      Status s = srv->cluster->Reset();
+      if (s.IsOK()) {
+        *output = redis::SimpleString("OK");
+      } else {
+        return {Status::RedisExecErr, s.Msg()};
+      }
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
@@ -121,7 +130,7 @@ class CommandClusterX : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 && (subcommand_ == "version")) return Status::OK();
+    if (args.size() == 2 && (subcommand_ == "version" || subcommand_ == "myid")) return Status::OK();
 
     if (subcommand_ == "setnodeid" && args_.size() == 3 && args_[2].size() == kClusterNodeIdLen) return Status::OK();
 
@@ -207,7 +216,7 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
+    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -247,6 +256,8 @@ class CommandClusterX : public Commander {
     } else if (subcommand_ == "version") {
       int64_t v = srv->cluster->GetVersion();
       *output = redis::BulkString(std::to_string(v));
+    } else if (subcommand_ == "myid") {
+      *output = redis::BulkString(srv->cluster->GetMyId());
     } else if (subcommand_ == "migrate") {
       if (sync_migrate_) {
         sync_migrate_ctx_ = std::make_unique<SyncMigrateContext>(srv, conn, sync_migrate_timeout_);
@@ -284,16 +295,35 @@ class CommandClusterX : public Commander {
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
-static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && Cluster::SubCommandIsExecExclusive(args[1])) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
+class CommandReadOnly : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    *output = redis::SimpleString("OK");
+    conn->EnableFlag(redis::Connection::KReadOnly);
+    return Status::OK();
+  }
+};
+
+class CommandReadWrite : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    *output = redis::SimpleString("OK");
+    conn->DisableFlag(redis::Connection::KReadOnly);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
-                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0,
-                                                     GenerateClusterFlag), )
+                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
+                        MakeCmdAttr<CommandReadOnly>("readonly", 1, "cluster no-multi", 0, 0, 0),
+                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", 0, 0, 0), )
 
 }  // namespace redis

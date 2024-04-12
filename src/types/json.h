@@ -151,10 +151,33 @@ struct JsonValue {
 
   Status Set(std::string_view path, JsonValue &&new_value) {
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = new_value.value;
-      });
+      bool is_set = false;
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&new_value, &is_set](const std::string & /*path*/, jsoncons::json &origin) {
+                                         origin = new_value.value;
+                                         is_set = true;
+                                       });
+
+      if (!is_set) {
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
+        // and in this workaround we can only accept normalized path
+        // refer to https://github.com/danielaparker/jsoncons/issues/496
+        jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
+        jsoncons::jsonpointer::json_pointer ptr{};
+
+        for (const auto &element : location) {
+          if (element.has_name())
+            ptr /= element.name();
+          else {
+            ptr /= element.index();
+          }
+        }
+
+        jsoncons::jsonpointer::replace(value, ptr, new_value.value, true);
+      }
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    } catch (const jsoncons::jsonpointer::jsonpointer_error &e) {
       return {Status::NotOK, e.what()};
     }
 
@@ -413,6 +436,9 @@ struct JsonValue {
       bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
       if (not_exists) {
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
+        // and in this workaround we can only accept normalized path
+        // refer to https://github.com/danielaparker/jsoncons/issues/496
         jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
         jsoncons::jsonpointer::json_pointer ptr{};
 

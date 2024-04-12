@@ -820,10 +820,8 @@ class CommandScan : public CommandScanBase {
   CommandScan() : CommandScanBase() {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 != 0) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    CommandParser parser(args, 0);
+    CommandParser parser(args, 1);
+    ParseCursor(GET_OR_RET(parser.TakeStr()));
     while (parser.Good()) {
       if (parser.EatEqICase("scan")) {
         ParseCursor(GET_OR_RET(parser.TakeStr()));
@@ -835,11 +833,7 @@ class CommandScan : public CommandScanBase {
           return {Status::RedisParseErr, "only keys prefix match was supported"};
         }
       } else if (parser.EatEqICase("count")) {
-        auto parse_result = ParseInt<int>(GET_OR_RET(parser.TakeStr()), 10);
-        if (!parse_result) {
-          return {Status::RedisParseErr, "count param should be type int"};
-        }
-        limit_ = *parse_result;
+        limit_ = GET_OR_RET(parser.TakeInt());
         if (limit_ <= 0) {
           return {Status::RedisParseErr, errInvalidSyntax};
         }

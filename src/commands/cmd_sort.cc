@@ -33,7 +33,7 @@
 
 namespace redis {
 
-template<bool ReadOnly>
+template <bool ReadOnly>
 class CommandSort : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {

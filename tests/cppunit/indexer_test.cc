@@ -25,32 +25,36 @@
 
 #include <memory>
 
+#include "search/index_info.h"
 #include "search/search_encoding.h"
 #include "storage/redis_metadata.h"
 #include "types/redis_hash.h"
 
 struct IndexerTest : TestBase {
   redis::GlobalIndexer indexer;
+  kqir::IndexMap map;
   std::string ns = "index_test";
 
   IndexerTest() : indexer(storage_.get()) {
     SearchMetadata hash_field_meta(false);
     hash_field_meta.on_data_type = SearchOnDataType::HASH;
 
-    std::map<std::string, std::unique_ptr<redis::SearchFieldMetadata>> hash_fields;
-    hash_fields.emplace("x", std::make_unique<redis::SearchTagFieldMetadata>());
-    hash_fields.emplace("y", std::make_unique<redis::SearchNumericFieldMetadata>());
+    kqir::IndexInfo hash_info("hashtest", hash_field_meta);
+    hash_info.Add(kqir::FieldInfo("x", std::make_unique<redis::SearchTagFieldMetadata>()));
+    hash_info.Add(kqir::FieldInfo("y", std::make_unique<redis::SearchNumericFieldMetadata>()));
 
-    redis::IndexUpdater hash_updater{"hashtest", hash_field_meta, {"idxtesthash"}, std::move(hash_fields), &indexer};
+    map.emplace("hashtest", std::move(hash_info));
+
+    redis::IndexUpdater hash_updater{&map.at("hashtest"), &indexer};
 
     SearchMetadata json_field_meta(false);
     json_field_meta.on_data_type = SearchOnDataType::JSON;
 
-    std::map<std::string, std::unique_ptr<redis::SearchFieldMetadata>> json_fields;
-    json_fields.emplace("$.x", std::make_unique<redis::SearchTagFieldMetadata>());
-    json_fields.emplace("$.y", std::make_unique<redis::SearchNumericFieldMetadata>());
+    kqir::IndexInfo json_info("jsontest", json_field_meta);
+    json_info.Add(kqir::FieldInfo("$.x", std::make_unique<redis::SearchTagFieldMetadata>()));
+    json_info.Add(kqir::FieldInfo("$.y", std::make_unique<redis::SearchNumericFieldMetadata>()));
 
-    redis::IndexUpdater json_updater{"jsontest", json_field_meta, {"idxtestjson"}, std::move(json_fields), &indexer};
+    redis::IndexUpdater json_updater{&map.at("jsontest"), &indexer};
 
     indexer.Add(std::move(hash_updater));
     indexer.Add(std::move(json_updater));
@@ -72,7 +76,7 @@ TEST_F(IndexerTest, HashTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first->name, idxname);
+    ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_TRUE(s->second.empty());
 
     uint64_t cnt = 0;
@@ -111,7 +115,7 @@ TEST_F(IndexerTest, HashTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first->name, idxname);
+    ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_EQ(s->second.size(), 1);
     ASSERT_EQ(s->second["x"], "food,kitChen,Beauty");
 
@@ -179,7 +183,7 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first->name, idxname);
+    ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_TRUE(s->second.empty());
 
     auto s_set = db.Set(key1, "$", R"({"x": "food,kitChen,Beauty"})");
@@ -217,7 +221,7 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first->name, idxname);
+    ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_EQ(s->second.size(), 1);
     ASSERT_EQ(s->second["$.x"], "food,kitChen,Beauty");
 

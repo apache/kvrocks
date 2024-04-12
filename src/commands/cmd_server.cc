@@ -836,7 +836,7 @@ class CommandScan : public CommandScanBase {
           return {Status::RedisParseErr, errInvalidSyntax};
         }
       } else if (parser.EatEqICase("type")) {
-        return {Status::RedisParseErr, "type was not supported"};
+        return {Status::RedisParseErr, "TYPE flag is currently not supported"};
       } else {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }

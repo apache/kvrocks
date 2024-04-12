@@ -21,8 +21,9 @@ package sort
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
 	"testing"
+
+	"github.com/redis/go-redis/v9"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -267,7 +268,6 @@ func TestSetSort(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	
 	t.Run("SORT Basic", func(t *testing.T) {
 		rdb.SAdd(ctx, "today_cost", 30, 1.5, 10, 8)
 
@@ -401,7 +401,6 @@ func TestSetSort(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"2", "3", "4"}, sortResult)
 
-
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "not-exists-key", Order: "DESC"}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4"}, sortResult)
@@ -428,7 +427,7 @@ func TestSetSort(t *testing.T) {
 
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "not-exists-key", Get: []string{"#", "user_level_*", "user_name_*"}}).Result()
 		require.NoError(t, err)
-		require.Equal(t, []string{ "1", "9999", "admin", "2", "10", "jack", "3", "25", "peter", "4", "70", "mary"}, sortResult)
+		require.Equal(t, []string{"1", "9999", "admin", "2", "10", "jack", "3", "25", "peter", "4", "70", "mary"}, sortResult)
 
 		// pattern with hash tag
 		rdb.HMSet(ctx, "user_info_1", "name", "admin", "level", 9999)
@@ -502,15 +501,15 @@ func TestZSetSort(t *testing.T) {
 	})
 
 	t.Run("SORT LIMIT", func(t *testing.T) {
-		rdb.ZAdd(ctx, "rank", 
+		rdb.ZAdd(ctx, "rank",
 			redis.Z{Score: 1, Member: "1"},
-			redis.Z{Score: 2, Member: "3" },
+			redis.Z{Score: 2, Member: "3"},
 			redis.Z{Score: 3, Member: "5"},
-			redis.Z{Score: 4, Member: "7" },
+			redis.Z{Score: 4, Member: "7"},
 			redis.Z{Score: 5, Member: "9"},
-			redis.Z{Score: 6, Member: "2" },
+			redis.Z{Score: 6, Member: "2"},
 			redis.Z{Score: 7, Member: "4"},
-			redis.Z{Score: 8, Member: "6" },
+			redis.Z{Score: 8, Member: "6"},
 			redis.Z{Score: 9, Member: "8"},
 			redis.Z{Score: 10, Member: "10"},
 		)
@@ -566,7 +565,7 @@ func TestZSetSort(t *testing.T) {
 			redis.Z{Score: 2, Member: "3"},
 			redis.Z{Score: 3, Member: "2"},
 			redis.Z{Score: 4, Member: "1"})
-			
+
 		rdb.MSet(ctx, "user_name_1", "admin", "user_name_2", "jack", "user_name_3", "peter", "user_name_4", "mary")
 		rdb.MSet(ctx, "user_level_1", 9999, "user_level_2", 10, "user_level_3", 25, "user_level_4", 70)
 
@@ -615,7 +614,6 @@ func TestZSetSort(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"3", "2", "1"}, sortResult)
 
-
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "not-exists-key", Order: "DESC"}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4"}, sortResult)
@@ -642,7 +640,7 @@ func TestZSetSort(t *testing.T) {
 
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "not-exists-key", Get: []string{"#", "user_level_*", "user_name_*"}}).Result()
 		require.NoError(t, err)
-		require.Equal(t, []string{ "4", "70", "mary", "3", "25", "peter", "2", "10", "jack", "1", "9999", "admin"}, sortResult)
+		require.Equal(t, []string{"4", "70", "mary", "3", "25", "peter", "2", "10", "jack", "1", "9999", "admin"}, sortResult)
 
 		// pattern with hash tag
 		rdb.HMSet(ctx, "user_info_1", "name", "admin", "level", 9999)
@@ -660,15 +658,15 @@ func TestZSetSort(t *testing.T) {
 	})
 
 	t.Run("SORT STORE", func(t *testing.T) {
-		rdb.ZAdd(ctx, "numbers", 
+		rdb.ZAdd(ctx, "numbers",
 			redis.Z{Score: 1, Member: "1"},
-			redis.Z{Score: 2, Member: "3" },
+			redis.Z{Score: 2, Member: "3"},
 			redis.Z{Score: 3, Member: "5"},
-			redis.Z{Score: 4, Member: "7" },
+			redis.Z{Score: 4, Member: "7"},
 			redis.Z{Score: 5, Member: "9"},
-			redis.Z{Score: 6, Member: "2" },
+			redis.Z{Score: 6, Member: "2"},
 			redis.Z{Score: 7, Member: "4"},
-			redis.Z{Score: 8, Member: "6" },
+			redis.Z{Score: 8, Member: "6"},
 			redis.Z{Score: 9, Member: "8"},
 			redis.Z{Score: 10, Member: "10"},
 		)

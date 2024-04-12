@@ -83,8 +83,9 @@ void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val) {
   registers[byte + 1] |= v >> fb8;
 }
 
-rocksdb::Status HyperLogLog::GetMetadata(const Slice &ns_key, HyperloglogMetadata *metadata) {
-  return Database::GetMetadata({kRedisHyperLogLog}, ns_key, metadata);
+rocksdb::Status HyperLogLog::GetMetadata(Database::GetOptions get_options, const Slice &ns_key,
+                                         HyperloglogMetadata *metadata) {
+  return Database::GetMetadata(get_options, {kRedisHyperLogLog}, ns_key, metadata);
 }
 
 /* the max 0 pattern counter of the subset the element belongs to is incremented if needed */
@@ -94,7 +95,7 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<Slice>
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HyperloglogMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   auto batch = storage_->GetWriteBatchBase();
@@ -155,7 +156,7 @@ rocksdb::Status HyperLogLog::Merge(const std::vector<Slice> &user_keys) {
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HyperloglogMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   auto batch = storage_->GetWriteBatchBase();
@@ -185,8 +186,8 @@ rocksdb::Status HyperLogLog::Merge(const std::vector<Slice> &user_keys) {
 /* ========================= HyperLogLog algorithm  ========================= */
 
 /* Given a string element to add to the HyperLogLog, returns the length
- * of the pattern 000..1 of the element hash. As a side effect 'regp' is
- * set to the register index this element hashes to. */
+ * of the pattern 000..1 of the element hash. As a side effect 'register_index' is
+ * set which the element hashes to. */
 uint8_t HyperLogLog::HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index) {
   int elesize = static_cast<int>(element.size());
   uint64_t hash = 0, bit = 0, index = 0;
@@ -194,7 +195,7 @@ uint8_t HyperLogLog::HllPatLen(const std::vector<uint8_t> &element, uint32_t *re
 
   /* Count the number of zeroes starting from bit kHyperLogLogRegisterCount
    * (that is a power of two corresponding to the first bit we don't use
-   * as index). The max run can be 64-P+1 = Q+1 bits.
+   * as index). The max run can be 64-kHyperLogLogRegisterCountPow+1 = kHyperLogLogHashBitCount+1 bits.
    *
    * Note that the final "1" ending the sequence of zeroes must be
    * included in the count, so if we find "001" the count is 3, and
@@ -229,7 +230,7 @@ void HllDenseRegHisto(uint8_t *registers, int *reghisto) {
 
 /* ========================= HyperLogLog Count ==============================
  * This is the core of the algorithm where the approximated count is computed.
- * The function uses the lower level HllDenseRegHisto() and hllSparseRegHisto()
+ * The function uses the lower level HllDenseRegHisto()
  * functions as helpers to compute histogram of register values part of the
  * computation, which is representation-specific, while all the rest is common. */
 
@@ -298,10 +299,7 @@ uint64_t HyperLogLog::HllCount(const std::vector<uint8_t> &registers) {
 }
 
 /* Merge by computing MAX(registers[i],hll[i]) the HyperLogLog 'hll'
- * with an array of uint8_t kHyperLogLogRegisterCount registers pointed by 'max'.
- *
- * The hll object must be already validated via isHLLObjectOrReply()
- * or in some other way. */
+ * with an array of uint8_t kHyperLogLogRegisterCount registers pointed by 'max'. */
 void HyperLogLog::HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &registers) {
   uint8_t val = 0, max_val = 0;
 
@@ -318,14 +316,15 @@ rocksdb::Status HyperLogLog::getRegisters(const Slice &user_key, std::vector<uin
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HyperloglogMetadata metadata;
-  rocksdb::Status s = GetMetadata(ns_key, &metadata);
+  LatestSnapShot ss(storage_);
+
+  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  LatestSnapShot ss(storage_);
   read_options.snapshot = ss.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;

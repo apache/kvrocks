@@ -49,7 +49,7 @@ class HyperLogLog : public Database {
   static uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, HyperloglogMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperloglogMetadata *metadata);
   rocksdb::Status getRegisters(const Slice &user_key, std::vector<uint8_t> *registers);
 };
 

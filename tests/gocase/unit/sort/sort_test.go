@@ -56,6 +56,9 @@ func TestSortParser(t *testing.T) {
 
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "STORE").Result()
 		require.EqualError(t, err, "ERR syntax error")
+
+		_, err = rdb.Do(ctx, "Sort_RO", "bad-case-key", "STORE", "store_ro_key").Result()
+		require.EqualError(t, err, "ERR syntax error")
 	})
 }
 
@@ -79,6 +82,14 @@ func TestListSort(t *testing.T) {
 		require.Equal(t, []string{"1.5", "8", "10", "30"}, sortResult)
 
 		sortResult, err = rdb.Sort(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"30", "10", "8", "1.5"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "ASC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"1.5", "8", "10", "30"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"30", "10", "8", "1.5"}, sortResult)
 	})
@@ -271,6 +282,14 @@ func TestSetSort(t *testing.T) {
 		sortResult, err = rdb.Sort(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"30", "10", "8", "1.5"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "ASC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"1.5", "8", "10", "30"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"30", "10", "8", "1.5"}, sortResult)
 	})
 
 	t.Run("SORT ALPHA", func(t *testing.T) {
@@ -459,6 +478,14 @@ func TestZSetSort(t *testing.T) {
 		require.Equal(t, []string{"1", "2", "3", "4"}, sortResult)
 
 		sortResult, err = rdb.Sort(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"4", "3", "2", "1"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "ASC"}).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"1", "2", "3", "4"}, sortResult)
+
+		sortResult, err = rdb.SortRO(ctx, "today_cost", &redis.Sort{Order: "DESC"}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"4", "3", "2", "1"}, sortResult)
 	})

@@ -33,6 +33,7 @@
 
 namespace redis {
 
+template<bool ReadOnly>
 class CommandSort : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -59,8 +60,8 @@ class CommandSort : public Commander {
         if (parser.Remains() < 2) {
           return parser.InvalidSyntax();
         }
-        offset_ = GET_OR_RET(parser.TakeInt<long>());
-        count_ = GET_OR_RET(parser.TakeInt<long>());
+        offset_ = GET_OR_RET(parser.template TakeInt<long>());
+        count_ = GET_OR_RET(parser.template TakeInt<long>());
       } else if (parser.EatEqICase("GET") && parser.Remains() >= 1) {
         if (parser.Remains() < 1) {
           return parser.InvalidSyntax();
@@ -78,6 +79,9 @@ class CommandSort : public Commander {
       } else if (parser.EatEqICase("ALPHA")) {
         alpha_ = true;
       } else if (parser.EatEqICase("STORE")) {
+        if constexpr (ReadOnly) {
+          return parser.InvalidSyntax();
+        }
         if (parser.Remains() < 1) {
           return parser.InvalidSyntax();
         }
@@ -347,12 +351,7 @@ class CommandSort : public Commander {
   std::string storekey_;                  // STORE
 };
 
-class CommandSortRO : public Commander {
- public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override { return Status::OK(); }
-};
-
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSort>("sort", -2, "write deny-oom movable-keys", 1, 1, 1),
-                        MakeCmdAttr<CommandSortRO>("sortro", -2, "read-only movable-keys", 1, 1, 1))
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSort<false>>("sort", -2, "write deny-oom movable-keys", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only movable-keys", 1, 1, 1))
 
 }  // namespace redis

@@ -29,11 +29,7 @@ namespace redis {
 
 inline constexpr const char *kCursorPrefix = "_";
 
-struct ScanParameters {
-  // SCAN command format cursor [MATCH pattern] [COUNT count] [TYPE type] type Currently not implemented
-  std::string match;
-  int count = 20;
-};
+
 
 class CommandScanBase : public Commander {
  public:
@@ -83,38 +79,6 @@ class CommandScanBase : public Commander {
     list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
-  }
-
-  static Status ParseScanParameters(const std::vector<std::string> &args, ScanParameters *params) {
-    for (size_t i = 2; i < args.size(); i = i + 2) {
-      if (util::ToLower(args[i]) == "match") {
-        params->match = args[i + 1];
-        if (!params->match.empty() && params->match[params->match.size() - 1] == '*') {
-          params->match = params->match.substr(0, params->match.size() - 1);
-        } else {
-          return {Status::RedisParseErr, "only keys prefix match was supported"};
-        }
-      } else if (util::ToLower(args[i]) == "count") {
-        auto parse_result = ParseInt<int>(args[i + 1], 10);
-        if (!parse_result) {
-          return {Status::RedisParseErr, "count param should be type int"};
-        }
-        params->count = *parse_result;
-        if (params->count <= 0) {
-          return {Status::RedisParseErr, errInvalidSyntax};
-        }
-      } else if (util::ToLower(args[i]) == "type") {
-        // ignoring post implementation
-      } else {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-    }
-
-    return Status::OK();
-  }
-  void FillScanAttributes(const ScanParameters *params) {
-    prefix_ = params->match;
-    limit_ = params->count;
   }
 
  protected:

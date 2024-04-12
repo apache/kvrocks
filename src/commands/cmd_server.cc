@@ -823,16 +823,33 @@ class CommandScan : public CommandScanBase {
     if (args.size() % 2 != 0) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-
-    ParseCursor(args[1]);
-    if (args.size() >= 4) {
-      ScanParameters parameters;
-      Status s = ParseScanParameters(args, &parameters);
-      FillScanAttributes(&parameters);
-      if (!s.IsOK()) {
-        return s;
+    CommandParser parser(args, 0);
+    while (parser.Good()) {
+      if (parser.EatEqICase("scan")) {
+        ParseCursor(GET_OR_RET(parser.TakeStr()));
+      } else if (parser.EatEqICase("match")) {
+        prefix_ = GET_OR_RET(parser.TakeStr());
+        if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
+          prefix_ = prefix_.substr(0, prefix_.size() - 1);
+        } else {
+          return {Status::RedisParseErr, "only keys prefix match was supported"};
+        }
+      } else if (parser.EatEqICase("count")) {
+        auto parse_result = ParseInt<int>(GET_OR_RET(parser.TakeStr()), 10);
+        if (!parse_result) {
+          return {Status::RedisParseErr, "count param should be type int"};
+        }
+        limit_ = *parse_result;
+        if (limit_ <= 0) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else if (parser.EatEqICase("type")) {
+        return {Status::RedisParseErr, "type was not supported"};
+      } else {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
       }
     }
+
     return Commander::Parse(args);
   }
 

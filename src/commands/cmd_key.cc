@@ -397,7 +397,7 @@ class CommandCopy : public Commander {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
       auto db_num = ParseInt<int64_t>(args[4], 10);
-      // DB num should only be 1, just a placeholder
+      // There's only one database in Kvrocks, so the DB must be 0 here.
       if (!db_num.IsOK() || db_num.GetValue() != 0) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package rename
+package copycmd
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRenameString(t *testing.T) {
+func TestCopyString(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -38,11 +38,11 @@ func TestRenameString(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Rename string", func(t *testing.T) {
+	t.Run("Copy string replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -50,8 +50,8 @@ func TestRenameString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "a1", "world", 0).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -59,8 +59,8 @@ func TestRenameString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 10*time.Second).Err())
 		require.NoError(t, rdb.Set(ctx, "a1", "world", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -68,56 +68,56 @@ func TestRenameString(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "world").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "a1", "world1", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "a2", "world2", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "a3", "world3", 0).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a2").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a3").Val())
 	})
 
-	t.Run("RenameNX string", func(t *testing.T) {
+	t.Run("Copy string not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "a1", "world", 0).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "world", rdb.Get(ctx, "a1").Val())
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		require.EqualValues(t, "hello", rdb.Get(ctx, "a").Val())
 	})
 
 }
 
-func TestRenameJSON(t *testing.T) {
+func TestCopyJSON(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -130,12 +130,12 @@ func TestRenameJSON(t *testing.T) {
 	jsonA := `{"x":1,"y":2}`
 	jsonB := `{"x":1}`
 
-	t.Run("Rename json", func(t *testing.T) {
+	t.Run("Copy json replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -143,8 +143,8 @@ func TestRenameJSON(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -154,8 +154,8 @@ func TestRenameJSON(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonA).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -163,56 +163,56 @@ func TestRenameJSON(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "world").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a2", "$", jsonB).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a3", "$", jsonB).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a1").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a2").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a3").Val())
 	})
 
-	t.Run("RenameNX json", func(t *testing.T) {
+	t.Run("Copy json not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a1", "$", jsonB).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonB, rdb.Do(ctx, getCmd, "a1").Val())
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		require.EqualValues(t, nil, rdb.Do(ctx, getCmd, "a").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, setCmd, "a", "$", jsonA).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		require.EqualValues(t, jsonA, rdb.Do(ctx, getCmd, "a").Val())
 	})
 
 }
 
-func TestRenameList(t *testing.T) {
+func TestCopyList(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -227,11 +227,11 @@ func TestRenameList(t *testing.T) {
 		}
 	}
 
-	t.Run("Rename string", func(t *testing.T) {
+	t.Run("Copy string replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, 3, rdb.LLen(ctx, "a").Val())
 		require.EqualValues(t, 3, rdb.LLen(ctx, "a1").Val())
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
@@ -240,8 +240,8 @@ func TestRenameList(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", []string{"3", "2", "1"})
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -251,8 +251,8 @@ func TestRenameList(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", []string{"3", "2", "1"})
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -260,56 +260,56 @@ func TestRenameList(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.Set(ctx, "a1", "world", 0).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", []string{"3", "2", "1"})
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
 
-		// rename*3
+		// coopy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "2").Err())
 		require.NoError(t, rdb.LPush(ctx, "a2", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a3", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualListValues(t, "a", []string{"3", "2", "1"})
+		EqualListValues(t, "a1", []string{"3", "2", "1"})
+		EqualListValues(t, "a2", []string{"3", "2", "1"})
 		EqualListValues(t, "a3", []string{"3", "2", "1"})
 	})
 
-	t.Run("RenameNX string", func(t *testing.T) {
+	t.Run("Copy string not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "3").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualListValues(t, "a", []string{"3", "2", "1"})
 		EqualListValues(t, "a1", []string{"3"})
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		EqualListValues(t, "a", []string{"3", "2", "1"})
 		EqualListValues(t, "a1", []string{"3", "2", "1"})
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.LPush(ctx, "a", "1", "2", "3").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		EqualListValues(t, "a", []string{"3", "2", "1"})
 	})
 
 }
 
-func TestRenameHash(t *testing.T) {
+func TestCopyHash(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -324,11 +324,15 @@ func TestRenameHash(t *testing.T) {
 		}
 	}
 
-	t.Run("Rename hash", func(t *testing.T) {
+	t.Run("Copy hash replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -340,8 +344,12 @@ func TestRenameHash(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
 		require.NoError(t, rdb.HSet(ctx, "a1", "a", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -355,8 +363,12 @@ func TestRenameHash(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.HSet(ctx, "a1", "a", "1").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -368,8 +380,12 @@ func TestRenameHash(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -380,25 +396,37 @@ func TestRenameHash(t *testing.T) {
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
 			"c": "3",
 		})
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
 		require.NoError(t, rdb.HSet(ctx, "a1", "a", "1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a2", "a", "1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a3", "a", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
+		EqualListValues(t, "a1", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
+		EqualListValues(t, "a2", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a3", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -406,11 +434,11 @@ func TestRenameHash(t *testing.T) {
 		})
 	})
 
-	t.Run("RenameNX hash", func(t *testing.T) {
+	t.Run("Copy hash not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
 		require.NoError(t, rdb.HSet(ctx, "a1", "a", "1").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualListValues(t, "a", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -422,18 +450,22 @@ func TestRenameHash(t *testing.T) {
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		EqualListValues(t, "a", map[string]string{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		})
 		EqualListValues(t, "a1", map[string]string{
 			"a": "1",
 			"b": "2",
 			"c": "3",
 		})
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.HSet(ctx, "a", "a", "1", "b", "2", "c", "3").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		EqualListValues(t, "a", map[string]string{
 			"a": "1",
 			"b": "2",
@@ -443,7 +475,7 @@ func TestRenameHash(t *testing.T) {
 
 }
 
-func TestRenameSet(t *testing.T) {
+func TestCopySet(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -458,11 +490,11 @@ func TestRenameSet(t *testing.T) {
 		}
 	}
 
-	t.Run("Rename set", func(t *testing.T) {
+	t.Run("Copy set replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -470,8 +502,8 @@ func TestRenameSet(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a1", "a", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -481,8 +513,8 @@ func TestRenameSet(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.SAdd(ctx, "a1", "1").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -490,57 +522,57 @@ func TestRenameSet(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a1", "1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a2", "a2", "1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a3", "a3", "1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
+		EqualSetValues(t, "a1", []string{"1", "2", "3"})
+		EqualSetValues(t, "a2", []string{"1", "2", "3"})
 		EqualSetValues(t, "a3", []string{"1", "2", "3"})
 	})
 
-	t.Run("RenameNX set", func(t *testing.T) {
+	t.Run("Copy set not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a1", "1").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualSetValues(t, "a", []string{"1", "2", "3"})
 		EqualSetValues(t, "a1", []string{"1"})
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualSetValues(t, "a1", []string{"1", "2", "3"})
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		EqualSetValues(t, "a", []string{"1", "2", "3"})
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.SAdd(ctx, "a", "1", "2", "3").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		EqualSetValues(t, "a", []string{"1", "2", "3"})
 
 	})
 
 }
 
-func TestRenameZset(t *testing.T) {
+func TestCopyZset(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -561,11 +593,15 @@ func TestRenameZset(t *testing.T) {
 	zMember := []redis.Z{{Member: "a", Score: 1}, {Member: "b", Score: 2}, {Member: "c", Score: 3}}
 	zMember2 := []redis.Z{{Member: "a", Score: 2}}
 
-	t.Run("Rename zset", func(t *testing.T) {
+	t.Run("Copy zset", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
 			"b": 2,
@@ -577,8 +613,12 @@ func TestRenameZset(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
 			"b": 2,
@@ -592,8 +632,12 @@ func TestRenameZset(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
 			"b": 2,
@@ -605,8 +649,12 @@ func TestRenameZset(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", 1, 2, 3).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
 			"b": 2,
@@ -617,37 +665,48 @@ func TestRenameZset(t *testing.T) {
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualZSetValues(t, "a1", map[string]int{
 			"a": 1,
 			"b": 2,
 			"c": 3,
 		})
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a2", zMember2...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a3", zMember2...).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
+		EqualZSetValues(t, "a1", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
+		EqualZSetValues(t, "a2", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 		EqualZSetValues(t, "a3", map[string]int{
 			"a": 1,
 			"b": 2,
 			"c": 3,
 		})
-
 	})
 
-	t.Run("RenameNX zset", func(t *testing.T) {
+	t.Run("Copy zset not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a1", zMember2...).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualZSetValues(t, "a", map[string]int{
 			"a": 1,
 			"b": 2,
@@ -659,29 +718,32 @@ func TestRenameZset(t *testing.T) {
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
-		EqualZSetValues(t, "a1", map[string]int{
-			"a": 1,
-			"b": 2,
-			"c": 3,
-		})
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-
-		// key == newkey
-		require.NoError(t, rdb.Del(ctx, "a").Err())
-		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualZSetValues(t, "a", map[string]int{
 			"a": 1,
 			"b": 2,
 			"c": 3,
 		})
+		EqualZSetValues(t, "a1", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 
+		// key == newkey
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "a", zMember...).Err())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
+		EqualZSetValues(t, "a", map[string]int{
+			"a": 1,
+			"b": 2,
+			"c": 3,
+		})
 	})
 
 }
 
-func TestRenameBitmap(t *testing.T) {
+func TestCopyBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -703,11 +765,11 @@ func TestRenameBitmap(t *testing.T) {
 	bitSetA := []int64{16, 1024 * 8 * 2, 1024 * 8 * 12}
 	bitSetB := []int64{1}
 
-	t.Run("Rename Bitmap", func(t *testing.T) {
+	t.Run("Copy bitmap replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		SetBits(t, "a", bitSetA)
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualBitSetValues(t, "a", bitSetA)
 		EqualBitSetValues(t, "a1", bitSetA)
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -717,8 +779,8 @@ func TestRenameBitmap(t *testing.T) {
 		SetBits(t, "a1", bitSetB)
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualBitSetValues(t, "a", bitSetA)
 		EqualBitSetValues(t, "a1", bitSetA)
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -726,57 +788,56 @@ func TestRenameBitmap(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		SetBits(t, "a", bitSetA)
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualBitSetValues(t, "a", bitSetA)
 		EqualBitSetValues(t, "a1", bitSetA)
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		SetBits(t, "a", bitSetA)
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualBitSetValues(t, "a", bitSetA)
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		SetBits(t, "a", bitSetA)
 		SetBits(t, "a1", bitSetB)
 		SetBits(t, "a2", bitSetB)
 		SetBits(t, "a3", bitSetB)
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualBitSetValues(t, "a", bitSetA)
+		EqualBitSetValues(t, "a1", bitSetA)
+		EqualBitSetValues(t, "a2", bitSetA)
 		EqualBitSetValues(t, "a3", bitSetA)
 	})
 
-	t.Run("RenameNX Bitmap", func(t *testing.T) {
+	t.Run("Copy bitmap not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		SetBits(t, "a", bitSetA)
 		SetBits(t, "a1", bitSetB)
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualBitSetValues(t, "a", bitSetA)
 		EqualBitSetValues(t, "a1", bitSetB)
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		SetBits(t, "a", bitSetA)
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		EqualBitSetValues(t, "a", bitSetA)
 		EqualBitSetValues(t, "a1", bitSetA)
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		SetBits(t, "a", bitSetA)
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		EqualBitSetValues(t, "a", bitSetA)
-
 	})
 
 }
 
-func TestRenameSint(t *testing.T) {
+func TestCopySint(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -791,11 +852,11 @@ func TestRenameSint(t *testing.T) {
 		}
 	}
 
-	t.Run("Rename SInt", func(t *testing.T) {
+	t.Run("Copy sint replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -805,8 +866,8 @@ func TestRenameSint(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a1", 99).Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -814,57 +875,57 @@ func TestRenameSint(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a1", 85).Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a2", 77, 0).Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a3", 111, 222, 333).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
+		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
+		EqualSIntValues(t, "a2", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a3", []int{3, 4, 5, 123, 245})
 	})
 
-	t.Run("RenameNX SInt", func(t *testing.T) {
+	t.Run("Copy sint not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a1", 99).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a1", []int{99})
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 		EqualSIntValues(t, "a1", []int{3, 4, 5, 123, 245})
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, "SIADD", "a", 3, 4, 5, 123, 245).Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		EqualSIntValues(t, "a", []int{3, 4, 5, 123, 245})
 
 	})
 
 }
 
-func TestRenameBloom(t *testing.T) {
+func TestCopyBloom(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -875,11 +936,11 @@ func TestRenameBloom(t *testing.T) {
 	bfAdd := "BF.ADD"
 	bfExists := "BF.EXISTS"
 
-	t.Run("Rename Bloom", func(t *testing.T) {
+	t.Run("Copy bloom replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -889,8 +950,8 @@ func TestRenameBloom(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, 0, rdb.Do(ctx, bfExists, "a1", "world").Val())
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
@@ -899,55 +960,56 @@ func TestRenameBloom(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a2", "world2").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a3", "world3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a2", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a3", "hello").Val())
 	})
 
-	t.Run("RenameNX Bloom", func(t *testing.T) {
+	t.Run("Copy bloom not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a1", "world").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "world").Val())
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a1", "hello").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, bfAdd, "a", "hello").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		require.EqualValues(t, 1, rdb.Do(ctx, bfExists, "a", "hello").Val())
 	})
+
 }
 
-func TestRenameStream(t *testing.T) {
+func TestCopyStream(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -957,11 +1019,11 @@ func TestRenameStream(t *testing.T) {
 
 	XADD := "XADD"
 	XREAD := "XREAD"
-	t.Run("Rename Stream", func(t *testing.T) {
+	t.Run("Copy stream replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
@@ -971,8 +1033,8 @@ func TestRenameStream(t *testing.T) {
 		require.NoError(t, rdb.Expire(ctx, "a", 10*time.Second).Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world").Err())
 		require.NoError(t, rdb.Expire(ctx, "a1", 1000*time.Second).Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
 		util.BetweenValues(t, rdb.TTL(ctx, "a1").Val(), time.Second, 10*time.Second)
 
@@ -980,55 +1042,56 @@ func TestRenameStream(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
 		require.NoError(t, rdb.LPush(ctx, "a1", "a").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
 		require.EqualValues(t, -1, rdb.TTL(ctx, "a1").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a").Err())
+		require.NoError(t, rdb.Copy(ctx, "a", "a", 0, true).Err())
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 
-		// rename*3
+		// copy * 3
 		require.NoError(t, rdb.Del(ctx, "a", "a1", "a2", "a3").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a2", "*", "a", "world2").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a3", "*", "a", "world3").Err())
-		require.NoError(t, rdb.Rename(ctx, "a", "a1").Err())
-		require.NoError(t, rdb.Rename(ctx, "a1", "a2").Err())
-		require.NoError(t, rdb.Rename(ctx, "a2", "a3").Err())
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a1").Val())
-		require.EqualValues(t, "", rdb.Get(ctx, "a2").Val())
+		require.NoError(t, rdb.Copy(ctx, "a", "a1", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a1", "a2", 0, true).Err())
+		require.NoError(t, rdb.Copy(ctx, "a2", "a3", 0, true).Err())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a2", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a3", "0").String(), "hello")
 	})
 
-	t.Run("RenameNX Stream", func(t *testing.T) {
+	t.Run("Copy stream not replace", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a1", "*", "a", "world").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a1", 0, false).Val())
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "world")
 
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
-		require.EqualValues(t, true, rdb.RenameNX(ctx, "a", "a1").Val())
+		require.EqualValues(t, int64(1), rdb.Copy(ctx, "a", "a1", 0, false).Val())
+		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a1", "0").String(), "hello")
-		require.EqualValues(t, "", rdb.Get(ctx, "a").Val())
 
 		// key == newkey
 		require.NoError(t, rdb.Del(ctx, "a", "a1").Err())
 		require.NoError(t, rdb.Do(ctx, XADD, "a", "*", "a", "hello").Err())
-		require.EqualValues(t, false, rdb.RenameNX(ctx, "a", "a").Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, "a", "a", 0, false).Val())
 		require.Contains(t, rdb.Do(ctx, XREAD, "STREAMS", "a", "0").String(), "hello")
 	})
+
 }
 
-func TestRenameError(t *testing.T) {
+func TestCopyError(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -1036,9 +1099,17 @@ func TestRenameError(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("Rename from empty key", func(t *testing.T) {
-		require.Error(t, rdb.Rename(ctx, ".empty", "a").Err())
-		require.Error(t, rdb.RenameNX(ctx, ".empty", "a").Err())
+	t.Run("Copy to not db 0", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a").Err())
+		require.NoError(t, rdb.Set(ctx, "a", "hello", 0).Err())
+		require.Error(t, rdb.Copy(ctx, "", "a", 1, true).Err())
+		require.Error(t, rdb.Copy(ctx, "", "a", 3, false).Err())
+	})
+
+	t.Run("Copy from empty key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, ".empty", "a").Err())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, ".empty", "a", 0, false).Val())
+		require.EqualValues(t, int64(0), rdb.Copy(ctx, ".empty", "a", 0, true).Val())
 	})
 
 }

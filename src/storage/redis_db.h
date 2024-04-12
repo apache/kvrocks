@@ -101,9 +101,11 @@ class Database {
                                                        rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
-  // Move <key,value> to <new_key,value> (already an internal key)
-  [[nodiscard]] rocksdb::Status Move(const std::string &key, const std::string &new_key, bool nx, bool *ret,
-                                     bool *key_exist);
+
+  // Copy <key,value> to <new_key,value> (already an internal key)
+  enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
+  [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
+                                     CopyResult *res);
 
  protected:
   engine::Storage *storage_;

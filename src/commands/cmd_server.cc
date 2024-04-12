@@ -828,7 +828,7 @@ class CommandScan : public CommandScanBase {
         if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
           prefix_ = prefix_.substr(0, prefix_.size() - 1);
         } else {
-          return {Status::RedisParseErr, "only keys prefix match was supported"};
+          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
         }
       } else if (parser.EatEqICase("count")) {
         limit_ = GET_OR_RET(parser.TakeInt());

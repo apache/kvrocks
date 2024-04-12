@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCopy_String(t *testing.T) {
+func TestCopyString(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -117,7 +117,7 @@ func TestCopy_String(t *testing.T) {
 
 }
 
-func TestCopy_JSON(t *testing.T) {
+func TestCopyJSON(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -212,7 +212,7 @@ func TestCopy_JSON(t *testing.T) {
 
 }
 
-func TestCopy_List(t *testing.T) {
+func TestCopyList(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -309,7 +309,7 @@ func TestCopy_List(t *testing.T) {
 
 }
 
-func TestCopy_hash(t *testing.T) {
+func TestCopyHash(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -475,7 +475,7 @@ func TestCopy_hash(t *testing.T) {
 
 }
 
-func TestCopy_set(t *testing.T) {
+func TestCopySet(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -572,7 +572,7 @@ func TestCopy_set(t *testing.T) {
 
 }
 
-func TestCopy_zset(t *testing.T) {
+func TestCopyZset(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -743,7 +743,7 @@ func TestCopy_zset(t *testing.T) {
 
 }
 
-func TestCopy_Bitmap(t *testing.T) {
+func TestCopyBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -837,7 +837,7 @@ func TestCopy_Bitmap(t *testing.T) {
 
 }
 
-func TestCopy_SInt(t *testing.T) {
+func TestCopySint(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -925,7 +925,7 @@ func TestCopy_SInt(t *testing.T) {
 
 }
 
-func TestCopy_Bloom(t *testing.T) {
+func TestCopyBloom(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -1009,7 +1009,7 @@ func TestCopy_Bloom(t *testing.T) {
 
 }
 
-func TestCopy_Stream(t *testing.T) {
+func TestCopyStream(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -1091,7 +1091,7 @@ func TestCopy_Stream(t *testing.T) {
 
 }
 
-func TestCopy_Error(t *testing.T) {
+func TestCopyError(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 

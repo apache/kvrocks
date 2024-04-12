@@ -30,7 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRename_String(t *testing.T) {
+func TestRenameString(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -117,7 +117,7 @@ func TestRename_String(t *testing.T) {
 
 }
 
-func TestRename_JSON(t *testing.T) {
+func TestRenameJSON(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -212,7 +212,7 @@ func TestRename_JSON(t *testing.T) {
 
 }
 
-func TestRename_List(t *testing.T) {
+func TestRenameList(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -309,7 +309,7 @@ func TestRename_List(t *testing.T) {
 
 }
 
-func TestRename_hash(t *testing.T) {
+func TestRenameHash(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -443,7 +443,7 @@ func TestRename_hash(t *testing.T) {
 
 }
 
-func TestRename_set(t *testing.T) {
+func TestRenameSet(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -540,7 +540,7 @@ func TestRename_set(t *testing.T) {
 
 }
 
-func TestRename_zset(t *testing.T) {
+func TestRenameZset(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -681,7 +681,7 @@ func TestRename_zset(t *testing.T) {
 
 }
 
-func TestRename_Bitmap(t *testing.T) {
+func TestRenameBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -776,7 +776,7 @@ func TestRename_Bitmap(t *testing.T) {
 
 }
 
-func TestRename_SInt(t *testing.T) {
+func TestRenameSint(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -864,7 +864,7 @@ func TestRename_SInt(t *testing.T) {
 
 }
 
-func TestRename_Bloom(t *testing.T) {
+func TestRenameBloom(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -947,7 +947,7 @@ func TestRename_Bloom(t *testing.T) {
 	})
 }
 
-func TestRename_Stream(t *testing.T) {
+func TestRenameStream(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -1028,7 +1028,7 @@ func TestRename_Stream(t *testing.T) {
 	})
 }
 
-func TestRename_Error(t *testing.T) {
+func TestRenameError(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 

@@ -469,6 +469,52 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
   return Status::OK();
 }
 
+Status Cluster::GetReplicas(const std::string &node_id, std::string *replicas_str) {
+  if (version_ < 0) {
+    return {Status::ClusterDown, errClusterNoInitialized};
+  }
+
+  auto item = nodes_.find(node_id);
+  if (item == nodes_.end()) {
+    return {Status::InvalidArgument, errInvalidNodeID};
+  }
+
+  auto node = item->second;
+  if (node->role != kClusterMaster) {
+    return {Status::InvalidArgument, errNoMasterNode};
+  }
+
+  replicas_str->clear();
+
+  auto now = util::GetTimeStampMS();
+  std::string replicas_desc;
+  for (const auto &replica_id : node->replicas) {
+    auto n = nodes_.find(replica_id);
+    if (n == nodes_.end()) {
+      continue;
+    }
+
+    auto replica = n->second;
+
+    std::string node_str;
+    // ID, host, port
+    node_str.append(replica_id + " ");
+    node_str.append(fmt::format("{}:{}@{} ", replica->host, replica->port, replica->port + kClusterPortIncr));
+
+    // Flags
+    node_str.append("slave " + replica->master_id + " ");
+
+    // Ping sent, pong received, config epoch, link status
+    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
+
+    replicas_desc.append(node_str + "\n");
+  }
+
+  *replicas_str = replicas_desc;
+
+  return Status::OK();
+}
+
 std::string Cluster::getNodeIDBySlot(int slot) const {
   if (slot < 0 || slot >= kClusterSlots || !slots_nodes_[slot]) return "";
   return slots_nodes_[slot]->id;

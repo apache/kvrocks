@@ -49,7 +49,9 @@ class CommandCluster : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET"};
+    if (subcommand_ == "replicas" && args_.size() == 3) return Status::OK();
+
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET|REPLICAS"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -110,6 +112,15 @@ class CommandCluster : public Commander {
       Status s = srv->cluster->Reset();
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
+      } else {
+        return {Status::RedisExecErr, s.Msg()};
+      }
+    } else if (subcommand_ == "replicas") {
+      std::string replicas_str;
+      auto node_id = args_[2];
+      Status s = srv->cluster->GetReplicas(node_id, &replicas_str);
+      if (s.IsOK()) {
+        *output = conn->VerbatimString("txt", replicas_str);
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }

@@ -350,8 +350,7 @@ class CommandRename : public Commander {
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
     auto s = redis.Copy(ns_key, new_ns_key, false, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (res == Database::CopyResult::KEY_NOT_EXIST)
-      return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
+    if (res == Database::CopyResult::KEY_NOT_EXIST) return {Status::RedisExecErr, "no such key"};
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -368,7 +367,7 @@ class CommandRenameNX : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     switch (res) {
       case Database::CopyResult::KEY_NOT_EXIST:
-        return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
+        return {Status::RedisExecErr, "no such key"};
       case Database::CopyResult::DONE:
         *output = redis::Integer(1);
         break;
@@ -383,30 +382,18 @@ class CommandRenameNX : public Commander {
 class CommandCopy : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 6) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    if (args.size() == 4) {
-      if (util::ToLower(args[3]) == "replace") {
-        replace_ = true;
-      } else {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-    } else if (args.size() >= 5) {
-      if (util::ToLower(args[3]) != "db") {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-      auto db_num = ParseInt<int64_t>(args[4], 10);
-      // There's only one database in Kvrocks, so the DB must be 0 here.
-      if (!db_num.IsOK() || db_num.GetValue() != 0) {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-      if (args.size() == 6) {
-        if (util::ToLower(args[5]) == "replace") {
-          replace_ = true;
-        } else {
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("db")) {
+        auto db_num = GET_OR_RET(parser.TakeInt());
+        // There's only one database in Kvrocks, so the DB must be 0 here.
+        if (db_num != 0) {
           return {Status::RedisParseErr, errInvalidSyntax};
         }
+      } else if (parser.EatEqICase("replace")) {
+        replace_ = true;
+      } else {
+        return parser.InvalidSyntax();
       }
     }
 
@@ -422,7 +409,7 @@ class CommandCopy : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     switch (res) {
       case Database::CopyResult::KEY_NOT_EXIST:
-        return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
+        return {Status::RedisExecErr, "no such key"};
       case Database::CopyResult::DONE:
         *output = redis::Integer(1);
         break;

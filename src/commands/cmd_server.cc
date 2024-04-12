@@ -823,9 +823,7 @@ class CommandScan : public CommandScanBase {
     CommandParser parser(args, 1);
     ParseCursor(GET_OR_RET(parser.TakeStr()));
     while (parser.Good()) {
-      if (parser.EatEqICase("scan")) {
-        ParseCursor(GET_OR_RET(parser.TakeStr()));
-      } else if (parser.EatEqICase("match")) {
+      if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
         if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
           prefix_ = prefix_.substr(0, prefix_.size() - 1);

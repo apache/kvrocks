@@ -32,28 +32,33 @@ inline constexpr const char *kCursorPrefix = "_";
 
 class CommandScanBase : public Commander {
  public:
-  Status ParseMatchAndCountParam(const std::string &type, std::string value) {
-    if (type == "match") {
-      prefix_ = std::move(value);
-      if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
-        prefix_ = prefix_.substr(0, prefix_.size() - 1);
-        return Status::OK();
-      }
-
-      return {Status::RedisParseErr, "only keys prefix match was supported"};
-    } else if (type == "count") {
-      auto parse_result = ParseInt<int>(value, 10);
-      if (!parse_result) {
-        return {Status::RedisParseErr, "count param should be type int"};
-      }
-
-      limit_ = *parse_result;
-      if (limit_ <= 0) {
-        return {Status::RedisParseErr, errInvalidSyntax};
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    if (util::ToLower(args[0]) != "scan") {
+      key_ = GET_OR_RET(parser.TakeStr());
+    }
+    ParseCursor(GET_OR_RET(parser.TakeStr()));
+    while (parser.Good()) {
+      if (parser.EatEqICase("match")) {
+        prefix_ = GET_OR_RET(parser.TakeStr());
+        if (!prefix_.empty() && prefix_.back() == '*') {
+          prefix_ = prefix_.substr(0, prefix_.size() - 1);
+        } else {
+          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
+        }
+      } else if (parser.EatEqICase("count")) {
+        limit_ = GET_OR_RET(parser.TakeInt());
+        if (limit_ <= 0) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else if (parser.EatEqICase("type")) {
+        // HSCAN SSCAN ZSCAN Will not enter
+        return {Status::RedisParseErr, "TYPE flag is currently not supported"};
+      } else {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
       }
     }
-
-    return Status::OK();
+    return Commander::Parse(args);
   }
 
   void ParseCursor(const std::string &param) {
@@ -84,35 +89,12 @@ class CommandScanBase : public Commander {
   std::string cursor_;
   std::string prefix_;
   int limit_ = 20;
+  std::string key_;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {
  public:
   CommandSubkeyScanBase() : CommandScanBase() {}
-
-  Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 1);
-    key_ = GET_OR_RET(parser.TakeStr());
-    ParseCursor(GET_OR_RET(parser.TakeStr()));
-    while (parser.Good()) {
-      if (parser.EatEqICase("match")) {
-        prefix_ = GET_OR_RET(parser.TakeStr());
-        if (!prefix_.empty() && prefix_.back() == '*') {
-          prefix_ = prefix_.substr(0, prefix_.size() - 1);
-        } else {
-          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
-        }
-      } else if (parser.EatEqICase("count")) {
-        limit_ = GET_OR_RET(parser.TakeInt());
-        if (limit_ <= 0) {
-          return {Status::RedisParseErr, errInvalidSyntax};
-        }
-      } else {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-    }
-    return Commander::Parse(args);
-  }
 
   std::string GetNextCursor(Server *srv, std::vector<std::string> &fields, CursorType cursor_type) const {
     if (fields.size() == static_cast<size_t>(limit_)) {
@@ -120,9 +102,6 @@ class CommandSubkeyScanBase : public CommandScanBase {
     }
     return "0";
   }
-
- protected:
-  std::string key_;
 };
 
 }  // namespace redis

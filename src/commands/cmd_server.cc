@@ -819,32 +819,6 @@ class CommandScan : public CommandScanBase {
  public:
   CommandScan() : CommandScanBase() {}
 
-  Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 1);
-    ParseCursor(GET_OR_RET(parser.TakeStr()));
-    while (parser.Good()) {
-      if (parser.EatEqICase("match")) {
-        prefix_ = GET_OR_RET(parser.TakeStr());
-        if (!prefix_.empty() && prefix_.back() == '*') {
-          prefix_ = prefix_.substr(0, prefix_.size() - 1);
-        } else {
-          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
-        }
-      } else if (parser.EatEqICase("count")) {
-        limit_ = GET_OR_RET(parser.TakeInt());
-        if (limit_ <= 0) {
-          return {Status::RedisParseErr, errInvalidSyntax};
-        }
-      } else if (parser.EatEqICase("type")) {
-        return {Status::RedisParseErr, "TYPE flag is currently not supported"};
-      } else {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-    }
-
-    return Commander::Parse(args);
-  }
-
   static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
                                     const std::string &end_cursor) {
     std::vector<std::string> list;

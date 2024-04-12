@@ -825,7 +825,7 @@ class CommandScan : public CommandScanBase {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
-        if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
+        if (!prefix_.empty() && prefix_.back() == '*') {
           prefix_ = prefix_.substr(0, prefix_.size() - 1);
         } else {
           return {Status::RedisParseErr, "currently only key prefix matching is supported"};

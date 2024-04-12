@@ -73,6 +73,8 @@ struct IndexUpdater {
   const kqir::IndexInfo *info = nullptr;
   GlobalIndexer *indexer = nullptr;
 
+  explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
+
   StatusOr<FieldValues> Record(std::string_view key, const std::string &ns) const;
   Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
                      std::string_view current, const std::string &ns) const;

@@ -230,6 +230,7 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
 }
 
 void GlobalIndexer::Add(IndexUpdater updater) {
+  updater.indexer = this;
   for (const auto &prefix : updater.info->prefixes.prefixes) {
     prefix_map.insert(prefix, updater);
   }

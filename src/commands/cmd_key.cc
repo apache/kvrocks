@@ -83,14 +83,13 @@ class CommandMoveX : public Commander {
         break;
     }
 
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(key);
     std::string new_ns_key = ComposeNamespaceKey(ns, key, srv->storage->IsSlotIdEncoded());
-    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (ret && key_exist) {
+    if (res == Database::CopyResult::DONE) {
       *output = redis::Integer(1);
     } else {
       *output = redis::Integer(0);
@@ -222,7 +221,7 @@ class CommandExpireAt : public Commander {
 
     timestamp_ = *parse_result;
 
-    return Commander::Parse(args);
+    return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -346,14 +345,12 @@ class CommandRename : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(ns_key, new_ns_key, false, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, false, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
-
+    if (res == Database::CopyResult::KEY_NOT_EXIST) return {Status::RedisExecErr, "no such key"};
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -363,20 +360,68 @@ class CommandRenameNX : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    bool key_exist = true;
+    Database::CopyResult res = Database::CopyResult::DONE;
     std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
     std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
-    auto s = redis.Move(ns_key, new_ns_key, true, &ret, &key_exist);
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (!key_exist) return {Status::RedisExecErr, rocksdb::Status::InvalidArgument("ERR no such key").ToString()};
-    if (ret) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, "no such key"};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
     }
     return Status::OK();
   }
+};
+
+class CommandCopy : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("db")) {
+        auto db_num = GET_OR_RET(parser.TakeInt());
+        // There's only one database in Kvrocks, so the DB must be 0 here.
+        if (db_num != 0) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else if (parser.EatEqICase("replace")) {
+        replace_ = true;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    Database::CopyResult res = Database::CopyResult::DONE;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Copy(ns_key, new_ns_key, !replace_, false, &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, "no such key"};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
+    }
+    return Status::OK();
+  }
+
+ private:
+  bool replace_ = false;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
@@ -396,6 +441,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1), )
+                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1), )
 
 }  // namespace redis

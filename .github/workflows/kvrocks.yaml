@@ -77,7 +77,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y clang-format-14 clang-tidy-14
-      - uses: apache/skywalking-eyes/header@v0.5.0
+      - uses: apache/skywalking-eyes/header@v0.6.0
         with:
           config: .github/config/licenserc.yml
       - name: Check with clang-format

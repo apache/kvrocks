@@ -48,12 +48,11 @@ class CommandSort : public Commander {
         if (sortby_.find('*') == std::string::npos) {
           dontsort_ = true;
         } else {
-          // TODO Check
-          /* If BY is specified with a real pattern, we can't accept it in cluster mode,
+          /* TODO:
+           * If BY is specified with a real pattern, we can't accept it in cluster mode,
            * unless we can make sure the keys formed by the pattern are in the same slot
-           * as the key to sort. */
-
-          /* If BY is specified with a real pattern, we can't accept
+           * as the key to sort.
+           * If BY is specified with a real pattern, we can't accept
            * it if no full ACL key access is applied for this command. */
         }
       } else if (parser.EatEqICase("LIMIT")) {
@@ -66,11 +65,10 @@ class CommandSort : public Commander {
         if (parser.Remains() < 1) {
           return parser.InvalidSyntax();
         }
-        // TODO Check
-        /* If GET is specified with a real pattern, we can't accept it in cluster mode,
+        /* TODO:
+         * If GET is specified with a real pattern, we can't accept it in cluster mode,
          * unless we can make sure the keys formed by the pattern are in the same slot
          * as the key to sort. */
-
         getpatterns_.push_back(GET_OR_RET(parser.TakeStr()));
       } else if (parser.EatEqICase("ASC")) {
         desc_ = false;
@@ -115,11 +113,11 @@ class CommandSort : public Commander {
      *
      * The other types (list, sorted set) will retain their native order
      * even if no sort order is requested, so they remain stable across
-     * scripting and replication. */
+     * scripting and replication.
+     *
+     * TODO: support CLIENT_SCRIPT flag, (!storekey_.empty() || c->flags & CLIENT_SCRIPT)) */
 
-    // TODO c->flags & CLIENT_SCRIPT ???
-    // if (dontsort_ && type == RedisType::kRedisZSet && (!storekey_.empty() || c->flags & CLIENT_SCRIPT))
-    if (dontsort_ && type == RedisType::kRedisZSet && (!storekey_.empty())) {
+    if (dontsort_ && type == RedisType::kRedisSet && (!storekey_.empty())) {
       /* Force ALPHA sorting */
       dontsort_ = false;
       alpha_ = true;
@@ -195,14 +193,14 @@ class CommandSort : public Commander {
         spec.stop = (int)(offset + count - 1);
         spec.reversed = desc_;
         zset_db.RangeByRank(args_[1], spec, &member_scores, nullptr);
-        for (size_t i = 0; i < member_scores.size(); ++i) {
-          str_vec.emplace_back(member_scores[i].member);
+        for (auto &member_score : member_scores) {
+          str_vec.emplace_back(member_score.member);
         }
       } else if (type == RedisType::kRedisZSet) {
         std::vector<MemberScore> member_scores;
         zset_db.GetAllMemberScores(args_[1], &member_scores);
-        for (size_t i = 0; i < member_scores.size(); ++i) {
-          str_vec.emplace_back(member_scores[i].member);
+        for (auto &member_score : member_scores) {
+          str_vec.emplace_back(member_score.member);
         }
       } else {
         return {Status::RedisExecErr, "Unknown type"};

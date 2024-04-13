@@ -257,6 +257,15 @@ func TestListSort(t *testing.T) {
 		sortResult, err := rdb.LRange(ctx, "sorted-numbers", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, sortResult)
+
+		rdb.LPush(ctx, "no-force-alpha-sort-key", 123, 3, 21)
+		storedLen, err = rdb.Do(ctx, "Sort", "no-force-alpha-sort-key", "BY", "not-exists-key", "STORE", "no-alpha-sorted").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "no-alpha-sorted", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"21", "3", "123"}, sortResult)
 	})
 }
 
@@ -454,6 +463,15 @@ func TestSetSort(t *testing.T) {
 		sortResult, err := rdb.LRange(ctx, "sorted-numbers", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, sortResult)
+
+		rdb.SAdd(ctx, "force-alpha-sort-key", 123, 3, 21)
+		storedLen, err = rdb.Do(ctx, "Sort", "force-alpha-sort-key", "BY", "not-exists-key", "STORE", "alpha-sorted").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "alpha-sorted", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"123", "21", "3"}, sortResult)
 	})
 }
 
@@ -678,5 +696,19 @@ func TestZSetSort(t *testing.T) {
 		sortResult, err := rdb.LRange(ctx, "sorted-numbers", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, sortResult)
+
+		rdb.ZAdd(ctx, "numbers",
+			redis.Z{Score: 1, Member: "123"},
+			redis.Z{Score: 2, Member: "3"},
+			redis.Z{Score: 3, Member: "21"},
+		)
+
+		storedLen, err = rdb.Do(ctx, "Sort", "no-force-alpha-sort-key", "BY", "not-exists-key", "STORE", "no-alpha-sorted").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "no-alpha-sorted", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"21", "3", "123"}, sortResult)
 	})
 }

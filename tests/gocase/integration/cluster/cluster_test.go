@@ -26,9 +26,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+
+	"github.com/apache/kvrocks/tests/gocase/util"
 )
 
 func TestDisableCluster(t *testing.T) {
@@ -128,6 +129,61 @@ func TestClusterNodes(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a", -1).Err(), "Invalid cluster version")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "07c37dfeb235213a872192d90877d0cd55635b91", 1).Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "a", 1).Err(), "CLUSTER")
+	})
+}
+
+func TestClusterReplicas(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	nodes := ""
+
+	master1ID := "bb2e5b3c5282086df51eff6b3e35519aede96fa6"
+	master1Node := fmt.Sprintf("%s %s %d master - 0-8191", master1ID, srv.Host(), srv.Port())
+	nodes += master1Node + "\n"
+
+	master2ID := "159dde1194ebf5bfc5a293dff839c3d1476f2a49"
+	master2Node := fmt.Sprintf("%s %s %d master - 8192-16383", master2ID, srv.Host(), srv.Port())
+	nodes += master2Node + "\n"
+
+	replica2ID := "7dbee3d628f04cc5d763b36e92b10533e627a1d0"
+	replica2Node := fmt.Sprintf("%s %s %d slave %s", replica2ID, srv.Host(), srv.Port(), master2ID)
+	nodes += replica2Node
+
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", nodes, "2").Err())
+	require.EqualValues(t, "2", rdb.Do(ctx, "clusterx", "version").Val())
+
+	t.Run("with replicas", func(t *testing.T) {
+		replicas, err := rdb.Do(ctx, "cluster", "replicas", "159dde1194ebf5bfc5a293dff839c3d1476f2a49").Text()
+		require.NoError(t, err)
+		fields := strings.Split(replicas, " ")
+		require.Len(t, fields, 8)
+		require.Equal(t, fmt.Sprintf("%s@%d", srv.HostPort(), srv.Port()+10000), fields[1])
+		require.Equal(t, "slave", fields[2])
+		require.Equal(t, master2ID, fields[3])
+		require.Equal(t, "connected\n", fields[7])
+	})
+
+	t.Run("without replicas", func(t *testing.T) {
+		replicas, err := rdb.Do(ctx, "cluster", "replicas", "bb2e5b3c5282086df51eff6b3e35519aede96fa6").Text()
+		require.NoError(t, err)
+		require.Empty(t, replicas)
+	})
+
+	t.Run("send command to replica", func(t *testing.T) {
+		err := rdb.Do(ctx, "cluster", "replicas", "7dbee3d628f04cc5d763b36e92b10533e627a1d0").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "The node isn't a master")
+	})
+
+	t.Run("unknown node", func(t *testing.T) {
+		err := rdb.Do(ctx, "cluster", "replicas", "unknown").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "Invalid cluster node id")
 	})
 }
 

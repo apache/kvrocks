@@ -818,6 +818,15 @@ class CommandHello final : public Commander {
 class CommandScan : public CommandScanBase {
  public:
   CommandScan() : CommandScanBase() {}
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    ParseCursor(GET_OR_RET(parser.TakeStr()));
+    auto s = ProcessCommonParser(parser);
+    if (!s.IsOK()) {
+      return s;
+    }
+    return Status::OK();
+  }
 
   static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
                                     const std::string &end_cursor) {

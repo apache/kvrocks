@@ -32,12 +32,8 @@ inline constexpr const char *kCursorPrefix = "_";
 
 class CommandScanBase : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 1);
-    if (util::ToLower(args[0]) != "scan") {
-      key_ = GET_OR_RET(parser.TakeStr());
-    }
-    ParseCursor(GET_OR_RET(parser.TakeStr()));
+  template <typename Iter>
+  Status ProcessCommonParser(CommandParser<Iter> &parser) {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
@@ -52,13 +48,13 @@ class CommandScanBase : public Commander {
           return {Status::RedisParseErr, errInvalidSyntax};
         }
       } else if (parser.EatEqICase("type")) {
-        // HSCAN SSCAN ZSCAN Will not enter
+        // HSCAN SSCAN ZSCAN Will return RedisParseErr
         return {Status::RedisParseErr, "TYPE flag is currently not supported"};
       } else {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
     }
-    return Commander::Parse(args);
+    return Status::OK();
   }
 
   void ParseCursor(const std::string &param) {
@@ -89,7 +85,6 @@ class CommandScanBase : public Commander {
   std::string cursor_;
   std::string prefix_;
   int limit_ = 20;
-  std::string key_;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {
@@ -102,6 +97,19 @@ class CommandSubkeyScanBase : public CommandScanBase {
     }
     return "0";
   }
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    key_ = GET_OR_RET(parser.TakeStr());
+    ParseCursor(GET_OR_RET(parser.TakeStr()));
+    auto s = ProcessCommonParser(parser);
+    if (!s.IsOK()) {
+      return s;
+    }
+    return Status::OK();
+  }
+
+ protected:
+  std::string key_;
 };
 
 }  // namespace redis

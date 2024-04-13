@@ -290,6 +290,17 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 			require.Len(t, zsetKeys, test.count)
 		})
 	}
+
+	t.Run("SCAN reject invalid input", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "hello").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "hello", "hi").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "hello", "hi").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "hello", "hi", "count", "1").Err(), ".*syntax error.*")
+		require.NoError(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*").Err())
+		require.NoError(t, rdb.Do(ctx, "SCAN", "0", "match", "a*", "count", "1").Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*", "hello").Err(), ".*syntax error.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*", "hello", "hi").Err(), ".*syntax error.*")
+	})
 }
 
 // SCAN of Kvrocks returns _cursor instead of cursor. Thus, redis.Client Scan can fail with

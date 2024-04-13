@@ -496,11 +496,10 @@ StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
 
     std::string node_str;
     // ID, host, port
-    node_str.append(replica_id + " ");
-    node_str.append(fmt::format("{}:{}@{} ", replica->host, replica->port, replica->port + kClusterPortIncr));
+    node_str.append(fmt::format("{} {}:{}@{} ", replica_id, replica->host, replica->port, replica->port + kClusterPortIncr));
 
     // Flags
-    node_str.append("slave " + replica->master_id + " ");
+    node_str.append(fmt::format("slave {} ", node_id));
 
     // Ping sent, pong received, config epoch, link status
     node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));

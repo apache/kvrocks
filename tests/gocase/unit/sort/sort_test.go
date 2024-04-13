@@ -697,7 +697,7 @@ func TestZSetSort(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}, sortResult)
 
-		rdb.ZAdd(ctx, "numbers",
+		rdb.ZAdd(ctx, "no-force-alpha-sort-key",
 			redis.Z{Score: 1, Member: "123"},
 			redis.Z{Score: 2, Member: "3"},
 			redis.Z{Score: 3, Member: "21"},

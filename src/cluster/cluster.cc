@@ -496,7 +496,8 @@ StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
 
     std::string node_str;
     // ID, host, port
-    node_str.append(fmt::format("{} {}:{}@{} ", replica_id, replica->host, replica->port, replica->port + kClusterPortIncr));
+    node_str.append(
+        fmt::format("{} {}:{}@{} ", replica_id, replica->host, replica->port, replica->port + kClusterPortIncr));
 
     // Flags
     node_str.append(fmt::format("slave {} ", node_id));

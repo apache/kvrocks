@@ -34,6 +34,7 @@
 
 #include "fmt/core.h"
 #include "ir_iterator.h"
+#include "search/index_info.h"
 #include "string_util.h"
 #include "type_util.h"
 
@@ -76,6 +77,7 @@ struct Ref : Node {};
 
 struct FieldRef : Ref {
   std::string name;
+  const FieldInfo *info = nullptr;
 
   explicit FieldRef(std::string name) : name(std::move(name)) {}
 
@@ -322,10 +324,10 @@ struct SortByClause : Node {
   }
 };
 
-struct SelectExpr : Node {
+struct SelectClause : Node {
   std::vector<std::unique_ptr<FieldRef>> fields;
 
-  explicit SelectExpr(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
+  explicit SelectClause(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
 
   std::string_view Name() const override { return "SelectExpr"; }
   std::string Dump() const override {
@@ -342,12 +344,13 @@ struct SelectExpr : Node {
     for (const auto &f : fields) {
       res.push_back(Node::MustAs<FieldRef>(f->Clone()));
     }
-    return std::make_unique<SelectExpr>(std::move(res));
+    return std::make_unique<SelectClause>(std::move(res));
   }
 };
 
 struct IndexRef : Ref {
   std::string name;
+  const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
 
@@ -359,7 +362,7 @@ struct IndexRef : Ref {
 };
 
 struct SearchStmt : Node {
-  std::unique_ptr<SelectExpr> select_expr;
+  std::unique_ptr<SelectClause> select;
   std::unique_ptr<IndexRef> index;
   std::unique_ptr<QueryExpr> query_expr;
   std::unique_ptr<LimitClause> limit;     // optional
@@ -367,8 +370,8 @@ struct SearchStmt : Node {
 
   SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr,
              std::unique_ptr<LimitClause> &&limit, std::unique_ptr<SortByClause> &&sort_by,
-             std::unique_ptr<SelectExpr> &&select_expr)
-      : select_expr(std::move(select_expr)),
+             std::unique_ptr<SelectClause> &&select)
+      : select(std::move(select)),
         index(std::move(index)),
         query_expr(std::move(query_expr)),
         limit(std::move(limit)),
@@ -379,12 +382,12 @@ struct SearchStmt : Node {
     std::string opt;
     if (sort_by) opt += " " + sort_by->Dump();
     if (limit) opt += " " + limit->Dump();
-    return fmt::format("{} from {} where {}{}", select_expr->Dump(), index->Dump(), query_expr->Dump(), opt);
+    return fmt::format("{} from {} where {}{}", select->Dump(), index->Dump(), query_expr->Dump(), opt);
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {
-      NodeIterator::MemFn<&SearchStmt::select_expr>, NodeIterator::MemFn<&SearchStmt::index>,
-      NodeIterator::MemFn<&SearchStmt::query_expr>,  NodeIterator::MemFn<&SearchStmt::limit>,
+      NodeIterator::MemFn<&SearchStmt::select>,     NodeIterator::MemFn<&SearchStmt::index>,
+      NodeIterator::MemFn<&SearchStmt::query_expr>, NodeIterator::MemFn<&SearchStmt::limit>,
       NodeIterator::MemFn<&SearchStmt::sort_by>,
   };
 
@@ -395,7 +398,7 @@ struct SearchStmt : Node {
     return std::make_unique<SearchStmt>(
         Node::MustAs<IndexRef>(index->Clone()), Node::MustAs<QueryExpr>(query_expr->Clone()),
         Node::MustAs<LimitClause>(limit->Clone()), Node::MustAs<SortByClause>(sort_by->Clone()),
-        Node::MustAs<SelectExpr>(select_expr->Clone()));
+        Node::MustAs<SelectClause>(select->Clone()));
   }
 };
 

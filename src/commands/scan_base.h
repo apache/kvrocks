@@ -21,6 +21,7 @@
 #pragma once
 
 #include "commander.h"
+#include "commands/command_parser.h"
 #include "error_constants.h"
 #include "parse_util.h"
 #include "server/server.h"
@@ -31,31 +32,40 @@ inline constexpr const char *kCursorPrefix = "_";
 
 class CommandScanBase : public Commander {
  public:
-  Status ParseMatchAndCountParam(const std::string &type, std::string value) {
-    if (type == "match") {
-      prefix_ = std::move(value);
-      if (!prefix_.empty() && prefix_[prefix_.size() - 1] == '*') {
-        prefix_ = prefix_.substr(0, prefix_.size() - 1);
-        return Status::OK();
-      }
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
 
-      return {Status::RedisParseErr, "only keys prefix match was supported"};
-    } else if (type == "count") {
-      auto parse_result = ParseInt<int>(value, 10);
-      if (!parse_result) {
-        return {Status::RedisParseErr, "count param should be type int"};
-      }
+    PutCursor(GET_OR_RET(parser.TakeStr()));
 
-      limit_ = *parse_result;
-      if (limit_ <= 0) {
-        return {Status::RedisParseErr, errInvalidSyntax};
+    return ParseAdditionalFlags<true>(parser);
+  }
+
+  template <bool IsScan, typename Parser>
+  Status ParseAdditionalFlags(Parser &parser) {
+    while (parser.Good()) {
+      if (parser.EatEqICase("match")) {
+        prefix_ = GET_OR_RET(parser.TakeStr());
+        if (!prefix_.empty() && prefix_.back() == '*') {
+          prefix_ = prefix_.substr(0, prefix_.size() - 1);
+        } else {
+          return {Status::RedisParseErr, "currently only key prefix matching is supported"};
+        }
+      } else if (parser.EatEqICase("count")) {
+        limit_ = GET_OR_RET(parser.TakeInt());
+        if (limit_ <= 0) {
+          return {Status::RedisParseErr, "limit should be a positive integer"};
+        }
+      } else if (IsScan && parser.EatEqICase("type")) {
+        return {Status::RedisParseErr, "TYPE flag is currently not supported"};
+      } else {
+        return parser.InvalidSyntax();
       }
     }
 
     return Status::OK();
   }
 
-  void ParseCursor(const std::string &param) {
+  void PutCursor(const std::string &param) {
     cursor_ = param;
     if (cursor_ == "0") {
       cursor_ = std::string();
@@ -90,26 +100,13 @@ class CommandSubkeyScanBase : public CommandScanBase {
   CommandSubkeyScanBase() : CommandScanBase() {}
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 == 0) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
+    CommandParser parser(args, 1);
 
-    key_ = args[1];
-    ParseCursor(args[2]);
-    if (args.size() >= 5) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[3]), args_[4]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
+    key_ = GET_OR_RET(parser.TakeStr());
 
-    if (args.size() >= 7) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[5]), args_[6]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    return Commander::Parse(args);
+    PutCursor(GET_OR_RET(parser.TakeStr()));
+
+    return ParseAdditionalFlags<false>(parser);
   }
 
   std::string GetNextCursor(Server *srv, std::vector<std::string> &fields, CursorType cursor_type) const {

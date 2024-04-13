@@ -34,6 +34,7 @@
 
 #include "fmt/core.h"
 #include "ir_iterator.h"
+#include "search/index_info.h"
 #include "string_util.h"
 #include "type_util.h"
 
@@ -76,6 +77,7 @@ struct Ref : Node {};
 
 struct FieldRef : Ref {
   std::string name;
+  const FieldInfo *info = nullptr;
 
   explicit FieldRef(std::string name) : name(std::move(name)) {}
 
@@ -348,6 +350,7 @@ struct SelectClause : Node {
 
 struct IndexRef : Ref {
   std::string name;
+  const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
 

@@ -77,7 +77,7 @@ rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::strin
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, const std::string &ns) {
+StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, const std::string &ns) const {
   Database db(indexer->storage, ns);
 
   RedisType type = kRedisNone;
@@ -87,16 +87,16 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
   // key not exist
   if (type == kRedisNone) return FieldValues();
 
-  if (type != static_cast<RedisType>(metadata.on_data_type)) {
+  if (type != static_cast<RedisType>(info->metadata.on_data_type)) {
     // not the expected type, stop record
     return {Status::TypeMismatched};
   }
 
-  auto retriever = GET_OR_RET(FieldValueRetriever::Create(metadata.on_data_type, key, indexer->storage, ns));
+  auto retriever = GET_OR_RET(FieldValueRetriever::Create(info->metadata.on_data_type, key, indexer->storage, ns));
 
   FieldValues values;
-  for (const auto &[field, info] : fields) {
-    if (info->noindex) {
+  for (const auto &[field, i] : info->fields) {
+    if (i.metadata->noindex) {
       continue;
     }
 
@@ -112,20 +112,20 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
 }
 
 Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                                 std::string_view current, const std::string &ns) {
+                                 std::string_view current, const std::string &ns) const {
   if (original == current) {
     // the value of this field is unchanged, no need to update
     return Status::OK();
   }
 
-  auto iter = fields.find(field);
-  if (iter == fields.end()) {
+  auto iter = info->fields.find(field);
+  if (iter == info->fields.end()) {
     return {Status::NotOK, "No such field to do index updating"};
   }
 
-  auto *metadata = iter->second.get();
+  auto *metadata = iter->second.metadata.get();
   auto *storage = indexer->storage;
-  auto ns_key = ComposeNamespaceKey(ns, name, storage->IsSlotIdEncoded());
+  auto ns_key = ComposeNamespaceKey(ns, info->name, storage->IsSlotIdEncoded());
   if (auto tag = dynamic_cast<SearchTagFieldMetadata *>(metadata)) {
     const char delim[] = {tag->separator, '\0'};
     auto original_tags = util::Split(original, delim);
@@ -163,14 +163,14 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
 
     for (const auto &tag : tags_to_delete) {
       auto sub_key = ConstructTagFieldSubkey(field, tag, key);
-      auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
+      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
 
       batch->Delete(cf_handle, index_key.Encode());
     }
 
     for (const auto &tag : tags_to_add) {
       auto sub_key = ConstructTagFieldSubkey(field, tag, key);
-      auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
+      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
 
       batch->Put(cf_handle, index_key.Encode(), Slice());
     }
@@ -184,7 +184,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     if (!original.empty()) {
       auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));
       auto sub_key = ConstructNumericFieldSubkey(field, original_num, key);
-      auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
+      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
 
       batch->Delete(cf_handle, index_key.Encode());
     }
@@ -192,7 +192,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     if (!current.empty()) {
       auto current_num = GET_OR_RET(ParseFloat(std::string(current.begin(), current.end())));
       auto sub_key = ConstructNumericFieldSubkey(field, current_num, key);
-      auto index_key = InternalKey(ns_key, sub_key, this->metadata.version, storage->IsSlotIdEncoded());
+      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
 
       batch->Put(cf_handle, index_key.Encode(), Slice());
     }
@@ -206,11 +206,11 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   return Status::OK();
 }
 
-Status IndexUpdater::Update(const FieldValues &original, std::string_view key, const std::string &ns) {
+Status IndexUpdater::Update(const FieldValues &original, std::string_view key, const std::string &ns) const {
   auto current = GET_OR_RET(Record(key, ns));
 
-  for (const auto &[field, info] : fields) {
-    if (info->noindex) {
+  for (const auto &[field, i] : info->fields) {
+    if (i.metadata->noindex) {
       continue;
     }
 
@@ -230,9 +230,9 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
 }
 
 void GlobalIndexer::Add(IndexUpdater updater) {
-  auto &up = updaters.emplace_back(std::move(updater));
-  for (const auto &prefix : up.prefixes) {
-    prefix_map.insert(prefix, &up);
+  updater.indexer = this;
+  for (const auto &prefix : updater.info->prefixes.prefixes) {
+    prefix_map.insert(prefix, updater);
   }
 }
 
@@ -240,14 +240,14 @@ StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key
   auto iter = prefix_map.longest_prefix(key);
   if (iter != prefix_map.end()) {
     auto updater = iter.value();
-    return std::make_pair(updater, GET_OR_RET(updater->Record(key, ns)));
+    return std::make_pair(updater, GET_OR_RET(updater.Record(key, ns)));
   }
 
   return {Status::NoPrefixMatched};
 }
 
 Status GlobalIndexer::Update(const RecordResult &original, std::string_view key, const std::string &ns) {
-  return original.first->Update(original.second, key, ns);
+  return original.first.Update(original.second, key, ns);
 }
 
 }  // namespace redis

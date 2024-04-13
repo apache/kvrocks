@@ -76,7 +76,5 @@ TEST(SemaCheckerTest, Simple) {
     auto root = *Parse("select f1 from ia where f1 hastag \"a\" and f2 = 1 order by f3");
 
     ASSERT_EQ(checker.Check(root.get()).Msg(), "ok");
-
-    ASSERT_EQ(checker.result.size(), 5);
   }
 }

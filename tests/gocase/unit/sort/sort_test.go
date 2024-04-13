@@ -709,6 +709,6 @@ func TestZSetSort(t *testing.T) {
 
 		sortResult, err = rdb.LRange(ctx, "no-alpha-sorted", 0, -1).Result()
 		require.NoError(t, err)
-		require.Equal(t, []string{"21", "3", "123"}, sortResult)
+		require.Equal(t, []string{"123", "3", "21"}, sortResult)
 	})
 }

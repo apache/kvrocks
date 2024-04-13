@@ -469,7 +469,7 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
   return Status::OK();
 }
 
-Status Cluster::GetReplicas(const std::string &node_id, std::string *replicas_str) {
+StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
   if (version_ < 0) {
     return {Status::ClusterDown, errClusterNoInitialized};
   }
@@ -483,8 +483,6 @@ Status Cluster::GetReplicas(const std::string &node_id, std::string *replicas_st
   if (node->role != kClusterMaster) {
     return {Status::InvalidArgument, errNoMasterNode};
   }
-
-  replicas_str->clear();
 
   auto now = util::GetTimeStampMS();
   std::string replicas_desc;
@@ -510,9 +508,7 @@ Status Cluster::GetReplicas(const std::string &node_id, std::string *replicas_st
     replicas_desc.append(node_str + "\n");
   }
 
-  *replicas_str = replicas_desc;
-
-  return Status::OK();
+  return replicas_desc;
 }
 
 std::string Cluster::getNodeIDBySlot(int slot) const {

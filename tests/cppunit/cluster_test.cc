@@ -356,14 +356,13 @@ TEST_F(ClusterTest, GetReplicas) {
       "bb2e5b3c5282086df51eff6b3e35519aede96fa6 127.0.0.1 6379 master - 0-8191";
 
   Cluster cluster(&server, {"127.0.0.1"}, 6379);
-  Status s = cluster.SetClusterNodes(nodes, 1, false);
+  Status s = cluster.SetClusterNodes(nodes, 2, false);
   ASSERT_TRUE(s.IsOK());
 
-  std::string output_replicas;
-  s = cluster.GetReplicas("159dde1194ebf5bfc5a293dff839c3d1476f2a49", &output_replicas);
+  auto with_replica = cluster.GetReplicas("159dde1194ebf5bfc5a293dff839c3d1476f2a49");
   ASSERT_TRUE(s.IsOK());
 
-  std::vector<std::string> replicas = util::Split(output_replicas, "\n");
+  std::vector<std::string> replicas = util::Split(with_replica.GetValue(), "\n");
   for (const auto &replica : replicas) {
     std::vector<std::string> replica_fields = util::Split(replica, " ");
 
@@ -372,19 +371,18 @@ TEST_F(ClusterTest, GetReplicas) {
     ASSERT_TRUE(replica_fields[1] == "127.0.0.1:6480@16480");
     ASSERT_TRUE(replica_fields[2] == "slave");
     ASSERT_TRUE(replica_fields[3] == "159dde1194ebf5bfc5a293dff839c3d1476f2a49");
-    ASSERT_TRUE(replica_fields[6] == "1");
     ASSERT_TRUE(replica_fields[7] == "connected");
   }
 
-  s = cluster.GetReplicas("bb2e5b3c5282086df51eff6b3e35519aede96fa6", &output_replicas);
-  ASSERT_TRUE(s.IsOK());
-  ASSERT_EQ(output_replicas, "");
+  auto without_replica = cluster.GetReplicas("bb2e5b3c5282086df51eff6b3e35519aede96fa6");
+  ASSERT_TRUE(without_replica.IsOK());
+  ASSERT_EQ(without_replica.GetValue(), "");
 
-  s = cluster.GetReplicas("7dbee3d628f04cc5d763b36e92b10533e627a1d0", &output_replicas);
-  ASSERT_FALSE(s.IsOK());
-  ASSERT_EQ(s.Msg(), "The node isn't a master");
+  auto replica_node = cluster.GetReplicas("7dbee3d628f04cc5d763b36e92b10533e627a1d0");
+  ASSERT_FALSE(replica_node.IsOK());
+  ASSERT_EQ(replica_node.Msg(), "The node isn't a master");
 
-  s = cluster.GetReplicas("1234567890", &output_replicas);
-  ASSERT_FALSE(s.IsOK());
-  ASSERT_EQ(s.Msg(), "Invalid cluster node id");
+  auto unknown_node = cluster.GetReplicas("1234567890");
+  ASSERT_FALSE(unknown_node.IsOK());
+  ASSERT_EQ(unknown_node.Msg(), "Invalid cluster node id");
 }

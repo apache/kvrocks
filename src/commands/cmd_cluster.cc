@@ -116,11 +116,10 @@ class CommandCluster : public Commander {
         return {Status::RedisExecErr, s.Msg()};
       }
     } else if (subcommand_ == "replicas") {
-      std::string replicas_str;
       auto node_id = args_[2];
-      Status s = srv->cluster->GetReplicas(node_id, &replicas_str);
+      StatusOr<std::string> s = srv->cluster->GetReplicas(node_id);
       if (s.IsOK()) {
-        *output = conn->VerbatimString("txt", replicas_str);
+        *output = conn->VerbatimString("txt", s.GetValue());
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }

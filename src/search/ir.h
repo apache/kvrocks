@@ -52,7 +52,7 @@ struct Node {
   virtual std::unique_ptr<Node> Clone() const = 0;
 
   template <typename T>
-  std::unique_ptr<T> CloneAs() {
+  std::unique_ptr<T> CloneAs() const {
     return Node::MustAs<T>(Clone());
   }
 

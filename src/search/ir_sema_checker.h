@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 
+#include "fmt/core.h"
 #include "index_info.h"
 #include "ir.h"
 #include "search_encoding.h"
@@ -38,7 +39,7 @@ struct SemaChecker {
   explicit SemaChecker(const IndexMap &index_map) : index_map(index_map) {}
 
   Status Check(Node *node) {
-    if (auto v = dynamic_cast<SearchStmt *>(node)) {
+    if (auto v = dynamic_cast<SearchExpr *>(node)) {
       auto index_name = v->index->name;
       if (auto iter = index_map.find(index_name); iter != index_map.end()) {
         current_index = &iter->second;
@@ -56,6 +57,8 @@ struct SemaChecker {
     } else if (auto v = dynamic_cast<SortByClause *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.IsSortable()) {
+        return {Status::NotOK, fmt::format("field `{}` is not sortable", v->field->name)};
       } else {
         v->field->info = &iter->second;
       }

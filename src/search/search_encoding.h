@@ -125,7 +125,9 @@ inline std::string ConstructNumericFieldMetadataSubkey(std::string_view field_na
   return res;
 }
 
-struct SearchNumericFieldMetadata : SearchFieldMetadata {};
+struct SearchSortableFieldMetadata : SearchFieldMetadata {};
+
+struct SearchNumericFieldMetadata : SearchSortableFieldMetadata {};
 
 inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD};

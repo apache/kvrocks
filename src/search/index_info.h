@@ -37,6 +37,8 @@ struct FieldInfo {
 
   FieldInfo(std::string name, std::unique_ptr<redis::SearchFieldMetadata> &&metadata)
       : name(std::move(name)), metadata(std::move(metadata)) {}
+
+  bool IsSortable() const { return dynamic_cast<redis::SearchSortableFieldMetadata *>(metadata.get()) != nullptr; }
 };
 
 struct IndexInfo {

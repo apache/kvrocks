@@ -21,6 +21,7 @@
 #include "search/ir_pass.h"
 
 #include "gtest/gtest.h"
+#include "search/passes/lower_to_plan.h"
 #include "search/passes/manager.h"
 #include "search/passes/push_down_not_expr.h"
 #include "search/passes/simplify_and_or_expr.h"
@@ -102,4 +103,17 @@ TEST(IRPassTest, Manager) {
   ASSERT_EQ(
       PassManager::Default(*Parse("select * from a where not (x > 1 or (y < 2 or z = 3)) and (true or x = 1)"))->Dump(),
       "select * from a where (and x <= 1, y >= 2, z != 3)");
+}
+
+TEST(IRPassTest, LowerToPlan) {
+  LowerToPlan ltp;
+
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a"))->Dump(), "project *: (filter true: full-scan a)");
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a where b > 1"))->Dump(), "project *: (filter b > 1: full-scan a)");
+  ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 order by d"))->Dump(),
+            "project a: (sort d, asc: (filter c = 1: full-scan b))");
+  ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 limit 1"))->Dump(),
+            "project a: (limit 0, 1: (filter c = 1: full-scan b))");
+  ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 order by d limit 1"))->Dump(),
+            "project a: (limit 0, 1: (sort d, asc: (filter c = 1: full-scan b)))");
 }

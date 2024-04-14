@@ -846,13 +846,20 @@ void Server::GetRocksDBInfo(std::string *info) {
   db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
+
+  uint64_t block_cache_usage = 0;
+  // All column families share the same block cache, so it's good to count a single one.
+  auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
+  db->GetIntProperty(subkey_cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
+  string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
+
   for (const auto &cf_handle : *storage->GetCFHandles()) {
-    uint64_t estimate_keys = 0, block_cache_usage = 0, block_cache_pinned_usage = 0, index_and_filter_cache_usage = 0;
+    uint64_t estimate_keys = 0;
+    uint64_t block_cache_pinned_usage = 0;
+    uint64_t index_and_filter_cache_usage = 0;
     std::map<std::string, std::string> cf_stats_map;
     db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
-    string_stream << "block_cache_usage[" << cf_handle->GetName() << "]:" << block_cache_usage << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
     string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
     db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);

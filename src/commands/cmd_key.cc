@@ -186,7 +186,7 @@ class CommandExpire : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandPExpire : public Commander {

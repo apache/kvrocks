@@ -1117,7 +1117,7 @@ class CommandRestore : public Commander {
  private:
   bool replace_ = false;
   bool absttl_ = false;
-  uint64_t ttl_ms_ = 0;
+  int64_t ttl_ms_ = 0;
 };
 
 // command format: rdb load <path> [NX]  [DB index]

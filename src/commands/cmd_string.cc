@@ -107,7 +107,7 @@ class CommandGetEx : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
   bool persist_ = false;
 };
 
@@ -337,7 +337,7 @@ class CommandSet : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
   bool get_ = false;
   bool keep_ttl_ = false;
   StringSetType set_flag_ = StringSetType::NONE;
@@ -366,7 +366,7 @@ class CommandSetEX : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandPSetEX : public Commander {
@@ -603,7 +603,7 @@ class CommandCAS : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandCAD : public Commander {

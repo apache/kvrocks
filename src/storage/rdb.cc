@@ -459,7 +459,11 @@ Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue 
   if (type == RDBTypeString) {
     const auto &value = std::get<std::string>(obj);
     redis::String string_db(storage_, ns_);
-    db_status = string_db.SetEX(key, value, ttl_ms + util::GetTimeStampMS());
+    uint64_t expire = 0;
+    if (ttl_ms > 0) {
+      expire = ttl_ms + util::GetTimeStampMS();
+    }
+    db_status = string_db.SetEX(key, value, expire);
   } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
     const auto &members = std::get<std::vector<std::string>>(obj);
     redis::Set set_db(storage_, ns_);

@@ -99,6 +99,7 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_union_2) {
   std::unordered_set<int> realcard_set;
+  std::srand(std::time(nullptr));
   for (auto i = 1; i < 1000; i++) {
     for (auto j = 0; j < 3; j++) {
       uint64_t ret = 0;

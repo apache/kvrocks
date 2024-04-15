@@ -49,6 +49,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+// NOTE: this file is copy from redis's source: `src/hyperloglog.c`
+
 #include "redis_hyperloglog.h"
 
 #include <math.h>

@@ -107,14 +107,14 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::FieldRef>> fields;
 
       if (node->children.size() == 1 && Is<Wildcard>(node->children[0])) {
-        return Node::Create<ir::SelectExpr>(std::move(fields));
+        return Node::Create<ir::SelectClause>(std::move(fields));
       }
 
       for (const auto& child : node->children) {
         fields.push_back(std::make_unique<ir::FieldRef>(child->string()));
       }
 
-      return Node::Create<ir::SelectExpr>(std::move(fields));
+      return Node::Create<ir::SelectClause>(std::move(fields));
     } else if (Is<FromExpr>(node)) {
       CHECK(node->children.size() == 1);
       return Node::Create<ir::IndexRef>(node->children[0]->string());
@@ -148,7 +148,7 @@ struct Transformer : ir::TreeTransformer {
       CHECK(node->children.size() >= 2 && node->children.size() <= 5);
 
       auto index = Node::MustAs<ir::IndexRef>(GET_OR_RET(Transform(node->children[1])));
-      auto select = Node::MustAs<ir::SelectExpr>(GET_OR_RET(Transform(node->children[0])));
+      auto select = Node::MustAs<ir::SelectClause>(GET_OR_RET(Transform(node->children[0])));
 
       std::unique_ptr<ir::QueryExpr> query_expr;
       std::unique_ptr<ir::LimitClause> limit;
@@ -168,7 +168,7 @@ struct Transformer : ir::TreeTransformer {
         query_expr = std::make_unique<BoolLiteral>(true);
       }
 
-      return Node::Create<ir::SearchStmt>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),
+      return Node::Create<ir::SearchExpr>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),
                                           std::move(select));
     } else if (IsRoot(node)) {
       CHECK(node->children.size() == 1);

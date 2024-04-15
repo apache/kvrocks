@@ -21,6 +21,7 @@
 #pragma once
 
 #include "ir.h"
+#include "search/ir_plan.h"
 
 namespace kqir {
 
@@ -30,9 +31,9 @@ struct Pass {
 
 struct Visitor : Pass {
   std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) override {
-    if (auto v = Node::As<SearchStmt>(std::move(node))) {
+    if (auto v = Node::As<SearchExpr>(std::move(node))) {
       return Visit(std::move(v));
-    } else if (auto v = Node::As<SelectExpr>(std::move(node))) {
+    } else if (auto v = Node::As<SelectClause>(std::move(node))) {
       return Visit(std::move(v));
     } else if (auto v = Node::As<IndexRef>(std::move(node))) {
       return Visit(std::move(v));
@@ -58,6 +59,26 @@ struct Visitor : Pass {
       return Visit(std::move(v));
     } else if (auto v = Node::As<BoolLiteral>(std::move(node))) {
       return Visit(std::move(v));
+    } else if (auto v = Node::As<FullIndexScan>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<NumericFieldScan>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<TagFieldScan>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Filter>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Limit>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Merge>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Sort>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<TopNSort>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Projection>(std::move(node))) {
+      return Visit(std::move(v));
+    } else if (auto v = Node::As<Noop>(std::move(node))) {
+      return Visit(std::move(v));
     }
 
     __builtin_unreachable();
@@ -73,16 +94,16 @@ struct Visitor : Pass {
     return Node::MustAs<T>(Transform(std::move(n)));
   }
 
-  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SearchStmt> node) {
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) {
     node->index = VisitAs<IndexRef>(std::move(node->index));
-    node->select_expr = VisitAs<SelectExpr>(std::move(node->select_expr));
+    node->select = VisitAs<SelectClause>(std::move(node->select));
     node->query_expr = TransformAs<QueryExpr>(std::move(node->query_expr));
     if (node->sort_by) node->sort_by = VisitAs<SortByClause>(std::move(node->sort_by));
     if (node->limit) node->limit = VisitAs<LimitClause>(std::move(node->limit));
     return node;
   }
 
-  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SelectExpr> node) {
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<SelectClause> node) {
     for (auto &n : node->fields) {
       n = VisitAs<FieldRef>(std::move(n));
     }
@@ -137,6 +158,53 @@ struct Visitor : Pass {
 
   virtual std::unique_ptr<Node> Visit(std::unique_ptr<SortByClause> node) {
     node->field = VisitAs<FieldRef>(std::move(node->field));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Noop> node) { return node; }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<FullIndexScan> node) { return node; }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<NumericFieldScan> node) { return node; }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<TagFieldScan> node) { return node; }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Filter> node) {
+    node->source = TransformAs<PlanOperator>(std::move(node->source));
+    node->filter_expr = TransformAs<QueryExpr>(std::move(node->filter_expr));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Limit> node) {
+    node->op = TransformAs<PlanOperator>(std::move(node->op));
+    node->limit = VisitAs<LimitClause>(std::move(node->limit));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Sort> node) {
+    node->op = TransformAs<PlanOperator>(std::move(node->op));
+    node->order = VisitAs<SortByClause>(std::move(node->order));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<TopNSort> node) {
+    node->op = TransformAs<PlanOperator>(std::move(node->op));
+    node->limit = VisitAs<LimitClause>(std::move(node->limit));
+    node->order = VisitAs<SortByClause>(std::move(node->order));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Projection> node) {
+    node->source = TransformAs<PlanOperator>(std::move(node->source));
+    node->select = VisitAs<SelectClause>(std::move(node->select));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<Merge> node) {
+    for (auto &n : node->ops) {
+      n = TransformAs<PlanOperator>(std::move(n));
+    }
+
     return node;
   }
 };

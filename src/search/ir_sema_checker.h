@@ -23,59 +23,29 @@
 #include <map>
 #include <memory>
 
+#include "fmt/core.h"
+#include "index_info.h"
 #include "ir.h"
 #include "search_encoding.h"
 #include "storage/redis_metadata.h"
 
 namespace kqir {
 
-struct IndexInfo;
-
-struct FieldInfo {
-  std::string name;
-  IndexInfo *index = nullptr;
-  std::unique_ptr<redis::SearchFieldMetadata> metadata;
-
-  FieldInfo(std::string name, std::unique_ptr<redis::SearchFieldMetadata> &&metadata)
-      : name(std::move(name)), metadata(std::move(metadata)) {}
-};
-
-struct IndexInfo {
-  using FieldMap = std::map<std::string, FieldInfo>;
-
-  std::string name;
-  SearchMetadata metadata;
-  FieldMap fields;
-
-  IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
-
-  void Add(FieldInfo &&field) {
-    const auto &name = field.name;
-    field.index = this;
-    fields.emplace(name, std::move(field));
-  }
-};
-
-using IndexMap = std::map<std::string, IndexInfo>;
-
 struct SemaChecker {
   const IndexMap &index_map;
 
   const IndexInfo *current_index = nullptr;
 
-  using Result = std::map<const Node *, std::variant<const FieldInfo *, const IndexInfo *>>;
-  Result result;
-
   explicit SemaChecker(const IndexMap &index_map) : index_map(index_map) {}
 
   Status Check(Node *node) {
-    if (auto v = dynamic_cast<SearchStmt *>(node)) {
+    if (auto v = dynamic_cast<SearchExpr *>(node)) {
       auto index_name = v->index->name;
       if (auto iter = index_map.find(index_name); iter != index_map.end()) {
         current_index = &iter->second;
-        result.emplace(v->index.get(), current_index);
+        v->index->info = current_index;
 
-        GET_OR_RET(Check(v->select_expr.get()));
+        GET_OR_RET(Check(v->select.get()));
         GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
@@ -87,8 +57,10 @@ struct SemaChecker {
     } else if (auto v = dynamic_cast<SortByClause *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.IsSortable()) {
+        return {Status::NotOK, fmt::format("field `{}` is not sortable", v->field->name)};
       } else {
-        result.emplace(v->field.get(), &iter->second);
+        v->field->info = &iter->second;
       }
     } else if (auto v = dynamic_cast<AndExpr *>(node)) {
       for (const auto &n : v->inners) {
@@ -106,7 +78,7 @@ struct SemaChecker {
       } else if (auto meta = dynamic_cast<redis::SearchTagFieldMetadata *>(iter->second.metadata.get()); !meta) {
         return {Status::NotOK, fmt::format("field `{}` is not a tag field", v->field->name)};
       } else {
-        result.emplace(v->field.get(), &iter->second);
+        v->field->info = &iter->second;
 
         if (v->tag->val.empty()) {
           return {Status::NotOK, "tag cannot be an empty string"};
@@ -122,14 +94,14 @@ struct SemaChecker {
       } else if (!dynamic_cast<redis::SearchNumericFieldMetadata *>(iter->second.metadata.get())) {
         return {Status::NotOK, fmt::format("field `{}` is not a numeric field", v->field->name)};
       } else {
-        result.emplace(v->field.get(), &iter->second);
+        v->field->info = &iter->second;
       }
-    } else if (auto v = dynamic_cast<SelectExpr *>(node)) {
+    } else if (auto v = dynamic_cast<SelectClause *>(node)) {
       for (const auto &n : v->fields) {
         if (auto iter = current_index->fields.find(n->name); iter == current_index->fields.end()) {
           return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", n->name, current_index->name)};
         } else {
-          result.emplace(n.get(), &iter->second);
+          n->info = &iter->second;
         }
       }
     } else if (auto v [[maybe_unused]] = dynamic_cast<BoolLiteral *>(node)) {

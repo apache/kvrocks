@@ -148,12 +148,7 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
   return getValue(ns_key, value);
 }
 
-rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist) {
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
+rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, std::optional<uint64_t> expire) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -162,8 +157,8 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
   std::string raw_data;
   Metadata metadata(kRedisString, false);
-  if (ttl > 0 || persist) {
-    metadata.expire = expire;
+  if (expire.has_value()) {
+    metadata.expire = expire.value();
   } else {
     // If there is no ttl or persist is false, then skip the following updates.
     return rocksdb::Status::OK();
@@ -181,7 +176,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
-  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
+  auto s = Set(user_key, new_value, {/*expire=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -196,7 +191,7 @@ rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) 
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, /*ttl=*/0, /*lock=*/true);
+  return MSet(pairs, /*expire=*/0, /*lock=*/true);
 }
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value, StringSetArgs args,
@@ -247,9 +242,8 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   }
 
   // Handle expire time
-  if (args.ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + args.ttl;
+  if (!args.keep_ttl) {
+    expire = args.expire;
   }
 
   // Create new value
@@ -261,21 +255,21 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   return updateRawValue(ns_key, new_raw_value);
 }
 
-rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
+rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t expire) {
   std::optional<std::string> ret;
-  return Set(user_key, value, {ttl, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
+  return Set(user_key, value, {expire, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
 }
 
-rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
+rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
 
-rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
+rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
@@ -390,13 +384,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl, bool lock) {
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
-
+rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expire, bool lock) {
   // Data race, key string maybe overwrite by other key while didn't lock the keys here,
   // to improve the set performance
   std::optional<MultiLockGuard> guard;
@@ -425,7 +413,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {
+rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t expire, bool *flag) {
   *flag = false;
 
   int exists = 0;
@@ -447,7 +435,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
     return rocksdb::Status::OK();
   }
 
-  rocksdb::Status s = MSet(pairs, /*ttl=*/ttl, /*lock=*/false);
+  rocksdb::Status s = MSet(pairs, /*expire=*/expire, /*lock=*/false);
   if (!s.ok()) return s;
 
   *flag = true;
@@ -460,7 +448,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  -1 if the user_key does not exist
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                            uint64_t ttl, int *flag) {
+                            uint64_t expire, int *flag) {
   *flag = 0;
 
   std::string current_value;
@@ -480,12 +468,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
   if (old_value == current_value) {
     std::string raw_value;
-    uint64_t expire = 0;
     Metadata metadata(kRedisString, false);
-    if (ttl > 0) {
-      uint64_t now = util::GetTimeStampMS();
-      expire = now + ttl;
-    }
     metadata.expire = expire;
     metadata.Encode(&raw_value);
     raw_value.append(new_value);

@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_string.h"
 
 class RedisStringTest : public TestBase {
@@ -68,7 +69,7 @@ TEST_F(RedisStringTest, GetAndSet) {
 }
 
 TEST_F(RedisStringTest, MGetAndMSet) {
-  string_->MSet(pairs_);
+  string_->MSet(pairs_, 0);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
@@ -172,10 +173,10 @@ TEST_F(RedisStringTest, GetDel) {
 
 TEST_F(RedisStringTest, MSetXX) {
   bool flag = false;
-  string_->SetXX(key_, "test-value", 3000, &flag);
+  string_->SetXX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   EXPECT_FALSE(flag);
   string_->Set(key_, "test-value");
-  string_->SetXX(key_, "test-value", 3000, &flag);
+  string_->SetXX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   EXPECT_TRUE(flag);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
@@ -211,7 +212,7 @@ TEST_F(RedisStringTest, MSetNX) {
 
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   bool flag = false;
-  string_->SetNX(key_, "test-value", 3000, &flag);
+  string_->SetNX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
@@ -219,7 +220,7 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
 }
 
 TEST_F(RedisStringTest, SetEX) {
-  string_->SetEX(key_, "test-value", 3000);
+  string_->SetEX(key_, "test-value", util::GetTimeStampMS() + 3000);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
@@ -258,15 +259,15 @@ TEST_F(RedisStringTest, CAS) {
   auto status = string_->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string_->CAS("non_exist_key", value, new_value, 10000, &flag);
+  status = string_->CAS("non_exist_key", value, new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, flag);
 
-  status = string_->CAS(key, "cas_value_err", new_value, 10000, &flag);
+  status = string_->CAS(key, "cas_value_err", new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, flag);
 
-  status = string_->CAS(key, value, new_value, 10000, &flag);
+  status = string_->CAS(key, value, new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, flag);
 

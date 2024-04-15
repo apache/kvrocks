@@ -37,7 +37,7 @@ struct StringPair {
 enum class StringSetType { NONE, NX, XX };
 
 struct StringSetArgs {
-  uint64_t ttl;
+  uint64_t expire;
   StringSetType type;
   bool get;
   bool keep_ttl;
@@ -78,24 +78,24 @@ class String : public Database {
   explicit String(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Append(const std::string &user_key, const std::string &value, uint64_t *new_size);
   rocksdb::Status Get(const std::string &user_key, std::string *value);
-  rocksdb::Status GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist);
+  rocksdb::Status GetEx(const std::string &user_key, std::string *value, std::optional<uint64_t> expire);
   rocksdb::Status GetSet(const std::string &user_key, const std::string &new_value,
                          std::optional<std::string> &old_value);
   rocksdb::Status GetDel(const std::string &user_key, std::string *value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value);
   rocksdb::Status Set(const std::string &user_key, const std::string &value, StringSetArgs args,
                       std::optional<std::string> &ret);
-  rocksdb::Status SetEX(const std::string &user_key, const std::string &value, uint64_t ttl);
-  rocksdb::Status SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag);
-  rocksdb::Status SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag);
+  rocksdb::Status SetEX(const std::string &user_key, const std::string &value, uint64_t expire);
+  rocksdb::Status SetNX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag);
+  rocksdb::Status SetXX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag);
   rocksdb::Status SetRange(const std::string &user_key, size_t offset, const std::string &value, uint64_t *new_size);
   rocksdb::Status IncrBy(const std::string &user_key, int64_t increment, int64_t *new_value);
   rocksdb::Status IncrByFloat(const std::string &user_key, double increment, double *new_value);
   std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
-  rocksdb::Status MSet(const std::vector<StringPair> &pairs, uint64_t ttl = 0, bool lock = true);
-  rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag);
+  rocksdb::Status MSet(const std::vector<StringPair> &pairs, uint64_t expire, bool lock = true);
+  rocksdb::Status MSetNX(const std::vector<StringPair> &pairs, uint64_t expire, bool *flag);
   rocksdb::Status CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                      uint64_t ttl, int *flag);
+                      uint64_t expire, int *flag);
   rocksdb::Status CAD(const std::string &user_key, const std::string &value, int *flag);
   rocksdb::Status LCS(const std::string &user_key1, const std::string &user_key2, StringLCSArgs args,
                       StringLCSResult *rst);

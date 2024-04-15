@@ -66,10 +66,10 @@ class CommandGetEx : public Commander {
     CommandParser parser(args, 2);
     std::string_view ttl_flag;
     while (parser.Good()) {
-      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
-        ttl_ = *v;
+      if (auto v = GET_OR_RET(ParseExpireFlags(parser, ttl_flag))) {
+        expire_ = *v;
       } else if (parser.EatEqICaseFlag("PERSIST", ttl_flag)) {
-        persist_ = true;
+        expire_ = 0;
       } else {
         return parser.InvalidSyntax();
       }
@@ -80,7 +80,7 @@ class CommandGetEx : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.GetEx(args_[1], &value, ttl_, persist_);
+    auto s = string_db.GetEx(args_[1], &value, expire_);
 
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
@@ -90,12 +90,8 @@ class CommandGetEx : public Commander {
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
       s = bitmap_db.GetString(args_[1], max_btos_size, &value);
-      if (s.ok()) {
-        if (ttl_ > 0) {
-          s = bitmap_db.Expire(args_[1], ttl_ + util::GetTimeStampMS());
-        } else if (persist_) {
-          s = bitmap_db.Expire(args_[1], 0);
-        }
+      if (s.ok() && expire_) {
+        s = bitmap_db.Expire(args_[1], expire_.value());
       }
     }
     if (!s.ok() && !s.IsNotFound()) {
@@ -107,8 +103,7 @@ class CommandGetEx : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
-  bool persist_ = false;
+  std::optional<uint64_t> expire_;
 };
 
 class CommandStrlen : public Commander {
@@ -282,8 +277,8 @@ class CommandSet : public Commander {
     CommandParser parser(args, 3);
     std::string_view ttl_flag, set_flag;
     while (parser.Good()) {
-      if (auto v = GET_OR_RET(ParseTTL(parser, ttl_flag))) {
-        ttl_ = *v;
+      if (auto v = GET_OR_RET(ParseExpireFlags(parser, ttl_flag))) {
+        expire_ = *v;
       } else if (parser.EatEqICaseFlag("KEEPTTL", ttl_flag)) {
         keep_ttl_ = true;
       } else if (parser.EatEqICaseFlag("NX", set_flag)) {
@@ -304,17 +299,7 @@ class CommandSet : public Commander {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
 
-    if (ttl_ < 0) {
-      auto s = string_db.Del(args_[1]);
-      if (!s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
-      *output = redis::SimpleString("OK");
-      return Status::OK();
-    }
-
-    rocksdb::Status s;
-    s = string_db.Set(args_[1], args_[2], {ttl_, set_flag_, get_, keep_ttl_}, ret);
+    rocksdb::Status s = string_db.Set(args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -337,7 +322,7 @@ class CommandSet : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  uint64_t expire_ = 0;
   bool get_ = false;
   bool keep_ttl_ = false;
   StringSetType set_flag_ = StringSetType::NONE;
@@ -353,20 +338,20 @@ class CommandSetEX : public Commander {
 
     if (*parse_result <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    ttl_ = *parse_result;
+    expire_ = *parse_result * 1000 + util::GetTimeStampMS();
 
     return Commander::Parse(args);
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetEX(args_[1], args_[3], ttl_ * 1000);
+    auto s = string_db.SetEX(args_[1], args_[3], expire_);
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
-  uint64_t ttl_ = 0;
+  uint64_t expire_ = 0;
 };
 
 class CommandPSetEX : public Commander {
@@ -379,20 +364,20 @@ class CommandPSetEX : public Commander {
 
     if (*ttl_ms <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    ttl_ = *ttl_ms;
+    expire_ = *ttl_ms + util::GetTimeStampMS();
 
     return Commander::Parse(args);
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetEX(args_[1], args_[3], ttl_);
+    auto s = string_db.SetEX(args_[1], args_[3], expire_);
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
 
  private:
-  int64_t ttl_ = 0;
+  uint64_t expire_ = 0;
 };
 
 class CommandMSet : public Commander {
@@ -412,7 +397,7 @@ class CommandMSet : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSet(kvs);
+    auto s = string_db.MSet(kvs, 0);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -581,8 +566,8 @@ class CommandCAS : public Commander {
     CommandParser parser(args, 4);
     std::string_view flag;
     while (parser.Good()) {
-      if (auto v = GET_OR_RET(ParseTTL(parser, flag))) {
-        ttl_ = *v;
+      if (auto v = GET_OR_RET(ParseExpireFlags(parser, flag))) {
+        expire_ = *v;
       } else {
         return parser.InvalidSyntax();
       }
@@ -593,7 +578,7 @@ class CommandCAS : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
     int ret = 0;
-    auto s = string_db.CAS(args_[1], args_[2], args_[3], ttl_, &ret);
+    auto s = string_db.CAS(args_[1], args_[2], args_[3], expire_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -603,7 +588,7 @@ class CommandCAS : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  uint64_t expire_ = 0;
 };
 
 class CommandCAD : public Commander {

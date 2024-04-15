@@ -390,7 +390,7 @@ TEST_F(WALIteratorTest, BasicString) {
   auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
   redis::String string(storage_.get(), "test_ns0");
   string.Set("a", "1");
-  string.MSet({{"b", "2"}, {"c", "3"}});
+  string.MSet({{"b", "2"}, {"c", "3"}}, 0);
   ASSERT_TRUE(string.Del("b").ok());
 
   std::vector<std::string> put_keys, delete_keys;

@@ -21,6 +21,7 @@ package dump
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -36,11 +37,20 @@ func TestDump_String(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	require.NoError(t, rdb.Del(ctx, "dump_test_key1", "dump_test_key2").Err())
-	require.NoError(t, rdb.Set(ctx, "dump_test_key1", "hello,world!", 0).Err())
-	require.NoError(t, rdb.Set(ctx, "dump_test_key2", "654321", 0).Err())
-	require.Equal(t, "\x00\x0chello,world!\x0c\x00N~\xe6\xc8\xd38h\x17", rdb.Dump(ctx, "dump_test_key1").Val())
-	require.Equal(t, "\x00\xc2\xf1\xfb\t\x00\x0c\x00gSN\xfd\xf2y\xa2\x9d", rdb.Dump(ctx, "dump_test_key2").Val())
+	keyValues := map[string]string{
+		"test_string_key0": "hello,world!",
+		"test_string_key1": "654321",
+	}
+	for key, value := range keyValues {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		serialized, err := rdb.Dump(ctx, key).Result()
+		require.NoError(t, err)
+
+		restoredKey := fmt.Sprintf("restore_%s", key)
+		require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+		require.Equal(t, value, rdb.Get(ctx, restoredKey).Val())
+	}
 }
 
 func TestDump_Hash(t *testing.T) {
@@ -51,9 +61,21 @@ func TestDump_Hash(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	require.NoError(t, rdb.Del(ctx, "dump_test_key1").Err())
-	require.NoError(t, rdb.HMSet(ctx, "dump_test_key1", "name", "redis tutorial", "description", "redis basic commands for caching", "likes", 20, "visitors", 23000).Err())
-	require.Equal(t, "\x04\x04\x0bdescription redis basic commands for caching\x05likes\xc0\x14\x04name\x0eredis tutorial\bvisitors\xc1\xd8Y\x0c\x008\x96\xa68b\xebuQ", rdb.Dump(ctx, "dump_test_key1").Val())
+	key := "test_hash_key"
+	fields := map[string]string{
+		"name":        "redis tutorial",
+		"description": "redis basic commands for caching",
+		"likes":       "20",
+		"visitors":    "23000",
+	}
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	require.NoError(t, rdb.HMSet(ctx, key, fields).Err())
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.EqualValues(t, fields, rdb.HGetAll(ctx, restoredKey).Val())
 }
 
 func TestDump_ZSet(t *testing.T) {
@@ -64,10 +86,17 @@ func TestDump_ZSet(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	zMember := []redis.Z{{Member: "kvrocks1", Score: 1}, {Member: "kvrocks2", Score: 2}, {Member: "kvrocks3", Score: 3}}
-	require.NoError(t, rdb.Del(ctx, "dump_test_key1").Err())
-	require.NoError(t, rdb.ZAdd(ctx, "dump_test_key1", zMember...).Err())
-	require.Equal(t, "\x05\x03\bkvrocks3\x00\x00\x00\x00\x00\x00\b@\bkvrocks2\x00\x00\x00\x00\x00\x00\x00@\bkvrocks1\x00\x00\x00\x00\x00\x00\xf0?\x0c\x00L_7\xd3\xd4\xc9\xf4\xe4", rdb.Dump(ctx, "dump_test_key1").Val())
+	memberScores := []redis.Z{{Member: "kvrocks1", Score: 1}, {Member: "kvrocks2", Score: 2}, {Member: "kvrocks3", Score: 3}}
+	key := "test_zset_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	require.NoError(t, rdb.ZAdd(ctx, key, memberScores...).Err())
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+
+	require.EqualValues(t, memberScores, rdb.ZRangeWithScores(ctx, restoredKey, 0, -1).Val())
 }
 
 func TestDump_List(t *testing.T) {
@@ -78,11 +107,16 @@ func TestDump_List(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	require.NoError(t, rdb.Del(ctx, "dump_test_key1").Err())
-	require.NoError(t, rdb.RPush(ctx, "dump_test_key1", "kvrocks1").Err())
-	require.NoError(t, rdb.RPush(ctx, "dump_test_key1", "kvrocks2").Err())
-	require.NoError(t, rdb.RPush(ctx, "dump_test_key1", "kvrocks3").Err())
-	require.Equal(t, "\x12\x03\x01\bkvrocks1\x01\bkvrocks2\x01\bkvrocks3\x0c\x00\xa8\xf9S\x986\x98\xaf\xcd", rdb.Dump(ctx, "dump_test_key1").Val())
+	elements := []string{"kvrocks1", "kvrocks2", "kvrocks3"}
+	key := "test_list_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	require.NoError(t, rdb.RPush(ctx, key, elements).Err())
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.EqualValues(t, elements, rdb.LRange(ctx, restoredKey, 0, -1).Val())
 }
 
 func TestDump_Set(t *testing.T) {
@@ -93,9 +127,14 @@ func TestDump_Set(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	require.NoError(t, rdb.Del(ctx, "dump_test_key1").Err())
-	require.NoError(t, rdb.SAdd(ctx, "dump_test_key1", "kvrocks1").Err())
-	require.NoError(t, rdb.SAdd(ctx, "dump_test_key1", "kvrocks2").Err())
-	require.NoError(t, rdb.SAdd(ctx, "dump_test_key1", "kvrocks3").Err())
-	require.Equal(t, "\x02\x03\bkvrocks1\bkvrocks2\bkvrocks3\x0c\x00\xfdP\xc9\x95sS\x87\x18", rdb.Dump(ctx, "dump_test_key1").Val())
+	members := []string{"kvrocks1", "kvrocks2", "kvrocks3"}
+	key := "test_set_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	require.NoError(t, rdb.SAdd(ctx, key, members).Err())
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.ElementsMatch(t, members, rdb.SMembers(ctx, restoredKey).Val())
 }

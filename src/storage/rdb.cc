@@ -700,9 +700,11 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
    * RDB version and CRC are both in little endian.
    */
 
-  /* RDB version */
-  buf[0] = MaxRDBVersion & 0xff;
-  buf[1] = (MaxRDBVersion >> 8) & 0xff;
+  // We should choose the minimum RDB version for compatibility consideration.
+  // For the current DUMP implementation, it was supported since from the Redis 2.6,
+  // so we choose the RDB version of Redis 2.6 as the minimum version.
+  buf[0] = MinRDBVersion & 0xff;
+  buf[1] = (MinRDBVersion >> 8) & 0xff;
   s = stream_->Write((const char *)buf, 2);
   if (!s.IsOK()) {
     return {Status::RedisExecErr, s.Msg()};

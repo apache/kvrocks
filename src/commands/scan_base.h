@@ -56,7 +56,12 @@ class CommandScanBase : public Commander {
           return {Status::RedisParseErr, "limit should be a positive integer"};
         }
       } else if (IsScan && parser.EatEqICase("type")) {
-        return {Status::RedisParseErr, "TYPE flag is currently not supported"};
+        std::string key = util::ToLower(GET_OR_RET(parser.TakeStr()));
+        if (RedisNamesMapType.count(key)) {
+          type_ = RedisNamesMapType.at(key);
+        } else {
+          return {Status::RedisExecErr, "Invalid type"};
+        }
       } else {
         return parser.InvalidSyntax();
       }
@@ -93,6 +98,7 @@ class CommandScanBase : public Commander {
   std::string cursor_;
   std::string prefix_;
   int limit_ = 20;
+  RedisType type_ = kRedisNone;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {

@@ -61,6 +61,10 @@ constexpr const int QuickListNodeContainerPlain = 1;
 constexpr const int QuickListNodeContainerPacked = 2;
 
 constexpr const int MaxRDBVersion = 12;  // The current max rdb version supported by redis.
+// Min Redis RDB version supported by Kvrocks, we choose 6 because it's the first version
+// that supports the DUMP command.
+constexpr int MinRDBVersion = 6;
+
 class RdbStream;
 
 using RedisObjValue =

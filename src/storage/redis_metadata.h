@@ -331,12 +331,6 @@ class SearchMetadata : public Metadata {
   rocksdb::Status Decode(Slice *input) override;
 };
 
-constexpr uint32_t kHyperLogLogRegisterCountPow = 14; /* The greater is Pow, the smaller the error. */
-constexpr uint32_t kHyperLogLogHashBitCount =
-    64 - kHyperLogLogRegisterCountPow; /* The number of bits of the hash value used for determining the number of
-                                          leading zeros. */
-constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow; /* With Pow=14, 16384 registers. */
-
 class HyperloglogMetadata : public Metadata {
  public:
   enum class EncodeType : uint8_t {
@@ -344,12 +338,13 @@ class HyperloglogMetadata : public Metadata {
     SPARSE = 1,  // TODO sparse encoding implement as a compressed string to store registers in metadata column family.
   };
 
-  explicit HyperloglogMetadata(EncodeType encode_type = EncodeType::DENSE, bool generate_version = true)
-      : Metadata(kRedisHyperLogLog, generate_version) {
-    size = 1;  // 'size' must non-zone, or 'GetMetadata' will failed as 'expired'.
-  }
+  explicit HyperloglogMetadata(bool generate_version = true) : Metadata(kRedisHyperLogLog, generate_version) {}
+
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 
  private:
   // TODO optimize for converting storage encoding automatically
-  // EncodeType encode_type_;
+  EncodeType encode_type_ = EncodeType::DENSE;
 };

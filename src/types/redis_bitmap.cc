@@ -771,7 +771,7 @@ rocksdb::Status Bitmap::bitfield(const Slice &user_key, const std::vector<Bitfie
 
   // We firstly do the bitfield operation by fetching segments into memory.
   // Use SegmentCacheStore to record dirty segments. (if not read-only mode)
-  SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, metadata);
+  SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, &metadata);
   runBitfieldOperationsWithCache<ReadOnly>(cache, ops, rets);
 
   if constexpr (!ReadOnly) {

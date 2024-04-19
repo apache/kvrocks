@@ -328,7 +328,7 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
 bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() == kRedisJson; }
 
 bool Metadata::IsEmptyableType() const {
-  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter;
+  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -484,6 +484,23 @@ rocksdb::Status SearchMetadata::Decode(Slice *input) {
   }
 
   if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&on_data_type))) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  return rocksdb::Status::OK();
+}
+
+void HyperloglogMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  PutFixed8(dst, static_cast<uint8_t>(encode_type_));
+}
+
+rocksdb::Status HyperloglogMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+
+  if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&encode_type_))) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 

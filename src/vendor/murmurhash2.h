@@ -1,4 +1,3 @@
-
 /* Redis HyperLogLog probabilistic cardinality approximation.
  * This file implements the algorithm and the exported Redis commands.
  *
@@ -31,6 +30,8 @@
  */
 
 #pragma once
+
+#include <stdint.h>
 
 /* MurmurHash2, 64 bit version.
  * It was modified for Redis in order to provide the same result in

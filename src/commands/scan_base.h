@@ -56,7 +56,7 @@ class CommandScanBase : public Commander {
           return {Status::RedisParseErr, "limit should be a positive integer"};
         }
       } else if (IsScan && parser.EatEqICase("type")) {
-        std::string key = util::ToLower(GET_OR_RET(parser.TakeStr()));
+        std::string key = GET_OR_RET(parser.TakeStr());
         if (RedisNamesMapType.count(key)) {
           type_ = RedisNamesMapType.at(key);
         } else {

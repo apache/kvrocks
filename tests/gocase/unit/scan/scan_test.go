@@ -307,27 +307,27 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.Set(ctx, "stringtype1", "fee1", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "stringtype2", "fee1", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "stringtype3", "fee1", 0).Err())
-		require.Equal(t, []string{"stringtype1", "stringtype2", "stringtype3"}, scanAll(t, rdb, "match", "key:*", "type", "string"))
-		require.Equal(t, []string{"stringtype1", "stringtype2", "stringtype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "string"))
+		require.Equal(t, []string{"stringtype1", "stringtype2", "stringtype3"}, scanAll(t, rdb, "match", "*", "type", "string"))
+		require.Equal(t, []string{"stringtype1", "stringtype2", "stringtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "string"))
 		//hash type
 		require.NoError(t, rdb.HSet(ctx, "hashtype1", "key1", "val1", "key2", "val2").Err())
 		require.NoError(t, rdb.HSet(ctx, "hashtype2", "key1", "val1", "key2", "val2").Err())
 		require.NoError(t, rdb.HSet(ctx, "hashtype3", "key1", "val1", "key2", "val2").Err())
-		require.Equal(t, []string{"hashtype1", "hashtype2", "hashtype3"}, scanAll(t, rdb, "match", "key:*", "type", "hash"))
-		require.Equal(t, []string{"hashtype1", "hashtype2", "hashtype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "hash"))
+		require.Equal(t, []string{"hashtype1", "hashtype2", "hashtype3"}, scanAll(t, rdb, "match", "*", "type", "hash"))
+		require.Equal(t, []string{"hashtype1", "hashtype2", "hashtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "hash"))
 		//list type
 		require.NoError(t, rdb.RPush(ctx, "listtype1", "1").Err())
 		require.NoError(t, rdb.RPush(ctx, "listtype2", "2").Err())
 		require.NoError(t, rdb.RPush(ctx, "listtype3", "3").Err())
-		require.Equal(t, []string{"listtype1", "listtype2", "listtype3"}, scanAll(t, rdb, "match", "key:*", "type", "list"))
-		require.Equal(t, []string{"listtype1", "listtype2", "listtype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "list"))
+		require.Equal(t, []string{"listtype1", "listtype2", "listtype3"}, scanAll(t, rdb, "match", "*", "type", "list"))
+		require.Equal(t, []string{"listtype1", "listtype2", "listtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "list"))
 		//set type
 
 		require.NoError(t, rdb.SAdd(ctx, "settype1", "1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "settype2", "1").Err())
 		require.NoError(t, rdb.SAdd(ctx, "settype3", "1").Err())
-		require.Equal(t, []string{"settype1", "settype2", "settype3"}, scanAll(t, rdb, "match", "key:*", "type", "set"))
-		require.Equal(t, []string{"settype1", "settype2", "settype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "set"))
+		require.Equal(t, []string{"settype1", "settype2", "settype3"}, scanAll(t, rdb, "match", "*", "type", "set"))
+		require.Equal(t, []string{"settype1", "settype2", "settype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "set"))
 		//zet type
 		members := []redis.Z{
 			{Score: 1, Member: "1"},
@@ -338,32 +338,32 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.ZAdd(ctx, "zsettype1", members...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "zsettype2", members...).Err())
 		require.NoError(t, rdb.ZAdd(ctx, "zsettype3", members...).Err())
-		require.Equal(t, []string{"zsettype1", "zsettype2", "zsettype3"}, scanAll(t, rdb, "match", "key:*", "type", "zset"))
-		require.Equal(t, []string{"zsettype1", "zsettype2", "zsettype3"}, scanAll(t, rdb, "match", "key:*", "type", "count", "3", "zset"))
+		require.Equal(t, []string{"zsettype1", "zsettype2", "zsettype3"}, scanAll(t, rdb, "match", "*", "type", "zset"))
+		require.Equal(t, []string{"zsettype1", "zsettype2", "zsettype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "zset"))
 		//bitmap type
 		require.NoError(t, rdb.SetBit(ctx, "bitmaptype1", 0, 0).Err())
 		require.NoError(t, rdb.SetBit(ctx, "bitmaptype2", 0, 0).Err())
 		require.NoError(t, rdb.SetBit(ctx, "bitmaptype3", 0, 0).Err())
-		require.Equal(t, []string{"bitmaptype1", "bitmaptype2", "bitmaptype3"}, scanAll(t, rdb, "match", "key:*", "type", "bitmap"))
-		require.Equal(t, []string{"bitmaptype1", "bitmaptype2", "bitmaptype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "bitmap"))
+		require.Equal(t, []string{"bitmaptype1", "bitmaptype2", "bitmaptype3"}, scanAll(t, rdb, "match", "*", "type", "bitmap"))
+		require.Equal(t, []string{"bitmaptype1", "bitmaptype2", "bitmaptype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "bitmap"))
 		//stream type
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "streamtype1", Values: []string{"item", "1", "value", "a"}}).Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "streamtype2", Values: []string{"item", "1", "value", "a"}}).Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "streamtype3", Values: []string{"item", "1", "value", "a"}}).Err())
-		require.Equal(t, []string{"streamtype1", "streamtype2", "streamtype3"}, scanAll(t, rdb, "match", "key:*", "type", "stream"))
-		require.Equal(t, []string{"streamtype1", "streamtype2", "streamtype3"}, scanAll(t, rdb, "match", "key:*", "type", "count", "3", "stream"))
+		require.Equal(t, []string{"streamtype1", "streamtype2", "streamtype3"}, scanAll(t, rdb, "match", "*", "type", "stream"))
+		require.Equal(t, []string{"streamtype1", "streamtype2", "streamtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "stream"))
 		//MBbloom type
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype1", "0.02", "1000").Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype2", "0.02", "1000").Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype3", "0.02", "1000").Err())
-		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "key:*", "type", "MBbloom--"))
-		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "key:*", "type", "count", "3", "MBbloom--"))
+		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "*", "type", "MBbloom--"))
+		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "MBbloom--"))
 		//ReJSON-RL
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype1", "$", ` {"x":1, "y":2} `).Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype2", "$", ` {"x":1, "y":2} `).Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype3", "$", ` {"x":1, "y":2} `).Err())
-		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "key:*", "type", "ReJSON-RL"))
-		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "key:*", "count", "3", "type", "ReJSON-RL"))
+		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "*", "type", "ReJSON-RL"))
+		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "*", "count", "3", "type", "ReJSON-RL"))
 	})
 
 }

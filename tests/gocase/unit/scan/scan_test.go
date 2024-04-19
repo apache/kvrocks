@@ -322,13 +322,10 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 	        require.Equal(t, []string{"listtype1","listtype2","listtype3"}, scanAll(t, rdb, "match", "key:*","type","list"))
             require.Equal(t, []string{"listtype1","listtype2","listtype3"}, scanAll(t, rdb, "match", "key:*","count","3","type","list"))
             //set type
-            var elements []redis.Z
-            for i := 0; i < 10; i++ {
-				elements = append(elements, test.keyGen(i))
-			}
-			require.NoError(t, rdb.SAdd(ctx, "settype1", elements...).Err())
-			require.NoError(t, rdb.SAdd(ctx, "settype2", elements...).Err())
-			require.NoError(t, rdb.SAdd(ctx, "settype3", elements...).Err())
+
+			require.NoError(t, rdb.SAdd(ctx, "settype1","1").Err())
+			require.NoError(t, rdb.SAdd(ctx, "settype2", "1").Err())
+			require.NoError(t, rdb.SAdd(ctx, "settype3", "1").Err())
 	        require.Equal(t, []string{"settype1","settype2","settype3"}, scanAll(t, rdb, "match", "key:*","type","set"))
     	    require.Equal(t, []string{"settype1","settype2","settype3"}, scanAll(t, rdb, "match", "key:*","count","3","type","set"))
            //zet type

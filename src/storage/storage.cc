@@ -37,6 +37,7 @@
 #include <random>
 
 #include "compact_filter.h"
+#include "config/config.h"
 #include "db_util.h"
 #include "event_listener.h"
 #include "event_util.h"
@@ -226,6 +227,12 @@ Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std:
   return Status::OK();
 }
 
+Status Storage::SetOptionForColumnFamily(ColumnFamilyID id, const std::string &key, const std::string &value) {
+  auto s = db_->SetOptions(GetCFHandle(id), {{key, value}});
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
 Status Storage::SetDBOption(const std::string &key, const std::string &value) {
   auto s = db_->SetDBOptions({{key, value}});
   if (!s.ok()) return {Status::NotOK, s.ToString()};
@@ -337,15 +344,20 @@ Status Storage::Open(DBOpenMode mode) {
   propagate_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&propagate_opts);
 
+  rocksdb::ColumnFamilyOptions minor_opts(subkey_opts);
+  minor_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
+  pubsub_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
+  propagate_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
   column_families.emplace_back(kMetadataColumnFamilyName, metadata_opts);
-  column_families.emplace_back(kZSetScoreColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kZSetScoreColumnFamilyName, minor_opts);
   column_families.emplace_back(kPubSubColumnFamilyName, pubsub_opts);
   column_families.emplace_back(kPropagateColumnFamilyName, propagate_opts);
-  column_families.emplace_back(kStreamColumnFamilyName, subkey_opts);
-  column_families.emplace_back(kSearchColumnFamilyName, subkey_opts);
+  column_families.emplace_back(kStreamColumnFamilyName, minor_opts);
+  column_families.emplace_back(kSearchColumnFamilyName, minor_opts);
 
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);

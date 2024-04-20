@@ -473,19 +473,37 @@ func TestClusterReset(t *testing.T) {
 	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
 
+	srv2 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { srv2.Close() }()
+	rdb2 := srv2.NewClientWithOption(&redis.Options{PoolSize: 1})
+	defer func() { require.NoError(t, rdb2.Close()) }()
+	id2 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx02"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
+
 	clusterNodes := fmt.Sprintf("%s %s %d master - 0-8191\n", id0, srv0.Host(), srv0.Port())
-	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383", id1, srv1.Host(), srv1.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383\n", id1, srv1.Host(), srv1.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d slave %s", id2, srv2.Host(), srv2.Port(), id1)
 	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
 	t.Run("cannot reset cluster if the db is not empty", func(t *testing.T) {
 		key := util.SlotTable[0]
 		require.NoError(t, rdb0.Set(ctx, key, "value", 0).Err())
-		require.Contains(t, rdb0.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while database is not empty")
+		require.Contains(t, rdb0.ClusterResetHard(ctx).Err(), "Can't reset cluster while database is not empty")
 		require.NoError(t, rdb0.Del(ctx, key).Err())
-		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.NoError(t, rdb0.ClusterResetSoft(ctx).Err())
 		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
 		// reset the cluster topology to avoid breaking other test cases
+		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	})
+
+	t.Run("replica should become master after reset", func(t *testing.T) {
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb2, "role") == "slave"
+		}, 5*time.Second, 50*time.Millisecond)
+		require.NoError(t, rdb2.ClusterResetHard(ctx).Err())
+		require.Equal(t, "master", util.FindInfoEntry(rdb2, "role"))
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	})
 
@@ -495,11 +513,11 @@ func TestClusterReset(t *testing.T) {
 		clusterInfo := rdb1.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "importing_slot: 1")
 		require.Contains(t, clusterInfo, "import_state: start")
-		require.Contains(t, rdb1.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while importing slot")
+		require.Contains(t, rdb1.ClusterResetHard(ctx).Err(), "Can't reset cluster while importing slot")
 		require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 1).Val())
 		clusterInfo = rdb1.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "import_state: success")
-		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.NoError(t, rdb0.ClusterResetHard(ctx).Err())
 		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
 		// reset the cluster topology to avoid breaking other test cases
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
@@ -517,7 +535,7 @@ func TestClusterReset(t *testing.T) {
 		clusterInfo := rdb0.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "migrating_slot: 2")
 		require.Contains(t, clusterInfo, "migrating_state: start")
-		require.Contains(t, rdb0.Do(ctx, "cluster", "reset").Err(), "Can't reset cluster while migrating slot")
+		require.Contains(t, rdb0.ClusterResetHard(ctx).Err(), "Can't reset cluster while migrating slot")
 
 		// wait for the migration to finish
 		require.Eventually(t, func() bool {
@@ -528,7 +546,7 @@ func TestClusterReset(t *testing.T) {
 		// the keys are removed from the source node right now.
 		require.NoError(t, rdb0.FlushAll(ctx).Err())
 
-		require.NoError(t, rdb0.Do(ctx, "cluster", "reset").Err())
+		require.NoError(t, rdb0.ClusterResetHard(ctx).Err())
 		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
 		// reset the cluster topology to avoid breaking other test cases
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())

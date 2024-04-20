@@ -31,21 +31,24 @@
 
 namespace kqir {
 
+using PassSequence = std::vector<std::unique_ptr<Pass>>;
+
 struct PassManager {
-  template <typename... PN>
-  static std::unique_ptr<Node> Execute(std::unique_ptr<Node> node) {
-    return executeImpl<PN...>(std::move(node), std::make_index_sequence<sizeof...(PN)>{});
+  static std::unique_ptr<Node> Execute(const PassSequence &seq, std::unique_ptr<Node> node) {
+    for (auto &pass : seq) {
+      node = pass->Transform(std::move(node));
+    }
+    return node;
   }
 
-  static constexpr auto Default = Execute<SimplifyAndOrExpr, PushDownNotExpr, SimplifyBoolean>;
-
- private:
-  template <typename... PN, size_t... I>
-  static std::unique_ptr<Node> executeImpl(std::unique_ptr<Node> node, std::index_sequence<I...>) {
-    std::tuple<PN...> passes;
-
-    return std::move(((node = std::get<I>(passes).Transform(std::move(node))), ...));
+  template <typename... Passes>
+  static PassSequence GeneratePasses() {
+    PassSequence result;
+    (result.push_back(std::make_unique<Passes>()), ...);
+    return result;
   }
+
+  static PassSequence ExprPasses() { return GeneratePasses<SimplifyAndOrExpr, PushDownNotExpr, SimplifyBoolean>(); }
 };
 
 }  // namespace kqir

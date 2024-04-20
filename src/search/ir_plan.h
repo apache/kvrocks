@@ -24,6 +24,7 @@
 #include <memory>
 
 #include "ir.h"
+#include "search/interval.h"
 #include "search/ir_sema_checker.h"
 #include "string_util.h"
 
@@ -55,14 +56,6 @@ struct FieldScan : PlanOperator {
   std::unique_ptr<FieldRef> field;
 
   explicit FieldScan(std::unique_ptr<FieldRef> field) : field(std::move(field)) {}
-};
-
-struct Interval {
-  double l, r;  // [l, r)
-
-  explicit Interval(double l, double r) : l(l), r(r) {}
-
-  std::string ToString() const { return fmt::format("[{}, {})", l, r); }
 };
 
 struct NumericFieldScan : FieldScan {

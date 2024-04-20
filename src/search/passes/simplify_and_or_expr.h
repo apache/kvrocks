@@ -42,7 +42,11 @@ struct SimplifyAndOrExpr : Visitor {
       }
     }
 
-    return std::make_unique<OrExpr>(std::move(merged_nodes));
+    if (merged_nodes.size() == 1) {
+      return std::move(merged_nodes.front());
+    } else {
+      return std::make_unique<OrExpr>(std::move(merged_nodes));
+    }
   }
 
   std::unique_ptr<Node> Visit(std::unique_ptr<AndExpr> node) override {
@@ -59,7 +63,11 @@ struct SimplifyAndOrExpr : Visitor {
       }
     }
 
-    return std::make_unique<AndExpr>(std::move(merged_nodes));
+    if (merged_nodes.size() == 1) {
+      return std::move(merged_nodes.front());
+    } else {
+      return std::make_unique<AndExpr>(std::move(merged_nodes));
+    }
   }
 };
 

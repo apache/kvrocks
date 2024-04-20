@@ -27,6 +27,8 @@ namespace kqir {
 
 struct Pass {
   virtual std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) = 0;
+
+  virtual ~Pass() = default;
 };
 
 struct Visitor : Pass {

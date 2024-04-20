@@ -95,11 +95,7 @@ enum RedisCommand {
 const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",   "list",      "set",      "zset",
                                                  "bitmap", "sortedint", "stream", "MBbloom--", "ReJSON-RL"};
 
-const std::map<std::string, RedisType> RedisNamesMapType = {
-    {"none", kRedisNone},     {"string", kRedisString}, {"hash", kRedisHash},
-    {"list", kRedisList},     {"set", kRedisSet},       {"zset", kRedisZSet},
-    {"bitmap", kRedisBitmap}, {"stream", kRedisStream}, {"MBbloom--", kRedisBloomFilter},
-    {"ReJSON-RL", kRedisJson}};
+
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";

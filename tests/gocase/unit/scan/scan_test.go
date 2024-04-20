@@ -363,6 +363,9 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype3", "$", ` {"x":1, "y":2} `).Err())
 		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "ReJSONtype*", "type", "ReJSON-RL"))
 		require.Equal(t, []string{"ReJSONtype1", "ReJSONtype2", "ReJSONtype3"}, scanAll(t, rdb, "match", "ReJSONtype*", "count", "3", "type", "ReJSON-RL"))
+		//invalid type
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*", "type", "hi").Err(), "Invalid type")
+
 	})
 
 }

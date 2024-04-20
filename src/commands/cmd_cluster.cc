@@ -317,7 +317,7 @@ class CommandReadOnly : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->EnableFlag(redis::Connection::KReadOnly);
+    conn->EnableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };
@@ -326,7 +326,7 @@ class CommandReadWrite : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->DisableFlag(redis::Connection::KReadOnly);
+    conn->DisableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };

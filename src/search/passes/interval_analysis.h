@@ -42,6 +42,8 @@ struct IntervalAnalysis : Visitor {
 
   std::map<Node *, IntervalInfo> result;
 
+  void Reset() override { result.clear(); }
+
   template <typename T>
   std::unique_ptr<Node> VisitImpl(std::unique_ptr<T> node) {
     node = Node::MustAs<T>(Visitor::Visit(std::move(node)));

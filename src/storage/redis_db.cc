@@ -310,7 +310,7 @@ rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::strin
 }
 
 rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                               std::vector<std::string> *keys, std::string *end_cursor) {
+                               std::vector<std::string> *keys, std::string *end_cursor, RedisType type) {
   end_cursor->clear();
   uint64_t cnt = 0;
   uint16_t slot_start = 0;
@@ -354,6 +354,8 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       Metadata metadata(kRedisNone, false);
       auto s = metadata.Decode(iter->value());
       if (!s.ok()) continue;
+
+      if (type != kRedisNone && type != metadata.Type()) continue;
 
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());

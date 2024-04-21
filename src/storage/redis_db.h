@@ -93,7 +93,8 @@ class Database {
   [[nodiscard]] rocksdb::Status Keys(const std::string &prefix, std::vector<std::string> *keys = nullptr,
                                      KeyNumStats *stats = nullptr);
   [[nodiscard]] rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr);
+                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr,
+                                     RedisType type = kRedisNone);
   [[nodiscard]] rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix, const std::string &prefix_end,

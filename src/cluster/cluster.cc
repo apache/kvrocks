@@ -863,7 +863,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   if (myself_ && myself_->role == kClusterSlave && !(attributes->flags & redis::kCmdWrite) &&
       nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot] &&
-      conn->IsFlagEnabled(redis::Connection::KReadOnly)) {
+      conn->IsFlagEnabled(redis::Connection::kReadOnly)) {
     return Status::OK();  // My master is serving this slot
   }
 
@@ -871,6 +871,8 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
           fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
 }
 
+// Only HARD mode is meaningful to the Kvrocks cluster,
+// so it will force clearing all information after resetting.
 Status Cluster::Reset() {
   if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlot() != -1) {
     return {Status::NotOK, "Can't reset cluster while migrating slot"};
@@ -880,6 +882,10 @@ Status Cluster::Reset() {
   }
   if (!srv_->storage->IsEmptyDB()) {
     return {Status::NotOK, "Can't reset cluster while database is not empty"};
+  }
+  if (srv_->IsSlave()) {
+    auto s = srv_->RemoveMaster();
+    if (!s.IsOK()) return s;
   }
 
   version_ = -1;

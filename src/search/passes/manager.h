@@ -36,6 +36,7 @@ using PassSequence = std::vector<std::unique_ptr<Pass>>;
 struct PassManager {
   static std::unique_ptr<Node> Execute(const PassSequence &seq, std::unique_ptr<Node> node) {
     for (auto &pass : seq) {
+      pass->Reset();
       node = pass->Transform(std::move(node));
     }
     return node;

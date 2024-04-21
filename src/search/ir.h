@@ -85,6 +85,7 @@ struct FieldRef : Ref {
   const FieldInfo *info = nullptr;
 
   explicit FieldRef(std::string name) : name(std::move(name)) {}
+  FieldRef(std::string name, const FieldInfo *info) : name(std::move(name)), info(info) {}
 
   std::string_view Name() const override { return "FieldRef"; }
   std::string Dump() const override { return name; }

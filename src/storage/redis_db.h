@@ -23,12 +23,32 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "redis_metadata.h"
+#include "server/redis_reply.h"
 #include "storage.h"
 
 namespace redis {
+
+struct SortArgument {
+  std::string sortby;                    // BY
+  bool dontsort = false;                 // DONT SORT
+  int offset = 0;                        // LIMIT OFFSET
+  int count = -1;                        // LIMIT COUNT
+  std::vector<std::string> getpatterns;  // GET
+  bool desc = false;                     // ASC/DESC
+  bool alpha = false;                    // ALPHA
+  std::string storekey;                  // STORE
+};
+
+struct RedisSortObject {
+  std::string obj;
+  std::variant<double, std::string> v;
+};
+
+bool SortCompare(const RedisSortObject &a, const RedisSortObject &b, const SortArgument &args);
 
 /// Database is a wrapper of underlying storage engine, it provides
 /// some common operations for redis commands.
@@ -106,6 +126,9 @@ class Database {
   enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
   [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
                                      CopyResult *res);
+  enum class SortResult { UNKNOW_TYPE, DOUBLE_CONVERT_ERROR, DONE };
+  [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, SortArgument &args,
+                                     const RESP &version, std::vector<std::string> *output_vec, SortResult *res);
 
  protected:
   engine::Storage *storage_;
@@ -118,6 +141,8 @@ class Database {
   // Already internal keys
   [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
   [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
+  // Sort helper
+  std::string lookupKeyByPattern(const std::string &pattern, const std::string &subst);
 };
 class LatestSnapShot {
  public:

@@ -424,6 +424,111 @@ class CommandCopy : public Commander {
   bool replace_ = false;
 };
 
+template <bool ReadOnly>
+class CommandSort : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("BY")) {
+        if (parser.Remains() < 1) {
+          return parser.InvalidSyntax();
+        }
+        sort_argument_.sortby = GET_OR_RET(parser.TakeStr());
+
+        if (sort_argument_.sortby.find('*') == std::string::npos) {
+          sort_argument_.dontsort = true;
+        } else {
+          /* TODO:
+           * If BY is specified with a real pattern, we can't accept it in cluster mode,
+           * unless we can make sure the keys formed by the pattern are in the same slot
+           * as the key to sort.
+           * If BY is specified with a real pattern, we can't accept
+           * it if no full ACL key access is applied for this command. */
+        }
+      } else if (parser.EatEqICase("LIMIT")) {
+        if (parser.Remains() < 2) {
+          return parser.InvalidSyntax();
+        }
+        sort_argument_.offset = GET_OR_RET(parser.template TakeInt<int>());
+        sort_argument_.count = GET_OR_RET(parser.template TakeInt<int>());
+      } else if (parser.EatEqICase("GET") && parser.Remains() >= 1) {
+        if (parser.Remains() < 1) {
+          return parser.InvalidSyntax();
+        }
+        /* TODO:
+         * If GET is specified with a real pattern, we can't accept it in cluster mode,
+         * unless we can make sure the keys formed by the pattern are in the same slot
+         * as the key to sort. */
+        sort_argument_.getpatterns.push_back(GET_OR_RET(parser.TakeStr()));
+      } else if (parser.EatEqICase("ASC")) {
+        sort_argument_.desc = false;
+      } else if (parser.EatEqICase("DESC")) {
+        sort_argument_.desc = true;
+      } else if (parser.EatEqICase("ALPHA")) {
+        sort_argument_.alpha = true;
+      } else if (parser.EatEqICase("STORE")) {
+        if constexpr (ReadOnly) {
+          return parser.InvalidSyntax();
+        }
+        if (parser.Remains() < 1) {
+          return parser.InvalidSyntax();
+        }
+        sort_argument_.storekey = GET_OR_RET(parser.TakeStr());
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    RedisType type = kRedisNone;
+    auto s = redis.Type(args_[1], &type);
+    if (s.ok()) {
+      if (type >= RedisTypeNames.size()) {
+        return {Status::RedisExecErr, "Invalid type"};
+      } else if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
+        *output = Error("WRONGTYPE Operation against a key holding the wrong kind of value");
+        return Status::OK();
+      }
+    } else {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> output_vec;
+    Database::SortResult res = Database::SortResult::DONE;
+    s = redis.Sort(type, args_[1], sort_argument_, conn->GetProtocolVersion(), &output_vec, &res);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    switch (res) {
+      case Database::SortResult::UNKNOW_TYPE:
+        *output = redis::Error("Unkown Type");
+        break;
+      case Database::SortResult::DOUBLE_CONVERT_ERROR:
+        *output = redis::Error("One or more scores can't be converted into double");
+        break;
+      case Database::SortResult::DONE:
+        if (sort_argument_.storekey.empty()) {
+          *output = ArrayOfBulkStrings(output_vec);
+        } else {
+          *output = Integer(output_vec.size());
+        }
+        break;
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  SortArgument sort_argument_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
@@ -442,6 +547,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1), )
+                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only", 1, 1, 1))
 
 }  // namespace redis

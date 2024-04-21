@@ -899,7 +899,7 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, So
         }
       }
     } else {
-      *res = SortResult::UNKNOW_TYPE;
+      *res = SortResult::UNKNOWN_TYPE;
       return s;
     }
   }

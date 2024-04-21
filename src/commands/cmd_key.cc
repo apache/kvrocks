@@ -507,7 +507,7 @@ class CommandSort : public Commander {
     }
 
     switch (res) {
-      case Database::SortResult::UNKNOW_TYPE:
+      case Database::SortResult::UNKNOWN_TYPE:
         *output = redis::Error("Unknown Type");
         break;
       case Database::SortResult::DOUBLE_CONVERT_ERROR:

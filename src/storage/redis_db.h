@@ -127,7 +127,7 @@ class Database {
   enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
   [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
                                      CopyResult *res);
-  enum class SortResult { UNKNOW_TYPE, DOUBLE_CONVERT_ERROR, DONE };
+  enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, DONE };
   [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, SortArgument &args,
                                      const RESP &version, std::vector<std::string> *output_vec, SortResult *res);
 

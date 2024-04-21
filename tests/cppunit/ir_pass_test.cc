@@ -21,6 +21,8 @@
 #include "search/ir_pass.h"
 
 #include "gtest/gtest.h"
+#include "search/interval.h"
+#include "search/ir_sema_checker.h"
 #include "search/passes/interval_analysis.h"
 #include "search/passes/lower_to_plan.h"
 #include "search/passes/manager.h"
@@ -130,4 +132,34 @@ TEST(IRPassTest, IntervalAnalysis) {
             "select * from a where false");
   ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where (a > 3 or a < 1) and a = 2"))->Dump(),
             "select * from a where false");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where b = 1 and (a = 1 or a != 1)"))->Dump(),
+            "select * from a where b = 1");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a = 1 or b = 1 or a != 1"))->Dump(),
+            "select * from a where true");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where (a < 3 or a > 1) and b >= 1"))->Dump(),
+            "select * from a where b >= 1");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a != 1 or a != 2"))->Dump(),
+            "select * from a where true");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a = 1 and a = 2"))->Dump(),
+            "select * from a where false");
+
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a < 1 and a < 3"))->Dump(),
+            "select * from a where a < 1");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a < 1 or a < 3"))->Dump(),
+            "select * from a where a < 3");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a = 1 and a < 3"))->Dump(),
+            "select * from a where a = 1");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a = 1 or a < 3"))->Dump(),
+            "select * from a where a < 3");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a = 1 or a = 3"))->Dump(),
+            "select * from a where (or a = 1, a = 3)");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a != 1"))->Dump(),
+            "select * from a where a != 1");
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a != 1 and a != 2"))->Dump(),
+            "select * from a where (and a != 1, a != 2)");
+  ASSERT_EQ(
+      PassManager::Execute(ia_passes, *Parse("select * from a where a >= 0 and a >= 1 and a < 4 and a != 2"))->Dump(),
+      fmt::format("select * from a where (or (and a >= 1, a < 2), (and a >= {}, a < 4))", IntervalSet::NextNum(2)));
+  ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a != 1 and b > 1 and b = 2"))->Dump(),
+            "select * from a where (and a != 1, b = 2)");
 }

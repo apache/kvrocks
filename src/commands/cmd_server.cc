@@ -819,28 +819,6 @@ class CommandScan : public CommandScanBase {
  public:
   CommandScan() : CommandScanBase() {}
 
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() % 2 != 0) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-
-    ParseCursor(args[1]);
-    if (args.size() >= 4) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[2]), args_[3]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-
-    if (args.size() >= 6) {
-      Status s = ParseMatchAndCountParam(util::ToLower(args[4]), args_[5]);
-      if (!s.IsOK()) {
-        return s;
-      }
-    }
-    return Commander::Parse(args);
-  }
-
   static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
                                     const std::string &end_cursor) {
     std::vector<std::string> list;
@@ -862,7 +840,7 @@ class CommandScan : public CommandScanBase {
 
     std::vector<std::string> keys;
     std::string end_key;
-    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key);
+    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

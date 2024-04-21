@@ -34,6 +34,7 @@
 
 #include "fmt/core.h"
 #include "ir_iterator.h"
+#include "search/index_info.h"
 #include "string_util.h"
 #include "type_util.h"
 
@@ -49,6 +50,11 @@ struct Node {
   virtual NodeIterator ChildEnd() { return {}; };
 
   virtual std::unique_ptr<Node> Clone() const = 0;
+
+  template <typename T>
+  std::unique_ptr<T> CloneAs() const {
+    return Node::MustAs<T>(Clone());
+  }
 
   virtual ~Node() = default;
 
@@ -76,8 +82,10 @@ struct Ref : Node {};
 
 struct FieldRef : Ref {
   std::string name;
+  const FieldInfo *info = nullptr;
 
   explicit FieldRef(std::string name) : name(std::move(name)) {}
+  FieldRef(std::string name, const FieldInfo *info) : name(std::move(name)), info(info) {}
 
   std::string_view Name() const override { return "FieldRef"; }
   std::string Dump() const override { return name; }
@@ -348,6 +356,7 @@ struct SelectClause : Node {
 
 struct IndexRef : Ref {
   std::string name;
+  const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
 
@@ -358,14 +367,14 @@ struct IndexRef : Ref {
   std::unique_ptr<Node> Clone() const override { return std::make_unique<IndexRef>(*this); }
 };
 
-struct SearchStmt : Node {
+struct SearchExpr : Node {
   std::unique_ptr<SelectClause> select;
   std::unique_ptr<IndexRef> index;
   std::unique_ptr<QueryExpr> query_expr;
   std::unique_ptr<LimitClause> limit;     // optional
   std::unique_ptr<SortByClause> sort_by;  // optional
 
-  SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr,
+  SearchExpr(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr,
              std::unique_ptr<LimitClause> &&limit, std::unique_ptr<SortByClause> &&sort_by,
              std::unique_ptr<SelectClause> &&select)
       : select(std::move(select)),
@@ -383,16 +392,16 @@ struct SearchStmt : Node {
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {
-      NodeIterator::MemFn<&SearchStmt::select>,     NodeIterator::MemFn<&SearchStmt::index>,
-      NodeIterator::MemFn<&SearchStmt::query_expr>, NodeIterator::MemFn<&SearchStmt::limit>,
-      NodeIterator::MemFn<&SearchStmt::sort_by>,
+      NodeIterator::MemFn<&SearchExpr::select>,     NodeIterator::MemFn<&SearchExpr::index>,
+      NodeIterator::MemFn<&SearchExpr::query_expr>, NodeIterator::MemFn<&SearchExpr::limit>,
+      NodeIterator::MemFn<&SearchExpr::sort_by>,
   };
 
   NodeIterator ChildBegin() override { return NodeIterator(this, ChildMap.begin()); };
   NodeIterator ChildEnd() override { return NodeIterator(this, ChildMap.end()); };
 
   std::unique_ptr<Node> Clone() const override {
-    return std::make_unique<SearchStmt>(
+    return std::make_unique<SearchExpr>(
         Node::MustAs<IndexRef>(index->Clone()), Node::MustAs<QueryExpr>(query_expr->Clone()),
         Node::MustAs<LimitClause>(limit->Clone()), Node::MustAs<SortByClause>(sort_by->Clone()),
         Node::MustAs<SelectClause>(select->Clone()));

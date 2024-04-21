@@ -32,9 +32,16 @@ class CommandCluster : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 &&
-        (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info" || subcommand_ == "reset"))
+    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
       return Status::OK();
+
+    // CLUSTER RESET [HARD|SOFT]
+    if (subcommand_ == "reset" && (args_.size() == 2 || args_.size() == 3)) {
+      if (args_.size() == 3 && !util::EqualICase(args_[2], "hard") && !util::EqualICase(args_[2], "soft")) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
 
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
 
@@ -317,7 +324,7 @@ class CommandReadOnly : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->EnableFlag(redis::Connection::KReadOnly);
+    conn->EnableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };
@@ -326,7 +333,7 @@ class CommandReadWrite : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->DisableFlag(redis::Connection::KReadOnly);
+    conn->DisableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };

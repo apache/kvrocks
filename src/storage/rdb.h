@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "status.h"
+#include "types/redis_hash.h"
 #include "types/redis_zset.h"
 
 // Redis object type
@@ -52,11 +53,17 @@ constexpr const int RDBTypeZSetListPack = 17;
 constexpr const int RDBTypeListQuickList2 = 18;
 constexpr const int RDBTypeStreamListPack2 = 19;
 constexpr const int RDBTypeSetListPack = 20;
+constexpr const int RDBTypeStreamListPack3 = 21;
 // NOTE: when adding new Redis object encoding type, update isObjectType.
 
 // Quick list node encoding
 constexpr const int QuickListNodeContainerPlain = 1;
 constexpr const int QuickListNodeContainerPacked = 2;
+
+constexpr const int MaxRDBVersion = 12;  // The current max rdb version supported by redis.
+// Min Redis RDB version supported by Kvrocks, we choose 6 because it's the first version
+// that supports the DUMP command.
+constexpr int MinRDBVersion = 6;
 
 class RdbStream;
 
@@ -100,6 +107,29 @@ class RDB {
   // Load rdb
   Status LoadRdb(uint32_t db_index, bool overwrite_exist_key = true);
 
+  std::unique_ptr<RdbStream> &GetStream() { return stream_; }
+
+  Status Dump(const std::string &key, RedisType type);
+
+  Status SaveObjectType(RedisType type);
+  Status SaveObject(const std::string &key, RedisType type);
+  Status RdbSaveLen(uint64_t len);
+
+  // String
+  Status SaveStringObject(const std::string &value);
+
+  // List
+  Status SaveListObject(const std::vector<std::string> &elems);
+
+  // Set
+  Status SaveSetObject(const std::vector<std::string> &members);
+
+  // Sorted Set
+  Status SaveZSetObject(const std::vector<MemberScore> &member_scores);
+
+  // Hash
+  Status SaveHashObject(const std::vector<FieldValue> &filed_value);
+
  private:
   engine::Storage *storage_;
   std::string ns_;
@@ -121,4 +151,6 @@ class RDB {
    Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.*/
   static bool isObjectType(int type) { return (type >= 0 && type <= 5) || (type >= 9 && type <= 21); };
   static bool isEmptyRedisObject(const RedisObjValue &value);
+  static int rdbEncodeInteger(long long value, unsigned char *enc);
+  Status rdbSaveBinaryDoubleValue(double val);
 };

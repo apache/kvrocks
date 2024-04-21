@@ -34,6 +34,7 @@
 
 #include "fmt/core.h"
 #include "ir_iterator.h"
+#include "search/index_info.h"
 #include "string_util.h"
 #include "type_util.h"
 
@@ -47,6 +48,13 @@ struct Node {
 
   virtual NodeIterator ChildBegin() { return {}; };
   virtual NodeIterator ChildEnd() { return {}; };
+
+  virtual std::unique_ptr<Node> Clone() const = 0;
+
+  template <typename T>
+  std::unique_ptr<T> CloneAs() const {
+    return Node::MustAs<T>(Clone());
+  }
 
   virtual ~Node() = default;
 
@@ -70,17 +78,24 @@ struct Node {
   }
 };
 
-struct FieldRef : Node {
+struct Ref : Node {};
+
+struct FieldRef : Ref {
   std::string name;
+  const FieldInfo *info = nullptr;
 
   explicit FieldRef(std::string name) : name(std::move(name)) {}
 
   std::string_view Name() const override { return "FieldRef"; }
   std::string Dump() const override { return name; }
   std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<FieldRef>(*this); }
 };
 
-struct StringLiteral : Node {
+struct Literal : virtual Node {};
+
+struct StringLiteral : Literal {
   std::string val;
 
   explicit StringLiteral(std::string val) : val(std::move(val)) {}
@@ -88,9 +103,11 @@ struct StringLiteral : Node {
   std::string_view Name() const override { return "StringLiteral"; }
   std::string Dump() const override { return fmt::format("\"{}\"", util::EscapeString(val)); }
   std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<StringLiteral>(*this); }
 };
 
-struct QueryExpr : Node {};
+struct QueryExpr : virtual Node {};
 
 struct BoolAtomExpr : QueryExpr {};
 
@@ -106,9 +123,14 @@ struct TagContainExpr : BoolAtomExpr {
 
   NodeIterator ChildBegin() override { return {field.get(), tag.get()}; };
   NodeIterator ChildEnd() override { return {}; };
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<TagContainExpr>(Node::MustAs<FieldRef>(field->Clone()),
+                                            Node::MustAs<StringLiteral>(tag->Clone()));
+  }
 };
 
-struct NumericLiteral : Node {
+struct NumericLiteral : Literal {
   double val;
 
   explicit NumericLiteral(double val) : val(val) {}
@@ -116,6 +138,8 @@ struct NumericLiteral : Node {
   std::string_view Name() const override { return "NumericLiteral"; }
   std::string Dump() const override { return fmt::format("{}", val); }
   std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<NumericLiteral>(*this); }
 };
 
 // NOLINTNEXTLINE
@@ -189,9 +213,14 @@ struct NumericCompareExpr : BoolAtomExpr {
 
   NodeIterator ChildBegin() override { return {field.get(), num.get()}; };
   NodeIterator ChildEnd() override { return {}; };
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<NumericCompareExpr>(op, Node::MustAs<FieldRef>(field->Clone()),
+                                                Node::MustAs<NumericLiteral>(num->Clone()));
+  }
 };
 
-struct BoolLiteral : BoolAtomExpr {
+struct BoolLiteral : BoolAtomExpr, Literal {
   bool val;
 
   explicit BoolLiteral(bool val) : val(val) {}
@@ -199,6 +228,8 @@ struct BoolLiteral : BoolAtomExpr {
   std::string_view Name() const override { return "BoolLiteral"; }
   std::string Dump() const override { return val ? "true" : "false"; }
   std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<BoolLiteral>(*this); }
 };
 
 struct QueryExpr;
@@ -213,6 +244,10 @@ struct NotExpr : QueryExpr {
 
   NodeIterator ChildBegin() override { return NodeIterator{inner.get()}; };
   NodeIterator ChildEnd() override { return {}; };
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<NotExpr>(Node::MustAs<QueryExpr>(inner->Clone()));
+  }
 };
 
 struct AndExpr : QueryExpr {
@@ -227,6 +262,15 @@ struct AndExpr : QueryExpr {
 
   NodeIterator ChildBegin() override { return NodeIterator(inners.begin()); };
   NodeIterator ChildEnd() override { return NodeIterator(inners.end()); };
+
+  std::unique_ptr<Node> Clone() const override {
+    std::vector<std::unique_ptr<QueryExpr>> res;
+    res.reserve(inners.size());
+    for (const auto &n : inners) {
+      res.push_back(Node::MustAs<QueryExpr>(n->Clone()));
+    }
+    return std::make_unique<AndExpr>(std::move(res));
+  }
 };
 
 struct OrExpr : QueryExpr {
@@ -241,39 +285,54 @@ struct OrExpr : QueryExpr {
 
   NodeIterator ChildBegin() override { return NodeIterator(inners.begin()); };
   NodeIterator ChildEnd() override { return NodeIterator(inners.end()); };
+
+  std::unique_ptr<Node> Clone() const override {
+    std::vector<std::unique_ptr<QueryExpr>> res;
+    res.reserve(inners.size());
+    for (const auto &n : inners) {
+      res.push_back(Node::MustAs<QueryExpr>(n->Clone()));
+    }
+    return std::make_unique<OrExpr>(std::move(res));
+  }
 };
 
-struct Limit : Node {
+struct LimitClause : Node {
   size_t offset = 0;
   size_t count = std::numeric_limits<size_t>::max();
 
-  Limit(size_t offset, size_t count) : offset(offset), count(count) {}
+  LimitClause(size_t offset, size_t count) : offset(offset), count(count) {}
 
-  std::string_view Name() const override { return "Limit"; }
+  std::string_view Name() const override { return "LimitClause"; }
   std::string Dump() const override { return fmt::format("limit {}, {}", offset, count); }
   std::string Content() const override { return fmt::format("{}, {}", offset, count); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<LimitClause>(*this); }
 };
 
-struct SortBy : Node {
+struct SortByClause : Node {
   enum Order { ASC, DESC } order = ASC;
   std::unique_ptr<FieldRef> field;
 
-  SortBy(Order order, std::unique_ptr<FieldRef> &&field) : order(order), field(std::move(field)) {}
+  SortByClause(Order order, std::unique_ptr<FieldRef> &&field) : order(order), field(std::move(field)) {}
 
   static constexpr const char *OrderToString(Order order) { return order == ASC ? "asc" : "desc"; }
 
-  std::string_view Name() const override { return "SortBy"; }
+  std::string_view Name() const override { return "SortByClause"; }
   std::string Dump() const override { return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order)); }
   std::string Content() const override { return OrderToString(order); }
 
   NodeIterator ChildBegin() override { return NodeIterator(field.get()); };
   NodeIterator ChildEnd() override { return {}; };
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<SortByClause>(order, Node::MustAs<FieldRef>(field->Clone()));
+  }
 };
 
-struct SelectExpr : Node {
+struct SelectClause : Node {
   std::vector<std::unique_ptr<FieldRef>> fields;
 
-  explicit SelectExpr(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
+  explicit SelectClause(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
 
   std::string_view Name() const override { return "SelectExpr"; }
   std::string Dump() const override {
@@ -283,28 +342,41 @@ struct SelectExpr : Node {
 
   NodeIterator ChildBegin() override { return NodeIterator(fields.begin()); };
   NodeIterator ChildEnd() override { return NodeIterator(fields.end()); };
+
+  std::unique_ptr<Node> Clone() const override {
+    std::vector<std::unique_ptr<FieldRef>> res;
+    res.reserve(fields.size());
+    for (const auto &f : fields) {
+      res.push_back(Node::MustAs<FieldRef>(f->Clone()));
+    }
+    return std::make_unique<SelectClause>(std::move(res));
+  }
 };
 
-struct IndexRef : Node {
+struct IndexRef : Ref {
   std::string name;
+  const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
 
   std::string_view Name() const override { return "IndexRef"; }
   std::string Dump() const override { return name; }
   std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<IndexRef>(*this); }
 };
 
-struct SearchStmt : Node {
-  std::unique_ptr<SelectExpr> select_expr;
+struct SearchExpr : Node {
+  std::unique_ptr<SelectClause> select;
   std::unique_ptr<IndexRef> index;
-  std::unique_ptr<QueryExpr> query_expr;  // optional
-  std::unique_ptr<Limit> limit;           // optional
-  std::unique_ptr<SortBy> sort_by;        // optional
+  std::unique_ptr<QueryExpr> query_expr;
+  std::unique_ptr<LimitClause> limit;     // optional
+  std::unique_ptr<SortByClause> sort_by;  // optional
 
-  SearchStmt(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr, std::unique_ptr<Limit> &&limit,
-             std::unique_ptr<SortBy> &&sort_by, std::unique_ptr<SelectExpr> &&select_expr)
-      : select_expr(std::move(select_expr)),
+  SearchExpr(std::unique_ptr<IndexRef> &&index, std::unique_ptr<QueryExpr> &&query_expr,
+             std::unique_ptr<LimitClause> &&limit, std::unique_ptr<SortByClause> &&sort_by,
+             std::unique_ptr<SelectClause> &&select)
+      : select(std::move(select)),
         index(std::move(index)),
         query_expr(std::move(query_expr)),
         limit(std::move(limit)),
@@ -313,20 +385,26 @@ struct SearchStmt : Node {
   std::string_view Name() const override { return "SearchStmt"; }
   std::string Dump() const override {
     std::string opt;
-    if (query_expr) opt += " where " + query_expr->Dump();
     if (sort_by) opt += " " + sort_by->Dump();
     if (limit) opt += " " + limit->Dump();
-    return fmt::format("{} from {}{}", select_expr->Dump(), index->Dump(), opt);
+    return fmt::format("{} from {} where {}{}", select->Dump(), index->Dump(), query_expr->Dump(), opt);
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {
-      NodeIterator::MemFn<&SearchStmt::select_expr>, NodeIterator::MemFn<&SearchStmt::index>,
-      NodeIterator::MemFn<&SearchStmt::query_expr>,  NodeIterator::MemFn<&SearchStmt::limit>,
-      NodeIterator::MemFn<&SearchStmt::sort_by>,
+      NodeIterator::MemFn<&SearchExpr::select>,     NodeIterator::MemFn<&SearchExpr::index>,
+      NodeIterator::MemFn<&SearchExpr::query_expr>, NodeIterator::MemFn<&SearchExpr::limit>,
+      NodeIterator::MemFn<&SearchExpr::sort_by>,
   };
 
   NodeIterator ChildBegin() override { return NodeIterator(this, ChildMap.begin()); };
   NodeIterator ChildEnd() override { return NodeIterator(this, ChildMap.end()); };
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<SearchExpr>(
+        Node::MustAs<IndexRef>(index->Clone()), Node::MustAs<QueryExpr>(query_expr->Clone()),
+        Node::MustAs<LimitClause>(limit->Clone()), Node::MustAs<SortByClause>(sort_by->Clone()),
+        Node::MustAs<SelectClause>(select->Clone()));
+  }
 };
 
 }  // namespace kqir

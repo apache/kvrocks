@@ -21,34 +21,31 @@
 #pragma once
 
 #include <memory>
-#include <utility>
 
 #include "search/ir.h"
 #include "search/ir_pass.h"
-#include "search/passes/push_down_not_expr.h"
-#include "search/passes/simplify_and_or_expr.h"
-#include "search/passes/simplify_boolean.h"
+#include "search/ir_plan.h"
 
 namespace kqir {
 
-using PassSequence = std::vector<std::unique_ptr<Pass>>;
+struct LowerToPlan : Visitor {
+  std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
+    auto scan = std::make_unique<FullIndexScan>(node->index->CloneAs<IndexRef>());
+    auto filter = std::make_unique<Filter>(std::move(scan), std::move(node->query_expr));
 
-struct PassManager {
-  static std::unique_ptr<Node> Execute(const PassSequence &seq, std::unique_ptr<Node> node) {
-    for (auto &pass : seq) {
-      node = pass->Transform(std::move(node));
+    std::unique_ptr<PlanOperator> op = std::move(filter);
+
+    // order is important here, since limit(sort(op)) is different from sort(limit(op))
+    if (node->sort_by) {
+      op = std::make_unique<Sort>(std::move(op), std::move(node->sort_by));
     }
-    return node;
-  }
 
-  template <typename... Passes>
-  static PassSequence GeneratePasses() {
-    PassSequence result;
-    (result.push_back(std::make_unique<Passes>()), ...);
-    return result;
-  }
+    if (node->limit) {
+      op = std::make_unique<Limit>(std::move(op), std::move(node->limit));
+    }
 
-  static PassSequence ExprPasses() { return GeneratePasses<SimplifyAndOrExpr, PushDownNotExpr, SimplifyBoolean>(); }
+    return std::make_unique<Projection>(std::move(op), std::move(node->select));
+  }
 };
 
 }  // namespace kqir

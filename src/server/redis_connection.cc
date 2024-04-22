@@ -409,18 +409,19 @@ Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
-  Config *config = srv_->GetConfig();
-  std::string reply, password = config->requirepass;
+  const Config *config = srv_->GetConfig();
+  std::string reply;
+  std::string password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
-    auto cmd_tokens = to_process_cmds->front();
+    CommandTokens cmd_tokens = std::move(to_process_cmds->front());
     to_process_cmds->pop_front();
     if (cmd_tokens.empty()) continue;
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
 
-    auto cmd_s = srv_->LookupAndCreateCommand(cmd_tokens.front());
+    auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
@@ -428,7 +429,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
     auto current_cmd = std::move(*cmd_s);
 
-    const auto attributes = current_cmd->GetAttributes();
+    const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 

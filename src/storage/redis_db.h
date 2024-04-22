@@ -48,6 +48,17 @@ struct RedisSortObject {
   std::variant<double, std::string> v;
 };
 
+/// SortCompare is a helper function that enables `RedisSortObject` to be sorted based on `SortArument`.
+///
+/// It can assist in implementing the third parameter `Compare comp` required by `std::sort`
+///
+/// \param args The basis used to compare two RedisSortObjects.
+/// If `args.alpha` is false, `RedisSortObject.v` will be taken as double for comparison
+/// If `args.alpha` is true and `args.sortby` is not empty, `RedisSortObject.v` will be taken as string for comparison
+/// If `args.alpha` is true and `args.sortby` is empty, the comparison is by `RedisSortObject.obj`.
+///
+/// \return If `desc` is false, returns true when `a < b`, otherwise returns true when `a > b`
+
 bool SortCompare(const RedisSortObject &a, const RedisSortObject &b, const SortArgument &args);
 
 /// Database is a wrapper of underlying storage engine, it provides

@@ -48,7 +48,7 @@ struct RedisSortObject {
   std::variant<double, std::string> v;
 };
 
-/// SortCompare is a helper function that enables `RedisSortObject` to be sorted based on `SortArument`.
+/// SortCompare is a helper function that enables `RedisSortObject` to be sorted based on `SortArgument`.
 ///
 /// It can assist in implementing the third parameter `Compare comp` required by `std::sort`
 ///

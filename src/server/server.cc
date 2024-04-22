@@ -1636,7 +1636,7 @@ StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const
   auto cmd = cmd_attr->factory();
   cmd->SetAttributes(cmd_attr);
 
-  return cmd;
+  return std::move(cmd);
 }
 
 Status Server::ScriptExists(const std::string &sha) {

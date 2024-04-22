@@ -33,14 +33,15 @@ constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow
 constexpr uint32_t kHyperLogLogRegisterCountPerSegment = redis::kBitmapSegmentBits / 8;
 
 constexpr uint32_t kHyperLogLogSegmentCount = kHyperLogLogRegisterCount / kHyperLogLogRegisterCountPerSegment;
-constexpr uint32_t kHyperLogLogBits = 8;
+constexpr uint32_t kHyperLogLogBits = 6;
 constexpr uint32_t kHyperLogLogRegisterCountMask = kHyperLogLogRegisterCount - 1; /* Mask to index register. */
 constexpr uint32_t kHyperLogLogRegisterMax = ((1 << kHyperLogLogBits) - 1);
 constexpr double kHyperLogLogAlphaInf = 0.721347520444481703680; /* constant for 0.5/ln(2) */
 constexpr uint32_t kHyperLogLogRegisterBytesPerSegment = kHyperLogLogRegisterCountPerSegment * kHyperLogLogBits / 8;
-constexpr uint32_t kHyperLogLogRegisterBytes = kHyperLogLogRegisterCount * kHyperLogLogBits / 8;
+constexpr uint32_t kHyperLogLogRegisterBytes = (kHyperLogLogRegisterCount * kHyperLogLogBits + 7) / 8;
+constexpr uint32_t kHyperLogLogHashSeed = 0xadc83b19;
 
-void HllDenseGetRegister(uint8_t *val, uint8_t *registers, uint32_t index);
+uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index);
 void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val);
 uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index);
 uint64_t HllCount(const std::vector<uint8_t> &registers);

@@ -57,13 +57,16 @@
 
 /* Store the value of the register at position 'index' into variable 'val'.
  * 'registers' is an array of unsigned bytes. */
-void HllDenseGetRegister(uint8_t *val, uint8_t *registers, uint32_t index) {
+uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index) {
   uint32_t byte = index * kHyperLogLogBits / 8;
   uint8_t fb = index * kHyperLogLogBits & 7;
   uint8_t fb8 = 8 - fb;
   uint8_t b0 = registers[byte];
-  uint8_t b1 = registers[byte + 1];
-  *val = ((b0 >> fb) | (b1 << fb8)) & kHyperLogLogRegisterMax;
+  uint8_t b1 = 0;
+  if (fb > 8 - kHyperLogLogBits) {
+    b1 = registers[byte + 1];
+  }
+  return ((b0 >> fb) | (b1 << fb8)) & kHyperLogLogRegisterMax;
 }
 
 /* Set the value of the register at position 'index' to 'val'.
@@ -75,8 +78,10 @@ void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val) {
   uint8_t v = val;
   registers[byte] &= ~(kHyperLogLogRegisterMax << fb);
   registers[byte] |= v << fb;
-  registers[byte + 1] &= ~(kHyperLogLogRegisterMax >> fb8);
-  registers[byte + 1] |= v >> fb8;
+  if (fb > 8 - kHyperLogLogBits) {
+    registers[byte + 1] &= ~(kHyperLogLogRegisterMax >> fb8);
+    registers[byte + 1] |= v >> fb8;
+  }
 }
 
 /* ========================= HyperLogLog algorithm  ========================= */
@@ -100,7 +105,7 @@ uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index)
    *
    * This may sound like inefficient, but actually in the average case
    * there are high probabilities to find a 1 after a few iterations. */
-  hash = MurmurHash64A(element.data(), elesize, 0xadc83b19ULL);
+  hash = MurmurHash64A(element.data(), elesize, kHyperLogLogHashSeed);
   index = hash & kHyperLogLogRegisterCountMask;      /* Register index. */
   hash >>= kHyperLogLogRegisterCountPow;             /* Remove bits used to address the register. */
   hash |= ((uint64_t)1 << kHyperLogLogHashBitCount); /* Make sure the loop terminates
@@ -116,58 +121,50 @@ uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index)
 }
 
 /* Compute the register histogram in the dense representation. */
-void HllDenseRegHisto(uint8_t *registers, int *reghisto) {
+void HllDenseRegHisto(const uint8_t *registers, int *reghisto) {
   /* Redis default is to use 16384 registers 6 bits each. The code works
    * with other values by modifying the defines, but for our target value
    * we take a faster path with unrolled loops. */
-  if (kHyperLogLogRegisterCount == 16384 && kHyperLogLogBits == 6) {
-    uint8_t *r = registers;
-    unsigned long r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0,
-                  r12 = 0, r13 = 0, r14 = 0, r15 = 0;
-    for (auto j = 0; j < 1024; j++) {
-      /* Handle 16 registers per iteration. */
-      r0 = r[0] & 63;
-      r1 = (r[0] >> 6 | r[1] << 2) & 63;
-      r2 = (r[1] >> 4 | r[2] << 4) & 63;
-      r3 = (r[2] >> 2) & 63;
-      r4 = r[3] & 63;
-      r5 = (r[3] >> 6 | r[4] << 2) & 63;
-      r6 = (r[4] >> 4 | r[5] << 4) & 63;
-      r7 = (r[5] >> 2) & 63;
-      r8 = r[6] & 63;
-      r9 = (r[6] >> 6 | r[7] << 2) & 63;
-      r10 = (r[7] >> 4 | r[8] << 4) & 63;
-      r11 = (r[8] >> 2) & 63;
-      r12 = r[9] & 63;
-      r13 = (r[9] >> 6 | r[10] << 2) & 63;
-      r14 = (r[10] >> 4 | r[11] << 4) & 63;
-      r15 = (r[11] >> 2) & 63;
+  auto r = const_cast<uint8_t *>(registers);
+  unsigned long r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0,
+                r12 = 0, r13 = 0, r14 = 0, r15 = 0;
+  for (auto j = 0; j < 1024; j++) {
+    /* Handle 16 registers per iteration. */
+    r0 = r[0] & kHyperLogLogRegisterMax;
+    r1 = (r[0] >> 6 | r[1] << 2) & kHyperLogLogRegisterMax;
+    r2 = (r[1] >> 4 | r[2] << 4) & kHyperLogLogRegisterMax;
+    r3 = (r[2] >> 2) & kHyperLogLogRegisterMax;
+    r4 = r[3] & kHyperLogLogRegisterMax;
+    r5 = (r[3] >> 6 | r[4] << 2) & kHyperLogLogRegisterMax;
+    r6 = (r[4] >> 4 | r[5] << 4) & kHyperLogLogRegisterMax;
+    r7 = (r[5] >> 2) & kHyperLogLogRegisterMax;
+    r8 = r[6] & kHyperLogLogRegisterMax;
+    r9 = (r[6] >> 6 | r[7] << 2) & kHyperLogLogRegisterMax;
+    r10 = (r[7] >> 4 | r[8] << 4) & kHyperLogLogRegisterMax;
+    r11 = (r[8] >> 2) & kHyperLogLogRegisterMax;
+    r12 = r[9] & kHyperLogLogRegisterMax;
+    r13 = (r[9] >> 6 | r[10] << 2) & kHyperLogLogRegisterMax;
+    r14 = (r[10] >> 4 | r[11] << 4) & kHyperLogLogRegisterMax;
+    r15 = (r[11] >> 2) & kHyperLogLogRegisterMax;
 
-      reghisto[r0]++;
-      reghisto[r1]++;
-      reghisto[r2]++;
-      reghisto[r3]++;
-      reghisto[r4]++;
-      reghisto[r5]++;
-      reghisto[r6]++;
-      reghisto[r7]++;
-      reghisto[r8]++;
-      reghisto[r9]++;
-      reghisto[r10]++;
-      reghisto[r11]++;
-      reghisto[r12]++;
-      reghisto[r13]++;
-      reghisto[r14]++;
-      reghisto[r15]++;
+    reghisto[r0]++;
+    reghisto[r1]++;
+    reghisto[r2]++;
+    reghisto[r3]++;
+    reghisto[r4]++;
+    reghisto[r5]++;
+    reghisto[r6]++;
+    reghisto[r7]++;
+    reghisto[r8]++;
+    reghisto[r9]++;
+    reghisto[r10]++;
+    reghisto[r11]++;
+    reghisto[r12]++;
+    reghisto[r13]++;
+    reghisto[r14]++;
+    reghisto[r15]++;
 
-      r += 12;
-    }
-  } else {
-    for (uint32_t j = 0; j < kHyperLogLogRegisterCount; j++) {
-      uint8_t reg = 0;
-      HllDenseGetRegister(&reg, registers, j);
-      reghisto[reg]++;
-    }
+    r += 12;
   }
 }
 
@@ -247,8 +244,8 @@ void HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &r
   uint8_t val = 0, max_val = 0;
 
   for (uint32_t i = 0; i < kHyperLogLogRegisterCount; i++) {
-    HllDenseGetRegister(&val, const_cast<uint8_t *>(registers.data()), i);
-    HllDenseGetRegister(&max_val, reinterpret_cast<uint8_t *>(registers_max->data()), i);
+    val = HllDenseGetRegister(const_cast<uint8_t *>(registers.data()), i);
+    max_val = HllDenseGetRegister(reinterpret_cast<uint8_t *>(registers_max->data()), i);
     if (val > max_val) {
       HllDenseSetRegister(reinterpret_cast<uint8_t *>(registers_max->data()), i, val);
     }

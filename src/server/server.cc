@@ -847,22 +847,25 @@ void Server::GetRocksDBInfo(std::string *info) {
 
   string_stream << "# RocksDB\r\n";
 
-  uint64_t block_cache_usage = 0;
-  // All column families share the same block cache, so it's good to count a single one.
-  auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
-  db->GetIntProperty(subkey_cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
-  string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
+  {
+    // All column families share the same block cache, so it's good to count a single one.
+    uint64_t block_cache_usage = 0;
+    uint64_t block_cache_pinned_usage = 0;
+    auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
+    string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
+    string_stream << "block_cache_pinned_usage[" << subkey_cf_handle->GetName() << "]:" << block_cache_pinned_usage
+                  << "\r\n";
+  }
 
   for (const auto &cf_handle : *storage->GetCFHandles()) {
     uint64_t estimate_keys = 0;
-    uint64_t block_cache_pinned_usage = 0;
     uint64_t index_and_filter_cache_usage = 0;
     std::map<std::string, std::string> cf_stats_map;
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateNumKeys, &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
-    string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateTableReadersMem, &index_and_filter_cache_usage);
     string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);

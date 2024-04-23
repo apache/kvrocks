@@ -98,13 +98,14 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
 }
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_union_2) {
-  std::unordered_set<int> realcard_set;
+  std::srand(time(nullptr));
+  std::vector<int> realcard_vec;
   for (auto i = 1; i < 1000; i++) {
     for (auto j = 0; j < 3; j++) {
       uint64_t ret = 0;
       int rint = std::rand() % 20000;
       ASSERT_TRUE(hll_->Add("hll" + std::to_string(j), {std::to_string(rint)}, &ret).ok());
-      realcard_set.insert(rint);
+      realcard_vec.push_back(rint);
     }
   }
   std::vector<uint64_t> cards(3);
@@ -113,11 +114,8 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
   ASSERT_TRUE(hll_->Count("hll2", &cards[2]).ok());
 
   auto card = static_cast<double>(cards[0] + cards[1] + cards[2]);
-  auto realcard = static_cast<double>(realcard_set.size());
+  auto realcard = static_cast<double>(realcard_vec.size());
   double left = std::abs(card - realcard);
-  // TODO when 'right = card / 100 * 5', the test run failed that the ABS is
-  // a little larger than 'card * 0.05' (left : 149, right: 146.30000000000001).
-  // Randomize elements may cause larger error.
-  double right = card / 100 * 5.1;
+  double right = card / 100 * 5;
   ASSERT_TRUE(left < right) << "left : " << left << ", right: " << right;
 }

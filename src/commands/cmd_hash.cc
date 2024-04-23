@@ -18,6 +18,8 @@
  *
  */
 
+#include <string>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -367,12 +369,13 @@ class CommandHScan : public CommandSubkeyScanBase {
     std::vector<std::string> fields;
     std::vector<std::string> values;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeHash);
-    auto s = hash_db.Scan(key_, key_name, limit_, prefix_, &fields, &values, pm_);
+    ScanConfig scan_config(limit_,srv->GetConfig()->max_scan_num,prefix_);
+    auto s = hash_db.Scan(key_, key_name, &fields, scan_config, *match_mode_, &values);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
-    auto cursor = GetNextCursor(srv, fields, CursorType::kTypeHash);
+    auto &end_cursor = hash_db.end_cursor;
+    const auto &cursor = srv->GenerateCursorFromKeyName(end_cursor, CursorType::kTypeHash);
     std::vector<std::string> entries;
     entries.reserve(2 * fields.size());
     for (size_t i = 0; i < fields.size(); i++) {

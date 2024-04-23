@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -48,8 +49,8 @@ class Set : public SubKeyScanner {
   rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt);
   rocksdb::Status UnionStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *save_cnt);
   rocksdb::Status InterStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt);
-  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                       const std::string &member_prefix, std::vector<std::string> *members);
+  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *members,
+                       const ScanConfig &scan_config, const BaseMatchType &match_mode);
 
  private:
   rocksdb::Status GetMetadata(Database::GetOptions options, const Slice &ns_key, SetMetadata *metadata);

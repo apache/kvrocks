@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -44,17 +46,16 @@ class CommandScanBase : public Commander {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
-        if(prefix_.size()>=2&&prefix_.front() == '*'&&prefix_.back() =='*'){
-          prefix_ = prefix_.substr(1,prefix_.size()-2);
-          pm_ = 2;
-        }else if (!prefix_.empty() && prefix_.back() == '*') {
+        if (prefix_.size() >= 2 && prefix_.front() == '*' && prefix_.back() == '*') {
+          prefix_ = prefix_.substr(1, prefix_.size() - 2);
+          match_mode_ = std::make_unique<SubStringMatchType>();
+        } else if (!prefix_.empty() && prefix_.back() == '*') {
           prefix_ = prefix_.substr(0, prefix_.size() - 1);
-          pm_ = 0;
-        } else if(!prefix_.empty()&& prefix_.front()=='*'){
+          match_mode_ = std::make_unique<PerfixMatchType>();
+        } else if (!prefix_.empty() && prefix_.front() == '*') {
           prefix_ = prefix_.substr(1, prefix_.size() - 1);
-          pm_ = 1;
-        }
-        else {
+          match_mode_ = std::make_unique<SubStringMatchType>();
+        } else {
           return {Status::RedisParseErr, "currently only key prefix matching is supported"};
         }
       } else if (parser.EatEqICase("count")) {
@@ -87,16 +88,10 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
-                             CursorType cursor_type) const {
+  static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
+                                    const std::string &end_cursor) {
     std::vector<std::string> list;
-    if (keys.size() == static_cast<size_t>(limit_)) {
-      auto end_cursor = srv->GenerateCursorFromKeyName(keys.back(), cursor_type);
-      list.emplace_back(redis::BulkString(end_cursor));
-    } else {
-      list.emplace_back(redis::BulkString("0"));
-    }
-
+    list.emplace_back(end_cursor);
     list.emplace_back(ArrayOfBulkStrings(keys));
 
     return redis::Array(list);
@@ -107,7 +102,7 @@ class CommandScanBase : public Commander {
   std::string prefix_;
   int limit_ = 20;
   RedisType type_ = kRedisNone;
-  int pm_ = 0;
+  std::unique_ptr<BaseMatchType> match_mode_;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {

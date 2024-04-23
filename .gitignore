@@ -42,9 +42,8 @@ version.h
 .cache
 
 compactdb
+test
 testdb
 
 build
 cmake-build-*
-debug-build
-test

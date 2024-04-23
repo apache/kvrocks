@@ -26,6 +26,7 @@
 
 #include "db_util.h"
 #include "sample_helper.h"
+#include "storage/redis_metadata.h"
 
 namespace redis {
 
@@ -264,9 +265,9 @@ rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &membe
   return s;
 }
 
-rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                          const std::string &member_prefix, std::vector<std::string> *members) {
-  return SubKeyScanner::Scan(kRedisSet, user_key, cursor, limit, member_prefix, members);
+rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *members,
+                          const ScanConfig &scan_config, const BaseMatchType &match_mode) {
+  return SubKeyScanner::Scan(kRedisSet, user_key, cursor, members, scan_config, match_mode, nullptr);
 }
 
 /*

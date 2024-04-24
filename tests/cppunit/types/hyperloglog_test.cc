@@ -93,7 +93,7 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
     // assert the ABS of 'card' and 'realcart' is within 5% of the cardinality
     double left = std::abs(card - realcard);
     double right = card / 100 * 5;
-    ASSERT_TRUE(left < right) << "left : " << left << ", right: " << right;
+    ASSERT_LT(left, right) << "left : " << left << ", right: " << right;
   }
 }
 
@@ -117,5 +117,5 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
   auto realcard = static_cast<double>(realcard_vec.size());
   double left = std::abs(card - realcard);
   double right = card / 100 * 5;
-  ASSERT_TRUE(left < right) << "left : " << left << ", right: " << right;
+  ASSERT_LT(left, right) << "left : " << left << ", right: " << right;
 }

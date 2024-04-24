@@ -125,7 +125,7 @@ void HllDenseRegHisto(const uint8_t *registers, int *reghisto) {
   /* Redis default is to use 16384 registers 6 bits each. The code works
    * with other values by modifying the defines, but for our target value
    * we take a faster path with unrolled loops. */
-  auto r = const_cast<uint8_t *>(registers);
+  auto r = registers;
   unsigned long r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0,
                 r12 = 0, r13 = 0, r14 = 0, r15 = 0;
   for (auto j = 0; j < 1024; j++) {
@@ -222,7 +222,7 @@ uint64_t HllCount(const std::vector<uint8_t> &registers) {
   int reghisto[64] = {0};
 
   /* Compute register histogram */
-  HllDenseRegHisto(const_cast<uint8_t *>(registers.data()), reghisto);
+  HllDenseRegHisto(registers.data(), reghisto);
 
   /* Estimate cardinality from register histogram. See:
    * "New cardinality estimation algorithms for HyperLogLog sketches"
@@ -233,7 +233,7 @@ uint64_t HllCount(const std::vector<uint8_t> &registers) {
     z *= 0.5;
   }
   z += m * HllSigma(reghisto[0] / (double)m);
-  e = static_cast<double>(llroundl(kHyperLogLogAlphaInf * m * m / z));
+  e = llroundl(kHyperLogLogAlphaInf * m * m / z);
 
   return (uint64_t)e;
 }
@@ -244,10 +244,10 @@ void HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &r
   uint8_t val = 0, max_val = 0;
 
   for (uint32_t i = 0; i < kHyperLogLogRegisterCount; i++) {
-    val = HllDenseGetRegister(const_cast<uint8_t *>(registers.data()), i);
-    max_val = HllDenseGetRegister(reinterpret_cast<uint8_t *>(registers_max->data()), i);
+    val = HllDenseGetRegister(registers.data(), i);
+    max_val = HllDenseGetRegister(registers_max->data(), i);
     if (val > max_val) {
-      HllDenseSetRegister(reinterpret_cast<uint8_t *>(registers_max->data()), i, val);
+      HllDenseSetRegister(registers_max->data(), i, val);
     }
   }
 }

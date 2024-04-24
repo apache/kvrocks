@@ -47,19 +47,19 @@ func TestSortParser(t *testing.T) {
 		require.EqualError(t, err, "ERR syntax error")
 
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "LIMIT").Result()
-		require.EqualError(t, err, "ERR syntax error")
+		require.EqualError(t, err, "ERR no more item to parse")
 
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "LIMIT", 1).Result()
-		require.EqualError(t, err, "ERR syntax error")
+		require.EqualError(t, err, "ERR no more item to parse")
 
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "LIMIT", 1, "not-number").Result()
 		require.EqualError(t, err, "ERR not started as an integer")
 
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "STORE").Result()
-		require.EqualError(t, err, "ERR syntax error")
+		require.EqualError(t, err, "ERR no more item to parse")
 
 		_, err = rdb.Do(ctx, "Sort_RO", "bad-case-key", "STORE", "store_ro_key").Result()
-		require.EqualError(t, err, "ERR syntax error")
+		require.EqualError(t, err, "ERR SORT_RO is read-only and does not support the STORE parameter")
 	})
 }
 

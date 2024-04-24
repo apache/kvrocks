@@ -431,9 +431,6 @@ class CommandSort : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("BY")) {
-        if (parser.Remains() < 1) {
-          return parser.InvalidSyntax();
-        }
         sort_argument_.sortby = GET_OR_RET(parser.TakeStr());
 
         if (sort_argument_.sortby.find('*') == std::string::npos) {
@@ -447,15 +444,9 @@ class CommandSort : public Commander {
            * it if no full ACL key access is applied for this command. */
         }
       } else if (parser.EatEqICase("LIMIT")) {
-        if (parser.Remains() < 2) {
-          return parser.InvalidSyntax();
-        }
         sort_argument_.offset = GET_OR_RET(parser.template TakeInt<int>());
         sort_argument_.count = GET_OR_RET(parser.template TakeInt<int>());
-      } else if (parser.EatEqICase("GET") && parser.Remains() >= 1) {
-        if (parser.Remains() < 1) {
-          return parser.InvalidSyntax();
-        }
+      } else if (parser.EatEqICase("GET")) {
         /* TODO:
          * If GET is specified with a real pattern, we can't accept it in cluster mode,
          * unless we can make sure the keys formed by the pattern are in the same slot
@@ -469,10 +460,7 @@ class CommandSort : public Commander {
         sort_argument_.alpha = true;
       } else if (parser.EatEqICase("STORE")) {
         if constexpr (ReadOnly) {
-          return parser.InvalidSyntax();
-        }
-        if (parser.Remains() < 1) {
-          return parser.InvalidSyntax();
+          return {Status::RedisParseErr, "SORT_RO is read-only and does not support the STORE parameter"};
         }
         sort_argument_.storekey = GET_OR_RET(parser.TakeStr());
       } else {
@@ -498,9 +486,24 @@ class CommandSort : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    std::vector<std::string> output_vec;
+    /* When sorting a set with no sort specified, we must sort the output
+     * so the result is consistent across scripting and replication.
+     *
+     * The other types (list, sorted set) will retain their native order
+     * even if no sort order is requested, so they remain stable across
+     * scripting and replication.
+     *
+     * TODO: support CLIENT_SCRIPT flag, (!storekey_.empty() || c->flags & CLIENT_SCRIPT)) */
+    if (sort_argument_.dontsort && type == RedisType::kRedisSet && (!sort_argument_.storekey.empty())) {
+      /* Force ALPHA sorting */
+      sort_argument_.dontsort = false;
+      sort_argument_.alpha = true;
+      sort_argument_.sortby = "";
+    }
+
+    std::vector<std::string> sorted_elems;
     Database::SortResult res = Database::SortResult::DONE;
-    s = redis.Sort(type, args_[1], sort_argument_, conn->GetProtocolVersion(), &output_vec, &res);
+    s = redis.Sort(type, args_[1], sort_argument_, conn->GetProtocolVersion(), &sorted_elems, &res);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -515,9 +518,9 @@ class CommandSort : public Commander {
         break;
       case Database::SortResult::DONE:
         if (sort_argument_.storekey.empty()) {
-          *output = ArrayOfBulkStrings(output_vec);
+          *output = ArrayOfBulkStrings(sorted_elems);
         } else {
-          *output = Integer(output_vec.size());
+          *output = Integer(sorted_elems.size());
         }
         break;
     }

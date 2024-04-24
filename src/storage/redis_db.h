@@ -46,20 +46,19 @@ struct SortArgument {
 struct RedisSortObject {
   std::string obj;
   std::variant<double, std::string> v;
+
+  /// SortCompare is a helper function that enables `RedisSortObject` to be sorted based on `SortArgument`.
+  ///
+  /// It can assist in implementing the third parameter `Compare comp` required by `std::sort`
+  ///
+  /// \param args The basis used to compare two RedisSortObjects.
+  /// If `args.alpha` is false, `RedisSortObject.v` will be taken as double for comparison
+  /// If `args.alpha` is true and `args.sortby` is not empty, `RedisSortObject.v` will be taken as string for comparison
+  /// If `args.alpha` is true and `args.sortby` is empty, the comparison is by `RedisSortObject.obj`.
+  ///
+  /// \return If `desc` is false, returns true when `a < b`, otherwise returns true when `a > b`
+  static bool SortCompare(const RedisSortObject &a, const RedisSortObject &b, const SortArgument &args);
 };
-
-/// SortCompare is a helper function that enables `RedisSortObject` to be sorted based on `SortArgument`.
-///
-/// It can assist in implementing the third parameter `Compare comp` required by `std::sort`
-///
-/// \param args The basis used to compare two RedisSortObjects.
-/// If `args.alpha` is false, `RedisSortObject.v` will be taken as double for comparison
-/// If `args.alpha` is true and `args.sortby` is not empty, `RedisSortObject.v` will be taken as string for comparison
-/// If `args.alpha` is true and `args.sortby` is empty, the comparison is by `RedisSortObject.obj`.
-///
-/// \return If `desc` is false, returns true when `a < b`, otherwise returns true when `a > b`
-
-bool SortCompare(const RedisSortObject &a, const RedisSortObject &b, const SortArgument &args);
 
 /// Database is a wrapper of underlying storage engine, it provides
 /// some common operations for redis commands.
@@ -139,8 +138,8 @@ class Database {
   [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
                                      CopyResult *res);
   enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, DONE };
-  [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, SortArgument &args,
-                                     const RESP &version, std::vector<std::string> *output_vec, SortResult *res);
+  [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, const SortArgument &args,
+                                     const RESP &version, std::vector<std::string> *elems, SortResult *res);
 
  protected:
   engine::Storage *storage_;
@@ -153,7 +152,20 @@ class Database {
   // Already internal keys
   [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
   [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
-  // Sort helper
+
+  /// lookupKeyByPattern is a helper function of `Sort` to support `GET` and `BY` fields.
+  ///
+  /// \param pattern can be the value of a `BY` or `GET` field
+  /// \param subst is used to replace the "*" or "#" matched in the pattern string.
+  /// \return  Return the value associated to the key with a name obtained using the following rules:
+  ///   1) The first occurrence of '*' in 'pattern' is substituted with 'subst'.
+  ///   2) If 'pattern' matches the "->" string, everything on the left of
+  ///      the arrow is treated as the name of a hash field, and the part on the
+  ///      left as the key name containing a hash. The value of the specified
+  ///      field is returned.
+  ///   3) If 'pattern' equals "#", the function simply returns 'subst' itself so
+  ///      that the SORT command can be used like: SORT key GET # to retrieve
+  ///      the Set/List elements directly.
   std::string lookupKeyByPattern(const std::string &pattern, const std::string &subst);
 };
 class LatestSnapShot {

@@ -755,6 +755,24 @@ void Server::cron() {
         Status s = AsyncBgSaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
       }
+      if (config_->dbsize_scan_cron.IsEnabled() && config_->dbsize_scan_cron.IsTimeMatch(&now)) {
+        auto tokens = namespace_.List();
+        std::vector<std::string> namespaces;
+
+        // Number of namespaces (custom namespaces + default one)
+        namespaces.reserve(tokens.size() + 1);
+        for (auto &token : tokens) {
+          namespaces.emplace_back(token.second);  // namespace
+        }
+
+        // add default namespace as fallback
+        namespaces.emplace_back(kDefaultNamespace);
+
+        for (auto &ns : namespaces) {
+          Status s = AsyncScanDBSize(ns);
+          LOG(INFO) << "[server] Schedule to recalculate the db size on namespace: " << ns << ", result: " << s.Msg();
+        }
+      }
     }
     // check every 10s
     if (counter != 0 && counter % 100 == 0) {
@@ -828,16 +846,26 @@ void Server::GetRocksDBInfo(std::string *info) {
   db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
+
+  {
+    // All column families share the same block cache, so it's good to count a single one.
+    uint64_t block_cache_usage = 0;
+    uint64_t block_cache_pinned_usage = 0;
+    auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
+    string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
+    string_stream << "block_cache_pinned_usage[" << subkey_cf_handle->GetName() << "]:" << block_cache_pinned_usage
+                  << "\r\n";
+  }
+
   for (const auto &cf_handle : *storage->GetCFHandles()) {
-    uint64_t estimate_keys = 0, block_cache_usage = 0, block_cache_pinned_usage = 0, index_and_filter_cache_usage = 0;
+    uint64_t estimate_keys = 0;
+    uint64_t index_and_filter_cache_usage = 0;
     std::map<std::string, std::string> cf_stats_map;
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateNumKeys, &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
-    string_stream << "block_cache_usage[" << cf_handle->GetName() << "]:" << block_cache_usage << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
-    string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateTableReadersMem, &index_and_filter_cache_usage);
     string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
@@ -1608,7 +1636,7 @@ StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const
   auto cmd = cmd_attr->factory();
   cmd->SetAttributes(cmd_attr);
 
-  return cmd;
+  return std::move(cmd);
 }
 
 Status Server::ScriptExists(const std::string &sha) {
@@ -2018,4 +2046,23 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
 
   return {};
+}
+
+AuthResult Server::AuthenticateUser(const std::string &user_password, std::string *ns) {
+  const auto &requirepass = GetConfig()->requirepass;
+  if (requirepass.empty()) {
+    return AuthResult::NO_REQUIRE_PASS;
+  }
+
+  auto get_ns = GetNamespace()->GetByToken(user_password);
+  if (get_ns.IsOK()) {
+    *ns = get_ns.GetValue();
+    return AuthResult::IS_USER;
+  }
+
+  if (user_password != requirepass) {
+    return AuthResult::INVALID_PASSWORD;
+  }
+  *ns = kDefaultNamespace;
+  return AuthResult::IS_ADMIN;
 }

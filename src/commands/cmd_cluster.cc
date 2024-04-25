@@ -32,9 +32,16 @@ class CommandCluster : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
 
-    if (args.size() == 2 &&
-        (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info" || subcommand_ == "reset"))
+    if (args.size() == 2 && (subcommand_ == "nodes" || subcommand_ == "slots" || subcommand_ == "info"))
       return Status::OK();
+
+    // CLUSTER RESET [HARD|SOFT]
+    if (subcommand_ == "reset" && (args_.size() == 2 || args_.size() == 3)) {
+      if (args_.size() == 3 && !util::EqualICase(args_[2], "hard") && !util::EqualICase(args_[2], "soft")) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
 
     if (subcommand_ == "keyslot" && args_.size() == 3) return Status::OK();
 
@@ -49,7 +56,9 @@ class CommandCluster : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET"};
+    if (subcommand_ == "replicas" && args_.size() == 3) return Status::OK();
+
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET|REPLICAS"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -110,6 +119,14 @@ class CommandCluster : public Commander {
       Status s = srv->cluster->Reset();
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
+      } else {
+        return {Status::RedisExecErr, s.Msg()};
+      }
+    } else if (subcommand_ == "replicas") {
+      auto node_id = args_[2];
+      StatusOr<std::string> s = srv->cluster->GetReplicas(node_id);
+      if (s.IsOK()) {
+        *output = conn->VerbatimString("txt", s.GetValue());
       } else {
         return {Status::RedisExecErr, s.Msg()};
       }
@@ -295,19 +312,19 @@ class CommandClusterX : public Commander {
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
 };
 
-static uint64_t GenerateClusterFlag(const std::vector<std::string> &args) {
+static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {
   if (args.size() >= 2 && Cluster::SubCommandIsExecExclusive(args[1])) {
-    return kCmdExclusive;
+    return flags | kCmdExclusive;
   }
 
-  return 0;
+  return flags;
 }
 
 class CommandReadOnly : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->EnableFlag(redis::Connection::KReadOnly);
+    conn->EnableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };
@@ -316,7 +333,7 @@ class CommandReadWrite : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
-    conn->DisableFlag(redis::Connection::KReadOnly);
+    conn->DisableFlag(redis::Connection::kReadOnly);
     return Status::OK();
   }
 };

@@ -594,6 +594,31 @@ class CommandJsonMGet : public Commander {
   }
 };
 
+class CommandJsonMSet : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    if ((args_.size() - 1) % 3 != 0) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::vector<std::string> user_keys;
+    std::vector<std::string> paths;
+    std::vector<std::string> values;
+    for (size_t i = 0; i < (args_.size() - 1) / 3; i++) {
+      user_keys.emplace_back(args_[i * 3 + 1]);
+      paths.emplace_back(args_[i * 3 + 2]);
+      values.emplace_back(args_[i * 3 + 3]);
+    }
+
+    if (auto s = json.MSet(user_keys, paths, values); !s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -616,6 +641,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonObjLen>("json.objlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, -2, 1),
+                        MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3), );
 
 }  // namespace redis

@@ -29,6 +29,7 @@
 
 #include "commands/commander.h"
 #include "config/config.h"
+#include "index_info.h"
 #include "indexer.h"
 #include "search/search_encoding.h"
 #include "server/server.h"
@@ -69,32 +70,22 @@ struct FieldValueRetriever {
 struct IndexUpdater {
   using FieldValues = std::map<std::string, std::string>;
 
-  std::string name;
-  SearchMetadata metadata;
-  std::vector<std::string> prefixes;
-  std::map<std::string, std::unique_ptr<SearchFieldMetadata>> fields;
+  const kqir::IndexInfo *info = nullptr;
   GlobalIndexer *indexer = nullptr;
 
-  IndexUpdater(const IndexUpdater &) = delete;
-  IndexUpdater(IndexUpdater &&) = default;
+  explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
 
-  IndexUpdater &operator=(IndexUpdater &&) = default;
-  IndexUpdater &operator=(const IndexUpdater &) = delete;
-
-  ~IndexUpdater() = default;
-
-  StatusOr<FieldValues> Record(std::string_view key, const std::string &ns);
+  StatusOr<FieldValues> Record(std::string_view key, const std::string &ns) const;
   Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                     std::string_view current, const std::string &ns);
-  Status Update(const FieldValues &original, std::string_view key, const std::string &ns);
+                     std::string_view current, const std::string &ns) const;
+  Status Update(const FieldValues &original, std::string_view key, const std::string &ns) const;
 };
 
 struct GlobalIndexer {
   using FieldValues = IndexUpdater::FieldValues;
-  using RecordResult = std::pair<IndexUpdater *, FieldValues>;
+  using RecordResult = std::pair<IndexUpdater, FieldValues>;
 
-  std::deque<IndexUpdater> updaters;
-  tsl::htrie_map<char, IndexUpdater *> prefix_map;
+  tsl::htrie_map<char, IndexUpdater> prefix_map;
 
   engine::Storage *storage = nullptr;
 

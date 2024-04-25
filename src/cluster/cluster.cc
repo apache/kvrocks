@@ -469,6 +469,48 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
   return Status::OK();
 }
 
+StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
+  if (version_ < 0) {
+    return {Status::ClusterDown, errClusterNoInitialized};
+  }
+
+  auto item = nodes_.find(node_id);
+  if (item == nodes_.end()) {
+    return {Status::InvalidArgument, errInvalidNodeID};
+  }
+
+  auto node = item->second;
+  if (node->role != kClusterMaster) {
+    return {Status::InvalidArgument, errNoMasterNode};
+  }
+
+  auto now = util::GetTimeStampMS();
+  std::string replicas_desc;
+  for (const auto &replica_id : node->replicas) {
+    auto n = nodes_.find(replica_id);
+    if (n == nodes_.end()) {
+      continue;
+    }
+
+    auto replica = n->second;
+
+    std::string node_str;
+    // ID, host, port
+    node_str.append(
+        fmt::format("{} {}:{}@{} ", replica_id, replica->host, replica->port, replica->port + kClusterPortIncr));
+
+    // Flags
+    node_str.append(fmt::format("slave {} ", node_id));
+
+    // Ping sent, pong received, config epoch, link status
+    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
+
+    replicas_desc.append(node_str + "\n");
+  }
+
+  return replicas_desc;
+}
+
 std::string Cluster::getNodeIDBySlot(int slot) const {
   if (slot < 0 || slot >= kClusterSlots || !slots_nodes_[slot]) return "";
   return slots_nodes_[slot]->id;
@@ -821,7 +863,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   if (myself_ && myself_->role == kClusterSlave && !(attributes->flags & redis::kCmdWrite) &&
       nodes_.find(myself_->master_id) != nodes_.end() && nodes_[myself_->master_id] == slots_nodes_[slot] &&
-      conn->IsFlagEnabled(redis::Connection::KReadOnly)) {
+      conn->IsFlagEnabled(redis::Connection::kReadOnly)) {
     return Status::OK();  // My master is serving this slot
   }
 
@@ -829,6 +871,8 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
           fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
 }
 
+// Only HARD mode is meaningful to the Kvrocks cluster,
+// so it will force clearing all information after resetting.
 Status Cluster::Reset() {
   if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlot() != -1) {
     return {Status::NotOK, "Can't reset cluster while migrating slot"};
@@ -838,6 +882,10 @@ Status Cluster::Reset() {
   }
   if (!srv_->storage->IsEmptyDB()) {
     return {Status::NotOK, "Can't reset cluster while database is not empty"};
+  }
+  if (srv_->IsSlave()) {
+    auto s = srv_->RemoveMaster();
+    if (!s.IsOK()) return s;
   }
 
   version_ = -1;

@@ -32,6 +32,11 @@ Status RdbStringStream::Read(char *buf, size_t n) {
   return Status::OK();
 }
 
+Status RdbStringStream::Write(const char *buf, size_t len) {
+  input_.append(buf, len);
+  return Status::OK();
+}
+
 StatusOr<uint64_t> RdbStringStream::GetCheckSum() const {
   if (input_.size() < 8) {
     return {Status::NotOK, "invalid payload length"};

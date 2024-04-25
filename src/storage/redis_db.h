@@ -85,7 +85,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(const Slice &user_key, uint64_t *timestamp);
-  [[nodiscard]] rocksdb::Status Type(const Slice &user_key, RedisType *type);
+  [[nodiscard]] rocksdb::Status Type(const Slice &key, RedisType *type);
   [[nodiscard]] rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
   [[nodiscard]] rocksdb::Status FlushDB();
   [[nodiscard]] rocksdb::Status FlushAll();
@@ -93,7 +93,8 @@ class Database {
   [[nodiscard]] rocksdb::Status Keys(const std::string &prefix, std::vector<std::string> *keys = nullptr,
                                      KeyNumStats *stats = nullptr);
   [[nodiscard]] rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr);
+                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr,
+                                     RedisType type = kRedisNone);
   [[nodiscard]] rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status FindKeyRangeWithPrefix(const std::string &prefix, const std::string &prefix_end,
@@ -101,7 +102,11 @@ class Database {
                                                        rocksdb::ColumnFamilyHandle *cf_handle = nullptr);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
-  [[nodiscard]] rocksdb::Status Rename(const std::string &key, const std::string &new_key, bool nx, bool *ret);
+
+  // Copy <key,value> to <new_key,value> (already an internal key)
+  enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
+  [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
+                                     CopyResult *res);
 
  protected:
   engine::Storage *storage_;
@@ -109,6 +114,11 @@ class Database {
   std::string namespace_;
 
   friend class LatestSnapShot;
+
+ private:
+  // Already internal keys
+  [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
 };
 class LatestSnapShot {
  public:

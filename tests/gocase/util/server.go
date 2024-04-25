@@ -136,7 +136,10 @@ func (s *KvrocksServer) close(keepDir bool) {
 
 func (s *KvrocksServer) Restart() {
 	s.close(true)
+	s.Start()
+}
 
+func (s *KvrocksServer) Start() {
 	b := *binPath
 	require.NotEmpty(s.t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)

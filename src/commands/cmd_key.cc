@@ -64,6 +64,40 @@ class CommandMove : public Commander {
   }
 };
 
+class CommandMoveX : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    std::string &key = args_[1], &token = args_[2];
+
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    std::string ns;
+    AuthResult auth_result = srv->AuthenticateUser(token, &ns);
+    switch (auth_result) {
+      case AuthResult::NO_REQUIRE_PASS:
+        return {Status::NotOK, "Forbidden to move key when requirepass is empty"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::NotOK, "Invalid password"};
+      case AuthResult::IS_USER:
+      case AuthResult::IS_ADMIN:
+        break;
+    }
+
+    Database::CopyResult res = Database::CopyResult::DONE;
+    std::string ns_key = redis.AppendNamespacePrefix(key);
+    std::string new_ns_key = ComposeNamespaceKey(ns, key, srv->storage->IsSlotIdEncoded());
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (res == Database::CopyResult::DONE) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+};
+
 class CommandObject : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -187,7 +221,7 @@ class CommandExpireAt : public Commander {
 
     timestamp_ = *parse_result;
 
-    return Commander::Parse(args);
+    return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -311,11 +345,12 @@ class CommandRename : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-
-    auto s = redis.Rename(args_[1], args_[2], false, &ret);
+    Database::CopyResult res = Database::CopyResult::DONE;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Copy(ns_key, new_ns_key, false, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-
+    if (res == Database::CopyResult::KEY_NOT_EXIST) return {Status::RedisExecErr, "no such key"};
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -325,22 +360,75 @@ class CommandRenameNX : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-    bool ret = true;
-    auto s = redis.Rename(args_[1], args_[2], true, &ret);
+    Database::CopyResult res = Database::CopyResult::DONE;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Copy(ns_key, new_ns_key, true, true, &res);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (ret) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, "no such key"};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
     }
     return Status::OK();
   }
+};
+
+class CommandCopy : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 3);
+    while (parser.Good()) {
+      if (parser.EatEqICase("db")) {
+        auto db_num = GET_OR_RET(parser.TakeInt());
+        // There's only one database in Kvrocks, so the DB must be 0 here.
+        if (db_num != 0) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else if (parser.EatEqICase("replace")) {
+        replace_ = true;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    Database::CopyResult res = Database::CopyResult::DONE;
+    std::string ns_key = redis.AppendNamespacePrefix(args_[1]);
+    std::string new_ns_key = redis.AppendNamespacePrefix(args_[2]);
+    auto s = redis.Copy(ns_key, new_ns_key, !replace_, false, &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    switch (res) {
+      case Database::CopyResult::KEY_NOT_EXIST:
+        return {Status::RedisExecErr, "no such key"};
+      case Database::CopyResult::DONE:
+        *output = redis::Integer(1);
+        break;
+      case Database::CopyResult::KEY_ALREADY_EXIST:
+        *output = redis::Integer(0);
+        break;
+    }
+    return Status::OK();
+  }
+
+ private:
+  bool replace_ = false;
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
@@ -353,6 +441,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1), )
+                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1), )
 
 }  // namespace redis

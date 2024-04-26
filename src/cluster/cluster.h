@@ -39,7 +39,7 @@
 class ClusterNode {
  public:
   explicit ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
-                       std::bitset<kClusterSlots> slots);
+                       std::bitset<kClusterSlots> const &slots);
   std::string id;
   std::string host;
   int port;
@@ -105,10 +105,10 @@ class Cluster {
   Server *srv_;
   std::vector<std::string> binds_;
   int port_;
-  int size_;
-  int64_t version_;
+  int size_ = 0;
+  int64_t version_ = -1;
   std::string myid_;
-  std::shared_ptr<ClusterNode> myself_;
+  std::shared_ptr<ClusterNode> myself_ = nullptr;
   ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 

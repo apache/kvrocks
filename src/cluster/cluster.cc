@@ -25,6 +25,7 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <string_view>
 
 #include "cluster/cluster_defs.h"
 #include "commands/commander.h"
@@ -37,11 +38,11 @@
 #include "time_util.h"
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
-                         std::bitset<kClusterSlots> slots)
+                         std::bitset<kClusterSlots> const &slots)
     : id(std::move(id)), host(std::move(host)), port(port), role(role), master_id(std::move(master_id)), slots(slots) {}
 
 Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
-    : srv_(srv), binds_(std::move(binds)), port_(port), size_(0), version_(-1), myself_(nullptr) {
+    : srv_(srv), binds_(std::move(binds)), port_(port) {
   for (auto &slots_node : slots_nodes_) {
     slots_node = nullptr;
   }
@@ -53,10 +54,10 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  for (auto v : {"setnodes", "setnodeid", "setslot", "import", "reset"}) {
-    if (util::EqualICase(v, subcommand)) return true;
-  }
-  return false;
+  static std::vector<std::string> values = {"setnodes", "setnodeid", "setslot", "import", "reset"};
+
+  return std::any_of(values.begin(), values.end(),
+                     [&subcommand](const std::string &val) { return util::EqualICase(val, subcommand); });
 }
 
 Status Cluster::SetNodeId(const std::string &node_id) {

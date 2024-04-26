@@ -22,23 +22,6 @@
 
 #include "vendor/endianconv.h"
 
-constexpr const int zlHeaderSize = 10;
-constexpr const uint8_t ZipListBigLen = 0xFE;
-constexpr const uint8_t zlEnd = 0xFF;
-
-constexpr const uint8_t ZIP_STR_MASK = 0xC0;
-constexpr const uint8_t ZIP_STR_06B = (0 << 6);
-constexpr const uint8_t ZIP_STR_14B = (1 << 6);
-constexpr const uint8_t ZIP_STR_32B = (2 << 6);
-constexpr const uint8_t ZIP_INT_16B = (0xC0 | 0 << 4);
-constexpr const uint8_t ZIP_INT_32B = (0xC0 | 1 << 4);
-constexpr const uint8_t ZIP_INT_64B = (0xC0 | 2 << 4);
-constexpr const uint8_t ZIP_INT_24B = (0xC0 | 3 << 4);
-constexpr const uint8_t ZIP_INT_8B = 0xFE;
-
-constexpr const uint8_t ZIP_INT_IMM_MIN = 0xF1; /* 11110001 */
-constexpr const uint8_t ZIP_INT_IMM_MAX = 0xFD; /* 11111101 */
-
 StatusOr<std::string> ZipList::Next() {
   auto prev_entry_encoded_size = getEncodedLengthSize(pre_entry_len_);
   pos_ += prev_entry_encoded_size;
@@ -52,7 +35,7 @@ StatusOr<std::string> ZipList::Next() {
   std::string value;
   if ((encoding) < ZIP_STR_MASK) {
     // For integer type, needs to convert to uint8_t* to avoid signed extension
-    auto data = reinterpret_cast<const uint8_t*>(input_.data());
+    auto data = reinterpret_cast<const uint8_t *>(input_.data());
     if ((encoding) == ZIP_STR_06B) {
       len_bytes = 1;
       len = data[pos_] & 0x3F;
@@ -91,7 +74,7 @@ StatusOr<std::string> ZipList::Next() {
     } else if ((encoding) == ZIP_INT_24B) {
       GET_OR_RET(peekOK(3));
       int32_t i32 = 0;
-      memcpy(reinterpret_cast<uint8_t*>(&i32) + 1, input_.data() + pos_, sizeof(int32_t) - 1);
+      memcpy(reinterpret_cast<uint8_t *>(&i32) + 1, input_.data() + pos_, sizeof(int32_t) - 1);
       memrev32ifbe(&i32);
       i32 >>= 8;
       setPreEntryLen(4);  // 3byte for encoding and 1byte for the prev entry length
@@ -126,7 +109,7 @@ StatusOr<std::string> ZipList::Next() {
 StatusOr<std::vector<std::string>> ZipList::Entries() {
   GET_OR_RET(peekOK(zlHeaderSize));
   // ignore 8 bytes of total bytes and tail of zip list
-  auto zl_len = intrev16ifbe(*reinterpret_cast<const uint16_t*>(input_.data() + 8));
+  auto zl_len = intrev16ifbe(*reinterpret_cast<const uint16_t *>(input_.data() + 8));
   pos_ += zlHeaderSize;
 
   std::vector<std::string> entries;
@@ -152,3 +135,55 @@ Status ZipList::peekOK(size_t n) {
 }
 
 uint32_t ZipList::getEncodedLengthSize(uint32_t len) { return len < ZipListBigLen ? 1 : 5; }
+
+uint32_t ZipList::zipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
+  uint32_t u32;
+  if (p != nullptr) {
+    p[0] = ZipListBigLen;
+    u32 = len;
+    memcpy(p + 1, &u32, sizeof(u32));
+    memrev32ifbe(p + 1);
+  }
+  return 1 + sizeof(uint32_t);
+}
+
+uint32_t ZipList::zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
+  if (p == nullptr) {
+    return (len < ZipListBigLen) ? 1 : sizeof(uint32_t) + 1;
+  } else {
+    if (len < ZipListBigLen) {
+      p[0] = len;
+      return 1;
+    } else {
+      return zipStorePrevEntryLengthLarge(p, len);
+    }
+  }
+}
+
+uint32_t ZipList::zipStoreEntryEncoding(unsigned char *p, unsigned int rawlen) {
+  unsigned char len = 1, buf[5];
+
+  /* Although encoding is given it may not be set for strings,
+   * so we determine it here using the raw length. */
+  if (rawlen <= 0x3f) {
+    if (!p) return len;
+    buf[0] = ZIP_STR_06B | rawlen;
+  } else if (rawlen <= 0x3fff) {
+    len += 1;
+    if (!p) return len;
+    buf[0] = ZIP_STR_14B | ((rawlen >> 8) & 0x3f);
+    buf[1] = rawlen & 0xff;
+  } else {
+    len += 4;
+    if (!p) return len;
+    buf[0] = ZIP_STR_32B;
+    buf[1] = (rawlen >> 24) & 0xff;
+    buf[2] = (rawlen >> 16) & 0xff;
+    buf[3] = (rawlen >> 8) & 0xff;
+    buf[4] = rawlen & 0xff;
+  }
+
+  /* Store this length at p. */
+  memcpy(p, buf, len);
+  return len;
+}

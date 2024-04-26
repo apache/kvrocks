@@ -730,7 +730,7 @@ Status RDB::SaveObjectType(const RedisType type) {
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
   } else if (type == kRedisList) {
-    robj_type = RDBTypeListQuickList2;
+    robj_type = RDBTypeListQuickList;
   } else if (type == kRedisSet) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
@@ -892,12 +892,7 @@ Status RDB::SaveListObject(const std::vector<std::string> &elems) {
     }
 
     for (const auto &elem : elems) {
-      status = RdbSaveLen(1 /*plain container mode */);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
-
-      status = SaveStringObject(elem);
+      auto status = rdbSaveZipListObject(elem);
       if (!status.IsOK()) {
         return {Status::RedisExecErr, status.Msg()};
       }
@@ -1004,4 +999,38 @@ int RDB::rdbEncodeInteger(const long long value, unsigned char *enc) {
 Status RDB::rdbSaveBinaryDoubleValue(double val) {
   memrev64ifbe(&val);
   return stream_->Write((const char *)(&val), sizeof(val));
+}
+
+Status RDB::rdbSaveZipListObject(const std::string &elem) {
+  // calc total ziplist size
+  uint prevlen = 0;
+  const size_t ziplist_size = zlHeaderSize + zlEndSize + elem.length() +
+                              ZipList::zipStorePrevEntryLength(nullptr, prevlen) +
+                              ZipList::zipStoreEntryEncoding(nullptr, elem.length());
+  auto zl = new unsigned char[ziplist_size];
+
+  // set ziplist header
+  ZIPLIST_BYTES(zl) = intrev32ifbe(ziplist_size);
+  ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(zlHeaderSize);
+
+  // set ziplist entry
+  auto pos = ZIPLIST_ENTRY_HEAD(zl);
+  pos += ZipList::zipStorePrevEntryLength(pos, prevlen);
+  pos += ZipList::zipStoreEntryEncoding(pos, elem.length());
+  memcpy(pos, elem.c_str(), elem.length());
+
+  // set ziplist end
+  ZIPLIST_LENGTH(zl) = 1;
+  zl[ziplist_size - 1] = zlEnd;
+
+  if (ziplist_size > 0) {
+    std::string str(reinterpret_cast<const char *>(zl), ziplist_size);
+    auto status = SaveStringObject(str);
+    if (!status.IsOK()) {
+      delete[] zl;
+      return {Status::RedisExecErr, status.Msg()};
+    }
+  }
+  delete[] zl;
+  return Status::OK();
 }

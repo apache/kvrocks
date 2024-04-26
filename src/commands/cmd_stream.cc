@@ -588,7 +588,7 @@ class CommandXInfo : public Commander {
     }
 
     output->append(redis::MultiLen(result_vector.size()));
-    auto now = util::GetTimeStampMS();
+    auto now_ms = util::GetTimeStampMS();
     for (auto const &it : result_vector) {
       output->append(conn->HeaderOfMap(4));
       output->append(redis::BulkString("name"));
@@ -596,9 +596,9 @@ class CommandXInfo : public Commander {
       output->append(redis::BulkString("pending"));
       output->append(redis::Integer(it.second.pending_number));
       output->append(redis::BulkString("idle"));
-      output->append(redis::Integer(now - it.second.last_idle));
+      output->append(redis::Integer(now_ms - it.second.last_idle_ms));
       output->append(redis::BulkString("inactive"));
-      output->append(redis::Integer(now - it.second.last_active));
+      output->append(redis::Integer(now_ms - it.second.last_active_ms));
     }
 
     return Status::OK();

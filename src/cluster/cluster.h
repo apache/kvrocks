@@ -98,7 +98,7 @@ class Cluster {
   std::string getNodeIDBySlot(int slot) const;
   std::string genNodesDescription();
   std::string genNodesInfo() const;
-  std::map<std::string, std::string, std::less<>> getClusterNodeSlots() const;
+  std::map<std::string, std::string> getClusterNodeSlots() const;
   SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);
@@ -108,7 +108,7 @@ class Cluster {
   int size_ = 0;
   int64_t version_ = -1;
   std::string myid_;
-  std::shared_ptr<ClusterNode> myself_ = nullptr;
+  std::shared_ptr<ClusterNode> myself_;
   ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 

@@ -245,6 +245,12 @@ func TestListSort(t *testing.T) {
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "user_info_*->level", Get: []string{"user_info_*->name"}}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"jack", "peter", "mary", "admin"}, sortResult)
+
+		// get empty
+		rdb.LPush(ctx, "uid_get_empty", 4, 5, 6, 7)
+		getResult, err := rdb.Do(ctx, "Sort", "uid_get_empty", "Get", "user_name_*").Slice()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"mary", nil, nil, nil}, getResult)
 	})
 
 	t.Run("SORT STORE", func(t *testing.T) {
@@ -266,6 +272,17 @@ func TestListSort(t *testing.T) {
 		sortResult, err = rdb.LRange(ctx, "no-alpha-sorted", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"21", "3", "123"}, sortResult)
+
+		// get empty
+		rdb.LPush(ctx, "uid_get_empty_store", 4, 5, 6, 7)
+		rdb.MSet(ctx, "user_name_1", "admin", "user_name_2", "jack", "user_name_3", "peter", "user_name_4", "mary")
+		storedLen, err = rdb.Do(ctx, "Sort", "uid_get_empty_store", "Get", "user_name_*", "STORE", "get_empty_store").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(4), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "get_empty_store", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"mary", "", "", ""}, sortResult)
 	})
 }
 
@@ -451,6 +468,12 @@ func TestSetSort(t *testing.T) {
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "user_info_*->level", Get: []string{"user_info_*->name"}}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"jack", "peter", "mary", "admin"}, sortResult)
+
+		// get empty
+		rdb.SAdd(ctx, "uid_get_empty", 4, 5, 6, 7)
+		getResult, err := rdb.Do(ctx, "Sort", "uid_get_empty", "Get", "user_name_*").Slice()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"mary", nil, nil, nil}, getResult)
 	})
 
 	t.Run("SORT STORE", func(t *testing.T) {
@@ -472,6 +495,17 @@ func TestSetSort(t *testing.T) {
 		sortResult, err = rdb.LRange(ctx, "alpha-sorted", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"123", "21", "3"}, sortResult)
+
+		// get empty
+		rdb.SAdd(ctx, "uid_get_empty_store", 4, 5, 6, 7)
+		rdb.MSet(ctx, "user_name_1", "admin", "user_name_2", "jack", "user_name_3", "peter", "user_name_4", "mary")
+		storedLen, err = rdb.Do(ctx, "Sort", "uid_get_empty_store", "Get", "user_name_*", "STORE", "get_empty_store").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(4), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "get_empty_store", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"mary", "", "", ""}, sortResult)
 	})
 }
 
@@ -673,6 +707,16 @@ func TestZSetSort(t *testing.T) {
 		sortResult, err = rdb.Sort(ctx, "uid", &redis.Sort{By: "user_info_*->level", Get: []string{"user_info_*->name"}}).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"jack", "peter", "mary", "admin"}, sortResult)
+
+		// get empty
+		rdb.ZAdd(ctx, "uid_get_empty",
+			redis.Z{Score: 4, Member: "7"},
+			redis.Z{Score: 5, Member: "6"},
+			redis.Z{Score: 6, Member: "5"},
+			redis.Z{Score: 7, Member: "4"})
+		getResult, err := rdb.Do(ctx, "Sort", "uid_get_empty", "Get", "user_name_*").Slice()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"mary", nil, nil, nil}, getResult)
 	})
 
 	t.Run("SORT STORE", func(t *testing.T) {
@@ -710,5 +754,20 @@ func TestZSetSort(t *testing.T) {
 		sortResult, err = rdb.LRange(ctx, "no-alpha-sorted", 0, -1).Result()
 		require.NoError(t, err)
 		require.Equal(t, []string{"123", "3", "21"}, sortResult)
+
+		// get empty
+		rdb.ZAdd(ctx, "uid_get_empty_store",
+			redis.Z{Score: 4, Member: "7"},
+			redis.Z{Score: 5, Member: "6"},
+			redis.Z{Score: 6, Member: "5"},
+			redis.Z{Score: 7, Member: "4"})
+		rdb.MSet(ctx, "user_name_1", "admin", "user_name_2", "jack", "user_name_3", "peter", "user_name_4", "mary")
+		storedLen, err = rdb.Do(ctx, "Sort", "uid_get_empty_store", "Get", "user_name_*", "STORE", "get_empty_store").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(4), storedLen)
+
+		sortResult, err = rdb.LRange(ctx, "get_empty_store", 0, -1).Result()
+		require.NoError(t, err)
+		require.Equal(t, []string{"mary", "", "", ""}, sortResult)
 	})
 }

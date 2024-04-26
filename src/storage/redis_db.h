@@ -139,7 +139,7 @@ class Database {
                                      CopyResult *res);
   enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, DONE };
   [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, const SortArgument &args,
-                                     const RESP &version, std::vector<std::string> *elems, SortResult *res);
+                                     std::vector<std::string> *elems, SortResult *res);
 
  protected:
   engine::Storage *storage_;

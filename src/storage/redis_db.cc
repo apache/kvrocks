@@ -823,7 +823,7 @@ std::string Database::lookupKeyByPattern(const std::string &pattern, const std::
 }
 
 rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, const SortArgument &args,
-                               const RESP &version, std::vector<std::string> *elems, SortResult *res) {
+                               std::vector<std::string> *elems, SortResult *res) {
   // Obtain the length of the object to sort.
   const std::string ns_key = AppendNamespacePrefix(key);
   Metadata metadata(type, false);
@@ -937,7 +937,7 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
     for (const std::string &pattern : args.getpatterns) {
       std::string val = lookupKeyByPattern(pattern, elem.obj);
       if (val.empty()) {
-        elems->emplace_back(redis::NilString(version));
+        elems->emplace_back("");
       } else {
         elems->emplace_back(val);
       }

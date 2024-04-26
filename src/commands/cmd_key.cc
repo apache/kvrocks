@@ -503,7 +503,7 @@ class CommandSort : public Commander {
 
     std::vector<std::string> sorted_elems;
     Database::SortResult res = Database::SortResult::DONE;
-    s = redis.Sort(type, args_[1], sort_argument_, conn->GetProtocolVersion(), &sorted_elems, &res);
+    s = redis.Sort(type, args_[1], sort_argument_, &sorted_elems, &res);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -518,7 +518,11 @@ class CommandSort : public Commander {
         break;
       case Database::SortResult::DONE:
         if (sort_argument_.storekey.empty()) {
-          *output = ArrayOfBulkStrings(sorted_elems);
+          std::vector<std::string> output_vec;
+          for (const auto &elem : sorted_elems) {
+            output_vec.emplace_back(elem.empty() ? conn->NilString() : redis::BulkString(elem));
+          }
+          *output = redis::Array(output_vec);
         } else {
           *output = Integer(sorted_elems.size());
         }

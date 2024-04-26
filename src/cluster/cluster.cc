@@ -170,26 +170,26 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   size_ = 0;
 
   // Update slots to nodes
-  for (const auto &n : slots_nodes) {
-    slots_nodes_[n.first] = nodes_[n.second];
+  for (const auto &[slot, node_id] : slots_nodes) {
+    slots_nodes_[slot] = nodes_[node_id];
   }
 
   // Update replicas info and size
-  for (auto &n : nodes_) {
-    if (n.second->role == kClusterSlave) {
-      if (nodes_.find(n.second->master_id) != nodes_.end()) {
-        nodes_[n.second->master_id]->replicas.push_back(n.first);
+  for (const auto &[node_id, node] : nodes_) {
+    if (node->role == kClusterSlave) {
+      if (nodes_.find(node->master_id) != nodes_.end()) {
+        nodes_[node->master_id]->replicas.push_back(node_id);
       }
     }
-    if (n.second->role == kClusterMaster && n.second->slots.count() > 0) {
+    if (node->role == kClusterMaster && node->slots.count() > 0) {
       size_++;
     }
   }
 
   if (myid_.empty() || force) {
-    for (auto &n : nodes_) {
-      if (n.second->port == port_ && util::MatchListeningIP(binds_, n.second->host)) {
-        myid_ = n.first;
+    for (const auto &[node_id, node] : nodes_) {
+      if (node->port == port_ && util::MatchListeningIP(binds_, node->host)) {
+        myid_ = node_id;
         break;
       }
     }
@@ -210,9 +210,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   // Clear data of migrated slots
   if (!migrated_slots_.empty()) {
-    for (auto &it : migrated_slots_) {
-      if (slots_nodes_[it.first] != myself_) {
-        auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, it.first);
+    for (const auto &[slot, _] : migrated_slots_) {
+      if (slots_nodes_[slot] != myself_) {
+        auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
         if (!s.ok()) {
           LOG(ERROR) << "failed to clear data of migrated slots: " << s.ToString();
         }

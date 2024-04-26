@@ -81,7 +81,7 @@ class Cluster {
   int64_t GetVersion() const { return version_; }
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
-  bool IsWriteForbiddenSlot(int slot);
+  bool IsWriteForbiddenSlot(int slot) const;
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          redis::Connection *conn);
   Status SetMasterSlaveRepl();
@@ -97,8 +97,8 @@ class Cluster {
  private:
   std::string getNodeIDBySlot(int slot) const;
   std::string genNodesDescription();
-  std::string genNodesInfo();
-  std::map<std::string, std::string> getClusterNodeSlots() const;
+  std::string genNodesInfo() const;
+  std::map<std::string, std::string, std::less<>> getClusterNodeSlots() const;
   SlotInfo genSlotNodeInfo(int start, int end, const std::shared_ptr<ClusterNode> &n);
   static Status parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes);

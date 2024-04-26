@@ -521,34 +521,32 @@ std::string Cluster::genNodesDescription() {
 
   auto now = util::GetTimeStampMS();
   std::string nodes_desc;
-  for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> n = item.second;
-
+  for (const auto &[_, node] : nodes_) {
     std::string node_str;
     // ID, host, port
-    node_str.append(n->id + " ");
-    node_str.append(fmt::format("{}:{}@{} ", n->host, n->port, n->port + kClusterPortIncr));
+    node_str.append(node->id + " ");
+    node_str.append(fmt::format("{}:{}@{} ", node->host, node->port, node->port + kClusterPortIncr));
 
     // Flags
-    if (n->id == myid_) node_str.append("myself,");
-    if (n->role == kClusterMaster) {
+    if (node->id == myid_) node_str.append("myself,");
+    if (node->role == kClusterMaster) {
       node_str.append("master - ");
     } else {
-      node_str.append("slave " + n->master_id + " ");
+      node_str.append("slave " + node->master_id + " ");
     }
 
     // Ping sent, pong received, config epoch, link status
     node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
 
-    if (n->role == kClusterMaster) {
-      auto iter = slots_infos.find(n->id);
-      if (iter != slots_infos.end() && iter->second.size() > 0) {
+    if (node->role == kClusterMaster) {
+      auto iter = slots_infos.find(node->id);
+      if (iter != slots_infos.end() && !iter->second.empty()) {
         node_str.append(" " + iter->second);
       }
     }
 
     // Just for MYSELF node to show the importing/migrating slot
-    if (n->id == myid_) {
+    if (node->id == myid_) {
       if (srv_->slot_migrator) {
         auto migrating_slot = srv_->slot_migrator->GetMigratingSlot();
         if (migrating_slot != -1) {
@@ -567,10 +565,10 @@ std::string Cluster::genNodesDescription() {
   return nodes_desc;
 }
 
-std::map<std::string, std::string> Cluster::getClusterNodeSlots() const {
+std::map<std::string, std::string, std::less<>> Cluster::getClusterNodeSlots() const {
   int start = -1;
   // node id => slots info string
-  std::map<std::string, std::string> slots_infos;
+  std::map<std::string, std::string, std::less<>> slots_infos;
 
   std::shared_ptr<ClusterNode> n = nullptr;
   for (int i = 0; i <= kClusterSlots; i++) {
@@ -600,30 +598,29 @@ std::map<std::string, std::string> Cluster::getClusterNodeSlots() const {
   return slots_infos;
 }
 
-std::string Cluster::genNodesInfo() {
+std::string Cluster::genNodesInfo() const {
   auto slots_infos = getClusterNodeSlots();
 
   std::string nodes_info;
-  for (const auto &item : nodes_) {
-    const std::shared_ptr<ClusterNode> &n = item.second;
+  for (const auto &[_, node] : nodes_) {
     std::string node_str;
     node_str.append("node ");
     // ID
-    node_str.append(n->id + " ");
+    node_str.append(node->id + " ");
     // Host + Port
-    node_str.append(fmt::format("{} {} ", n->host, n->port));
+    node_str.append(fmt::format("{} {} ", node->host, node->port));
 
     // Role
-    if (n->role == kClusterMaster) {
+    if (node->role == kClusterMaster) {
       node_str.append("master - ");
     } else {
-      node_str.append("slave " + n->master_id + " ");
+      node_str.append("slave " + node->master_id + " ");
     }
 
     // Slots
-    if (n->role == kClusterMaster) {
-      auto iter = slots_infos.find(n->id);
-      if (iter != slots_infos.end() && iter->second.size() > 0) {
+    if (node->role == kClusterMaster) {
+      auto iter = slots_infos.find(node->id);
+      if (iter != slots_infos.end() && !iter->second.empty()) {
         node_str.append(" " + iter->second);
       }
     }
@@ -694,7 +691,7 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
 Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes) {
   std::vector<std::string> nodes_info = util::Split(nodes_str, "\n");
-  if (nodes_info.size() == 0) {
+  if (nodes_info.empty()) {
     return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
   }
 
@@ -803,16 +800,17 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   return Status::OK();
 }
 
-bool Cluster::IsWriteForbiddenSlot(int slot) { return srv_->slot_migrator->GetForbiddenSlot() == slot; }
+bool Cluster::IsWriteForbiddenSlot(int slot) const { return srv_->slot_migrator->GetForbiddenSlot() == slot; }
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn) {
   std::vector<int> keys_indexes;
-  auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes);
-  // No keys
-  if (!s.IsOK()) return Status::OK();
 
-  if (keys_indexes.size() == 0) return Status::OK();
+  // No keys
+  if (auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes); !s.IsOK())
+    return Status::OK();
+
+  if (keys_indexes.empty()) return Status::OK();
 
   int slot = -1;
   for (auto i : keys_indexes) {

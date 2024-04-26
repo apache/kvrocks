@@ -565,10 +565,10 @@ std::string Cluster::genNodesDescription() {
   return nodes_desc;
 }
 
-std::map<std::string, std::string> Cluster::getClusterNodeSlots() const {
+std::map<std::string, std::string, std::less<>> Cluster::getClusterNodeSlots() const {
   int start = -1;
   // node id => slots info string
-  std::map<std::string, std::string> slots_infos;
+  std::map<std::string, std::string, std::less<>> slots_infos;
 
   std::shared_ptr<ClusterNode> n = nullptr;
   for (int i = 0; i <= kClusterSlots; i++) {

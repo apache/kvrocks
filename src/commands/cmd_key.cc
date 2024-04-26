@@ -519,6 +519,7 @@ class CommandSort : public Commander {
       case Database::SortResult::DONE:
         if (sort_argument_.storekey.empty()) {
           std::vector<std::string> output_vec;
+          output_vec.reverse(sorted_elems.size());
           for (const auto &elem : sorted_elems) {
             output_vec.emplace_back(elem.empty() ? conn->NilString() : redis::BulkString(elem));
           }

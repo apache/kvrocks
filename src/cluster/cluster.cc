@@ -25,7 +25,6 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
-#include <string_view>
 
 #include "cluster/cluster_defs.h"
 #include "commands/commander.h"

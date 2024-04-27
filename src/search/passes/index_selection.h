@@ -253,8 +253,8 @@ struct IndexSelection : Visitor {
         }
       }
 
-      for (auto &n : rest_nodes) {
-        auto op = TransformExpr(node);
+      for (auto n : rest_nodes) {
+        auto op = TransformExpr(n);
         if (!elem_filter.empty()) {
           auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
           op = std::make_unique<Filter>(std::move(op), std::move(filter));

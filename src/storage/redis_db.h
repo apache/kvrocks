@@ -21,6 +21,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -139,7 +140,7 @@ class Database {
                                      CopyResult *res);
   enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, DONE };
   [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, const SortArgument &args,
-                                     std::vector<std::string> *elems, SortResult *res);
+                                     std::vector<std::optional<std::string>> *elems, SortResult *res);
 
  protected:
   engine::Storage *storage_;
@@ -166,7 +167,7 @@ class Database {
   ///   3) If 'pattern' equals "#", the function simply returns 'subst' itself so
   ///      that the SORT command can be used like: SORT key GET # to retrieve
   ///      the Set/List elements directly.
-  std::string lookupKeyByPattern(const std::string &pattern, const std::string &subst);
+  std::optional<std::string> lookupKeyByPattern(const std::string &pattern, const std::string &subst);
 };
 class LatestSnapShot {
  public:

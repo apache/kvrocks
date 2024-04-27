@@ -782,14 +782,14 @@ rocksdb::Status Database::Copy(const std::string &key, const std::string &new_ke
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-std::string Database::lookupKeyByPattern(const std::string &pattern, const std::string &subst) {
+std::optional<std::string> Database::lookupKeyByPattern(const std::string &pattern, const std::string &subst) {
   if (pattern == "#") {
     return subst;
   }
 
   auto match_pos = pattern.find('*');
   if (match_pos == std::string::npos) {
-    return "";
+    return std::nullopt;
   }
 
   // hash field
@@ -806,16 +806,16 @@ std::string Database::lookupKeyByPattern(const std::string &pattern, const std::
   if (!field.empty()) {
     auto hash_db = redis::Hash(storage_, namespace_);
     RedisType type = RedisType::kRedisNone;
-    if (auto s = hash_db.Type(key, &type); !s.ok() || type >= RedisTypeNames.size()) {
-      return "";
+    if (auto s = hash_db.Type(key, &type); !s.ok() || type != RedisType::kRedisHash) {
+      return std::nullopt;
     }
 
     hash_db.Get(key, field, &value);
   } else {
     auto string_db = redis::String(storage_, namespace_);
     RedisType type = RedisType::kRedisNone;
-    if (auto s = string_db.Type(key, &type); !s.ok() || type >= RedisTypeNames.size()) {
-      return "";
+    if (auto s = string_db.Type(key, &type); !s.ok() || type != RedisType::kRedisString) {
+      return std::nullopt;
     }
     string_db.Get(key, &value);
   }
@@ -823,7 +823,7 @@ std::string Database::lookupKeyByPattern(const std::string &pattern, const std::
 }
 
 rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, const SortArgument &args,
-                               std::vector<std::string> *elems, SortResult *res) {
+                               std::vector<std::optional<std::string>> *elems, SortResult *res) {
   // Obtain the length of the object to sort.
   const std::string ns_key = AppendNamespacePrefix(key);
   Metadata metadata(type, false);
@@ -897,25 +897,23 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
   // Sort by BY, ALPHA, ASC/DESC
   if (!args.dontsort) {
     for (size_t i = 0; i < sort_vec.size(); ++i) {
-      std::string byval;
+      std::optional<std::string> byval;
       if (!args.sortby.empty()) {
         byval = lookupKeyByPattern(args.sortby, str_vec[i]);
-        if (byval.empty()) continue;
+        if (!byval.has_value()) continue;
       } else {
         byval = str_vec[i];
       }
 
-      if (args.alpha) {
-        if (!args.sortby.empty()) {
-          sort_vec[i].v = byval;
-        }
-      } else {
-        auto double_byval = ParseFloat<double>(byval);
+      if (args.alpha && !args.sortby.empty()) {
+        sort_vec[i].v = byval.value();
+      } else if (!args.alpha && !byval.value().empty()) {
+        auto double_byval = ParseFloat<double>(byval.value());
         if (!double_byval) {
           *res = SortResult::DOUBLE_CONVERT_ERROR;
-        } else {
-          sort_vec[i].v = *double_byval;
+          return rocksdb::Status::OK();
         }
+        sort_vec[i].v = *double_byval;
       }
     }
 
@@ -935,21 +933,25 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
       elems->emplace_back(elem.obj);
     }
     for (const std::string &pattern : args.getpatterns) {
-      std::string val = lookupKeyByPattern(pattern, elem.obj);
-      if (val.empty()) {
-        elems->emplace_back("");
+      std::optional<std::string> val = lookupKeyByPattern(pattern, elem.obj);
+      if (val.has_value()) {
+        elems->emplace_back(val.value());
       } else {
-        elems->emplace_back(val);
+        elems->emplace_back(std::nullopt);
       }
     }
   }
 
   if (!args.storekey.empty()) {
-    std::vector<Slice> store_elems(elems->begin(), elems->end());
+    std::vector<std::string> store_elems;
+    store_elems.reserve(elems->size());
+    for (const auto &e : *elems) {
+      store_elems.emplace_back(e.value_or(""));
+    }
     redis::List list_db(storage_, namespace_);
-    list_db.Trim(args.storekey, 0, -1);
+    list_db.Trim(args.storekey, -1, 0);
     uint64_t new_size = 0;
-    list_db.Push(args.storekey, store_elems, false, &new_size);
+    list_db.Push(args.storekey, std::vector<Slice>(store_elems.cbegin(), store_elems.cend()), false, &new_size);
   }
 
   return rocksdb::Status::OK();

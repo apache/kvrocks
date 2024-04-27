@@ -474,16 +474,13 @@ class CommandSort : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     RedisType type = kRedisNone;
-    auto s = redis.Type(args_[1], &type);
-    if (s.ok()) {
-      if (type >= RedisTypeNames.size()) {
-        return {Status::RedisExecErr, "Invalid type"};
-      } else if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
-        *output = Error("WRONGTYPE Operation against a key holding the wrong kind of value");
-        return Status::OK();
-      }
-    } else {
+    if (auto s = redis.Type(args_[1], &type); !s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
+      *output = Error("WRONGTYPE Operation against a key holding the wrong kind of value");
+      return Status::OK();
     }
 
     /* When sorting a set with no sort specified, we must sort the output
@@ -501,11 +498,10 @@ class CommandSort : public Commander {
       sort_argument_.sortby = "";
     }
 
-    std::vector<std::string> sorted_elems;
+    std::vector<std::optional<std::string>> sorted_elems;
     Database::SortResult res = Database::SortResult::DONE;
-    s = redis.Sort(type, args_[1], sort_argument_, &sorted_elems, &res);
 
-    if (!s.ok()) {
+    if (auto s = redis.Sort(type, args_[1], sort_argument_, &sorted_elems, &res); !s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
@@ -521,7 +517,7 @@ class CommandSort : public Commander {
           std::vector<std::string> output_vec;
           output_vec.reserve(sorted_elems.size());
           for (const auto &elem : sorted_elems) {
-            output_vec.emplace_back(elem.empty() ? conn->NilString() : redis::BulkString(elem));
+            output_vec.emplace_back(elem.has_value() ? redis::BulkString(elem.value()) : conn->NilString());
           }
           *output = redis::Array(output_vec);
         } else {

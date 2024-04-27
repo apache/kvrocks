@@ -113,6 +113,7 @@ func TestDump_List(t *testing.T) {
 	require.NoError(t, rdb.RPush(ctx, key, elements).Err())
 	serialized, err := rdb.Dump(ctx, key).Result()
 	require.NoError(t, err)
+	require.Equal(t, "\x0e\x03\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks3\xff\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks2\xff\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks1\xff\x06\x00'\xd3'J\xb9\xd5\xd7\x81", serialized)
 
 	restoredKey := fmt.Sprintf("restore_%s", key)
 	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())

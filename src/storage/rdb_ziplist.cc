@@ -150,7 +150,7 @@ Status ZipList::peekOK(size_t n) {
 uint32_t ZipList::getEncodedLengthSize(uint32_t len) { return len < ZipListBigLen ? 1 : 5; }
 
 uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
-  uint32_t u32;
+  uint32_t u32 = 0;
   if (p != nullptr) {
     p[0] = ZipListBigLen;
     u32 = len;

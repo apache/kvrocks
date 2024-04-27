@@ -173,7 +173,7 @@ func TestImportedServer(t *testing.T) {
 	})
 }
 
-func TestClusterMigrate(t *testing.T) {
+func TestServiceImportingSlot(t *testing.T) {
 	ctx := context.Background()
 
 	mockID0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"

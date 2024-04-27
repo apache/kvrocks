@@ -113,7 +113,10 @@ TEST(IRPassTest, Manager) {
 TEST(IRPassTest, LowerToPlan) {
   LowerToPlan ltp;
 
-  ASSERT_EQ(ltp.Transform(*Parse("select * from a"))->Dump(), "project *: (filter true: full-scan a)");
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a"))->Dump(), "project *: full-scan a");
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a limit 1"))->Dump(), "project *: (limit 0, 1: full-scan a)");
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a where false"))->Dump(), "project *: noop");
+  ASSERT_EQ(ltp.Transform(*Parse("select * from a where false limit 1"))->Dump(), "project *: noop");
   ASSERT_EQ(ltp.Transform(*Parse("select * from a where b > 1"))->Dump(), "project *: (filter b > 1: full-scan a)");
   ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 order by d"))->Dump(),
             "project a: (sort d, asc: (filter c = 1: full-scan b))");
@@ -124,7 +127,7 @@ TEST(IRPassTest, LowerToPlan) {
 }
 
 TEST(IRPassTest, IntervalAnalysis) {
-  auto ia_passes = PassManager::GeneratePasses<IntervalAnalysis, SimplifyAndOrExpr, SimplifyBoolean>();
+  auto ia_passes = PassManager::Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{});
 
   ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a > 1 or a < 3"))->Dump(),
             "select * from a where true");
@@ -162,4 +165,39 @@ TEST(IRPassTest, IntervalAnalysis) {
       fmt::format("select * from a where (or (and a >= 1, a < 2), (and a >= {}, a < 4))", IntervalSet::NextNum(2)));
   ASSERT_EQ(PassManager::Execute(ia_passes, *Parse("select * from a where a != 1 and b > 1 and b = 2"))->Dump(),
             "select * from a where (and a != 1, b = 2)");
+}
+
+static IndexMap MakeIndexMap() {
+  auto f1 = FieldInfo("t1", std::make_unique<redis::SearchTagFieldMetadata>());
+  auto f2 = FieldInfo("t2", std::make_unique<redis::SearchNumericFieldMetadata>());
+  f2.metadata->noindex = true;
+  auto f3 = FieldInfo("n1", std::make_unique<redis::SearchNumericFieldMetadata>());
+  auto f4 = FieldInfo("n2", std::make_unique<redis::SearchNumericFieldMetadata>());
+  auto f5 = FieldInfo("n3", std::make_unique<redis::SearchNumericFieldMetadata>());
+  f5.metadata->noindex = true;
+  auto ia = IndexInfo("ia", SearchMetadata());
+  ia.Add(std::move(f1));
+  ia.Add(std::move(f2));
+  ia.Add(std::move(f3));
+  ia.Add(std::move(f4));
+  ia.Add(std::move(f5));
+
+  auto& name = ia.name;
+  IndexMap res;
+  res.emplace(name, std::move(ia));
+  return res;
+}
+
+std::unique_ptr<Node> ParseS(SemaChecker& sc, const std::string& in) {
+  auto res = *Parse(in);
+  EXPECT_EQ(sc.Check(res.get()).Msg(), Status::ok_msg);
+  return res;
+}
+
+TEST(IRPassTest, IndexSelection) {
+  auto index_map = MakeIndexMap();
+  auto sc = SemaChecker(index_map);
+
+  auto passes = PassManager::Default();
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia"))->Dump(), "project *: full-scan ia");
 }

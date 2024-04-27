@@ -334,14 +334,16 @@ Status SlotMigrator::sendSnapshotByCmd() {
 
   LOG(INFO) << "[migrate] Start migrating snapshot of slot " << slot;
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = slot_snapshot_;
-  rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(engine::kMetadataColumnFamilyName);
-  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
-
   // Construct key prefix to iterate the keys belong to the target slot
   std::string prefix = ComposeSlotKeyPrefix(namespace_, slot);
   LOG(INFO) << "[migrate] Iterate keys of slot, key's prefix: " << prefix;
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  read_options.snapshot = slot_snapshot_;
+  Slice prefix_slice(prefix);
+  read_options.iterate_lower_bound = &prefix_slice;
+  rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(engine::kMetadataColumnFamilyName);
+  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
@@ -738,14 +740,16 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
   cmd = type_to_cmd[metadata.Type()];
 
   std::vector<std::string> user_cmd = {cmd, key.ToString()};
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = slot_snapshot_;
-  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
-  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
-
   // Construct key prefix to iterate values of the complex type user key
   std::string slot_key = AppendNamespacePrefix(key);
   std::string prefix_subkey = InternalKey(slot_key, "", metadata.version, true).Encode();
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  read_options.snapshot = slot_snapshot_;
+  Slice prefix_slice(prefix_subkey);
+  read_options.iterate_lower_bound = &prefix_slice;
+  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
+
   int item_count = 0;
 
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
@@ -840,13 +844,15 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
 Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
-  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
-  auto iter = util::UniqueIterator(
-      storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kStreamColumnFamilyName)));
-
   std::string ns_key = AppendNamespacePrefix(key);
   // Construct key prefix to iterate values of the stream
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, true).Encode();
+  rocksdb::Slice prefix_key_slice(prefix_key);
+  read_options.iterate_lower_bound = &prefix_key_slice;
+
+  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  auto iter = util::UniqueIterator(
+      storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kStreamColumnFamilyName)));
 
   std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
 
@@ -1197,10 +1203,12 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   uint64_t start_ts = util::GetTimeStampMS();
   LOG(INFO) << "[migrate] Migrating snapshot of slot " << migrating_slot_ << " by raw key value";
 
+  auto prefix = ComposeSlotKeyPrefix(namespace_, migrating_slot_);
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
+  rocksdb::Slice prefix_slice(prefix);
+  read_options.iterate_lower_bound = &prefix_slice;
   engine::DBIterator iter(storage_, read_options);
-  auto prefix = ComposeSlotKeyPrefix(namespace_, migrating_slot_);
 
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 

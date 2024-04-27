@@ -163,7 +163,7 @@ class Storage {
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
   [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
-  const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
+  const rocksdb::WriteOptions &DefaultWriteOptions() { return default_write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
   [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
@@ -279,7 +279,7 @@ class Storage {
   // command, so it won't have multi transactions to be executed at the same time.
   std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
-  rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+  rocksdb::WriteOptions default_write_opts_ = rocksdb::WriteOptions();
 
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);

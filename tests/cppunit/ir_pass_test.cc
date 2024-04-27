@@ -20,6 +20,7 @@
 
 #include "search/ir_pass.h"
 
+#include "fmt/core.h"
 #include "gtest/gtest.h"
 #include "search/interval.h"
 #include "search/ir_sema_checker.h"
@@ -169,7 +170,7 @@ TEST(IRPassTest, IntervalAnalysis) {
 
 static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("t1", std::make_unique<redis::SearchTagFieldMetadata>());
-  auto f2 = FieldInfo("t2", std::make_unique<redis::SearchNumericFieldMetadata>());
+  auto f2 = FieldInfo("t2", std::make_unique<redis::SearchTagFieldMetadata>());
   f2.metadata->noindex = true;
   auto f3 = FieldInfo("n1", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto f4 = FieldInfo("n2", std::make_unique<redis::SearchNumericFieldMetadata>());
@@ -200,4 +201,40 @@ TEST(IRPassTest, IndexSelection) {
 
   auto passes = PassManager::Default();
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia"))->Dump(), "project *: full-scan ia");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by n1"))->Dump(),
+            "project *: numeric-scan n1, [-inf, inf), asc");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by n1 limit 1"))->Dump(),
+            "project *: (limit 0, 1: numeric-scan n1, [-inf, inf), asc)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by n3"))->Dump(),
+            "project *: (sort n3, asc: full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by n3 limit 1"))->Dump(),
+            "project *: (top-n sort n3, asc, 0, 1: full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n2 = 1 order by n1"))->Dump(),
+            "project *: (filter n2 = 1: numeric-scan n1, [-inf, inf), asc)");
+
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1"))->Dump(),
+            fmt::format("project *: numeric-scan n1, [1, {}), asc", IntervalSet::NextNum(1)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1"))->Dump(),
+            "project *: numeric-scan n1, [1, inf), asc");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and n1 < 2"))->Dump(),
+            "project *: numeric-scan n1, [1, 2), asc");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and n2 >= 2"))->Dump(),
+            "project *: (filter n2 >= 2: numeric-scan n1, [1, inf), asc)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and n2 = 2"))->Dump(),
+            fmt::format("project *: (filter n1 >= 1: numeric-scan n2, [2, {}), asc)", IntervalSet::NextNum(2)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and n3 = 2"))->Dump(),
+            "project *: (filter n3 = 2: numeric-scan n1, [1, inf), asc)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n3 = 1"))->Dump(),
+            "project *: (filter n3 = 1: full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1 and n3 = 2"))->Dump(),
+            fmt::format("project *: (filter n3 = 2: numeric-scan n1, [1, {}), asc)", IntervalSet::NextNum(1)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1 and t1 hastag \"a\""))->Dump(),
+            fmt::format("project *: (filter t1 hastag \"a\": numeric-scan n1, [1, {}), asc)", IntervalSet::NextNum(1)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where t1 hastag \"a\""))->Dump(),
+            "project *: tag-scan t1, a");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where t1 hastag \"a\" and t2 hastag \"a\""))->Dump(),
+      "project *: (filter t2 hastag \"a\": tag-scan t1, a)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where t2 hastag \"a\""))->Dump(),
+            "project *: (filter t2 hastag \"a\": full-scan ia)");
 }

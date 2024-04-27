@@ -158,7 +158,7 @@ struct IndexSelection : Visitor {
     };
 
     std::map<const FieldInfo *, AggregatedNodes> agg_nodes;
-    std::vector<Node *> rest_nodes;
+    std::vector<QueryExpr *> rest_nodes;
 
     for (const auto &n : node->inners) {
       IntervalSet is;
@@ -212,8 +212,8 @@ struct IndexSelection : Visitor {
                                      n.second.nodes);
       }
 
-      for (auto &n : rest_nodes) {
-        auto op = TransformExpr(node);
+      for (auto n : rest_nodes) {
+        auto op = TransformExpr(n);
 
         available_plans.emplace_back(std::move(op), std::set<Node *>{n});
       }

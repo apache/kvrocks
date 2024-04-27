@@ -24,8 +24,11 @@
 #include <string_view>
 
 #include "common/status.h"
-#include "vendor/endianconv.h"
 
+constexpr const int zlHeaderSize = 10;
+constexpr const int zlEndSize = 1;
+constexpr const uint8_t ZipListBigLen = 0xFE;
+constexpr const uint8_t zlEnd = 0xFF;
 
 class ZipList {
  public:
@@ -37,6 +40,10 @@ class ZipList {
   static uint32_t ZipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len);
   static uint32_t ZipStorePrevEntryLength(unsigned char *p, unsigned int len);
   static uint32_t ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen);
+  static void SetZipListBytes(unsigned char *zl, uint32_t value);
+  static void SetZipListTailOffset(unsigned char *zl, uint32_t value);
+  static void SetZipListLength(unsigned char *zl, uint16_t value);
+  static unsigned char *GetZipListEntryHead(unsigned char *zl);
 
  private:
   std::string_view input_;

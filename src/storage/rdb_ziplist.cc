@@ -22,11 +22,6 @@
 
 #include "vendor/endianconv.h"
 
-constexpr const int zlHeaderSize = 10;
-constexpr const int zlEndSize = 1;
-constexpr const uint8_t ZipListBigLen = 0xFE;
-constexpr const uint8_t zlEnd = 0xFF;
-
 constexpr const uint8_t ZIP_STR_MASK = 0xC0;
 constexpr const uint8_t ZIP_STR_06B = (0 << 6);
 constexpr const uint8_t ZIP_STR_14B = (1 << 6);
@@ -39,15 +34,6 @@ constexpr const uint8_t ZIP_INT_8B = 0xFE;
 
 constexpr const uint8_t ZIP_INT_IMM_MIN = 0xF1; /* 11110001 */
 constexpr const uint8_t ZIP_INT_IMM_MAX = 0xFD; /* 11111101 */
-
-constexpr uint32_t ZIPLIST_BYTES(unsigned char *zl) { return *reinterpret_cast<uint32_t *>(zl); }
-constexpr uint32_t ZIPLIST_TAIL_OFFSET(unsigned char *zl) {
-  return *reinterpret_cast<uint32_t *>(zl + sizeof(uint32_t));
-}
-constexpr uint16_t ZIPLIST_LENGTH(unsigned char *zl) {
-  return *reinterpret_cast<uint16_t *>(zl + sizeof(uint32_t) * 2);
-}
-constexpr unsigned char *ZIPLIST_ENTRY_HEAD(unsigned char *zl) { return zl + zlHeaderSize; }
 
 StatusOr<std::string> ZipList::Next() {
   auto prev_entry_encoded_size = getEncodedLengthSize(pre_entry_len_);
@@ -214,3 +200,13 @@ uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen) {
   memcpy(p, buf, len);
   return len;
 }
+
+void ZipList::SetZipListBytes(unsigned char *zl, uint32_t value) { (*((uint32_t *)(zl))) = value; }
+void ZipList::SetZipListTailOffset(unsigned char *zl, uint32_t value) {
+  (*((uint32_t *)((zl) + sizeof(uint32_t)))) = value;
+}
+void ZipList::SetZipListLength(unsigned char *zl, uint16_t value) {
+  (*((uint16_t *)((zl) + sizeof(uint32_t) * 2))) = value;
+}
+
+unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl) { return ((zl) + zlHeaderSize); }

@@ -72,7 +72,9 @@ struct PassManager {
     return result;
   }
 
-  static PassSequence ExprPasses() { return Create(SimplifyAndOrExpr{}, PushDownNotExpr{}, SimplifyBoolean{}); }
+  static PassSequence ExprPasses() {
+    return Create(SimplifyAndOrExpr{}, PushDownNotExpr{}, SimplifyBoolean{}, SimplifyAndOrExpr{});
+  }
   static PassSequence NumericPasses() { return Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{}); }
   static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }
 

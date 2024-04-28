@@ -32,6 +32,8 @@
 #include "search/ir_plan.h"
 #include "search/passes/cost_model.h"
 #include "search/passes/interval_analysis.h"
+#include "search/passes/push_down_not_expr.h"
+#include "search/passes/simplify_and_or_expr.h"
 #include "search/search_encoding.h"
 
 namespace kqir {
@@ -244,14 +246,25 @@ struct IndexSelection : Visitor {
       std::vector<std::unique_ptr<PlanOperator>> merged_elems;
       std::vector<std::unique_ptr<QueryExpr>> elem_filter;
 
+      auto add_filter = [&elem_filter](std::unique_ptr<PlanOperator> op) {
+        if (!elem_filter.empty()) {
+          std::unique_ptr<QueryExpr> filter = std::make_unique<NotExpr>(OrExpr::Create(CloneExprs(elem_filter)));
+
+          PushDownNotExpr pdne;
+          filter = Node::MustAs<QueryExpr>(pdne.Transform(std::move(filter)));
+          SimplifyAndOrExpr saoe;
+          filter = Node::MustAs<QueryExpr>(saoe.Transform(std::move(filter)));
+
+          op = std::make_unique<Filter>(std::move(op), std::move(filter));
+        }
+
+        return op;
+      };
+
       for (auto v : rest_nodes) {
         if (std::holds_alternative<QueryExpr *>(v)) {
           auto n = std::get<QueryExpr *>(v);
-          auto op = TransformExpr(n);
-          if (!elem_filter.empty()) {
-            auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
-            op = std::make_unique<Filter>(std::move(op), std::move(filter));
-          }
+          auto op = add_filter(TransformExpr(n));
 
           merged_elems.push_back(std::move(op));
           elem_filter.push_back(n->CloneAs<QueryExpr>());
@@ -260,10 +273,7 @@ struct IndexSelection : Visitor {
           const auto &agg_info = agg_nodes.at(n);
           auto field_ref = std::make_unique<FieldRef>(n->name, n);
           auto elem = PlanFromInterval(agg_info.intervals, field_ref.get(), SortByClause::ASC);
-          if (!elem_filter.empty()) {
-            auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
-            elem = std::make_unique<Filter>(std::move(elem), std::move(filter));
-          }
+          elem = add_filter(std::move(elem));
 
           merged_elems.push_back(std::move(elem));
           for (auto nn : agg_info.nodes) {

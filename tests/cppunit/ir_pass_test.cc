@@ -214,6 +214,8 @@ TEST(IRPassTest, IndexSelection) {
 
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1"))->Dump(),
             fmt::format("project *: numeric-scan n1, [1, {}), asc", IntervalSet::NextNum(1)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 != 1"))->Dump(),
+            "project *: (filter n1 != 1: full-scan ia)");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1"))->Dump(),
             "project *: numeric-scan n1, [1, inf), asc");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and n1 < 2"))->Dump(),
@@ -237,4 +239,27 @@ TEST(IRPassTest, IndexSelection) {
       "project *: (filter t2 hastag \"a\": tag-scan t1, a)");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where t2 hastag \"a\""))->Dump(),
             "project *: (filter t2 hastag \"a\": full-scan ia)");
+
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 2 or n1 < 1"))->Dump(),
+            "project *: (merge numeric-scan n1, [-inf, 1), asc, numeric-scan n1, [2, inf), asc)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 or n2 >= 2"))->Dump(),
+            "project *: (merge numeric-scan n1, [1, inf), asc, (filter n1 < 1: numeric-scan n2, [2, inf), asc))");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 or n2 = 2"))->Dump(),
+      fmt::format("project *: (merge numeric-scan n1, [1, inf), asc, (filter n1 < 1: numeric-scan n2, [2, {}), asc))",
+                  IntervalSet::NextNum(2)));
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 or n3 = 2"))->Dump(),
+            "project *: (filter (or n1 >= 1, n3 = 2): full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1 or n3 = 2"))->Dump(),
+            "project *: (filter (or n1 = 1, n3 = 2): full-scan ia)");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 = 1 or t1 hastag \"a\""))->Dump(),
+      fmt::format("project *: (merge tag-scan t1, a, (filter not t1 hastag \"a\": numeric-scan n1, [1, {}), asc))",
+                  IntervalSet::NextNum(1)));
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where t1 hastag \"a\" or t2 hastag \"a\""))->Dump(),
+      "project *: (filter (or t1 hastag \"a\", t2 hastag \"a\"): full-scan ia)");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where t1 hastag \"a\" or t1 hastag \"b\""))->Dump(),
+      "project *: (merge tag-scan t1, a, (filter not t1 hastag \"a\": tag-scan t1, b))");
 }

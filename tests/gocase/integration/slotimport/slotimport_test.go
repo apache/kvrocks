@@ -172,3 +172,44 @@ func TestImportedServer(t *testing.T) {
 		require.Zero(t, rdbB.Exists(ctx, slotKey).Val())
 	})
 }
+
+func TestServiceImportingSlot(t *testing.T) {
+	ctx := context.Background()
+
+	mockID0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	mockSrv0Host := "127.0.0.1"
+	mockSrv0Port := 6666
+
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer func() { srv1.Close() }()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-8191\n", mockID0, mockSrv0Host, mockSrv0Port)
+	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383\n", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	slotNum := 1
+	require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 0).Val())
+
+	// create a new client that is not importing
+	cli := srv1.NewClient()
+	slotKey := util.SlotTable[slotNum]
+
+	t.Run("IMPORT - query a key in importing slot without asking", func(t *testing.T) {
+		util.ErrorRegexp(t, cli.Type(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, mockSrv0Port))
+	})
+
+	t.Run("IMPORT - query a key in importing slot after asking", func(t *testing.T) {
+		require.Equal(t, "OK", cli.Do(ctx, "asking").Val())
+		require.NoError(t, cli.Type(ctx, slotKey).Err())
+	})
+
+	t.Run("IMPORT - asking flag will be reset after executing", func(t *testing.T) {
+		require.Equal(t, "OK", cli.Do(ctx, "asking").Val())
+		require.NoError(t, cli.Type(ctx, slotKey).Err())
+		util.ErrorRegexp(t, cli.Type(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, mockSrv0Port))
+	})
+}

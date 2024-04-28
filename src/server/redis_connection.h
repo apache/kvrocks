@@ -46,6 +46,7 @@ class Connection : public EvbufCallbackBase<Connection> {
     kCloseAsync = 1 << 7,
     kMultiExec = 1 << 8,
     kReadOnly = 1 << 9,
+    kAsking = 1 << 10,
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);

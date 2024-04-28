@@ -345,9 +345,9 @@ Status Storage::Open(DBOpenMode mode) {
   SetBlobDB(&propagate_opts);
 
   rocksdb::ColumnFamilyOptions minor_opts(subkey_opts);
-  minor_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
-  pubsub_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
-  propagate_opts.write_buffer_size = config_->minor_columns_write_buffer_size * KiB;
+  minor_opts.write_buffer_size = config_->minor_columns_write_buffer_size * MiB;
+  pubsub_opts.write_buffer_size = config_->minor_columns_write_buffer_size * MiB;
+  propagate_opts.write_buffer_size = config_->minor_columns_write_buffer_size * MiB;
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched

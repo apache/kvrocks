@@ -190,7 +190,7 @@ Config::Config() {
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
-      {"minor-columns-write-buffer-size", false, new IntField(&minor_columns_write_buffer_size, 65536, 16, 4194304)},
+      {"minor-columns-write-buffer-size", false, new IntField(&minor_columns_write_buffer_size, 64, 0, 4096)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -585,7 +585,7 @@ void Config::initFieldCallback() {
                                                                   kColumnFamilyIDSearch};
              for (const auto &cf : column_families) {
                auto s = srv->storage->SetOptionForColumnFamily(cf, "write_buffer_size",
-                                                               std::to_string(minor_columns_write_buffer_size * KiB));
+                                                               std::to_string(minor_columns_write_buffer_size * MiB));
                if (!s.IsOK()) return s;
              }
              return Status::OK();

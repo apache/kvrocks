@@ -333,24 +333,24 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
       conn->SetImporting();
       myself_->importing_slot = slot;
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get()](int fd) {
+      conn->close_cb = [object_ptr = srv_->slot_import.get()](int fd, int slot) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          LOG(ERROR) << "[import] Failed to stop importing slot: " << s.Msg();
+          LOG(ERROR) << fmt::format("[import] Failed to stop importing slot {}: {}", slot, s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot == srv_->slot_migrator->GetForbiddenSlot()) srv_->slot_migrator->ReleaseForbiddenSlot();
-      LOG(INFO) << "[import] Start importing slot " << slot;
+      LOG(INFO) << fmt::format("[import] Start importing slot {}", slot);
       break;
     case kImportSuccess:
       s = srv_->slot_import->Success(slot);
       if (!s.IsOK()) return s;
-      LOG(INFO) << "[import] Mark the importing slot as succeed" << slot;
+      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as succeed", slot);
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot);
       if (!s.IsOK()) return s;
-      LOG(INFO) << "[import] Mark the importing slot as failed" << slot;
+      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as failed", slot);
       break;
     default:
       return {Status::NotOK, errInvalidImportState};

@@ -82,7 +82,8 @@ Status SlotImport::Fail(int slot) {
 
 Status SlotImport::StopForLinkError() {
   std::lock_guard<std::mutex> guard(mutex_);
-  if (import_status_ != kImportStart) return {Status::NotOK, "no slot is importing"};
+  // We don't need to do anything if the importer is not started yet.
+  if (import_status_ != kImportStart) return Status::OK();
 
   // Maybe server has failovered
   // Situation:

@@ -233,7 +233,7 @@ uint64_t HllCount(const std::vector<uint8_t> &registers) {
     z *= 0.5;
   }
   z += m * HllSigma(reghisto[0] / (double)m);
-  e = llroundl(kHyperLogLogAlphaInf * m * m / z);
+  e = static_cast<double>(llroundl(kHyperLogLogAlphaInf * m * m / z));
 
   return (uint64_t)e;
 }

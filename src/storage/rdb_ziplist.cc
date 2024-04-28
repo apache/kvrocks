@@ -163,14 +163,12 @@ uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, unsigned int le
 uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, unsigned int len) {
   if (p == nullptr) {
     return (len < ZipListBigLen) ? 1 : sizeof(uint32_t) + 1;
-  } else {
-    if (len < ZipListBigLen) {
-      p[0] = len;
-      return 1;
-    } else {
-      return ZipStorePrevEntryLengthLarge(p, len);
-    }
   }
+  if (len < ZipListBigLen) {
+    p[0] = len;
+    return 1;
+  }
+  return ZipStorePrevEntryLengthLarge(p, len);
 }
 
 uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen) {

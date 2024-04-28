@@ -1007,25 +1007,25 @@ Status RDB::rdbSaveZipListObject(const std::string &elem) {
   const size_t ziplist_size = zlHeaderSize + zlEndSize + elem.length() +
                               ZipList::ZipStorePrevEntryLength(nullptr, prevlen) +
                               ZipList::ZipStoreEntryEncoding(nullptr, elem.length());
-  auto zl = std::make_unique<unsigned char[]>(ziplist_size);
+  auto zl_string = std::string(ziplist_size, 0);
+  auto zl_ptr = reinterpret_cast<unsigned char *>(&zl_string[0]);
 
   // set ziplist header
-  ZipList::SetZipListBytes(zl.get(), intrev32ifbe(ziplist_size));
-  ZipList::SetZipListTailOffset(zl.get(), intrev32ifbe(zlHeaderSize));
+  ZipList::SetZipListBytes(zl_ptr, intrev32ifbe(ziplist_size));
+  ZipList::SetZipListTailOffset(zl_ptr, intrev32ifbe(zlHeaderSize));
 
   // set ziplist entry
-  auto pos = ZipList::GetZipListEntryHead(zl.get());
+  auto pos = ZipList::GetZipListEntryHead(zl_ptr);
   pos += ZipList::ZipStorePrevEntryLength(pos, prevlen);
   pos += ZipList::ZipStoreEntryEncoding(pos, elem.length());
   memcpy(pos, elem.c_str(), elem.length());
 
   // set ziplist end
-  ZipList::SetZipListLength(zl.get(), 1);
-  zl[ziplist_size - 1] = zlEnd;
+  ZipList::SetZipListLength(zl_ptr, 1);
+  zl_ptr[ziplist_size - 1] = zlEnd;
 
   if (ziplist_size > 0) {
-    std::string str(reinterpret_cast<const char *>(zl.get()), ziplist_size);
-    auto status = SaveStringObject(str);
+    auto status = SaveStringObject(zl_string);
     if (!status.IsOK()) {
       return {Status::RedisExecErr, status.Msg()};
     }

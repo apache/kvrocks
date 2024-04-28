@@ -338,9 +338,19 @@ class CommandReadWrite : public Commander {
   }
 };
 
+class CommandAsking : public Commander {
+ public:
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    conn->EnableFlag(redis::Connection::kAsking);
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
                         MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
                         MakeCmdAttr<CommandReadOnly>("readonly", 1, "cluster no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", 0, 0, 0), )
+                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", 0, 0, 0),
+                        MakeCmdAttr<CommandAsking>("asking", 1, "cluster", 0, 0, 0), )
 
 }  // namespace redis

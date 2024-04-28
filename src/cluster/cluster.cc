@@ -846,12 +846,13 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // I'm serving this slot
   }
 
-  if (myself_ && myself_->importing_slot == slot && conn->IsImporting()) {
+  if (myself_ && myself_->importing_slot == slot &&
+      (conn->IsImporting() || conn->IsFlagEnabled(redis::Connection::kAsking))) {
     // While data migrating, the topology of the destination node has not been changed.
     // The destination node has to serve the requests from the migrating slot,
     // although the slot is not belong to itself. Therefore, we record the importing slot
     // and mark the importing connection to accept the importing data.
-    return Status::OK();  // I'm serving the importing connection
+    return Status::OK();  // I'm serving the importing connection or asking connection
   }
 
   if (myself_ && imported_slots_.count(slot)) {

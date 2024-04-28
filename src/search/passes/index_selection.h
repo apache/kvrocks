@@ -23,6 +23,7 @@
 #include <memory>
 #include <range/v3/view.hpp>
 #include <type_traits>
+#include <variant>
 
 #include "search/index_info.h"
 #include "search/interval.h"
@@ -158,7 +159,7 @@ struct IndexSelection : Visitor {
     };
 
     std::map<const FieldInfo *, AggregatedNodes> agg_nodes;
-    std::vector<QueryExpr *> rest_nodes;
+    std::vector<std::variant<QueryExpr *, const FieldInfo *>> rest_nodes;
 
     for (const auto &n : node->inners) {
       IntervalSet is;
@@ -188,6 +189,7 @@ struct IndexSelection : Visitor {
           jter->second.intervals = jter->second.intervals | is;
         }
       } else {
+        rest_nodes.emplace_back(field);
         agg_nodes.emplace(field, AggregatedNodes{std::set<Node *>{n.get()}, is});
       }
     }
@@ -206,16 +208,19 @@ struct IndexSelection : Visitor {
 
       available_plans.emplace_back(std::make_unique<FullIndexScan>(index->CloneAs<IndexRef>()), std::set<Node *>{});
 
-      for (const auto &n : agg_nodes) {
-        auto field_ref = std::make_unique<FieldRef>(n.first->name, n.first);
-        available_plans.emplace_back(PlanFromInterval(n.second.intervals, field_ref.get(), SortByClause::ASC),
-                                     n.second.nodes);
-      }
+      for (auto v : rest_nodes) {
+        if (std::holds_alternative<QueryExpr *>(v)) {
+          auto n = std::get<QueryExpr *>(v);
+          auto op = TransformExpr(n);
 
-      for (auto n : rest_nodes) {
-        auto op = TransformExpr(n);
-
-        available_plans.emplace_back(std::move(op), std::set<Node *>{n});
+          available_plans.emplace_back(std::move(op), std::set<Node *>{n});
+        } else {
+          auto n = std::get<const FieldInfo *>(v);
+          const auto &agg_info = agg_nodes.at(n);
+          auto field_ref = std::make_unique<FieldRef>(n->name, n);
+          available_plans.emplace_back(PlanFromInterval(agg_info.intervals, field_ref.get(), SortByClause::ASC),
+                                       agg_info.nodes);
+        }
       }
 
       auto &best_plan = *std::min_element(available_plans.begin(), available_plans.end(),
@@ -239,29 +244,32 @@ struct IndexSelection : Visitor {
       std::vector<std::unique_ptr<PlanOperator>> merged_elems;
       std::vector<std::unique_ptr<QueryExpr>> elem_filter;
 
-      for (const auto &n : agg_nodes) {
-        auto field_ref = std::make_unique<FieldRef>(n.first->name, n.first);
-        auto elem = PlanFromInterval(n.second.intervals, field_ref.get(), SortByClause::ASC);
-        if (!elem_filter.empty()) {
-          auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
-          elem = std::make_unique<Filter>(std::move(elem), std::move(filter));
-        }
+      for (auto v : rest_nodes) {
+        if (std::holds_alternative<QueryExpr *>(v)) {
+          auto n = std::get<QueryExpr *>(v);
+          auto op = TransformExpr(n);
+          if (!elem_filter.empty()) {
+            auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
+            op = std::make_unique<Filter>(std::move(op), std::move(filter));
+          }
 
-        merged_elems.push_back(std::move(elem));
-        for (auto nn : n.second.nodes) {
-          elem_filter.push_back(nn->template CloneAs<QueryExpr>());
-        }
-      }
+          merged_elems.push_back(std::move(op));
+          elem_filter.push_back(n->CloneAs<QueryExpr>());
+        } else {
+          auto n = std::get<const FieldInfo *>(v);
+          const auto &agg_info = agg_nodes.at(n);
+          auto field_ref = std::make_unique<FieldRef>(n->name, n);
+          auto elem = PlanFromInterval(agg_info.intervals, field_ref.get(), SortByClause::ASC);
+          if (!elem_filter.empty()) {
+            auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
+            elem = std::make_unique<Filter>(std::move(elem), std::move(filter));
+          }
 
-      for (auto n : rest_nodes) {
-        auto op = TransformExpr(n);
-        if (!elem_filter.empty()) {
-          auto filter = std::make_unique<NotExpr>(std::make_unique<OrExpr>(CloneExprs(elem_filter)));
-          op = std::make_unique<Filter>(std::move(op), std::move(filter));
+          merged_elems.push_back(std::move(elem));
+          for (auto nn : agg_info.nodes) {
+            elem_filter.push_back(nn->template CloneAs<QueryExpr>());
+          }
         }
-
-        merged_elems.push_back(std::move(op));
-        elem_filter.push_back(n->CloneAs<QueryExpr>());
       }
 
       auto merge_plan = Merge::Create(std::move(merged_elems));

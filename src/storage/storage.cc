@@ -101,11 +101,11 @@ void Storage::CloseDB() {
 }
 
 void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
-  write_opts_.sync = config.sync;
-  write_opts_.disableWAL = config.disable_wal;
-  write_opts_.no_slowdown = config.no_slowdown;
-  write_opts_.low_pri = config.low_pri;
-  write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
+  default_write_opts_.sync = config.sync;
+  default_write_opts_.disableWAL = config.disable_wal;
+  default_write_opts_.no_slowdown = config.no_slowdown;
+  default_write_opts_.low_pri = config.low_pri;
+  default_write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
 }
 
 rocksdb::ReadOptions Storage::DefaultScanOptions() const {
@@ -523,7 +523,7 @@ Status Storage::RestoreFromCheckpoint() {
 
 bool Storage::IsEmptyDB() {
   std::unique_ptr<rocksdb::Iterator> iter(
-      db_->NewIterator(rocksdb::ReadOptions(), GetCFHandle(kMetadataColumnFamilyName)));
+      db_->NewIterator(DefaultScanOptions(), GetCFHandle(kMetadataColumnFamilyName)));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Metadata metadata(kRedisNone, false);
     // If cannot decode the metadata we think the key is alive, so the db is not empty
@@ -689,7 +689,7 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
     return s;
   }
 
-  return Write(write_opts_, batch->GetWriteBatch());
+  return Write(default_write_opts_, batch->GetWriteBatch());
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -708,7 +708,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
-  return ApplyWriteBatch(write_opts_, std::move(raw_batch));
+  return ApplyWriteBatch(default_write_opts_, std::move(raw_batch));
 }
 
 Status Storage::ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch) {
@@ -846,7 +846,7 @@ Status Storage::CommitTxn() {
     return Status{Status::NotOK, "cannot commit while not in transaction mode"};
   }
 
-  auto s = writeToDB(write_opts_, txn_write_batch_->GetWriteBatch());
+  auto s = writeToDB(default_write_opts_, txn_write_batch_->GetWriteBatch());
 
   is_txn_mode_ = false;
   txn_write_batch_ = nullptr;
@@ -870,7 +870,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(kPropagateColumnFamilyName);
   batch->Put(cf, key, value);
-  auto s = Write(write_opts_, batch->GetWriteBatch());
+  auto s = Write(default_write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return {Status::NotOK, s.ToString()};
   }

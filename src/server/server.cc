@@ -52,7 +52,7 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_sec_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -963,8 +963,8 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
   int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
-  string_stream << "uptime_in_seconds:" << now_secs - start_time_sec_ << "\r\n";
-  string_stream << "uptime_in_days:" << (now_secs - start_time_sec_) / 86400 << "\r\n";
+  string_stream << "uptime_in_seconds:" << now_secs - start_time_secs_ << "\r\n";
+  string_stream << "uptime_in_days:" << (now_secs - start_time_secs_) / 86400 << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1098,7 +1098,7 @@ int64_t Server::GetCachedUnixTime() {
 
 int64_t Server::GetLastBgsaveTime() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  return last_bgsave_time_in_sec_ == -1 ? start_time_sec_ : last_bgsave_time_spent_in_sec_;
+  return last_bgsave_time_in_secs_ == -1 ? start_time_secs_ : last_bgsave_time_spent_in_secs_;
 }
 
 void Server::GetStatsInfo(std::string *info) {
@@ -1195,9 +1195,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     std::lock_guard<std::mutex> lg(db_job_mu_);
     string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
     string_stream << "last_bgsave_time:"
-                  << (last_bgsave_time_in_sec_ == -1 ? start_time_sec_ : last_bgsave_time_in_sec_) << "\r\n";
+                  << (last_bgsave_time_in_secs_ == -1 ? start_time_secs_ : last_bgsave_time_in_secs_) << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
-    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_spent_in_sec_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_spent_in_secs_ << "\r\n";
   }
 
   if (all || section == "stats") {
@@ -1400,9 +1400,9 @@ Status Server::AsyncBgSaveDB() {
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
-    last_bgsave_time_in_sec_ = start_bgsave_time_secs;
+    last_bgsave_time_in_secs_ = start_bgsave_time_secs;
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_spent_in_sec_ = stop_bgsave_time_secs - start_bgsave_time_secs;
+    last_bgsave_time_spent_in_secs_ = stop_bgsave_time_secs - start_bgsave_time_secs;
   });
 }
 

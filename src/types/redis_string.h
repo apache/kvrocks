@@ -37,7 +37,7 @@ struct StringPair {
 enum class StringSetType { NONE, NX, XX };
 
 struct StringSetArgs {
-  // Expire time in
+  // Expire time in mill seconds.
   uint64_t expire;
   StringSetType type;
   bool get;

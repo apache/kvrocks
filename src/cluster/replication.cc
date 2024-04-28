@@ -201,7 +201,7 @@ LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
   DLOG(INFO) << "[replication] Execute handler[" << getHandlerName(handler_idx_) << "]";
   auto st = getHandlerFunc(handler_idx_)(repl_, bev);
-  repl_->last_io_time_in_secs_.store(util::GetTimeStamp(), std::memory_order_relaxed);
+  repl_->last_io_time_secs_.store(util::GetTimeStamp(), std::memory_order_relaxed);
   switch (st) {
     case CBState::NEXT:
       ++handler_idx_;

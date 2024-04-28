@@ -198,7 +198,7 @@ func TestServiceImportingSlot(t *testing.T) {
 	cli := srv1.NewClient()
 	slotKey := util.SlotTable[slotNum]
 
-	t.Run("IMPORT - query a key in importing slot without asking", func(t *testing.T) {	
+	t.Run("IMPORT - query a key in importing slot without asking", func(t *testing.T) {
 		util.ErrorRegexp(t, cli.Type(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, mockSrv0Port))
 	})
 
@@ -212,5 +212,4 @@ func TestServiceImportingSlot(t *testing.T) {
 		require.NoError(t, cli.Type(ctx, slotKey).Err())
 		util.ErrorRegexp(t, cli.Type(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, mockSrv0Port))
 	})
-
 }

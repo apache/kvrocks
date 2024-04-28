@@ -154,6 +154,8 @@ rocksdb::Status Bitmap::GetString(const Slice &user_key, const uint32_t max_btos
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = ss.GetSnapShot();
+  Slice prefix_key_slice(prefix_key);
+  read_options.iterate_lower_bound = &prefix_key_slice;
 
   auto iter = util::UniqueIterator(storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {

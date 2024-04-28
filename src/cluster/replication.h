@@ -98,7 +98,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
-  time_t LastIOTime() { return last_io_time_secs_.load(std::memory_order_relaxed); }
+  int64_t LastIOTimeSecs() const { return last_io_time_secs_.load(std::memory_order_relaxed); }
 
   void TimerCB(int, int16_t);
 

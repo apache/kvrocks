@@ -427,7 +427,7 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
       pel_entry = decodeStreamPelEntryValue(value);
     }
 
-    if (s.ok() || (!s.ok() && s.IsNotFound() && options.force)) {
+    if (s.ok() || (s.IsNotFound() && options.force)) {
       if (now - pel_entry.last_delivery_time < min_idle_time) continue;
 
       std::vector<std::string> values;
@@ -476,7 +476,7 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
     }
   }
 
-  if (options.with_last_id) {
+  if (options.with_last_id && options.last_delivered_id > group_metadata.last_delivered_id) {
     group_metadata.last_delivered_id = options.last_delivered_id;
   }
 

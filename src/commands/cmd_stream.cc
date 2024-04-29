@@ -253,7 +253,14 @@ class CommandXClaim : public Commander {
     stream_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
     consumer_name_ = GET_OR_RET(parser.TakeStr());
-    min_idle_time_ = GET_OR_RET(parser.TakeInt<uint64_t>());
+    auto parse_result = parser.TakeInt<int64_t>();
+    if (!parse_result.IsOK()) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    min_idle_time_ = parse_result.GetValue();
+    if (min_idle_time_ < 0) {
+      min_idle_time_ = 0;
+    }
 
     while (parser.Good() && !isOption(parser.RawPeek())) {
       auto raw_id = GET_OR_RET(parser.TakeStr());
@@ -267,13 +274,34 @@ class CommandXClaim : public Commander {
 
     while (parser.Good()) {
       if (parser.EatEqICase("idle")) {
-        stream_claim_options_.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "IDLE for XCLAIM must be non-negative"};
+        }
+        stream_claim_options_.idle_time = parse_result.GetValue();
       } else if (parser.EatEqICase("time")) {
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "TIME for XCLAIM must be non-negative"};
+        }
         stream_claim_options_.with_time = true;
-        stream_claim_options_.last_delivery_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+        stream_claim_options_.last_delivery_time = parse_result.GetValue();
       } else if (parser.EatEqICase("retrycount")) {
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "RETRYCOUNT for XCLAIM must be non-negative"};
+        }
         stream_claim_options_.with_retry_count = true;
-        stream_claim_options_.last_delivery_count = GET_OR_RET(parser.TakeInt<uint64_t>());
+        stream_claim_options_.last_delivery_count = parse_result.GetValue();
       } else if (parser.EatEqICase("force")) {
         stream_claim_options_.force = true;
       } else if (parser.EatEqICase("justid")) {

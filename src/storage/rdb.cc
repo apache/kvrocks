@@ -1025,11 +1025,10 @@ Status RDB::rdbSaveZipListObject(const std::string &elem) {
   ZipList::SetZipListLength(zl_ptr, ziplist_size, 1);
   zl_ptr[ziplist_size - 1] = zlEnd;
 
-  if (ziplist_size > 0) {
-    auto status = SaveStringObject(zl_string);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+  auto status = SaveStringObject(zl_string);
+  if (!status.IsOK()) {
+    return {Status::RedisExecErr, status.Msg()};
   }
+  
   return Status::OK();
 }

@@ -44,8 +44,11 @@ struct FullIndexScan : PlanOperator {
 
   explicit FullIndexScan(std::unique_ptr<IndexRef> index) : index(std::move(index)) {}
 
-  std::string_view Name() const override { return "FullIndexScan"; };
+  std::string_view Name() const override { return "FullIndexScan"; }
   std::string Dump() const override { return fmt::format("full-scan {}", index->name); }
+
+  NodeIterator ChildBegin() override { return NodeIterator{index.get()}; }
+  NodeIterator ChildEnd() override { return {}; }
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<FullIndexScan>(Node::MustAs<IndexRef>(index->Clone()));
@@ -56,6 +59,9 @@ struct FieldScan : PlanOperator {
   std::unique_ptr<FieldRef> field;
 
   explicit FieldScan(std::unique_ptr<FieldRef> field) : field(std::move(field)) {}
+
+  NodeIterator ChildBegin() override { return NodeIterator{field.get()}; }
+  NodeIterator ChildEnd() override { return {}; }
 };
 
 struct NumericFieldScan : FieldScan {
@@ -67,9 +73,9 @@ struct NumericFieldScan : FieldScan {
 
   std::string_view Name() const override { return "NumericFieldScan"; };
   std::string Content() const override {
-    return fmt::format("{}, {}, {}", field->name, range.ToString(), SortByClause::OrderToString(order));
+    return fmt::format("{}, {}", range.ToString(), SortByClause::OrderToString(order));
   };
-  std::string Dump() const override { return fmt::format("numeric-scan {}", Content()); }
+  std::string Dump() const override { return fmt::format("numeric-scan {}, {}", field->name, Content()); }
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<NumericFieldScan>(field->CloneAs<FieldRef>(), range, order);
@@ -82,8 +88,8 @@ struct TagFieldScan : FieldScan {
   TagFieldScan(std::unique_ptr<FieldRef> field, std::string tag) : FieldScan(std::move(field)), tag(std::move(tag)) {}
 
   std::string_view Name() const override { return "TagFieldScan"; };
-  std::string Content() const override { return fmt::format("{}, {}", field->name, tag); };
-  std::string Dump() const override { return fmt::format("tag-scan {}", Content()); }
+  std::string Content() const override { return tag; };
+  std::string Dump() const override { return fmt::format("tag-scan {}, {}", field->name, tag); }
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<TagFieldScan>(field->CloneAs<FieldRef>(), tag);

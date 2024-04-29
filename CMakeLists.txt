@@ -140,6 +140,7 @@ include(cmake/xxhash.cmake)
 include(cmake/span.cmake)
 include(cmake/trie.cmake)
 include(cmake/pegtl.cmake)
+include(cmake/rangev3.cmake)
 
 if (ENABLE_LUAJIT)
     include(cmake/luajit.cmake)
@@ -173,6 +174,7 @@ list(APPEND EXTERNAL_LIBS xxhash)
 list(APPEND EXTERNAL_LIBS span-lite)
 list(APPEND EXTERNAL_LIBS tsl_hat_trie)
 list(APPEND EXTERNAL_LIBS pegtl)
+list(APPEND EXTERNAL_LIBS range-v3)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)

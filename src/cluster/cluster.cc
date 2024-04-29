@@ -333,24 +333,24 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
       conn->SetImporting();
       myself_->importing_slot = slot;
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get()](int fd) {
+      conn->close_cb = [object_ptr = srv_->slot_import.get(), slot](int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          LOG(ERROR) << "[import] Failed to stop importing slot: " << s.Msg();
+          LOG(ERROR) << fmt::format("[import] Failed to stop importing slot {}: {}", slot, s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot == srv_->slot_migrator->GetForbiddenSlot()) srv_->slot_migrator->ReleaseForbiddenSlot();
-      LOG(INFO) << "[import] Start importing slot " << slot;
+      LOG(INFO) << fmt::format("[import] Start importing slot {}", slot);
       break;
     case kImportSuccess:
       s = srv_->slot_import->Success(slot);
       if (!s.IsOK()) return s;
-      LOG(INFO) << "[import] Mark the importing slot as succeed" << slot;
+      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as succeed", slot);
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot);
       if (!s.IsOK()) return s;
-      LOG(INFO) << "[import] Mark the importing slot as failed" << slot;
+      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as failed", slot);
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -846,12 +846,13 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // I'm serving this slot
   }
 
-  if (myself_ && myself_->importing_slot == slot && conn->IsImporting()) {
+  if (myself_ && myself_->importing_slot == slot &&
+      (conn->IsImporting() || conn->IsFlagEnabled(redis::Connection::kAsking))) {
     // While data migrating, the topology of the destination node has not been changed.
     // The destination node has to serve the requests from the migrating slot,
     // although the slot is not belong to itself. Therefore, we record the importing slot
     // and mark the importing connection to accept the importing data.
-    return Status::OK();  // I'm serving the importing connection
+    return Status::OK();  // I'm serving the importing connection or asking connection
   }
 
   if (myself_ && imported_slots_.count(slot)) {

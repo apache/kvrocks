@@ -33,7 +33,7 @@ struct ExecutorNode {
   using RowType = std::vector<std::string>;
 
   static constexpr inline const struct End {
-  } end;
+  } end{};
   friend constexpr bool operator==(End, End) noexcept { return true; }
   friend constexpr bool operator!=(End, End) noexcept { return false; }
 

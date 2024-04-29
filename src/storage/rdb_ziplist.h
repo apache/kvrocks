@@ -37,13 +37,13 @@ class ZipList {
 
   StatusOr<std::string> Next();
   StatusOr<std::vector<std::string>> Entries();
-  static uint32_t ZipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len);
-  static uint32_t ZipStorePrevEntryLength(unsigned char *p, unsigned int len);
-  static uint32_t ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen);
-  static void SetZipListBytes(unsigned char *zl, uint32_t value);
-  static void SetZipListTailOffset(unsigned char *zl, uint32_t value);
-  static void SetZipListLength(unsigned char *zl, uint16_t value);
-  static unsigned char *GetZipListEntryHead(unsigned char *zl);
+  static uint32_t ZipStorePrevEntryLengthLarge(unsigned char *p, size_t zl_size, unsigned int len);
+  static uint32_t ZipStorePrevEntryLength(unsigned char *p, size_t zl_size, unsigned int len);
+  static uint32_t ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsigned int rawlen);
+  static void SetZipListBytes(unsigned char *zl, size_t zl_size, uint32_t value);
+  static void SetZipListTailOffset(unsigned char *zl, size_t zl_size, uint32_t value);
+  static void SetZipListLength(unsigned char *zl, size_t zl_size, uint16_t value);
+  static unsigned char *GetZipListEntryHead(unsigned char *zl, size_t zl_size);
 
  private:
   std::string_view input_;

@@ -19,6 +19,7 @@
  */
 
 #include "rdb_ziplist.h"
+#include <cassert>
 
 #include "vendor/endianconv.h"
 
@@ -149,18 +150,19 @@ Status ZipList::peekOK(size_t n) {
 
 uint32_t ZipList::getEncodedLengthSize(uint32_t len) { return len < ZipListBigLen ? 1 : 5; }
 
-uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
+uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, size_t zl_size, unsigned int len) {
   uint32_t u32 = 0;
   if (p != nullptr) {
     p[0] = ZipListBigLen;
     u32 = len;
+    assert(zl_size >= 1 + sizeof(uint32_t) + zlHeaderSize);
     memcpy(p + 1, &u32, sizeof(u32));
     memrev32ifbe(p + 1);
   }
   return 1 + sizeof(uint32_t);
 }
 
-uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, unsigned int len) {
+uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, size_t zl_size, unsigned int len) {
   if (p == nullptr) {
     return (len < ZipListBigLen) ? 1 : sizeof(uint32_t) + 1;
   }
@@ -168,10 +170,10 @@ uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, unsigned int len) {
     p[0] = len;
     return 1;
   }
-  return ZipStorePrevEntryLengthLarge(p, len);
+  return ZipStorePrevEntryLengthLarge(p, zl_size, len);
 }
 
-uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen) {
+uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsigned int rawlen) {
   unsigned char len = 1, buf[5];
 
   /* Although encoding is given it may not be set for strings,
@@ -193,18 +195,26 @@ uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, unsigned int rawlen) {
     buf[3] = (rawlen >> 8) & 0xff;
     buf[4] = rawlen & 0xff;
   }
-
+  assert(zl_size >= zlHeaderSize + len);
   /* Store this length at p. */
   memcpy(p, buf, len);
   return len;
 }
 
-void ZipList::SetZipListBytes(unsigned char *zl, uint32_t value) { (*((uint32_t *)(zl))) = value; }
-void ZipList::SetZipListTailOffset(unsigned char *zl, uint32_t value) {
-  (*((uint32_t *)((zl) + sizeof(uint32_t)))) = value;
+void ZipList::SetZipListBytes(unsigned char *zl, size_t zl_size, uint32_t value) { 
+  assert(zl_size >= sizeof(uint32_t));
+  memcpy(zl, &value, sizeof(uint32_t));
 }
-void ZipList::SetZipListLength(unsigned char *zl, uint16_t value) {
-  (*((uint16_t *)((zl) + sizeof(uint32_t) * 2))) = value;
+void ZipList::SetZipListTailOffset(unsigned char *zl, size_t zl_size, uint32_t value) {
+  assert(zl_size >= sizeof(uint32_t) * 2);
+  memcpy(zl + sizeof(uint32_t), &value, sizeof(uint32_t));
+}
+void ZipList::SetZipListLength(unsigned char *zl, size_t zl_size,  uint16_t value) {
+  assert(zl_size >= sizeof(uint32_t) * 2 + sizeof(uint16_t));
+  memcpy(zl + sizeof(uint32_t) * 2, &value, sizeof(uint16_t));
 }
 
-unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl) { return ((zl) + zlHeaderSize); }
+unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl, size_t zl_size) { 
+  assert(zl_size >= zlHeaderSize);
+  return ((zl) + zlHeaderSize); 
+}

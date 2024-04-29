@@ -34,9 +34,13 @@ namespace kqir {
 struct Interval {
   double l, r;  // [l, r)
 
+  static inline const double inf = std::numeric_limits<double>::infinity();
+  static inline const double minf = -inf;
+
   Interval(double l, double r) : l(l), r(r) {}
 
   bool IsEmpty() const { return l >= r; }
+  static Interval Full() { return {minf, inf}; }
 
   bool operator==(const Interval &other) const { return l == other.l && r == other.r; }
   bool operator!=(const Interval &other) const { return !(*this == other); }
@@ -69,8 +73,8 @@ struct IntervalSet {
   using DataType = std::vector<std::pair<double, double>>;
   DataType intervals;
 
-  static inline const double inf = std::numeric_limits<double>::infinity();
-  static inline const double minf = -inf;
+  static inline const double inf = Interval::inf;
+  static inline const double minf = Interval::minf;
 
   static double NextNum(double val) { return std::nextafter(val, inf); }
 

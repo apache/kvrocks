@@ -66,7 +66,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 * LuaJIT(https://github.com/KvrocksLabs/LuaJIT)
 * lua(https://github.com/KvrocksLabs/lua, alternative to LuaJIT)
 * hat-trie(https://github.com/Tessil/hat-trie)
-* pegtl(https://github.com/taocpp/PEGTL, NOTE: changed to BSL-1.0 in main branch)
+* pegtl(https://github.com/taocpp/PEGTL, NOTE: changed to Boost Software License Version 1.0 in main branch)
 
 ================================================================
 Boost Software License Version 1.0
@@ -76,6 +76,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 
 * jsoncons(https://github.com/danielaparker/jsoncons)
 * span-lite(https://github.com/martinmoene/span-lite)
+* range-v3(https://github.com/ericniebler/range-v3)
 
 ================================================================
 zlib/libpng licenses

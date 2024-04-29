@@ -29,6 +29,7 @@
 #include "search/interval.h"
 #include "search/ir.h"
 #include "search/ir_pass.h"
+#include "search/ir_plan.h"
 #include "type_util.h"
 
 namespace kqir {
@@ -40,7 +41,13 @@ struct IntervalAnalysis : Visitor {
     IntervalSet intervals;
   };
 
-  std::map<Node *, IntervalInfo> result;
+  using Result = std::map<Node *, IntervalInfo>;
+
+  Result result;
+  const bool simplify_numeric_compare;
+
+  explicit IntervalAnalysis(bool simplify_numeric_compare = false)
+      : simplify_numeric_compare(simplify_numeric_compare) {}
 
   void Reset() override { result.clear(); }
 
@@ -92,13 +99,18 @@ struct IntervalAnalysis : Visitor {
       result.emplace(node.get(), IntervalInfo{elem.first, elem.second.field, elem.second.intervals});
     }
 
-    for (const auto &[field, info] : interval_map) {
-      auto iter = std::remove_if(node->inners.begin(), node->inners.end(),
-                                 [&info = info](const auto &n) { return info.nodes.count(n.get()) == 1; });
-      node->inners.erase(iter, node->inners.end());
+    if (simplify_numeric_compare) {
+      for (const auto &[field, info] : interval_map) {
+        auto iter = std::remove_if(node->inners.begin(), node->inners.end(),
+                                   [&info = info](const auto &n) { return info.nodes.count(n.get()) == 1; });
+        node->inners.erase(iter, node->inners.end());
+        for (const auto &n : info.nodes) {
+          if (auto iter = result.find(n); iter != result.end()) result.erase(iter);
+        }
 
-      auto field_node = std::make_unique<FieldRef>(field, info.field);
-      node->inners.emplace_back(GenerateFromInterval(info.intervals, field_node.get()));
+        auto field_node = std::make_unique<FieldRef>(field, info.field);
+        node->inners.emplace_back(GenerateFromInterval(info.intervals, field_node.get()));
+      }
     }
 
     return node;

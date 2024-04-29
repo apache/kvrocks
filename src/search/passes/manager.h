@@ -20,14 +20,21 @@
 
 #pragma once
 
+#include <iterator>
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 #include "search/ir.h"
 #include "search/ir_pass.h"
+#include "search/passes/index_selection.h"
+#include "search/passes/interval_analysis.h"
+#include "search/passes/lower_to_plan.h"
 #include "search/passes/push_down_not_expr.h"
 #include "search/passes/simplify_and_or_expr.h"
 #include "search/passes/simplify_boolean.h"
+#include "search/passes/sort_limit_fuse.h"
+#include "type_util.h"
 
 namespace kqir {
 
@@ -43,13 +50,35 @@ struct PassManager {
   }
 
   template <typename... Passes>
-  static PassSequence GeneratePasses() {
+  static PassSequence Create(Passes &&...passes) {
+    static_assert(std::conjunction_v<std::negation<std::is_reference<Passes>>...>);
+
     PassSequence result;
-    (result.push_back(std::make_unique<Passes>()), ...);
+    result.reserve(sizeof...(passes));
+    (result.push_back(std::make_unique<Passes>(std::move(passes))), ...);
+
     return result;
   }
 
-  static PassSequence ExprPasses() { return GeneratePasses<SimplifyAndOrExpr, PushDownNotExpr, SimplifyBoolean>(); }
+  template <typename... PassSeqs>
+  static PassSequence Merge(PassSeqs &&...seqs) {
+    static_assert(std::conjunction_v<std::negation<std::is_reference<PassSeqs>>...>);
+    static_assert(std::conjunction_v<std::is_same<PassSequence, RemoveCVRef<PassSeqs>>...>);
+
+    PassSequence result;
+    result.reserve((seqs.size() + ...));
+    (result.insert(result.end(), std::make_move_iterator(seqs.begin()), std::make_move_iterator(seqs.end())), ...);
+
+    return result;
+  }
+
+  static PassSequence ExprPasses() {
+    return Create(SimplifyAndOrExpr{}, PushDownNotExpr{}, SimplifyBoolean{}, SimplifyAndOrExpr{});
+  }
+  static PassSequence NumericPasses() { return Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{}); }
+  static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }
+
+  static PassSequence Default() { return Merge(ExprPasses(), NumericPasses(), PlanPasses()); }
 };
 
 }  // namespace kqir

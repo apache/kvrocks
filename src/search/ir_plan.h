@@ -60,15 +60,19 @@ struct FieldScan : PlanOperator {
 
 struct NumericFieldScan : FieldScan {
   Interval range;
+  SortByClause::Order order;
 
-  NumericFieldScan(std::unique_ptr<FieldRef> field, Interval range) : FieldScan(std::move(field)), range(range) {}
+  NumericFieldScan(std::unique_ptr<FieldRef> field, Interval range, SortByClause::Order order = SortByClause::ASC)
+      : FieldScan(std::move(field)), range(range), order(order) {}
 
   std::string_view Name() const override { return "NumericFieldScan"; };
-  std::string Content() const override { return fmt::format("{}, {}", field->name, range.ToString()); };
+  std::string Content() const override {
+    return fmt::format("{}, {}, {}", field->name, range.ToString(), SortByClause::OrderToString(order));
+  };
   std::string Dump() const override { return fmt::format("numeric-scan {}", Content()); }
 
   std::unique_ptr<Node> Clone() const override {
-    return std::make_unique<NumericFieldScan>(field->CloneAs<FieldRef>(), range);
+    return std::make_unique<NumericFieldScan>(field->CloneAs<FieldRef>(), range, order);
   }
 };
 
@@ -109,6 +113,16 @@ struct Merge : PlanOperator {
   std::vector<std::unique_ptr<PlanOperator>> ops;
 
   explicit Merge(std::vector<std::unique_ptr<PlanOperator>> &&ops) : ops(std::move(ops)) {}
+
+  static std::unique_ptr<PlanOperator> Create(std::vector<std::unique_ptr<PlanOperator>> &&ops) {
+    CHECK(!ops.empty());
+
+    if (ops.size() == 1) {
+      return std::move(ops.front());
+    }
+
+    return std::make_unique<Merge>(std::move(ops));
+  }
 
   std::string_view Name() const override { return "Merge"; };
   std::string Dump() const override {

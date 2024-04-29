@@ -34,8 +34,8 @@ struct ExecutorNode {
 
   static constexpr inline const struct End {
   } end;
-  friend constexpr bool operator==(ExecutorNode::End, ExecutorNode::End) noexcept { return true; }
-  friend constexpr bool operator!=(ExecutorNode::End, ExecutorNode::End) noexcept { return false; }
+  friend constexpr bool operator==(End, End) noexcept { return true; }
+  friend constexpr bool operator!=(End, End) noexcept { return false; }
 
   using Result = std::variant<End, KeyType, RowType>;
 

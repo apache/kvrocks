@@ -30,7 +30,7 @@ struct ExecutorContext;
 
 struct ExecutorNode {
   using KeyType = std::string;
-  using RowType = std::vector<std::string>;
+  using RowType = std::pair<KeyType, std::vector<std::string>>;
 
   static constexpr inline const struct End {
   } end{};

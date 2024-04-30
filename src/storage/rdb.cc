@@ -1029,6 +1029,6 @@ Status RDB::rdbSaveZipListObject(const std::string &elem) {
   if (!status.IsOK()) {
     return {Status::RedisExecErr, status.Msg()};
   }
-  
+
   return Status::OK();
 }

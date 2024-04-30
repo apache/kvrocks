@@ -619,6 +619,31 @@ class CommandJsonMSet : public Commander {
   }
 };
 
+class CommandJsonDebug : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string path = "$";
+
+    if (args_.size() == 4) {
+      if (util::EqualICase(args_[2], "memory")) {
+        return {Status::RedisExecErr, "The number of arguments is more than expected"};
+      }
+      path = args_[3];
+    } else if (args_.size() > 4) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
+    }
+
+    Optionals<uint64_t> results;
+    auto s = json.DebugMemory(args_[2], path, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = OptionalsToString(conn, results);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -642,6 +667,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, -2, 1),
-                        MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3), );
+                        MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3),
+                        MakeCmdAttr<CommandJsonDebug>("json.debug", -3, "read-only", 1, 2, 1));
 
 }  // namespace redis

@@ -217,6 +217,23 @@ struct JsonValue {
     return results;
   }
 
+  StatusOr<Optionals<uint64_t>> StrBytes(std::string_view path) const {
+    Optionals<uint64_t> results;
+    try {
+      jsoncons::jsonpath::json_query(value, path,
+                                     [&results](const std::string & /*path*/, const jsoncons::json &origin) {
+                                       if (!origin.empty()) {
+                                         results.emplace_back(origin.as_string().size());
+                                       } else {
+                                         results.emplace_back(0);
+                                       }
+                                     });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    return results;
+  }
+
   StatusOr<JsonValue> Get(std::string_view path) const {
     try {
       return jsoncons::jsonpath::json_query(value, path);

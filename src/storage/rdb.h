@@ -153,4 +153,5 @@ class RDB {
   static bool isEmptyRedisObject(const RedisObjValue &value);
   static int rdbEncodeInteger(long long value, unsigned char *enc);
   Status rdbSaveBinaryDoubleValue(double val);
+  Status rdbSaveZipListObject(const std::string &elem);
 };

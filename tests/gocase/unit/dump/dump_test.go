@@ -113,8 +113,19 @@ func TestDump_List(t *testing.T) {
 	require.NoError(t, rdb.RPush(ctx, key, elements).Err())
 	serialized, err := rdb.Dump(ctx, key).Result()
 	require.NoError(t, err)
+	require.Equal(t, "\x0e\x03\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks1\xff\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks2\xff\x15\x15\x00\x00\x00\n\x00\x00\x00\x01\x00\x00\bkvrocks3\xff\x06\x00u\xc7\x19h\x1da\xd0\xd8", serialized)
 
 	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.EqualValues(t, elements, rdb.LRange(ctx, restoredKey, 0, -1).Val())
+
+	//test special case
+	elements = []string{"A", " ", "", util.RandString(0, 4000, util.Alpha)}
+	require.NoError(t, rdb.Del(ctx, key).Err())
+	require.NoError(t, rdb.RPush(ctx, key, elements).Err())
+	serialized, err = rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
 	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
 	require.EqualValues(t, elements, rdb.LRange(ctx, restoredKey, 0, -1).Val())
 }

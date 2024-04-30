@@ -730,7 +730,7 @@ Status RDB::SaveObjectType(const RedisType type) {
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
   } else if (type == kRedisList) {
-    robj_type = RDBTypeListQuickList2;
+    robj_type = RDBTypeListQuickList;
   } else if (type == kRedisSet) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
@@ -892,12 +892,7 @@ Status RDB::SaveListObject(const std::vector<std::string> &elems) {
     }
 
     for (const auto &elem : elems) {
-      status = RdbSaveLen(1 /*plain container mode */);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
-
-      status = SaveStringObject(elem);
+      auto status = rdbSaveZipListObject(elem);
       if (!status.IsOK()) {
         return {Status::RedisExecErr, status.Msg()};
       }
@@ -1004,4 +999,36 @@ int RDB::rdbEncodeInteger(const long long value, unsigned char *enc) {
 Status RDB::rdbSaveBinaryDoubleValue(double val) {
   memrev64ifbe(&val);
   return stream_->Write((const char *)(&val), sizeof(val));
+}
+
+Status RDB::rdbSaveZipListObject(const std::string &elem) {
+  // calc total ziplist size
+  uint prevlen = 0;
+  const size_t ziplist_size = zlHeaderSize + zlEndSize + elem.length() +
+                              ZipList::ZipStorePrevEntryLength(nullptr, 0, prevlen) +
+                              ZipList::ZipStoreEntryEncoding(nullptr, 0, elem.length());
+  auto zl_string = std::string(ziplist_size, '\0');
+  auto zl_ptr = reinterpret_cast<unsigned char *>(&zl_string[0]);
+
+  // set ziplist header
+  ZipList::SetZipListBytes(zl_ptr, ziplist_size, (static_cast<uint32_t>(ziplist_size)));
+  ZipList::SetZipListTailOffset(zl_ptr, ziplist_size, intrev32ifbe(zlHeaderSize));
+
+  // set ziplist entry
+  auto pos = ZipList::GetZipListEntryHead(zl_ptr, ziplist_size);
+  pos += ZipList::ZipStorePrevEntryLength(pos, ziplist_size, prevlen);
+  pos += ZipList::ZipStoreEntryEncoding(pos, ziplist_size, elem.length());
+  assert(pos + elem.length() <= zl_ptr + ziplist_size);
+  memcpy(pos, elem.c_str(), elem.length());
+
+  // set ziplist end
+  ZipList::SetZipListLength(zl_ptr, ziplist_size, 1);
+  zl_ptr[ziplist_size - 1] = zlEnd;
+
+  auto status = SaveStringObject(zl_string);
+  if (!status.IsOK()) {
+    return {Status::RedisExecErr, status.Msg()};
+  }
+
+  return Status::OK();
 }

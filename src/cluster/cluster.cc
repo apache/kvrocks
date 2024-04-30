@@ -22,9 +22,11 @@
 
 #include <config/config_util.h>
 
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <vector>
 
 #include "cluster/cluster_defs.h"
 #include "commands/commander.h"
@@ -53,9 +55,9 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  static std::vector<std::string> values = {"setnodes", "setnodeid", "setslot", "import", "reset"};
+  std::array<std::string, 5> subcommands = {"setnodes", "setnodeid", "setslot", "import", "reset"};
 
-  return std::any_of(values.begin(), values.end(),
+  return std::any_of(subcommands.begin(), subcommands.end(),
                      [&subcommand](const std::string &val) { return util::EqualICase(val, subcommand); });
 }
 

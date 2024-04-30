@@ -25,6 +25,11 @@
 
 #include "common/status.h"
 
+constexpr const int zlHeaderSize = 10;
+constexpr const int zlEndSize = 1;
+constexpr const uint8_t ZipListBigLen = 0xFE;
+constexpr const uint8_t zlEnd = 0xFF;
+
 class ZipList {
  public:
   explicit ZipList(std::string_view input) : input_(input){};
@@ -32,6 +37,13 @@ class ZipList {
 
   StatusOr<std::string> Next();
   StatusOr<std::vector<std::string>> Entries();
+  static uint32_t ZipStorePrevEntryLengthLarge(unsigned char *p, size_t zl_size, unsigned int len);
+  static uint32_t ZipStorePrevEntryLength(unsigned char *p, size_t zl_size, unsigned int len);
+  static uint32_t ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsigned int rawlen);
+  static void SetZipListBytes(unsigned char *zl, size_t zl_size, uint32_t value);
+  static void SetZipListTailOffset(unsigned char *zl, size_t zl_size, uint32_t value);
+  static void SetZipListLength(unsigned char *zl, size_t zl_size, uint16_t value);
+  static unsigned char *GetZipListEntryHead(unsigned char *zl, size_t zl_size);
 
  private:
   std::string_view input_;

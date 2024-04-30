@@ -22,6 +22,7 @@
 
 #include <memory>
 
+#include "search/executors/filter_executor.h"
 #include "search/executors/limit_executor.h"
 #include "search/executors/merge_executor.h"
 #include "search/executors/noop_executor.h"
@@ -52,6 +53,10 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
+    if (auto v = dynamic_cast<Filter *>(op)) {
+      return Visit(v);
+    }
+
     CHECK(false) << "unreachable";
   }
 
@@ -70,6 +75,11 @@ struct ExecutorContextVisitor {
   void Visit(Merge *op) {
     ctx->nodes[op] = std::make_unique<MergeExecutor>(ctx, op);
     for (const auto &child : op->ops) Transform(child.get());
+  }
+
+  void Visit(Filter *op) {
+    ctx->nodes[op] = std::make_unique<FilterExecutor>(ctx, op);
+    Transform(op->source.get());
   }
 };
 

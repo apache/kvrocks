@@ -20,16 +20,35 @@
 
 #pragma once
 
+#include <variant>
+
 #include "search/plan_executor.h"
 
 namespace kqir {
 
-struct NoopExecutor : ExecutorNode {
-  Noop *noop;
+struct MergeExecutor : ExecutorNode {
+  Merge *merge;
+  decltype(merge->ops)::iterator iter;
 
-  NoopExecutor(ExecutorContext *ctx, Noop *noop) : ExecutorNode(ctx), noop(noop) {}
+  MergeExecutor(ExecutorContext *ctx, Merge *merge) : ExecutorNode(ctx), merge(merge), iter(merge->ops.begin()) {}
 
-  StatusOr<Result> Next() override { return end; }
+  StatusOr<Result> Next() override {
+    if (iter == merge->ops.end()) {
+      return end;
+    }
+
+    auto v = GET_OR_RET(ctx->Get(*iter)->Next());
+    while (std::holds_alternative<End>(v)) {
+      iter++;
+      if (iter == merge->ops.end()) {
+        return end;
+      }
+
+      v = GET_OR_RET(ctx->Get(*iter)->Next());
+    }
+
+    return v;
+  }
 };
 
 }  // namespace kqir

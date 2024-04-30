@@ -29,15 +29,14 @@ namespace kqir {
 struct ExecutorContext;
 
 struct ExecutorNode {
-  using KeyType = std::string;
-  using RowType = std::pair<KeyType, std::vector<std::string>>;
+  using RowType = std::pair<std::string, std::vector<std::string>>;
 
   static constexpr inline const struct End {
   } end{};
   friend constexpr bool operator==(End, End) noexcept { return true; }
   friend constexpr bool operator!=(End, End) noexcept { return false; }
 
-  using Result = std::variant<End, KeyType, RowType>;
+  using Result = std::variant<End, RowType>;
 
   ExecutorContext *ctx;
   explicit ExecutorNode(ExecutorContext *ctx) : ctx(ctx) {}

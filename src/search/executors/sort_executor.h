@@ -24,12 +24,16 @@
 
 namespace kqir {
 
-struct NoopExecutor : ExecutorNode {
-  Noop *noop;
+struct SortExecutor : ExecutorNode {
+  Sort *sort;
 
-  NoopExecutor(ExecutorContext *ctx, Noop *noop) : ExecutorNode(ctx), noop(noop) {}
+  SortExecutor(ExecutorContext *ctx, Sort *sort) : ExecutorNode(ctx), sort(sort) {}
 
-  StatusOr<Result> Next() override { return end; }
+  StatusOr<Result> Next() override {
+    // most of the sort operator will be eliminated via the optimizer passes,
+    // so currently we don't support this operator since external sort is a little complicated
+    return {Status::NotSupported, "sort operator is currently not supported"};
+  }
 };
 
 }  // namespace kqir

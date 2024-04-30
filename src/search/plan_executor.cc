@@ -23,6 +23,9 @@
 #include <memory>
 
 #include "search/executors/limit_executor.h"
+#include "search/executors/merge_executor.h"
+#include "search/executors/noop_executor.h"
+#include "search/executors/sort_executor.h"
 
 namespace kqir {
 
@@ -33,7 +36,19 @@ struct ExecutorContextVisitor {
 
   void Transform(PlanOperator *op) {
     if (auto v = dynamic_cast<Limit *>(op)) {
-      Visit(v);
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<Noop *>(op)) {
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<Merge *>(op)) {
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<Sort *>(op)) {
+      return Visit(v);
     }
 
     CHECK(false) << "unreachable";
@@ -42,6 +57,18 @@ struct ExecutorContextVisitor {
   void Visit(Limit *op) {
     ctx->nodes[op] = std::make_unique<LimitExecutor>(ctx, op);
     Transform(op->op.get());
+  }
+
+  void Visit(Sort *op) {
+    ctx->nodes[op] = std::make_unique<SortExecutor>(ctx, op);
+    Transform(op->op.get());
+  }
+
+  void Visit(Noop *op) { ctx->nodes[op] = std::make_unique<NoopExecutor>(ctx, op); }
+
+  void Visit(Merge *op) {
+    ctx->nodes[op] = std::make_unique<MergeExecutor>(ctx, op);
+    for (const auto &child : op->ops) Transform(child.get());
   }
 };
 

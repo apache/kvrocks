@@ -23,13 +23,17 @@
 #include <variant>
 
 #include "ir_plan.h"
+#include "search/index_info.h"
+#include "storage/storage.h"
 
 namespace kqir {
 
 struct ExecutorContext;
 
 struct ExecutorNode {
-  using RowType = std::pair<std::string, std::vector<std::string>>;
+  using KeyType = std::string;
+  using ValueType = std::string;
+  using RowType = std::pair<KeyType, std::map<const FieldInfo *, ValueType>>;
 
   static constexpr inline const struct End {
   } end{};
@@ -48,8 +52,12 @@ struct ExecutorNode {
 struct ExecutorContext {
   std::map<PlanOperator *, std::unique_ptr<ExecutorNode>> nodes;
   PlanOperator *root;
+  engine::Storage *storage;
 
   using Result = ExecutorNode::Result;
+  using RowType = ExecutorNode::RowType;
+  using KeyType = ExecutorNode::KeyType;
+  using ValueType = ExecutorNode::ValueType;
 
   explicit ExecutorContext(PlanOperator *op);
 
@@ -64,6 +72,7 @@ struct ExecutorContext {
   ExecutorNode *Get(const std::unique_ptr<PlanOperator> &op) { return Get(op.get()); }
 
   StatusOr<Result> Next() { return Get(root)->Next(); }
+  StatusOr<ValueType> Retrieve(RowType &row, const FieldInfo *field);
 };
 
 }  // namespace kqir

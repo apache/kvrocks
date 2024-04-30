@@ -54,6 +54,7 @@ struct IndexInfo {
   SearchMetadata metadata;
   FieldMap fields;
   redis::SearchPrefixesMetadata prefixes;
+  std::string ns;
 
   IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
 

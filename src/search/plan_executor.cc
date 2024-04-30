@@ -26,6 +26,7 @@
 #include "search/executors/merge_executor.h"
 #include "search/executors/noop_executor.h"
 #include "search/executors/sort_executor.h"
+#include "search/indexer.h"
 
 namespace kqir {
 
@@ -77,6 +78,22 @@ struct ExecutorContextVisitor {
 ExecutorContext::ExecutorContext(PlanOperator *op) : root(op) {
   details::ExecutorContextVisitor visitor{this};
   visitor.Transform(root);
+}
+
+auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr<ValueType> {  // NOLINT
+  if (auto iter = row.second.find(field); iter != row.second.end()) {
+    return iter->second;
+  }
+
+  auto retriever = GET_OR_RET(
+      redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.first, storage, field->index->ns));
+
+  std::string result;
+  auto s = retriever.Retrieve(field->name, &result);
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+  row.second.emplace(field, result);
+  return result;
 }
 
 }  // namespace kqir

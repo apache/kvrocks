@@ -559,6 +559,11 @@ class CommandJsonStrLen : public Commander {
 
     Optionals<uint64_t> results;
     auto s = json.StrLen(args_[1], path, &results);
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = OptionalsToString(conn, results);

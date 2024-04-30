@@ -34,7 +34,7 @@ using namespace kqir;
 
 static auto Parse(const std::string& in) { return sql::ParseToIR(peg::string_input(in, "test")); }
 
-IndexMap MakeIndexMap() {
+static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("f1", std::make_unique<redis::SearchTagFieldMetadata>());
   auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());

@@ -633,9 +633,9 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto str_lens = json_val.StrBytes(path);
-  if (!str_lens) return rocksdb::Status::InvalidArgument(str_lens.Msg());
-  *results = std::move(*str_lens);
+  auto str_bytes = json_val.StrBytes(path);
+  if (!str_bytes) return rocksdb::Status::InvalidArgument(str_bytes.Msg());
+  *results = std::move(*str_bytes);
   return rocksdb::Status::OK();
 }
 

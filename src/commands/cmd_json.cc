@@ -626,10 +626,11 @@ class CommandJsonDebug : public Commander {
 
     std::string path = "$";
 
+    if (!util::EqualICase(args_[1], "memory")) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
+    }
+
     if (args_.size() == 4) {
-      if (util::EqualICase(args_[2], "memory")) {
-        return {Status::RedisExecErr, "The number of arguments is more than expected"};
-      }
       path = args_[3];
     } else if (args_.size() > 4) {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
@@ -637,37 +638,42 @@ class CommandJsonDebug : public Commander {
 
     Optionals<uint64_t> results;
     auto s = json.DebugMemory(args_[2], path, &results);
+
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = OptionalsToString(conn, results);
     return Status::OK();
   }
 };
-
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonDel>("json.del", -2, "write no-dbsize-check", 1, 1, 1),
-                        // JSON.FORGET is an alias for JSON.DEL, refer: https://redis.io/commands/json.forget/
-                        MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonObjLen>("json.objlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, -2, 1),
-                        MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3),
-                        MakeCmdAttr<CommandJsonDebug>("json.debug", -3, "read-only", 1, 2, 1));
+  REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonType>("json.type", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonArrAppend>("json.arrappend", -4, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonArrInsert>("json.arrinsert", -5, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonArrTrim>("json.arrtrim", 5, "write no-dbsize-check", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonClear>("json.clear", -2, "write no-dbsize-check", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonToggle>("json.toggle", -2, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonArrLen>("json.arrlen", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonMerge>("json.merge", 4, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonObjkeys>("json.objkeys", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonArrPop>("json.arrpop", -2, "write", 1, 1, 1),
+                          MakeCmdAttr<CommanderJsonArrIndex>("json.arrindex", -4, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonDel>("json.del", -2, "write no-dbsize-check", 1, 1, 1),
+                          // JSON.FORGET is an alias for JSON.DEL, refer: https://redis.io/commands/json.forget/
+                          MakeCmdAttr<CommandJsonDel>("json.forget", -2, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonNumIncrBy>("json.numincrby", 4, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonNumMultBy>("json.nummultby", 4, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonObjLen>("json.objlen", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonStrAppend>("json.strappend", -3, "write", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1),
+                          MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, -2, 1),
+                          MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3),
+                          MakeCmdAttr<CommandJsonDebug>("json.debug", -3, "read-only", 1, 2, 1));
 
 }  // namespace redis

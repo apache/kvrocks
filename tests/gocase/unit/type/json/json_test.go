@@ -180,8 +180,7 @@ func TestJson(t *testing.T) {
 		result2 = append(result2, int64(3), int64(5), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
-		_, err = rdb.Do(ctx, "JSON.STRLEN", "not_exists", "$").StringSlice()
-		require.EqualError(t, err, redis.Nil.Error())
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists", "$").Err(), redis.Nil)
 	})
 
 	t.Run("Merge basics", func(t *testing.T) {

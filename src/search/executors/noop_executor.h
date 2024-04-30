@@ -24,34 +24,13 @@
 
 namespace kqir {
 
-struct LimitExecutor : ExecutorNode {
-  Limit *limit;
+struct NoopExecutor : ExecutorNode {
+  Noop *noop;
   size_t step = 0;
 
-  LimitExecutor(ExecutorContext *ctx, Limit *limit) : ExecutorNode(ctx), limit(limit) {}
+  NoopExecutor(ExecutorContext *ctx, Noop *noop) : ExecutorNode(ctx), noop(noop) {}
 
-  StatusOr<Result> Next() override {
-    auto offset = limit->limit->offset;
-    auto count = limit->limit->count;
-
-    if (step == count) {
-      return end;
-    }
-
-    if (step == 0) {
-      while (offset--) {
-        auto res = GET_OR_RET(ctx->Get(limit->op)->Next());
-
-        if (std::holds_alternative<End>(res)) {
-          return end;
-        }
-      }
-    }
-
-    auto res = GET_OR_RET(ctx->Get(limit->op)->Next());
-    step++;
-    return res;
-  }
+  StatusOr<Result> Next() override { return end; }
 };
 
 }  // namespace kqir

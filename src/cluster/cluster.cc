@@ -57,7 +57,7 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
   std::array subcommands = {"setnodes", "setnodeid", "setslot", "import", "reset"};
 
-  return std::any_of(subcommands.begin(), subcommands.end(),
+  return std::any_of(std::begin(subcommands), std::end(subcommands),
                      [&subcommand](const std::string &val) { return util::EqualICase(val, subcommand); });
 }
 

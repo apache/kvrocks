@@ -55,7 +55,7 @@ Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)
 // cluster data, so these commands should be executed exclusively, and ReadWriteLock
 // also can guarantee accessing data is safe.
 bool Cluster::SubCommandIsExecExclusive(const std::string &subcommand) {
-  std::array<std::string, 5> subcommands = {"setnodes", "setnodeid", "setslot", "import", "reset"};
+  std::array subcommands = {"setnodes", "setnodeid", "setslot", "import", "reset"};
 
   return std::any_of(subcommands.begin(), subcommands.end(),
                      [&subcommand](const std::string &val) { return util::EqualICase(val, subcommand); });

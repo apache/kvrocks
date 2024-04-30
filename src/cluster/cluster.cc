@@ -39,7 +39,7 @@
 #include "time_util.h"
 
 ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
-                         std::bitset<kClusterSlots> const &slots)
+                         const std::bitset<kClusterSlots> &slots)
     : id(std::move(id)), host(std::move(host)), port(port), role(role), master_id(std::move(master_id)), slots(slots) {}
 
 Cluster::Cluster(Server *srv, std::vector<std::string> binds, int port)

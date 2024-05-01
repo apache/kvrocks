@@ -26,6 +26,7 @@
 #include "search/executors/limit_executor.h"
 #include "search/executors/merge_executor.h"
 #include "search/executors/noop_executor.h"
+#include "search/executors/projection_executor.h"
 #include "search/executors/sort_executor.h"
 #include "search/indexer.h"
 
@@ -57,6 +58,10 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
+    if (auto v = dynamic_cast<Projection *>(op)) {
+      return Visit(v);
+    }
+
     CHECK(false) << "unreachable";
   }
 
@@ -81,6 +86,11 @@ struct ExecutorContextVisitor {
     ctx->nodes[op] = std::make_unique<FilterExecutor>(ctx, op);
     Transform(op->source.get());
   }
+
+  void Visit(Projection *op) {
+    ctx->nodes[op] = std::make_unique<ProjectionExecutor>(ctx, op);
+    Transform(op->source.get());
+  }
 };
 
 }  // namespace details
@@ -91,18 +101,18 @@ ExecutorContext::ExecutorContext(PlanOperator *op) : root(op) {
 }
 
 auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr<ValueType> {  // NOLINT
-  if (auto iter = row.second.find(field); iter != row.second.end()) {
+  if (auto iter = row.fields.find(field); iter != row.fields.end()) {
     return iter->second;
   }
 
   auto retriever = GET_OR_RET(
-      redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.first, storage, field->index->ns));
+      redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns));
 
   std::string result;
   auto s = retriever.Retrieve(field->name, &result);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
-  row.second.emplace(field, result);
+  row.fields.emplace(field, result);
   return result;
 }
 

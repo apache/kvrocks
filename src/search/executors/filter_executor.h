@@ -77,7 +77,7 @@ struct QueryExprEvaluator {
     auto meta = v->field->info->MetadataAs<redis::SearchTagFieldMetadata>();
 
     auto split = util::Split(val, std::string(1, meta->separator));
-    return std::find(split.begin(), split.end(), v->tag) != split.end();
+    return std::find(split.begin(), split.end(), v->tag->val) != split.end();
   }
 
   StatusOr<bool> Visit(NumericCompareExpr *v) const {

@@ -33,7 +33,11 @@ struct ExecutorContext;
 struct ExecutorNode {
   using KeyType = std::string;
   using ValueType = std::string;
-  using RowType = std::pair<KeyType, std::map<const FieldInfo *, ValueType>>;
+  struct RowType {
+    KeyType key;
+    std::map<const FieldInfo *, ValueType> fields;
+    const IndexInfo *index;
+  };
 
   static constexpr inline const struct End {
   } end{};

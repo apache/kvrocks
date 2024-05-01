@@ -37,6 +37,12 @@ struct ExecutorNode {
     KeyType key;
     std::map<const FieldInfo *, ValueType> fields;
     const IndexInfo *index;
+
+    bool operator==(const RowType &another) const {
+      return key == another.key && fields == another.fields && index == another.index;
+    }
+
+    bool operator!=(const RowType &another) const { return !(*this == another); }
   };
 
   static constexpr inline const struct End {

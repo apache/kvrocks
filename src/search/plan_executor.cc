@@ -25,10 +25,13 @@
 #include "search/executors/filter_executor.h"
 #include "search/executors/limit_executor.h"
 #include "search/executors/merge_executor.h"
+#include "search/executors/mock_executor.h"
 #include "search/executors/noop_executor.h"
 #include "search/executors/projection_executor.h"
 #include "search/executors/sort_executor.h"
+#include "search/executors/topn_sort_executor.h"
 #include "search/indexer.h"
+#include "search/ir_plan.h"
 
 namespace kqir {
 
@@ -62,6 +65,14 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
+    if (auto v = dynamic_cast<TopNSort *>(op)) {
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<Mock *>(op)) {
+      return Visit(v);
+    }
+
     CHECK(false) << "unreachable";
   }
 
@@ -91,6 +102,13 @@ struct ExecutorContextVisitor {
     ctx->nodes[op] = std::make_unique<ProjectionExecutor>(ctx, op);
     Transform(op->source.get());
   }
+
+  void Visit(TopNSort *op) {
+    ctx->nodes[op] = std::make_unique<TopNSortExecutor>(ctx, op);
+    Transform(op->op.get());
+  }
+
+  void Visit(Mock *op) { ctx->nodes[op] = std::make_unique<MockExecutor>(ctx, op); }
 };
 
 }  // namespace details

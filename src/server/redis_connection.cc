@@ -220,6 +220,7 @@ std::string Connection::GetFlags() const {
   if (IsFlagEnabled(kSlave)) flags.append("S");
   if (IsFlagEnabled(kCloseAfterReply)) flags.append("c");
   if (IsFlagEnabled(kMonitor)) flags.append("M");
+  if (IsFlagEnabled(kAsking)) flags.append("A");
   if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) flags.append("P");
   if (flags.empty()) flags = "N";
   return flags;
@@ -502,6 +503,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         Reply(redis::Error(s.Msg()));
         continue;
       }
+    }
+
+    // reset the ASKING flag after executing the next query
+    if (IsFlagEnabled(kAsking)) {
+      DisableFlag(kAsking);
     }
 
     // We don't execute commands, but queue them, ant then execute in EXEC command

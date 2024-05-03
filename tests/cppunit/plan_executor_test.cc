@@ -102,3 +102,77 @@ TEST(PlanExecutorTest, TopNSort) {
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }
+
+TEST(PlanExecutorTest, Filter) {
+  std::vector<ExecutorNode::RowType> data{
+      {"a", {{FieldI("f3"), "4"}}, IndexI()}, {"b", {{FieldI("f3"), "2"}}, IndexI()},
+      {"c", {{FieldI("f3"), "7"}}, IndexI()}, {"d", {{FieldI("f3"), "3"}}, IndexI()},
+      {"e", {{FieldI("f3"), "1"}}, IndexI()}, {"f", {{FieldI("f3"), "6"}}, IndexI()},
+      {"g", {{FieldI("f3"), "8"}}, IndexI()},
+  };
+  {
+    auto field = std::make_unique<FieldRef>("f3", FieldI("f3"));
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        AndExpr::Create(Node::List<QueryExpr>(
+            std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT, field->CloneAs<FieldRef>(),
+                                                 std::make_unique<NumericLiteral>(2)),
+            std::make_unique<NumericCompareExpr>(NumericCompareExpr::LET, field->CloneAs<FieldRef>(),
+                                                 std::make_unique<NumericLiteral>(6)))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "d");
+    ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+  {
+    auto field = std::make_unique<FieldRef>("f3", FieldI("f3"));
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        OrExpr::Create(Node::List<QueryExpr>(
+            std::make_unique<NumericCompareExpr>(NumericCompareExpr::GET, field->CloneAs<FieldRef>(),
+                                                 std::make_unique<NumericLiteral>(6)),
+            std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT, field->CloneAs<FieldRef>(),
+                                                 std::make_unique<NumericLiteral>(2)))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(NextRow(ctx).key, "e");
+    ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(NextRow(ctx).key, "g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  data = {{"a", {{FieldI("f1"), "cpp,java"}}, IndexI()},    {"b", {{FieldI("f1"), "python,cpp,c"}}, IndexI()},
+          {"c", {{FieldI("f1"), "c,perl"}}, IndexI()},      {"d", {{FieldI("f1"), "rust,python"}}, IndexI()},
+          {"e", {{FieldI("f1"), "java,kotlin"}}, IndexI()}, {"f", {{FieldI("f1"), "c,rust"}}, IndexI()},
+          {"g", {{FieldI("f1"), "c,cpp,java"}}, IndexI()}};
+  {
+    auto field = std::make_unique<FieldRef>("f1", FieldI("f1"));
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        AndExpr::Create(Node::List<QueryExpr>(
+            std::make_unique<TagContainExpr>(field->CloneAs<FieldRef>(), std::make_unique<StringLiteral>("c")),
+            std::make_unique<TagContainExpr>(field->CloneAs<FieldRef>(), std::make_unique<StringLiteral>("cpp")))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+  {
+    auto field = std::make_unique<FieldRef>("f1", FieldI("f1"));
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        OrExpr::Create(Node::List<QueryExpr>(
+            std::make_unique<TagContainExpr>(field->CloneAs<FieldRef>(), std::make_unique<StringLiteral>("rust")),
+            std::make_unique<TagContainExpr>(field->CloneAs<FieldRef>(), std::make_unique<StringLiteral>("perl")))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(NextRow(ctx).key, "d");
+    ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}

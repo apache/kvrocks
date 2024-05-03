@@ -76,6 +76,14 @@ struct Node {
     if (casted) original.release();
     return std::unique_ptr<T>(casted);
   }
+
+  template <typename T = Node, typename... Args>
+  static std::vector<std::unique_ptr<T>> List(std::unique_ptr<Args>... args) {
+    std::vector<std::unique_ptr<T>> result;
+    result.reserve(sizeof...(Args));
+    (result.push_back(std::move(args)), ...);
+    return result;
+  }
 };
 
 struct Ref : Node {};

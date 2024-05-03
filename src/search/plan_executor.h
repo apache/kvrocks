@@ -25,6 +25,7 @@
 #include "ir_plan.h"
 #include "search/index_info.h"
 #include "storage/storage.h"
+#include "string_util.h"
 
 namespace kqir {
 
@@ -43,6 +44,17 @@ struct ExecutorNode {
     }
 
     bool operator!=(const RowType &another) const { return !(*this == another); }
+
+    // for debug purpose
+    friend std::ostream &operator<<(std::ostream &os, const RowType &row) {
+      if (row.index) {
+        os << row.key << "@" << row.index->name;
+      } else {
+        os << row.key;
+      }
+      return os << " {" << util::StringJoin(row.fields, [](const auto &v) { return v.first->name + ": " + v.second; })
+                << "}";
+    }
   };
 
   static constexpr inline const struct End {

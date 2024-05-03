@@ -176,3 +176,61 @@ TEST(PlanExecutorTest, Filter) {
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }
+
+TEST(PlanExecutorTest, Limit) {
+  std::vector<ExecutorNode::RowType> data{
+      {"a", {{FieldI("f3"), "4"}}, IndexI()}, {"b", {{FieldI("f3"), "2"}}, IndexI()},
+      {"c", {{FieldI("f3"), "7"}}, IndexI()}, {"d", {{FieldI("f3"), "3"}}, IndexI()},
+      {"e", {{FieldI("f3"), "1"}}, IndexI()}, {"f", {{FieldI("f3"), "6"}}, IndexI()},
+      {"g", {{FieldI("f3"), "8"}}, IndexI()},
+  };
+  {
+    auto op = std::make_unique<Limit>(std::make_unique<Mock>(data), std::make_unique<LimitClause>(1, 2));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+  {
+    auto field = std::make_unique<FieldRef>("f3", FieldI("f3"));
+    auto op = std::make_unique<Limit>(std::make_unique<Mock>(data), std::make_unique<LimitClause>(0, 3));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}
+
+TEST(PlanExecutorTest, Merge) {
+  std::vector<ExecutorNode::RowType> data1{
+      {"a", {{FieldI("f3"), "4"}}, IndexI()},
+      {"b", {{FieldI("f3"), "2"}}, IndexI()},
+  };
+  std::vector<ExecutorNode::RowType> data2{{"c", {{FieldI("f3"), "7"}}, IndexI()},
+                                           {"d", {{FieldI("f3"), "3"}}, IndexI()},
+                                           {"e", {{FieldI("f3"), "1"}}, IndexI()}};
+  {
+    auto op =
+        std::make_unique<Merge>(Node::List<PlanOperator>(std::make_unique<Mock>(data1), std::make_unique<Mock>(data2)));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(NextRow(ctx).key, "d");
+    ASSERT_EQ(NextRow(ctx).key, "e");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+  {
+    auto op = std::make_unique<Merge>(
+        Node::List<PlanOperator>(std::make_unique<Mock>(decltype(data1){}), std::make_unique<Mock>(data1)));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}

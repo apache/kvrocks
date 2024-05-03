@@ -23,9 +23,12 @@
 
 #include <memory>
 
+#include "config/config.h"
 #include "search/executors/mock_executor.h"
 #include "search/ir.h"
 #include "search/ir_plan.h"
+#include "test_base.h"
+#include "types/redis_json.h"
 
 using namespace kqir;
 
@@ -36,6 +39,9 @@ static IndexMap MakeIndexMap() {
   auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto ia = IndexInfo("ia", SearchMetadata());
+  ia.ns = "search_ns";
+  ia.prefixes.prefixes.emplace_back("test2:");
+  ia.prefixes.prefixes.emplace_back("test4:");
   ia.Add(std::move(f1));
   ia.Add(std::move(f2));
   ia.Add(std::move(f3));
@@ -48,7 +54,11 @@ static IndexMap MakeIndexMap() {
 
 static auto index_map = MakeIndexMap();
 
-static auto NextRow(ExecutorContext& ctx) { return std::get<ExecutorNode::RowType>(ctx.Next().GetValue()); }
+static auto NextRow(ExecutorContext& ctx) {
+  auto v = ctx.Next().GetValue();
+  EXPECT_EQ(v.index(), 1);
+  return std::get<ExecutorNode::RowType>(std::move(v));
+}
 
 TEST(PlanExecutorTest, Mock) {
   auto op = std::make_unique<Mock>(std::vector<ExecutorNode::RowType>{});
@@ -233,4 +243,37 @@ TEST(PlanExecutorTest, Merge) {
     ASSERT_EQ(NextRow(ctx).key, "b");
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
+}
+
+class PlanExecutorTestC : public TestBase {
+ protected:
+  explicit PlanExecutorTestC() : json_(std::make_unique<redis::Json>(storage_.get(), "search_ns")) {}
+  ~PlanExecutorTestC() override = default;
+
+  void SetUp() override {}
+  void TearDown() override {}
+
+  std::unique_ptr<redis::Json> json_;
+};
+
+TEST_F(PlanExecutorTestC, FullIndexScan) {
+  json_->Set("test1:a", "$", "{}");
+  json_->Set("test1:b", "$", "{}");
+  json_->Set("test2:c", "$", "{}");
+  json_->Set("test3:d", "$", "{}");
+  json_->Set("test4:e", "$", "{}");
+  json_->Set("test4:f", "$", "{}");
+  json_->Set("test4:g", "$", "{}");
+  json_->Set("test5:h", "$", "{}");
+  json_->Set("test5:i", "$", "{}");
+  json_->Set("test5:g", "$", "{}");
+
+  auto op = std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI()));
+
+  auto ctx = ExecutorContext(op.get(), storage_.get());
+  ASSERT_EQ(NextRow(ctx).key, "test2:c");
+  ASSERT_EQ(NextRow(ctx).key, "test4:e");
+  ASSERT_EQ(NextRow(ctx).key, "test4:f");
+  ASSERT_EQ(NextRow(ctx).key, "test4:g");
+  ASSERT_EQ(ctx.Next().GetValue(), exe_end);
 }

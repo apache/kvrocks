@@ -387,6 +387,7 @@ struct IndexRef : Ref {
   const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
+  explicit IndexRef(std::string name, const IndexInfo *info) : name(std::move(name)), info(info) {}
 
   std::string_view Name() const override { return "IndexRef"; }
   std::string Dump() const override { return name; }

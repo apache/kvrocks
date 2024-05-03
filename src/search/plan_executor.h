@@ -82,6 +82,7 @@ struct ExecutorContext {
   using ValueType = ExecutorNode::ValueType;
 
   explicit ExecutorContext(PlanOperator *op);
+  explicit ExecutorContext(PlanOperator *op, engine::Storage *storage);
 
   ExecutorNode *Get(PlanOperator *op) {
     if (auto iter = nodes.find(op); iter != nodes.end()) {

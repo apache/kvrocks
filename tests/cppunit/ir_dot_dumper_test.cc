@@ -71,14 +71,14 @@ static IndexMap MakeIndexMap() {
   auto f4 = FieldInfo("n2", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto f5 = FieldInfo("n3", std::make_unique<redis::SearchNumericFieldMetadata>());
   f5.metadata->noindex = true;
-  auto ia = IndexInfo("ia", SearchMetadata());
-  ia.Add(std::move(f1));
-  ia.Add(std::move(f2));
-  ia.Add(std::move(f3));
-  ia.Add(std::move(f4));
-  ia.Add(std::move(f5));
+  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
+  ia->Add(std::move(f1));
+  ia->Add(std::move(f2));
+  ia->Add(std::move(f3));
+  ia->Add(std::move(f4));
+  ia->Add(std::move(f5));
 
-  auto& name = ia.name;
+  auto& name = ia->name;
   IndexMap res;
   res.emplace(name, std::move(ia));
   return res;

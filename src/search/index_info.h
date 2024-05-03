@@ -65,6 +65,6 @@ struct IndexInfo {
   }
 };
 
-using IndexMap = std::map<std::string, IndexInfo>;
+using IndexMap = std::map<std::string, std::unique_ptr<IndexInfo>>;
 
 }  // namespace kqir

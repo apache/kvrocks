@@ -38,15 +38,16 @@ static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("f1", std::make_unique<redis::SearchTagFieldMetadata>());
   auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto ia = IndexInfo("ia", SearchMetadata());
-  ia.ns = "search_ns";
-  ia.prefixes.prefixes.emplace_back("test2:");
-  ia.prefixes.prefixes.emplace_back("test4:");
-  ia.Add(std::move(f1));
-  ia.Add(std::move(f2));
-  ia.Add(std::move(f3));
+  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
+  ia->ns = "search_ns";
+  ia->metadata.on_data_type = SearchOnDataType::JSON;
+  ia->prefixes.prefixes.emplace_back("test2:");
+  ia->prefixes.prefixes.emplace_back("test4:");
+  ia->Add(std::move(f1));
+  ia->Add(std::move(f2));
+  ia->Add(std::move(f3));
 
-  auto& name = ia.name;
+  auto& name = ia->name;
   IndexMap res;
   res.emplace(name, std::move(ia));
   return res;
@@ -55,7 +56,9 @@ static IndexMap MakeIndexMap() {
 static auto index_map = MakeIndexMap();
 
 static auto NextRow(ExecutorContext& ctx) {
-  auto v = ctx.Next().GetValue();
+  auto n = ctx.Next();
+  EXPECT_EQ(n.Msg(), Status::ok_msg);
+  auto v = std::move(n).GetValue();
   EXPECT_EQ(v.index(), 1);
   return std::get<ExecutorNode::RowType>(std::move(v));
 }
@@ -75,8 +78,8 @@ TEST(PlanExecutorTest, Mock) {
   ASSERT_EQ(ctx.Next().GetValue(), exe_end);
 }
 
-static auto IndexI() -> const IndexInfo* { return &index_map.at("ia"); }
-static auto FieldI(const std::string& f) -> const FieldInfo* { return &index_map.at("ia").fields.at(f); }
+static auto IndexI() -> const IndexInfo* { return index_map.at("ia").get(); }
+static auto FieldI(const std::string& f) -> const FieldInfo* { return &index_map.at("ia")->fields.at(f); }
 
 TEST(PlanExecutorTest, TopNSort) {
   std::vector<ExecutorNode::RowType> data{
@@ -259,21 +262,36 @@ class PlanExecutorTestC : public TestBase {
 TEST_F(PlanExecutorTestC, FullIndexScan) {
   json_->Set("test1:a", "$", "{}");
   json_->Set("test1:b", "$", "{}");
-  json_->Set("test2:c", "$", "{}");
+  json_->Set("test2:c", "$", "{\"f3\": 6}");
   json_->Set("test3:d", "$", "{}");
-  json_->Set("test4:e", "$", "{}");
-  json_->Set("test4:f", "$", "{}");
-  json_->Set("test4:g", "$", "{}");
+  json_->Set("test4:e", "$", "{\"f3\": 7}");
+  json_->Set("test4:f", "$", "{\"f3\": 2}");
+  json_->Set("test4:g", "$", "{\"f3\": 8}");
   json_->Set("test5:h", "$", "{}");
   json_->Set("test5:i", "$", "{}");
   json_->Set("test5:g", "$", "{}");
 
-  auto op = std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI()));
+  {
+    auto op = std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI()));
 
-  auto ctx = ExecutorContext(op.get(), storage_.get());
-  ASSERT_EQ(NextRow(ctx).key, "test2:c");
-  ASSERT_EQ(NextRow(ctx).key, "test4:e");
-  ASSERT_EQ(NextRow(ctx).key, "test4:f");
-  ASSERT_EQ(NextRow(ctx).key, "test4:g");
-  ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test4:e");
+    ASSERT_EQ(NextRow(ctx).key, "test4:f");
+    ASSERT_EQ(NextRow(ctx).key, "test4:g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    auto op = std::make_unique<Filter>(
+        std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI())),
+        std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT, std::make_unique<FieldRef>("f3", FieldI("f3")),
+                                             std::make_unique<NumericLiteral>(3)));
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test4:e");
+    ASSERT_EQ(NextRow(ctx).key, "test4:g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
 }

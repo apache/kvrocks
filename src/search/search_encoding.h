@@ -45,6 +45,16 @@ inline std::string ConstructSearchPrefixesSubkey() { return {(char)SearchSubkeyT
 struct SearchPrefixesMetadata {
   std::vector<std::string> prefixes;
 
+  static inline const std::string all[] = {""};
+
+  auto begin() const {  // NOLINT
+    return prefixes.empty() ? std::begin(all) : prefixes.data();
+  }
+
+  auto end() const {  // NOLINT
+    return prefixes.empty() ? std::end(all) : prefixes.data() + prefixes.size();
+  }
+
   void Encode(std::string *dst) const {
     for (const auto &prefix : prefixes) {
       PutFixed32(dst, prefix.size());

@@ -42,7 +42,7 @@ struct SemaChecker {
     if (auto v = dynamic_cast<SearchExpr *>(node)) {
       auto index_name = v->index->name;
       if (auto iter = index_map.find(index_name); iter != index_map.end()) {
-        current_index = &iter->second;
+        current_index = iter->second.get();
         v->index->info = current_index;
 
         GET_OR_RET(Check(v->select.get()));

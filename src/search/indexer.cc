@@ -66,7 +66,7 @@ rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::strin
     return hash.storage_->Get(read_options, sub_key, output);
   } else if (std::holds_alternative<JsonData>(db)) {
     auto &value = std::get<JsonData>(db);
-    auto s = value.Get(field);
+    auto s = value.Get(field.front() == '$' ? field : fmt::format("$.{}", field));
     if (!s.IsOK()) return rocksdb::Status::Corruption(s.Msg());
     if (s->value.size() != 1)
       return rocksdb::Status::NotFound("json value specified by the field (json path) should exist and be unique");
@@ -231,7 +231,7 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
 
 void GlobalIndexer::Add(IndexUpdater updater) {
   updater.indexer = this;
-  for (const auto &prefix : updater.info->prefixes.prefixes) {
+  for (const auto &prefix : updater.info->prefixes) {
     prefix_map.insert(prefix, updater);
   }
 }

@@ -944,10 +944,7 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
     redis::List list_db(storage_, namespace_);
     list_db.Trim(args.storekey, -1, 0);
     uint64_t new_size = 0;
-    list_db.Push(
-        args.storekey,
-        std::vector<Slice>(std::make_move_iterator(store_elems.cbegin()), std::make_move_iterator(store_elems.cend())),
-        false, &new_size);
+    list_db.Push(args.storekey, std::vector<Slice>(store_elems.cbegin(), store_elems.cend()), false, &new_size);
   }
 
   return rocksdb::Status::OK();

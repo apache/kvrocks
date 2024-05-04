@@ -45,9 +45,10 @@ struct NumericFieldScanExecutor : ExecutorNode {
     ns_key = ComposeNamespaceKey(index->ns, index->name, ctx->storage->IsSlotIdEncoded());
   }
 
-  InternalKey IndexKey(double num) {
+  std::string IndexKey(double num) {
     return InternalKey(ns_key, redis::ConstructNumericFieldSubkey(scan->field->name, num, {}), index->metadata.version,
-                       ctx->storage->IsSlotIdEncoded());
+                       ctx->storage->IsSlotIdEncoded())
+        .Encode();
   }
 
   bool InRangeDecode(Slice key, Slice field, double num, double *curr, Slice *user_key) {
@@ -78,9 +79,9 @@ struct NumericFieldScanExecutor : ExecutorNode {
       iter =
           util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(engine::kSearchColumnFamilyName));
       if (scan->order == SortByClause::ASC) {
-        iter->Seek(IndexKey(scan->range.l).Encode());
+        iter->Seek(IndexKey(scan->range.l));
       } else {
-        iter->SeekForPrev(IndexKey(IntervalSet::PrevNum(scan->range.r)).Encode());
+        iter->SeekForPrev(IndexKey(IntervalSet::PrevNum(scan->range.r)));
       }
     }
 

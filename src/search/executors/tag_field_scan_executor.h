@@ -39,15 +39,14 @@ struct TagFieldScanExecutor : ExecutorNode {
 
   IndexInfo *index;
   std::string ns_key;
+  std::string index_key;
 
   TagFieldScanExecutor(ExecutorContext *ctx, TagFieldScan *scan)
       : ExecutorNode(ctx), scan(scan), ss(ctx->storage), index(scan->field->info->index) {
     ns_key = ComposeNamespaceKey(index->ns, index->name, ctx->storage->IsSlotIdEncoded());
-  }
-
-  InternalKey IndexKey() {
-    return InternalKey(ns_key, redis::ConstructTagFieldSubkey(scan->field->name, scan->tag, {}),
-                       index->metadata.version, ctx->storage->IsSlotIdEncoded());
+    index_key = InternalKey(ns_key, redis::ConstructTagFieldSubkey(scan->field->name, scan->tag, {}),
+                            index->metadata.version, ctx->storage->IsSlotIdEncoded())
+                    .Encode();
   }
 
   bool InRangeDecode(Slice key, Slice field, Slice *user_key) {
@@ -79,7 +78,7 @@ struct TagFieldScanExecutor : ExecutorNode {
 
       iter =
           util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(engine::kSearchColumnFamilyName));
-      iter->Seek(IndexKey().Encode());
+      iter->Seek(index_key);
     }
 
     if (!iter->Valid()) {

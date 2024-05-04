@@ -376,3 +376,41 @@ TEST_F(PlanExecutorTestC, NumericFieldScan) {
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }
+
+TEST_F(PlanExecutorTestC, TagFieldScan) {
+  redis::GlobalIndexer indexer(storage_.get());
+  indexer.Add(redis::IndexUpdater(IndexI()));
+
+  {
+    auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
+                                 "search_ns");
+    json_->Set("test2:a", "$", "{\"f1\": \"c,cpp,java\"}");
+    json_->Set("test2:b", "$", "{\"f1\": \"python,c\"}");
+    json_->Set("test2:c", "$", "{\"f1\": \"java,scala\"}");
+    json_->Set("test2:d", "$", "{\"f1\": \"rust,python,perl\"}");
+    json_->Set("test2:e", "$", "{\"f1\": \"python,cpp\"}");
+    json_->Set("test2:f", "$", "{\"f1\": \"c,cpp\"}");
+    json_->Set("test2:g", "$", "{\"f1\": \"cpp,rust\"}");
+  }
+
+  {
+    auto op = std::make_unique<TagFieldScan>(std::make_unique<FieldRef>("f1", FieldI("f1")), "cpp");
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:a");
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    auto op = std::make_unique<TagFieldScan>(std::make_unique<FieldRef>("f1", FieldI("f1")), "python");
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
+    ASSERT_EQ(NextRow(ctx).key, "test2:d");
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}

@@ -32,38 +32,40 @@
 
 namespace kqir {
 
-struct NumericFieldScanExecutor : ExecutorNode {
-  NumericFieldScan *scan;
+struct TagFieldScanExecutor : ExecutorNode {
+  TagFieldScan *scan;
   redis::LatestSnapShot ss;
   util::UniqueIterator iter{nullptr};
 
   IndexInfo *index;
   std::string ns_key;
 
-  NumericFieldScanExecutor(ExecutorContext *ctx, NumericFieldScan *scan)
+  TagFieldScanExecutor(ExecutorContext *ctx, TagFieldScan *scan)
       : ExecutorNode(ctx), scan(scan), ss(ctx->storage), index(scan->field->info->index) {
     ns_key = ComposeNamespaceKey(index->ns, index->name, ctx->storage->IsSlotIdEncoded());
   }
 
-  InternalKey IndexKey(double num) {
-    return InternalKey(ns_key, redis::ConstructNumericFieldSubkey(scan->field->name, num, {}), index->metadata.version,
-                       ctx->storage->IsSlotIdEncoded());
+  InternalKey IndexKey() {
+    return InternalKey(ns_key, redis::ConstructTagFieldSubkey(scan->field->name, scan->tag, {}),
+                       index->metadata.version, ctx->storage->IsSlotIdEncoded());
   }
 
-  bool InRangeDecode(Slice key, Slice field, double num, double *curr, Slice *user_key) {
+  bool InRangeDecode(Slice key, Slice field, Slice *user_key) {
     auto ikey = InternalKey(key, ctx->storage->IsSlotIdEncoded());
     if (ikey.GetVersion() != index->metadata.version) return false;
     auto subkey = ikey.GetSubKey();
 
     uint8_t flag = 0;
     if (!GetFixed8(&subkey, &flag)) return false;
-    if (flag != (uint8_t)redis::SearchSubkeyType::NUMERIC_FIELD) return false;
+    if (flag != (uint8_t)redis::SearchSubkeyType::TAG_FIELD) return false;
 
     Slice value;
     if (!GetSizedString(&subkey, &value)) return false;
     if (value != field) return false;
 
-    if (!GetDouble(&subkey, curr)) return false;
+    Slice tag;
+    if (!GetSizedString(&subkey, &tag)) return false;
+    if (tag != scan->tag) return false;
 
     if (!GetSizedString(&subkey, user_key)) return false;
 
@@ -77,35 +79,22 @@ struct NumericFieldScanExecutor : ExecutorNode {
 
       iter =
           util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(engine::kSearchColumnFamilyName));
-      if (scan->order == SortByClause::ASC) {
-        iter->Seek(IndexKey(scan->range.l).Encode());
-      } else {
-        iter->SeekForPrev(IndexKey(IntervalSet::PrevNum(scan->range.r)).Encode());
-      }
+      iter->Seek(IndexKey().Encode());
     }
 
     if (!iter->Valid()) {
       return end;
     }
 
-    double curr = 0;
     Slice user_key;
-    if (!InRangeDecode(iter->key(), scan->field->name, scan->range.r, &curr, &user_key)) {
-      return end;
-    }
-
-    if (scan->order == SortByClause::ASC ? curr >= scan->range.r : curr < scan->range.l) {
+    if (!InRangeDecode(iter->key(), scan->field->name, &user_key)) {
       return end;
     }
 
     auto key_str = user_key.ToString();
 
-    if (scan->order == SortByClause::ASC) {
-      iter->Next();
-    } else {
-      iter->Prev();
-    }
-    return RowType{key_str, {{scan->field->info, std::to_string(curr)}}, scan->field->info->index};
+    iter->Next();
+    return RowType{key_str, {}, scan->field->info->index};
   }
 };
 

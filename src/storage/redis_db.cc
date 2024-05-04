@@ -860,7 +860,8 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
       set_db.Members(key, &str_vec);
 
       if (args.dontsort) {
-        str_vec = std::vector(str_vec.begin() + offset, str_vec.begin() + offset + count);
+        str_vec = std::vector(std::make_move_iterator(str_vec.begin() + offset),
+                              std::make_move_iterator(str_vec.begin() + offset + count));
       }
     } else if (type == RedisType::kRedisZSet) {
       auto zset_db = redis::ZSet(storage_, namespace_);
@@ -923,7 +924,8 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
 
     // Gets the element specified by Limit
     if (offset != 0 || count != vectorlen) {
-      sort_vec = std::vector(sort_vec.begin() + offset, sort_vec.begin() + offset + count);
+      sort_vec = std::vector(std::make_move_iterator(sort_vec.begin() + offset),
+                             std::make_move_iterator(sort_vec.begin() + offset + count));
     }
   }
 
@@ -951,7 +953,10 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
     redis::List list_db(storage_, namespace_);
     list_db.Trim(args.storekey, -1, 0);
     uint64_t new_size = 0;
-    list_db.Push(args.storekey, std::vector<Slice>(store_elems.cbegin(), store_elems.cend()), false, &new_size);
+    list_db.Push(
+        args.storekey,
+        std::vector<Slice>(std::make_move_iterator(store_elems.cbegin()), std::make_move_iterator(store_elems.cend())),
+        false, &new_size);
   }
 
   return rocksdb::Status::OK();

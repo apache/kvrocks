@@ -25,6 +25,8 @@
 
 #include "config/config.h"
 #include "search/executors/mock_executor.h"
+#include "search/indexer.h"
+#include "search/interval.h"
 #include "search/ir.h"
 #include "search/ir_plan.h"
 #include "test_base.h"
@@ -292,6 +294,85 @@ TEST_F(PlanExecutorTestC, FullIndexScan) {
     ASSERT_EQ(NextRow(ctx).key, "test2:c");
     ASSERT_EQ(NextRow(ctx).key, "test4:e");
     ASSERT_EQ(NextRow(ctx).key, "test4:g");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}
+
+struct ScopedUpdate {
+  redis::GlobalIndexer::RecordResult rr;
+  std::string_view key;
+  std::string ns;
+
+  static auto Create(redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns) {
+    auto s = indexer.Record(key, ns);
+    EXPECT_EQ(s.Msg(), Status::ok_msg);
+    return *s;
+  }
+
+  ScopedUpdate(redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns)
+      : rr(Create(indexer, key, ns)), key(key), ns(ns) {}
+
+  ScopedUpdate(const ScopedUpdate&) = delete;
+  ScopedUpdate(ScopedUpdate&&) = delete;
+  ScopedUpdate& operator=(const ScopedUpdate&) = delete;
+  ScopedUpdate& operator=(ScopedUpdate&&) = delete;
+
+  ~ScopedUpdate() {
+    auto s = redis::GlobalIndexer::Update(rr, key, ns);
+    EXPECT_EQ(s.Msg(), Status::ok_msg);
+  }
+};
+
+std::vector<std::unique_ptr<ScopedUpdate>> ScopedUpdates(redis::GlobalIndexer& indexer,
+                                                         const std::vector<std::string_view>& keys,
+                                                         const std::string& ns) {
+  std::vector<std::unique_ptr<ScopedUpdate>> sus;
+
+  sus.reserve(keys.size());
+  for (auto key : keys) {
+    sus.emplace_back(std::make_unique<ScopedUpdate>(indexer, key, ns));
+  }
+
+  return sus;
+}
+
+TEST_F(PlanExecutorTestC, NumericFieldScan) {
+  redis::GlobalIndexer indexer(storage_.get());
+  indexer.Add(redis::IndexUpdater(IndexI()));
+
+  {
+    auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
+                                 "search_ns");
+    json_->Set("test2:a", "$", "{\"f2\": 6}");
+    json_->Set("test2:b", "$", "{\"f2\": 3}");
+    json_->Set("test2:c", "$", "{\"f2\": 8}");
+    json_->Set("test2:d", "$", "{\"f2\": 14}");
+    json_->Set("test2:e", "$", "{\"f2\": 1}");
+    json_->Set("test2:f", "$", "{\"f2\": 3}");
+    json_->Set("test2:g", "$", "{\"f2\": 9}");
+  }
+
+  {
+    auto op = std::make_unique<NumericFieldScan>(std::make_unique<FieldRef>("f2", FieldI("f2")), Interval(3, 9),
+                                                 SortByClause::ASC);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:a");
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    auto op = std::make_unique<NumericFieldScan>(std::make_unique<FieldRef>("f2", FieldI("f2")), Interval(3, 9),
+                                                 SortByClause::DESC);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test2:a");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }

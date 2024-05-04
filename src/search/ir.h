@@ -76,6 +76,14 @@ struct Node {
     if (casted) original.release();
     return std::unique_ptr<T>(casted);
   }
+
+  template <typename T = Node, typename... Args>
+  static std::vector<std::unique_ptr<T>> List(std::unique_ptr<Args>... args) {
+    std::vector<std::unique_ptr<T>> result;
+    result.reserve(sizeof...(Args));
+    (result.push_back(std::move(args)), ...);
+    return result;
+  }
 };
 
 struct Ref : Node {};
@@ -256,6 +264,16 @@ struct AndExpr : QueryExpr {
 
   explicit AndExpr(std::vector<std::unique_ptr<QueryExpr>> &&inners) : inners(std::move(inners)) {}
 
+  static std::unique_ptr<QueryExpr> Create(std::vector<std::unique_ptr<QueryExpr>> &&exprs) {
+    CHECK(!exprs.empty());
+
+    if (exprs.size() == 1) {
+      return std::move(exprs.front());
+    }
+
+    return std::make_unique<AndExpr>(std::move(exprs));
+  }
+
   std::string_view Name() const override { return "AndExpr"; }
   std::string Dump() const override {
     return fmt::format("(and {})", util::StringJoin(inners, [](const auto &v) { return v->Dump(); }));
@@ -278,6 +296,16 @@ struct OrExpr : QueryExpr {
   std::vector<std::unique_ptr<QueryExpr>> inners;
 
   explicit OrExpr(std::vector<std::unique_ptr<QueryExpr>> &&inners) : inners(std::move(inners)) {}
+
+  static std::unique_ptr<QueryExpr> Create(std::vector<std::unique_ptr<QueryExpr>> &&exprs) {
+    CHECK(!exprs.empty());
+
+    if (exprs.size() == 1) {
+      return std::move(exprs.front());
+    }
+
+    return std::make_unique<OrExpr>(std::move(exprs));
+  }
 
   std::string_view Name() const override { return "OrExpr"; }
   std::string Dump() const override {
@@ -359,6 +387,7 @@ struct IndexRef : Ref {
   const IndexInfo *info = nullptr;
 
   explicit IndexRef(std::string name) : name(std::move(name)) {}
+  explicit IndexRef(std::string name, const IndexInfo *info) : name(std::move(name)), info(info) {}
 
   std::string_view Name() const override { return "IndexRef"; }
   std::string Dump() const override { return name; }

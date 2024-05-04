@@ -438,12 +438,7 @@ rocksdb::Status Database::FlushDB() {
   if (!s.ok()) {
     return rocksdb::Status::OK();
   }
-  s = storage_->DeleteRange(begin_key, end_key);
-  if (!s.ok()) {
-    return s;
-  }
-
-  return rocksdb::Status::OK();
+  return storage_->DeleteRange(begin_key, end_key);
 }
 
 rocksdb::Status Database::FlushAll() {
@@ -461,11 +456,7 @@ rocksdb::Status Database::FlushAll() {
     return rocksdb::Status::OK();
   }
   auto last_key = iter->key().ToString();
-  auto s = storage_->DeleteRange(first_key, last_key);
-  if (!s.ok()) {
-    return s;
-  }
-  return rocksdb::Status::OK();
+  return storage_->DeleteRange(first_key, last_key);
 }
 
 rocksdb::Status Database::Dump(const Slice &user_key, std::vector<std::string> *infos) {

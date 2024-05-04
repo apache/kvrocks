@@ -28,33 +28,15 @@
 
 namespace kqir {
 
-struct LowerToPlan : Visitor {
-  std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
-    auto scan = std::make_unique<FullIndexScan>(node->index->CloneAs<IndexRef>());
+struct SortLimitFuse : Visitor {
+  std::unique_ptr<Node> Visit(std::unique_ptr<Limit> node) override {
+    node = Node::MustAs<Limit>(Visitor::Visit(std::move(node)));
 
-    std::unique_ptr<PlanOperator> op;
-    if (auto b = Node::As<BoolLiteral>(std::move(node->query_expr))) {
-      if (b->val) {
-        op = std::move(scan);
-      } else {
-        op = std::make_unique<Noop>();
-      }
-    } else {
-      op = std::make_unique<Filter>(std::move(scan), std::move(node->query_expr));
+    if (auto sort = Node::As<Sort>(std::move(node->op))) {
+      return std::make_unique<TopNSort>(std::move(sort->op), std::move(sort->order), std::move(node->limit));
     }
 
-    if (!dynamic_cast<Noop *>(op.get())) {
-      // order is important here, since limit(sort(op)) is different from sort(limit(op))
-      if (node->sort_by) {
-        op = std::make_unique<Sort>(std::move(op), std::move(node->sort_by));
-      }
-
-      if (node->limit) {
-        op = std::make_unique<Limit>(std::move(op), std::move(node->limit));
-      }
-    }
-
-    return std::make_unique<Projection>(std::move(op), std::move(node->select));
+    return node;
   }
 };
 

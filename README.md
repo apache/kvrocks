@@ -38,8 +38,6 @@ Kvrocks has the following key features:
 * High Availability: Support Redis sentinel to failover when master or slave was failed.
 * Cluster: Centralized management but accessible via any Redis cluster client.
 
-Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
-
 ## Who uses Kvrocks
 
 You can find Kvrocks users at [the Users page](https://kvrocks.apache.org/users/).

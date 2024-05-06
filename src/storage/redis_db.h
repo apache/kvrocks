@@ -33,6 +33,12 @@
 
 namespace redis {
 
+/// SORT_LENGTH_LIMIT limits the number of elements to be sorted
+/// to avoid using too much memory and causing system crashes.
+/// TODO: Expect to expand or eliminate SORT_LENGTH_LIMIT
+/// through better mechanisms such as memory restriction logic.
+constexpr uint64_t SORT_LENGTH_LIMIT = 512;
+
 struct SortArgument {
   std::string sortby;                    // BY
   bool dontsort = false;                 // DONT SORT
@@ -138,8 +144,16 @@ class Database {
   enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
   [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
                                      CopyResult *res);
-  enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, DONE };
-  [[nodiscard]] rocksdb::Status Sort(const RedisType &type, const std::string &key, const SortArgument &args,
+  enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, LIMIT_EXCEEDED, DONE };
+  /// Sort sorts keys of the specified type according to SortArgument
+  ///
+  /// \param type is the type of sort key, which must be LIST, SET or ZSET
+  /// \param key is to be sorted
+  /// \param args provide the parameters to sort by
+  /// \param elems contain the sorted results
+  /// \param res represents the sorted result type.
+  /// When status is not ok, `res` should not been checked, otherwise it should be checked whether `res` is `DONE`
+  [[nodiscard]] rocksdb::Status Sort(RedisType type, const std::string &key, const SortArgument &args,
                                      std::vector<std::optional<std::string>> *elems, SortResult *res);
 
  protected:

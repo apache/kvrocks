@@ -21,6 +21,7 @@ package sort
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -58,8 +59,41 @@ func TestSortParser(t *testing.T) {
 		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "STORE").Result()
 		require.EqualError(t, err, "ERR no more item to parse")
 
+		rdb.MSet(ctx, "rank_1", 1, "rank_2", "rank_3", 3, "rank_4", 4, "rank_5", 5)
+		_, err = rdb.Do(ctx, "Sort", "bad-case-key", "BY", "dontsort", "BY", "rank_*").Result()
+		require.EqualError(t, err, "ERR don't use multiple BY parameters")
+
 		_, err = rdb.Do(ctx, "Sort_RO", "bad-case-key", "STORE", "store_ro_key").Result()
 		require.EqualError(t, err, "ERR SORT_RO is read-only and does not support the STORE parameter")
+	})
+}
+
+func TestSortLengthLimit(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("SORT Length Limit", func(t *testing.T) {
+		for i := 0; i <= 512; i++ {
+			rdb.LPush(ctx, "many-list-elems-key", i)
+		}
+		_, err := rdb.Sort(ctx, "many-list-elems-key", &redis.Sort{}).Result()
+		require.EqualError(t, err, "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = 512")
+
+		for i := 0; i <= 512; i++ {
+			rdb.SAdd(ctx, "many-set-elems-key", i)
+		}
+		_, err = rdb.Sort(ctx, "many-set-elems-key", &redis.Sort{}).Result()
+		require.EqualError(t, err, "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = 512")
+
+		for i := 0; i <= 512; i++ {
+			rdb.ZAdd(ctx, "many-zset-elems-key", redis.Z{Score: float64(i), Member: fmt.Sprintf("%d", i)})
+		}
+		_, err = rdb.Sort(ctx, "many-zset-elems-key", &redis.Sort{}).Result()
+		require.EqualError(t, err, "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = 512")
 	})
 }
 
@@ -514,6 +548,7 @@ func TestSetSort(t *testing.T) {
 		byResult, err = rdb.Do(ctx, "Sort", "uid_empty_nil", "By", "user_level_*").Slice()
 		require.NoError(t, err)
 		require.Equal(t, []interface{}{"5", "6", "4"}, byResult)
+
 	})
 
 	t.Run("SORT STORE", func(t *testing.T) {

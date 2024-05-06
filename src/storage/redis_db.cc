@@ -794,36 +794,41 @@ std::optional<std::string> Database::lookupKeyByPattern(const std::string &patte
   key.replace(match_pos, 1, subst);
 
   std::string value;
+  RedisType type = RedisType::kRedisNone;
   if (!field.empty()) {
     auto hash_db = redis::Hash(storage_, namespace_);
-    RedisType type = RedisType::kRedisNone;
     if (auto s = hash_db.Type(key, &type); !s.ok() || type != RedisType::kRedisHash) {
       return std::nullopt;
     }
 
-    hash_db.Get(key, field, &value);
+    if (auto s = hash_db.Get(key, field, &value); !s.ok()) {
+      return std::nullopt;
+    }
   } else {
     auto string_db = redis::String(storage_, namespace_);
-    RedisType type = RedisType::kRedisNone;
     if (auto s = string_db.Type(key, &type); !s.ok() || type != RedisType::kRedisString) {
       return std::nullopt;
     }
-    string_db.Get(key, &value);
+    if (auto s = string_db.Get(key, &value); !s.ok()) {
+      return std::nullopt;
+    }
   }
   return value;
 }
 
-rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, const SortArgument &args,
+rocksdb::Status Database::Sort(RedisType type, const std::string &key, const SortArgument &args,
                                std::vector<std::optional<std::string>> *elems, SortResult *res) {
   // Obtain the length of the object to sort.
   const std::string ns_key = AppendNamespacePrefix(key);
   Metadata metadata(type, false);
   auto s = GetMetadata(GetOptions{}, {type}, ns_key, &metadata);
-  if (!s.ok()) {
-    return s;
-  }
+  if (!s.ok()) return s;
 
-  int vectorlen = static_cast<int>(metadata.size);
+  if (metadata.size > SORT_LENGTH_LIMIT) {
+    *res = SortResult::LIMIT_EXCEEDED;
+    return rocksdb::Status::OK();
+  }
+  auto vectorlen = static_cast<int>(metadata.size);
 
   // Adjust the offset and count of the limit
   int offset = args.offset >= vectorlen ? 0 : std::clamp(args.offset, 0, vectorlen - 1);
@@ -838,17 +843,21 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
 
       if (args.dontsort) {
         if (args.desc) {
-          list_db.Range(key, -count - offset, -1 - offset, &str_vec);
+          s = list_db.Range(key, -count - offset, -1 - offset, &str_vec);
+          if (!s.ok()) return s;
           std::reverse(str_vec.begin(), str_vec.end());
         } else {
-          list_db.Range(key, offset, offset + count - 1, &str_vec);
+          s = list_db.Range(key, offset, offset + count - 1, &str_vec);
+          if (!s.ok()) return s;
         }
       } else {
-        list_db.Range(key, 0, -1, &str_vec);
+        s = list_db.Range(key, 0, -1, &str_vec);
+        if (!s.ok()) return s;
       }
     } else if (type == RedisType::kRedisSet) {
       auto set_db = redis::Set(storage_, namespace_);
-      set_db.Members(key, &str_vec);
+      s = set_db.Members(key, &str_vec);
+      if (!s.ok()) return s;
 
       if (args.dontsort) {
         str_vec = std::vector(std::make_move_iterator(str_vec.begin() + offset),
@@ -863,13 +872,15 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
         spec.start = offset;
         spec.stop = offset + count - 1;
         spec.reversed = args.desc;
-        zset_db.RangeByRank(key, spec, &member_scores, nullptr);
+        s = zset_db.RangeByRank(key, spec, &member_scores, nullptr);
+        if (!s.ok()) return s;
 
         for (auto &member_score : member_scores) {
           str_vec.emplace_back(std::move(member_score.member));
         }
       } else {
-        zset_db.GetAllMemberScores(key, &member_scores);
+        s = zset_db.GetAllMemberScores(key, &member_scores);
+        if (!s.ok()) return s;
 
         for (auto &member_score : member_scores) {
           str_vec.emplace_back(std::move(member_score.member));
@@ -889,18 +900,19 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
   // Sort by BY, ALPHA, ASC/DESC
   if (!args.dontsort) {
     for (size_t i = 0; i < sort_vec.size(); ++i) {
-      std::optional<std::string> byval;
+      std::string byval;
       if (!args.sortby.empty()) {
-        byval = lookupKeyByPattern(args.sortby, str_vec[i]);
-        if (!byval.has_value()) continue;
+        auto lookup = lookupKeyByPattern(args.sortby, str_vec[i]);
+        if (!lookup.has_value()) continue;
+        byval = std::move(lookup.value());
       } else {
         byval = str_vec[i];
       }
 
       if (args.alpha && !args.sortby.empty()) {
-        sort_vec[i].v = byval.value();
-      } else if (!args.alpha && !byval.value().empty()) {
-        auto double_byval = ParseFloat<double>(byval.value());
+        sort_vec[i].v = byval;
+      } else if (!args.alpha && !byval.empty()) {
+        auto double_byval = ParseFloat<double>(byval);
         if (!double_byval) {
           *res = SortResult::DOUBLE_CONVERT_ERROR;
           return rocksdb::Status::OK();
@@ -909,7 +921,7 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
       }
     }
 
-    std::sort(sort_vec.begin(), sort_vec.end(), [args](const RedisSortObject &a, const RedisSortObject &b) {
+    std::sort(sort_vec.begin(), sort_vec.end(), [&args](const RedisSortObject &a, const RedisSortObject &b) {
       return RedisSortObject::SortCompare(a, b, args);
     });
 
@@ -942,9 +954,11 @@ rocksdb::Status Database::Sort(const RedisType &type, const std::string &key, co
       store_elems.emplace_back(e.value_or(""));
     }
     redis::List list_db(storage_, namespace_);
-    list_db.Trim(args.storekey, -1, 0);
+    s = list_db.Trim(args.storekey, -1, 0);
+    if (!s.ok()) return s;
     uint64_t new_size = 0;
-    list_db.Push(args.storekey, std::vector<Slice>(store_elems.cbegin(), store_elems.cend()), false, &new_size);
+    s = list_db.Push(args.storekey, std::vector<Slice>(store_elems.cbegin(), store_elems.cend()), false, &new_size);
+    if (!s.ok()) return s;
   }
 
   return rocksdb::Status::OK();

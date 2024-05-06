@@ -431,6 +431,7 @@ class CommandSort : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("BY")) {
+        if (!sort_argument_.sortby.empty()) return {Status::InvalidArgument, "don't use multiple BY parameters"};
         sort_argument_.sortby = GET_OR_RET(parser.TakeStr());
 
         if (sort_argument_.sortby.find('*') == std::string::npos) {
@@ -511,6 +512,10 @@ class CommandSort : public Commander {
         break;
       case Database::SortResult::DOUBLE_CONVERT_ERROR:
         *output = redis::Error("One or more scores can't be converted into double");
+        break;
+      case Database::SortResult::LIMIT_EXCEEDED:
+        *output = redis::Error("The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
+                               std::to_string(SORT_LENGTH_LIMIT));
         break;
       case Database::SortResult::DONE:
         if (sort_argument_.storekey.empty()) {

@@ -19,11 +19,30 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(jsoncons
-  danielaparker/jsoncons v0.175.0
-  MD5=1ee4a655719dc3333b5c1fbf5a6e9321
+FetchContent_DeclareGitHubWithMirror(rangev3
+  ericniebler/range-v3 0.12.0
+  MD5=e220e3f545fdf46241b4f139822d73a1
 )
 
-FetchContent_MakeAvailableWithArgs(jsoncons
-  JSONCONS_BUILD_TESTS=OFF
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(WITH_DEBUG_INFO ON)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(WITH_DEBUG_INFO OFF)
+elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    set(WITH_DEBUG_INFO ON)
+elseif (CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+    set(WITH_DEBUG_INFO OFF)
+endif()
+
+if (PORTABLE STREQUAL 0)
+    set(ARG_RANGES_NATIVE ON)
+else()
+    set(ARG_RANGES_NATIVE OFF)
+endif()
+
+FetchContent_MakeAvailableWithArgs(rangev3
+  RANGES_CXX_STD=17
+  RANGES_BUILD_CALENDAR_EXAMPLE=OFF
+  RANGES_DEBUG_INFO=${WITH_DEBUG_INFO}
+  RANGES_NATIVE=${ARG_RANGES_NATIVE}
 )

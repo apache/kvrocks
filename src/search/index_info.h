@@ -39,6 +39,12 @@ struct FieldInfo {
       : name(std::move(name)), metadata(std::move(metadata)) {}
 
   bool IsSortable() const { return dynamic_cast<redis::SearchSortableFieldMetadata *>(metadata.get()) != nullptr; }
+  bool HasIndex() const { return !metadata->noindex; }
+
+  template <typename T>
+  const T *MetadataAs() const {
+    return dynamic_cast<const T *>(metadata.get());
+  }
 };
 
 struct IndexInfo {
@@ -48,6 +54,7 @@ struct IndexInfo {
   SearchMetadata metadata;
   FieldMap fields;
   redis::SearchPrefixesMetadata prefixes;
+  std::string ns;
 
   IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
 
@@ -58,6 +65,6 @@ struct IndexInfo {
   }
 };
 
-using IndexMap = std::map<std::string, IndexInfo>;
+using IndexMap = std::map<std::string, std::unique_ptr<IndexInfo>>;
 
 }  // namespace kqir

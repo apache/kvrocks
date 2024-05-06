@@ -158,7 +158,7 @@ class Database {
   ///
   /// \param pattern can be the value of a `BY` or `GET` field
   /// \param subst is used to replace the "*" or "#" matched in the pattern string.
-  /// \return  Return the value associated to the key with a name obtained using the following rules:
+  /// \return  Returns the value associated to the key with a name obtained using the following rules:
   ///   1) The first occurrence of '*' in 'pattern' is substituted with 'subst'.
   ///   2) If 'pattern' matches the "->" string, everything on the left of
   ///      the arrow is treated as the name of a hash field, and the part on the

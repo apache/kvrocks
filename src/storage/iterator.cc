@@ -26,8 +26,10 @@
 
 namespace engine {
 DBIterator::DBIterator(Storage *storage, rocksdb::ReadOptions read_options, int slot)
-    : storage_(storage), read_options_(std::move(read_options)), slot_(slot) {
-  metadata_cf_handle_ = storage_->GetCFHandle(kMetadataColumnFamilyName);
+    : storage_(storage),
+      read_options_(std::move(read_options)),
+      slot_(slot),
+      metadata_cf_handle_(storage_->GetCFHandle(engine::kColumnFamilyIDMetadata)) {
   metadata_iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_));
 }
 
@@ -115,9 +117,9 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
 SubKeyIterator::SubKeyIterator(Storage *storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix)
     : storage_(storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
   if (type_ == kRedisStream) {
-    cf_handle_ = storage_->GetCFHandle(kStreamColumnFamilyName);
+    cf_handle_ = storage_->GetCFHandle(kColumnFamilyIDStream);
   } else {
-    cf_handle_ = storage_->GetCFHandle(kSubkeyColumnFamilyName);
+    cf_handle_ = storage_->GetCFHandle(kColumnFamilyIDDefault);
   }
   iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_));
 }

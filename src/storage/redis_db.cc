@@ -39,7 +39,7 @@
 namespace redis {
 
 Database::Database(engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
-  metadata_cf_handle_ = storage->GetCFHandle(engine::kMetadataColumnFamilyName);
+  metadata_cf_handle_ = storage->GetCFHandle(engine::kColumnFamilyIDMetadata);
 }
 
 // Some data types may support reading multiple types of metadata.
@@ -743,7 +743,7 @@ rocksdb::Status Database::Copy(const std::string &key, const std::string &new_ke
   auto subkey_iter = iter.GetSubKeyIterator();
 
   if (subkey_iter != nullptr) {
-    auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(engine::kZSetScoreColumnFamilyName) : nullptr;
+    auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(engine::kColumnFamilyIDZSetScore) : nullptr;
 
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());

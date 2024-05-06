@@ -159,7 +159,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     }
 
     auto batch = storage->GetWriteBatchBase();
-    auto cf_handle = storage->GetCFHandle(engine::kSearchColumnFamilyName);
+    auto cf_handle = storage->GetCFHandle(engine::kColumnFamilyIDSearch);
 
     for (const auto &tag : tags_to_delete) {
       auto sub_key = ConstructTagFieldSubkey(field, tag, key);
@@ -179,7 +179,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
     auto batch = storage->GetWriteBatchBase();
-    auto cf_handle = storage->GetCFHandle(engine::kSearchColumnFamilyName);
+    auto cf_handle = storage->GetCFHandle(engine::kColumnFamilyIDSearch);
 
     if (!original.empty()) {
       auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));

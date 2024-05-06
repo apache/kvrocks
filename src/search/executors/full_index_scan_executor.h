@@ -50,8 +50,8 @@ struct FullIndexScanExecutor : ExecutorNode {
     if (!iter) {
       rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
       read_options.snapshot = ss.GetSnapShot();
-      iter = util::UniqueIterator(ctx->storage, read_options,
-                                  ctx->storage->GetCFHandle(engine::kMetadataColumnFamilyName));
+      iter =
+          util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(engine::kColumnFamilyIDMetadata));
       iter->Seek(ns_key);
     }
 

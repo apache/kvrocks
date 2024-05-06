@@ -342,7 +342,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
   read_options.snapshot = slot_snapshot_;
   Slice prefix_slice(prefix);
   read_options.iterate_lower_bound = &prefix_slice;
-  rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(engine::kMetadataColumnFamilyName);
+  rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(engine::kColumnFamilyIDMetadata);
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
@@ -852,7 +852,7 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
 
   // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
   auto iter = util::UniqueIterator(
-      storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kStreamColumnFamilyName)));
+      storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(engine::kColumnFamilyIDStream)));
 
   std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
 
@@ -1224,7 +1224,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
     }
     batch_sender.SetPrefixLogData(log_data);
 
-    GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(engine::kMetadataColumnFamilyName), iter.Key(), iter.Value()));
+    GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(engine::kColumnFamilyIDMetadata), iter.Key(), iter.Value()));
 
     auto subkey_iter = iter.GetSubKeyIterator();
     if (!subkey_iter) {
@@ -1240,7 +1240,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
         score_key.append(subkey_iter->UserKey().ToString());
         auto score_key_bytes =
             InternalKey(iter.Key(), score_key, internal_key.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
-        GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(kColumnFamilyIDZSetScore), score_key_bytes, Slice()));
+        GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(engine::kColumnFamilyIDZSetScore), score_key_bytes, Slice()));
       }
 
       if (batch_sender.IsFull()) {
@@ -1334,13 +1334,13 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
         break;
       }
       case engine::WALItem::Type::kTypePut: {
-        GET_OR_RET(batch_sender->Put(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)),
+        GET_OR_RET(batch_sender->Put(storage_->GetCFHandle(static_cast<engine::ColumnFamilyID>(item.column_family_id)),
                                      item.key, item.value));
         break;
       }
       case engine::WALItem::Type::kTypeDelete: {
-        GET_OR_RET(
-            batch_sender->Delete(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)), item.key));
+        GET_OR_RET(batch_sender->Delete(
+            storage_->GetCFHandle(static_cast<engine::ColumnFamilyID>(item.column_family_id)), item.key));
         break;
       }
       case engine::WALItem::Type::kTypeDeleteRange: {

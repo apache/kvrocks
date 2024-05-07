@@ -23,6 +23,7 @@ project(kvrocks
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
 option(ENABLE_ASAN "enable address sanitizer" OFF)
 option(ENABLE_TSAN "enable thread sanitizer" OFF)
+option(ENABLE_UBSAN "enable undefined behavior sanitizer" OFF)
 option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
@@ -90,6 +91,34 @@ if(ENABLE_ASAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+endif()
+
+# Copied from https://github.com/apache/arrow/blob/main/cpp/cmake_modules/san-config.cmake
+#
+# Flag to enable clang undefined behavior sanitizer
+# We explicitly don't enable all of the sanitizer flags:
+# - disable 'vptr' because of RTTI issues across shared libraries (?)
+# - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
+#   all over the place.
+# - disable 'function' because it appears to give a false positive
+#   (https://github.com/google/sanitizers/issues/911)
+# - disable 'float-divide-by-zero' on clang, which considers it UB
+#   (https://bugs.llvm.org/show_bug.cgi?id=17000#c1)
+#   Note: GCC does not support the 'function' flag.
+if(ENABLE_UBSAN)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL
+            "Clang")
+        set(CMAKE_CXX_FLAGS
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero -fno-sanitize-recover=all"
+        )
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
+            VERSION_GREATER_EQUAL "5.1")
+        set(CMAKE_CXX_FLAGS
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover=all"
+        )
+    else()
+        message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
+    endif()
 endif()
 if(ENABLE_TSAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")

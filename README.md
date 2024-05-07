@@ -183,41 +183,6 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 
 Kvrocks community welcomes all forms of contribution and you can find out how to get involved on the [Community](https://kvrocks.apache.org/community/) and [How to Contribute](https://kvrocks.apache.org/community/contributing) pages.
 
-## Performance
-
-### Hardware
-
-* CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
-* Memory: 32 GiB
-* NET:  Intel Corporation I350 Gigabit Network Connection
-* DISK: 2TB NVMe Intel SSD DC P4600
-
-> Benchmark Client: multi-thread redis-benchmark(unstable branch)
-
-### 1. Commands QPS
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-commands.png)
-
-### 2. QPS on different payloads
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-values.png)
-
-### 3. QPS on different workers
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-threads.png)
-
 ## License
 
 Apache Kvrocks is licensed under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.

@@ -1098,7 +1098,7 @@ int64_t Server::GetCachedUnixTime() {
 
 int64_t Server::GetLastBgsaveTime() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  return last_bgsave_time_in_secs_ == -1 ? start_time_secs_ : last_bgsave_time_spent_in_secs_;
+  return last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_;
 }
 
 void Server::GetStatsInfo(std::string *info) {
@@ -1195,9 +1195,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     std::lock_guard<std::mutex> lg(db_job_mu_);
     string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
     string_stream << "last_bgsave_time:"
-                  << (last_bgsave_time_in_secs_ == -1 ? start_time_secs_ : last_bgsave_time_in_secs_) << "\r\n";
+                  << (last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_) << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
-    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_spent_in_secs_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_duration_secs_ << "\r\n";
   }
 
   if (all || section == "stats") {
@@ -1400,9 +1400,9 @@ Status Server::AsyncBgSaveDB() {
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
-    last_bgsave_time_in_secs_ = start_bgsave_time_secs;
+    last_bgsave_timestamp_secs_ = start_bgsave_time_secs;
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_spent_in_secs_ = stop_bgsave_time_secs - start_bgsave_time_secs;
+    last_bgsave_duration_secs_ = stop_bgsave_time_secs - start_bgsave_time_secs;
   });
 }
 

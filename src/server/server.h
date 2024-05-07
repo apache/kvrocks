@@ -356,9 +356,9 @@ class Server {
   std::mutex db_job_mu_;
   bool db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
-  int64_t last_bgsave_time_in_secs_ = -1;
+  int64_t last_bgsave_timestamp_secs_ = -1;
   std::string last_bgsave_status_ = "ok";
-  int64_t last_bgsave_time_spent_in_secs_ = -1;
+  int64_t last_bgsave_duration_secs_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
 

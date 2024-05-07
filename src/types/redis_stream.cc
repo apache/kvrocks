@@ -237,8 +237,8 @@ std::string Stream::consumerNameFromInternalKey(rocksdb::Slice key) const {
 std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata) {
   std::string dst;
   PutFixed64(&dst, consumer_metadata.pending_number);
-  PutFixed64(&dst, consumer_metadata.last_idle);
-  PutFixed64(&dst, consumer_metadata.last_active);
+  PutFixed64(&dst, consumer_metadata.last_idle_ms);
+  PutFixed64(&dst, consumer_metadata.last_active_ms);
   return dst;
 }
 
@@ -246,8 +246,8 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
   StreamConsumerMetadata consumer_metadata;
   rocksdb::Slice input(value);
   GetFixed64(&input, &consumer_metadata.pending_number);
-  GetFixed64(&input, &consumer_metadata.last_idle);
-  GetFixed64(&input, &consumer_metadata.last_active);
+  GetFixed64(&input, &consumer_metadata.last_idle_ms);
+  GetFixed64(&input, &consumer_metadata.last_active_ms);
   return consumer_metadata;
 }
 
@@ -277,7 +277,7 @@ StreamEntryID Stream::groupAndEntryIdFromPelInternalKey(rocksdb::Slice key, std:
 
 std::string Stream::encodeStreamPelEntryValue(const StreamPelEntry &pel_entry) {
   std::string dst;
-  PutFixed64(&dst, pel_entry.last_delivery_time);
+  PutFixed64(&dst, pel_entry.last_delivery_time_ms);
   PutFixed64(&dst, pel_entry.last_delivery_count);
   PutFixed64(&dst, pel_entry.consumer_name.size());
   dst += pel_entry.consumer_name;
@@ -287,7 +287,7 @@ std::string Stream::encodeStreamPelEntryValue(const StreamPelEntry &pel_entry) {
 StreamPelEntry Stream::decodeStreamPelEntryValue(const std::string &value) {
   StreamPelEntry pel_entry;
   rocksdb::Slice input(value);
-  GetFixed64(&input, &pel_entry.last_delivery_time);
+  GetFixed64(&input, &pel_entry.last_delivery_time_ms);
   GetFixed64(&input, &pel_entry.last_delivery_count);
   uint64_t consumer_name_len = 0;
   GetFixed64(&input, &consumer_name_len);
@@ -487,8 +487,8 @@ rocksdb::Status Stream::createConsumerWithoutLock(const Slice &stream_name, cons
 
   StreamConsumerMetadata consumer_metadata;
   auto now = util::GetTimeStampMS();
-  consumer_metadata.last_idle = now;
-  consumer_metadata.last_active = now;
+  consumer_metadata.last_idle_ms = now;
+  consumer_metadata.last_active_ms = now;
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string consumer_value = encodeStreamConsumerMetadataValue(consumer_metadata);
   std::string get_consumer_value;
@@ -1153,9 +1153,9 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
     return s;
   }
   StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
-  auto now = util::GetTimeStampMS();
-  consumer_metadata.last_idle = now;
-  consumer_metadata.last_active = now;
+  auto now_ms = util::GetTimeStampMS();
+  consumer_metadata.last_idle_ms = now_ms;
+  consumer_metadata.last_active_ms = now_ms;
 
   if (latest) {
     options.start = consumergroup_metadata.last_delivered_id;
@@ -1219,7 +1219,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
         }
         entries->emplace_back(entry_id.ToString(), std::move(values));
         pel_entry.last_delivery_count += 1;
-        pel_entry.last_delivery_time = now;
+        pel_entry.last_delivery_time_ms = now_ms;
         batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(pel_entry));
         ++count;
         if (count >= options.count) break;

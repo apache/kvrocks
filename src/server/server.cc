@@ -52,7 +52,7 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -179,7 +179,7 @@ Status Server::Start() {
 
   compaction_checker_thread_ = GET_OR_RET(util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
-    time_t last_compact_date = 0;
+    int64_t last_compact_date = 0;
     CompactionChecker compaction_checker{this->storage};
 
     while (!stop_) {
@@ -192,11 +192,9 @@ Status Server::Start() {
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
           && config_->compaction_checker_range.Enabled()) {
-        auto now = static_cast<time_t>(util::GetTimeStamp());
-        std::tm local_time{};
-        localtime_r(&now, &local_time);
-        if (local_time.tm_hour >= config_->compaction_checker_range.start &&
-            local_time.tm_hour <= config_->compaction_checker_range.stop) {
+        auto now_hours = util::GetTimeStamp<std::chrono::hours>();
+        if (now_hours >= config_->compaction_checker_range.start &&
+            now_hours <= config_->compaction_checker_range.stop) {
           std::vector<std::string> cf_names = {engine::kMetadataColumnFamilyName, engine::kSubkeyColumnFamilyName,
                                                engine::kZSetScoreColumnFamilyName, engine::kStreamColumnFamilyName};
           for (const auto &cf_name : cf_names) {
@@ -204,8 +202,8 @@ Status Server::Start() {
           }
         }
         // compact once per day
-        if (now != 0 && last_compact_date != now / 86400) {
-          last_compact_date = now / 86400;
+        if (now_hours != 0 && last_compact_date != now_hours / 24) {
+          last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
         }
       }
@@ -344,9 +342,9 @@ void Server::CleanupExitedSlaves() {
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
-  auto now = util::GetTimeStampUS();
+  auto now_us = util::GetTimeStampUS();
   std::string output =
-      fmt::format("{}.{} [{} {}]", now / 1000000, now % 1000000, conn->GetNamespace(), conn->GetAddr());
+      fmt::format("{}.{} [{} {}]", now_us / 1000000, now_us % 1000000, conn->GetNamespace(), conn->GetAddr());
   for (const auto &token : tokens) {
     output += " \"";
     output += util::EscapeString(token);
@@ -674,7 +672,7 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
   }
 }
 
-void Server::updateCachedTime() { unix_time.store(util::GetTimeStamp()); }
+void Server::updateCachedTime() { unix_time_secs.store(util::GetTimeStamp()); }
 
 int Server::IncrClientNum() {
   total_clients_.fetch_add(1, std::memory_order_relaxed);
@@ -787,13 +785,14 @@ void Server::cron() {
 
     // No replica uses this checkpoint, we can remove it.
     if (counter != 0 && counter % 100 == 0) {
-      time_t create_time = storage->GetCheckpointCreateTime();
-      time_t access_time = storage->GetCheckpointAccessTime();
+      int64_t create_time_secs = storage->GetCheckpointCreateTimeSecs();
+      int64_t access_time_secs = storage->GetCheckpointAccessTimeSecs();
 
       if (storage->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
-        auto now = static_cast<time_t>(util::GetTimeStamp());
-        if ((GetFetchFileThreadNum() == 0 && now - access_time > 30) || (now - create_time > 24 * 60 * 60)) {
+        int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
+        if ((GetFetchFileThreadNum() == 0 && now_secs - access_time_secs > 30) ||
+            (now_secs - create_time_secs > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
             LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
@@ -963,9 +962,9 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
-  int64_t now = util::GetTimeStamp();
-  string_stream << "uptime_in_seconds:" << now - start_time_ << "\r\n";
-  string_stream << "uptime_in_days:" << (now - start_time_) / 86400 << "\r\n";
+  int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
+  string_stream << "uptime_in_seconds:" << now_secs - start_time_secs_ << "\r\n";
+  string_stream << "uptime_in_days:" << (now_secs - start_time_secs_) / 86400 << "\r\n";
   *info = string_stream.str();
 }
 
@@ -1000,14 +999,14 @@ void Server::GetReplicationInfo(std::string *info) {
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
-    time_t now = util::GetTimeStamp();
+    int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
     string_stream << "master_link_status:" << (state == kReplConnected ? "up" : "down") << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
-    string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
+    string_stream << "master_last_io_seconds_ago:" << now_secs - replication_thread_->LastIOTimeSecs() << "\r\n";
     string_stream << "slave_repl_offset:" << storage->LatestSeqNumber() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   }
@@ -1091,15 +1090,15 @@ void Server::SetLastRandomKeyCursor(const std::string &cursor) {
 }
 
 int64_t Server::GetCachedUnixTime() {
-  if (unix_time.load() == 0) {
+  if (unix_time_secs.load() == 0) {
     updateCachedTime();
   }
-  return unix_time.load();
+  return unix_time_secs.load();
 }
 
 int64_t Server::GetLastBgsaveTime() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  return last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_;
+  return last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_;
 }
 
 void Server::GetStatsInfo(std::string *info) {
@@ -1141,7 +1140,7 @@ void Server::GetCommandsStatsInfo(std::string *info) {
 
     auto latency = cmd_stat.second.latency.load();
     string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls << ",usec=" << latency
-                  << ",usec_per_call=" << ((calls == 0) ? 0 : static_cast<float>(latency / calls)) << "\r\n";
+                  << ",usec_per_call=" << static_cast<float>(latency / calls) << "\r\n";
   }
 
   *info = string_stream.str();
@@ -1195,9 +1194,10 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
-    string_stream << "last_bgsave_time:" << (last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_) << "\r\n";
+    string_stream << "last_bgsave_time:"
+                  << (last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_) << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
-    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_duration_secs_ << "\r\n";
   }
 
   if (all || section == "stats") {
@@ -1249,8 +1249,9 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
     KeyNumStats stats;
     GetLatestKeyNumStats(ns, &stats);
 
-    time_t last_scan_time = GetLastScanTime(ns);
-    tm last_scan_tm{};
+    // FIXME(mwish): output still requires std::tm.
+    auto last_scan_time = static_cast<time_t>(GetLastScanTime(ns));
+    std::tm last_scan_tm{};
     localtime_r(&last_scan_time, &last_scan_tm);
 
     if (section_cnt++) string_stream << "\r\n";
@@ -1393,15 +1394,15 @@ Status Server::AsyncBgSaveDB() {
   is_bgsave_in_progress_ = true;
 
   return task_runner_.TryPublish([this] {
-    auto start_bgsave_time = util::GetTimeStamp();
+    auto start_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
     Status s = storage->CreateBackup();
-    auto stop_bgsave_time = util::GetTimeStamp();
+    auto stop_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
-    last_bgsave_time_ = start_bgsave_time;
+    last_bgsave_timestamp_secs_ = start_bgsave_time_secs;
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_sec_ = stop_bgsave_time - start_bgsave_time;
+    last_bgsave_duration_secs_ = stop_bgsave_time_secs - start_bgsave_time_secs;
   });
 }
 
@@ -1436,7 +1437,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
     db_scan_infos_[ns].key_num_stats = stats;
-    db_scan_infos_[ns].last_scan_time = util::GetTimeStamp();
+    db_scan_infos_[ns].last_scan_time_secs = util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
   });
 }
@@ -1529,10 +1530,10 @@ void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   }
 }
 
-time_t Server::GetLastScanTime(const std::string &ns) {
+int64_t Server::GetLastScanTime(const std::string &ns) const {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
-    return iter->second.last_scan_time;
+    return iter->second.last_scan_time_secs;
   }
   return 0;
 }

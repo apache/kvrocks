@@ -459,11 +459,11 @@ Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue 
   if (type == RDBTypeString) {
     const auto &value = std::get<std::string>(obj);
     redis::String string_db(storage_, ns_);
-    uint64_t expire = 0;
+    uint64_t expire_ms = 0;
     if (ttl_ms > 0) {
-      expire = ttl_ms + util::GetTimeStampMS();
+      expire_ms = ttl_ms + util::GetTimeStampMS();
     }
-    db_status = string_db.SetEX(key, value, expire);
+    db_status = string_db.SetEX(key, value, expire_ms);
   } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
     const auto &members = std::get<std::vector<std::string>>(obj);
     redis::Set set_db(storage_, ns_);
@@ -567,21 +567,20 @@ Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
     return {Status::NotOK, fmt::format("Can't handle RDB format version {}", rdb_ver)};
   }
 
-  uint64_t expire_time = 0;
+  uint64_t expire_time_ms = 0;
   int64_t expire_keys = 0;
   int64_t load_keys = 0;
   int64_t empty_keys_skipped = 0;
-  auto now = util::GetTimeStampMS();
+  auto now_ms = util::GetTimeStampMS();
   uint32_t db_id = 0;
   uint64_t skip_exist_keys = 0;
   while (true) {
     auto type = GET_OR_RET(LogWhenError(loadRdbType()));
     if (type == RDBOpcodeExpireTime) {
-      expire_time = static_cast<uint64_t>(GET_OR_RET(LogWhenError(loadExpiredTimeSeconds())));
-      expire_time *= 1000;
+      expire_time_ms = static_cast<uint64_t>(GET_OR_RET(LogWhenError(loadExpiredTimeSeconds()))) * 1000;
       continue;
     } else if (type == RDBOpcodeExpireTimeMs) {
-      expire_time = GET_OR_RET(LogWhenError(loadExpiredTimeMilliseconds(rdb_ver)));
+      expire_time_ms = GET_OR_RET(LogWhenError(loadExpiredTimeMilliseconds(rdb_ver)));
       continue;
     } else if (type == RDBOpcodeFreq) {               // LFU frequency: not use in kvrocks
       GET_OR_RET(LogWhenError(stream_->ReadByte()));  // discard the value
@@ -637,8 +636,8 @@ Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
         LOG(WARNING) << "skipping empty key: " << key;
       }
       continue;
-    } else if (expire_time != 0 &&
-               expire_time < now) {  // in redis this used to feed this deletion to any connected replicas
+    } else if (expire_time_ms != 0 &&
+               expire_time_ms < now_ms) {  // in redis this used to feed this deletion to any connected replicas
       expire_keys++;
       continue;
     }
@@ -655,7 +654,7 @@ Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
       }
     }
 
-    auto ret = saveRdbObject(type, key, value, expire_time);
+    auto ret = saveRdbObject(type, key, value, expire_time_ms);
     if (!ret.IsOK()) {
       LOG(WARNING) << "save rdb object key " << key << " failed: " << ret.Msg();
     } else {

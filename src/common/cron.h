@@ -43,7 +43,7 @@ class Cron {
   ~Cron() = default;
 
   Status SetScheduleTime(const std::vector<std::string> &args);
-  bool IsTimeMatch(tm *tm);
+  bool IsTimeMatch(const tm *tm);
   std::string ToString() const;
   bool IsEnabled() const;
 

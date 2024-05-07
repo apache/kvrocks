@@ -67,7 +67,7 @@ constexpr double kRocksdbLRUBlockCacheHighPriPoolRatio = 0.75;
 constexpr double kRocksdbLRURowCacheHighPriPoolRatio = 0.5;
 
 // used in creating rocksdb::HyperClockCache, set`estimated_entry_charge` to 0 means let rocksdb dynamically and
-// automacally adjust the table size for the cache.
+// automatically adjust the table size for the cache.
 constexpr size_t kRockdbHCCAutoAdjustCharge = 0;
 
 const int64_t kIORateLimitMaxMb = 1024000;
@@ -75,7 +75,7 @@ const int64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 Storage::Storage(Config *config)
-    : backup_creating_time_(util::GetTimeStamp()),
+    : backup_creating_time_secs_(util::GetTimeStamp<std::chrono::seconds>()),
       env_(rocksdb::Env::Default()),
       config_(config),
       lock_mgr_(16),
@@ -421,8 +421,8 @@ Status Storage::CreateBackup(uint64_t *sequence_number) {
     return {Status::NotOK, s.ToString()};
   }
 
-  // 'backup_mu_' can guarantee 'backup_creating_time_' is thread-safe
-  backup_creating_time_ = static_cast<time_t>(util::GetTimeStamp());
+  // 'backup_mu_' can guarantee 'backup_creating_time_secs_' is thread-safe
+  backup_creating_time_secs_ = util::GetTimeStamp<std::chrono::seconds>();
 
   LOG(INFO) << "[storage] Success to create new backup";
   return Status::OK();
@@ -546,7 +546,7 @@ void Storage::EmptyDB() {
 }
 
 void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours) {
-  time_t now = util::GetTimeStamp();
+  auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
 
@@ -555,13 +555,14 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
   if (!s.ok()) return;
 
   // No backup is needed to keep or the backup is expired, we will clean it.
-  bool backup_expired = (backup_max_keep_hours != 0 && backup_creating_time_ + backup_max_keep_hours * 3600 < now);
+  bool backup_expired =
+      (backup_max_keep_hours != 0 && backup_creating_time_secs_ + backup_max_keep_hours * 3600 < now_secs);
   if (num_backups_to_keep == 0 || backup_expired) {
     s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options());
     if (s.ok()) {
-      LOG(INFO) << "[storage] Succeeded cleaning old backup that was created at " << backup_creating_time_;
+      LOG(INFO) << "[storage] Succeeded cleaning old backup that was created at " << backup_creating_time_secs_;
     } else {
-      LOG(INFO) << "[storage] Failed cleaning old backup that was created at " << backup_creating_time_
+      LOG(INFO) << "[storage] Failed cleaning old backup that was created at " << backup_creating_time_secs_
                 << ". Error: " << s.ToString();
     }
   }
@@ -975,9 +976,9 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     uint64_t checkpoint_latest_seq = 0;
     s = checkpoint->CreateCheckpoint(data_files_dir, storage->config_->rocks_db.write_buffer_size * MiB,
                                      &checkpoint_latest_seq);
-    auto now = static_cast<time_t>(util::GetTimeStamp());
-    storage->checkpoint_info_.create_time = now;
-    storage->checkpoint_info_.access_time = now;
+    auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
+    storage->checkpoint_info_.create_time_secs = now_secs;
+    storage->checkpoint_info_.access_time_secs = now_secs;
     storage->checkpoint_info_.latest_seq = checkpoint_latest_seq;
     if (!s.ok()) {
       LOG(WARNING) << "[storage] Failed to create checkpoint (snapshot). Error: " << s.ToString();
@@ -987,12 +988,12 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     LOG(INFO) << "[storage] Create checkpoint successfully";
   } else {
     // Replicas can share checkpoint to replication if the checkpoint existing time is less than a half of WAL TTL.
-    int64_t can_shared_time = storage->config_->rocks_db.wal_ttl_seconds / 2;
-    if (can_shared_time > 60 * 60) can_shared_time = 60 * 60;
-    if (can_shared_time < 10 * 60) can_shared_time = 10 * 60;
+    int64_t can_shared_time_secs = storage->config_->rocks_db.wal_ttl_seconds / 2;
+    if (can_shared_time_secs > 60 * 60) can_shared_time_secs = 60 * 60;
+    if (can_shared_time_secs < 10 * 60) can_shared_time_secs = 10 * 60;
 
-    auto now = static_cast<time_t>(util::GetTimeStamp());
-    if (now - storage->GetCheckpointCreateTime() > can_shared_time) {
+    auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
+    if (now_secs - storage->GetCheckpointCreateTimeSecs() > can_shared_time_secs) {
       LOG(WARNING) << "[storage] Can't use current checkpoint, waiting next checkpoint";
       return {Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint"};
     }

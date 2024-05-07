@@ -242,8 +242,8 @@ class CommandFetchMeta : public Commander {
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      auto now = static_cast<time_t>(util::GetTimeStamp());
-      srv->storage->SetCheckpointAccessTime(now);
+      auto now_secs = static_cast<time_t>(util::GetTimeStamp());
+      srv->storage->SetCheckpointAccessTimeSecs(now_secs);
     }));
 
     if (auto s = util::ThreadDetach(t); !s) {
@@ -311,8 +311,8 @@ class CommandFetchFile : public Commander {
           usleep(shortest - duration);
         }
       }
-      auto now = static_cast<time_t>(util::GetTimeStamp());
-      srv->storage->SetCheckpointAccessTime(now);
+      auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
+      srv->storage->SetCheckpointAccessTimeSecs(now_secs);
       srv->DecrFetchFileThread();
     }));
 

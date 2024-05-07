@@ -98,7 +98,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Status Start(std::function<void()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
   void Stop();
   ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
-  time_t LastIOTime() { return last_io_time_.load(std::memory_order_relaxed); }
+  int64_t LastIOTimeSecs() const { return last_io_time_secs_.load(std::memory_order_relaxed); }
 
   void TimerCB(int, int16_t);
 
@@ -155,7 +155,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Server *srv_ = nullptr;
   engine::Storage *storage_ = nullptr;
   std::atomic<ReplState> repl_state_;
-  std::atomic<time_t> last_io_time_ = 0;
+  std::atomic<int64_t> last_io_time_secs_ = 0;
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
 

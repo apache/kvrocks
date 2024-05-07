@@ -24,6 +24,7 @@
 
 namespace util {
 
+/// Get the system timestamp in seconds, milliseconds or microseconds.
 template <typename Duration = std::chrono::seconds>
 auto GetTimeStamp() {
   return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();

@@ -255,21 +255,21 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   return updateRawValue(ns_key, new_raw_value);
 }
 
-rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t expire) {
+rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t expire_ms) {
   std::optional<std::string> ret;
-  return Set(user_key, value, {expire, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
+  return Set(user_key, value, {expire_ms, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
 }
 
-rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag) {
+rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t expire_ms, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {expire, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire_ms, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
 
-rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t expire, bool *flag) {
+rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t expire_ms, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {expire, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire_ms, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
@@ -384,7 +384,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expire, bool lock) {
+rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expire_ms, bool lock) {
   // Data race, key string maybe overwrite by other key while didn't lock the keys here,
   // to improve the set performance
   std::optional<MultiLockGuard> guard;
@@ -404,7 +404,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expi
   for (const auto &pair : pairs) {
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire;
+    metadata.expire = expire_ms;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     std::string ns_key = AppendNamespacePrefix(pair.key);
@@ -413,7 +413,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expi
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t expire, bool *flag) {
+rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t expire_ms, bool *flag) {
   *flag = false;
 
   int exists = 0;
@@ -435,7 +435,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ex
     return rocksdb::Status::OK();
   }
 
-  rocksdb::Status s = MSet(pairs, /*expire=*/expire, /*lock=*/false);
+  rocksdb::Status s = MSet(pairs, /*expire_ms=*/expire_ms, /*lock=*/false);
   if (!s.ok()) return s;
 
   *flag = true;

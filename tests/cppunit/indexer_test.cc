@@ -39,26 +39,26 @@ struct IndexerTest : TestBase {
     SearchMetadata hash_field_meta(false);
     hash_field_meta.on_data_type = SearchOnDataType::HASH;
 
-    kqir::IndexInfo hash_info("hashtest", hash_field_meta);
-    hash_info.Add(kqir::FieldInfo("x", std::make_unique<redis::SearchTagFieldMetadata>()));
-    hash_info.Add(kqir::FieldInfo("y", std::make_unique<redis::SearchNumericFieldMetadata>()));
-    hash_info.prefixes.prefixes.emplace_back("idxtesthash");
+    auto hash_info = std::make_unique<kqir::IndexInfo>("hashtest", hash_field_meta);
+    hash_info->Add(kqir::FieldInfo("x", std::make_unique<redis::SearchTagFieldMetadata>()));
+    hash_info->Add(kqir::FieldInfo("y", std::make_unique<redis::SearchNumericFieldMetadata>()));
+    hash_info->prefixes.prefixes.emplace_back("idxtesthash");
 
     map.emplace("hashtest", std::move(hash_info));
 
-    redis::IndexUpdater hash_updater{&map.at("hashtest")};
+    redis::IndexUpdater hash_updater{map.at("hashtest").get()};
 
     SearchMetadata json_field_meta(false);
     json_field_meta.on_data_type = SearchOnDataType::JSON;
 
-    kqir::IndexInfo json_info("jsontest", json_field_meta);
-    json_info.Add(kqir::FieldInfo("$.x", std::make_unique<redis::SearchTagFieldMetadata>()));
-    json_info.Add(kqir::FieldInfo("$.y", std::make_unique<redis::SearchNumericFieldMetadata>()));
-    json_info.prefixes.prefixes.emplace_back("idxtestjson");
+    auto json_info = std::make_unique<kqir::IndexInfo>("jsontest", json_field_meta);
+    json_info->Add(kqir::FieldInfo("$.x", std::make_unique<redis::SearchTagFieldMetadata>()));
+    json_info->Add(kqir::FieldInfo("$.y", std::make_unique<redis::SearchNumericFieldMetadata>()));
+    json_info->prefixes.prefixes.emplace_back("idxtestjson");
 
     map.emplace("jsontest", std::move(json_info));
 
-    redis::IndexUpdater json_updater{&map.at("jsontest")};
+    redis::IndexUpdater json_updater{map.at("jsontest").get()};
 
     indexer.Add(std::move(hash_updater));
     indexer.Add(std::move(json_updater));

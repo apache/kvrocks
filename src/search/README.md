@@ -14,7 +14,7 @@ Here, *KQIR* refers to both
   - SQL Parser: A parser that accepts an extended subset of MySQL syntax
   - Redis Query Parser: A parser that accepts [Redis query syntax](https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/query_syntax/) (only DIALECT 2 or greater is planned to be supported)
 - KQIR: a multiple level query intermediate representation, currently including two levels (syntactical IR and planning IR)
-  - Syntactical IR: A high level IR that syntactically represents the query langauge
+  - Syntactical IR: A high level IR that syntactically represents the query language
   - Planning IR: A low level IR that represents plan operators for query execution
 - KQIR passes: analysis and transformation procedures on KQIR
   - Semantic Checker: to check if there is any semantic errors in the IR

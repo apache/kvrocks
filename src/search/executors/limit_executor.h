@@ -20,16 +20,38 @@
 
 #pragma once
 
-#include <chrono>
+#include "search/plan_executor.h"
 
-namespace util {
+namespace kqir {
 
-/// Get the system timestamp in seconds, milliseconds or microseconds.
-template <typename Duration = std::chrono::seconds>
-auto GetTimeStamp() {
-  return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
-inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
+struct LimitExecutor : ExecutorNode {
+  Limit *limit;
+  size_t step = 0;
 
-}  // namespace util
+  LimitExecutor(ExecutorContext *ctx, Limit *limit) : ExecutorNode(ctx), limit(limit) {}
+
+  StatusOr<Result> Next() override {
+    auto offset = limit->limit->offset;
+    auto count = limit->limit->count;
+
+    if (step == count) {
+      return end;
+    }
+
+    if (step == 0) {
+      while (offset--) {
+        auto res = GET_OR_RET(ctx->Get(limit->op)->Next());
+
+        if (std::holds_alternative<End>(res)) {
+          return end;
+        }
+      }
+    }
+
+    auto res = GET_OR_RET(ctx->Get(limit->op)->Next());
+    step++;
+    return res;
+  }
+};
+
+}  // namespace kqir

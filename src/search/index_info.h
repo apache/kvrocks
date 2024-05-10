@@ -54,6 +54,7 @@ struct IndexInfo {
   SearchMetadata metadata;
   FieldMap fields;
   redis::SearchPrefixesMetadata prefixes;
+  std::string ns;
 
   IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
 
@@ -64,6 +65,6 @@ struct IndexInfo {
   }
 };
 
-using IndexMap = std::map<std::string, IndexInfo>;
+using IndexMap = std::map<std::string, std::unique_ptr<IndexInfo>>;
 
 }  // namespace kqir

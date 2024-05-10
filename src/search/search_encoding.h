@@ -45,6 +45,16 @@ inline std::string ConstructSearchPrefixesSubkey() { return {(char)SearchSubkeyT
 struct SearchPrefixesMetadata {
   std::vector<std::string> prefixes;
 
+  static inline const std::string all[] = {""};
+
+  auto begin() const {  // NOLINT
+    return prefixes.empty() ? std::begin(all) : prefixes.data();
+  }
+
+  auto end() const {  // NOLINT
+    return prefixes.empty() ? std::end(all) : prefixes.data() + prefixes.size();
+  }
+
   void Encode(std::string *dst) const {
     for (const auto &prefix : prefixes) {
       PutFixed32(dst, prefix.size());
@@ -131,22 +141,17 @@ struct SearchNumericFieldMetadata : SearchSortableFieldMetadata {};
 
 inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::TAG_FIELD};
-  PutFixed32(&res, field_name.size());
-  res.append(field_name);
-  PutFixed32(&res, tag.size());
-  res.append(tag);
-  PutFixed32(&res, key.size());
-  res.append(key);
+  PutSizedString(&res, field_name);
+  PutSizedString(&res, tag);
+  PutSizedString(&res, key);
   return res;
 }
 
 inline std::string ConstructNumericFieldSubkey(std::string_view field_name, double number, std::string_view key) {
   std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD};
-  PutFixed32(&res, field_name.size());
-  res.append(field_name);
+  PutSizedString(&res, field_name);
   PutDouble(&res, number);
-  PutFixed32(&res, key.size());
-  res.append(key);
+  PutSizedString(&res, key);
   return res;
 }
 

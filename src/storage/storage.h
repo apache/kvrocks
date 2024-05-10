@@ -215,8 +215,10 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<time_t> create_time = 0;
-      std::atomic<time_t> access_time = 0;
+      // System clock time when the checkpoint was created.
+      std::atomic<int64_t> create_time_secs = 0;
+      // System clock time when the checkpoint was last accessed.
+      std::atomic<int64_t> access_time_secs = 0;
       uint64_t latest_seq = 0;
     };
 
@@ -238,9 +240,9 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  time_t GetCheckpointCreateTime() const { return checkpoint_info_.create_time; }
-  void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime() const { return checkpoint_info_.access_time; }
+  int64_t GetCheckpointCreateTimeSecs() const { return checkpoint_info_.create_time_secs; }
+  void SetCheckpointAccessTimeSecs(int64_t t) { checkpoint_info_.access_time_secs = t; }
+  int64_t GetCheckpointAccessTimeSecs() const { return checkpoint_info_.access_time_secs; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
@@ -251,7 +253,8 @@ class Storage {
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
-  time_t backup_creating_time_;
+  // The system clock time when the backup was created.
+  int64_t backup_creating_time_secs_;
   std::unique_ptr<rocksdb::BackupEngine> backup_ = nullptr;
   rocksdb::Env *env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;

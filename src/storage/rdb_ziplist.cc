@@ -20,11 +20,9 @@
 
 #include "rdb_ziplist.h"
 
-#include "vendor/endianconv.h"
+#include <cassert>
 
-constexpr const int zlHeaderSize = 10;
-constexpr const uint8_t ZipListBigLen = 0xFE;
-constexpr const uint8_t zlEnd = 0xFF;
+#include "vendor/endianconv.h"
 
 constexpr const uint8_t ZIP_STR_MASK = 0xC0;
 constexpr const uint8_t ZIP_STR_06B = (0 << 6);
@@ -52,7 +50,7 @@ StatusOr<std::string> ZipList::Next() {
   std::string value;
   if ((encoding) < ZIP_STR_MASK) {
     // For integer type, needs to convert to uint8_t* to avoid signed extension
-    auto data = reinterpret_cast<const uint8_t*>(input_.data());
+    auto data = reinterpret_cast<const uint8_t *>(input_.data());
     if ((encoding) == ZIP_STR_06B) {
       len_bytes = 1;
       len = data[pos_] & 0x3F;
@@ -91,7 +89,7 @@ StatusOr<std::string> ZipList::Next() {
     } else if ((encoding) == ZIP_INT_24B) {
       GET_OR_RET(peekOK(3));
       int32_t i32 = 0;
-      memcpy(reinterpret_cast<uint8_t*>(&i32) + 1, input_.data() + pos_, sizeof(int32_t) - 1);
+      memcpy(reinterpret_cast<uint8_t *>(&i32) + 1, input_.data() + pos_, sizeof(int32_t) - 1);
       memrev32ifbe(&i32);
       i32 >>= 8;
       setPreEntryLen(4);  // 3byte for encoding and 1byte for the prev entry length
@@ -126,7 +124,7 @@ StatusOr<std::string> ZipList::Next() {
 StatusOr<std::vector<std::string>> ZipList::Entries() {
   GET_OR_RET(peekOK(zlHeaderSize));
   // ignore 8 bytes of total bytes and tail of zip list
-  auto zl_len = intrev16ifbe(*reinterpret_cast<const uint16_t*>(input_.data() + 8));
+  auto zl_len = intrev16ifbe(*reinterpret_cast<const uint16_t *>(input_.data() + 8));
   pos_ += zlHeaderSize;
 
   std::vector<std::string> entries;
@@ -152,3 +150,72 @@ Status ZipList::peekOK(size_t n) {
 }
 
 uint32_t ZipList::getEncodedLengthSize(uint32_t len) { return len < ZipListBigLen ? 1 : 5; }
+
+uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, size_t zl_size, unsigned int len) {
+  uint32_t u32 = 0;
+  if (p != nullptr) {
+    p[0] = ZipListBigLen;
+    u32 = len;
+    assert(zl_size >= 1 + sizeof(uint32_t) + zlHeaderSize);
+    memcpy(p + 1, &u32, sizeof(u32));
+    memrev32ifbe(p + 1);
+  }
+  return 1 + sizeof(uint32_t);
+}
+
+uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, size_t zl_size, unsigned int len) {
+  if (p == nullptr) {
+    return (len < ZipListBigLen) ? 1 : sizeof(uint32_t) + 1;
+  }
+  if (len < ZipListBigLen) {
+    p[0] = len;
+    return 1;
+  }
+  return ZipStorePrevEntryLengthLarge(p, zl_size, len);
+}
+
+uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsigned int rawlen) {
+  unsigned char len = 1, buf[5];
+
+  /* Although encoding is given it may not be set for strings,
+   * so we determine it here using the raw length. */
+  if (rawlen <= 0x3f) {
+    if (!p) return len;
+    buf[0] = ZIP_STR_06B | rawlen;
+  } else if (rawlen <= 0x3fff) {
+    len += 1;
+    if (!p) return len;
+    buf[0] = ZIP_STR_14B | ((rawlen >> 8) & 0x3f);
+    buf[1] = rawlen & 0xff;
+  } else {
+    len += 4;
+    if (!p) return len;
+    buf[0] = ZIP_STR_32B;
+    buf[1] = (rawlen >> 24) & 0xff;
+    buf[2] = (rawlen >> 16) & 0xff;
+    buf[3] = (rawlen >> 8) & 0xff;
+    buf[4] = rawlen & 0xff;
+  }
+  assert(zl_size >= zlHeaderSize + len);
+  /* Store this length at p. */
+  memcpy(p, buf, len);
+  return len;
+}
+
+void ZipList::SetZipListBytes(unsigned char *zl, size_t zl_size, uint32_t value) {
+  assert(zl_size >= sizeof(uint32_t));
+  memcpy(zl, &value, sizeof(uint32_t));
+}
+void ZipList::SetZipListTailOffset(unsigned char *zl, size_t zl_size, uint32_t value) {
+  assert(zl_size >= sizeof(uint32_t) * 2);
+  memcpy(zl + sizeof(uint32_t), &value, sizeof(uint32_t));
+}
+void ZipList::SetZipListLength(unsigned char *zl, size_t zl_size, uint16_t value) {
+  assert(zl_size >= sizeof(uint32_t) * 2 + sizeof(uint16_t));
+  memcpy(zl + sizeof(uint32_t) * 2, &value, sizeof(uint16_t));
+}
+
+unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl, size_t zl_size) {
+  assert(zl_size >= zlHeaderSize);
+  return ((zl) + zlHeaderSize);
+}

@@ -20,16 +20,35 @@
 
 #pragma once
 
-#include <chrono>
+#include <variant>
 
-namespace util {
+#include "search/plan_executor.h"
 
-/// Get the system timestamp in seconds, milliseconds or microseconds.
-template <typename Duration = std::chrono::seconds>
-auto GetTimeStamp() {
-  return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
-inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
+namespace kqir {
 
-}  // namespace util
+struct MergeExecutor : ExecutorNode {
+  Merge *merge;
+  decltype(merge->ops)::iterator iter;
+
+  MergeExecutor(ExecutorContext *ctx, Merge *merge) : ExecutorNode(ctx), merge(merge), iter(merge->ops.begin()) {}
+
+  StatusOr<Result> Next() override {
+    if (iter == merge->ops.end()) {
+      return end;
+    }
+
+    auto v = GET_OR_RET(ctx->Get(*iter)->Next());
+    while (std::holds_alternative<End>(v)) {
+      iter++;
+      if (iter == merge->ops.end()) {
+        return end;
+      }
+
+      v = GET_OR_RET(ctx->Get(*iter)->Next());
+    }
+
+    return v;
+  }
+};
+
+}  // namespace kqir

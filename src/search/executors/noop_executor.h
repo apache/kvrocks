@@ -20,16 +20,16 @@
 
 #pragma once
 
-#include <chrono>
+#include "search/plan_executor.h"
 
-namespace util {
+namespace kqir {
 
-/// Get the system timestamp in seconds, milliseconds or microseconds.
-template <typename Duration = std::chrono::seconds>
-auto GetTimeStamp() {
-  return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
-inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
+struct NoopExecutor : ExecutorNode {
+  Noop *noop;
 
-}  // namespace util
+  NoopExecutor(ExecutorContext *ctx, Noop *noop) : ExecutorNode(ctx), noop(noop) {}
+
+  StatusOr<Result> Next() override { return end; }
+};
+
+}  // namespace kqir

@@ -67,7 +67,7 @@ enum class ColumnFamilyID : uint32_t {
   Search,
 };
 
-constexpr uint32_t kMaxColumnFamilyID = 6;
+constexpr uint32_t kMaxColumnFamilyID = static_cast<uint32_t>(ColumnFamilyID::Search);
 
 namespace engine {
 
@@ -183,13 +183,32 @@ class ColumnFamilyConfigs {
   }
 
   /// ListAllColumnFamily returns all column families in kvrocks.
-  static std::vector<ColumnFamilyConfig> ListAllColumnFamily() {
+  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamily() {
     // Caution: don't change the order of column family, or the handle will be mismatched
-    std::vector<ColumnFamilyConfig> all_cfs = {
+    static std::vector<ColumnFamilyConfig> all_cfs = {
         PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
         PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
     };
     return all_cfs;
+  }
+
+  static ColumnFamilyConfig GetColumnFamily(ColumnFamilyID id) {
+    switch (id) {
+      case ColumnFamilyID::PrimarySubkey:
+        return PrimarySubkeyColumnFamily();
+      case ColumnFamilyID::Metadata:
+        return MetadataColumnFamily();
+      case ColumnFamilyID::SecondarySubkey:
+        return SecondarySubkeyColumnFamily();
+      case ColumnFamilyID::PubSub:
+        return PubSubColumnFamily();
+      case ColumnFamilyID::Propagate:
+        return PropagateColumnFamily();
+      case ColumnFamilyID::Stream:
+        return StreamColumnFamily();
+      case ColumnFamilyID::Search:
+        return SearchColumnFamily();
+    }
   }
 };
 
@@ -251,8 +270,7 @@ class Storage {
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
-  /// Get kvrocks' ColumnFamily in by name
-  /// If we cannot recognize the name, we will return the default ColumnFamily
+  /// Get the column family handle by the column family id.
   rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID id);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }

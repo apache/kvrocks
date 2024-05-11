@@ -57,6 +57,18 @@ enum DBOpenMode {
   kDBOpenModeAsSecondaryInstance,
 };
 
+enum class ColumnFamilyID : uint32_t {
+  PrimarySubkey = 0,
+  Metadata,
+  SecondarySubkey,
+  PubSub,
+  Propagate,
+  Stream,
+  Search,
+};
+
+constexpr uint32_t kMaxColumnFamilyID = 6;
+
 namespace engine {
 
 constexpr const char *kPropagateScriptCommand = "script";
@@ -104,16 +116,6 @@ struct DBStats {
   alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> keyspace_misses = 0;
 };
 
-enum class ColumnFamilyID {
-  kColumnFamilyIDDefault = 0,
-  kColumnFamilyIDMetadata,
-  kColumnFamilyIDZSetScore,
-  kColumnFamilyIDPubSub,
-  kColumnFamilyIDPropagate,
-  kColumnFamilyIDStream,
-  kColumnFamilyIDSearch,
-};
-
 class ColumnFamilyConfig {
  public:
   ColumnFamilyConfig(ColumnFamilyID id, std::string_view name, bool is_minor)
@@ -128,9 +130,9 @@ class ColumnFamilyConfig {
   bool is_minor_;
 };
 
-constexpr const std::string_view kSubkeyColumnFamilyName = "default";
+constexpr const std::string_view kPrimarySubkeyColumnFamilyName = "default";
 constexpr const std::string_view kMetadataColumnFamilyName = "metadata";
-constexpr const std::string_view kZSetScoreColumnFamilyName = "zset_score";
+constexpr const std::string_view kSecondarySubkeyColumnFamilyName = "zset_score";
 constexpr const std::string_view kPubSubColumnFamilyName = "pubsub";
 constexpr const std::string_view kPropagateColumnFamilyName = "propagate";
 constexpr const std::string_view kStreamColumnFamilyName = "stream";
@@ -140,50 +142,51 @@ class ColumnFamilyConfigs {
  public:
   /// DefaultSubkeyColumnFamily is the default column family in rocksdb.
   /// In kvrocks, we use it to store the data if metadata is not enough.
-  static const ColumnFamilyConfig &DefaultSubkeyColumnFamily() {
-    static ColumnFamilyConfig subkey_cf(kColumnFamilyIDDefault, kSubkeyColumnFamilyName, /*is_minor=*/false);
+  static ColumnFamilyConfig PrimarySubkeyColumnFamily() {
+    ColumnFamilyConfig subkey_cf(ColumnFamilyID::PrimarySubkey, kPrimarySubkeyColumnFamilyName, /*is_minor=*/false);
     return subkey_cf;
   }
 
   /// MetadataColumnFamily stores the metadata of data-structures.
-  static const ColumnFamilyConfig &MetadataColumnFamily() {
-    static ColumnFamilyConfig metadata_cf(kColumnFamilyIDMetadata, kMetadataColumnFamilyName, /*is_minor=*/false);
+  static ColumnFamilyConfig MetadataColumnFamily() {
+    ColumnFamilyConfig metadata_cf(ColumnFamilyID::Metadata, kMetadataColumnFamilyName, /*is_minor=*/false);
     return metadata_cf;
   }
 
-  /// ZSetScoreColumnFamily stores the score of zset.
+  /// SecondarySubkeyColumnFamily stores the score of zset or other secondary subkey.
   /// See https://kvrocks.apache.org/community/data-structure-on-rocksdb#zset for more details.
-  static const ColumnFamilyConfig &ZSetScoreColumnFamily() {
-    static ColumnFamilyConfig zset_score_cf(kColumnFamilyIDZSetScore, kZSetScoreColumnFamilyName, /*is_minor=*/true);
+  static ColumnFamilyConfig SecondarySubkeyColumnFamily() {
+    ColumnFamilyConfig zset_score_cf(ColumnFamilyID::SecondarySubkey, kSecondarySubkeyColumnFamilyName,
+                                     /*is_minor=*/true);
     return zset_score_cf;
   }
 
   /// PubSubColumnFamily stores the pubsub data.
-  static const ColumnFamilyConfig &PubSubColumnFamily() {
-    static ColumnFamilyConfig pub_sub_cf(kColumnFamilyIDPubSub, kPubSubColumnFamilyName, /*is_minor=*/true);
+  static ColumnFamilyConfig PubSubColumnFamily() {
+    ColumnFamilyConfig pub_sub_cf(ColumnFamilyID::PubSub, kPubSubColumnFamilyName, /*is_minor=*/true);
     return pub_sub_cf;
   }
 
-  static const ColumnFamilyConfig &PropagateColumnFamily() {
-    static ColumnFamilyConfig propagate_cf(kColumnFamilyIDPropagate, kPropagateColumnFamilyName, /*is_minor=*/true);
+  static ColumnFamilyConfig PropagateColumnFamily() {
+    ColumnFamilyConfig propagate_cf(ColumnFamilyID::Propagate, kPropagateColumnFamilyName, /*is_minor=*/true);
     return propagate_cf;
   }
 
-  static const ColumnFamilyConfig &StreamColumnFamily() {
-    static ColumnFamilyConfig stream_cf(kColumnFamilyIDStream, kStreamColumnFamilyName, /*is_minor=*/true);
+  static ColumnFamilyConfig StreamColumnFamily() {
+    ColumnFamilyConfig stream_cf(ColumnFamilyID::Stream, kStreamColumnFamilyName, /*is_minor=*/true);
     return stream_cf;
   }
 
-  static const ColumnFamilyConfig &SearchColumnFamily() {
-    static ColumnFamilyConfig search_cf(kColumnFamilyIDSearch, kSearchColumnFamilyName, /*is_minor=*/true);
+  static ColumnFamilyConfig SearchColumnFamily() {
+    ColumnFamilyConfig search_cf(ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true);
     return search_cf;
   }
 
   /// ListAllColumnFamily returns all column families in kvrocks.
-  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamily() {
+  static std::vector<ColumnFamilyConfig> ListAllColumnFamily() {
     // Caution: don't change the order of column family, or the handle will be mismatched
-    static std::vector<ColumnFamilyConfig> all_cfs = {
-        DefaultSubkeyColumnFamily(), MetadataColumnFamily(), ZSetScoreColumnFamily(), PubSubColumnFamily(),
+    std::vector<ColumnFamilyConfig> all_cfs = {
+        PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
         PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
     };
     return all_cfs;

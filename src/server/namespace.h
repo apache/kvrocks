@@ -27,7 +27,7 @@ constexpr const char *kNamespaceDBKey = "__namespace_keys__";
 class Namespace {
  public:
   explicit Namespace(engine::Storage *storage) : storage_(storage) {
-    cf_ = storage_->GetCFHandle(engine::kColumnFamilyIDPropagate);
+    cf_ = storage_->GetCFHandle(ColumnFamilyID::Propagate);
   }
 
   ~Namespace() = default;

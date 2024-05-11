@@ -29,7 +29,7 @@ DBIterator::DBIterator(Storage *storage, rocksdb::ReadOptions read_options, int 
     : storage_(storage),
       read_options_(std::move(read_options)),
       slot_(slot),
-      metadata_cf_handle_(storage_->GetCFHandle(engine::kColumnFamilyIDMetadata)) {
+      metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
   metadata_iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_));
 }
 
@@ -117,9 +117,9 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
 SubKeyIterator::SubKeyIterator(Storage *storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix)
     : storage_(storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
   if (type_ == kRedisStream) {
-    cf_handle_ = storage_->GetCFHandle(kColumnFamilyIDStream);
+    cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::Stream);
   } else {
-    cf_handle_ = storage_->GetCFHandle(kColumnFamilyIDDefault);
+    cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey);
   }
   iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_));
 }

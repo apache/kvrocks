@@ -60,17 +60,17 @@ TEST(Compact, Filter) {
   read_options.snapshot = db->GetSnapshot();
   read_options.fill_cache = false;
 
-  auto new_iterator = [db, read_options, &storage](engine::ColumnFamilyID column_family_id) {
+  auto new_iterator = [db, read_options, &storage](ColumnFamilyID column_family_id) {
     return std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_options, storage->GetCFHandle(column_family_id)));
   };
 
-  auto iter = new_iterator(engine::kColumnFamilyIDMetadata);
+  auto iter = new_iterator(ColumnFamilyID::Metadata);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     auto [user_ns, user_key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(user_key.ToString(), live_hash_key);
   }
 
-  iter = new_iterator(engine::kColumnFamilyIDDefault);
+  iter = new_iterator(ColumnFamilyID::PrimarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     InternalKey ikey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
@@ -89,13 +89,13 @@ TEST(Compact, Filter) {
   status = storage->Compact(nullptr, nullptr, nullptr);
   EXPECT_TRUE(status.ok());
 
-  iter = new_iterator(engine::kColumnFamilyIDDefault);
+  iter = new_iterator(ColumnFamilyID::PrimarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     InternalKey ikey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
 
-  iter = new_iterator(engine::kColumnFamilyIDZSetScore);
+  iter = new_iterator(ColumnFamilyID::SecondarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     EXPECT_TRUE(false);  // never reach here
   }

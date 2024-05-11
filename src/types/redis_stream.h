@@ -36,7 +36,7 @@ namespace redis {
 class Stream : public SubKeyScanner {
  public:
   explicit Stream(engine::Storage *storage, const std::string &ns)
-      : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle(engine::kColumnFamilyIDStream)) {}
+      : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Stream)) {}
   rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
                       StreamEntryID *id);
   rocksdb::Status CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,

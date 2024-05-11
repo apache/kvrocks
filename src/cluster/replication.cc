@@ -1011,15 +1011,15 @@ bool ReplicationThread::isUnknownOption(const char *err) { return std::string(er
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {
   type_ = kBatchTypeNone;
-  if (column_family_id == engine::kColumnFamilyIDPubSub) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PubSub)) {
     type_ = kBatchTypePublish;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
-  } else if (column_family_id == engine::kColumnFamilyIDPropagate) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Propagate)) {
     type_ = kBatchTypePropagate;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
-  } else if (column_family_id == engine::kColumnFamilyIDStream) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
     type_ = kBatchTypeStream;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();

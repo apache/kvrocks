@@ -90,7 +90,7 @@ namespace redis {
 class ZSet : public SubKeyScanner {
  public:
   explicit ZSet(engine::Storage *storage, const std::string &ns)
-      : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle(engine::kColumnFamilyIDZSetScore)) {}
+      : SubKeyScanner(storage, ns), score_cf_handle_(storage->GetCFHandle(ColumnFamilyID::SecondarySubkey)) {}
 
   using Members = std::vector<std::string>;
   using MemberScores = std::vector<MemberScore>;

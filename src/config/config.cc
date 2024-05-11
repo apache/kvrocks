@@ -41,6 +41,7 @@
 #include "server/server.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
+#include "storage/storage.h"
 
 constexpr const char *kDefaultDir = "/tmp/kvrocks";
 constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
@@ -189,6 +190,7 @@ Config::Config() {
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
+      {"minor-columns-write-buffer-size", false, new IntField(&minor_columns_write_buffer_size, 64, 0, 4096)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -574,6 +576,19 @@ void Config::initFieldCallback() {
            [](Server *srv, const std::string &k, const std::string &v) -> Status {
              if (!srv) return Status::OK();
              return srv->GetNamespace()->LoadAndRewrite();
+           }},
+          {"minor-columns-write-buffer-size",
+           [this](Server *srv, const std::string &k, const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             const std::vector<ColumnFamilyID> column_families = {kColumnFamilyIDZSetScore, kColumnFamilyIDPubSub,
+                                                                  kColumnFamilyIDPropagate, kColumnFamilyIDStream,
+                                                                  kColumnFamilyIDSearch};
+             for (const auto &cf : column_families) {
+               auto s = srv->storage->SetOptionForColumnFamily(cf, "write_buffer_size",
+                                                               std::to_string(minor_columns_write_buffer_size * MiB));
+               if (!s.IsOK()) return s;
+             }
+             return Status::OK();
            }},
 
           {"rocksdb.target_file_size_base",

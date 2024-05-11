@@ -48,6 +48,14 @@ TEST(IntervalSet, Simple) {
             (IntervalSet::DataType{{IntervalSet::minf, 1}, {4, IntervalSet::inf}}));
   ASSERT_EQ((IntervalSet(NumericCompareExpr::GET, 4) | IntervalSet(NumericCompareExpr::NE, 1)).intervals,
             (IntervalSet::DataType{{IntervalSet::minf, 1}, {IntervalSet::NextNum(1), IntervalSet::inf}}));
+
+  ASSERT_TRUE((IntervalSet(Interval(1, 2)) & IntervalSet(Interval(3, 4))).IsEmpty());
+  ASSERT_EQ((IntervalSet(Interval(1, 2)) & IntervalSet(Interval(2, 4))).intervals, (IntervalSet::DataType{{2, 2}}));
+  ASSERT_EQ((IntervalSet(Interval(1, 3)) & IntervalSet(Interval(2, 4))).intervals, (IntervalSet::DataType{{2, 3}}));
+  ASSERT_EQ((IntervalSet(Interval(3, 8)) & (IntervalSet(Interval(1, 4)) | IntervalSet(Interval(5, 7)))).intervals,
+            (IntervalSet::DataType{{3, 4}, {5, 7}}));
+  ASSERT_EQ((IntervalSet(Interval(3, 8)) & (IntervalSet(Interval(1, 4)) | IntervalSet(Interval(9, 11)))).intervals,
+            (IntervalSet::DataType{{3, 4}}));
   ASSERT_EQ((IntervalSet(NumericCompareExpr::GET, 1) & IntervalSet(NumericCompareExpr::LT, 4)).intervals,
             (IntervalSet::DataType{{1, 4}}));
   ASSERT_EQ((IntervalSet(NumericCompareExpr::GET, 1) & IntervalSet(NumericCompareExpr::NE, 4)).intervals,
@@ -60,9 +68,21 @@ TEST(IntervalSet, Simple) {
             IntervalSet({2, 5}) | IntervalSet({7, 8}));
   ASSERT_EQ(~IntervalSet({2, 8}), IntervalSet({IntervalSet::minf, 2}) | IntervalSet({8, IntervalSet::inf}));
 
-  for (auto i = 0; i < 1000; ++i) {
-    auto gen = [] { return static_cast<double>(rand()) / 100; };
-    auto geni = [&gen] { return IntervalSet({gen(), gen()}); };
+  for (auto i = 0; i < 2000; ++i) {
+    auto gen = [] { return static_cast<double>(std::rand()) / 100; };
+    auto geni = [&gen] {
+      auto r = std::rand() % 50;
+      if (r == 0) {
+        return IntervalSet(NumericCompareExpr::GET, gen());
+      } else if (r == 1) {
+        return IntervalSet(NumericCompareExpr::LT, gen());
+      } else if (r == 2) {
+        return IntervalSet(NumericCompareExpr::NE, gen());
+      } else {
+        return IntervalSet({gen(), gen()});
+      }
+    };
+
     auto l = geni(), r = geni();
     for (int j = 0; j < i % 10; ++j) {
       l = l | geni();

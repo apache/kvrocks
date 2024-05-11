@@ -20,8 +20,6 @@
 
 #include "redis_slot.h"
 
-#include <stdlib.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <string>

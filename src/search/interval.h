@@ -128,11 +128,32 @@ struct IntervalSet {
   }
 
   friend IntervalSet operator&(const IntervalSet &l, const IntervalSet &r) {
-    if (l.IsEmpty() || r.IsEmpty()) {
-      return IntervalSet();
+    IntervalSet result;
+
+    if (l.intervals.empty() || r.intervals.empty()) {
+      return result;
     }
 
-    return ~(~l | ~r);
+    auto it_l = l.intervals.begin();
+    auto it_r = r.intervals.begin();
+
+    while (it_l != l.intervals.end() && it_r != r.intervals.end()) {
+      // Find overlap between current intervals
+      double start = std::max(it_l->first, it_r->first);
+      double end = std::min(it_l->second, it_r->second);
+
+      if (start <= end) {
+        result.intervals.emplace_back(start, end);
+      }
+
+      if (it_l->second < it_r->second) {
+        ++it_l;
+      } else {
+        ++it_r;
+      }
+    }
+
+    return result;
   }
 
   friend IntervalSet operator|(const IntervalSet &l, const IntervalSet &r) {

@@ -43,9 +43,10 @@
 
 namespace redis {
 
-Database::Database(engine::Storage *storage, std::string ns) : storage_(storage), namespace_(std::move(ns)) {
-  metadata_cf_handle_ = storage->GetCFHandle(ColumnFamilyID::Metadata);
-}
+Database::Database(engine::Storage *storage, std::string ns)
+    : storage_(storage),
+      metadata_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Metadata)),
+      namespace_(std::move(ns)) {}
 
 // Some data types may support reading multiple types of metadata.
 // For example, bitmap supports reading string metadata and bitmap metadata.

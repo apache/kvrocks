@@ -424,6 +424,120 @@ class CommandCopy : public Commander {
   bool replace_ = false;
 };
 
+template <bool ReadOnly>
+class CommandSort : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("BY")) {
+        if (!sort_argument_.sortby.empty()) return {Status::InvalidArgument, "don't use multiple BY parameters"};
+        sort_argument_.sortby = GET_OR_RET(parser.TakeStr());
+
+        if (sort_argument_.sortby.find('*') == std::string::npos) {
+          sort_argument_.dontsort = true;
+        } else {
+          /* TODO:
+           * If BY is specified with a real pattern, we can't accept it in cluster mode,
+           * unless we can make sure the keys formed by the pattern are in the same slot
+           * as the key to sort.
+           * If BY is specified with a real pattern, we can't accept
+           * it if no full ACL key access is applied for this command. */
+        }
+      } else if (parser.EatEqICase("LIMIT")) {
+        sort_argument_.offset = GET_OR_RET(parser.template TakeInt<int>());
+        sort_argument_.count = GET_OR_RET(parser.template TakeInt<int>());
+      } else if (parser.EatEqICase("GET")) {
+        /* TODO:
+         * If GET is specified with a real pattern, we can't accept it in cluster mode,
+         * unless we can make sure the keys formed by the pattern are in the same slot
+         * as the key to sort. */
+        sort_argument_.getpatterns.push_back(GET_OR_RET(parser.TakeStr()));
+      } else if (parser.EatEqICase("ASC")) {
+        sort_argument_.desc = false;
+      } else if (parser.EatEqICase("DESC")) {
+        sort_argument_.desc = true;
+      } else if (parser.EatEqICase("ALPHA")) {
+        sort_argument_.alpha = true;
+      } else if (parser.EatEqICase("STORE")) {
+        if constexpr (ReadOnly) {
+          return {Status::RedisParseErr, "SORT_RO is read-only and does not support the STORE parameter"};
+        }
+        sort_argument_.storekey = GET_OR_RET(parser.TakeStr());
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    RedisType type = kRedisNone;
+    if (auto s = redis.Type(args_[1], &type); !s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
+      *output = Error("WRONGTYPE Operation against a key holding the wrong kind of value");
+      return Status::OK();
+    }
+
+    /* When sorting a set with no sort specified, we must sort the output
+     * so the result is consistent across scripting and replication.
+     *
+     * The other types (list, sorted set) will retain their native order
+     * even if no sort order is requested, so they remain stable across
+     * scripting and replication.
+     *
+     * TODO: support CLIENT_SCRIPT flag, (!storekey_.empty() || c->flags & CLIENT_SCRIPT)) */
+    if (sort_argument_.dontsort && type == RedisType::kRedisSet && (!sort_argument_.storekey.empty())) {
+      /* Force ALPHA sorting */
+      sort_argument_.dontsort = false;
+      sort_argument_.alpha = true;
+      sort_argument_.sortby = "";
+    }
+
+    std::vector<std::optional<std::string>> sorted_elems;
+    Database::SortResult res = Database::SortResult::DONE;
+
+    if (auto s = redis.Sort(type, args_[1], sort_argument_, &sorted_elems, &res); !s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    switch (res) {
+      case Database::SortResult::UNKNOWN_TYPE:
+        *output = redis::Error("Unknown Type");
+        break;
+      case Database::SortResult::DOUBLE_CONVERT_ERROR:
+        *output = redis::Error("One or more scores can't be converted into double");
+        break;
+      case Database::SortResult::LIMIT_EXCEEDED:
+        *output = redis::Error("The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
+                               std::to_string(SORT_LENGTH_LIMIT));
+        break;
+      case Database::SortResult::DONE:
+        if (sort_argument_.storekey.empty()) {
+          std::vector<std::string> output_vec;
+          output_vec.reserve(sorted_elems.size());
+          for (const auto &elem : sorted_elems) {
+            output_vec.emplace_back(elem.has_value() ? redis::BulkString(elem.value()) : conn->NilString());
+          }
+          *output = redis::Array(output_vec);
+        } else {
+          *output = Integer(sorted_elems.size());
+        }
+        break;
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  SortArgument sort_argument_;
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
@@ -442,6 +556,8 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1), )
+                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only", 1, 1, 1))
 
 }  // namespace redis

@@ -239,8 +239,8 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
     std::vector<std::string> cf_names_except_default;
     const auto &all_column_family = ColumnFamilyConfigs::ListAllColumnFamily();
     for (const auto &cf : all_column_family) {
-      if (cf.name() != rocksdb::kDefaultColumnFamilyName) {
-        cf_names_except_default.emplace_back(cf.name());
+      if (cf.Name() != rocksdb::kDefaultColumnFamilyName) {
+        cf_names_except_default.emplace_back(cf.Name());
       }
     }
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;

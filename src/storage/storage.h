@@ -120,9 +120,9 @@ class ColumnFamilyConfig {
  public:
   ColumnFamilyConfig(ColumnFamilyID id, std::string_view name, bool is_minor)
       : id_(id), name_(name), is_minor_(is_minor) {}
-  ColumnFamilyID id() const { return id_; }
-  std::string_view name() const { return name_; }
-  bool is_minor() const { return is_minor_; }
+  ColumnFamilyID Id() const { return id_; }
+  std::string_view Name() const { return name_; }
+  bool IsMinor() const { return is_minor_; }
 
  private:
   ColumnFamilyID id_;

@@ -31,17 +31,17 @@ void CompactionChecker::CompactPropagateAndPubSubFiles() {
   compact_opts.change_level = true;
   for (const auto &cf :
        {engine::ColumnFamilyConfigs::PubSubColumnFamily(), engine::ColumnFamilyConfigs::PubSubColumnFamily()}) {
-    LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf.name();
-    auto cf_handle = storage_->GetCFHandle(cf.id());
+    LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf.Name();
+    auto cf_handle = storage_->GetCFHandle(cf.Id());
     auto s = storage_->GetDB()->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
-    LOG(INFO) << "[compaction checker] Compact the column family: " << cf.name()
+    LOG(INFO) << "[compaction checker] Compact the column family: " << cf.Name()
               << " finished, result: " << s.ToString();
   }
 }
 
 void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfig &column_family_config) {
   rocksdb::TablePropertiesCollection props;
-  rocksdb::ColumnFamilyHandle *cf = storage_->GetCFHandle(column_family_config.id());
+  rocksdb::ColumnFamilyHandle *cf = storage_->GetCFHandle(column_family_config.Id());
   auto s = storage_->GetDB()->GetPropertiesOfAllTables(cf, &props);
   if (!s.ok()) {
     LOG(WARNING) << "[compaction checker] Failed to get table properties, " << s.ToString();

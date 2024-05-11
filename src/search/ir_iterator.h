@@ -24,6 +24,7 @@
 #include <memory>
 #include <variant>
 #include <vector>
+#include <array>
 
 #include "type_util.h"
 

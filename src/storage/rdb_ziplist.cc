@@ -196,7 +196,7 @@ uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsign
     buf[3] = (rawlen >> 8) & 0xff;
     buf[4] = rawlen & 0xff;
   }
-  assert(zl_size >= zlHeaderSize + len);
+  assert(zl_size >= static_cast<size_t>(zlHeaderSize) + len);
   /* Store this length at p. */
   memcpy(p, buf, len);
   return len;

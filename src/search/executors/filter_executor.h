@@ -100,6 +100,9 @@ struct QueryExprEvaluator {
         return l > r;
       case NumericCompareExpr::GET:
         return l >= r;
+      default:
+        CHECK(false) << "unreachable";
+        __builtin_unreachable();
     }
   }
 };

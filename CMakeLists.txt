@@ -111,14 +111,21 @@ if(ENABLE_UBSAN)
         set(CMAKE_CXX_FLAGS
                 "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero -fno-sanitize-recover=all"
         )
+        set(CMAKE_C_FLAGS
+                "${CMAKE_C_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero -fno-sanitize-recover=all"
+        )
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
             VERSION_GREATER_EQUAL "5.1")
         set(CMAKE_CXX_FLAGS
                 "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover=all"
         )
+        set(CMAKE_C_FLAGS
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover=all"
+        )
     else()
         message(SEND_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
     endif()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined")
 endif()
 if(ENABLE_TSAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")

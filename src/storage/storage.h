@@ -143,73 +143,49 @@ class ColumnFamilyConfigs {
   /// DefaultSubkeyColumnFamily is the default column family in rocksdb.
   /// In kvrocks, we use it to store the data if metadata is not enough.
   static ColumnFamilyConfig PrimarySubkeyColumnFamily() {
-    ColumnFamilyConfig subkey_cf(ColumnFamilyID::PrimarySubkey, kPrimarySubkeyColumnFamilyName, /*is_minor=*/false);
-    return subkey_cf;
+    return {ColumnFamilyID::PrimarySubkey, kPrimarySubkeyColumnFamilyName, /*is_minor=*/false};
   }
 
   /// MetadataColumnFamily stores the metadata of data-structures.
   static ColumnFamilyConfig MetadataColumnFamily() {
-    ColumnFamilyConfig metadata_cf(ColumnFamilyID::Metadata, kMetadataColumnFamilyName, /*is_minor=*/false);
-    return metadata_cf;
+    return {ColumnFamilyID::Metadata, kMetadataColumnFamilyName, /*is_minor=*/false};
   }
 
   /// SecondarySubkeyColumnFamily stores the score of zset or other secondary subkey.
   /// See https://kvrocks.apache.org/community/data-structure-on-rocksdb#zset for more details.
   static ColumnFamilyConfig SecondarySubkeyColumnFamily() {
-    ColumnFamilyConfig zset_score_cf(ColumnFamilyID::SecondarySubkey, kSecondarySubkeyColumnFamilyName,
-                                     /*is_minor=*/true);
-    return zset_score_cf;
+    return {ColumnFamilyID::SecondarySubkey, kSecondarySubkeyColumnFamilyName,
+            /*is_minor=*/true};
   }
 
   /// PubSubColumnFamily stores the pubsub data.
   static ColumnFamilyConfig PubSubColumnFamily() {
-    ColumnFamilyConfig pub_sub_cf(ColumnFamilyID::PubSub, kPubSubColumnFamilyName, /*is_minor=*/true);
-    return pub_sub_cf;
+    return {ColumnFamilyID::PubSub, kPubSubColumnFamilyName, /*is_minor=*/true};
   }
 
   static ColumnFamilyConfig PropagateColumnFamily() {
-    ColumnFamilyConfig propagate_cf(ColumnFamilyID::Propagate, kPropagateColumnFamilyName, /*is_minor=*/true);
-    return propagate_cf;
+    return {ColumnFamilyID::Propagate, kPropagateColumnFamilyName, /*is_minor=*/true};
   }
 
   static ColumnFamilyConfig StreamColumnFamily() {
-    ColumnFamilyConfig stream_cf(ColumnFamilyID::Stream, kStreamColumnFamilyName, /*is_minor=*/true);
-    return stream_cf;
+    return {ColumnFamilyID::Stream, kStreamColumnFamilyName, /*is_minor=*/true};
   }
 
   static ColumnFamilyConfig SearchColumnFamily() {
-    ColumnFamilyConfig search_cf(ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true);
-    return search_cf;
+    return {ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true};
   }
 
   /// ListAllColumnFamily returns all column families in kvrocks.
-  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamily() {
-    // Caution: don't change the order of column family, or the handle will be mismatched
-    static std::vector<ColumnFamilyConfig> all_cfs = {
-        PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
-        PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
-    };
-    return all_cfs;
-  }
+  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamily() { return AllCfs; }
 
-  static ColumnFamilyConfig GetColumnFamily(ColumnFamilyID id) {
-    switch (id) {
-      case ColumnFamilyID::PrimarySubkey:
-        return PrimarySubkeyColumnFamily();
-      case ColumnFamilyID::Metadata:
-        return MetadataColumnFamily();
-      case ColumnFamilyID::SecondarySubkey:
-        return SecondarySubkeyColumnFamily();
-      case ColumnFamilyID::PubSub:
-        return PubSubColumnFamily();
-      case ColumnFamilyID::Propagate:
-        return PropagateColumnFamily();
-      case ColumnFamilyID::Stream:
-        return StreamColumnFamily();
-      case ColumnFamilyID::Search:
-        return SearchColumnFamily();
-    }
-  }
+  static const ColumnFamilyConfig &GetColumnFamily(ColumnFamilyID id) { return AllCfs[static_cast<size_t>(id)]; }
+
+ private:
+  // Caution: don't change the order of column family, or the handle will be mismatched
+  inline const static std::vector<ColumnFamilyConfig> AllCfs = {
+      PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
+      PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
+  };
 };
 
 class Storage {

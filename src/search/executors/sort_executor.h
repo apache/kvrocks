@@ -20,16 +20,20 @@
 
 #pragma once
 
-#include <chrono>
+#include "search/plan_executor.h"
 
-namespace util {
+namespace kqir {
 
-/// Get the system timestamp in seconds, milliseconds or microseconds.
-template <typename Duration = std::chrono::seconds>
-auto GetTimeStamp() {
-  return std::chrono::duration_cast<Duration>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-inline uint64_t GetTimeStampMS() { return GetTimeStamp<std::chrono::milliseconds>(); }
-inline uint64_t GetTimeStampUS() { return GetTimeStamp<std::chrono::microseconds>(); }
+struct SortExecutor : ExecutorNode {
+  Sort *sort;
 
-}  // namespace util
+  SortExecutor(ExecutorContext *ctx, Sort *sort) : ExecutorNode(ctx), sort(sort) {}
+
+  StatusOr<Result> Next() override {
+    // most of the sort operator will be eliminated via the optimizer passes,
+    // so currently we don't support this operator since external sort is a little complicated
+    return {Status::NotSupported, "sort operator is currently not supported"};
+  }
+};
+
+}  // namespace kqir

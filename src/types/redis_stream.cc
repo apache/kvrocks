@@ -465,6 +465,10 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
         pel_entry.last_delivery_time = now - options.idle_time;
       }
 
+      if (pel_entry.last_delivery_time < 0 || pel_entry.last_delivery_time > now) {
+        pel_entry.last_delivery_time = now;
+      }
+
       if (options.with_retry_count) {
         pel_entry.last_delivery_count = options.last_delivery_count;
       } else if (!options.just_id) {

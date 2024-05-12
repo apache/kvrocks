@@ -109,23 +109,25 @@ if(ENABLE_UBSAN)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL
             "Clang")
         set(CMAKE_CXX_FLAGS
-                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero -fno-sanitize-recover=all"
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero"
         )
         set(CMAKE_C_FLAGS
-                "${CMAKE_C_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero -fno-sanitize-recover=all"
+                "${CMAKE_C_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero"
         )
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
             VERSION_GREATER_EQUAL "5.1")
         set(CMAKE_CXX_FLAGS
-                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover=all"
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr"
         )
         set(CMAKE_C_FLAGS
-                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr -fno-sanitize-recover=all"
+                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr"
         )
     else()
         message(FATAL_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
     endif()
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined  -fno-sanitize-recover=all")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-sanitize-recover=all")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-sanitize-recover=all")
 endif()
 if(ENABLE_TSAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")

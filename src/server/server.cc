@@ -195,7 +195,7 @@ Status Server::Start() {
         auto now_hours = util::GetTimeStamp<std::chrono::hours>();
         if (now_hours >= config_->compaction_checker_range.start &&
             now_hours <= config_->compaction_checker_range.stop) {
-          const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamily();
+          const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
           for (auto &column_family : column_family_list) {
             compaction_checker.PickCompactionFilesForCf(column_family);
           }

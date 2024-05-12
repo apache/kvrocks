@@ -175,8 +175,10 @@ class ColumnFamilyConfigs {
     return {ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true};
   }
 
-  /// ListAllColumnFamily returns all column families in kvrocks.
-  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamily() { return AllCfs; }
+  /// ListAllColumnFamilies returns all column families in kvrocks.
+  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamilies() { return AllCfs; }
+
+  static const std::vector<ColumnFamilyConfig> &ListColumnFamiliesWithoutDefault() { return AllCfsWithoutDefault; }
 
   static const ColumnFamilyConfig &GetColumnFamily(ColumnFamilyID id) { return AllCfs[static_cast<size_t>(id)]; }
 
@@ -185,6 +187,10 @@ class ColumnFamilyConfigs {
   inline const static std::vector<ColumnFamilyConfig> AllCfs = {
       PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
       PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
+  };
+  inline const static std::vector<ColumnFamilyConfig> AllCfsWithoutDefault = {
+      MetadataColumnFamily(),  SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
+      PropagateColumnFamily(), StreamColumnFamily(),          SearchColumnFamily(),
   };
 };
 

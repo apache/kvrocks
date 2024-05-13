@@ -162,13 +162,13 @@ struct StreamXGroupCreateOptions {
 };
 
 struct StreamClaimOptions {
-  uint64_t idle_time = 0;
+  uint64_t idle_time_ms = 0;
   bool with_time = false;
   bool with_retry_count = false;
   bool force = false;
   bool just_id = false;
   bool with_last_id = false;
-  uint64_t last_delivery_time;
+  uint64_t last_delivery_time_ms;
   uint64_t last_delivery_count;
   StreamEntryID last_delivered_id;
 };

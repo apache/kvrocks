@@ -257,9 +257,9 @@ class CommandXClaim : public Commander {
     if (!parse_result.IsOK()) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
-    min_idle_time_ = parse_result.GetValue();
-    if (min_idle_time_ < 0) {
-      min_idle_time_ = 0;
+    min_idle_time_ms_ = parse_result.GetValue();
+    if (min_idle_time_ms_ < 0) {
+      min_idle_time_ms_ = 0;
     }
 
     while (parser.Good() && !isOption(parser.RawPeek())) {
@@ -281,7 +281,7 @@ class CommandXClaim : public Commander {
         if (parse_result.GetValue() < 0) {
           return {Status::RedisParseErr, "IDLE for XCLAIM must be non-negative"};
         }
-        stream_claim_options_.idle_time = parse_result.GetValue();
+        stream_claim_options_.idle_time_ms = parse_result.GetValue();
       } else if (parser.EatEqICase("time")) {
         auto parse_result = parser.TakeInt<int64_t>();
         if (!parse_result.IsOK()) {
@@ -291,7 +291,7 @@ class CommandXClaim : public Commander {
           return {Status::RedisParseErr, "TIME for XCLAIM must be non-negative"};
         }
         stream_claim_options_.with_time = true;
-        stream_claim_options_.last_delivery_time = parse_result.GetValue();
+        stream_claim_options_.last_delivery_time_ms = parse_result.GetValue();
       } else if (parser.EatEqICase("retrycount")) {
         auto parse_result = parser.TakeInt<int64_t>();
         if (!parse_result.IsOK()) {
@@ -322,7 +322,7 @@ class CommandXClaim : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Stream stream_db(srv->storage, conn->GetNamespace());
     StreamClaimResult result;
-    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_, entry_ids_,
+    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_ms_, entry_ids_,
                                        stream_claim_options_, &result);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -354,7 +354,7 @@ class CommandXClaim : public Commander {
   std::string stream_name_;
   std::string group_name_;
   std::string consumer_name_;
-  uint64_t min_idle_time_;
+  uint64_t min_idle_time_ms_;
   std::vector<StreamEntryID> entry_ids_;
   StreamClaimOptions stream_claim_options_;
 

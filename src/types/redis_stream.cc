@@ -358,7 +358,7 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
 }
 
 rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::string &group_name,
-                                        const std::string &consumer_name, const uint64_t min_idle_time,
+                                        const std::string &consumer_name, const uint64_t min_idle_time_ms,
                                         const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,
                                         StreamClaimResult *result) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -398,8 +398,8 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
     consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
   }
   auto now = util::GetTimeStampMS();
-  consumer_metadata.last_idle = now;
-  consumer_metadata.last_active = now;
+  consumer_metadata.last_idle_ms = now;
+  consumer_metadata.last_active_ms = now;
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
@@ -428,7 +428,7 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
     }
 
     if (s.ok() || (s.IsNotFound() && options.force)) {
-      if (now - pel_entry.last_delivery_time < min_idle_time) continue;
+      if (now - pel_entry.last_delivery_time_ms < min_idle_time_ms) continue;
 
       std::vector<std::string> values;
       if (options.just_id) {
@@ -460,13 +460,13 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
       pel_entry.consumer_name = consumer_name;
       consumer_metadata.pending_number += 1;
       if (options.with_time) {
-        pel_entry.last_delivery_time = options.last_delivery_time;
+        pel_entry.last_delivery_time_ms = options.last_delivery_time_ms;
       } else {
-        pel_entry.last_delivery_time = now - options.idle_time;
+        pel_entry.last_delivery_time_ms = now - options.idle_time_ms;
       }
 
-      if (pel_entry.last_delivery_time < 0 || pel_entry.last_delivery_time > now) {
-        pel_entry.last_delivery_time = now;
+      if (pel_entry.last_delivery_time_ms < 0 || pel_entry.last_delivery_time_ms > now) {
+        pel_entry.last_delivery_time_ms = now;
       }
 
       if (options.with_retry_count) {

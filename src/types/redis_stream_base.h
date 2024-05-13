@@ -161,6 +161,18 @@ struct StreamXGroupCreateOptions {
   std::string last_id;
 };
 
+struct StreamClaimOptions {
+  uint64_t idle_time_ms = 0;
+  bool with_time = false;
+  bool with_retry_count = false;
+  bool force = false;
+  bool just_id = false;
+  bool with_last_id = false;
+  uint64_t last_delivery_time_ms;
+  uint64_t last_delivery_count;
+  StreamEntryID last_delivered_id;
+};
+
 struct StreamConsumerGroupMetadata {
   uint64_t consumer_number = 0;
   uint64_t pending_number = 0;
@@ -205,6 +217,11 @@ struct StreamReadResult {
 
   StreamReadResult(std::string name, std::vector<StreamEntry> result)
       : name(std::move(name)), entries(std::move(result)) {}
+};
+
+struct StreamClaimResult {
+  std::vector<std::string> ids;
+  std::vector<StreamEntry> entries;
 };
 
 Status IncrementStreamEntryID(StreamEntryID *id);

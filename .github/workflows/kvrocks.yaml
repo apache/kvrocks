@@ -166,6 +166,11 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
+          - name: Ubuntu Clang UBSAN
+            os: ubuntu-20.04
+            with_sanitizer: -DENABLE_UBSAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: clang
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja

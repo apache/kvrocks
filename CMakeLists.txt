@@ -116,12 +116,8 @@ if(ENABLE_UBSAN)
         )
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION
             VERSION_GREATER_EQUAL "5.1")
-        set(CMAKE_CXX_FLAGS
-                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr"
-        )
-        set(CMAKE_C_FLAGS
-                "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr"
-        )
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
+        set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
     else()
         message(FATAL_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
     endif()

@@ -30,7 +30,7 @@ class CompactionChecker {
  public:
   explicit CompactionChecker(engine::Storage *storage) : storage_(storage) {}
   ~CompactionChecker() = default;
-  void PickCompactionFiles(const std::string &cf_name);
+  void PickCompactionFilesForCf(const engine::ColumnFamilyConfig &cf_name);
   void CompactPropagateAndPubSubFiles();
 
  private:

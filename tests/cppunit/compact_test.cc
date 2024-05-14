@@ -60,17 +60,17 @@ TEST(Compact, Filter) {
   read_options.snapshot = db->GetSnapshot();
   read_options.fill_cache = false;
 
-  auto new_iterator = [db, read_options, &storage](const std::string& name) {
-    return std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_options, storage->GetCFHandle(name)));
+  auto new_iterator = [db, read_options, &storage](ColumnFamilyID column_family_id) {
+    return std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_options, storage->GetCFHandle(column_family_id)));
   };
 
-  auto iter = new_iterator("metadata");
+  auto iter = new_iterator(ColumnFamilyID::Metadata);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     auto [user_ns, user_key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(user_key.ToString(), live_hash_key);
   }
 
-  iter = new_iterator("subkey");
+  iter = new_iterator(ColumnFamilyID::PrimarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     InternalKey ikey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
@@ -85,17 +85,17 @@ TEST(Compact, Filter) {
 
   // Same as the above compact, need to compact twice here
   status = storage->Compact(nullptr, nullptr, nullptr);
-  assert(status.ok());
+  EXPECT_TRUE(status.ok());
   status = storage->Compact(nullptr, nullptr, nullptr);
-  assert(status.ok());
+  EXPECT_TRUE(status.ok());
 
-  iter = new_iterator("default");
+  iter = new_iterator(ColumnFamilyID::PrimarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     InternalKey ikey(iter->key(), storage->IsSlotIdEncoded());
     EXPECT_EQ(ikey.GetKey().ToString(), live_hash_key);
   }
 
-  iter = new_iterator("zset_score");
+  iter = new_iterator(ColumnFamilyID::SecondarySubkey);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     EXPECT_TRUE(false);  // never reach here
   }
@@ -107,7 +107,7 @@ TEST(Compact, Filter) {
   int retry = 2;
   while (retry-- > 0) {
     status = storage->Compact(nullptr, nullptr, nullptr);
-    assert(status.ok());
+    ASSERT_TRUE(status.ok());
     std::vector<FieldValue> fieldvalues;
     auto get_res = hash->GetAll(mk_with_ttl, &fieldvalues);
     auto s_expire = hash->Expire(mk_with_ttl, 1);  // expired immediately..

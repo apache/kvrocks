@@ -23,6 +23,7 @@ project(kvrocks
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
 option(ENABLE_ASAN "enable address sanitizer" OFF)
 option(ENABLE_TSAN "enable thread sanitizer" OFF)
+option(ENABLE_UBSAN "enable undefined behavior sanitizer" OFF)
 option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled" ON)
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
@@ -32,7 +33,7 @@ option(ENABLE_UNWIND "enable libunwind in glog" ON)
 option(ENABLE_SPEEDB "enable speedb instead of rocksdb" OFF)
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
-option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" OFF)
+option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -90,6 +91,33 @@ if(ENABLE_ASAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+endif()
+
+# Copied from https://github.com/apache/arrow/blob/main/cpp/cmake_modules/san-config.cmake
+#
+# Flag to enable clang undefined behavior sanitizer
+# We explicitly don't enable all of the sanitizer flags:
+# - disable 'vptr' because of RTTI issues across shared libraries (?)
+# - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
+#   all over the place.
+# - disable 'function' because it appears to give a false positive
+#   (https://github.com/google/sanitizers/issues/911)
+# - disable 'float-divide-by-zero' on clang, which considers it UB
+#   (https://bugs.llvm.org/show_bug.cgi?id=17000#c1)
+#   Note: GCC does not support the 'function' flag.
+if(ENABLE_UBSAN)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "5.1")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
+        set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
+    else()
+        message(FATAL_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
+    endif()
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-sanitize-recover=all")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-sanitize-recover=all")
 endif()
 if(ENABLE_TSAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")

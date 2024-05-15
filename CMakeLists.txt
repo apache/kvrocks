@@ -273,6 +273,8 @@ else()
     target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=0)
 endif()
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror=unused-parameter")
+
 # disable LTO on GCC <= 9 due to an ICE
 if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
     set(ENABLE_IPO OFF)

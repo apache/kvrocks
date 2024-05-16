@@ -810,7 +810,7 @@ void Server::cron() {
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
       rocksdb::Status status = storage->GetDB()->Resume();
       if (status.ok()) {
-        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error.";
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
         storage->SetDBInRetryableIOError(false);
       } else {
         LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << status.ToString();

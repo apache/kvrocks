@@ -811,10 +811,10 @@ void Server::cron() {
       auto s = storage->GetDB()->Resume();
       if (s.ok()) {
         LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
-        storage->SetDBInRetryableIOError(false);
       } else {
         LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
       }
+      storage->SetDBInRetryableIOError(false);
     }
 
     // check if we need to clean up exited worker threads every 5s

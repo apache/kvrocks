@@ -808,7 +808,7 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      rocksdb::Status status = storage->GetDB()->Resume();
+      auto s = storage->GetDB()->Resume();
       if (status.ok()) {
         LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
         storage->SetDBInRetryableIOError(false);

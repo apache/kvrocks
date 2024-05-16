@@ -809,7 +809,7 @@ void Server::cron() {
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
       auto s = storage->GetDB()->Resume();
-      if (status.ok()) {
+      if (s.ok()) {
         LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
         storage->SetDBInRetryableIOError(false);
       } else {

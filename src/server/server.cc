@@ -813,7 +813,7 @@ void Server::cron() {
         LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
         storage->SetDBInRetryableIOError(false);
       } else {
-        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << status.ToString();
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
       }
     }
 

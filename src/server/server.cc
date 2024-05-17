@@ -808,8 +808,12 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      storage->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
+      auto s = storage->GetDB()->Resume();
+      if (s.ok()) {
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
+      } else {
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
+      }
       storage->SetDBInRetryableIOError(false);
     }
 

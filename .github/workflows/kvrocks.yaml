@@ -273,6 +273,8 @@ jobs:
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+          cp -r build _build
           build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Setup Coredump
@@ -375,7 +377,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sonarcloud-data
-          path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
+          path: |
+            ${{ env.SONARCLOUD_OUTPUT_DIR }}
+            _build
 
   check-docker:
     name: Check Docker image

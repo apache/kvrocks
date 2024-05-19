@@ -59,6 +59,7 @@ jobs:
         run: |
           unzip sonarcloud-data.zip
           mv _build build
+          mkdir -p build/CMakeFiles/CMakeTmp
           ls -a sonarcloud-data build
 
       - uses: actions/setup-python@v5

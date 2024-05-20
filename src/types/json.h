@@ -220,14 +220,16 @@ struct JsonValue {
   StatusOr<Optionals<uint64_t>> StrBytes(std::string_view path) const {
     Optionals<uint64_t> results;
     try {
-      jsoncons::jsonpath::json_query(value, path,
-                                     [&results](const std::string & /*path*/, const jsoncons::json &origin) {
-                                       if (!origin.empty()) {
-                                         results.emplace_back(origin.as_string().size());
-                                       } else {
-                                         results.emplace_back(0);
-                                       }
-                                     });
+      jsoncons::jsonpath::json_query(
+          value, path, [&results](const std::string & /*path*/, const jsoncons::json &origin) {
+            if (!origin.empty()) {
+              // This is only a rough calculation of the size of the string size char, not the entire byte occupied by
+              // the object
+              results.emplace_back(origin.as_string().size() * sizeof(std::string::value_type));
+            } else {
+              results.emplace_back(0);
+            }
+          });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }

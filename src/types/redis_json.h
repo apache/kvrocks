@@ -70,7 +70,6 @@ class Json : public Database {
                        const std::vector<std::string> &values);
   rocksdb::Status DebugMemory(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results);
 
-
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);
   rocksdb::Status read(const Slice &ns_key, JsonMetadata *metadata, JsonValue *value);

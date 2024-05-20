@@ -36,7 +36,7 @@ namespace redis {
 class Stream : public SubKeyScanner {
  public:
   explicit Stream(engine::Storage *storage, const std::string &ns)
-      : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle("stream")) {}
+      : SubKeyScanner(storage, ns), stream_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Stream)) {}
   rocksdb::Status Add(const Slice &stream_name, const StreamAddOptions &options, const std::vector<std::string> &values,
                       StreamEntryID *id);
   rocksdb::Status CreateGroup(const Slice &stream_name, const StreamXGroupCreateOptions &options,
@@ -51,6 +51,10 @@ class Stream : public SubKeyScanner {
   rocksdb::Status DeleteEntries(const Slice &stream_name, const std::vector<StreamEntryID> &ids, uint64_t *deleted_cnt);
   rocksdb::Status DeletePelEntries(const Slice &stream_name, const std::string &group_name,
                                    const std::vector<StreamEntryID> &entry_ids, uint64_t *acknowledged);
+  rocksdb::Status ClaimPelEntries(const Slice &stream_name, const std::string &group_name,
+                                  const std::string &consumer_name, uint64_t min_idle_time_ms,
+                                  const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,
+                                  StreamClaimResult *result);
   rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
   rocksdb::Status GetGroupInfo(const Slice &stream_name,

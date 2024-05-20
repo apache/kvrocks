@@ -451,10 +451,10 @@ TEST_F(WALIteratorTest, BasicHash) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
           put_fields.emplace_back(internal_key.GetSubKey().ToString());
-        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+        } else if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
           auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
           ASSERT_EQ(ns.ToString(), "test_ns1");
           put_keys.emplace_back(key.ToString());
@@ -504,10 +504,10 @@ TEST_F(WALIteratorTest, BasicSet) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
           put_members.emplace_back(internal_key.GetSubKey().ToString());
-        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+        } else if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
           auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
           ASSERT_EQ(ns.ToString(), "test_ns2");
           put_keys.emplace_back(key.ToString());
@@ -559,10 +559,10 @@ TEST_F(WALIteratorTest, BasicZSet) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
           put_members.emplace_back(internal_key.GetSubKey().ToString());
-        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+        } else if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
           auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
           ASSERT_EQ(ns.ToString(), "test_ns3");
           put_keys.emplace_back(key.ToString());
@@ -609,9 +609,9 @@ TEST_F(WALIteratorTest, BasicList) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           put_values.emplace_back(item.value);
-        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+        } else if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
           auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
           ASSERT_EQ(ns.ToString(), "test_ns4");
           put_keys.emplace_back(key.ToString());
@@ -663,12 +663,12 @@ TEST_F(WALIteratorTest, BasicStream) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDStream) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
           std::vector<std::string> elems;
           auto s = redis::DecodeRawStreamEntryValue(item.value, &elems);
           ASSERT_TRUE(s.IsOK() && !elems.empty());
           put_values.emplace_back(elems[0]);
-        } else if (item.column_family_id == kColumnFamilyIDMetadata) {
+        } else if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
           auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
           ASSERT_EQ(ns.ToString(), "test_ns5");
           put_keys.emplace_back(key.ToString());
@@ -715,7 +715,7 @@ TEST_F(WALIteratorTest, BasicBitmap) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           put_values.emplace_back(item.value);
         }
         break;
@@ -754,7 +754,7 @@ TEST_F(WALIteratorTest, BasicJSON) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        ASSERT_EQ(item.column_family_id, kColumnFamilyIDMetadata);
+        ASSERT_EQ(item.column_family_id, static_cast<uint32_t>(ColumnFamilyID::Metadata));
         auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
         ASSERT_EQ(ns.ToString(), "test_ns7");
         put_keys.emplace_back(key.ToString());
@@ -767,7 +767,7 @@ TEST_F(WALIteratorTest, BasicJSON) {
         break;
       }
       case engine::WALItem::Type::kTypeDelete: {
-        ASSERT_EQ(item.column_family_id, kColumnFamilyIDMetadata);
+        ASSERT_EQ(item.column_family_id, static_cast<uint32_t>(ColumnFamilyID::Metadata));
         auto [ns, key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
         ASSERT_EQ(ns.ToString(), "test_ns7");
         delete_keys.emplace_back(key.ToString());
@@ -801,7 +801,7 @@ TEST_F(WALIteratorTest, BasicSortedInt) {
     auto item = iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypePut: {
-        if (item.column_family_id == kColumnFamilyIDDefault) {
+        if (item.column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
           const InternalKey internal_key(item.key, storage_->IsSlotIdEncoded());
           auto value = DecodeFixed64(internal_key.GetSubKey().data());
           put_values.emplace_back(value);

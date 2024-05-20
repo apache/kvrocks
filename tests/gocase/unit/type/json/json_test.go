@@ -632,8 +632,8 @@ func TestJson(t *testing.T) {
 		var result1 = make([]interface{}, 0)
 		result1 = append(result1, int64(3))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
-		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG MEMORY", "a", "$.a").Val(), result1)
-		require.ErrorIs(t, rdb.Do(ctx, "JSON.DEBUG MEMORY", "not_exists", "$").Err(), redis.Nil)
+		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$.a").Val(), result1)
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Err(), redis.Nil)
 	})
 }
 

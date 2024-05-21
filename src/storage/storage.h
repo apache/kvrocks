@@ -377,7 +377,11 @@ struct Context {
 
   explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
   Context() = default;
-  ~Context() { storage->GetDB()->ReleaseSnapshot(snapshot); }
+  ~Context() {
+    if (storage && storage->GetDB()) {
+      storage->GetDB()->ReleaseSnapshot(snapshot);
+    }
+  }
   Context(const Context &) = delete;
   Context &operator=(const Context &) = delete;
   Context &operator=(Context &&ctx) noexcept {

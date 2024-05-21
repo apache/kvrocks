@@ -217,15 +217,32 @@ struct JsonValue {
     return results;
   }
 
-  StatusOr<Optionals<uint64_t>> StrBytes(std::string_view path) const {
+  StatusOr<Optionals<uint64_t>> StrBytes(std::string_view path, JsonStorageFormat format,
+                                         int max_nesting_depth = std::numeric_limits<int>::max()) const {
     Optionals<uint64_t> results;
     try {
       jsoncons::jsonpath::json_query(
-          value, path, [&results](const std::string & /*path*/, const jsoncons::json &origin) {
+          value, path,
+          [&results, max_nesting_depth, format](const std::string & /*path*/, const jsoncons::json &origin) {
             if (!origin.empty()) {
-              // This is only a rough calculation of the size of the string size char, not the entire byte occupied by
-              // the object
-              results.emplace_back(origin.as_string().size() * sizeof(std::string::value_type));
+              Status s;
+              std::string buffer;
+              std::error_code ec;
+              if (format == JsonStorageFormat::JSON) {
+                jsoncons::json_options options;
+                options.max_nesting_depth(max_nesting_depth);
+                jsoncons::compact_json_string_encoder encoder{buffer, options};
+                origin.dump(encoder, ec);
+              } else if (format == JsonStorageFormat::CBOR) {
+                jsoncons::cbor::cbor_options options;
+                options.max_nesting_depth(max_nesting_depth);
+                jsoncons::cbor::basic_cbor_encoder<jsoncons::string_sink<std::string>> encoder{buffer, options};
+                origin.dump(encoder, ec);
+              }
+              if (ec) {
+                throw jsoncons::jsonpath::jsonpath_error(ec);
+              }
+              results.emplace_back(buffer.size());
             } else {
               results.emplace_back(0);
             }

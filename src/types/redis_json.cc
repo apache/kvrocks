@@ -626,16 +626,24 @@ std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, 
   }
   return statuses;
 }
+
 rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string &path, Optionals<uint64_t> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
-  JsonValue json_val;
-  auto s = read(ns_key, &metadata, &json_val);
-  if (!s.ok()) return s;
-
-  auto str_bytes = json_val.StrBytes(path);
-  if (!str_bytes) return rocksdb::Status::InvalidArgument(str_bytes.Msg());
-  *results = std::move(*str_bytes);
+  if (path == "$") {
+    std::string bytes;
+    Slice rest;
+    auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, &metadata, &rest);
+    if (!s.ok()) return s;
+    results->emplace_back(bytes.size());
+  } else {
+    JsonValue json_val;
+    auto s = read(ns_key, &metadata, &json_val);
+    if (!s.ok()) return s;
+    auto str_bytes = json_val.StrBytes(path, metadata.format, storage_->GetConfig()->json_max_nesting_depth);
+    if (!str_bytes) return rocksdb::Status::InvalidArgument(str_bytes.Msg());
+    *results = std::move(*str_bytes);
+  }
   return rocksdb::Status::OK();
 }
 

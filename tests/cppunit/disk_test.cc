@@ -40,7 +40,7 @@ class RedisDiskTest : public TestBase {
  protected:
   explicit RedisDiskTest() = default;
   ~RedisDiskTest() override = default;
-
+  void SetUp() override { ctx_ = engine::Context(storage_.get()); }
   double estimation_factor_ = 0.1;
 };
 
@@ -49,12 +49,12 @@ TEST_F(RedisDiskTest, StringDisk) {
   std::unique_ptr<redis::String> string = std::make_unique<redis::String>(storage_.get(), "disk_ns_string");
   std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_.get(), "disk_ns_string");
   std::vector<int> value_size{1024 * 1024};
-  EXPECT_TRUE(string->Set(key_, std::string(value_size[0], 'a')).ok());
+  EXPECT_TRUE(string->Set(ctx_, key_, std::string(value_size[0], 'a')).ok());
   uint64_t result = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisString, &result).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisString, &result).ok());
   EXPECT_GE(result, value_size[0] * estimation_factor_);
   EXPECT_LE(result, value_size[0] / estimation_factor_);
-  auto s = string->Del(key_);
+  auto s = string->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, HashDisk) {
@@ -71,14 +71,14 @@ TEST_F(RedisDiskTest, HashDisk) {
     values[i] = std::string(value_size[i], static_cast<char>('a' + i));
     values_[i] = values[i];
     approximate_size += key_.size() + 8 + fields_[i].size() + values_[i].size();
-    rocksdb::Status s = hash->Set(key_, fields_[i], values_[i], &ret);
+    rocksdb::Status s = hash->Set(ctx_, key_, fields_[i], values_[i], &ret);
     EXPECT_TRUE(s.ok() && ret == 1);
   }
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisHash, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisHash, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  auto s = hash->Del(key_);
+  auto s = hash->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, SetDisk) {
@@ -95,15 +95,15 @@ TEST_F(RedisDiskTest, SetDisk) {
     values_[i] = values[i];
     approximate_size += key_.size() + values_[i].size() + 8;
   }
-  rocksdb::Status s = set->Add(key_, values_, &ret);
+  rocksdb::Status s = set->Add(ctx_, key_, values_, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
 
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisSet, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisSet, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
 
-  s = set->Del(key_);
+  s = set->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, ListDisk) {
@@ -120,13 +120,13 @@ TEST_F(RedisDiskTest, ListDisk) {
     approximate_size += key_.size() + values_[i].size() + 8 + 8;
   }
   uint64_t ret = 0;
-  rocksdb::Status s = list->Push(key_, values_, false, &ret);
+  rocksdb::Status s = list->Push(ctx_, key_, values_, false, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisList, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisList, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  s = list->Del(key_);
+  s = list->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, ZsetDisk) {
@@ -142,13 +142,13 @@ TEST_F(RedisDiskTest, ZsetDisk) {
     mscores[i].score = 1.0;
     approximate_size += (key_.size() + 8 + mscores[i].member.size() + 8) * 2;
   }
-  rocksdb::Status s = zset->Add(key_, ZAddFlags::Default(), &mscores, &ret);
+  rocksdb::Status s = zset->Add(ctx_, key_, ZAddFlags::Default(), &mscores, &ret);
   EXPECT_TRUE(s.ok() && ret == 5);
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisZSet, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisZSet, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  s = zset->Del(key_);
+  s = zset->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, BitmapDisk) {
@@ -158,14 +158,14 @@ TEST_F(RedisDiskTest, BitmapDisk) {
   bool bit = false;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 1024 * 8 * 100000; i += 1024 * 8) {
-    EXPECT_TRUE(bitmap->SetBit(key_, i, true, &bit).ok());
+    EXPECT_TRUE(bitmap->SetBit(ctx_, key_, i, true, &bit).ok());
     approximate_size += key_.size() + 8 + std::to_string(i / 1024 / 8).size();
   }
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisBitmap, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisBitmap, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  auto s = bitmap->Del(key_);
+  auto s = bitmap->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, BitmapDisk2) {
@@ -175,32 +175,32 @@ TEST_F(RedisDiskTest, BitmapDisk2) {
       std::unique_ptr<redis::Bitmap> bitmap = std::make_unique<redis::Bitmap>(storage_.get(), "disk_ns_bitmap2");
       std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_.get(), "disk_ns_bitmap2");
       key_ = "bitmapdisk_key2";
-      auto s = bitmap->Del(key_);
+      auto s = bitmap->Del(ctx_, key_);
       bool bit = false;
 
       for (size_t i = 0; i < num_bits; i += kGroupSize) {
         // Set all first bit of group to `!set_op`
-        EXPECT_TRUE(bitmap->SetBit(key_, i, !set_op, &bit).ok());
+        EXPECT_TRUE(bitmap->SetBit(ctx_, key_, i, !set_op, &bit).ok());
         // Set all last bit of group to `set_op`.
-        EXPECT_TRUE(bitmap->SetBit(key_, i + kGroupSize - 1, set_op, &bit).ok());
+        EXPECT_TRUE(bitmap->SetBit(ctx_, key_, i + kGroupSize - 1, set_op, &bit).ok());
       }
 
       auto bit_not_dest_key = "bit_op_not_dest_key";
 
       int64_t len = 0;
-      EXPECT_TRUE(bitmap->BitOp(BitOpFlags::kBitOpNot, "NOT", bit_not_dest_key, {key_}, &len).ok());
+      EXPECT_TRUE(bitmap->BitOp(ctx_, BitOpFlags::kBitOpNot, "NOT", bit_not_dest_key, {key_}, &len).ok());
 
       for (size_t i = 0; i < num_bits; i += kGroupSize) {
         bool result = false;
         // Check all first bit of group is `set_op`
-        EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, i, &result).ok());
+        EXPECT_TRUE(bitmap->GetBit(ctx_, bit_not_dest_key, i, &result).ok());
         EXPECT_EQ(set_op, result);
         // Check all last bit of group is `!set_op`
-        EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, i + kGroupSize - 1, &result).ok());
+        EXPECT_TRUE(bitmap->GetBit(ctx_, bit_not_dest_key, i + kGroupSize - 1, &result).ok());
         EXPECT_EQ(!set_op, result);
         // Check bit in group between (first, last) is "1".
         for (size_t j = i + 1; j < i + kGroupSize - 1; ++j) {
-          EXPECT_TRUE(bitmap->GetBit(bit_not_dest_key, j, &result).ok());
+          EXPECT_TRUE(bitmap->GetBit(ctx_, bit_not_dest_key, j, &result).ok());
           EXPECT_TRUE(result) << j << " is not true";
         }
       }
@@ -215,14 +215,14 @@ TEST_F(RedisDiskTest, SortedintDisk) {
   uint64_t ret = 0;
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
-    EXPECT_TRUE(sortedint->Add(key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok() && ret == 1);
+    EXPECT_TRUE(sortedint->Add(ctx_, key_, std::vector<uint64_t>{uint64_t(i)}, &ret).ok() && ret == 1);
     approximate_size += key_.size() + 8 + 8;
   }
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisSortedint, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisSortedint, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  auto s = sortedint->Del(key_);
+  auto s = sortedint->Del(ctx_, key_);
 }
 
 TEST_F(RedisDiskTest, StreamDisk) {
@@ -235,13 +235,13 @@ TEST_F(RedisDiskTest, StreamDisk) {
   uint64_t approximate_size = 0;
   for (int i = 0; i < 100000; i++) {
     std::vector<std::string> values = {"key" + std::to_string(i), "val" + std::to_string(i)};
-    auto s = stream->Add(key_, options, values, &id);
+    auto s = stream->Add(ctx_, key_, options, values, &id);
     EXPECT_TRUE(s.ok());
     approximate_size += key_.size() + 8 + 8 + values[0].size() + values[1].size();
   }
   uint64_t key_size = 0;
-  EXPECT_TRUE(disk->GetKeySize(key_, kRedisStream, &key_size).ok());
+  EXPECT_TRUE(disk->GetKeySize(ctx_, key_, kRedisStream, &key_size).ok());
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
-  auto s = stream->Del(key_);
+  auto s = stream->Del(ctx_, key_);
 }

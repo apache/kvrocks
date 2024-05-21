@@ -48,103 +48,109 @@ class RedisGeoTest : public TestBase {
 };
 
 TEST_F(RedisGeoTest, Add) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<std::string> geo_hashes;
-  geo_->Hash(key_, fields_, &geo_hashes);
+  geo_->Hash(ctx, key_, fields_, &geo_hashes);
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(geo_hashes[i], geo_hashes_[i]);
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(ret, 0);
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }
 
 TEST_F(RedisGeoTest, Dist) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(fields_.size(), ret);
   double dist = 0.0;
-  geo_->Dist(key_, fields_[2], fields_[3], &dist);
+  geo_->Dist(ctx, key_, fields_[2], fields_[3], &dist);
   EXPECT_EQ(ceilf(dist), 194102);
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }
 
 TEST_F(RedisGeoTest, Hash) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::vector<std::string> geo_hashes;
-  geo_->Hash(key_, fields_, &geo_hashes);
+  geo_->Hash(ctx, key_, fields_, &geo_hashes);
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(geo_hashes[i], geo_hashes_[i]);
   }
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }
 
 TEST_F(RedisGeoTest, Pos) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::map<std::string, GeoPoint> gps;
-  geo_->Pos(key_, fields_, &gps);
+  geo_->Pos(ctx, key_, fields_, &gps);
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(gps[fields_[i].ToString()].member, fields_[i].ToString());
     EXPECT_EQ(geo_->EncodeGeoHash(gps[fields_[i].ToString()].longitude, gps[fields_[i].ToString()].latitude),
               geo_hashes_[i]);
   }
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }
 
 TEST_F(RedisGeoTest, Radius) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::vector<GeoPoint> gps;
-  geo_->Radius(key_, longitudes_[0], latitudes_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
+  geo_->Radius(ctx, key_, longitudes_[0], latitudes_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
     EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }
 
 TEST_F(RedisGeoTest, RadiusByMember) {
+  engine::Context ctx(storage_.get());
   uint64_t ret = 0;
   std::vector<GeoPoint> geo_points;
   for (size_t i = 0; i < fields_.size(); i++) {
     geo_points.emplace_back(GeoPoint{longitudes_[i], latitudes_[i], fields_[i].ToString()});
   }
-  geo_->Add(key_, &geo_points, &ret);
+  geo_->Add(ctx, key_, &geo_points, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<GeoPoint> gps;
-  geo_->RadiusByMember(key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
+  geo_->RadiusByMember(ctx, key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
     EXPECT_EQ(geo_->EncodeGeoHash(gps[i].longitude, gps[i].latitude), geo_hashes_[i]);
   }
-  auto s = geo_->Del(key_);
+  auto s = geo_->Del(ctx, key_);
 }

@@ -69,6 +69,7 @@ class TestFixture {  // NOLINT
   std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
+  engine::Context ctx_;
 };
 
 class TestBase : public TestFixture, public ::testing::Test {};

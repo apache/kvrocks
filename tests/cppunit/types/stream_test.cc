@@ -44,9 +44,11 @@ class RedisStreamTest : public TestBase {  // NOLINT
 
   ~RedisStreamTest() override { delete stream_; }
 
-  void SetUp() override { auto s = stream_->Del(name_); }
-
-  void TearDown() override { auto s = stream_->Del(name_); }
+  void SetUp() override {
+    ctx_ = engine::Context(storage_.get());
+    auto s = stream_->Del(ctx_, name_);
+  }
+  void TearDown() override { auto s = stream_->Del(ctx_, name_); }
 
   std::string name_;
   redis::Stream *stream_;
@@ -260,7 +262,7 @@ TEST_F(RedisStreamTest, AddEntryToNonExistingStreamWithNomkstreamOption) {
   options.nomkstream = true;
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.IsNotFound());
 }
 
@@ -269,7 +271,7 @@ TEST_F(RedisStreamTest, AddEntryPredefinedIDAsZeroZero) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy("0-0");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(!s.ok());
 }
 
@@ -278,7 +280,7 @@ TEST_F(RedisStreamTest, AddEntryWithPredefinedIDAsZeroMsAndAnySeq) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy("0-*");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id.ToString(), "0-1");
 }
@@ -288,7 +290,7 @@ TEST_F(RedisStreamTest, AddFirstEntryWithoutPredefinedID) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id.seq, 0);
   EXPECT_TRUE(id.ms <= util::GetTimeStampMS());
@@ -300,7 +302,7 @@ TEST_F(RedisStreamTest, AddEntryFirstEntryWithPredefinedID) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", expected_id.ms, expected_id.seq));
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id.ms, expected_id.ms);
   EXPECT_EQ(id.seq, expected_id.seq);
@@ -312,7 +314,7 @@ TEST_F(RedisStreamTest, AddFirstEntryWithPredefinedNonZeroMsAndAnySeqNo) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-*", ms));
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id.ms, ms);
   EXPECT_EQ(id.seq, 0);
@@ -323,12 +325,12 @@ TEST_F(RedisStreamTest, AddEntryToNonEmptyStreamWithPredefinedMsAndAnySeqNo) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345, 678));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, options, values1, &id1);
   EXPECT_TRUE(s.ok());
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12346-*");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, options, values2, &id2);
+  s = stream_->Add(ctx_, name_, options, values2, &id2);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id2.ToString(), "12346-0");
 }
@@ -340,10 +342,10 @@ TEST_F(RedisStreamTest, AddEntryWithPredefinedButExistingMsAndAnySeqNo) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", ms, seq));
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-*", ms));
-  s = stream_->Add(name_, options, values, &id);
+  s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(id.ms, ms);
   EXPECT_EQ(id.seq, seq + 1);
@@ -356,10 +358,10 @@ TEST_F(RedisStreamTest, AddEntryWithExistingMsAnySeqNoAndExistingSeqNoIsAlreadyM
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", ms, seq));
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-*", ms));
-  s = stream_->Add(name_, options, values, &id);
+  s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(!s.ok());
 }
 
@@ -370,10 +372,10 @@ TEST_F(RedisStreamTest, AddEntryAndExistingMsAndSeqNoAreAlreadyMax) {
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", ms, seq));
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, options, values, &id);
+  auto s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(s.ok());
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
-  s = stream_->Add(name_, options, values, &id);
+  s = stream_->Add(ctx_, name_, options, values, &id);
   EXPECT_TRUE(!s.ok());
 }
 
@@ -382,12 +384,12 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMaxLenStrategy) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions trim_options;
@@ -396,14 +398,14 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMaxLenStrategy) {
   add_options.trim_options = trim_options;
   redis::StreamEntryID id3;
   std::vector<std::string> values3 = {"key3", "val3"};
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -417,12 +419,12 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMaxLenStrategyThatDeletesAddedEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions trim_options;
@@ -431,14 +433,14 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMaxLenStrategyThatDeletesAddedEntry) {
   add_options.trim_options = trim_options;
   redis::StreamEntryID id3;
   std::vector<std::string> values3 = {"key3", "val3"};
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -448,12 +450,12 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMinIdStrategy) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345, 0));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12346, 0));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions trim_options;
@@ -463,14 +465,14 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMinIdStrategy) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12347-0");
   redis::StreamEntryID id3;
   std::vector<std::string> values3 = {"key3", "val3"};
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -484,12 +486,12 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMinIdStrategyThatDeletesAddedEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345, 0));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12346, 0));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions trim_options;
@@ -499,14 +501,14 @@ TEST_F(RedisStreamTest, AddEntryWithTrimMinIdStrategyThatDeletesAddedEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12347, 0));
   redis::StreamEntryID id3;
   std::vector<std::string> values3 = {"key3", "val3"};
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -516,7 +518,7 @@ TEST_F(RedisStreamTest, RangeOnNonExistingStream) {
   options.start = redis::StreamEntryID{0, 0};
   options.end = redis::StreamEntryID{1234567, 0};
   std::vector<redis::StreamEntry> entries;
-  auto s = stream_->Range(name_, options, &entries);
+  auto s = stream_->Range(ctx_, name_, options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -526,17 +528,17 @@ TEST_F(RedisStreamTest, RangeOnEmptyStream) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("*");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
   uint64_t removed = 0;
-  s = stream_->DeleteEntries(name_, {id}, &removed);
+  s = stream_->DeleteEntries(ctx_, name_, {id}, &removed);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -546,24 +548,24 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndSameMs) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345678, 0));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345678, 1));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 12345679, 0));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID{12345678, 0};
   range_options.end = redis::StreamEntryID{12345678, UINT64_MAX};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id1.ToString());
@@ -577,29 +579,29 @@ TEST_F(RedisStreamTest, RangeInterval) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID{123456, 0};
   range_options.end = redis::StreamEntryID{123459, 0};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 3);
   EXPECT_EQ(entries[0].key, id1.ToString());
@@ -615,29 +617,29 @@ TEST_F(RedisStreamTest, RangeFromMinimumToMaximum) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 4);
   EXPECT_EQ(entries[0].key, id1.ToString());
@@ -655,19 +657,19 @@ TEST_F(RedisStreamTest, RangeFromMinimumToMinimum) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Minimum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -677,19 +679,19 @@ TEST_F(RedisStreamTest, RangeWithStartGreaterThanEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = redis::StreamEntryID::Maximum();
   range_options.end = redis::StreamEntryID::Minimum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -699,19 +701,19 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqual) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
   range_options.start = id2;
   range_options.end = id2;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 1);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -723,12 +725,12 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedStart) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -736,7 +738,7 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedStart) {
   range_options.exclude_start = true;
   range_options.end = id2;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -746,12 +748,12 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -759,7 +761,7 @@ TEST_F(RedisStreamTest, RangeWithStartAndEndAreEqualAndExcludedEnd) {
   range_options.end = id2;
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -769,22 +771,22 @@ TEST_F(RedisStreamTest, RangeWithExcludedStart) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -792,7 +794,7 @@ TEST_F(RedisStreamTest, RangeWithExcludedStart) {
   range_options.exclude_start = true;
   range_options.end = redis::StreamEntryID{123458, 3};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -806,22 +808,22 @@ TEST_F(RedisStreamTest, RangeWithExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -829,7 +831,7 @@ TEST_F(RedisStreamTest, RangeWithExcludedEnd) {
   range_options.end = redis::StreamEntryID{123459, 4};
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -843,22 +845,22 @@ TEST_F(RedisStreamTest, RangeWithExcludedStartAndExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -867,7 +869,7 @@ TEST_F(RedisStreamTest, RangeWithExcludedStartAndExcludedEnd) {
   range_options.end = redis::StreamEntryID{123459, 4};
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -881,7 +883,7 @@ TEST_F(RedisStreamTest, RangeWithStartAsMaximumAndExclusion) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -889,7 +891,7 @@ TEST_F(RedisStreamTest, RangeWithStartAsMaximumAndExclusion) {
   range_options.exclude_start = true;
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(!s.ok());
 }
 
@@ -898,7 +900,7 @@ TEST_F(RedisStreamTest, RangeWithEndAsMinimumAndExclusion) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -906,7 +908,7 @@ TEST_F(RedisStreamTest, RangeWithEndAsMinimumAndExclusion) {
   range_options.end = redis::StreamEntryID::Minimum();
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(!s.ok());
 }
 
@@ -915,22 +917,22 @@ TEST_F(RedisStreamTest, RangeWithCountEqualToZero) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -939,7 +941,7 @@ TEST_F(RedisStreamTest, RangeWithCountEqualToZero) {
   range_options.with_count = true;
   range_options.count = 0;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -949,22 +951,22 @@ TEST_F(RedisStreamTest, RangeWithCountGreaterThanRequiredElements) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -973,7 +975,7 @@ TEST_F(RedisStreamTest, RangeWithCountGreaterThanRequiredElements) {
   range_options.with_count = true;
   range_options.count = 3;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 3);
   EXPECT_EQ(entries[0].key, id1.ToString());
@@ -989,22 +991,22 @@ TEST_F(RedisStreamTest, RangeWithCountLessThanRequiredElements) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123456, 1));
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123457, 2));
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123458, 3));
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", 123459, 4));
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1013,7 +1015,7 @@ TEST_F(RedisStreamTest, RangeWithCountLessThanRequiredElements) {
   range_options.with_count = true;
   range_options.count = 2;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id1.ToString());
@@ -1027,17 +1029,17 @@ TEST_F(RedisStreamTest, RevRangeWithStartAndEndSameMs) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345678-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345678-1");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345679-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1045,7 +1047,7 @@ TEST_F(RedisStreamTest, RevRangeWithStartAndEndSameMs) {
   range_options.start = redis::StreamEntryID{12345678, UINT64_MAX};
   range_options.end = redis::StreamEntryID{12345678, 0};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -1059,22 +1061,22 @@ TEST_F(RedisStreamTest, RevRangeInterval) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-3");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-4");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1082,7 +1084,7 @@ TEST_F(RedisStreamTest, RevRangeInterval) {
   range_options.start = redis::StreamEntryID{123459, 0};
   range_options.end = redis::StreamEntryID{123456, 0};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 3);
   EXPECT_EQ(entries[0].key, id3.ToString());
@@ -1098,22 +1100,22 @@ TEST_F(RedisStreamTest, RevRangeFromMaximumToMinimum) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-3");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-4");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1121,7 +1123,7 @@ TEST_F(RedisStreamTest, RevRangeFromMaximumToMinimum) {
   range_options.start = redis::StreamEntryID::Maximum();
   range_options.end = redis::StreamEntryID::Minimum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 4);
   EXPECT_EQ(entries[0].key, id4.ToString());
@@ -1139,12 +1141,12 @@ TEST_F(RedisStreamTest, RevRangeFromMinimumToMinimum) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1152,7 +1154,7 @@ TEST_F(RedisStreamTest, RevRangeFromMinimumToMinimum) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Minimum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -1162,12 +1164,12 @@ TEST_F(RedisStreamTest, RevRangeWithStartLessThanEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1175,7 +1177,7 @@ TEST_F(RedisStreamTest, RevRangeWithStartLessThanEnd) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -1185,12 +1187,12 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqual) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1198,7 +1200,7 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqual) {
   range_options.start = id2;
   range_options.end = id2;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 1);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -1210,12 +1212,12 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqualAndExcludedStart) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1224,7 +1226,7 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqualAndExcludedStart) {
   range_options.exclude_start = true;
   range_options.end = id2;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -1234,12 +1236,12 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqualAndExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1248,7 +1250,7 @@ TEST_F(RedisStreamTest, RevRangeStartAndEndAreEqualAndExcludedEnd) {
   range_options.end = id2;
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 0);
 }
@@ -1258,22 +1260,22 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStart) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-3");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-4");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1282,7 +1284,7 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStart) {
   range_options.exclude_start = true;
   range_options.end = redis::StreamEntryID{123456, 1};
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -1296,22 +1298,22 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-3");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-4");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1320,7 +1322,7 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedEnd) {
   range_options.end = redis::StreamEntryID{123456, 1};
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id3.ToString());
@@ -1334,22 +1336,22 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStartAndExcludedEnd) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-1");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-2");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-3");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-4");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamRangeOptions range_options;
@@ -1359,7 +1361,7 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStartAndExcludedEnd) {
   range_options.end = redis::StreamEntryID{123456, 1};
   range_options.exclude_end = true;
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id3.ToString());
@@ -1371,7 +1373,7 @@ TEST_F(RedisStreamTest, RevRangeWithExcludedStartAndExcludedEnd) {
 TEST_F(RedisStreamTest, DeleteFromNonExistingStream) {
   std::vector<redis::StreamEntryID> ids = {redis::StreamEntryID{12345, 6789}};
   uint64_t deleted = 0;
-  auto s = stream_->DeleteEntries(name_, ids, &deleted);
+  auto s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 0);
 }
@@ -1381,12 +1383,12 @@ TEST_F(RedisStreamTest, DeleteExistingEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {id};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 1);
 }
@@ -1396,12 +1398,12 @@ TEST_F(RedisStreamTest, DeleteNonExistingEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {redis::StreamEntryID{123, 456}};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 0);
 }
@@ -1411,28 +1413,28 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {redis::StreamEntryID{123456, 0}, redis::StreamEntryID{1234567, 89},
                                            redis::StreamEntryID{123458, 0}};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(deleted, 2);
 
@@ -1440,7 +1442,7 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id2.ToString());
@@ -1451,7 +1453,7 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
 
 TEST_F(RedisStreamTest, LenOnNonExistingStream) {
   uint64_t length = 0;
-  auto s = stream_->Len(name_, redis::StreamLenOptions{}, &length);
+  auto s = stream_->Len(ctx_, name_, redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1461,16 +1463,16 @@ TEST_F(RedisStreamTest, LenOnEmptyStream) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {id};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
-  s = stream_->Len(name_, redis::StreamLenOptions{}, &length);
+  s = stream_->Len(ctx_, name_, redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1480,16 +1482,16 @@ TEST_F(RedisStreamTest, Len) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
-  s = stream_->Len(name_, redis::StreamLenOptions{}, &length);
+  s = stream_->Len(ctx_, name_, redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
 }
@@ -1498,23 +1500,23 @@ TEST_F(RedisStreamTest, LenWithStartOptionGreaterThanLastEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = redis::StreamEntryID{id2.ms + 10, 0};
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
 }
@@ -1523,23 +1525,23 @@ TEST_F(RedisStreamTest, LenWithStartOptionEqualToLastEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = redis::StreamEntryID{id2.ms, id2.seq};
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 1);
 }
@@ -1548,23 +1550,23 @@ TEST_F(RedisStreamTest, LenWithStartOptionLessThanFirstEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = redis::StreamEntryID{123, 0};
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1573,23 +1575,23 @@ TEST_F(RedisStreamTest, LenWithStartOptionEqualToFirstEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = id1;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 1);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1598,31 +1600,31 @@ TEST_F(RedisStreamTest, LenWithStartOptionEqualToExistingEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, {"key3", "val3"}, &id3);
+  s = stream_->Add(ctx_, name_, add_options, {"key3", "val3"}, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, {"key4", "val4"}, &id4);
+  s = stream_->Add(ctx_, name_, add_options, {"key4", "val4"}, &id4);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = id2;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 2);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 1);
 }
@@ -1631,31 +1633,31 @@ TEST_F(RedisStreamTest, LenWithStartOptionNotEqualToExistingEntryID) {
   redis::StreamAddOptions add_options;
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, {"key1", "val1"}, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, {"key1", "val1"}, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, {"key2", "val2"}, &id2);
+  s = stream_->Add(ctx_, name_, add_options, {"key2", "val2"}, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, {"key3", "val3"}, &id3);
+  s = stream_->Add(ctx_, name_, add_options, {"key3", "val3"}, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, {"key4", "val4"}, &id4);
+  s = stream_->Add(ctx_, name_, add_options, {"key4", "val4"}, &id4);
   EXPECT_TRUE(s.ok());
 
   uint64_t length = 0;
   redis::StreamLenOptions len_options;
   len_options.with_entry_id = true;
   len_options.entry_id = redis::StreamEntryID{id1.ms, id1.seq + 10};
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 3);
 
   len_options.to_first = true;
-  s = stream_->Len(name_, len_options, &length);
+  s = stream_->Len(ctx_, name_, len_options, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 1);
 }
@@ -1665,7 +1667,7 @@ TEST_F(RedisStreamTest, TrimNonExistingStream) {
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
   uint64_t trimmed = 0;
-  auto s = stream_->Trim(name_, options, &trimmed);
+  auto s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1675,18 +1677,18 @@ TEST_F(RedisStreamTest, TrimEmptyStream) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
   std::vector<redis::StreamEntryID> ids = {id};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1696,13 +1698,13 @@ TEST_F(RedisStreamTest, TrimWithNoStrategySpecified) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.min_id = redis::StreamEntryID{123456, 0};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1712,29 +1714,29 @@ TEST_F(RedisStreamTest, TrimWithMaxLenGreaterThanStreamSize) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 10;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1744,29 +1746,29 @@ TEST_F(RedisStreamTest, TrimWithMaxLenEqualToStreamSize) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 4;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1776,29 +1778,29 @@ TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSize) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 2;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 2);
 
@@ -1806,7 +1808,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenLessThanStreamSize) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id3.ToString());
@@ -1820,29 +1822,29 @@ TEST_F(RedisStreamTest, TrimWithMaxLenEqualTo1) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 1;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 3);
 
@@ -1850,7 +1852,7 @@ TEST_F(RedisStreamTest, TrimWithMaxLenEqualTo1) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 1);
   EXPECT_EQ(entries[0].key, id4.ToString());
@@ -1862,33 +1864,33 @@ TEST_F(RedisStreamTest, TrimWithMaxLenZero) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 0;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 4);
   uint64_t length = 0;
-  s = stream_->Len(name_, redis::StreamLenOptions{}, &length);
+  s = stream_->Len(ctx_, name_, redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
@@ -1898,19 +1900,19 @@ TEST_F(RedisStreamTest, TrimWithMinIdLessThanFirstEntryID) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MinID;
   options.min_id = redis::StreamEntryID{12345, 0};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1920,19 +1922,19 @@ TEST_F(RedisStreamTest, TrimWithMinIdEqualToFirstEntryID) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MinID;
   options.min_id = redis::StreamEntryID{123456, 0};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 0);
 }
@@ -1942,29 +1944,29 @@ TEST_F(RedisStreamTest, TrimWithMinId) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MinID;
   options.min_id = redis::StreamEntryID{123457, 10};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 2);
 
@@ -1972,7 +1974,7 @@ TEST_F(RedisStreamTest, TrimWithMinId) {
   range_options.start = redis::StreamEntryID::Minimum();
   range_options.end = redis::StreamEntryID::Maximum();
   std::vector<redis::StreamEntry> entries;
-  s = stream_->Range(name_, range_options, &entries);
+  s = stream_->Range(ctx_, name_, range_options, &entries);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
   EXPECT_EQ(entries[0].key, id3.ToString());
@@ -1986,41 +1988,41 @@ TEST_F(RedisStreamTest, TrimWithMinIdGreaterThanLastEntryID) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MinID;
   options.min_id = redis::StreamEntryID{12345678, 0};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(trimmed, 4);
 
   uint64_t length = 0;
-  s = stream_->Len(name_, redis::StreamLenOptions{}, &length);
+  s = stream_->Len(ctx_, name_, redis::StreamLenOptions{}, &length);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(length, 0);
 }
 
 TEST_F(RedisStreamTest, StreamInfoOnNonExistingStream) {
   redis::StreamInfo info;
-  auto s = stream_->GetStreamInfo(name_, false, 0, &info);
+  auto s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.IsNotFound());
 }
 
@@ -2029,16 +2031,16 @@ TEST_F(RedisStreamTest, StreamInfoOnEmptyStream) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {id};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 0);
   EXPECT_EQ(info.last_generated_id.ToString(), id.ToString());
@@ -2054,11 +2056,11 @@ TEST_F(RedisStreamTest, StreamInfoOneEntry) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
   std::vector<std::string> values = {"key1", "val1"};
   redis::StreamEntryID id;
-  auto s = stream_->Add(name_, add_options, values, &id);
+  auto s = stream_->Add(ctx_, name_, add_options, values, &id);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 1);
   EXPECT_EQ(info.last_generated_id.ToString(), id.ToString());
@@ -2078,21 +2080,21 @@ TEST_F(RedisStreamTest, StreamInfoOnStreamWithElements) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 3);
   EXPECT_EQ(info.last_generated_id.ToString(), id3.ToString());
@@ -2113,21 +2115,21 @@ TEST_F(RedisStreamTest, StreamInfoOnStreamWithElementsFullOption) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, true, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, true, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 3);
   EXPECT_EQ(info.last_generated_id.ToString(), id3.ToString());
@@ -2150,26 +2152,26 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterLastEntryDeletion) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {id3};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 2);
   EXPECT_EQ(info.last_generated_id.ToString(), id3.ToString());
@@ -2190,26 +2192,26 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterFirstEntryDeletion) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
 
   std::vector<redis::StreamEntryID> ids = {id1};
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, ids, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, ids, &deleted);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 2);
   EXPECT_EQ(info.last_generated_id.ToString(), id3.ToString());
@@ -2230,33 +2232,33 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMinId) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MinID;
   options.min_id = redis::StreamEntryID{123458, 0};
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 2);
   EXPECT_EQ(info.last_generated_id.ToString(), id4.ToString());
@@ -2277,33 +2279,33 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimMaxLen) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 2;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 2);
   EXPECT_EQ(info.last_generated_id.ToString(), id4.ToString());
@@ -2324,33 +2326,33 @@ TEST_F(RedisStreamTest, StreamInfoCheckAfterTrimAllEntries) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123457-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  s = stream_->Add(name_, add_options, values2, &id2);
+  s = stream_->Add(ctx_, name_, add_options, values2, &id2);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123458-0");
   std::vector<std::string> values3 = {"key3", "val3"};
   redis::StreamEntryID id3;
-  s = stream_->Add(name_, add_options, values3, &id3);
+  s = stream_->Add(ctx_, name_, add_options, values3, &id3);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123459-0");
   std::vector<std::string> values4 = {"key4", "val4"};
   redis::StreamEntryID id4;
-  s = stream_->Add(name_, add_options, values4, &id4);
+  s = stream_->Add(ctx_, name_, add_options, values4, &id4);
   EXPECT_TRUE(s.ok());
 
   redis::StreamTrimOptions options;
   options.strategy = redis::StreamTrimStrategy::MaxLen;
   options.max_len = 0;
   uint64_t trimmed = 0;
-  s = stream_->Trim(name_, options, &trimmed);
+  s = stream_->Trim(ctx_, name_, options, &trimmed);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.size, 0);
   EXPECT_EQ(info.last_generated_id.ToString(), id4.ToString());
@@ -2366,20 +2368,20 @@ TEST_F(RedisStreamTest, StreamSetIdNonExistingStreamCreatesEmptyStream) {
   redis::StreamEntryID last_id(5, 0);
   std::optional<redis::StreamEntryID> max_del_id = redis::StreamEntryID{2, 0};
   uint64_t entries_added = 3;
-  auto s = stream_->SetId("some-non-existing-stream1", last_id, entries_added, max_del_id);
+  auto s = stream_->SetId(ctx_, "some-non-existing-stream1", last_id, entries_added, max_del_id);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo("some-non-existing-stream1", false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, "some-non-existing-stream1", false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.last_generated_id.ToString(), last_id.ToString());
   EXPECT_EQ(info.entries_added, entries_added);
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
 
-  s = stream_->SetId("some-non-existing-stream2", last_id, std::nullopt, max_del_id);
+  s = stream_->SetId(ctx_, "some-non-existing-stream2", last_id, std::nullopt, max_del_id);
   EXPECT_FALSE(s.ok());
 
-  s = stream_->SetId("some-non-existing-stream3", last_id, entries_added, std::nullopt);
+  s = stream_->SetId(ctx_, "some-non-existing-stream3", last_id, entries_added, std::nullopt);
   EXPECT_FALSE(s.ok());
 }
 
@@ -2388,10 +2390,10 @@ TEST_F(RedisStreamTest, StreamSetIdLastIdLessThanExisting) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
-  s = stream_->SetId(name_, {1, 0}, std::nullopt, std::nullopt);
+  s = stream_->SetId(ctx_, name_, {1, 0}, std::nullopt, std::nullopt);
   EXPECT_FALSE(s.ok());
 }
 
@@ -2400,15 +2402,15 @@ TEST_F(RedisStreamTest, StreamSetIdEntriesAddedLessThanStreamSize) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values2 = {"key2", "val2"};
   redis::StreamEntryID id2;
-  stream_->Add(name_, add_options, values1, &id1);
+  stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
-  s = stream_->SetId(name_, {id2.ms + 1, 0}, 1, std::nullopt);
+  s = stream_->SetId(ctx_, name_, {id2.ms + 1, 0}, 1, std::nullopt);
   EXPECT_FALSE(s.ok());
 }
 
@@ -2417,10 +2419,10 @@ TEST_F(RedisStreamTest, StreamSetIdLastIdEqualToExisting) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
-  s = stream_->SetId(name_, {id1.ms, id1.seq}, std::nullopt, std::nullopt);
+  s = stream_->SetId(ctx_, name_, {id1.ms, id1.seq}, std::nullopt, std::nullopt);
   EXPECT_TRUE(s.ok());
 }
 
@@ -2429,18 +2431,18 @@ TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdLessThanCurrent) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, {id1}, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, {id1}, &deleted);
   EXPECT_TRUE(s.ok());
 
   std::optional<redis::StreamEntryID> max_del_id = redis::StreamEntryID{1, 0};
-  s = stream_->SetId(name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  s = stream_->SetId(ctx_, name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
 }
@@ -2450,18 +2452,18 @@ TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdIsZero) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, {id1}, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, {id1}, &deleted);
   EXPECT_TRUE(s.ok());
 
   std::optional<redis::StreamEntryID> max_del_id = redis::StreamEntryID{0, 0};
-  s = stream_->SetId(name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  s = stream_->SetId(ctx_, name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), id1.ToString());
 }
@@ -2471,14 +2473,14 @@ TEST_F(RedisStreamTest, StreamSetIdMaxDeletedIdGreaterThanLastGeneratedId) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
   uint64_t deleted = 0;
-  s = stream_->DeleteEntries(name_, {id1}, &deleted);
+  s = stream_->DeleteEntries(ctx_, name_, {id1}, &deleted);
   EXPECT_TRUE(s.ok());
 
   std::optional<redis::StreamEntryID> max_del_id = redis::StreamEntryID{id1.ms + 1, 0};
-  s = stream_->SetId(name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
+  s = stream_->SetId(ctx_, name_, {id1.ms, id1.seq}, std::nullopt, max_del_id);
   EXPECT_FALSE(s.ok());
 }
 
@@ -2487,27 +2489,27 @@ TEST_F(RedisStreamTest, StreamSetIdLastIdGreaterThanExisting) {
   add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("123456-0");
   std::vector<std::string> values1 = {"key1", "val1"};
   redis::StreamEntryID id1;
-  auto s = stream_->Add(name_, add_options, values1, &id1);
+  auto s = stream_->Add(ctx_, name_, add_options, values1, &id1);
   EXPECT_TRUE(s.ok());
 
-  s = stream_->SetId(name_, {id1.ms + 1, id1.seq}, std::nullopt, std::nullopt);
+  s = stream_->SetId(ctx_, name_, {id1.ms + 1, id1.seq}, std::nullopt, std::nullopt);
   EXPECT_TRUE(s.ok());
 
   uint64_t added = 10;
-  s = stream_->SetId(name_, {id1.ms + 1, id1.seq}, added, std::nullopt);
+  s = stream_->SetId(ctx_, name_, {id1.ms + 1, id1.seq}, added, std::nullopt);
   EXPECT_TRUE(s.ok());
 
   redis::StreamInfo info;
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.entries_added, added);
 
   added = 5;
   std::optional<redis::StreamEntryID> max_del_id = redis::StreamEntryID{5, 0};
-  s = stream_->SetId(name_, {id1.ms + 1, id1.seq}, added, max_del_id);
+  s = stream_->SetId(ctx_, name_, {id1.ms + 1, id1.seq}, added, max_del_id);
   EXPECT_TRUE(s.ok());
 
-  s = stream_->GetStreamInfo(name_, false, 0, &info);
+  s = stream_->GetStreamInfo(ctx_, name_, false, 0, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.entries_added, added);
   EXPECT_EQ(info.max_deleted_entry_id.ToString(), max_del_id->ToString());
@@ -2517,12 +2519,12 @@ TEST_F(RedisStreamTest, StreamConsumerGroupCreateAndDestroy) {
   redis::StreamXGroupCreateOptions create_options = {true, 0, "$"};
   std::string stream_name = "TestStream";
   std::string group_name = "TestGroup";
-  auto s = stream_->CreateGroup(stream_name, create_options, group_name);
+  auto s = stream_->CreateGroup(ctx_, stream_name, create_options, group_name);
   EXPECT_TRUE(s.ok());
   uint64_t delete_cnt = 0;
-  s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
+  s = stream_->DestroyGroup(ctx_, stream_name, group_name, &delete_cnt);
   EXPECT_TRUE(delete_cnt != 0);
   delete_cnt = 0;
-  s = stream_->DestroyGroup(stream_name, group_name, &delete_cnt);
+  s = stream_->DestroyGroup(ctx_, stream_name, group_name, &delete_cnt);
   EXPECT_TRUE(delete_cnt == 0);
 }

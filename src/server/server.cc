@@ -144,7 +144,8 @@ Status Server::Start() {
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    s = storage->ShiftReplId();
+    engine::Context ctx(storage);
+    s = storage->ShiftReplId(ctx);
     if (!s.IsOK()) {
       return s.Prefixed("failed to shift replication id");
     }
@@ -293,7 +294,8 @@ Status Server::RemoveMaster() {
       replication_thread_->Stop();
       replication_thread_ = nullptr;
     }
-    return storage->ShiftReplId();
+    engine::Context ctx(storage);
+    return storage->ShiftReplId(ctx);
   }
   return Status::OK();
 }
@@ -1428,7 +1430,8 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     redis::Database db(storage, ns);
 
     KeyNumStats stats;
-    auto s = db.GetKeyNumStats("", &stats);
+    engine::Context ctx(storage);
+    auto s = db.GetKeyNumStats(ctx, "", &stats);
     if (!s.ok()) {
       LOG(ERROR) << "failed to retrieve key num stats: " << s.ToString();
     }
@@ -1651,7 +1654,8 @@ Status Server::ScriptExists(const std::string &sha) {
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1660,13 +1664,15 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
 
 Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  return storage->WriteToPropagateCF(func_name, body);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, body);
 }
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1676,7 +1682,8 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1685,12 +1692,14 @@ Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
 
 Status Server::FunctionSetCode(const std::string &lib, const std::string &code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  return storage->WriteToPropagateCF(func_name, code);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, code);
 }
 
 Status Server::FunctionSetLib(const std::string &func, const std::string &lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  return storage->WriteToPropagateCF(func_name, lib);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, lib);
 }
 
 void Server::ScriptReset() {
@@ -1700,7 +1709,8 @@ void Server::ScriptReset() {
 
 Status Server::ScriptFlush() {
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  engine::Context ctx(storage);
+  auto s = storage->FlushScripts(ctx, storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
   return Status::OK();
@@ -1716,7 +1726,8 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += redis::BulkString(iter);
   }
-  return storage->WriteToPropagateCF(channel, value);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {

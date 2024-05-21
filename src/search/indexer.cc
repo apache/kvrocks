@@ -34,11 +34,13 @@ namespace redis {
 
 StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type, std::string_view key,
                                                           engine::Storage *storage, const std::string &ns) {
+  engine::Context ctx(storage);
   if (type == SearchOnDataType::HASH) {
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-    auto s = db.GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+
+    auto s = db.GetMetadata(ctx, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == SearchOnDataType::JSON) {
@@ -46,7 +48,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type,
     std::string ns_key = db.AppendNamespacePrefix(key);
     JsonMetadata metadata(false);
     JsonValue value;
-    auto s = db.read(ns_key, &metadata, &value);
+    auto s = db.read(ctx, ns_key, &metadata, &value);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
@@ -63,7 +65,8 @@ rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::strin
     rocksdb::ReadOptions read_options;
     read_options.snapshot = ss.GetSnapShot();
     std::string sub_key = InternalKey(ns_key, field, metadata.version, hash.storage_->IsSlotIdEncoded()).Encode();
-    return hash.storage_->Get(read_options, sub_key, output);
+    engine::Context ctx(hash.storage_);
+    return hash.storage_->Get(ctx, read_options, sub_key, output);
   } else if (std::holds_alternative<JsonData>(db)) {
     auto &value = std::get<JsonData>(db);
     auto s = value.Get(field.front() == '$' ? field : fmt::format("$.{}", field));
@@ -81,7 +84,8 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
   Database db(indexer->storage, ns);
 
   RedisType type = kRedisNone;
-  auto s = db.Type(key, &type);
+  engine::Context ctx(indexer->storage);
+  auto s = db.Type(ctx, key, &type);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   // key not exist
@@ -126,6 +130,9 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   auto *metadata = iter->second.metadata.get();
   auto *storage = indexer->storage;
   auto ns_key = ComposeNamespaceKey(ns, info->name, storage->IsSlotIdEncoded());
+
+  engine::Context ctx(storage);
+
   if (auto tag = dynamic_cast<SearchTagFieldMetadata *>(metadata)) {
     const char delim[] = {tag->separator, '\0'};
     auto original_tags = util::Split(original, delim);
@@ -175,7 +182,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
       batch->Put(cf_handle, index_key.Encode(), Slice());
     }
 
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
     auto batch = storage->GetWriteBatchBase();
@@ -197,7 +204,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
       batch->Put(cf_handle, index_key.Encode(), Slice());
     }
 
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   } else {
     return {Status::NotOK, "Unexpected field type"};

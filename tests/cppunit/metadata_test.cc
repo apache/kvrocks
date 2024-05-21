@@ -74,6 +74,7 @@ class RedisTypeTest : public TestBase {
     key_ = "test-redis-type";
     fields_ = {"test-hash-key-1", "test-hash-key-2", "test-hash-key-3"};
     values_ = {"hash-test-value-1", "hash-test-value-2", "hash-test-value-3"};
+    ctx_ = engine::Context(storage_.get());
   }
   ~RedisTypeTest() override = default;
 
@@ -88,13 +89,13 @@ TEST_F(RedisTypeTest, GetMetadata) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   HashMetadata metadata;
   std::string ns_key = redis_->AppendNamespacePrefix(key_);
-  s = redis_->GetMetadata(redis::Database::GetOptions{}, {kRedisHash}, ns_key, &metadata);
+  s = redis_->GetMetadata(ctx_, {kRedisHash}, ns_key, &metadata);
   EXPECT_EQ(fvs.size(), metadata.size);
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
   EXPECT_TRUE(s.ok());
 }
 
@@ -104,16 +105,16 @@ TEST_F(RedisTypeTest, Expire) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
-  s = redis_->Expire(key_, now * 1000 + 2000);
+  s = redis_->Expire(ctx_, key_, now * 1000 + 2000);
   int64_t ttl = 0;
-  s = redis_->TTL(key_, &ttl);
+  s = redis_->TTL(ctx_, key_, &ttl);
   ASSERT_GT(ttl, 0);
   ASSERT_LE(ttl, 2000);
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
 }
 
 TEST_F(RedisTypeTest, ExpireTime) {
@@ -122,23 +123,23 @@ TEST_F(RedisTypeTest, ExpireTime) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   uint64_t ms_offset = 2314;
   uint64_t expire_timestamp_ms = now * 1000 + ms_offset;
-  s = redis_->Expire(key_, expire_timestamp_ms);
+  s = redis_->Expire(ctx_, key_, expire_timestamp_ms);
   EXPECT_TRUE(s.ok());
   uint64_t timestamp = 0;
-  s = redis_->GetExpireTime(key_, &timestamp);
+  s = redis_->GetExpireTime(ctx_, key_, &timestamp);
   EXPECT_TRUE(s.ok() && timestamp != 0);
   if (METADATA_ENCODING_VERSION != 0) {
     EXPECT_EQ(timestamp, expire_timestamp_ms);
   } else {
     EXPECT_EQ(timestamp, Metadata::ExpireMsToS(expire_timestamp_ms) * 1000);
   }
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
 }
 
 TEST_F(RedisTypeTest, ExpireTimeKeyNoExpireTime) {
@@ -147,12 +148,12 @@ TEST_F(RedisTypeTest, ExpireTimeKeyNoExpireTime) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   uint64_t timestamp = 0;
-  s = redis_->GetExpireTime(key_, &timestamp);
+  s = redis_->GetExpireTime(ctx_, key_, &timestamp);
   EXPECT_TRUE(s.ok() && timestamp == 0);
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
 }
 
 TEST_F(RedisTypeTest, ExpireTimeKeyExpired) {
@@ -161,19 +162,19 @@ TEST_F(RedisTypeTest, ExpireTimeKeyExpired) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   int64_t now = 0;
   rocksdb::Env::Default()->GetCurrentTime(&now);
   uint64_t ms_offset = 1120;
   uint64_t expire_timestamp_ms = now * 1000 + ms_offset;
-  s = redis_->Expire(key_, expire_timestamp_ms);
+  s = redis_->Expire(ctx_, key_, expire_timestamp_ms);
   EXPECT_TRUE(s.ok());
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   uint64_t timestamp = 0;
-  s = redis_->GetExpireTime(key_, &timestamp);
+  s = redis_->GetExpireTime(ctx_, key_, &timestamp);
   EXPECT_TRUE(s.IsNotFound() && timestamp == 0);
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
 }
 
 TEST_F(RedisTypeTest, ExpireTimeKeyNotExisted) {
@@ -182,13 +183,13 @@ TEST_F(RedisTypeTest, ExpireTimeKeyNotExisted) {
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
-  rocksdb::Status s = hash_->MSet(key_, fvs, false, &ret);
+  rocksdb::Status s = hash_->MSet(ctx_, key_, fvs, false, &ret);
   EXPECT_TRUE(s.ok() && fvs.size() == ret);
   uint64_t timestamp = 0;
-  s = redis_->GetExpireTime(key_ + "test", &timestamp);
+  s = redis_->GetExpireTime(ctx_, key_ + "test", &timestamp);
   EXPECT_TRUE(s.IsNotFound() && timestamp == 0);
 
-  s = redis_->Del(key_);
+  s = redis_->Del(ctx_, key_);
 }
 
 TEST(Metadata, MetadataDecodingBackwardCompatibleSimpleKey) {

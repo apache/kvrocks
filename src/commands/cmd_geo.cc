@@ -114,7 +114,8 @@ class CommandGeoAdd : public CommandGeoBase {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint64_t ret = 0;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.Add(args_[1], &geo_points_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Add(ctx, args_[1], &geo_points_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -142,7 +143,8 @@ class CommandGeoDist : public CommandGeoBase {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     double distance = 0;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.Dist(args_[1], args_[2], args_[3], &distance);
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Dist(ctx, args_[1], args_[2], args_[3], &distance);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -168,7 +170,8 @@ class CommandGeoHash : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<std::string> hashes;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.Hash(args_[1], members_, &hashes);
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Hash(ctx, args_[1], members_, &hashes);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -197,7 +200,8 @@ class CommandGeoPos : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::map<std::string, GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.Pos(args_[1], members_, &geo_points);
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Pos(ctx, args_[1], members_, &geo_points);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -304,7 +308,8 @@ class CommandGeoRadius : public CommandGeoBase {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.Radius(args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_, store_key_,
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Radius(ctx, args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_, store_key_,
                            store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -452,8 +457,9 @@ class CommandGeoSearch : public CommandGeoBase {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.Search(args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, false, GetUnitConversion(),
-                           &geo_points);
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.Search(ctx, args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, false,
+                           GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -614,7 +620,8 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.SearchStore(args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.SearchStore(ctx, args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
                                 store_distance_, GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
@@ -654,7 +661,8 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
-    auto s = geo_db.RadiusByMember(args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
+    engine::Context ctx(srv->storage);
+    auto s = geo_db.RadiusByMember(ctx, args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
                                    store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

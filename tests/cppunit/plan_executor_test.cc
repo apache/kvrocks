@@ -262,16 +262,16 @@ class PlanExecutorTestC : public TestBase {
 };
 
 TEST_F(PlanExecutorTestC, FullIndexScan) {
-  json_->Set("test1:a", "$", "{}");
-  json_->Set("test1:b", "$", "{}");
-  json_->Set("test2:c", "$", "{\"f3\": 6}");
-  json_->Set("test3:d", "$", "{}");
-  json_->Set("test4:e", "$", "{\"f3\": 7}");
-  json_->Set("test4:f", "$", "{\"f3\": 2}");
-  json_->Set("test4:g", "$", "{\"f3\": 8}");
-  json_->Set("test5:h", "$", "{}");
-  json_->Set("test5:i", "$", "{}");
-  json_->Set("test5:g", "$", "{}");
+  json_->Set(ctx_, "test1:a", "$", "{}");
+  json_->Set(ctx_, "test1:b", "$", "{}");
+  json_->Set(ctx_, "test2:c", "$", "{\"f3\": 6}");
+  json_->Set(ctx_, "test3:d", "$", "{}");
+  json_->Set(ctx_, "test4:e", "$", "{\"f3\": 7}");
+  json_->Set(ctx_, "test4:f", "$", "{\"f3\": 2}");
+  json_->Set(ctx_, "test4:g", "$", "{\"f3\": 8}");
+  json_->Set(ctx_, "test5:h", "$", "{}");
+  json_->Set(ctx_, "test5:i", "$", "{}");
+  json_->Set(ctx_, "test5:g", "$", "{}");
 
   {
     auto op = std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI()));
@@ -343,13 +343,13 @@ TEST_F(PlanExecutorTestC, NumericFieldScan) {
   {
     auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
                                  "search_ns");
-    json_->Set("test2:a", "$", "{\"f2\": 6}");
-    json_->Set("test2:b", "$", "{\"f2\": 3}");
-    json_->Set("test2:c", "$", "{\"f2\": 8}");
-    json_->Set("test2:d", "$", "{\"f2\": 14}");
-    json_->Set("test2:e", "$", "{\"f2\": 1}");
-    json_->Set("test2:f", "$", "{\"f2\": 3}");
-    json_->Set("test2:g", "$", "{\"f2\": 9}");
+    json_->Set(ctx_, "test2:a", "$", "{\"f2\": 6}");
+    json_->Set(ctx_, "test2:b", "$", "{\"f2\": 3}");
+    json_->Set(ctx_, "test2:c", "$", "{\"f2\": 8}");
+    json_->Set(ctx_, "test2:d", "$", "{\"f2\": 14}");
+    json_->Set(ctx_, "test2:e", "$", "{\"f2\": 1}");
+    json_->Set(ctx_, "test2:f", "$", "{\"f2\": 3}");
+    json_->Set(ctx_, "test2:g", "$", "{\"f2\": 9}");
   }
 
   {
@@ -384,13 +384,13 @@ TEST_F(PlanExecutorTestC, TagFieldScan) {
   {
     auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
                                  "search_ns");
-    json_->Set("test2:a", "$", "{\"f1\": \"c,cpp,java\"}");
-    json_->Set("test2:b", "$", "{\"f1\": \"python,c\"}");
-    json_->Set("test2:c", "$", "{\"f1\": \"java,scala\"}");
-    json_->Set("test2:d", "$", "{\"f1\": \"rust,python,perl\"}");
-    json_->Set("test2:e", "$", "{\"f1\": \"python,cpp\"}");
-    json_->Set("test2:f", "$", "{\"f1\": \"c,cpp\"}");
-    json_->Set("test2:g", "$", "{\"f1\": \"cpp,rust\"}");
+    json_->Set(ctx_, "test2:a", "$", "{\"f1\": \"c,cpp,java\"}");
+    json_->Set(ctx_, "test2:b", "$", "{\"f1\": \"python,c\"}");
+    json_->Set(ctx_, "test2:c", "$", "{\"f1\": \"java,scala\"}");
+    json_->Set(ctx_, "test2:d", "$", "{\"f1\": \"rust,python,perl\"}");
+    json_->Set(ctx_, "test2:e", "$", "{\"f1\": \"python,cpp\"}");
+    json_->Set(ctx_, "test2:f", "$", "{\"f1\": \"c,cpp\"}");
+    json_->Set(ctx_, "test2:g", "$", "{\"f1\": \"cpp,rust\"}");
   }
 
   {

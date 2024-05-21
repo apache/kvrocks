@@ -78,13 +78,14 @@ TEST_F(IndexerTest, HashTag) {
   auto idxname = "hashtest";
 
   {
+    engine::Context ctx(storage_.get());
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_TRUE(s->second.empty());
 
     uint64_t cnt = 0;
-    db.Set(key1, "x", "food,kitChen,Beauty", &cnt);
+    db.Set(ctx, key1, "x", "food,kitChen,Beauty", &cnt);
     ASSERT_EQ(cnt, 1);
 
     auto s2 = indexer.Update(*s, key1, ns);
@@ -95,7 +96,7 @@ TEST_F(IndexerTest, HashTag) {
     auto key = InternalKey(nskey, subkey, 0, false);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -103,7 +104,7 @@ TEST_F(IndexerTest, HashTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -111,12 +112,13 @@ TEST_F(IndexerTest, HashTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
 
   {
+    engine::Context ctx(storage_.get());
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->first.info->name, idxname);
@@ -124,7 +126,7 @@ TEST_F(IndexerTest, HashTag) {
     ASSERT_EQ(s->second["x"], "food,kitChen,Beauty");
 
     uint64_t cnt = 0;
-    auto s_set = db.Set(key1, "x", "Clothing,FOOD,sport", &cnt);
+    auto s_set = db.Set(ctx, key1, "x", "Clothing,FOOD,sport", &cnt);
     ASSERT_EQ(cnt, 0);
     ASSERT_TRUE(s_set.ok());
 
@@ -136,7 +138,7 @@ TEST_F(IndexerTest, HashTag) {
     auto key = InternalKey(nskey, subkey, 0, false);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -144,7 +146,7 @@ TEST_F(IndexerTest, HashTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -152,7 +154,7 @@ TEST_F(IndexerTest, HashTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -160,14 +162,14 @@ TEST_F(IndexerTest, HashTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.IsNotFound());
 
     subkey = redis::ConstructTagFieldSubkey("x", "beauty", key1);
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }
@@ -190,7 +192,8 @@ TEST_F(IndexerTest, JsonTag) {
     ASSERT_EQ(s->first.info->name, idxname);
     ASSERT_TRUE(s->second.empty());
 
-    auto s_set = db.Set(key1, "$", R"({"x": "food,kitChen,Beauty"})");
+    engine::Context ctx(storage_.get());
+    auto s_set = db.Set(ctx, key1, "$", R"({"x": "food,kitChen,Beauty"})");
     ASSERT_TRUE(s_set.ok());
 
     auto s2 = indexer.Update(*s, key1, ns);
@@ -201,7 +204,7 @@ TEST_F(IndexerTest, JsonTag) {
     auto key = InternalKey(nskey, subkey, 0, false);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -209,7 +212,7 @@ TEST_F(IndexerTest, JsonTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -217,7 +220,7 @@ TEST_F(IndexerTest, JsonTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
@@ -229,7 +232,8 @@ TEST_F(IndexerTest, JsonTag) {
     ASSERT_EQ(s->second.size(), 1);
     ASSERT_EQ(s->second["$.x"], "food,kitChen,Beauty");
 
-    auto s_set = db.Set(key1, "$.x", "\"Clothing,FOOD,sport\"");
+    engine::Context ctx(storage_.get());
+    auto s_set = db.Set(ctx, key1, "$.x", "\"Clothing,FOOD,sport\"");
     ASSERT_TRUE(s_set.ok());
 
     auto s2 = indexer.Update(*s, key1, ns);
@@ -240,7 +244,7 @@ TEST_F(IndexerTest, JsonTag) {
     auto key = InternalKey(nskey, subkey, 0, false);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -248,7 +252,7 @@ TEST_F(IndexerTest, JsonTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -256,7 +260,7 @@ TEST_F(IndexerTest, JsonTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
@@ -264,14 +268,14 @@ TEST_F(IndexerTest, JsonTag) {
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.IsNotFound());
 
     subkey = redis::ConstructTagFieldSubkey("$.x", "beauty", key1);
     nskey = ComposeNamespaceKey(ns, idxname, false);
     key = InternalKey(nskey, subkey, 0, false);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }

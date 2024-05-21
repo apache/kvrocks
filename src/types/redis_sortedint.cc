@@ -28,19 +28,19 @@
 
 namespace redis {
 
-rocksdb::Status Sortedint::GetMetadata(Database::GetOptions get_options, const Slice &ns_key,
-                                       SortedintMetadata *metadata) {
-  return Database::GetMetadata(get_options, {kRedisSortedint}, ns_key, metadata);
+rocksdb::Status Sortedint::GetMetadata(engine::Context &ctx, const Slice &ns_key, SortedintMetadata *metadata) {
+  return Database::GetMetadata(ctx, {kRedisSortedint}, ns_key, metadata);
 }
 
-rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *added_cnt) {
+rocksdb::Status Sortedint::Add(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                               uint64_t *added_cnt) {
   *added_cnt = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SortedintMetadata metadata;
-  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
@@ -51,7 +51,7 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
     std::string id_buf;
     PutFixed64(&id_buf, id);
     std::string sub_key = InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *added_cnt += 1;
@@ -63,17 +63,18 @@ rocksdb::Status Sortedint::Add(const Slice &user_key, const std::vector<uint64_t
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *removed_cnt) {
+rocksdb::Status Sortedint::Remove(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                                  uint64_t *removed_cnt) {
   *removed_cnt = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SortedintMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -84,7 +85,7 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
     std::string id_buf;
     PutFixed64(&id_buf, id);
     std::string sub_key = InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *removed_cnt += 1;
@@ -94,29 +95,29 @@ rocksdb::Status Sortedint::Remove(const Slice &user_key, const std::vector<uint6
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Sortedint::Card(const Slice &user_key, uint64_t *size) {
+rocksdb::Status Sortedint::Card(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
   *size = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *size = metadata.size;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint64_t offset, uint64_t limit,
-                                 bool reversed, std::vector<uint64_t> *ids) {
+rocksdb::Status Sortedint::Range(engine::Context &ctx, const Slice &user_key, uint64_t cursor_id, uint64_t offset,
+                                 uint64_t limit, bool reversed, std::vector<uint64_t> *ids) {
   ids->clear();
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_buf;
@@ -150,8 +151,8 @@ rocksdb::Status Sortedint::Range(const Slice &user_key, uint64_t cursor_id, uint
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpec spec, std::vector<uint64_t> *ids,
-                                        int *size) {
+rocksdb::Status Sortedint::RangeByValue(engine::Context &ctx, const Slice &user_key, SortedintRangeSpec spec,
+                                        std::vector<uint64_t> *ids, int *size) {
   if (size) *size = 0;
   if (ids) ids->clear();
 
@@ -159,7 +160,7 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
 
   SortedintMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_buf;
@@ -204,12 +205,13 @@ rocksdb::Status Sortedint::RangeByValue(const Slice &user_key, SortedintRangeSpe
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint64_t> &ids, std::vector<int> *exists) {
+rocksdb::Status Sortedint::MExist(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                                  std::vector<int> *exists) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
   LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options;
@@ -219,7 +221,7 @@ rocksdb::Status Sortedint::MExist(const Slice &user_key, const std::vector<uint6
     std::string id_buf;
     PutFixed64(&id_buf, id);
     std::string sub_key = InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(read_options, sub_key, &value);
+    s = storage_->Get(ctx, read_options, sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);

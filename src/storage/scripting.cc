@@ -320,8 +320,8 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
     if (!replace) {
       return {Status::NotOK, "library already exists, please specify REPLACE to force load"};
     }
-
-    auto s = FunctionDelete(srv, libname);
+    engine::Context ctx(srv->storage);
+    auto s = FunctionDelete(ctx, srv, libname);
     if (!s) return s;
   }
 
@@ -541,7 +541,7 @@ Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::st
   return Status::OK();
 }
 
-Status FunctionDelete(Server *srv, const std::string &name) {
+Status FunctionDelete(engine::Context &ctx, Server *srv, const std::string &name) {
   auto lua = srv->Lua();
 
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
@@ -564,7 +564,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
     std::string func = lua_tostring(lua, -1);
     lua_pushnil(lua);
     lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + func).c_str());
-    auto _ = storage->Delete(rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix + func);
+    auto _ = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix + func);
     lua_pop(lua, 1);
   }
 
@@ -573,7 +573,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
   lua_setfield(lua, -2, name.c_str());
   lua_pop(lua, 1);
 
-  auto s = storage->Delete(rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix + name);
+  auto s = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix + name);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   return Status::OK();

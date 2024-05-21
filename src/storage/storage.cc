@@ -45,6 +45,7 @@
 #include "rocksdb/cache.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
+#include "storage/batch_indexer.h"
 #include "table_properties_collector.h"
 #include "time_util.h"
 #include "unique_fd.h"
@@ -580,15 +581,19 @@ Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb:
 
 rocksdb::SequenceNumber Storage::LatestSeqNumber() { return db_->GetLatestSequenceNumber(); }
 
-rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value) {
-  return Get(options, db_->DefaultColumnFamily(), key, value);
+rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
+                             std::string *value) {
+  return Get(ctx, options, db_->DefaultColumnFamily(), key, value);
 }
 
-rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
-                             const rocksdb::Slice &key, std::string *value) {
+rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                             rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                             std::string *value) {
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+  } else if (ctx.batch) {
+    s = ctx.batch->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
   } else {
     s = db_->Get(options, column_family, key, value);
   }
@@ -597,16 +602,19 @@ rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::Colum
   return s;
 }
 
-rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
+rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
                              rocksdb::PinnableSlice *value) {
-  return Get(options, db_->DefaultColumnFamily(), key, value);
+  return Get(ctx, options, db_->DefaultColumnFamily(), key, value);
 }
 
-rocksdb::Status Storage::Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
-                             const rocksdb::Slice &key, rocksdb::PinnableSlice *value) {
+rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                             rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                             rocksdb::PinnableSlice *value) {
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
+  } else if (ctx.batch) {
+    s = ctx.batch->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
   } else {
     s = db_->Get(options, column_family, key, value);
   }
@@ -653,31 +661,40 @@ void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamil
   }
 }
 
-rocksdb::Status Storage::Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+rocksdb::Status Storage::Write(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                               rocksdb::WriteBatch *updates) {
   if (is_txn_mode_) {
     // The batch won't be flushed until the transaction was committed or rollback
     return rocksdb::Status::OK();
   }
-  return writeToDB(options, updates);
+  return writeToDB(ctx, options, updates);
 }
 
-rocksdb::Status Storage::writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates) {
+rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                   rocksdb::WriteBatch *updates) {
   // Put replication id logdata at the end of write batch
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
   }
 
+  if (ctx.batch == nullptr) {
+    ctx.batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  }
+  WriteBatchIndexer handle(this, ctx.batch.get());
+  auto s = updates->Iterate(&handle);
+  if (!s.ok()) return s;
+
   return db_->Write(options, updates);
 }
 
-rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
-                                const rocksdb::Slice &key) {
+rocksdb::Status Storage::Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key) {
   auto batch = GetWriteBatchBase();
   batch->Delete(cf_handle, key);
-  return Write(options, batch->GetWriteBatch());
+  return Write(ctx, options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
+rocksdb::Status Storage::DeleteRange(engine::Context &ctx, const std::string &first_key, const std::string &last_key) {
   auto batch = GetWriteBatchBase();
   rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(ColumnFamilyID::Metadata);
   auto s = batch->DeleteRange(cf_handle, first_key, last_key);
@@ -690,10 +707,11 @@ rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::st
     return s;
   }
 
-  return Write(default_write_opts_, batch->GetWriteBatch());
+  return Write(ctx, default_write_opts_, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
+rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                      rocksdb::ColumnFamilyHandle *cf_handle) {
   std::string begin_key = kLuaFuncSHAPrefix, end_key = begin_key;
   // we need to increase one here since the DeleteRange api
   // didn't contain the end key.
@@ -705,7 +723,7 @@ rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rock
     return s;
   }
 
-  return Write(options, batch->GetWriteBatch());
+  return Write(ctx, options, batch->GetWriteBatch());
 }
 
 Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
@@ -770,12 +788,13 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
 
+  engine::Context ctx(this);
   for (auto cf_handle : cf_handles_) {
     if (cf_handle == GetCFHandle(ColumnFamilyID::PubSub) || cf_handle == GetCFHandle(ColumnFamilyID::Propagate)) {
       continue;
     }
 
-    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle);
+    auto s = db.FindKeyRangeWithPrefix(ctx, prefix, std::string(), &begin_key, &end_key, cf_handle);
     if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
@@ -829,8 +848,8 @@ Status Storage::CommitTxn() {
   if (!is_txn_mode_) {
     return Status{Status::NotOK, "cannot commit while not in transaction mode"};
   }
-
-  auto s = writeToDB(default_write_opts_, txn_write_batch_->GetWriteBatch());
+  engine::Context ctx(this);
+  auto s = writeToDB(ctx, default_write_opts_, txn_write_batch_->GetWriteBatch());
 
   is_txn_mode_ = false;
   txn_write_batch_ = nullptr;
@@ -847,21 +866,21 @@ ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
   return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(new rocksdb::WriteBatch(), ObserverOrUnique::Unique);
 }
 
-Status Storage::WriteToPropagateCF(const std::string &key, const std::string &value) {
+Status Storage::WriteToPropagateCF(engine::Context &ctx, const std::string &key, const std::string &value) {
   if (config_->IsSlave()) {
     return {Status::NotOK, "cannot write to propagate column family in slave mode"};
   }
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(ColumnFamilyID::Propagate);
   batch->Put(cf, key, value);
-  auto s = Write(default_write_opts_, batch->GetWriteBatch());
+  auto s = Write(ctx, default_write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return {Status::NotOK, s.ToString()};
   }
   return Status::OK();
 }
 
-Status Storage::ShiftReplId() {
+Status Storage::ShiftReplId(engine::Context &ctx) {
   static constexpr std::string_view charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
   // Do nothing if rsid psync is not enabled
@@ -879,7 +898,7 @@ Status Storage::ShiftReplId() {
   LOG(INFO) << "[replication] New replication id: " << replid_;
 
   // Write new replication id into db engine
-  return WriteToPropagateCF(kReplicationIdKey, replid_);
+  return WriteToPropagateCF(ctx, kReplicationIdKey, replid_);
 }
 
 std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
@@ -1219,6 +1238,19 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   }
 
   return crc == tmp_crc;
+}
+
+rocksdb::ReadOptions Context::GetReadOptions() {
+  rocksdb::ReadOptions read_opts;
+  read_opts.snapshot = GetSnapShot();
+  return read_opts;
+}
+
+const rocksdb::Snapshot *Context::GetSnapShot() {
+  if (storage && snapshot == nullptr) {
+    snapshot = storage->GetDB()->GetSnapshot();
+  }
+  return snapshot;
 }
 
 }  // namespace engine

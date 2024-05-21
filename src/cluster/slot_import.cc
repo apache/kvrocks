@@ -39,7 +39,8 @@ Status SlotImport::Start(int slot) {
   }
 
   // Clean slot data first
-  auto s = ClearKeysOfSlot(namespace_, slot);
+  engine::Context ctx(srv_->storage);
+  auto s = ClearKeysOfSlot(ctx, namespace_, slot);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
   }
@@ -71,7 +72,8 @@ Status SlotImport::Fail(int slot) {
   }
 
   // Clean imported slot data
-  auto s = ClearKeysOfSlot(namespace_, slot);
+  engine::Context ctx(srv_->storage);
+  auto s = ClearKeysOfSlot(ctx, namespace_, slot);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
   }
@@ -96,7 +98,8 @@ Status SlotImport::StopForLinkError() {
   //    from new master.
   if (!srv_->IsSlave()) {
     // Clean imported slot data
-    auto s = ClearKeysOfSlot(namespace_, import_slot_);
+    engine::Context ctx(srv_->storage);
+    auto s = ClearKeysOfSlot(ctx, namespace_, import_slot_);
     if (!s.ok()) {
       return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
     }

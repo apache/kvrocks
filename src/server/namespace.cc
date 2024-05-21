@@ -62,7 +62,8 @@ Status Namespace::LoadAndRewrite() {
   // We would like to load namespaces from db even if repl_namespace_enabled is false,
   // this can avoid missing some namespaces when turn on/off repl_namespace_enabled.
   std::string value;
-  auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
+  engine::Context ctx(storage_);
+  auto s = storage_->Get(ctx, rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
   if (!s.ok() && !s.IsNotFound()) {
     return {Status::NotOK, s.ToString()};
   }
@@ -198,5 +199,6 @@ Status Namespace::Rewrite() {
   for (const auto& iter : tokens_) {
     json[iter.first] = iter.second;
   }
-  return storage_->WriteToPropagateCF(kNamespaceDBKey, json.to_string());
+  engine::Context ctx(storage_);
+  return storage_->WriteToPropagateCF(ctx, kNamespaceDBKey, json.to_string());
 }

@@ -194,6 +194,8 @@ class ColumnFamilyConfigs {
   };
 };
 
+struct Context;
+
 class Storage {
  public:
   explicit Storage(Config *config);
@@ -222,30 +224,35 @@ class Storage {
   Status ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                     const rocksdb::Slice &key, std::string *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
-                                    rocksdb::PinnableSlice *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                    rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                                    std::string *value);
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                     const rocksdb::Slice &key, rocksdb::PinnableSlice *value);
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                    rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                                    rocksdb::PinnableSlice *value);
   void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
                 const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
-  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  [[nodiscard]] rocksdb::Status Write(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                      rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return default_write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
-  [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
-                                       const rocksdb::Slice &key);
-  [[nodiscard]] rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
-  [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
+  [[nodiscard]] rocksdb::Status Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                       rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key);
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, const std::string &first_key,
+                                            const std::string &last_key);
+  [[nodiscard]] rocksdb::Status FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                              rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
   Status InWALBoundary(rocksdb::SequenceNumber seq);
-  Status WriteToPropagateCF(const std::string &key, const std::string &value);
+  Status WriteToPropagateCF(engine::Context &ctx, const std::string &key, const std::string &value);
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
@@ -318,7 +325,7 @@ class Storage {
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
-  Status ShiftReplId();
+  Status ShiftReplId(engine::Context &ctx);
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 
@@ -356,8 +363,38 @@ class Storage {
 
   rocksdb::WriteOptions default_write_opts_ = rocksdb::WriteOptions();
 
-  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  rocksdb::Status writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
+};
+
+struct Context {
+  engine::Storage *storage = nullptr;
+  const rocksdb::Snapshot *snapshot = nullptr;
+  std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
+
+  rocksdb::ReadOptions GetReadOptions();
+  const rocksdb::Snapshot *GetSnapShot();
+
+  explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
+  Context() = default;
+  ~Context() { storage->GetDB()->ReleaseSnapshot(snapshot); }
+  Context(const Context &) = delete;
+  Context &operator=(const Context &) = delete;
+  Context &operator=(Context &&ctx) noexcept {
+    if (this != &ctx) {
+      storage = ctx.storage;
+      snapshot = ctx.snapshot;
+      batch = std::move(ctx.batch);
+
+      ctx.storage = nullptr;
+      ctx.snapshot = nullptr;
+    }
+    return *this;
+  }
+  Context(Context &&ctx) noexcept : storage(ctx.storage), snapshot(ctx.snapshot), batch(std::move(ctx.batch)) {
+    ctx.storage = nullptr;
+    ctx.snapshot = nullptr;
+  }
 };
 
 }  // namespace engine

@@ -22,6 +22,7 @@
 #include "commands/command_parser.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
+#include "server/server.h"
 #include "storage/scripting.h"
 #include "string_util.h"
 
@@ -30,6 +31,7 @@ namespace redis {
 struct CommandFunction : Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     CommandParser parser(args_, 1);
+    engine::Context ctx(srv->storage);
     if (parser.EatEqICase("load")) {
       bool replace = false;
       if (parser.EatEqICase("replace")) {
@@ -70,8 +72,7 @@ struct CommandFunction : Commander {
       if (!lua::FunctionIsLibExist(conn, libname)) {
         return {Status::NotOK, "no such library"};
       }
-
-      auto s = lua::FunctionDelete(srv, libname);
+      auto s = lua::FunctionDelete(ctx, srv, libname);
       if (!s) return s;
 
       *output = SimpleString("OK");

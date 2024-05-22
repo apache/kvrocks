@@ -634,7 +634,7 @@ func TestJson(t *testing.T) {
 		fmt.Println("object a,", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$").Val())
 		fmt.Println("integer", "string", "array", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..x").Val())
 		fmt.Println("null,", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
-		fmt.Println("no exisit,", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exisit").Val())
+		fmt.Println("no", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exisit").Val())
 
 	})
 }

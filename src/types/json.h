@@ -224,11 +224,11 @@ struct JsonValue {
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
         std::string buffer;
-        JsonValue parse_value(origin);
+        JsonValue query_value(origin);
         if (format == JsonStorageFormat::JSON) {
-          s = parse_value.Dump(&buffer, max_nesting_depth);
+          s = query_value.Dump(&buffer, max_nesting_depth);
         } else if (format == JsonStorageFormat::CBOR) {
-          s = parse_value.DumpCBOR(&buffer, max_nesting_depth);
+          s = query_value.DumpCBOR(&buffer, max_nesting_depth);
         }
         results.emplace_back(buffer.size());
       });

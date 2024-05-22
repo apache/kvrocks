@@ -217,39 +217,29 @@ struct JsonValue {
     return results;
   }
 
-  StatusOr<std::vector<std::string>> GetBytes(std::string_view path, JsonStorageFormat format,
-                                              int max_nesting_depth = std::numeric_limits<int>::max()) const {
-    std::vector<std::string> results;
+  StatusOr<std::vector<size_t>> GetBytes(std::string_view path, JsonStorageFormat format,
+                                         int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    std::vector<size_t> results;
+    Status s;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
-        if (!origin.empty()) {
-          Status s;
-          std::string buffer;
-          std::error_code ec;
-          if (format == JsonStorageFormat::JSON) {
-            jsoncons::json_options options;
-            options.max_nesting_depth(max_nesting_depth);
-            jsoncons::compact_json_string_encoder encoder{buffer, options};
-            origin.dump(encoder, ec);
-          } else if (format == JsonStorageFormat::CBOR) {
-            jsoncons::cbor::cbor_options options;
-            options.max_nesting_depth(max_nesting_depth);
-            jsoncons::cbor::basic_cbor_encoder<jsoncons::string_sink<std::string>> encoder{buffer, options};
-            origin.dump(encoder, ec);
-          }
-          if (ec) {
-            throw std::system_error(ec);
-          }
-          results.emplace_back(std::to_string(buffer.size()));
-        } else {
-          results.emplace_back(std::to_string(0));
+        std::string buffer;
+        JsonValue parse_value(origin);
+        if (format == JsonStorageFormat::JSON) {
+          s = parse_value.Dump(&buffer, max_nesting_depth);
+        } else if (format == JsonStorageFormat::CBOR) {
+          s = parse_value.DumpCBOR(&buffer, max_nesting_depth);
         }
+        results.emplace_back(buffer.size());
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
-    } catch (const std::system_error &e) {
-      return {Status::NotOK, e.what()};
     }
+    if (!s) return {Status::NotOK, s.Msg()};
+    if (results.size() == 0) {
+      results.emplace_back(0);
+    }
+
     return results;
   }
 

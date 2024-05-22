@@ -45,6 +45,14 @@ std::string OptionalsToString(const Connection *conn, Optionals<T> &opts) {
   return str;
 }
 
+std::string SizetToString(const std::vector<std::size_t> &elems) {
+  std::string result = "*" + std::to_string(elems.size()) + CRLF;
+  for (const auto &elem : elems) {
+    result += redis::Integer(elem);
+  }
+  return result;
+}
+
 class CommandJsonSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -641,7 +649,7 @@ class CommandJsonDebug : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
 
-    std::vector<std::string> results;
+    std::vector<std::size_t> results;
     auto s = json.DebugMemory(args_[2], path, &results);
 
     if (s.IsNotFound()) {
@@ -651,7 +659,7 @@ class CommandJsonDebug : public Commander {
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = redis::ArrayOfBulkStrings(results);
+    *output = SizetToString(results);
     return Status::OK();
   }
 };

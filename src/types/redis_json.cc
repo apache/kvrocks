@@ -627,8 +627,7 @@ std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, 
   return statuses;
 }
 
-rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string &path,
-                                  std::vector<std::string> *results) {
+rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string &path, std::vector<size_t> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
   if (path == "$") {
@@ -636,7 +635,7 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
     Slice rest;
     auto s = GetMetadata(GetOptions{}, {kRedisJson}, ns_key, &bytes, &metadata, &rest);
     if (!s.ok()) return s;
-    results->emplace_back(std::to_string(rest.size()));
+    results->emplace_back(rest.size());
   } else {
     JsonValue json_val;
     auto s = read(ns_key, &metadata, &json_val);

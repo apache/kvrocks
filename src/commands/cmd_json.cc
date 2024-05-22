@@ -45,7 +45,7 @@ std::string OptionalsToString(const Connection *conn, Optionals<T> &opts) {
   return str;
 }
 
-std::string SizetToString(const std::vector<std::size_t> &elems) {
+std::string SizeToString(const std::vector<std::size_t> &elems) {
   std::string result = "*" + std::to_string(elems.size()) + CRLF;
   for (const auto &elem : elems) {
     result += redis::Integer(elem);
@@ -659,7 +659,7 @@ class CommandJsonDebug : public Commander {
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = SizetToString(results);
+    *output = SizeToString(results);
     return Status::OK();
   }
 };

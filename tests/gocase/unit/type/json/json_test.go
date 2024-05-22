@@ -21,7 +21,6 @@ package json
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -630,28 +629,24 @@ func TestJson(t *testing.T) {
 	})
 
 	t.Run("JSON.DEBUG MEMORY basics", func(t *testing.T) {
-
-		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"},"f":{"x":[]}}`).Err())
-		fmt.Println("object a,", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$").Val())
-		fmt.Println("integer", "string", "array", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..x").Val())
-		fmt.Println("null,", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
-		fmt.Println("no", rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
 		//object
 		var result1 = make([]interface{}, 0)
-		result1 = append(result1, int64(3))
+		result1 = append(result1, int64(43))
 		require.Equal(t, result1, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$").Val())
 		//integer string array empty_array
 		var result2 = make([]interface{}, 0)
-		result2 = append(result2, int64(3), int64(3), int64(3))
+		result2 = append(result2, int64(1), int64(1), int64(2), int64(4))
 		require.Equal(t, result2, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..x").Val())
 		//null object
 		var result3 = make([]interface{}, 0)
-		result3 = append(result3, int64(3))
+		result3 = append(result3, int64(9), int64(1))
 		require.Equal(t, result3, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
 		//no no_exists
 		var result4 = make([]interface{}, 0)
 		result4 = append(result4, int64(0))
 		require.Equal(t, result4, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
+		//no key
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Err(), redis.Nil)
 
 	})
 }

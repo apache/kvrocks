@@ -629,6 +629,7 @@ func TestJson(t *testing.T) {
 	})
 
 	t.Run("JSON.DEBUG MEMORY basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"},"f":{"x":[]}}`).Err())
 		//object
 		var result1 = make([]interface{}, 0)
 		result1 = append(result1, int64(43))

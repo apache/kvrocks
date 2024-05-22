@@ -47,14 +47,10 @@ void BloomChain::getBFKeyList(const Slice &ns_key, const BloomChainMetadata &met
 
 rocksdb::Status BloomChain::getBFDataList(engine::Context &ctx, const std::vector<std::string> &bf_key_list,
                                           std::vector<rocksdb::PinnableSlice> *bf_data_list) {
-  LatestSnapShot ss(storage_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-
   bf_data_list->reserve(bf_key_list.size());
   for (const auto &bf_key : bf_key_list) {
     rocksdb::PinnableSlice pin_value;
-    rocksdb::Status s = storage_->Get(ctx, read_options, bf_key, &pin_value);
+    rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), bf_key, &pin_value);
     if (!s.ok()) return s;
     bf_data_list->push_back(std::move(pin_value));
   }

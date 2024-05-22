@@ -116,7 +116,6 @@ rocksdb::Status Sortedint::Range(engine::Context &ctx, const Slice &user_key, ui
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -131,14 +130,14 @@ rocksdb::Status Sortedint::Range(engine::Context &ctx, const Slice &user_key, ui
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
   uint64_t id = 0, pos = 0;
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   for (!reversed ? iter->Seek(start_key) : iter->SeekForPrev(start_key);
        iter->Valid() && iter->key().starts_with(prefix); !reversed ? iter->Next() : iter->Prev()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -159,7 +158,6 @@ rocksdb::Status Sortedint::RangeByValue(engine::Context &ctx, const Slice &user_
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -171,14 +169,14 @@ rocksdb::Status Sortedint::RangeByValue(engine::Context &ctx, const Slice &user_
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
   int pos = 0;
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -210,18 +208,15 @@ rocksdb::Status Sortedint::MExist(engine::Context &ctx, const Slice &user_key, c
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SortedintMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
   std::string value;
   for (const auto id : ids) {
     std::string id_buf;
     PutFixed64(&id_buf, id);
     std::string sub_key = InternalKey(ns_key, id_buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(ctx, read_options, sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);

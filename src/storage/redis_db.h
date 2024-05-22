@@ -163,8 +163,6 @@ class Database {
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;
 
-  friend class LatestSnapShot;
-
  private:
   // Already internal keys
   [[nodiscard]] rocksdb::Status existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret);
@@ -186,6 +184,9 @@ class Database {
   std::optional<std::string> lookupKeyByPattern(engine::Context &ctx, const std::string &pattern,
                                                 const std::string &subst);
 };
+
+// TODO: remove?
+// current: search, script
 class LatestSnapShot {
  public:
   explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}

@@ -524,6 +524,7 @@ Status Storage::RestoreFromCheckpoint() {
 }
 
 bool Storage::IsEmptyDB() {
+  // TODO ctx?
   std::unique_ptr<rocksdb::Iterator> iter(
       db_->NewIterator(DefaultScanOptions(), GetCFHandle(ColumnFamilyID::Metadata)));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
@@ -623,8 +624,8 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
   return s;
 }
 
-rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options) {
-  return NewIterator(options, db_->DefaultColumnFamily());
+rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options) {
+  return NewIterator(ctx, options, db_->DefaultColumnFamily());
 }
 
 void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s) {
@@ -637,21 +638,25 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
   }
 }
 
-rocksdb::Iterator *Storage::NewIterator(const rocksdb::ReadOptions &options,
+rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   auto iter = db_->NewIterator(options, column_family);
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     return txn_write_batch_->NewIteratorWithBase(column_family, iter, &options);
+  } else if (ctx.batch && ctx.batch->GetWriteBatch()->Count() > 0) {
+    return ctx.batch->NewIteratorWithBase(column_family, iter, &options);
   }
   return iter;
 }
 
-void Storage::MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
-                       const size_t num_keys, const rocksdb::Slice *keys, rocksdb::PinnableSlice *values,
-                       rocksdb::Status *statuses) {
+void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                       rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
+                       rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     txn_write_batch_->MultiGetFromBatchAndDB(db_.get(), options, column_family, num_keys, keys, values, statuses,
                                              false);
+  } else if (ctx.batch) {
+    ctx.batch->MultiGetFromBatchAndDB(db_.get(), options, column_family, num_keys, keys, values, statuses, false);
   } else {
     db_->MultiGet(options, column_family, num_keys, keys, values, statuses, false);
   }

@@ -234,10 +234,11 @@ class Storage {
   [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                     rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                                     rocksdb::PinnableSlice *value);
-  void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
-                const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
-  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
-  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
+  void MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                size_t num_keys, const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
+  rocksdb::Iterator *NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                 rocksdb::ColumnFamilyHandle *column_family);
+  rocksdb::Iterator *NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options);
 
   [[nodiscard]] rocksdb::Status Write(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                       rocksdb::WriteBatch *updates);

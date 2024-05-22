@@ -257,7 +257,8 @@ class CommandMGet : public Commander {
     }
     std::vector<std::string> values;
     // always return OK
-    auto statuses = string_db.MGet(keys, &values);
+    engine::Context ctx(srv->storage);
+    auto statuses = string_db.MGet(ctx, keys, &values);
     *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }

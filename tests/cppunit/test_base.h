@@ -51,8 +51,10 @@ class TestFixture {  // NOLINT
       std::cout << "Failed to open the storage, encounter error: " << s.Msg() << std::endl;
       assert(s.IsOK());
     }
+    ctx_ = std::make_unique<engine::Context>(storage_.get());
   }
   ~TestFixture() {
+    ctx_.reset();
     storage_.reset();
 
     std::error_code ec;
@@ -69,7 +71,7 @@ class TestFixture {  // NOLINT
   std::string key_;
   std::vector<Slice> fields_;
   std::vector<Slice> values_;
-  engine::Context ctx_;
+  std::unique_ptr<engine::Context> ctx_;
 };
 
 class TestBase : public TestFixture, public ::testing::Test {};

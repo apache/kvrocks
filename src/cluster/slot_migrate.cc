@@ -343,6 +343,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
   Slice prefix_slice(prefix);
   read_options.iterate_lower_bound = &prefix_slice;
   rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(ColumnFamilyID::Metadata);
+  // TODO: ctx
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
@@ -748,6 +749,7 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
   Slice prefix_slice(prefix_subkey);
   read_options.iterate_lower_bound = &prefix_slice;
   // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  // TODO: ctx
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
 
   int item_count = 0;
@@ -851,6 +853,7 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
   read_options.iterate_lower_bound = &prefix_key_slice;
 
   // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
+  // TODO: ctx
   auto iter =
       util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(ColumnFamilyID::Stream)));
 
@@ -1208,7 +1211,9 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   read_options.snapshot = slot_snapshot_;
   rocksdb::Slice prefix_slice(prefix);
   read_options.iterate_lower_bound = &prefix_slice;
-  engine::DBIterator iter(storage_, read_options);
+  // TODO: ctx
+  engine::Context ctx(storage_);
+  engine::DBIterator iter(ctx, storage_, read_options);
 
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 
@@ -1226,7 +1231,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), iter.Key(), iter.Value()));
 
-    auto subkey_iter = iter.GetSubKeyIterator();
+    auto subkey_iter = iter.GetSubKeyIterator(ctx);
     if (!subkey_iter) {
       continue;
     }

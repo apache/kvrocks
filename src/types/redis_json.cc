@@ -526,8 +526,8 @@ rocksdb::Status Json::ObjLen(engine::Context &ctx, const std::string &user_key, 
   return rocksdb::Status::OK();
 }
 
-std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_keys, const std::string &path,
-                                        std::vector<JsonValue> &results) {
+std::vector<rocksdb::Status> Json::MGet(engine::Context &ctx, const std::vector<std::string> &user_keys,
+                                        const std::string &path, std::vector<JsonValue> &results) {
   std::vector<Slice> ns_keys;
   std::vector<std::string> ns_keys_string;
   ns_keys.resize(user_keys.size());
@@ -540,7 +540,7 @@ std::vector<rocksdb::Status> Json::MGet(const std::vector<std::string> &user_key
 
   std::vector<JsonValue> json_vals;
   json_vals.resize(ns_keys.size());
-  auto statuses = readMulti(ns_keys, json_vals);
+  auto statuses = readMulti(ctx, ns_keys, json_vals);
 
   results.resize(ns_keys.size());
   for (size_t i = 0; i < ns_keys.size(); i++) {
@@ -615,14 +615,14 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-std::vector<rocksdb::Status> Json::readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values) {
+std::vector<rocksdb::Status> Json::readMulti(engine::Context &ctx, const std::vector<Slice> &ns_keys,
+                                             std::vector<JsonValue> &values) {
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
 
   std::vector<rocksdb::Status> statuses(ns_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(ns_keys.size());
-  storage_->MultiGet(read_options, metadata_cf_handle_, ns_keys.size(), ns_keys.data(), pin_values.data(),
+  storage_->MultiGet(ctx, read_options, metadata_cf_handle_, ns_keys.size(), ns_keys.data(), pin_values.data(),
                      statuses.data());
   for (size_t i = 0; i < ns_keys.size(); i++) {
     if (!statuses[i].ok()) continue;

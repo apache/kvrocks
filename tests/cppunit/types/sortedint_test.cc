@@ -33,7 +33,6 @@ class RedisSortedintTest : public TestBase {
   void SetUp() override {
     key_ = "test-sortedint-key";
     ids_ = {1, 2, 3, 4};
-    ctx_ = engine::Context(storage_.get());
   }
 
   std::unique_ptr<redis::Sortedint> sortedint_;
@@ -42,28 +41,28 @@ class RedisSortedintTest : public TestBase {
 
 TEST_F(RedisSortedintTest, AddAndRemove) {
   uint64_t ret = 0;
-  rocksdb::Status s = sortedint_->Add(ctx_, key_, ids_, &ret);
+  rocksdb::Status s = sortedint_->Add(*ctx_, key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
-  s = sortedint_->Card(ctx_, key_, &ret);
+  s = sortedint_->Card(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
-  s = sortedint_->Remove(ctx_, key_, ids_, &ret);
+  s = sortedint_->Remove(*ctx_, key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
-  s = sortedint_->Card(ctx_, key_, &ret);
+  s = sortedint_->Card(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 0);
-  s = sortedint_->Del(ctx_, key_);
+  s = sortedint_->Del(*ctx_, key_);
 }
 
 TEST_F(RedisSortedintTest, Range) {
   uint64_t ret = 0;
-  rocksdb::Status s = sortedint_->Add(ctx_, key_, ids_, &ret);
+  rocksdb::Status s = sortedint_->Add(*ctx_, key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
   std::vector<uint64_t> ids;
-  s = sortedint_->Range(ctx_, key_, 0, 0, 20, false, &ids);
+  s = sortedint_->Range(*ctx_, key_, 0, 0, 20, false, &ids);
   EXPECT_TRUE(s.ok() && ids_.size() == ids.size());
   for (size_t i = 0; i < ids_.size(); i++) {
     EXPECT_EQ(ids_[i], ids[i]);
   }
-  s = sortedint_->Remove(ctx_, key_, ids_, &ret);
+  s = sortedint_->Remove(*ctx_, key_, ids_, &ret);
   EXPECT_TRUE(s.ok() && ids_.size() == ret);
-  s = sortedint_->Del(ctx_, key_);
+  s = sortedint_->Del(*ctx_, key_);
 }

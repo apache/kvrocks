@@ -600,7 +600,8 @@ class CommandJsonMGet : public Commander {
     }
 
     std::vector<JsonValue> json_values;
-    auto statuses = json.MGet(user_keys, path, json_values);
+    engine::Context ctx(svr->storage);
+    auto statuses = json.MGet(ctx, user_keys, path, json_values);
 
     std::vector<std::string> values;
     values.resize(user_keys.size());

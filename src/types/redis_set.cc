@@ -144,7 +144,6 @@ rocksdb::Status Set::Members(engine::Context &ctx, const Slice &user_key, std::v
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  LatestSnapShot ss(storage_);
 
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -153,11 +152,11 @@ rocksdb::Status Set::Members(engine::Context &ctx, const Slice &user_key, std::v
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
@@ -180,17 +179,13 @@ rocksdb::Status Set::MIsMember(engine::Context &ctx, const Slice &user_key, cons
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  rocksdb::ReadOptions read_options;
-
-  read_options.snapshot = ss.GetSnapShot();
   std::string value;
   for (const auto &member : members) {
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(ctx, read_options, sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);

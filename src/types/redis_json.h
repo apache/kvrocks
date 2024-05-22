@@ -72,8 +72,8 @@ class Json : public Database {
   rocksdb::Status ObjLen(engine::Context &ctx, const std::string &user_key, const std::string &path,
                          Optionals<uint64_t> *results);
 
-  std::vector<rocksdb::Status> MGet(const std::vector<std::string> &user_keys, const std::string &path,
-                                    std::vector<JsonValue> &results);
+  std::vector<rocksdb::Status> MGet(engine::Context &ctx, const std::vector<std::string> &user_keys,
+                                    const std::string &path, std::vector<JsonValue> &results);
   rocksdb::Status MSet(engine::Context &ctx, const std::vector<std::string> &user_keys,
                        const std::vector<std::string> &paths, const std::vector<std::string> &values);
 
@@ -86,7 +86,8 @@ class Json : public Database {
   rocksdb::Status del(engine::Context &ctx, const Slice &ns_key);
   rocksdb::Status numop(engine::Context &ctx, JsonValue::NumOpEnum op, const std::string &user_key,
                         const std::string &path, const std::string &value, JsonValue *result);
-  std::vector<rocksdb::Status> readMulti(const std::vector<Slice> &ns_keys, std::vector<JsonValue> &values);
+  std::vector<rocksdb::Status> readMulti(engine::Context &ctx, const std::vector<Slice> &ns_keys,
+                                         std::vector<JsonValue> &values);
 
   friend struct FieldValueRetriever;
 };

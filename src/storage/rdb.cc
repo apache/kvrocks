@@ -383,7 +383,7 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetWithZipList() {
   return zset;
 }
 
-Status RDB::Restore(const std::string &key, std::string_view payload, uint64_t ttl_ms) {
+Status RDB::Restore(engine::Context &ctx, const std::string &key, std::string_view payload, uint64_t ttl_ms) {
   rocksdb::Status db_status;
 
   // Check the checksum of the payload
@@ -393,7 +393,7 @@ Status RDB::Restore(const std::string &key, std::string_view payload, uint64_t t
 
   auto value = GET_OR_RET(loadRdbObject(type, key));
 
-  return saveRdbObject(type, key, value, ttl_ms);  // NOLINT
+  return saveRdbObject(ctx, type, key, value, ttl_ms);  // NOLINT
 }
 
 StatusOr<int> RDB::loadRdbType() {
@@ -454,9 +454,9 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, const std::string &key) {
   return {Status::RedisParseErr, fmt::format("unsupported type: {}", type)};
 }
 
-Status RDB::saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms) {
+Status RDB::saveRdbObject(engine::Context &ctx, int type, const std::string &key, const RedisObjValue &obj,
+                          uint64_t ttl_ms) {
   rocksdb::Status db_status;
-  engine::Context ctx(storage_);
   if (type == RDBTypeString) {
     const auto &value = std::get<std::string>(obj);
     redis::String string_db(storage_, ns_);
@@ -552,7 +552,7 @@ bool RDB::isEmptyRedisObject(const RedisObjValue &value) {
 }
 
 // Load RDB file: copy from redis/src/rdb.c:branch 7.0, 76b9c13d.
-Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
+Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exist_key) {
   char buf[1024] = {0};
   GET_OR_RET(LogWhenError(stream_->Read(buf, 9)));
   buf[9] = '\0';
@@ -643,7 +643,6 @@ Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
       continue;
     }
 
-    engine::Context ctx(storage_);
     if (!overwrite_exist_key) {  // only load not exist key
       redis::Database redis(storage_, ns_);
       auto s = redis.KeyExist(ctx, key);
@@ -656,7 +655,7 @@ Status RDB::LoadRdb(uint32_t db_index, bool overwrite_exist_key) {
       }
     }
 
-    auto ret = saveRdbObject(type, key, value, expire_time_ms);
+    auto ret = saveRdbObject(ctx, type, key, value, expire_time_ms);
     if (!ret.IsOK()) {
       LOG(WARNING) << "save rdb object key " << key << " failed: " << ret.Msg();
     } else {

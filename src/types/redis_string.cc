@@ -33,17 +33,17 @@
 
 namespace redis {
 
-std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys,
+std::vector<rocksdb::Status> String::getRawValues(engine::Context &ctx, const std::vector<Slice> &keys,
                                                   std::vector<std::string> *raw_values) {
   raw_values->clear();
 
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  LatestSnapShot ss(storage_);
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   raw_values->resize(keys.size());
   std::vector<rocksdb::Status> statuses(keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(keys.size());
-  storage_->MultiGet(read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(), statuses.data());
+  storage_->MultiGet(ctx, read_options, metadata_cf_handle_, keys.size(), keys.data(), pin_values.data(),
+                     statuses.data());
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses[i].ok()) continue;
     (*raw_values)[i].assign(pin_values[i].data(), pin_values[i].size());
@@ -94,8 +94,9 @@ rocksdb::Status String::getValue(engine::Context &ctx, const std::string &ns_key
   return getValueAndExpire(ctx, ns_key, value, nullptr);
 }
 
-std::vector<rocksdb::Status> String::getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values) {
-  auto statuses = getRawValues(ns_keys, values);
+std::vector<rocksdb::Status> String::getValues(engine::Context &ctx, const std::vector<Slice> &ns_keys,
+                                               std::vector<std::string> *values) {
+  auto statuses = getRawValues(ctx, ns_keys, values);
   for (size_t i = 0; i < ns_keys.size(); i++) {
     if (!statuses[i].ok()) continue;
     size_t offset = Metadata::GetOffsetAfterExpire((*values)[i][0]);
@@ -130,7 +131,8 @@ rocksdb::Status String::Append(engine::Context &ctx, const std::string &user_key
   return updateRawValue(ctx, ns_key, raw_value);
 }
 
-std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::vector<std::string> *values) {
+std::vector<rocksdb::Status> String::MGet(engine::Context &ctx, const std::vector<Slice> &keys,
+                                          std::vector<std::string> *values) {
   std::vector<std::string> ns_keys;
   ns_keys.reserve(keys.size());
   for (const auto &key : keys) {
@@ -142,7 +144,7 @@ std::vector<rocksdb::Status> String::MGet(const std::vector<Slice> &keys, std::v
   for (const auto &ns_key : ns_keys) {
     slice_keys.emplace_back(ns_key);
   }
-  return getValues(slice_keys, values);
+  return getValues(ctx, slice_keys, values);
 }
 
 rocksdb::Status String::Get(engine::Context &ctx, const std::string &user_key, std::string *value) {

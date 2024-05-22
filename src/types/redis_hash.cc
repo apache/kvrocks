@@ -52,13 +52,11 @@ rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t
 rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  return storage_->Get(ctx, read_options, sub_key, value);
+  return storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
 }
 
 rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
@@ -183,7 +181,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
   values_vector.resize(keys.size());
   std::vector<rocksdb::Status> statuses_vector;
   statuses_vector.resize(keys.size());
-  storage_->MultiGet(read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
+  storage_->MultiGet(ctx, read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
                      values_vector.data(), statuses_vector.data());
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
@@ -293,7 +291,6 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   }
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -303,13 +300,13 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -350,7 +347,6 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -359,11 +355,11 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  read_options.snapshot = ctx.GetSnapShot();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());

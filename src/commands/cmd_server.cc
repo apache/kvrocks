@@ -1112,7 +1112,7 @@ class CommandRestore : public Commander {
 
     auto stream_ptr = std::make_unique<RdbStringStream>(args_[3]);
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
-    auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
+    auto s = rdb.Restore(ctx, args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -1161,7 +1161,7 @@ class CommandRdb : public Commander {
     GET_OR_RET(stream_ptr->Open());
 
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
-    GET_OR_RET(rdb.LoadRdb(db_index_, overwrite_exist_key_));
+    GET_OR_RET(rdb.LoadRdb(ctx, db_index_, overwrite_exist_key_));
 
     *output = redis::SimpleString("OK");
     return Status::OK();

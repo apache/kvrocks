@@ -56,9 +56,10 @@ class WriteBatchIndexer : public rocksdb::WriteBatch::Handler {
 
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice& begin_key,
                                 const rocksdb::Slice& end_key) override {
-    rocksdb::ReadOptions read_options;  // TODO: snapshot?
+    std::cout << "DeleteRangeCF" << std::endl;
+    rocksdb::ReadOptions read_options;  // TODO: ctx snapshot?
     auto cf_handle = storage_->GetCFHandle(static_cast<ColumnFamilyID>(column_family_id));
-    std::unique_ptr<rocksdb::Iterator> it(storage_->NewIterator(read_options, cf_handle));
+    std::unique_ptr<rocksdb::Iterator> it(storage_->GetDB()->NewIterator(read_options, cf_handle));
     for (it->Seek(begin_key); it->Valid() && it->key().compare(end_key) < 0; it->Next()) {
       auto s = dest_batch_->Delete(cf_handle, it->key());
       if (!s.ok()) {

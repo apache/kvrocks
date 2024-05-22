@@ -73,10 +73,12 @@ struct TagFieldScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!iter) {
+      // TODO: ctx?
+      engine::Context iter_ctx(ctx->storage);
       rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
       read_options.snapshot = ss.GetSnapShot();
-
-      iter = util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Search));
+      iter =
+          util::UniqueIterator(iter_ctx, ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Search));
       iter->Seek(index_key);
     }
 

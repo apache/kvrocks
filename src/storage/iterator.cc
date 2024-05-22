@@ -25,12 +25,12 @@
 #include "db_util.h"
 
 namespace engine {
-DBIterator::DBIterator(Storage *storage, rocksdb::ReadOptions read_options, int slot)
+DBIterator::DBIterator(engine::Context &ctx, Storage *storage, rocksdb::ReadOptions read_options, int slot)
     : storage_(storage),
       read_options_(std::move(read_options)),
       slot_(slot),
       metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
-  metadata_iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_));
+  metadata_iter_ = util::UniqueIterator(storage_->NewIterator(ctx, read_options_, metadata_cf_handle_));
 }
 
 void DBIterator::Next() {
@@ -100,7 +100,7 @@ void DBIterator::Seek(const std::string &target) {
   nextUntilValid();
 }
 
-std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
+std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator(engine::Context &ctx) const {
   if (!Valid()) {
     return nullptr;
   }
@@ -111,17 +111,18 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
   }
 
   auto prefix = InternalKey(Key(), "", metadata_.version, storage_->IsSlotIdEncoded()).Encode();
-  return std::make_unique<SubKeyIterator>(storage_, read_options_, type, std::move(prefix));
+  return std::make_unique<SubKeyIterator>(ctx, storage_, read_options_, type, std::move(prefix));
 }
 
-SubKeyIterator::SubKeyIterator(Storage *storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix)
+SubKeyIterator::SubKeyIterator(engine::Context &ctx, Storage *storage, rocksdb::ReadOptions read_options,
+                               RedisType type, std::string prefix)
     : storage_(storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
   if (type_ == kRedisStream) {
     cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::Stream);
   } else {
     cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey);
   }
-  iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_));
+  iter_ = util::UniqueIterator(storage_->NewIterator(ctx, read_options_, cf_handle_));
 }
 
 void SubKeyIterator::Next() {

@@ -180,8 +180,8 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
 
   std::vector<rocksdb::Status> statuses(slice_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
-  storage_->MultiGet(ctx.GetReadOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(), pin_values.data(),
-                     statuses.data());
+  storage_->MultiGet(ctx, ctx.GetReadOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
+                     pin_values.data(), statuses.data());
 
   for (size_t i = 0; i < slice_keys.size(); i++) {
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
@@ -259,7 +259,7 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
   }
 
   uint64_t ttl_sum = 0;
-  auto iter = util::UniqueIterator(storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -313,7 +313,7 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
   std::string ns_prefix;
   std::string user_key;
 
-  auto iter = util::UniqueIterator(storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
 
   std::string ns_cursor = AppendNamespacePrefix(cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -430,7 +430,7 @@ rocksdb::Status Database::FlushDB(engine::Context &ctx) {
 }
 
 rocksdb::Status Database::FlushAll(engine::Context &ctx) {
-  auto iter = util::UniqueIterator(storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
@@ -516,7 +516,7 @@ rocksdb::Status Database::FindKeyRangeWithPrefix(engine::Context &ctx, const std
   begin->clear();
   end->clear();
 
-  auto iter = util::UniqueIterator(storage_, ctx.GetReadOptions(), cf_handle);
+  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), cf_handle);
   iter->Seek(prefix);
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     return rocksdb::Status::NotFound();
@@ -582,12 +582,11 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
-  LatestSnapShot ss(storage_);
   rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, storage_, read_options);
   std::string match_prefix_key =
       InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
@@ -708,7 +707,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   WriteBatchLogData log_data(type);
   batch->PutLogData(log_data.Encode());
 
-  engine::DBIterator iter(storage_, ctx.GetReadOptions());
+  engine::DBIterator iter(ctx, storage_, ctx.GetReadOptions());
   iter.Seek(key);
 
   if (delete_old) {
@@ -717,7 +716,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   // copy metadata
   batch->Put(metadata_cf_handle_, new_key, iter.Value());
 
-  auto subkey_iter = iter.GetSubKeyIterator();
+  auto subkey_iter = iter.GetSubKeyIterator(ctx);
 
   if (subkey_iter != nullptr) {
     auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(ColumnFamilyID::SecondarySubkey) : nullptr;

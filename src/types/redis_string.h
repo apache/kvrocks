@@ -98,7 +98,8 @@ class String : public Database {
                            uint64_t *new_size);
   rocksdb::Status IncrBy(engine::Context &ctx, const std::string &user_key, int64_t increment, int64_t *new_value);
   rocksdb::Status IncrByFloat(engine::Context &ctx, const std::string &user_key, double increment, double *new_value);
-  std::vector<rocksdb::Status> MGet(const std::vector<Slice> &keys, std::vector<std::string> *values);
+  std::vector<rocksdb::Status> MGet(engine::Context &ctx, const std::vector<Slice> &keys,
+                                    std::vector<std::string> *values);
   rocksdb::Status MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms,
                        bool lock = true);
   rocksdb::Status MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms, bool *flag);
@@ -112,9 +113,11 @@ class String : public Database {
   rocksdb::Status getValue(engine::Context &ctx, const std::string &ns_key, std::string *value);
   rocksdb::Status getValueAndExpire(engine::Context &ctx, const std::string &ns_key, std::string *value,
                                     uint64_t *expire_ms);
-  std::vector<rocksdb::Status> getValues(const std::vector<Slice> &ns_keys, std::vector<std::string> *values);
+  std::vector<rocksdb::Status> getValues(engine::Context &ctx, const std::vector<Slice> &ns_keys,
+                                         std::vector<std::string> *values);
   rocksdb::Status getRawValue(engine::Context &ctx, const std::string &ns_key, std::string *raw_value);
-  std::vector<rocksdb::Status> getRawValues(const std::vector<Slice> &keys, std::vector<std::string> *raw_values);
+  std::vector<rocksdb::Status> getRawValues(engine::Context &ctx, const std::vector<Slice> &keys,
+                                            std::vector<std::string> *raw_values);
   rocksdb::Status updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value);
 };
 

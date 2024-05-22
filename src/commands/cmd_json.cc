@@ -641,7 +641,7 @@ class CommandJsonDebug : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
 
-    Optionals<uint64_t> results;
+    std::vector<std::string> results;
     auto s = json.DebugMemory(args_[2], path, &results);
 
     if (s.IsNotFound()) {
@@ -651,7 +651,7 @@ class CommandJsonDebug : public Commander {
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = OptionalsToString(conn, results);
+    *output = redis::ArrayOfBulkStrings(results);
     return Status::OK();
   }
 };

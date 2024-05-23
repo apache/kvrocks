@@ -236,9 +236,6 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     if (!s) return {Status::NotOK, s.Msg()};
-    if (results.size() == 0) {
-      results.emplace_back(0);
-    }
 
     return results;
   }

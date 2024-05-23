@@ -643,11 +643,13 @@ func TestJson(t *testing.T) {
 		result3 = append(result3, int64(9), int64(1))
 		require.Equal(t, result3, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
 		//no no_exists
+		require.Equal(t, []string{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
+		//no key no path
 		var result4 = make([]interface{}, 0)
 		result4 = append(result4, int64(0))
-		require.Equal(t, result4, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
-		//no key
-		require.ErrorIs(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Err(), redis.Nil)
+		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists").Val(), result5)
+		//no key have path
+		require.Equal(t, []string{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Val())
 
 	})
 }

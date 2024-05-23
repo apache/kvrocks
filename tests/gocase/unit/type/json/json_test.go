@@ -645,9 +645,7 @@ func TestJson(t *testing.T) {
 		//no no_exists
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
 		//no key no path
-		var result4 = make([]interface{}, 0)
-		result4 = append(result4, int64(0))
-		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists").Val(), result4)
+		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists").Val(), int64(0))
 		//no key have path
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Val())
 

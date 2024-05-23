@@ -375,6 +375,7 @@ struct Context {
 
   rocksdb::ReadOptions GetReadOptions();
   const rocksdb::Snapshot *GetSnapShot();
+  void SetLatestSnapshot();
 
   explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
   Context() = default;

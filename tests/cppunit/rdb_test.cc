@@ -64,7 +64,6 @@ class RDBTest : public TestBase {
     redis::String string_db(storage_.get(), ns_);
     std::string value;
     auto s = string_db.Get(*ctx_, key, &value);
-    std::cout << "stringCheck: " << value << std::endl;
     ASSERT_TRUE(s.ok());
     ASSERT_TRUE(expect == value);
   }
@@ -73,12 +72,6 @@ class RDBTest : public TestBase {
     redis::Set set_db(storage_.get(), ns_);
     std::vector<std::string> members;
     auto s = set_db.Members(*ctx_, key, &members);
-    std::cout << "setCheck: ";
-    for (auto &m : members) {
-      std::cout << m << ", ";
-    }
-    std::cout << '\n';
-
     ASSERT_TRUE(s.ok());
     ASSERT_TRUE(expect == members);
   }
@@ -104,11 +97,6 @@ class RDBTest : public TestBase {
     redis::List list_db(storage_.get(), ns_);
     std::vector<std::string> values;
     auto s = list_db.Range(*ctx_, key, 0, -1, &values);
-    std::cout << "listCheck: ";
-    for (auto &m : values) {
-      std::cout << m << ", ";
-    }
-    std::cout << '\n';
     ASSERT_TRUE(s.ok());
     ASSERT_TRUE(expect == values);
   }

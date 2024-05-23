@@ -1258,4 +1258,12 @@ const rocksdb::Snapshot *Context::GetSnapShot() {
   return snapshot;
 }
 
+void Context::SetLatestSnapshot() {
+  if (snapshot) {
+    storage->GetDB()->ReleaseSnapshot(snapshot);
+  }
+  snapshot = storage->GetDB()->GetSnapshot();
+  batch->Clear();
+}
+
 }  // namespace engine

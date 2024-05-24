@@ -100,7 +100,7 @@ class RedisComparator:
             self.src_cli.incr(incr_key)
             hash_key = f'hash_key_{i}'
             hash_value = {'field1': f'field1_value_{i}', 'field2': f'field2_value_{i}'}
-            self.src_cli.hmset(hash_key, hash_value)
+            self.src_cli.hset(hash_key, hash_value)
             set_key = f'set_key_{i}'
             set_value = [f'set_value_{i}_1', f'set_value_{i}_2', f'set_value_{i}_3']
             self.src_cli.sadd(set_key, *set_value)

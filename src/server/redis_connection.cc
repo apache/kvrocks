@@ -77,7 +77,6 @@ void Connection::Close() {
 void Connection::Detach() { owner_->DetachConnection(this); }
 
 void Connection::OnRead(struct bufferevent *bev) {
-  std::cout << "OnRead" << std::endl;
   is_running_ = true;
   MakeScopeExit([this] { is_running_ = false; });
 
@@ -395,7 +394,6 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
 
 Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
                                   Commander *current_cmd, std::string *reply) {
-  std::cout << "ExecuteCommand:" << cmd_name << std::endl; 
   srv_->stats.IncrCalls(cmd_name);
 
   auto start = std::chrono::high_resolution_clock::now();
@@ -412,8 +410,6 @@ Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
-  std::cout << "ExecuteCommands" << std::endl;
-
   const Config *config = srv_->GetConfig();
   std::string reply;
   std::string password = config->requirepass;
@@ -436,8 +432,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
-    std::cout << "cmd_name=" << cmd_name << std::endl;
-    
+
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
     if (GetNamespace().empty()) {

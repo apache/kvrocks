@@ -265,8 +265,6 @@ class CommandBPop : public BlockingCommander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     srv_ = srv;
     InitConnection(conn);
-    std::cout << "Execute BPOP:" << std::endl; 
-    std::cout << "Get new ctx for TryPopFromList" << std::endl; 
     engine::Context ctx(srv->storage);
     auto s = TryPopFromList(ctx);
     if (s.ok() || !s.IsNotFound()) {
@@ -289,7 +287,6 @@ class CommandBPop : public BlockingCommander {
   }
 
   rocksdb::Status TryPopFromList(engine::Context &ctx) {
-    std::cout << "TryPopFromList" << std::endl; 
     redis::List list_db(srv_->storage, conn_->GetNamespace());
     std::string elem;
     const std::string *last_key_ptr = nullptr;
@@ -317,8 +314,6 @@ class CommandBPop : public BlockingCommander {
   }
 
   bool OnBlockingWrite() override {
-    std::cout << "OnBlockingWrite" << std::endl; 
-    std::cout << "Get new ctx for TryPopFromList" << std::endl; 
     engine::Context ctx(srv_->storage);
     auto s = TryPopFromList(ctx);
     return !s.IsNotFound();

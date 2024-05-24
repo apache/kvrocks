@@ -555,7 +555,6 @@ void Server::ListSChannelSubscribeNum(const std::vector<std::string> &channels,
 }
 
 void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
-  std::cout << "BlockOnKey:" << key << std::endl;
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
@@ -570,7 +569,6 @@ void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
 }
 
 void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
-  std::cout << "UnblockOnKey:" << key << std::endl;
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
   auto iter = blocking_keys_.find(key);

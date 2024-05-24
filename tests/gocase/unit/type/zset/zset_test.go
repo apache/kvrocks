@@ -326,7 +326,6 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMIN basics - %s", encoding), func(t *testing.T) {
-		// TODO: fix
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
@@ -349,6 +348,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("bzpopmin", "zseta", "0"))
 		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
@@ -356,7 +356,6 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMAX basics - %s", encoding), func(t *testing.T) {
-		// TODO: fix
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
@@ -379,6 +378,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("bzpopmax", "zseta", "0"))
 		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})

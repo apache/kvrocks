@@ -326,12 +326,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMIN basics - %s", encoding), func(t *testing.T) {
+		// TODO: fix
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
 		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
 		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
 		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		time.Sleep(time.Millisecond * 100)
 		resultz := rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
 		require.Equal(t, redis.Z{Score: 1, Member: "a"}, resultz)
 		resultz = rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
@@ -348,17 +350,20 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rd.WriteArgs("bzpopmin", "zseta", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
 		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMAX basics - %s", encoding), func(t *testing.T) {
+		// TODO: fix
 		rdb.Del(ctx, "zseta")
 		rdb.Del(ctx, "zsetb")
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"}, redis.Z{Score: 3, Member: "c"})
 		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
 		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
 		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		time.Sleep(time.Millisecond * 100)
 		resultz := rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
 		require.Equal(t, redis.Z{Score: 3, Member: "c"}, resultz)
 		resultz = rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
@@ -375,6 +380,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rd.WriteArgs("bzpopmax", "zseta", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
 		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
 	})

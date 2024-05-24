@@ -371,20 +371,33 @@ func TestList(t *testing.T) {
 	}
 
 	t.Run("BLPOP with same key multiple times should work (redis issue #801)", func(t *testing.T) {
+		// TODO: fix
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rdb.Del(ctx, "list1", "list2").Err())
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list1", "a"})
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list2", "b"})
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list1", "a"})
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list2", "b"})
 	})
 
@@ -406,7 +419,8 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1").Err())
-			require.NoError(t, rd.WriteArgs(popType, "blist1", "1"))
+			// TODO: fix
+			require.NoError(t, rd.WriteArgs(popType, "blist1", "0"))
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
 			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())

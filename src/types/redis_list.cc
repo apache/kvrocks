@@ -121,7 +121,8 @@ rocksdb::Status List::PopMulti(engine::Context &ctx, const rocksdb::Slice &user_
     PutFixed64(&buf, index);
     std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     std::string elem;
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &elem);
+    // TODO: ctx?
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &elem);
     if (!s.ok()) {
       // FIXME: should be always exists??
       return s;

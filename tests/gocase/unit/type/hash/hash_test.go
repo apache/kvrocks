@@ -895,3 +895,44 @@ func TestHashWithAsyncIOEnabled(t *testing.T) {
 		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
 	})
 }
+
+func TestHashWithAsyncIODisabled(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"rocksdb.read_options.async_io": "no",
+	})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	ctx := context.Background()
+
+	t.Run("Test bug with large value after compaction", func(t *testing.T) {
+		testKey := "test-hash-1"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
+
+		src := rand.NewSource(time.Now().UnixNano())
+		dd := make([]byte, 5000)
+		for i := 1; i <= 50; i++ {
+			for j := range dd {
+				dd[j] = byte(src.Int63())
+			}
+			key := util.RandString(10, 20, util.Alpha)
+			require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
+		}
+
+		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+
+		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+
+		time.Sleep(5 * time.Second)
+
+		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+	})
+}

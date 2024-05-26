@@ -191,14 +191,14 @@ jobs:
             os: ubuntu-20.04
             without_luajit: -DENABLE_LUAJIT=OFF
             compiler: clang
-          - name: Ubuntu GCC with new encoding
+          - name: Ubuntu GCC with old encoding
             os: ubuntu-20.04
             compiler: gcc
-            new_encoding: -DENABLE_NEW_ENCODING=TRUE
-          - name: Ubuntu Clang with new encoding
+            new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          - name: Ubuntu Clang with old encoding
             os: ubuntu-22.04
             compiler: clang
-            new_encoding: -DENABLE_NEW_ENCODING=TRUE
+            new_encoding: -DENABLE_NEW_ENCODING=FALSE
           - name: Ubuntu GCC with speedb enabled
             os: ubuntu-20.04
             compiler: gcc

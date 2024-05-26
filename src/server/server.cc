@@ -195,10 +195,9 @@ Status Server::Start() {
         auto now_hours = util::GetTimeStamp<std::chrono::hours>();
         if (now_hours >= config_->compaction_checker_range.start &&
             now_hours <= config_->compaction_checker_range.stop) {
-          std::vector<std::string> cf_names = {engine::kMetadataColumnFamilyName, engine::kSubkeyColumnFamilyName,
-                                               engine::kZSetScoreColumnFamilyName, engine::kStreamColumnFamilyName};
-          for (const auto &cf_name : cf_names) {
-            compaction_checker.PickCompactionFiles(cf_name);
+          const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
+          for (auto &column_family : column_family_list) {
+            compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
@@ -809,8 +808,12 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      storage->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
+      auto s = storage->GetDB()->Resume();
+      if (s.ok()) {
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
+      } else {
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
+      }
       storage->SetDBInRetryableIOError(false);
     }
 
@@ -850,7 +853,7 @@ void Server::GetRocksDBInfo(std::string *info) {
     // All column families share the same block cache, so it's good to count a single one.
     uint64_t block_cache_usage = 0;
     uint64_t block_cache_pinned_usage = 0;
-    auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
+    auto subkey_cf_handle = storage->GetCFHandle(ColumnFamilyID::PrimarySubkey);
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
     string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
@@ -1651,7 +1654,7 @@ Status Server::ScriptExists(const std::string &sha) {
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1666,7 +1669,7 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) const 
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1676,7 +1679,7 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1700,7 +1703,7 @@ void Server::ScriptReset() {
 }
 
 Status Server::ScriptFlush() {
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();

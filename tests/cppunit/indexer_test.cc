@@ -67,7 +67,7 @@ struct IndexerTest : TestBase {
 
 TEST_F(IndexerTest, HashTag) {
   redis::Hash db(storage_.get(), ns);
-  auto cfhandler = storage_->GetCFHandle("search");
+  auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
 
   {
     auto s = indexer.Record("no_exist", ns);
@@ -174,7 +174,7 @@ TEST_F(IndexerTest, HashTag) {
 
 TEST_F(IndexerTest, JsonTag) {
   redis::Json db(storage_.get(), ns);
-  auto cfhandler = storage_->GetCFHandle("search");
+  auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
 
   {
     auto s = indexer.Record("no_exist", ns);

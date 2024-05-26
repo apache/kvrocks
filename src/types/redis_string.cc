@@ -503,8 +503,8 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   }
 
   if (value == current_value) {
-    auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
-                                          storage_->GetCFHandle(engine::kMetadataColumnFamilyName), ns_key);
+    auto delete_status =
+        storage_->Delete(storage_->DefaultWriteOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key);
     if (!delete_status.ok()) {
       return delete_status;
     }

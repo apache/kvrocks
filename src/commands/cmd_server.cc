@@ -740,7 +740,7 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        return {Status::NotOK, "-NOPROTO unsupported protocol version"};
+        return {Status::NotOK, "NOPROTO unsupported protocol version"};
       }
     }
 

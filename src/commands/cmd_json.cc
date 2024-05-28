@@ -382,9 +382,11 @@ class CommandJsonObjLen : public Commander {
 
     Optionals<uint64_t> results;
     auto s = json.ObjLen(args_[1], path, &results);
-    if (s.IsNotFound()) {
+    if (s.IsNotFound() && args_.size() == 2) {
       *output = conn->NilString();
       return Status::OK();
+    } else if (s.IsNotFound() && args_.size() == 3) {
+      return {Status::RedisExecErr, "Path '" + args_[2] + "' does not exist or not an object"};
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -559,9 +561,11 @@ class CommandJsonStrLen : public Commander {
 
     Optionals<uint64_t> results;
     auto s = json.StrLen(args_[1], path, &results);
-    if (s.IsNotFound()) {
+    if (s.IsNotFound() && args_.size() == 2) {
       *output = conn->NilString();
       return Status::OK();
+    } else if (s.IsNotFound() && args_.size() == 3) {
+      return {Status::RedisExecErr, "could not perform this operation on a key that doesn't exist"};
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

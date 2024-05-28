@@ -180,7 +180,9 @@ func TestJson(t *testing.T) {
 		result2 = append(result2, int64(3), int64(5), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
-		require.ErrorIs(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists", "$").Err(), redis.Nil)
+		util.ErrorRegexp(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists", "$").Err(), "ERR could not perform this operation on a key that doesn't exist")
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists").Err(), redis.Nil)
+
 	})
 
 	t.Run("Merge basics", func(t *testing.T) {
@@ -579,7 +581,9 @@ func TestJson(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 0, len(vals))
 
-		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err()
+		util.ErrorRegexp(t, rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err(), "ERR Path '$' does not exist or not an object")
+		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key").Err()
+
 		require.EqualError(t, err, redis.Nil.Error())
 	})
 

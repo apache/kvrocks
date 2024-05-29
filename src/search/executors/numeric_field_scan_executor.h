@@ -49,7 +49,7 @@ struct NumericFieldScanExecutor : ExecutorNode {
 
   std::string IndexKey(double num) const { return search_key.ConstructNumericFieldData(num, {}); }
 
-  bool InRangeDecode(Slice key, double num, double *curr, Slice *user_key) const {
+  bool InRangeDecode(Slice key, double *curr, Slice *user_key) const {
     uint8_t ns_size = 0;
     if (!GetFixed8(&key, &ns_size)) return false;
     if (ns_size != index->ns.size()) return false;
@@ -93,7 +93,7 @@ struct NumericFieldScanExecutor : ExecutorNode {
 
     double curr = 0;
     Slice user_key;
-    if (!InRangeDecode(iter->key(), scan->range.r, &curr, &user_key)) {
+    if (!InRangeDecode(iter->key(), &curr, &user_key)) {
       return end;
     }
 

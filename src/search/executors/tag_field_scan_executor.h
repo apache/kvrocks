@@ -65,9 +65,8 @@ struct TagFieldScanExecutor : ExecutorNode {
     if (!GetSizedString(&key, &value)) return false;
     if (value != scan->field->name) return false;
 
-    Slice tag;
-    if (!GetSizedString(&key, &tag)) return false;
-    if (tag != scan->tag) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (value != scan->tag) return false;
 
     if (!GetSizedString(&key, user_key)) return false;
 

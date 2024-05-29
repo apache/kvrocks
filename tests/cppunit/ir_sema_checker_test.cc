@@ -35,10 +35,10 @@ using namespace kqir;
 static auto Parse(const std::string& in) { return sql::ParseToIR(peg::string_input(in, "test")); }
 
 static IndexMap MakeIndexMap() {
-  auto f1 = FieldInfo("f1", std::make_unique<redis::SearchTagFieldMetadata>());
-  auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
+  auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
+  auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
+  auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata());
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));

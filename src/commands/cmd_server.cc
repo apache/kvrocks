@@ -29,6 +29,7 @@
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
 #include "storage/rdb.h"
@@ -740,7 +741,8 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        return {Status::NotOK, "-NOPROTO unsupported protocol version"};
+        conn->Reply(redis::Error("NOPROTO unsupported protocol version"));
+        return Status::OK();
       }
     }
 

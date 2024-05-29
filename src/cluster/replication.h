@@ -204,9 +204,9 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Status fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
                     const std::vector<uint32_t> &crcs, const FetchFileCallback &fn, ssl_st *ssl);
   Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
-  static bool isRestoringError(const char *err);
-  static bool isWrongPsyncNum(const char *err);
-  static bool isUnknownOption(const char *err);
+  static bool isRestoringError(std::string_view err);
+  static bool isWrongPsyncNum(std::string_view err);
+  static bool isUnknownOption(std::string_view err);
 
   Status parseWriteBatch(const std::string &batch_string);
 };

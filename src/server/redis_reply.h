@@ -25,7 +25,9 @@
 #include <string>
 #include <vector>
 
-#define CRLF "\r\n"  // NOLINT
+#define CRLF "\r\n"                    // NOLINT
+#define RESP_PREFIX_ERROR "-"          // NOLINT
+#define RESP_PREFIX_SIMPLE_STRING "+"  // NOLINT
 
 namespace redis {
 

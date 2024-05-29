@@ -26,7 +26,9 @@
 #include <shared_mutex>
 
 #include "commands/commander.h"
+#include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "server/redis_reply.h"
 #include "string_util.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
@@ -138,7 +140,7 @@ std::string Connection::Bool(bool b) const {
 }
 
 std::string Connection::MultiBulkString(const std::vector<std::string> &values) const {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  std::string result = MultiLen(values.size());
   for (const auto &value : values) {
     if (value.empty()) {
       result += NilString();
@@ -151,7 +153,7 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values) 
 
 std::string Connection::MultiBulkString(const std::vector<std::string> &values,
                                         const std::vector<rocksdb::Status> &statuses) const {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  std::string result = MultiLen(values.size());
   for (size_t i = 0; i < values.size(); i++) {
     if (i < statuses.size() && !statuses[i].ok()) {
       result += NilString();
@@ -470,7 +472,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
-      Reply(redis::Error("LOADING kvrocks is restoring the db from backup"));
+      Reply(redis::Error(errRestoringBackup));
       if (is_multi_exec) multi_error_ = true;
       continue;
     }

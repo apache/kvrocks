@@ -38,7 +38,7 @@ func TestHello(t *testing.T) {
 
 	t.Run("hello with wrong protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "1")
-		require.ErrorContains(t, r.Err(), "-NOPROTO unsupported protocol version")
+		require.ErrorContains(t, r.Err(), "NOPROTO unsupported protocol version")
 	})
 
 	t.Run("hello with protocol 2", func(t *testing.T) {

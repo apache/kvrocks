@@ -223,6 +223,7 @@ struct JsonValue {
     Status s;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
+        if (!s) return;
         std::string buffer;
         JsonValue query_value(origin);
         if (format == JsonStorageFormat::JSON) {

@@ -329,7 +329,6 @@ jobs:
           sleep 10s
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
           sleep 10s
-          ps aux
           python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
       - name: Find reports and crashes

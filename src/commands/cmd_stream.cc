@@ -718,9 +718,9 @@ class CommandXInfo : public Commander {
       output->append(redis::BulkString("pending"));
       output->append(redis::Integer(it.second.pending_number));
       output->append(redis::BulkString("idle"));
-      output->append(redis::Integer(now_ms - it.second.last_idle_ms));
+      output->append(redis::Integer(now_ms - it.second.last_attempted_interaction_ms));
       output->append(redis::BulkString("inactive"));
-      output->append(redis::Integer(now_ms - it.second.last_active_ms));
+      output->append(redis::Integer(now_ms - it.second.last_successful_interaction_ms));
     }
 
     return Status::OK();

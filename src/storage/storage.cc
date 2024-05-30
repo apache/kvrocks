@@ -762,8 +762,7 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   }
 
   auto begin_key = ComposeNamespaceKey(ns, "", false);
-  auto end_key = begin_key;
-  end_key.back()++;
+  auto end_key = util::StringNext(begin_key);
 
   redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;

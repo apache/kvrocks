@@ -434,8 +434,7 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 
 rocksdb::Status Database::FlushDB() {
   auto begin_key = ComposeNamespaceKey(namespace_, "", false);
-  auto end_key = begin_key;
-  end_key.back()++;
+  auto end_key = util::StringNext(begin_key);
 
   return storage_->DeleteRange(begin_key, end_key);
 }
@@ -454,8 +453,7 @@ rocksdb::Status Database::FlushAll() {
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
   }
-  auto last_key = iter->key().ToString();
-  last_key.back()++;
+  auto last_key = util::StringNext(iter->key().ToString());
   return storage_->DeleteRange(first_key, last_key);
 }
 

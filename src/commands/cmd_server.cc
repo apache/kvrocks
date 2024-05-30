@@ -875,8 +875,7 @@ class CommandCompact : public Commander {
 
     if (ns != kDefaultNamespace) {
       begin_key = ComposeNamespaceKey(ns, "", false);
-      end_key = begin_key;
-      end_key.back()++;
+      end_key = util::StringNext(begin_key);
     }
 
     Status s = srv->AsyncCompactDB(begin_key, end_key);

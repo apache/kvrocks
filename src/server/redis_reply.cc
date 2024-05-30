@@ -34,7 +34,7 @@ std::string BulkString(const std::string &data) { return "$" + std::to_string(da
 
 std::string Array(const std::vector<std::string> &list) {
   size_t n = std::accumulate(list.begin(), list.end(), 0, [](size_t n, const std::string &s) { return n + s.size(); });
-  std::string result = "*" + std::to_string(list.size()) + CRLF;
+  std::string result = MultiLen(list.size());
   std::string::size_type final_size = result.size() + n;
   result.reserve(final_size);
   for (const auto &i : list) result += i;
@@ -42,7 +42,7 @@ std::string Array(const std::vector<std::string> &list) {
 }
 
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
-  std::string result = "*" + std::to_string(elems.size()) + CRLF;
+  std::string result = MultiLen(elems.size());
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

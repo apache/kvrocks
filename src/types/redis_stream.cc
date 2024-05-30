@@ -237,8 +237,8 @@ std::string Stream::consumerNameFromInternalKey(rocksdb::Slice key) const {
 std::string Stream::encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata) {
   std::string dst;
   PutFixed64(&dst, consumer_metadata.pending_number);
-  PutFixed64(&dst, consumer_metadata.last_idle_ms);
-  PutFixed64(&dst, consumer_metadata.last_active_ms);
+  PutFixed64(&dst, consumer_metadata.last_attempted_interaction_ms);
+  PutFixed64(&dst, consumer_metadata.last_successful_interaction_ms);
   return dst;
 }
 
@@ -246,8 +246,8 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
   StreamConsumerMetadata consumer_metadata;
   rocksdb::Slice input(value);
   GetFixed64(&input, &consumer_metadata.pending_number);
-  GetFixed64(&input, &consumer_metadata.last_idle_ms);
-  GetFixed64(&input, &consumer_metadata.last_active_ms);
+  GetFixed64(&input, &consumer_metadata.last_attempted_interaction_ms);
+  GetFixed64(&input, &consumer_metadata.last_successful_interaction_ms);
   return consumer_metadata;
 }
 
@@ -398,8 +398,8 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
     consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
   }
   auto now = util::GetTimeStampMS();
-  consumer_metadata.last_idle_ms = now;
-  consumer_metadata.last_active_ms = now;
+  consumer_metadata.last_attempted_interaction_ms = now;
+  consumer_metadata.last_successful_interaction_ms = now;
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
@@ -619,8 +619,8 @@ rocksdb::Status Stream::createConsumerWithoutLock(const Slice &stream_name, cons
 
   StreamConsumerMetadata consumer_metadata;
   auto now = util::GetTimeStampMS();
-  consumer_metadata.last_idle_ms = now;
-  consumer_metadata.last_active_ms = now;
+  consumer_metadata.last_attempted_interaction_ms = now;
+  consumer_metadata.last_successful_interaction_ms = now;
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string consumer_value = encodeStreamConsumerMetadataValue(consumer_metadata);
   std::string get_consumer_value;
@@ -1286,8 +1286,8 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   }
   StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
   auto now_ms = util::GetTimeStampMS();
-  consumer_metadata.last_idle_ms = now_ms;
-  consumer_metadata.last_active_ms = now_ms;
+  consumer_metadata.last_attempted_interaction_ms = now_ms;
+  consumer_metadata.last_successful_interaction_ms = now_ms;
 
   if (latest) {
     options.start = consumergroup_metadata.last_delivered_id;

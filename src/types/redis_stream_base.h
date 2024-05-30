@@ -183,8 +183,8 @@ struct StreamConsumerGroupMetadata {
 
 struct StreamConsumerMetadata {
   uint64_t pending_number = 0;
-  uint64_t last_idle_ms;
-  uint64_t last_active_ms;
+  uint64_t last_attempted_interaction_ms;
+  uint64_t last_successful_interaction_ms;
 };
 
 enum class StreamSubkeyType {

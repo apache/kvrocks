@@ -33,12 +33,12 @@ struct IndexInfo;
 struct FieldInfo {
   std::string name;
   IndexInfo *index = nullptr;
-  std::unique_ptr<redis::SearchFieldMetadata> metadata;
+  std::unique_ptr<redis::IndexFieldMetadata> metadata;
 
-  FieldInfo(std::string name, std::unique_ptr<redis::SearchFieldMetadata> &&metadata)
+  FieldInfo(std::string name, std::unique_ptr<redis::IndexFieldMetadata> &&metadata)
       : name(std::move(name)), metadata(std::move(metadata)) {}
 
-  bool IsSortable() const { return dynamic_cast<redis::SearchSortableFieldMetadata *>(metadata.get()) != nullptr; }
+  bool IsSortable() const { return metadata->IsSortable(); }
   bool HasIndex() const { return !metadata->noindex; }
 
   template <typename T>
@@ -51,12 +51,12 @@ struct IndexInfo {
   using FieldMap = std::map<std::string, FieldInfo>;
 
   std::string name;
-  SearchMetadata metadata;
+  redis::IndexMetadata metadata;
   FieldMap fields;
-  redis::SearchPrefixesMetadata prefixes;
+  redis::IndexPrefixes prefixes;
   std::string ns;
 
-  IndexInfo(std::string name, SearchMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
+  IndexInfo(std::string name, redis::IndexMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
 
   void Add(FieldInfo &&field) {
     const auto &name = field.name;

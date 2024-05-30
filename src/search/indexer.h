@@ -56,7 +56,7 @@ struct FieldValueRetriever {
   using Variant = std::variant<HashData, JsonData>;
   Variant db;
 
-  static StatusOr<FieldValueRetriever> Create(SearchOnDataType type, std::string_view key, engine::Storage *storage,
+  static StatusOr<FieldValueRetriever> Create(IndexOnDataType type, std::string_view key, engine::Storage *storage,
                                               const std::string &ns);
 
   explicit FieldValueRetriever(Hash hash, HashMetadata metadata, std::string_view key)
@@ -79,6 +79,11 @@ struct IndexUpdater {
   Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
                      std::string_view current, const std::string &ns) const;
   Status Update(const FieldValues &original, std::string_view key, const std::string &ns) const;
+
+  Status UpdateTagIndex(std::string_view key, std::string_view original, std::string_view current,
+                        const SearchKey &search_key, const TagFieldMetadata *tag) const;
+  Status UpdateNumericIndex(std::string_view key, std::string_view original, std::string_view current,
+                            const SearchKey &search_key, const NumericFieldMetadata *num) const;
 };
 
 struct GlobalIndexer {

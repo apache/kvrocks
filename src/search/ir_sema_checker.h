@@ -75,7 +75,7 @@ struct SemaChecker {
     } else if (auto v = dynamic_cast<TagContainExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name)};
-      } else if (auto meta = iter->second.MetadataAs<redis::SearchTagFieldMetadata>(); !meta) {
+      } else if (auto meta = iter->second.MetadataAs<redis::TagFieldMetadata>(); !meta) {
         return {Status::NotOK, fmt::format("field `{}` is not a tag field", v->field->name)};
       } else {
         v->field->info = &iter->second;
@@ -91,7 +91,7 @@ struct SemaChecker {
     } else if (auto v = dynamic_cast<NumericCompareExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
-      } else if (!iter->second.MetadataAs<redis::SearchNumericFieldMetadata>()) {
+      } else if (!iter->second.MetadataAs<redis::NumericFieldMetadata>()) {
         return {Status::NotOK, fmt::format("field `{}` is not a numeric field", v->field->name)};
       } else {
         v->field->info = &iter->second;

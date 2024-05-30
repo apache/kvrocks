@@ -37,12 +37,12 @@ using namespace kqir;
 static auto exe_end = ExecutorNode::Result(ExecutorNode::end);
 
 static IndexMap MakeIndexMap() {
-  auto f1 = FieldInfo("f1", std::make_unique<redis::SearchTagFieldMetadata>());
-  auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
+  auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
+  auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
+  auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata());
   ia->ns = "search_ns";
-  ia->metadata.on_data_type = SearchOnDataType::JSON;
+  ia->metadata.on_data_type = redis::IndexOnDataType::JSON;
   ia->prefixes.prefixes.emplace_back("test2:");
   ia->prefixes.prefixes.emplace_back("test4:");
   ia->Add(std::move(f1));

@@ -74,7 +74,7 @@ struct QueryExprEvaluator {
 
   StatusOr<bool> Visit(TagContainExpr *v) const {
     auto val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
-    auto meta = v->field->info->MetadataAs<redis::SearchTagFieldMetadata>();
+    auto meta = v->field->info->MetadataAs<redis::TagFieldMetadata>();
 
     auto split = util::Split(val, std::string(1, meta->separator));
     return std::find(split.begin(), split.end(), v->tag->val) != split.end();

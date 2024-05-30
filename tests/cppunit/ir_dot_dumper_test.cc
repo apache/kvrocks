@@ -27,6 +27,7 @@
 #include "search/ir_plan.h"
 #include "search/ir_sema_checker.h"
 #include "search/passes/manager.h"
+#include "search/search_encoding.h"
 #include "search/sql_transformer.h"
 
 using namespace kqir;
@@ -64,14 +65,14 @@ static auto ParseS(SemaChecker& sc, const std::string& in) {
 }
 
 static IndexMap MakeIndexMap() {
-  auto f1 = FieldInfo("t1", std::make_unique<redis::SearchTagFieldMetadata>());
-  auto f2 = FieldInfo("t2", std::make_unique<redis::SearchTagFieldMetadata>());
+  auto f1 = FieldInfo("t1", std::make_unique<redis::TagFieldMetadata>());
+  auto f2 = FieldInfo("t2", std::make_unique<redis::TagFieldMetadata>());
   f2.metadata->noindex = true;
-  auto f3 = FieldInfo("n1", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto f4 = FieldInfo("n2", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto f5 = FieldInfo("n3", std::make_unique<redis::SearchNumericFieldMetadata>());
+  auto f3 = FieldInfo("n1", std::make_unique<redis::NumericFieldMetadata>());
+  auto f4 = FieldInfo("n2", std::make_unique<redis::NumericFieldMetadata>());
+  auto f5 = FieldInfo("n3", std::make_unique<redis::NumericFieldMetadata>());
   f5.metadata->noindex = true;
-  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata());
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));

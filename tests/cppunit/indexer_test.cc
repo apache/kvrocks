@@ -36,24 +36,24 @@ struct IndexerTest : TestBase {
   std::string ns = "index_test";
 
   IndexerTest() : indexer(storage_.get()) {
-    SearchMetadata hash_field_meta(false);
-    hash_field_meta.on_data_type = SearchOnDataType::HASH;
+    redis::IndexMetadata hash_field_meta;
+    hash_field_meta.on_data_type = redis::IndexOnDataType::HASH;
 
     auto hash_info = std::make_unique<kqir::IndexInfo>("hashtest", hash_field_meta);
-    hash_info->Add(kqir::FieldInfo("x", std::make_unique<redis::SearchTagFieldMetadata>()));
-    hash_info->Add(kqir::FieldInfo("y", std::make_unique<redis::SearchNumericFieldMetadata>()));
+    hash_info->Add(kqir::FieldInfo("x", std::make_unique<redis::TagFieldMetadata>()));
+    hash_info->Add(kqir::FieldInfo("y", std::make_unique<redis::NumericFieldMetadata>()));
     hash_info->prefixes.prefixes.emplace_back("idxtesthash");
 
     map.emplace("hashtest", std::move(hash_info));
 
     redis::IndexUpdater hash_updater{map.at("hashtest").get()};
 
-    SearchMetadata json_field_meta(false);
-    json_field_meta.on_data_type = SearchOnDataType::JSON;
+    redis::IndexMetadata json_field_meta;
+    json_field_meta.on_data_type = redis::IndexOnDataType::JSON;
 
     auto json_info = std::make_unique<kqir::IndexInfo>("jsontest", json_field_meta);
-    json_info->Add(kqir::FieldInfo("$.x", std::make_unique<redis::SearchTagFieldMetadata>()));
-    json_info->Add(kqir::FieldInfo("$.y", std::make_unique<redis::SearchNumericFieldMetadata>()));
+    json_info->Add(kqir::FieldInfo("$.x", std::make_unique<redis::TagFieldMetadata>()));
+    json_info->Add(kqir::FieldInfo("$.y", std::make_unique<redis::NumericFieldMetadata>()));
     json_info->prefixes.prefixes.emplace_back("idxtestjson");
 
     map.emplace("jsontest", std::move(json_info));
@@ -90,28 +90,22 @@ TEST_F(IndexerTest, HashTag) {
     auto s2 = indexer.Update(*s, key1, ns);
     ASSERT_TRUE(s2);
 
-    auto subkey = redis::ConstructTagFieldSubkey("x", "food", key1);
-    auto nskey = ComposeNamespaceKey(ns, idxname, false);
-    auto key = InternalKey(nskey, subkey, 0, false);
+    auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("x", "kitchen", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("x", "beauty", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
@@ -131,43 +125,33 @@ TEST_F(IndexerTest, HashTag) {
     auto s2 = indexer.Update(*s, key1, ns);
     ASSERT_TRUE(s2);
 
-    auto subkey = redis::ConstructTagFieldSubkey("x", "food", key1);
-    auto nskey = ComposeNamespaceKey(ns, idxname, false);
-    auto key = InternalKey(nskey, subkey, 0, false);
+    auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("x", "clothing", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("clothing", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("x", "sport", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("sport", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("x", "kitchen", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
 
-    subkey = redis::ConstructTagFieldSubkey("x", "beauty", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }
@@ -196,28 +180,22 @@ TEST_F(IndexerTest, JsonTag) {
     auto s2 = indexer.Update(*s, key1, ns);
     ASSERT_TRUE(s2);
 
-    auto subkey = redis::ConstructTagFieldSubkey("$.x", "food", key1);
-    auto nskey = ComposeNamespaceKey(ns, idxname, false);
-    auto key = InternalKey(nskey, subkey, 0, false);
+    auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "kitchen", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "beauty", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
@@ -235,43 +213,33 @@ TEST_F(IndexerTest, JsonTag) {
     auto s2 = indexer.Update(*s, key1, ns);
     ASSERT_TRUE(s2);
 
-    auto subkey = redis::ConstructTagFieldSubkey("$.x", "food", key1);
-    auto nskey = ComposeNamespaceKey(ns, idxname, false);
-    auto key = InternalKey(nskey, subkey, 0, false);
+    auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "clothing", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("clothing", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "sport", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("sport", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "kitchen", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
 
-    subkey = redis::ConstructTagFieldSubkey("$.x", "beauty", key1);
-    nskey = ComposeNamespaceKey(ns, idxname, false);
-    key = InternalKey(nskey, subkey, 0, false);
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key.Encode(), &val);
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }

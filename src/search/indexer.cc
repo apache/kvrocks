@@ -32,16 +32,16 @@
 
 namespace redis {
 
-StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type, std::string_view key,
+StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, std::string_view key,
                                                           engine::Storage *storage, const std::string &ns) {
-  if (type == SearchOnDataType::HASH) {
+  if (type == IndexOnDataType::HASH) {
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
     auto s = db.GetMetadata(Database::GetOptions{}, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
-  } else if (type == SearchOnDataType::JSON) {
+  } else if (type == IndexOnDataType::JSON) {
     Json db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     JsonMetadata metadata(false);
@@ -50,7 +50,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(SearchOnDataType type,
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
-    assert(false && "unreachable code: unexpected SearchOnDataType");
+    assert(false && "unreachable code: unexpected IndexOnDataType");
     __builtin_unreachable();
   }
 }
@@ -111,6 +111,85 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, c
   return values;
 }
 
+Status IndexUpdater::UpdateTagIndex(std::string_view key, std::string_view original, std::string_view current,
+                                    const SearchKey &search_key, const TagFieldMetadata *tag) const {
+  const char delim[] = {tag->separator, '\0'};
+  auto original_tags = util::Split(original, delim);
+  auto current_tags = util::Split(current, delim);
+
+  auto to_tag_set = [](const std::vector<std::string> &tags, bool case_sensitive) -> std::set<std::string> {
+    if (case_sensitive) {
+      return {tags.begin(), tags.end()};
+    } else {
+      std::set<std::string> res;
+      std::transform(tags.begin(), tags.end(), std::inserter(res, res.begin()), util::ToLower);
+      return res;
+    }
+  };
+
+  std::set<std::string> tags_to_delete = to_tag_set(original_tags, tag->case_sensitive);
+  std::set<std::string> tags_to_add = to_tag_set(current_tags, tag->case_sensitive);
+
+  for (auto it = tags_to_delete.begin(); it != tags_to_delete.end();) {
+    if (auto jt = tags_to_add.find(*it); jt != tags_to_add.end()) {
+      it = tags_to_delete.erase(it);
+      tags_to_add.erase(jt);
+    } else {
+      ++it;
+    }
+  }
+
+  if (tags_to_add.empty() && tags_to_delete.empty()) {
+    // no change, skip index updating
+    return Status::OK();
+  }
+
+  auto *storage = indexer->storage;
+  auto batch = storage->GetWriteBatchBase();
+  auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
+
+  for (const auto &tag : tags_to_delete) {
+    auto index_key = search_key.ConstructTagFieldData(tag, key);
+
+    batch->Delete(cf_handle, index_key);
+  }
+
+  for (const auto &tag : tags_to_add) {
+    auto index_key = search_key.ConstructTagFieldData(tag, key);
+
+    batch->Put(cf_handle, index_key, Slice());
+  }
+
+  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
+Status IndexUpdater::UpdateNumericIndex(std::string_view key, std::string_view original, std::string_view current,
+                                        const SearchKey &search_key, const NumericFieldMetadata *num) const {
+  auto *storage = indexer->storage;
+  auto batch = storage->GetWriteBatchBase();
+  auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
+
+  if (!original.empty()) {
+    auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));
+    auto index_key = search_key.ConstructNumericFieldData(original_num, key);
+
+    batch->Delete(cf_handle, index_key);
+  }
+
+  if (!current.empty()) {
+    auto current_num = GET_OR_RET(ParseFloat(std::string(current.begin(), current.end())));
+    auto index_key = search_key.ConstructNumericFieldData(current_num, key);
+
+    batch->Put(cf_handle, index_key, Slice());
+  }
+
+  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
 Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
                                  std::string_view current, const std::string &ns) const {
   if (original == current) {
@@ -124,81 +203,11 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   }
 
   auto *metadata = iter->second.metadata.get();
-  auto *storage = indexer->storage;
-  auto ns_key = ComposeNamespaceKey(ns, info->name, storage->IsSlotIdEncoded());
-  if (auto tag = dynamic_cast<SearchTagFieldMetadata *>(metadata)) {
-    const char delim[] = {tag->separator, '\0'};
-    auto original_tags = util::Split(original, delim);
-    auto current_tags = util::Split(current, delim);
-
-    auto to_tag_set = [](const std::vector<std::string> &tags, bool case_sensitive) -> std::set<std::string> {
-      if (case_sensitive) {
-        return {tags.begin(), tags.end()};
-      } else {
-        std::set<std::string> res;
-        std::transform(tags.begin(), tags.end(), std::inserter(res, res.begin()), util::ToLower);
-        return res;
-      }
-    };
-
-    std::set<std::string> tags_to_delete = to_tag_set(original_tags, tag->case_sensitive);
-    std::set<std::string> tags_to_add = to_tag_set(current_tags, tag->case_sensitive);
-
-    for (auto it = tags_to_delete.begin(); it != tags_to_delete.end();) {
-      if (auto jt = tags_to_add.find(*it); jt != tags_to_add.end()) {
-        it = tags_to_delete.erase(it);
-        tags_to_add.erase(jt);
-      } else {
-        ++it;
-      }
-    }
-
-    if (tags_to_add.empty() && tags_to_delete.empty()) {
-      // no change, skip index updating
-      return Status::OK();
-    }
-
-    auto batch = storage->GetWriteBatchBase();
-    auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
-
-    for (const auto &tag : tags_to_delete) {
-      auto sub_key = ConstructTagFieldSubkey(field, tag, key);
-      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
-
-      batch->Delete(cf_handle, index_key.Encode());
-    }
-
-    for (const auto &tag : tags_to_add) {
-      auto sub_key = ConstructTagFieldSubkey(field, tag, key);
-      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
-
-      batch->Put(cf_handle, index_key.Encode(), Slice());
-    }
-
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
-    if (!s.ok()) return {Status::NotOK, s.ToString()};
-  } else if (auto numeric [[maybe_unused]] = dynamic_cast<SearchNumericFieldMetadata *>(metadata)) {
-    auto batch = storage->GetWriteBatchBase();
-    auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
-
-    if (!original.empty()) {
-      auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));
-      auto sub_key = ConstructNumericFieldSubkey(field, original_num, key);
-      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
-
-      batch->Delete(cf_handle, index_key.Encode());
-    }
-
-    if (!current.empty()) {
-      auto current_num = GET_OR_RET(ParseFloat(std::string(current.begin(), current.end())));
-      auto sub_key = ConstructNumericFieldSubkey(field, current_num, key);
-      auto index_key = InternalKey(ns_key, sub_key, info->metadata.version, storage->IsSlotIdEncoded());
-
-      batch->Put(cf_handle, index_key.Encode(), Slice());
-    }
-
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
-    if (!s.ok()) return {Status::NotOK, s.ToString()};
+  SearchKey search_key(ns, info->name, field);
+  if (auto tag = dynamic_cast<TagFieldMetadata *>(metadata)) {
+    GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
+  } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
+    GET_OR_RET(UpdateNumericIndex(key, original, current, search_key, numeric));
   } else {
     return {Status::NotOK, "Unexpected field type"};
   }

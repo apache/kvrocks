@@ -23,26 +23,127 @@
 #include <encoding.h>
 #include <storage/redis_metadata.h>
 
+#include <memory>
+
 namespace redis {
+
+enum class IndexOnDataType : uint8_t {
+  HASH = kRedisHash,
+  JSON = kRedisJson,
+};
 
 inline constexpr auto kErrorInsufficientLength = "insufficient length while decoding metadata";
 
-enum class SearchSubkeyType : uint8_t {
-  // search global metadata
-  PREFIXES = 1,
+class IndexMetadata {
+ public:
+  uint8_t flag = 0;  // all reserved
+  IndexOnDataType on_data_type;
 
-  // field metadata for different types
-  TAG_FIELD_META = 64 + 1,
-  NUMERIC_FIELD_META = 64 + 2,
+  void Encode(std::string *dst) const {
+    PutFixed8(dst, flag);
+    PutFixed8(dst, uint8_t(on_data_type));
+  }
 
-  // field indexing for different types
-  TAG_FIELD = 128 + 1,
-  NUMERIC_FIELD = 128 + 2,
+  rocksdb::Status Decode(Slice *input) {
+    if (!GetFixed8(input, &flag)) {
+      return rocksdb::Status::InvalidArgument(kErrorInsufficientLength);
+    }
+
+    if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&on_data_type))) {
+      return rocksdb::Status::InvalidArgument(kErrorInsufficientLength);
+    }
+
+    return rocksdb::Status::OK();
+  }
 };
 
-inline std::string ConstructSearchPrefixesSubkey() { return {(char)SearchSubkeyType::PREFIXES}; }
+enum class SearchSubkeyType : uint8_t {
+  INDEX_META = 0,
 
-struct SearchPrefixesMetadata {
+  PREFIXES = 1,
+
+  // field metadata
+  FIELD_META = 2,
+
+  // field indexing data
+  FIELD = 3,
+
+  // field alias
+  FIELD_ALIAS = 4,
+};
+
+enum class IndexFieldType : uint8_t {
+  TAG = 1,
+
+  NUMERIC = 2,
+};
+
+struct SearchKey {
+  std::string_view ns;
+  std::string_view index;
+  std::string_view field;
+
+  SearchKey(std::string_view ns, std::string_view index) : ns(ns), index(index) {}
+  SearchKey(std::string_view ns, std::string_view index, std::string_view field) : ns(ns), index(index), field(field) {}
+
+  void PutNamespace(std::string *dst) const {
+    PutFixed8(dst, ns.size());
+    dst->append(ns);
+  }
+
+  static void PutType(std::string *dst, SearchSubkeyType type) { PutFixed8(dst, uint8_t(type)); }
+
+  void PutIndex(std::string *dst) const { PutSizedString(dst, index); }
+
+  std::string ConstructIndexMeta() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::INDEX_META);
+    PutIndex(&dst);
+    return dst;
+  }
+
+  std::string ConstructIndexPrefixes() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::PREFIXES);
+    PutIndex(&dst);
+    return dst;
+  }
+
+  std::string ConstructFieldMeta() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD_META);
+    PutIndex(&dst);
+    PutSizedString(&dst, field);
+    return dst;
+  }
+
+  std::string ConstructTagFieldData(std::string_view tag, std::string_view key) const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD);
+    PutIndex(&dst);
+    PutSizedString(&dst, field);
+    PutSizedString(&dst, tag);
+    PutSizedString(&dst, key);
+    return dst;
+  }
+
+  std::string ConstructNumericFieldData(double num, std::string_view key) const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD);
+    PutIndex(&dst);
+    PutSizedString(&dst, field);
+    PutDouble(&dst, num);
+    PutSizedString(&dst, key);
+    return dst;
+  }
+};
+
+struct IndexPrefixes {
   std::vector<std::string> prefixes;
 
   static inline const std::string all[] = {""};
@@ -75,15 +176,21 @@ struct SearchPrefixesMetadata {
   }
 };
 
-struct SearchFieldMetadata {
+struct IndexFieldMetadata {
   bool noindex = false;
+  IndexFieldType type;
 
-  // flag: <noindex: 1 bit> <reserved: 7 bit>
-  uint8_t MakeFlag() const { return noindex; }
+  // flag: <noindex: 1 bit> <type: 4 bit> <reserved: 3 bit>
+  uint8_t MakeFlag() const { return noindex | (uint8_t)type << 1; }
 
-  void DecodeFlag(uint8_t flag) { noindex = flag & 1; }
+  void DecodeFlag(uint8_t flag) {
+    noindex = flag & 1;
+    type = DecodeType(flag);
+  }
 
-  virtual ~SearchFieldMetadata() = default;
+  static IndexFieldType DecodeType(uint8_t flag) { return IndexFieldType(flag >> 1); }
+
+  virtual ~IndexFieldMetadata() = default;
 
   virtual void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
 
@@ -96,26 +203,24 @@ struct SearchFieldMetadata {
     DecodeFlag(flag);
     return rocksdb::Status::OK();
   }
+
+  virtual bool IsSortable() const { return false; }
+
+  static inline rocksdb::Status Decode(Slice *input, std::unique_ptr<IndexFieldMetadata> &ptr);
 };
 
-inline std::string ConstructTagFieldMetadataSubkey(std::string_view field_name) {
-  std::string res = {(char)SearchSubkeyType::TAG_FIELD_META};
-  res.append(field_name);
-  return res;
-}
-
-struct SearchTagFieldMetadata : SearchFieldMetadata {
+struct TagFieldMetadata : IndexFieldMetadata {
   char separator = ',';
   bool case_sensitive = false;
 
   void Encode(std::string *dst) const override {
-    SearchFieldMetadata::Encode(dst);
+    IndexFieldMetadata::Encode(dst);
     PutFixed8(dst, separator);
     PutFixed8(dst, case_sensitive);
   }
 
   rocksdb::Status Decode(Slice *input) override {
-    if (auto s = SearchFieldMetadata::Decode(input); !s.ok()) {
+    if (auto s = IndexFieldMetadata::Decode(input); !s.ok()) {
       return s;
     }
 
@@ -129,30 +234,27 @@ struct SearchTagFieldMetadata : SearchFieldMetadata {
   }
 };
 
-inline std::string ConstructNumericFieldMetadataSubkey(std::string_view field_name) {
-  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD_META};
-  res.append(field_name);
-  return res;
-}
+struct NumericFieldMetadata : IndexFieldMetadata {
+  bool IsSortable() const override { return true; }
+};
 
-struct SearchSortableFieldMetadata : SearchFieldMetadata {};
+inline rocksdb::Status IndexFieldMetadata::Decode(Slice *input, std::unique_ptr<IndexFieldMetadata> &ptr) {
+  if (input->size() < 1) {
+    return rocksdb::Status::Corruption(kErrorInsufficientLength);
+  }
 
-struct SearchNumericFieldMetadata : SearchSortableFieldMetadata {};
+  switch (DecodeType((*input)[0])) {
+    case IndexFieldType::TAG:
+      ptr = std::make_unique<TagFieldMetadata>();
+      break;
+    case IndexFieldType::NUMERIC:
+      ptr = std::make_unique<NumericFieldMetadata>();
+      break;
+    default:
+      return rocksdb::Status::Corruption("encountered unknown field type");
+  }
 
-inline std::string ConstructTagFieldSubkey(std::string_view field_name, std::string_view tag, std::string_view key) {
-  std::string res = {(char)SearchSubkeyType::TAG_FIELD};
-  PutSizedString(&res, field_name);
-  PutSizedString(&res, tag);
-  PutSizedString(&res, key);
-  return res;
-}
-
-inline std::string ConstructNumericFieldSubkey(std::string_view field_name, double number, std::string_view key) {
-  std::string res = {(char)SearchSubkeyType::NUMERIC_FIELD};
-  PutSizedString(&res, field_name);
-  PutDouble(&res, number);
-  PutSizedString(&res, key);
-  return res;
+  return ptr->Decode(input);
 }
 
 }  // namespace redis

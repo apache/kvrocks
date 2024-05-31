@@ -35,7 +35,6 @@
 #include <limits>
 #include <string>
 
-#include "common/bit_util.h"
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"

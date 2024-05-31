@@ -377,4 +377,14 @@ std::string EscapeString(std::string_view s) {
   return str;
 }
 
+std::string StringNext(std::string s) {
+  for (auto iter = s.rbegin(); iter != s.rend(); ++iter) {
+    if (*iter != char(0xff)) {
+      (*iter)++;
+      break;
+    }
+  }
+  return s;
+}
+
 }  // namespace util

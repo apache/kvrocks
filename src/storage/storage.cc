@@ -677,20 +677,19 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::C
   return Write(options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
+rocksdb::Status Storage::DeleteRange(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
+                                     Slice begin, Slice end) {
   auto batch = GetWriteBatchBase();
-  rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(ColumnFamilyID::Metadata);
-  auto s = batch->DeleteRange(cf_handle, first_key, last_key);
+  auto s = batch->DeleteRange(cf_handle, begin, end);
   if (!s.ok()) {
     return s;
   }
 
-  s = batch->Delete(cf_handle, last_key);
-  if (!s.ok()) {
-    return s;
-  }
+  return Write(options, batch->GetWriteBatch());
+}
 
-  return Write(default_write_opts_, batch->GetWriteBatch());
+rocksdb::Status Storage::DeleteRange(Slice begin, Slice end) {
+  return DeleteRange(default_write_opts_, GetCFHandle(ColumnFamilyID::Metadata), begin, end);
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -762,8 +761,8 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
     return sst_file_manager_->GetTotalSize();
   }
 
-  std::string begin_key, end_key;
-  std::string prefix = ComposeNamespaceKey(ns, "", false);
+  auto begin_key = ComposeNamespaceKey(ns, "", false);
+  auto end_key = util::StringNext(begin_key);
 
   redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;
@@ -774,9 +773,6 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
     if (cf_handle == GetCFHandle(ColumnFamilyID::PubSub) || cf_handle == GetCFHandle(ColumnFamilyID::Propagate)) {
       continue;
     }
-
-    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle);
-    if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
     db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);

@@ -507,7 +507,6 @@ func TestJson(t *testing.T) {
 	t.Run("JSON.NUMOP basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{ "foo": 0, "bar": "baz" }`).Err())
 		EqualJSON(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
-
 		EqualJSON(t, `[1]`, rdb.Do(ctx, "JSON.GET", "a", "$.foo").Val())
 		EqualJSON(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
 		//args overflow

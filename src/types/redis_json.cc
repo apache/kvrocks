@@ -452,8 +452,6 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
   if (!number_res || !number_res.GetValue().value.is_number()) {
     return rocksdb::Status::InvalidArgument("should be a number");
   }
-
-
   number = std::move(number_res.GetValue());
 
   auto ns_key = AppendNamespacePrefix(user_key);

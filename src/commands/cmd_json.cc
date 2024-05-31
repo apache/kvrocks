@@ -652,14 +652,15 @@ class CommandJsonDebug : public Commander {
     std::vector<std::size_t> results;
     auto s = json.DebugMemory(args_[2], path, &results);
 
-    if (s.IsNotFound() && args_.size() == 3) {
-      *output = redis::Integer(0);
-      return Status::OK();
-    } else if (s.IsNotFound() && args_.size() == 4) {
-      *output = SizeToString(results);
-      return Status::OK();
+    if (s.IsNotFound()) {
+      if (args_.size() == 3) {
+        *output = redis::Integer(0);
+        return Status::OK();
+      } else {
+        *output = SizeToString(results);
+        return Status::OK();
+      }
     }
-
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = SizeToString(results);

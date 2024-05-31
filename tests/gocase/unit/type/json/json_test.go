@@ -517,8 +517,8 @@ func TestJson(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "over_flow", "$.foo", 2).Err())
 		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "over_flow", "$.foo", 2).Err())
 		//result overflow 9223372036854775800<std::numeric_limits::max()
-		require.NoError(t, rdb.Do(ctx, "JSON.SET", "over_flow", "$", `{ "foo":9223372036854775800, "bar": "baz" }`).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "over_flow", "$.foo", 2).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "over_flow", "$", `{ "foo":9223372036854775806, "bar": "baz" }`).Err())
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "over_flow", "$.foo", 20).Err())
 		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "over_flow", "$.foo", 2).Err())
 
 		EqualJSON(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
@@ -588,7 +589,13 @@ struct JsonValue {
           status = {Status::RedisExecErr, "the result is an infinite number"};
           return;
         }
-        origin = v;
+        double v_int = 0;
+        if (std::modf(v, &v_int) == 0 && double(std::numeric_limits<int64_t>::min()) < v &&
+            v < double(std::numeric_limits<int64_t>::max())) {
+          origin = int64_t(v);
+        } else {
+          origin = v;
+        }
         result->value.push_back(origin);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

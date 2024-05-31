@@ -595,18 +595,16 @@ struct JsonValue {
           origin = v;
         } else {
           int64_t v = 0;
-          if (op == NumOpEnum::Incr) {
-            v = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
-
-          } else if (op == NumOpEnum::Mul) {
-            v = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
-          }
           if (util::Int64OperationOverFlow(origin.as_integer<int64_t>(), number.value.as_integer<int64_t>(), v,
                                            static_cast<uint8_t>(op))) {
             status = {Status::RedisExecErr, "number out of range"};
             return;
           }
-          origin = v;
+          if (op == NumOpEnum::Incr) {
+            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
+          } else if (op == NumOpEnum::Mul) {
+            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
+          }
         }
         result->value.push_back(origin);
       });

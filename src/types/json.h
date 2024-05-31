@@ -571,29 +571,24 @@ struct JsonValue {
         if (!status.IsOK()) {
           return;
         }
-        if (!origin.is_number()) {
+        // is_number() will return true
+        // if it's actually a string but can convert to a number
+        // so here we should exclude such case
+        if (!origin.is_number() || origin.is_string()) {
           result->value.push_back(jsoncons::json::null());
           return;
         }
-        if (number.value.is_double() || origin.is_double()) {
-          double v = 0;
-          if (op == NumOpEnum::Incr) {
-            v = origin.as_double() + number.value.as_double();
-          } else if (op == NumOpEnum::Mul) {
-            v = origin.as_double() * number.value.as_double();
-          }
-          if (std::isinf(v)) {
-            status = {Status::RedisExecErr, "result is an infinite number"};
-            return;
-          }
-          origin = v;
-        } else {
-          if (op == NumOpEnum::Incr) {
-            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
-          } else if (op == NumOpEnum::Mul) {
-            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
-          }
+        double v = 0;
+        if (op == NumOpEnum::Incr) {
+          v = origin.as_double() + number.value.as_double();
+        } else if (op == NumOpEnum::Mul) {
+          v = origin.as_double() * number.value.as_double();
         }
+        if (std::isinf(v)) {
+          status = {Status::RedisExecErr, "the result is an infinite number"};
+          return;
+        }
+        origin = v;
         result->value.push_back(origin);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {

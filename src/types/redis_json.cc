@@ -447,12 +447,11 @@ rocksdb::Status Json::NumMultBy(const std::string &user_key, const std::string &
 
 rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key, const std::string &path,
                             const std::string &value, JsonValue *result) {
-  JsonValue number;
   auto number_res = JsonValue::FromString(value);
-  if (!number_res || !number_res.GetValue().value.is_number()) {
-    return rocksdb::Status::InvalidArgument("should be a number");
+  if (!number_res || !number_res.GetValue().value.is_number() || number_res.GetValue().value.is_string()) {
+    return rocksdb::Status::InvalidArgument("the input value should be a number");
   }
-  number = std::move(number_res.GetValue());
+  JsonValue number = std::move(number_res.GetValue());
 
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;

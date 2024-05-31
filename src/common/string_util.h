@@ -38,6 +38,7 @@ std::vector<std::string> RegexMatch(const std::string &str, const std::string &r
 std::string StringToHex(std::string_view input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 std::string EscapeString(std::string_view s);
+std::string StringNext(std::string s);
 
 template <typename T, typename F>
 std::string StringJoin(

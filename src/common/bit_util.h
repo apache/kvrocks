@@ -41,13 +41,7 @@ inline size_t RawPopcount(const uint8_t *p, int64_t count) {
 
   return bits;
 }
-inline bool Int64OperationOverFlow(int64_t a, int64_t b, int64_t result, uint8_t operation) {
-  if (operation == 1) {
-    return __builtin_add_overflow(a, b, &result);
-  } else {
-    return __builtin_mul_overflow(a, b, &result);
-  }
-}
+
 
 template <typename T = void>
 inline int ClzllWithEndian(uint64_t x) {

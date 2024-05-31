@@ -509,18 +509,8 @@ func TestJson(t *testing.T) {
 		EqualJSON(t, `[1]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 1).Val())
 		EqualJSON(t, `[1]`, rdb.Do(ctx, "JSON.GET", "a", "$.foo").Val())
 		EqualJSON(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
-		//args overflow
 		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", "22222222222222222222222222222222222222222222222222222").Err())
 		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "a", "$.foo", "22222222222222222222222222222222222222222222222222222").Err())
-		//origin overflow
-		require.NoError(t, rdb.Do(ctx, "JSON.SET", "over_flow", "$", `{ "foo":9223372036854775809, "bar": "baz" }`).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "over_flow", "$.foo", 2).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "over_flow", "$.foo", 2).Err())
-		//result overflow 9223372036854775806<std::numeric_limits::max()
-		require.NoError(t, rdb.Do(ctx, "JSON.SET", "over_flow", "$", `{ "foo":9223372036854775806, "bar": "baz" }`).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "over_flow", "$.foo", 20).Err())
-		require.Error(t, rdb.Do(ctx, "JSON.NUMMULTBY", "over_flow", "$.foo", 2).Err())
-
 		EqualJSON(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())
 
 		// wrong type

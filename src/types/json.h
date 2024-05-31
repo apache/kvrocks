@@ -576,11 +576,6 @@ struct JsonValue {
           result->value.push_back(jsoncons::json::null());
           return;
         }
-        if (CheckJsonInt64OverFlow(number.value) || CheckJsonInt64OverFlow(origin)) {
-          status = {Status::RedisExecErr, "number out of range"};
-          return;
-        }
-
         if (number.value.is_double() || origin.is_double()) {
           double v = 0;
           if (op == NumOpEnum::Incr) {
@@ -594,12 +589,6 @@ struct JsonValue {
           }
           origin = v;
         } else {
-          int64_t v = 0;
-          if (util::Int64OperationOverFlow(origin.as_integer<int64_t>(), number.value.as_integer<int64_t>(), v,
-                                           static_cast<uint8_t>(op))) {
-            status = {Status::RedisExecErr, "number out of range"};
-            return;
-          }
           if (op == NumOpEnum::Incr) {
             origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
           } else if (op == NumOpEnum::Mul) {
@@ -610,11 +599,10 @@ struct JsonValue {
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
+    } catch (const jsoncons::json_runtime_error<std::runtime_error> &e) {
+      return {Status::NotOK, e.what()};
     }
     return status;
-  }
-  static bool CheckJsonInt64OverFlow(const jsoncons::json &check_value) {
-    return (check_value.is_number() && (!check_value.is_int64() && !check_value.is_double()));
   }
 
   JsonValue(const JsonValue &) = default;

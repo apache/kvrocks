@@ -453,9 +453,6 @@ rocksdb::Status Json::numop(JsonValue::NumOpEnum op, const std::string &user_key
     return rocksdb::Status::InvalidArgument("should be a number");
   }
 
-  if (!number_res.GetValue().value.is_int64() && !number_res.GetValue().value.is_double()) {
-    return rocksdb::Status::InvalidArgument("number out of range");
-  }
 
   number = std::move(number_res.GetValue());
 

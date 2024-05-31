@@ -35,6 +35,7 @@
 #include <limits>
 #include <string>
 
+#include "common/bit_util.h"
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
@@ -575,6 +576,11 @@ struct JsonValue {
           result->value.push_back(jsoncons::json::null());
           return;
         }
+        if (CheckJsonInt64OverFlow(number.value) || CheckJsonInt64OverFlow(origin)) {
+          status = {Status::RedisExecErr, "number out of range"};
+          return;
+        }
+
         if (number.value.is_double() || origin.is_double()) {
           double v = 0;
           if (op == NumOpEnum::Incr) {
@@ -588,11 +594,19 @@ struct JsonValue {
           }
           origin = v;
         } else {
+          int64_t v = 0;
           if (op == NumOpEnum::Incr) {
-            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
+            v = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
+
           } else if (op == NumOpEnum::Mul) {
-            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
+            v = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
           }
+          if (util::Int64OperationOverFlow(origin.as_integer<int64_t>(), number.value.as_integer<int64_t>(), v,
+                                           static_cast<uint8_t>(op))) {
+            status = {Status::RedisExecErr, "number out of range"};
+            return;
+          }
+          origin = v;
         }
         result->value.push_back(origin);
       });
@@ -600,6 +614,9 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     return status;
+  }
+  static bool CheckJsonInt64OverFlow(const jsoncons::json &check_value) {
+    return (check_value.is_number() && (!check_value.is_int64() && !check_value.is_double()));
   }
 
   JsonValue(const JsonValue &) = default;

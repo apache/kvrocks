@@ -655,11 +655,10 @@ class CommandJsonDebug : public Commander {
     if (s.IsNotFound()) {
       if (args_.size() == 3) {
         *output = redis::Integer(0);
-        return Status::OK();
       } else {
         *output = SizeToString(results);
-        return Status::OK();
       }
+      return Status::OK();
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 

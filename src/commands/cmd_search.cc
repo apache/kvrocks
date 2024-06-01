@@ -41,6 +41,10 @@ class CommandFTCreate : public Commander {
     CommandParser parser(args, 1);
 
     auto index_name = GET_OR_RET(parser.TakeStr());
+    if (index_name.empty()) {
+      return {Status::RedisParseErr, "index name cannot be empty"};
+    }
+
     index_info_ = std::make_unique<kqir::IndexInfo>(index_name, redis::IndexMetadata{}, "");
     auto data_type = IndexOnDataType(0);
 
@@ -73,6 +77,10 @@ class CommandFTCreate : public Commander {
     if (parser.EatEqICase("SCHEMA")) {
       while (parser.Good()) {
         auto field_name = GET_OR_RET(parser.TakeStr());
+        if (field_name.empty()) {
+          return {Status::RedisParseErr, "field name cannot be empty"};
+        }
+
         std::unique_ptr<redis::IndexFieldMetadata> field_meta;
         if (parser.EatEqICase("TAG")) {
           field_meta = std::make_unique<redis::TagFieldMetadata>();
@@ -92,7 +100,7 @@ class CommandFTCreate : public Commander {
               auto sep = GET_OR_RET(parser.TakeStr());
 
               if (sep.size() != 1) {
-                return {Status::NotOK, "only one character seperator is supported"};
+                return {Status::NotOK, "only one character separator is supported"};
               }
 
               tag->separator = sep[0];

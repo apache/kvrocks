@@ -173,8 +173,6 @@ struct IndexManager {
 
     return Status::OK();
   }
-
-  // TODO: implement IndexManager::Delete
 };
 
 }  // namespace redis

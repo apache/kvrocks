@@ -37,6 +37,8 @@ struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
   UniqueIterator(engine::Storage* storage, const rocksdb::ReadOptions& options,
                  rocksdb::ColumnFamilyHandle* column_family)
       : BaseType(storage->NewIterator(options, column_family)) {}
+  UniqueIterator(engine::Storage* storage, const rocksdb::ReadOptions& options, ColumnFamilyID cf)
+      : BaseType(storage->NewIterator(options, storage->GetCFHandle(cf))) {}
   UniqueIterator(engine::Storage* storage, const rocksdb::ReadOptions& options)
       : BaseType(storage->NewIterator(options)) {}
 };

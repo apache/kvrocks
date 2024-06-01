@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "search_encoding.h"
 
@@ -56,7 +57,8 @@ struct IndexInfo {
   redis::IndexPrefixes prefixes;
   std::string ns;
 
-  IndexInfo(std::string name, redis::IndexMetadata metadata) : name(std::move(name)), metadata(std::move(metadata)) {}
+  IndexInfo(std::string name, redis::IndexMetadata metadata, std::string ns)
+      : name(std::move(name)), metadata(std::move(metadata)), ns(std::move(ns)) {}
 
   void Add(FieldInfo &&field) {
     const auto &name = field.name;

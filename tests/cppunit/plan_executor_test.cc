@@ -40,8 +40,7 @@ static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
   auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
-  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata());
-  ia->ns = "search_ns";
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "search_ns");
   ia->metadata.on_data_type = redis::IndexOnDataType::JSON;
   ia->prefixes.prefixes.emplace_back("test2:");
   ia->prefixes.prefixes.emplace_back("test4:");
@@ -318,7 +317,7 @@ struct ScopedUpdate {
   ScopedUpdate& operator=(ScopedUpdate&&) = delete;
 
   ~ScopedUpdate() {
-    auto s = redis::GlobalIndexer::Update(rr, key, ns);
+    auto s = redis::GlobalIndexer::Update(rr, key);
     EXPECT_EQ(s.Msg(), Status::ok_msg);
   }
 };

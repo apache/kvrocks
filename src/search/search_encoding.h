@@ -239,7 +239,7 @@ struct TagFieldMetadata : IndexFieldMetadata {
       return s;
     }
 
-    if (input->size() < 8 + 8) {
+    if (input->size() < 2) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
 

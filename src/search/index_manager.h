@@ -24,6 +24,10 @@
 #include "encoding.h"
 #include "search/index_info.h"
 #include "search/indexer.h"
+#include "search/ir.h"
+#include "search/ir_sema_checker.h"
+#include "search/passes/manager.h"
+#include "search/plan_executor.h"
 #include "search/search_encoding.h"
 #include "status.h"
 #include "storage/storage.h"
@@ -109,7 +113,7 @@ struct IndexManager {
         if (!GetSizedString(&key, &value)) break;
 
         auto field_name = value;
-        auto field_value = iter->value();
+        auto field_value = field_iter->value();
 
         std::unique_ptr<IndexFieldMetadata> field_meta;
         if (auto s = IndexFieldMetadata::Decode(&field_value, field_meta); !s.ok()) {
@@ -172,6 +176,33 @@ struct IndexManager {
     }
 
     return Status::OK();
+  }
+
+  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
+                                                               const std::string &ns) const {
+    kqir::SemaChecker sema_checker(index_map);
+    sema_checker.ns = ns;
+
+    GET_OR_RET(sema_checker.Check(ir.get()));
+
+    auto plan_ir = kqir::PassManager::Execute(kqir::PassManager::Default(), std::move(ir));
+    std::unique_ptr<kqir::PlanOperator> plan_op;
+    if (plan_op = kqir::Node::As<kqir::PlanOperator>(std::move(plan_ir)); !plan_op) {
+      return {Status::NotOK, "failed to convert the SQL query to plan operators"};
+    }
+
+    kqir::ExecutorContext executor_ctx(plan_op.get(), storage);
+
+    std::vector<kqir::ExecutorContext::RowType> results;
+
+    auto iter_res = GET_OR_RET(executor_ctx.Next());
+    while (!std::holds_alternative<kqir::ExecutorNode::End>(iter_res)) {
+      results.push_back(std::get<kqir::ExecutorContext::RowType>(iter_res));
+
+      iter_res = GET_OR_RET(executor_ctx.Next());
+    }
+
+    return results;
   }
 };
 

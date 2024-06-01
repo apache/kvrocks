@@ -24,10 +24,6 @@
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "search/index_info.h"
-#include "search/ir_plan.h"
-#include "search/ir_sema_checker.h"
-#include "search/passes/manager.h"
-#include "search/plan_executor.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
 #include "server/redis_reply.h"
@@ -142,32 +138,11 @@ class CommandFTCreate : public Commander {
 
 class CommandFTSearchSQL : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    const auto &index_map = srv->index_mgr.index_map;
     const auto &sql = args_[1];
 
     auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.searchsql")));
 
-    kqir::SemaChecker sema_checker(index_map);
-    sema_checker.ns = conn->GetNamespace();
-
-    GET_OR_RET(sema_checker.Check(ir.get()));
-
-    auto plan_ir = kqir::PassManager::Execute(kqir::PassManager::Default(), std::move(ir));
-    std::unique_ptr<kqir::PlanOperator> plan_op;
-    if (plan_op = kqir::Node::As<kqir::PlanOperator>(std::move(plan_ir)); !plan_op) {
-      return {Status::NotOK, "failed to convert the SQL query to plan operators"};
-    }
-
-    kqir::ExecutorContext executor_ctx(plan_op.get(), srv->storage);
-
-    std::vector<kqir::ExecutorContext::RowType> results;
-
-    auto iter_res = GET_OR_RET(executor_ctx.Next());
-    while (!std::holds_alternative<kqir::ExecutorNode::End>(iter_res)) {
-      results.push_back(std::get<kqir::ExecutorContext::RowType>(iter_res));
-
-      iter_res = GET_OR_RET(executor_ctx.Next());
-    }
+    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir), conn->GetNamespace()));
 
     output->append(MultiLen(results.size()));
     for (const auto &[key, fields, _] : results) {

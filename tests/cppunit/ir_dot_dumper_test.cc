@@ -72,7 +72,7 @@ static IndexMap MakeIndexMap() {
   auto f4 = FieldInfo("n2", std::make_unique<redis::NumericFieldMetadata>());
   auto f5 = FieldInfo("n3", std::make_unique<redis::NumericFieldMetadata>());
   f5.metadata->noindex = true;
-  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata());
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "");
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));

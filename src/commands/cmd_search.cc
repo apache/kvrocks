@@ -24,6 +24,8 @@
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "search/index_info.h"
+#include "search/ir.h"
+#include "search/redis_query_transformer.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
 #include "server/redis_reply.h"
@@ -158,6 +160,73 @@ class CommandFTSearchSQL : public Commander {
   };
 };
 
+class CommandFTSearch : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+
+    auto index_name = GET_OR_RET(parser.TakeStr());
+    auto query_str = GET_OR_RET(parser.TakeStr());
+
+    auto index_ref = std::make_unique<kqir::IndexRef>(index_name);
+    auto query = kqir::Node::MustAs<kqir::QueryExpr>(
+        GET_OR_RET(kqir::redis_query::ParseToIR(kqir::peg::string_input(query_str, "ft.search"))));
+
+    auto select = std::make_unique<kqir::SelectClause>(std::vector<std::unique_ptr<kqir::FieldRef>>{});
+    std::unique_ptr<kqir::SortByClause> sort_by;
+    std::unique_ptr<kqir::LimitClause> limit;
+    while (parser.Good()) {
+      if (parser.EatEqICase("RETURNS")) {
+        auto count = GET_OR_RET(parser.TakeInt<size_t>());
+
+        for (size_t i = 0; i < count; ++i) {
+          auto field = GET_OR_RET(parser.TakeStr());
+          select->fields.push_back(std::make_unique<kqir::FieldRef>(field));
+        }
+      } else if (parser.EatEqICase("SORTBY")) {
+        auto field = GET_OR_RET(parser.TakeStr());
+        auto order = kqir::SortByClause::ASC;
+        if (parser.EatEqICase("ASC")) {
+          // NOOP
+        } else if (parser.EatEqICase("DESC")) {
+          order = kqir::SortByClause::DESC;
+        }
+
+        sort_by = std::make_unique<kqir::SortByClause>(order, std::make_unique<kqir::FieldRef>(field));
+      } else if (parser.EatEqICase("LIMIT")) {
+        auto offset = GET_OR_RET(parser.TakeInt<size_t>());
+        auto count = GET_OR_RET(parser.TakeInt<size_t>());
+
+        limit = std::make_unique<kqir::LimitClause>(offset, count);
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    ir_ = std::make_unique<kqir::SearchExpr>(std::move(index_ref), std::move(query), std::move(limit),
+                                             std::move(sort_by), std::move(select));
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
+
+    output->append(MultiLen(results.size()));
+    for (const auto &[key, fields, _] : results) {
+      output->append(MultiLen(2));
+      output->append(redis::BulkString(key));
+      output->append(MultiLen(fields.size()));
+      for (const auto &[_, field] : fields) {
+        output->append(redis::BulkString(field));
+      }
+    }
+
+    return Status::OK();
+  };
+
+ private:
+  std::unique_ptr<kqir::Node> ir_;
+};
+
 class CommandFTInfo : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     const auto &index_map = srv->index_mgr.index_map;
@@ -212,6 +281,7 @@ class CommandFTList : public Commander {
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0));
 

@@ -240,7 +240,9 @@ class Storage {
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
   [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                        const rocksdb::Slice &key);
-  [[nodiscard]] rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
+  [[nodiscard]] rocksdb::Status DeleteRange(const rocksdb::WriteOptions &options,
+                                            rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end);
+  [[nodiscard]] rocksdb::Status DeleteRange(Slice begin, Slice end);
   [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
                                              rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }

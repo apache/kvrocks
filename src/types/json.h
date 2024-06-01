@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
@@ -595,28 +596,29 @@ struct JsonValue {
         if (!status.IsOK()) {
           return;
         }
-        if (!origin.is_number()) {
+        // is_number() will return true
+        // if it's actually a string but can convert to a number
+        // so here we should exclude such case
+        if (!origin.is_number() || origin.is_string()) {
           result->value.push_back(jsoncons::json::null());
           return;
         }
-        if (number.value.is_double() || origin.is_double()) {
-          double v = 0;
-          if (op == NumOpEnum::Incr) {
-            v = origin.as_double() + number.value.as_double();
-          } else if (op == NumOpEnum::Mul) {
-            v = origin.as_double() * number.value.as_double();
-          }
-          if (std::isinf(v)) {
-            status = {Status::RedisExecErr, "result is an infinite number"};
-            return;
-          }
-          origin = v;
+        double v = 0;
+        if (op == NumOpEnum::Incr) {
+          v = origin.as_double() + number.value.as_double();
+        } else if (op == NumOpEnum::Mul) {
+          v = origin.as_double() * number.value.as_double();
+        }
+        if (std::isinf(v)) {
+          status = {Status::RedisExecErr, "the result is an infinite number"};
+          return;
+        }
+        double v_int = 0;
+        if (std::modf(v, &v_int) == 0 && double(std::numeric_limits<int64_t>::min()) < v &&
+            v < double(std::numeric_limits<int64_t>::max())) {
+          origin = int64_t(v);
         } else {
-          if (op == NumOpEnum::Incr) {
-            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
-          } else if (op == NumOpEnum::Mul) {
-            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
-          }
+          origin = v;
         }
         result->value.push_back(origin);
       });

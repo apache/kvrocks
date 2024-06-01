@@ -620,7 +620,7 @@ TEST_F(RedisJsonTest, NumMultBy) {
   ASSERT_EQ(res.Print(0, true).GetValue(), "[2]");
   res.value.clear();
   ASSERT_TRUE(json_->NumMultBy(key_, "$.foo", "0.5", &res).ok());
-  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
   res.value.clear();
 
   ASSERT_TRUE(json_->NumMultBy(key_, "$.bar", "1", &res).ok());
@@ -634,7 +634,7 @@ TEST_F(RedisJsonTest, NumMultBy) {
   // num object
   ASSERT_TRUE(json_->Set(key_, "$", "1.0").ok());
   ASSERT_TRUE(json_->NumMultBy(key_, "$", "1", &res).ok());
-  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
   res.value.clear();
   ASSERT_TRUE(json_->NumMultBy(key_, "$", "1.5", &res).ok());
   ASSERT_EQ(res.Print(0, true).GetValue(), "[1.5]");

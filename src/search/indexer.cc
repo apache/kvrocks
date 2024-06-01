@@ -253,7 +253,9 @@ Status IndexUpdater::Build() const {
 
       auto [_, key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
 
-      GET_OR_RET(Update({}, key.ToStringView()));
+      auto s = Update({}, key.ToStringView());
+      if (s.Is<Status::TypeMismatched>()) continue;
+      if (!s.OK()) return s;
     }
   }
 
@@ -269,6 +271,10 @@ void GlobalIndexer::Add(IndexUpdater updater) {
 }
 
 StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
+  if (updater_list.empty()) {
+    return Status::NoPrefixMatched;
+  }
+
   auto iter = prefix_map.longest_prefix(ComposeNamespaceKey(ns, key, storage->IsSlotIdEncoded()));
   if (iter != prefix_map.end()) {
     auto updater = iter.value();

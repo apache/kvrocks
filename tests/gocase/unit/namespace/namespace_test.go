@@ -238,7 +238,16 @@ func TestNamespaceReplicate(t *testing.T) {
 	})
 
 	t.Run("Turn off namespace replication is not allowed", func(t *testing.T) {
+		r := masterRdb.Do(ctx, "NAMESPACE", "ADD", "test-ns", "ns-token")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
 		util.ErrorRegexp(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err(), ".*cannot switch off repl_namespace_enabled when namespaces exist in db.*")
+
+		// it should be allowed after deleting all namespaces
+		r = masterRdb.Do(ctx, "NAMESPACE", "DEL", "test-ns")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+		require.NoError(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
 	})
 }
 

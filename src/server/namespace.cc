@@ -51,35 +51,46 @@ bool Namespace::IsAllowModify() const {
   return config->HasConfigFile() || config->repl_namespace_enabled;
 }
 
+Status Namespace::loadFromDB(std::map<std::string, std::string>* db_tokens) const {
+  std::string value;
+  auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
+  if (!s.ok()) {
+    if (s.IsNotFound()) return Status::OK();
+    return {Status::NotOK, s.ToString()};
+  }
+
+  jsoncons::json j = jsoncons::json::parse(value);
+  for (const auto& iter : j.object_range()) {
+    db_tokens->insert({iter.key(), iter.value().as_string()});
+  }
+  return Status::OK();
+}
+
 Status Namespace::LoadAndRewrite() {
   auto config = storage_->GetConfig();
   // Namespace is NOT allowed in the cluster mode, so we don't need to rewrite here.
   if (config->cluster_enabled) return Status::OK();
 
+  std::map<std::string, std::string> db_tokens;
+  auto s = loadFromDB(&db_tokens);
+  if (!s.IsOK()) return s;
+
+  if (!db_tokens.empty() && !config->repl_namespace_enabled) {
+    return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
+  }
+
   // Load from the configuration file first
   tokens_ = config->load_tokens;
-
-  // We would like to load namespaces from db even if repl_namespace_enabled is false,
-  // this can avoid missing some namespaces when turn on/off repl_namespace_enabled.
-  std::string value;
-  auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return {Status::NotOK, s.ToString()};
-  }
-  if (s.ok()) {
-    // The namespace db key is existed, so it doesn't allow to switch off repl_namespace_enabled
-    if (!config->repl_namespace_enabled) {
-      return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
-    }
-
-    jsoncons::json j = jsoncons::json::parse(value);
-    for (const auto& iter : j.object_range()) {
-      if (tokens_.find(iter.key()) == tokens_.end()) {
-        // merge the namespace from db
-        tokens_[iter.key()] = iter.value().as<std::string>();
-      }
+  // Merge the tokens from the database if the token is not in the configuration file
+  for (const auto& iter : db_tokens) {
+    if (tokens_.find(iter.first) == tokens_.end()) {
+      tokens_[iter.first] = iter.second;
     }
   }
+
+  // The following rewrite is to remove namespace/token pairs from the configuration if the namespace replication
+  // is enabled. So we don't need to do that if no tokens are loaded or the namespace replication is disabled.
+  if (config->load_tokens.empty() || !config->repl_namespace_enabled) return Status::OK();
 
   return Rewrite();
 }

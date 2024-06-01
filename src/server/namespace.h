@@ -47,4 +47,6 @@ class Namespace {
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *cf_ = nullptr;
   std::map<std::string, std::string> tokens_;
+
+  Status loadFromDB(std::map<std::string, std::string> *db_tokens) const;
 };

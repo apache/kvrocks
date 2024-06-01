@@ -46,5 +46,7 @@ class Namespace {
  private:
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *cf_ = nullptr;
+
+  // from token to namepsace name
   std::map<std::string, std::string> tokens_;
 };

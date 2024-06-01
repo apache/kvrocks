@@ -39,6 +39,7 @@
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
+#include "storage/redis_metadata.h"
 
 template <class T>
 using Optionals = std::vector<std::optional<T>>;

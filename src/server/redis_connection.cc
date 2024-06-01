@@ -28,6 +28,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "search/indexer.h"
 #include "server/redis_reply.h"
 #include "string_util.h"
 #ifdef ENABLE_OPENSSL
@@ -411,6 +412,10 @@ Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector
   return s;
 }
 
+static bool IsHashOrJsonCommand(const std::string &cmd) {
+  return util::HasPrefix(cmd, "h") || util::HasPrefix(cmd, "json.");
+}
+
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
@@ -537,8 +542,35 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
+    // TODO: transaction support for index recording
+    std::vector<GlobalIndexer::RecordResult> index_records;
+    if (IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) && !config->cluster_enabled) {
+      attributes->ForEachKeyRange(
+          [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
+            key_range.ForEachKey(
+                [&, this](const std::string &key) {
+                  auto res = srv_->indexer.Record(key, ns_);
+                  if (res.IsOK()) {
+                    index_records.push_back(*res);
+                  } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
+                    LOG(WARNING) << "index recording failed for key: " << key;
+                  }
+                },
+                args);
+          },
+          cmd_tokens);
+    }
+
     SetLastCmd(cmd_name);
     s = ExecuteCommand(cmd_name, cmd_tokens, current_cmd.get(), &reply);
+
+    // TODO: transaction support for index updating
+    for (const auto &record : index_records) {
+      auto s = GlobalIndexer::Update(record);
+      if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
+        LOG(WARNING) << "index updating failed for key: " << record.key;
+      }
+    }
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.

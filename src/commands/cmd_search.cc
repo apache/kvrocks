@@ -208,6 +208,7 @@ class CommandFTSearch : public Commander {
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    CHECK(ir_);
     auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
 
     output->append(MultiLen(results.size()));

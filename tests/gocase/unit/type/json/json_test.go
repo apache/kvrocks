@@ -513,6 +513,9 @@ func TestJson(t *testing.T) {
 		EqualJSON(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
 		EqualJSON(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())
 
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", "9e99999").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", "999999999999999999999999999999").Err())
+
 		// wrong type
 		require.Equal(t, `[null]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.bar", 1).Val())
 

@@ -15,11 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM debian:bookworm-slim as build
+FROM debian:bookworm-slim AS build
 
 ARG MORE_BUILD_ARGS
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y git build-essential cmake libtool python3 libssl-dev redis && apt-get autoremove && apt-get clean
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev redis-tools && apt-get autoremove && apt-get clean
 
 WORKDIR /kvrocks
 
@@ -28,7 +28,7 @@ RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j 
 
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get upgrade -y && apt-get clean
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get clean
 
 RUN mkdir /var/run/kvrocks
 

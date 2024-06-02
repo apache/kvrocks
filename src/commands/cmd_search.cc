@@ -25,6 +25,7 @@
 #include "commands/command_parser.h"
 #include "search/index_info.h"
 #include "search/ir.h"
+#include "search/plan_executor.h"
 #include "search/redis_query_transformer.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
@@ -138,6 +139,19 @@ class CommandFTCreate : public Commander {
   std::unique_ptr<kqir::IndexInfo> index_info_;
 };
 
+static void DumpQueryResult(const std::vector<kqir::ExecutorContext::RowType> &rows, std::string *output) {
+  output->append(MultiLen(rows.size() * 2 + 1));
+  output->append(Integer(rows.size()));
+  for (const auto &[key, fields, _] : rows) {
+    output->append(redis::BulkString(key));
+    output->append(MultiLen(fields.size() * 2));
+    for (const auto &[info, field] : fields) {
+      output->append(redis::BulkString(info->name));
+      output->append(redis::BulkString(field));
+    }
+  }
+}
+
 class CommandFTSearchSQL : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     const auto &sql = args_[1];
@@ -146,15 +160,7 @@ class CommandFTSearchSQL : public Commander {
 
     auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir), conn->GetNamespace()));
 
-    output->append(MultiLen(results.size()));
-    for (const auto &[key, fields, _] : results) {
-      output->append(MultiLen(2));
-      output->append(redis::BulkString(key));
-      output->append(MultiLen(fields.size()));
-      for (const auto &[_, field] : fields) {
-        output->append(redis::BulkString(field));
-      }
-    }
+    DumpQueryResult(results, output);
 
     return Status::OK();
   };
@@ -211,15 +217,7 @@ class CommandFTSearch : public Commander {
     CHECK(ir_);
     auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
 
-    output->append(MultiLen(results.size()));
-    for (const auto &[key, fields, _] : results) {
-      output->append(MultiLen(2));
-      output->append(redis::BulkString(key));
-      output->append(MultiLen(fields.size()));
-      for (const auto &[_, field] : fields) {
-        output->append(redis::BulkString(field));
-      }
-    }
+    DumpQueryResult(results, output);
 
     return Status::OK();
   };

@@ -33,6 +33,7 @@ namespace kqir {
 
 struct SemaChecker {
   const IndexMap &index_map;
+  std::string ns;
 
   const IndexInfo *current_index = nullptr;
 
@@ -41,7 +42,7 @@ struct SemaChecker {
   Status Check(Node *node) {
     if (auto v = dynamic_cast<SearchExpr *>(node)) {
       auto index_name = v->index->name;
-      if (auto iter = index_map.find(index_name); iter != index_map.end()) {
+      if (auto iter = index_map.Find(index_name, ns); iter != index_map.end()) {
         current_index = iter->second.get();
         v->index->info = current_index;
 

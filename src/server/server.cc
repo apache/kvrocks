@@ -39,6 +39,7 @@
 
 #include "commands/commander.h"
 #include "config.h"
+#include "config/config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
@@ -52,7 +53,12 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage),
+      indexer(storage),
+      index_mgr(&indexer, storage),
+      start_time_secs_(util::GetTimeStamp()),
+      config_(config),
+      namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -147,6 +153,13 @@ Status Server::Start() {
     s = storage->ShiftReplId();
     if (!s.IsOK()) {
       return s.Prefixed("failed to shift replication id");
+    }
+  }
+
+  if (!config_->cluster_enabled) {
+    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    for (auto [_, ns] : namespace_.List()) {
+      GET_OR_RET(index_mgr.Load(ns));
     }
   }
 

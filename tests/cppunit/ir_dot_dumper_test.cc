@@ -29,6 +29,7 @@
 #include "search/passes/manager.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
+#include "storage/redis_metadata.h"
 
 using namespace kqir;
 
@@ -79,9 +80,8 @@ static IndexMap MakeIndexMap() {
   ia->Add(std::move(f4));
   ia->Add(std::move(f5));
 
-  auto& name = ia->name;
   IndexMap res;
-  res.emplace(name, std::move(ia));
+  res.Insert(std::move(ia));
   return res;
 }
 

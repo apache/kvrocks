@@ -48,6 +48,7 @@ class Namespace {
   rocksdb::ColumnFamilyHandle *cf_ = nullptr;
 
   std::shared_mutex tokens_mu_;
+  // mapping from token to namespace name
   std::map<std::string, std::string> tokens_;
 
   Status loadFromDB(std::map<std::string, std::string> *db_tokens) const;

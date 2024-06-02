@@ -20,12 +20,14 @@
 
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "search_encoding.h"
+#include "storage/redis_metadata.h"
 
 namespace kqir {
 
@@ -67,6 +69,13 @@ struct IndexInfo {
   }
 };
 
-using IndexMap = std::map<std::string, std::unique_ptr<IndexInfo>>;
+struct IndexMap : std::map<std::string, std::unique_ptr<IndexInfo>> {
+  auto Insert(std::unique_ptr<IndexInfo> index_info) {
+    auto key = ComposeNamespaceKey(index_info->ns, index_info->name, false);
+    return emplace(key, std::move(index_info));
+  }
+
+  auto Find(std::string_view index, std::string_view ns) const { return find(ComposeNamespaceKey(ns, index, false)); }
+};
 
 }  // namespace kqir

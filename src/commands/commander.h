@@ -106,6 +106,13 @@ struct CommandKeyRange {
   // step length of key position
   // e.g. key step 2 means "key other key other ..." sequence
   int key_step;
+
+  template <typename F>
+  void ForEachKey(F &&f, const std::vector<std::string> &args) const {
+    for (size_t i = first_key; last_key > 0 ? i <= size_t(last_key) : i <= args.size() + last_key; i += key_step) {
+      std::forward<F>(f)(args[i]);
+    }
+  }
 };
 
 using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
@@ -152,6 +159,27 @@ struct CommandAttributes {
 
   bool CheckArity(int cmd_size) const {
     return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
+  }
+
+  template <typename F>
+  void ForEachKeyRange(F &&f, const std::vector<std::string> &args) const {
+    if (key_range.first_key > 0) {
+      std::forward<F>(f)(args, key_range);
+    } else if (key_range.first_key == -1) {
+      redis::CommandKeyRange range = key_range_gen(args);
+
+      if (range.first_key > 0) {
+        std::forward<F>(f)(args, range);
+      }
+    } else if (key_range.first_key == -2) {
+      std::vector<redis::CommandKeyRange> vec_range = key_range_vec_gen(args);
+
+      for (const auto &range : vec_range) {
+        if (range.first_key > 0) {
+          std::forward<F>(f)(args, range);
+        }
+      }
+    }
   }
 };
 

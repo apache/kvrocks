@@ -124,4 +124,23 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
   }
 };
 
+class SearchFilter : public rocksdb::CompactionFilter {
+ public:
+  const char *Name() const override { return "SearchFilter"; }
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override {
+    // TODO: just a dummy one here
+    return false;
+  }
+};
+
+class SearchFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  SearchFilterFactory() = default;
+  const char *Name() const override { return "SearchFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(new SearchFilter());
+  }
+};
+
 }  // namespace engine

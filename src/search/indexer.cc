@@ -265,7 +265,7 @@ Status IndexUpdater::Build() const {
 void GlobalIndexer::Add(IndexUpdater updater) {
   updater.indexer = this;
   for (const auto &prefix : updater.info->prefixes) {
-    prefix_map.insert(ComposeNamespaceKey(updater.info->ns, prefix, storage->IsSlotIdEncoded()), updater);
+    prefix_map.insert(ComposeNamespaceKey(updater.info->ns, prefix, false), updater);
   }
   updater_list.push_back(updater);
 }
@@ -275,17 +275,17 @@ StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key
     return Status::NoPrefixMatched;
   }
 
-  auto iter = prefix_map.longest_prefix(ComposeNamespaceKey(ns, key, storage->IsSlotIdEncoded()));
+  auto iter = prefix_map.longest_prefix(ComposeNamespaceKey(ns, key, false));
   if (iter != prefix_map.end()) {
     auto updater = iter.value();
-    return std::make_pair(updater, GET_OR_RET(updater.Record(key)));
+    return RecordResult{updater, std::string(key.begin(), key.end()), GET_OR_RET(updater.Record(key))};
   }
 
   return {Status::NoPrefixMatched};
 }
 
-Status GlobalIndexer::Update(const RecordResult &original, std::string_view key) {
-  return original.first.Update(original.second, key);
+Status GlobalIndexer::Update(const RecordResult &original) {
+  return original.updater.Update(original.fields, original.key);
 }
 
 }  // namespace redis

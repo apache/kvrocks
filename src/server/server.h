@@ -44,6 +44,8 @@
 #include "commands/commander.h"
 #include "lua.hpp"
 #include "namespace.h"
+#include "search/index_manager.h"
+#include "search/indexer.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
@@ -312,6 +314,10 @@ class Server {
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
 #endif
+
+  // search
+  redis::GlobalIndexer indexer;
+  redis::IndexManager index_mgr;
 
  private:
   void cron();

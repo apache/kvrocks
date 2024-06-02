@@ -32,7 +32,6 @@
 #include "index_info.h"
 #include "indexer.h"
 #include "search/search_encoding.h"
-#include "server/server.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
@@ -90,7 +89,11 @@ struct IndexUpdater {
 
 struct GlobalIndexer {
   using FieldValues = IndexUpdater::FieldValues;
-  using RecordResult = std::pair<IndexUpdater, FieldValues>;
+  struct RecordResult {
+    IndexUpdater updater;
+    std::string key;
+    FieldValues fields;
+  };
 
   tsl::htrie_map<char, IndexUpdater> prefix_map;
   std::vector<IndexUpdater> updater_list;
@@ -101,7 +104,7 @@ struct GlobalIndexer {
 
   void Add(IndexUpdater updater);
   StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
-  static Status Update(const RecordResult &original, std::string_view key);
+  static Status Update(const RecordResult &original);
 };
 
 }  // namespace redis

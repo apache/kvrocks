@@ -80,14 +80,14 @@ TEST_F(IndexerTest, HashTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_EQ(s.Msg(), Status::ok_msg);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_TRUE(s->second.empty());
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_TRUE(s->fields.empty());
 
     uint64_t cnt = 0;
     db.Set(key1, "x", "food,kitChen,Beauty", &cnt);
     ASSERT_EQ(cnt, 1);
 
-    auto s2 = indexer.Update(*s, key1);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
@@ -113,16 +113,16 @@ TEST_F(IndexerTest, HashTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_EQ(s->second.size(), 1);
-    ASSERT_EQ(s->second["x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_EQ(s->fields.size(), 1);
+    ASSERT_EQ(s->fields["x"], "food,kitChen,Beauty");
 
     uint64_t cnt = 0;
     auto s_set = db.Set(key1, "x", "Clothing,FOOD,sport", &cnt);
     ASSERT_EQ(cnt, 0);
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
@@ -171,13 +171,13 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_TRUE(s->second.empty());
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_TRUE(s->fields.empty());
 
     auto s_set = db.Set(key1, "$", R"({"x": "food,kitChen,Beauty"})");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
@@ -203,14 +203,14 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_EQ(s->second.size(), 1);
-    ASSERT_EQ(s->second["$.x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_EQ(s->fields.size(), 1);
+    ASSERT_EQ(s->fields["$.x"], "food,kitChen,Beauty");
 
     auto s_set = db.Set(key1, "$.x", "\"Clothing,FOOD,sport\"");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);

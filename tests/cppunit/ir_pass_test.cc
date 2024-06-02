@@ -183,9 +183,8 @@ static IndexMap MakeIndexMap() {
   ia->Add(std::move(f4));
   ia->Add(std::move(f5));
 
-  auto& name = ia->name;
   IndexMap res;
-  res.emplace(name, std::move(ia));
+  res.Insert(std::move(ia));
   return res;
 }
 

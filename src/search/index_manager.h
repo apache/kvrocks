@@ -188,7 +188,7 @@ struct IndexManager {
     auto plan_ir = kqir::PassManager::Execute(kqir::PassManager::Default(), std::move(ir));
     std::unique_ptr<kqir::PlanOperator> plan_op;
     if (plan_op = kqir::Node::As<kqir::PlanOperator>(std::move(plan_ir)); !plan_op) {
-      return {Status::NotOK, "failed to convert the SQL query to plan operators"};
+      return {Status::NotOK, "failed to convert the query to plan operators"};
     }
 
     kqir::ExecutorContext executor_ctx(plan_op.get(), storage);

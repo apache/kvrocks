@@ -19,7 +19,7 @@ FROM debian:bookworm-slim AS build
 
 ARG MORE_BUILD_ARGS
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev redis-tools && apt-get autoremove && apt-get clean
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev && apt-get autoremove && apt-get clean
 
 WORKDIR /kvrocks
 
@@ -28,17 +28,16 @@ RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j 
 
 FROM debian:bookworm-slim
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates libatomic1 liblzf1 libjemalloc2 && apt-get clean
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools && apt-get clean
 
 RUN mkdir /var/run/kvrocks
 
 VOLUME /var/lib/kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks /bin/
-COPY --from=build /usr/bin/redis-cli     /bin/
 
 HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 \
-    CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
+    CMD redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
 
 COPY ./LICENSE ./NOTICE ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/

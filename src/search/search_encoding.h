@@ -180,6 +180,8 @@ struct IndexFieldMetadata {
   bool noindex = false;
   IndexFieldType type;
 
+  explicit IndexFieldMetadata(IndexFieldType type) : type(type) {}
+
   // flag: <noindex: 1 bit> <type: 4 bit> <reserved: 3 bit>
   uint8_t MakeFlag() const { return noindex | (uint8_t)type << 1; }
 
@@ -191,6 +193,17 @@ struct IndexFieldMetadata {
   static IndexFieldType DecodeType(uint8_t flag) { return IndexFieldType(flag >> 1); }
 
   virtual ~IndexFieldMetadata() = default;
+
+  std::string_view Type() const {
+    switch (type) {
+      case IndexFieldType::TAG:
+        return "tag";
+      case IndexFieldType::NUMERIC:
+        return "numeric";
+      default:
+        return "unknown";
+    }
+  }
 
   virtual void Encode(std::string *dst) const { PutFixed8(dst, MakeFlag()); }
 
@@ -213,6 +226,8 @@ struct TagFieldMetadata : IndexFieldMetadata {
   char separator = ',';
   bool case_sensitive = false;
 
+  TagFieldMetadata() : IndexFieldMetadata(IndexFieldType::TAG) {}
+
   void Encode(std::string *dst) const override {
     IndexFieldMetadata::Encode(dst);
     PutFixed8(dst, separator);
@@ -224,7 +239,7 @@ struct TagFieldMetadata : IndexFieldMetadata {
       return s;
     }
 
-    if (input->size() < 8 + 8) {
+    if (input->size() < 2) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
 
@@ -235,6 +250,8 @@ struct TagFieldMetadata : IndexFieldMetadata {
 };
 
 struct NumericFieldMetadata : IndexFieldMetadata {
+  NumericFieldMetadata() : IndexFieldMetadata(IndexFieldType::NUMERIC) {}
+
   bool IsSortable() const override { return true; }
 };
 

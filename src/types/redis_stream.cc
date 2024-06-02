@@ -350,11 +350,7 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
 
       // increment ack for each related consumer
       auto pel_entry = decodeStreamPelEntryValue(value);
-      if (consumer_acknowledges.find(pel_entry.consumer_name) == consumer_acknowledges.cend()) {
-        consumer_acknowledges[pel_entry.consumer_name] = 1;
-      } else {
-        consumer_acknowledges[pel_entry.consumer_name] += 1;
-      }
+      consumer_acknowledges[pel_entry.consumer_name]++;
     }
   }
   if (*acknowledged > 0) {

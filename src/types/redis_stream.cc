@@ -339,6 +339,7 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
   WriteBatchLogData log_data(kRedisStream);
   batch->PutLogData(log_data.Encode());
 
+  std::map<std::string, uint64_t> consumer_acknowledges;
   for (const auto &id : entry_ids) {
     std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
     std::string value;
@@ -346,6 +347,14 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
     if (s.ok()) {
       *acknowledged += 1;
       batch->Delete(stream_cf_handle_, entry_key);
+
+      // increment ack for each related consumer
+      auto pel_entry = decodeStreamPelEntryValue(value);
+      if (consumer_acknowledges.find(pel_entry.consumer_name) == consumer_acknowledges.cend()) {
+        consumer_acknowledges[pel_entry.consumer_name] = 1;
+      } else {
+        consumer_acknowledges[pel_entry.consumer_name] += 1;
+      }
     }
   }
   if (*acknowledged > 0) {
@@ -353,6 +362,17 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
     group_metadata.pending_number -= *acknowledged;
     std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
     batch->Put(stream_cf_handle_, group_key, group_value);
+
+    for (const auto &consumer : consumer_acknowledges) {
+      auto consumer_meta_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer.first);
+      std::string consumer_meta_original;
+      s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_meta_key, &consumer_meta_original);
+      if (s.ok()) {
+        auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
+        consumer_metadata.pending_number -= consumer.second;
+        batch->Put(stream_cf_handle_, consumer_meta_key, encodeStreamConsumerMetadataValue(consumer_metadata));
+      }
+    }
   }
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

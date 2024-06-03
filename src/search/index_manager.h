@@ -70,7 +70,7 @@ struct IndexManager {
       IndexMetadata metadata;
       auto index_meta_value = iter->value();
       if (auto s = metadata.Decode(&index_meta_value); !s.ok()) {
-        return {Status::NotOK, fmt::format("fail to decode index metadata for index: {}", index_name)};
+        return {Status::NotOK, fmt::format("fail to decode index metadata for index {}: {}", index_name, s.ToString())};
       }
 
       auto index_key = SearchKey(ns, index_name.ToStringView());
@@ -78,13 +78,13 @@ struct IndexManager {
       if (auto s = storage->Get(storage->DefaultMultiGetOptions(), storage->GetCFHandle(ColumnFamilyID::Search),
                                 index_key.ConstructIndexPrefixes(), &prefix_value);
           !s.ok()) {
-        return {Status::NotOK, fmt::format("fail to find index prefixes for index: {}", index_name)};
+        return {Status::NotOK, fmt::format("fail to find index prefixes for index {}: {}", index_name, s.ToString())};
       }
 
       IndexPrefixes prefixes;
       Slice prefix_slice = prefix_value;
       if (auto s = prefixes.Decode(&prefix_slice); !s.ok()) {
-        return {Status::NotOK, fmt::format("fail to decode index prefixes for index: {}", index_name)};
+        return {Status::NotOK, fmt::format("fail to decode index prefixes for index {}: {}", index_name, s.ToString())};
       }
 
       auto info = std::make_unique<kqir::IndexInfo>(index_name.ToString(), metadata, ns);
@@ -164,7 +164,7 @@ struct IndexManager {
     }
 
     if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
-      return {Status::NotOK, "failed to write index metadata"};
+      return {Status::NotOK, fmt::format("failed to write index metadata: {}", s.ToString())};
     }
 
     IndexUpdater updater(info.get());
@@ -231,7 +231,7 @@ struct IndexManager {
     batch->DeleteRange(cf, begin, end);
 
     if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
-      return {Status::NotOK, "failed to delete index metadata and data"};
+      return {Status::NotOK, fmt::format("failed to delete index metadata and data: {}", s.ToString())};
     }
 
     index_map.erase(iter);

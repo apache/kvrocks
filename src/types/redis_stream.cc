@@ -366,6 +366,9 @@ rocksdb::Status Stream::DeletePelEntries(const Slice &stream_name, const std::st
       auto consumer_meta_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
       std::string consumer_meta_original;
       s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_meta_key, &consumer_meta_original);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
       if (s.ok()) {
         auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
         consumer_metadata.pending_number -= ack_count;

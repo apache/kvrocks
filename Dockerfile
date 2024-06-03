@@ -15,28 +15,29 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM alpine:3.16 as build
+FROM debian:bookworm-slim AS build
 
 ARG MORE_BUILD_ARGS
 
-RUN apk update && apk upgrade && apk add git gcc g++ make cmake ninja autoconf automake libtool python3 linux-headers curl openssl-dev libexecinfo-dev redis
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev && apt-get autoremove && apt-get clean
+
 WORKDIR /kvrocks
 
 COPY . .
 RUN ./x.py build -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
-FROM alpine:3.16
+FROM debian:bookworm-slim
 
-RUN apk update && apk upgrade && apk add libexecinfo
+RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools && apt-get clean
+
 RUN mkdir /var/run/kvrocks
 
 VOLUME /var/lib/kvrocks
 
 COPY --from=build /kvrocks/build/kvrocks /bin/
-COPY --from=build /usr/bin/redis-cli /bin/
 
 HEALTHCHECK --interval=10s --timeout=1s --start-period=30s --retries=3 \
-    CMD ./bin/redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
+    CMD redis-cli -p 6666 PING | grep -E '(PONG|NOAUTH)' || exit 1
 
 COPY ./LICENSE ./NOTICE ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/

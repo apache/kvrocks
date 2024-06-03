@@ -29,6 +29,7 @@
 #include "config/config.h"
 #include "error_constants.h"
 #include "server/redis_connection.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
 #include "storage/rdb.h"
@@ -740,7 +741,8 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        return {Status::NotOK, "-NOPROTO unsupported protocol version"};
+        conn->Reply(redis::Error("NOPROTO unsupported protocol version"));
+        return Status::OK();
       }
     }
 
@@ -872,18 +874,8 @@ class CommandCompact : public Commander {
     auto ns = conn->GetNamespace();
 
     if (ns != kDefaultNamespace) {
-      std::string prefix = ComposeNamespaceKey(ns, "", false);
-
-      redis::Database redis_db(srv->storage, conn->GetNamespace());
-      auto s = redis_db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key);
-      if (!s.ok()) {
-        if (s.IsNotFound()) {
-          *output = redis::SimpleString("OK");
-          return Status::OK();
-        }
-
-        return {Status::RedisExecErr, s.ToString()};
-      }
+      begin_key = ComposeNamespaceKey(ns, "", false);
+      end_key = util::StringNext(begin_key);
     }
 
     Status s = srv->AsyncCompactDB(begin_key, end_key);
@@ -1283,7 +1275,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0, GenerateConfigFlag),
-                        MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only exclusive", 0, 0, 0),
+                        MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check", 0, 0, 0),
                         MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check", 0, 0, 0),

@@ -38,35 +38,38 @@ struct NumericFieldScanExecutor : ExecutorNode {
   util::UniqueIterator iter{nullptr};
 
   IndexInfo *index;
-  std::string ns_key;
+  redis::SearchKey search_key;
 
   NumericFieldScanExecutor(ExecutorContext *ctx, NumericFieldScan *scan)
-      : ExecutorNode(ctx), scan(scan), ss(ctx->storage), index(scan->field->info->index) {
-    ns_key = ComposeNamespaceKey(index->ns, index->name, ctx->storage->IsSlotIdEncoded());
-  }
+      : ExecutorNode(ctx),
+        scan(scan),
+        ss(ctx->storage),
+        index(scan->field->info->index),
+        search_key(index->ns, index->name, scan->field->name) {}
 
-  std::string IndexKey(double num) {
-    return InternalKey(ns_key, redis::ConstructNumericFieldSubkey(scan->field->name, num, {}), index->metadata.version,
-                       ctx->storage->IsSlotIdEncoded())
-        .Encode();
-  }
+  std::string IndexKey(double num) const { return search_key.ConstructNumericFieldData(num, {}); }
 
-  bool InRangeDecode(Slice key, Slice field, double num, double *curr, Slice *user_key) {
-    auto ikey = InternalKey(key, ctx->storage->IsSlotIdEncoded());
-    if (ikey.GetVersion() != index->metadata.version) return false;
-    auto subkey = ikey.GetSubKey();
+  bool InRangeDecode(Slice key, double *curr, Slice *user_key) const {
+    uint8_t ns_size = 0;
+    if (!GetFixed8(&key, &ns_size)) return false;
+    if (ns_size != index->ns.size()) return false;
+    if (!key.starts_with(index->ns)) return false;
+    key.remove_prefix(ns_size);
 
-    uint8_t flag = 0;
-    if (!GetFixed8(&subkey, &flag)) return false;
-    if (flag != (uint8_t)redis::SearchSubkeyType::NUMERIC_FIELD) return false;
+    uint8_t subkey_type = 0;
+    if (!GetFixed8(&key, &subkey_type)) return false;
+    if (subkey_type != (uint8_t)redis::SearchSubkeyType::FIELD) return false;
 
     Slice value;
-    if (!GetSizedString(&subkey, &value)) return false;
-    if (value != field) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (value != index->name) return false;
 
-    if (!GetDouble(&subkey, curr)) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (value != scan->field->name) return false;
 
-    if (!GetSizedString(&subkey, user_key)) return false;
+    if (!GetDouble(&key, curr)) return false;
+
+    if (!GetSizedString(&key, user_key)) return false;
 
     return true;
   }
@@ -90,7 +93,7 @@ struct NumericFieldScanExecutor : ExecutorNode {
 
     double curr = 0;
     Slice user_key;
-    if (!InRangeDecode(iter->key(), scan->field->name, scan->range.r, &curr, &user_key)) {
+    if (!InRangeDecode(iter->key(), &curr, &user_key)) {
       return end;
     }
 

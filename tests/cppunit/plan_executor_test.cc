@@ -37,21 +37,19 @@ using namespace kqir;
 static auto exe_end = ExecutorNode::Result(ExecutorNode::end);
 
 static IndexMap MakeIndexMap() {
-  auto f1 = FieldInfo("f1", std::make_unique<redis::SearchTagFieldMetadata>());
-  auto f2 = FieldInfo("f2", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto f3 = FieldInfo("f3", std::make_unique<redis::SearchNumericFieldMetadata>());
-  auto ia = std::make_unique<IndexInfo>("ia", SearchMetadata());
-  ia->ns = "search_ns";
-  ia->metadata.on_data_type = SearchOnDataType::JSON;
+  auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
+  auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
+  auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
+  auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "search_ns");
+  ia->metadata.on_data_type = redis::IndexOnDataType::JSON;
   ia->prefixes.prefixes.emplace_back("test2:");
   ia->prefixes.prefixes.emplace_back("test4:");
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));
 
-  auto& name = ia->name;
   IndexMap res;
-  res.emplace(name, std::move(ia));
+  res.Insert(std::move(ia));
   return res;
 }
 
@@ -80,8 +78,8 @@ TEST(PlanExecutorTest, Mock) {
   ASSERT_EQ(ctx.Next().GetValue(), exe_end);
 }
 
-static auto IndexI() -> const IndexInfo* { return index_map.at("ia").get(); }
-static auto FieldI(const std::string& f) -> const FieldInfo* { return &index_map.at("ia")->fields.at(f); }
+static auto IndexI() -> const IndexInfo* { return index_map.Find("ia", "search_ns")->second.get(); }
+static auto FieldI(const std::string& f) -> const FieldInfo* { return &IndexI()->fields.at(f); }
 
 TEST(PlanExecutorTest, TopNSort) {
   std::vector<ExecutorNode::RowType> data{
@@ -318,7 +316,7 @@ struct ScopedUpdate {
   ScopedUpdate& operator=(ScopedUpdate&&) = delete;
 
   ~ScopedUpdate() {
-    auto s = redis::GlobalIndexer::Update(rr, key, ns);
+    auto s = redis::GlobalIndexer::Update(rr);
     EXPECT_EQ(s.Msg(), Status::ok_msg);
   }
 };

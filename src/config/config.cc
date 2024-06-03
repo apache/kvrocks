@@ -885,11 +885,20 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
+  auto origin_value = field->ToString();
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
   if (field->callback) {
-    return field->callback(srv, key, value);
+    s = field->callback(srv, key, value);
+    if (!s.IsOK()) {
+      // rollback the value if the callback failed
+      auto set_status = field->Set(origin_value);
+      if (!set_status.IsOK()) {
+        return set_status.Prefixed("failed to rollback the value");
+      }
+    }
+    return s;
   }
 
   return Status::OK();

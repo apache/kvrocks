@@ -279,8 +279,9 @@ void GlobalIndexer::Remove(const kqir::IndexInfo *index) {
     }
   }
 
-  std::remove_if(updater_list.begin(), updater_list.end(),
-                 [index](IndexUpdater updater) { return updater.info == index; });
+  updater_list.erase(std::remove_if(updater_list.begin(), updater_list.end(),
+                                    [index](IndexUpdater updater) { return updater.info == index; }),
+                     updater_list.end());
 }
 
 StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {

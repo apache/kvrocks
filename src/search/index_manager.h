@@ -204,6 +204,40 @@ struct IndexManager {
 
     return results;
   }
+
+  Status Drop(std::string_view index_name, const std::string &ns) {
+    auto iter = index_map.Find(index_name, ns);
+    if (iter == index_map.end()) {
+      return {Status::NotOK, "index not found"};
+    }
+
+    auto info = iter->second.get();
+    indexer->Remove(info);
+
+    SearchKey index_key(info->ns, info->name);
+    auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
+
+    auto batch = storage->GetWriteBatchBase();
+
+    batch->Delete(cf, index_key.ConstructIndexMeta());
+    batch->Delete(cf, index_key.ConstructIndexPrefixes());
+
+    auto begin = index_key.ConstructAllFieldMetaBegin();
+    auto end = index_key.ConstructAllFieldMetaEnd();
+    batch->DeleteRange(cf, begin, end);
+
+    begin = index_key.ConstructAllFieldDataBegin();
+    end = index_key.ConstructAllFieldDataEnd();
+    batch->DeleteRange(cf, begin, end);
+
+    if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+      return {Status::NotOK, "failed to delete index metadata and data"};
+    }
+
+    index_map.erase(iter);
+
+    return Status::OK();
+  }
 };
 
 }  // namespace redis

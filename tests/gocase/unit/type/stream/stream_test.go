@@ -1064,6 +1064,41 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, consumer3, r1[0].Name)
 	})
 
+	t.Run("XINFO after delete pending message and related consumer, for issue #2350", func(t *testing.T) {
+		streamName := "test-stream-2350"
+		groupName := "test-group-2350"
+		consumerName := "test-consumer-2350"
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"testing", "overflow"},
+		}).Err())
+		readRsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		})
+		require.NoError(t, readRsp.Err())
+		require.Len(t, readRsp.Val(), 1)
+		streamRsp := readRsp.Val()[0]
+		require.Len(t, streamRsp.Messages, 1)
+		msgID := streamRsp.Messages[0]
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, msgID.ID).Err())
+		require.NoError(t, rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Err())
+		infoRsp := rdb.XInfoGroups(ctx, streamName)
+		require.NoError(t, infoRsp.Err())
+		infoGroups := infoRsp.Val()
+		require.Len(t, infoGroups, 1)
+		infoGroup := infoGroups[0]
+		require.Equal(t, groupName, infoGroup.Name)
+		require.Equal(t, int64(0), infoGroup.Consumers)
+		require.Equal(t, int64(0), infoGroup.Pending)
+		require.Equal(t, msgID.ID, infoGroup.LastDeliveredID)
+	})
+
 	t.Run("XREAD After XGroupCreate and XGroupCreateConsumer, for issue #2109", func(t *testing.T) {
 		streamName := "test-stream"
 		group := "group"

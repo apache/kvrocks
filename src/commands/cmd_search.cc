@@ -278,10 +278,23 @@ class CommandFTList : public Commander {
   };
 };
 
+class CommandFTDrop : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &index_name = args_[1];
+
+    GET_OR_RET(srv->index_mgr.Drop(index_name, conn->GetNamespace()));
+
+    output->append(SimpleString("OK"));
+
+    return Status::OK();
+  };
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0));
+                        MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));
 
 }  // namespace redis

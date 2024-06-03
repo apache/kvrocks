@@ -103,6 +103,8 @@ struct GlobalIndexer {
   explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
 
   void Add(IndexUpdater updater);
+  void Remove(const kqir::IndexInfo *index);
+
   StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
   static Status Update(const RecordResult &original);
 };

@@ -39,7 +39,7 @@ struct IndexerTest : TestBase {
     redis::IndexMetadata hash_field_meta;
     hash_field_meta.on_data_type = redis::IndexOnDataType::HASH;
 
-    auto hash_info = std::make_unique<kqir::IndexInfo>("hashtest", hash_field_meta);
+    auto hash_info = std::make_unique<kqir::IndexInfo>("hashtest", hash_field_meta, ns);
     hash_info->Add(kqir::FieldInfo("x", std::make_unique<redis::TagFieldMetadata>()));
     hash_info->Add(kqir::FieldInfo("y", std::make_unique<redis::NumericFieldMetadata>()));
     hash_info->prefixes.prefixes.emplace_back("idxtesthash");
@@ -51,7 +51,7 @@ struct IndexerTest : TestBase {
     redis::IndexMetadata json_field_meta;
     json_field_meta.on_data_type = redis::IndexOnDataType::JSON;
 
-    auto json_info = std::make_unique<kqir::IndexInfo>("jsontest", json_field_meta);
+    auto json_info = std::make_unique<kqir::IndexInfo>("jsontest", json_field_meta, ns);
     json_info->Add(kqir::FieldInfo("$.x", std::make_unique<redis::TagFieldMetadata>()));
     json_info->Add(kqir::FieldInfo("$.y", std::make_unique<redis::NumericFieldMetadata>()));
     json_info->prefixes.prefixes.emplace_back("idxtestjson");
@@ -79,15 +79,15 @@ TEST_F(IndexerTest, HashTag) {
 
   {
     auto s = indexer.Record(key1, ns);
-    ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_TRUE(s->second.empty());
+    ASSERT_EQ(s.Msg(), Status::ok_msg);
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_TRUE(s->fields.empty());
 
     uint64_t cnt = 0;
     db.Set(key1, "x", "food,kitChen,Beauty", &cnt);
     ASSERT_EQ(cnt, 1);
 
-    auto s2 = indexer.Update(*s, key1, ns);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
@@ -113,16 +113,16 @@ TEST_F(IndexerTest, HashTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_EQ(s->second.size(), 1);
-    ASSERT_EQ(s->second["x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_EQ(s->fields.size(), 1);
+    ASSERT_EQ(s->fields["x"], "food,kitChen,Beauty");
 
     uint64_t cnt = 0;
     auto s_set = db.Set(key1, "x", "Clothing,FOOD,sport", &cnt);
     ASSERT_EQ(cnt, 0);
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1, ns);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
@@ -171,13 +171,13 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_TRUE(s->second.empty());
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_TRUE(s->fields.empty());
 
     auto s_set = db.Set(key1, "$", R"({"x": "food,kitChen,Beauty"})");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1, ns);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
@@ -203,14 +203,14 @@ TEST_F(IndexerTest, JsonTag) {
   {
     auto s = indexer.Record(key1, ns);
     ASSERT_TRUE(s);
-    ASSERT_EQ(s->first.info->name, idxname);
-    ASSERT_EQ(s->second.size(), 1);
-    ASSERT_EQ(s->second["$.x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->updater.info->name, idxname);
+    ASSERT_EQ(s->fields.size(), 1);
+    ASSERT_EQ(s->fields["$.x"], "food,kitChen,Beauty");
 
     auto s_set = db.Set(key1, "$.x", "\"Clothing,FOOD,sport\"");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s, key1, ns);
+    auto s2 = indexer.Update(*s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
@@ -241,5 +241,40 @@ TEST_F(IndexerTest, JsonTag) {
 
     s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
+  }
+}
+
+TEST_F(IndexerTest, JsonTagBuildIndex) {
+  redis::Json db(storage_.get(), ns);
+  auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
+
+  auto key1 = "idxtestjson:k2";
+  auto idxname = "jsontest";
+
+  {
+    auto s_set = db.Set(key1, "$", R"({"x": "food,kitChen,Beauty"})");
+    ASSERT_TRUE(s_set.ok());
+
+    auto s2 = indexer.updater_list[1].Build();
+    ASSERT_EQ(s2.Msg(), Status::ok_msg);
+
+    auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
+
+    std::string val;
+    auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    ASSERT_TRUE(s3.ok());
+    ASSERT_EQ(val, "");
+
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
+
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    ASSERT_TRUE(s3.ok());
+    ASSERT_EQ(val, "");
+
+    key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
+
+    s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    ASSERT_TRUE(s3.ok());
+    ASSERT_EQ(val, "");
   }
 }

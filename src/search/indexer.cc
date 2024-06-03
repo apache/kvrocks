@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <variant>
 
+#include "db_util.h"
 #include "parse_util.h"
 #include "search/search_encoding.h"
 #include "storage/redis_metadata.h"
@@ -77,7 +78,8 @@ rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::strin
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key, const std::string &ns) const {
+StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key) const {
+  const auto &ns = info->ns;
   Database db(indexer->storage, ns);
 
   RedisType type = kRedisNone;
@@ -191,7 +193,7 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, std::string_view o
 }
 
 Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                                 std::string_view current, const std::string &ns) const {
+                                 std::string_view current) const {
   if (original == current) {
     // the value of this field is unchanged, no need to update
     return Status::OK();
@@ -203,7 +205,7 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   }
 
   auto *metadata = iter->second.metadata.get();
-  SearchKey search_key(ns, info->name, field);
+  SearchKey search_key(info->ns, info->name, field);
   if (auto tag = dynamic_cast<TagFieldMetadata *>(metadata)) {
     GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
@@ -215,8 +217,8 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   return Status::OK();
 }
 
-Status IndexUpdater::Update(const FieldValues &original, std::string_view key, const std::string &ns) const {
-  auto current = GET_OR_RET(Record(key, ns));
+Status IndexUpdater::Update(const FieldValues &original, std::string_view key) const {
+  auto current = GET_OR_RET(Record(key));
 
   for (const auto &[field, i] : info->fields) {
     if (i.metadata->noindex) {
@@ -232,7 +234,29 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
       current_val = it->second;
     }
 
-    GET_OR_RET(UpdateIndex(field, key, original_val, current_val, ns));
+    GET_OR_RET(UpdateIndex(field, key, original_val, current_val));
+  }
+
+  return Status::OK();
+}
+
+Status IndexUpdater::Build() const {
+  auto storage = indexer->storage;
+  util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Metadata);
+
+  for (const auto &prefix : info->prefixes) {
+    auto ns_key = ComposeNamespaceKey(info->ns, prefix, storage->IsSlotIdEncoded());
+    for (iter->Seek(ns_key); iter->Valid(); iter->Next()) {
+      if (!iter->key().starts_with(ns_key)) {
+        break;
+      }
+
+      auto [_, key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
+
+      auto s = Update({}, key.ToStringView());
+      if (s.Is<Status::TypeMismatched>()) continue;
+      if (!s.OK()) return s;
+    }
   }
 
   return Status::OK();
@@ -241,22 +265,27 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key, c
 void GlobalIndexer::Add(IndexUpdater updater) {
   updater.indexer = this;
   for (const auto &prefix : updater.info->prefixes) {
-    prefix_map.insert(prefix, updater);
+    prefix_map.insert(ComposeNamespaceKey(updater.info->ns, prefix, false), updater);
   }
+  updater_list.push_back(updater);
 }
 
 StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
-  auto iter = prefix_map.longest_prefix(key);
+  if (updater_list.empty()) {
+    return Status::NoPrefixMatched;
+  }
+
+  auto iter = prefix_map.longest_prefix(ComposeNamespaceKey(ns, key, false));
   if (iter != prefix_map.end()) {
     auto updater = iter.value();
-    return std::make_pair(updater, GET_OR_RET(updater.Record(key, ns)));
+    return RecordResult{updater, std::string(key.begin(), key.end()), GET_OR_RET(updater.Record(key))};
   }
 
   return {Status::NoPrefixMatched};
 }
 
-Status GlobalIndexer::Update(const RecordResult &original, std::string_view key, const std::string &ns) {
-  return original.first.Update(original.second, key, ns);
+Status GlobalIndexer::Update(const RecordResult &original) {
+  return original.updater.Update(original.fields, original.key);
 }
 
 }  // namespace redis

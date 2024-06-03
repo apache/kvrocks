@@ -32,7 +32,6 @@
 #include "index_info.h"
 #include "indexer.h"
 #include "search/search_encoding.h"
-#include "server/server.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
@@ -75,10 +74,12 @@ struct IndexUpdater {
 
   explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
 
-  StatusOr<FieldValues> Record(std::string_view key, const std::string &ns) const;
+  StatusOr<FieldValues> Record(std::string_view key) const;
   Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                     std::string_view current, const std::string &ns) const;
-  Status Update(const FieldValues &original, std::string_view key, const std::string &ns) const;
+                     std::string_view current) const;
+  Status Update(const FieldValues &original, std::string_view key) const;
+
+  Status Build() const;
 
   Status UpdateTagIndex(std::string_view key, std::string_view original, std::string_view current,
                         const SearchKey &search_key, const TagFieldMetadata *tag) const;
@@ -88,9 +89,14 @@ struct IndexUpdater {
 
 struct GlobalIndexer {
   using FieldValues = IndexUpdater::FieldValues;
-  using RecordResult = std::pair<IndexUpdater, FieldValues>;
+  struct RecordResult {
+    IndexUpdater updater;
+    std::string key;
+    FieldValues fields;
+  };
 
   tsl::htrie_map<char, IndexUpdater> prefix_map;
+  std::vector<IndexUpdater> updater_list;
 
   engine::Storage *storage = nullptr;
 
@@ -98,7 +104,7 @@ struct GlobalIndexer {
 
   void Add(IndexUpdater updater);
   StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
-  static Status Update(const RecordResult &original, std::string_view key, const std::string &ns);
+  static Status Update(const RecordResult &original);
 };
 
 }  // namespace redis

@@ -270,6 +270,20 @@ void GlobalIndexer::Add(IndexUpdater updater) {
   updater_list.push_back(updater);
 }
 
+void GlobalIndexer::Remove(const kqir::IndexInfo *index) {
+  for (auto iter = prefix_map.begin(); iter != prefix_map.end();) {
+    if (iter->info == index) {
+      iter = prefix_map.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+
+  updater_list.erase(std::remove_if(updater_list.begin(), updater_list.end(),
+                                    [index](IndexUpdater updater) { return updater.info == index; }),
+                     updater_list.end());
+}
+
 StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
   if (updater_list.empty()) {
     return Status::NoPrefixMatched;

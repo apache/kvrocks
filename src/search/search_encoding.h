@@ -120,6 +120,42 @@ struct SearchKey {
     return dst;
   }
 
+  std::string ConstructAllFieldMetaBegin() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD_META);
+    PutIndex(&dst);
+    PutFixed32(&dst, 0);
+    return dst;
+  }
+
+  std::string ConstructAllFieldMetaEnd() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD_META);
+    PutIndex(&dst);
+    PutFixed32(&dst, (uint32_t)(-1));
+    return dst;
+  }
+
+  std::string ConstructAllFieldDataBegin() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD);
+    PutIndex(&dst);
+    PutFixed32(&dst, 0);
+    return dst;
+  }
+
+  std::string ConstructAllFieldDataEnd() const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD);
+    PutIndex(&dst);
+    PutFixed32(&dst, (uint32_t)(-1));
+    return dst;
+  }
+
   std::string ConstructTagFieldData(std::string_view tag, std::string_view key) const {
     std::string dst;
     PutNamespace(&dst);

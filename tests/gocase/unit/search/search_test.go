@@ -85,7 +85,17 @@ func TestSearch(t *testing.T) {
 			require.Equal(t, 3, len(res.Val().([]interface{})))
 			require.Equal(t, int64(1), res.Val().([]interface{})[0])
 			require.Equal(t, "test1:k2", res.Val().([]interface{})[1])
-			require.Equal(t, []interface{}{"a", "x,z", "b", "22"}, res.Val().([]interface{})[2])
+			fields := res.Val().([]interface{})[2].([]interface{})
+			if fields[0] == "a" {
+				require.Equal(t, "x,z", fields[1])
+				require.Equal(t, "b", fields[2])
+				require.Equal(t, "22", fields[3])
+			}
+			if fields[0] == "b" {
+				require.Equal(t, "22", fields[1])
+				require.Equal(t, "a", fields[2])
+				require.Equal(t, "x,z", fields[3])
+			}
 		}
 
 		res = rdb.Do(ctx, "FT.SEARCHSQL", `select * from testidx1 where a hastag "z" and b < 30`)

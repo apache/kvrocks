@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.7.0
-  MD5=1dafd4acb518bdcc09c5f58070ad8218
+  google/glog v0.7.1
+  MD5=fa30180d4284c454bdd324ad3baf7f5f
 )
 
 FetchContent_MakeAvailableWithArgs(glog

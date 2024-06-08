@@ -90,11 +90,12 @@ func TestSearch(t *testing.T) {
 				require.Equal(t, "x,z", fields[1])
 				require.Equal(t, "b", fields[2])
 				require.Equal(t, "22", fields[3])
-			}
-			if fields[0] == "b" {
+			} else if fields[0] == "b" {
 				require.Equal(t, "22", fields[1])
 				require.Equal(t, "a", fields[2])
 				require.Equal(t, "x,z", fields[3])
+			} else {
+				require.Fail(t, "not started with a or b")
 			}
 		}
 

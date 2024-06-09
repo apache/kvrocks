@@ -19,9 +19,10 @@
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
-from os import makedirs
+import os
 from pathlib import Path
 import re
+import stat
 from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
@@ -91,7 +92,14 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
         raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
 
     return semver
-
+def enable_git_hook(hook_path : str) -> None:
+    hook_name = os.path.basename(hook_path)
+    dst = ".git/hooks/" + hook_name.split('.')[0]
+    if os.path.exists(dst):
+        os.remove(dst)
+    os.link(hook_path, dst)
+    os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+    print(hook_name, "installed at", dst)
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
@@ -106,7 +114,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
-    makedirs(dir, exist_ok=True)
+    os.makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
@@ -121,6 +129,9 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         cmake_options += [f"-D{o}" for o in D]
 
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
+
+    os.makedirs("./git/hooks", exist_ok=True)
+    enable_git_hook("pre-push.sh")
 
     if skip_build:
         return

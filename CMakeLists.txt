@@ -30,6 +30,7 @@ option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
 option(ENABLE_SPEEDB "enable speedb instead of rocksdb" OFF)
+set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrace (libbacktrace, libdwarf, or empty)")
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)

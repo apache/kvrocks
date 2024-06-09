@@ -19,13 +19,9 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.6.0
-  MD5=1b246d4d0e8a011d33e0813b256198ef
+FetchContent_DeclareGitHubWithMirror(cpptrace
+  jeremy-rifkin/cpptrace v0.6.0
+  MD5=924df247ba4a151d243130060c2c0a04
 )
 
-FetchContent_MakeAvailableWithArgs(glog
-  WITH_GFLAGS=OFF
-  WITH_GTEST=OFF
-  BUILD_SHARED_LIBS=OFF
-)
+FetchContent_MakeAvailableWithArgs(cpptrace)

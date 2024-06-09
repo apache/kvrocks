@@ -50,3 +50,37 @@ TEST_F(CronTest, ToString) {
   std::string got = cron_->ToString();
   ASSERT_EQ("* 3 * * *", got);
 }
+
+class CronTestInterval : public testing::Test {
+ protected:
+  explicit CronTestInterval() {
+    cron_ = std::make_unique<Cron>();
+    std::vector<std::string> schedule{"0", "*/4", "*", "*", "*"};
+    auto s = cron_->SetScheduleTime(schedule);
+    EXPECT_TRUE(s.IsOK());
+  }
+  ~CronTestInterval() override = default;
+
+  std::unique_ptr<Cron> cron_;
+};
+
+TEST_F(CronTestInterval, IsTimeMatch) {
+  std::time_t t = std::time(nullptr);
+  std::tm *now = std::localtime(&t);
+  now->tm_hour = 0;
+  now->tm_min = 0;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 4;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 8;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 12;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 3;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+}
+
+TEST_F(CronTestInterval, ToString) {
+  std::string got = cron_->ToString();
+  ASSERT_EQ("0 */4 * * *", got);
+}

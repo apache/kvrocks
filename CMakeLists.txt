@@ -29,8 +29,8 @@ option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ ins
 option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
 option(ENABLE_IPO "enable interprocedural optimization" ON)
-option(ENABLE_UNWIND "enable libunwind in glog" ON)
 option(ENABLE_SPEEDB "enable speedb instead of rocksdb" OFF)
+set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrace (libbacktrace, libdwarf, or empty)")
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
@@ -169,6 +169,7 @@ include(cmake/span.cmake)
 include(cmake/trie.cmake)
 include(cmake/pegtl.cmake)
 include(cmake/rangev3.cmake)
+include(cmake/cpptrace.cmake)
 
 if (ENABLE_LUAJIT)
     include(cmake/luajit.cmake)
@@ -203,6 +204,7 @@ list(APPEND EXTERNAL_LIBS span-lite)
 list(APPEND EXTERNAL_LIBS tsl_hat_trie)
 list(APPEND EXTERNAL_LIBS pegtl)
 list(APPEND EXTERNAL_LIBS range-v3)
+list(APPEND EXTERNAL_LIBS cpptrace::cpptrace)
 
 # Add git sha to version.h
 find_package(Git REQUIRED)

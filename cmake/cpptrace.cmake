@@ -24,4 +24,6 @@ FetchContent_DeclareGitHubWithMirror(cpptrace
   MD5=924df247ba4a151d243130060c2c0a04
 )
 
-FetchContent_MakeAvailableWithArgs(cpptrace)
+FetchContent_MakeAvailableWithArgs(cpptrace
+  CPPTRACE_GET_SYMBOLS_WITH_LIBBACKTRACE=ON
+)

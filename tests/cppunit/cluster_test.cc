@@ -30,8 +30,15 @@
 #include "cluster/cluster_defs.h"
 #include "commands/commander.h"
 #include "server/server.h"
+#include "test_base.h"
 
-TEST(Cluster, CluseterSetNodes) {
+class ClusterTest : public TestBase {
+ protected:
+  explicit ClusterTest() = default;
+  ~ClusterTest() override = default;
+};
+
+TEST_F(ClusterTest, CluseterSetNodes) {
   Status s;
   Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
 
@@ -101,13 +108,21 @@ TEST(Cluster, CluseterSetNodes) {
   ASSERT_TRUE(cluster.GetVersion() == 1);
 }
 
-TEST(Cluster, CluseterGetNodes) {
+TEST_F(ClusterTest, CluseterGetNodes) {
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
       "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
       "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
       "master - 5461-10922";
-  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
 
@@ -139,7 +154,7 @@ TEST(Cluster, CluseterGetNodes) {
   }
 }
 
-TEST(Cluster, CluseterGetSlotInfo) {
+TEST_F(ClusterTest, CluseterGetSlotInfo) {
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
       "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
@@ -161,7 +176,7 @@ TEST(Cluster, CluseterGetSlotInfo) {
   ASSERT_TRUE(info.nodes[1].id == "07c37dfeb235213a872192d90877d0cd55635b91");
 }
 
-TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
+TEST_F(ClusterTest, TestDumpAndLoadClusterNodesInfo) {
   int64_t version = 2;
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
@@ -200,7 +215,7 @@ TEST(Cluster, TestDumpAndLoadClusterNodesInfo) {
   unlink(nodes_filename.c_str());
 }
 
-TEST(Cluster, ClusterParseSlotRanges) {
+TEST_F(ClusterTest, ClusterParseSlotRanges) {
   Status s;
   Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
   const std::string node_id = "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1";
@@ -324,4 +339,50 @@ TEST(Cluster, ClusterParseSlotRanges) {
             f_cond_slot_ranges));
     slots.clear();
   }
+}
+
+TEST_F(ClusterTest, GetReplicas) {
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  const std::string nodes =
+      "7dbee3d628f04cc5d763b36e92b10533e627a1d0 127.0.0.1 6480 slave 159dde1194ebf5bfc5a293dff839c3d1476f2a49\n"
+      "159dde1194ebf5bfc5a293dff839c3d1476f2a49 127.0.0.1 6479 master - 8192-16383\n"
+      "bb2e5b3c5282086df51eff6b3e35519aede96fa6 127.0.0.1 6379 master - 0-8191";
+
+  Cluster cluster(&server, {"127.0.0.1"}, 6379);
+  Status s = cluster.SetClusterNodes(nodes, 2, false);
+  ASSERT_TRUE(s.IsOK());
+
+  auto with_replica = cluster.GetReplicas("159dde1194ebf5bfc5a293dff839c3d1476f2a49");
+  ASSERT_TRUE(s.IsOK());
+
+  std::vector<std::string> replicas = util::Split(with_replica.GetValue(), "\n");
+  for (const auto &replica : replicas) {
+    std::vector<std::string> replica_fields = util::Split(replica, " ");
+
+    ASSERT_TRUE(replica_fields.size() == 8);
+    ASSERT_TRUE(replica_fields[0] == "7dbee3d628f04cc5d763b36e92b10533e627a1d0");
+    ASSERT_TRUE(replica_fields[1] == "127.0.0.1:6480@16480");
+    ASSERT_TRUE(replica_fields[2] == "slave");
+    ASSERT_TRUE(replica_fields[3] == "159dde1194ebf5bfc5a293dff839c3d1476f2a49");
+    ASSERT_TRUE(replica_fields[7] == "connected");
+  }
+
+  auto without_replica = cluster.GetReplicas("bb2e5b3c5282086df51eff6b3e35519aede96fa6");
+  ASSERT_TRUE(without_replica.IsOK());
+  ASSERT_EQ(without_replica.GetValue(), "");
+
+  auto replica_node = cluster.GetReplicas("7dbee3d628f04cc5d763b36e92b10533e627a1d0");
+  ASSERT_FALSE(replica_node.IsOK());
+  ASSERT_EQ(replica_node.Msg(), "The node isn't a master");
+
+  auto unknown_node = cluster.GetReplicas("1234567890");
+  ASSERT_FALSE(unknown_node.IsOK());
+  ASSERT_EQ(unknown_node.Msg(), "Invalid cluster node id");
 }

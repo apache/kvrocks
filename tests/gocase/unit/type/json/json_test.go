@@ -180,6 +180,9 @@ func TestJson(t *testing.T) {
 		result2 = append(result2, int64(3), int64(5), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
+		require.Error(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists", "$").Err())
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.STRLEN", "not_exists").Err(), redis.Nil)
+
 	})
 
 	t.Run("Merge basics", func(t *testing.T) {
@@ -510,6 +513,9 @@ func TestJson(t *testing.T) {
 		EqualJSON(t, `[3]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 2).Val())
 		EqualJSON(t, `[3.5]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", 0.5).Val())
 
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", "9e99999").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.foo", "999999999999999999999999999999").Err())
+
 		// wrong type
 		require.Equal(t, `[null]`, rdb.Do(ctx, "JSON.NUMINCRBY", "a", "$.bar", 1).Val())
 
@@ -578,7 +584,9 @@ func TestJson(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 0, len(vals))
 
-		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err()
+		require.Error(t, rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key", "$").Err())
+		err = rdb.Do(ctx, "JSON.OBJLEN", "no-such-json-key").Err()
+
 		require.EqualError(t, err, redis.Nil.Error())
 	})
 
@@ -610,6 +618,43 @@ func TestJson(t *testing.T) {
 		require.Equal(t, 2, len(vals))
 		require.EqualValues(t, "[]", vals[0])
 		require.EqualValues(t, "[]", vals[1])
+
+	})
+
+	t.Run("JSON.MSET basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.DEL", "a0").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.MSET", "a0", "$.a", `{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}`, "a1", "$", `{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MSET", "a0", "$", `{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}`, "a1", "$", `{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}`).Err())
+
+		EqualJSON(t, `{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}`, rdb.Do(ctx, "JSON.GET", "a0").Val())
+		EqualJSON(t, `[{"a": 1, "b": 2, "nested": {"a": 3}, "c": null}]`, rdb.Do(ctx, "JSON.GET", "a0", "$").Val())
+		EqualJSON(t, `[1]`, rdb.Do(ctx, "JSON.GET", "a0", "$.a").Val())
+
+		EqualJSON(t, `{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}`, rdb.Do(ctx, "JSON.GET", "a1").Val())
+		EqualJSON(t, `[{"a": 4, "b": 5, "nested": {"a": 6}, "c": null}]`, rdb.Do(ctx, "JSON.GET", "a1", "$").Val())
+		EqualJSON(t, `[4]`, rdb.Do(ctx, "JSON.GET", "a1", "$.a").Val())
+	})
+
+	t.Run("JSON.DEBUG MEMORY basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"},"f":{"x":[]}}`).Err())
+		//object
+		var result1 = make([]interface{}, 0)
+		result1 = append(result1, int64(43))
+		require.Equal(t, result1, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$").Val())
+		//integer string array empty_array
+		var result2 = make([]interface{}, 0)
+		result2 = append(result2, int64(1), int64(1), int64(2), int64(4))
+		require.Equal(t, result2, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..x").Val())
+		//null object
+		var result3 = make([]interface{}, 0)
+		result3 = append(result3, int64(9), int64(1))
+		require.Equal(t, result3, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
+		//no no_exists
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..no_exists").Val())
+		//no key no path
+		require.Equal(t, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists").Val(), int64(0))
+		//no key have path
+		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Val())
 
 	})
 }

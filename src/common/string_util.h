@@ -38,5 +38,22 @@ std::vector<std::string> RegexMatch(const std::string &str, const std::string &r
 std::string StringToHex(std::string_view input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 std::string EscapeString(std::string_view s);
+std::string StringNext(std::string s);
+
+template <typename T, typename F>
+std::string StringJoin(
+    const T &con, F &&f = [](const auto &v) -> decltype(auto) { return v; }, const std::string &sep = ", ") {
+  std::string res;
+  bool is_first = true;
+  for (const auto &v : con) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      res += sep;
+    }
+    res += std::forward<F>(f)(v);
+  }
+  return res;
+}
 
 }  // namespace util

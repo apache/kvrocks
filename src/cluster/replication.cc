@@ -33,6 +33,7 @@
 #include <string>
 #include <thread>
 
+#include "commands/error_constants.h"
 #include "event_util.h"
 #include "fmt/format.h"
 #include "io_util.h"
@@ -75,7 +76,7 @@ Status FeedSlaveThread::Start() {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
   }
 
-  return s;
+  return std::move(s);
 }
 
 void FeedSlaveThread::Stop() {
@@ -201,7 +202,7 @@ LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
   DLOG(INFO) << "[replication] Execute handler[" << getHandlerName(handler_idx_) << "]";
   auto st = getHandlerFunc(handler_idx_)(repl_, bev);
-  repl_->last_io_time_.store(util::GetTimeStamp(), std::memory_order_relaxed);
+  repl_->last_io_time_secs_.store(util::GetTimeStamp(), std::memory_order_relaxed);
   switch (st) {
     case CBState::NEXT:
       ++handler_idx_;
@@ -402,13 +403,13 @@ ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev) {
   return CBState::NEXT;
 }
 
-inline bool ResponseLineIsOK(const char *line) { return strncmp(line, "+OK", 3) == 0; }
+inline bool ResponseLineIsOK(std::string_view line) { return line == RESP_PREFIX_SIMPLE_STRING "OK"; }
 
 ReplicationThread::CBState ReplicationThread::authReadCB(bufferevent *bev) {  // NOLINT
   auto input = bufferevent_get_input(bev);
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
-  if (!ResponseLineIsOK(line.get())) {
+  if (!ResponseLineIsOK(line.View())) {
     // Auth failed
     LOG(ERROR) << "[replication] Auth failed: " << line.get();
     return CBState::RESTART;
@@ -430,7 +431,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(bufferevent *bev
   if (!line) return CBState::AGAIN;
 
   if (line[0] == '-') {
-    if (isRestoringError(line.get())) {
+    if (isRestoringError(line.View())) {
       LOG(WARNING) << "The master was restoring the db, retry later";
     } else {
       LOG(ERROR) << "Failed to get the db name, " << line.get();
@@ -468,18 +469,18 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev) {
   if (!line) return CBState::AGAIN;
 
   // on unknown option: first try without announce ip, if it fails again - do nothing (to prevent infinite loop)
-  if (isUnknownOption(line.get()) && !next_try_without_announce_ip_address_) {
+  if (isUnknownOption(line.View()) && !next_try_without_announce_ip_address_) {
     next_try_without_announce_ip_address_ = true;
     LOG(WARNING) << "The old version master, can't handle ip-address, "
                  << "try without it again";
     // Retry previous state, i.e. send replconf again
     return CBState::PREV;
   }
-  if (line[0] == '-' && isRestoringError(line.get())) {
+  if (line[0] == '-' && isRestoringError(line.View())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
-  if (!ResponseLineIsOK(line.get())) {
+  if (!ResponseLineIsOK(line.View())) {
     LOG(WARNING) << "[replication] Failed to replconf: " << line.get() + 1;
     //  backward compatible with old version that doesn't support replconf cmd
     return CBState::NEXT;
@@ -530,12 +531,12 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
-  if (line[0] == '-' && isRestoringError(line.get())) {
+  if (line[0] == '-' && isRestoringError(line.View())) {
     LOG(WARNING) << "The master was restoring the db, retry later";
     return CBState::RESTART;
   }
 
-  if (line[0] == '-' && isWrongPsyncNum(line.get())) {
+  if (line[0] == '-' && isWrongPsyncNum(line.View())) {
     next_try_old_psync_ = true;
     LOG(WARNING) << "The old version master, can't handle new PSYNC, "
                  << "try old PSYNC again";
@@ -543,7 +544,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
     return CBState::PREV;
   }
 
-  if (!ResponseLineIsOK(line.get())) {
+  if (!ResponseLineIsOK(line.View())) {
     // PSYNC isn't OK, we should use FullSync
     // Switch to fullsync state machine
     fullsync_steps_.Start();
@@ -844,7 +845,7 @@ Status ReplicationThread::sendAuth(int sock_fd, ssl_st *ssl) {
       }
       UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
       if (!line) continue;
-      if (!ResponseLineIsOK(line.get())) {
+      if (!ResponseLineIsOK(line.View())) {
         return {Status::NotOK, "auth got invalid response"};
       }
       break;
@@ -998,30 +999,33 @@ Status ReplicationThread::parseWriteBatch(const std::string &batch_string) {
   return Status::OK();
 }
 
-bool ReplicationThread::isRestoringError(const char *err) {
-  return std::string(err) == "-ERR restoring the db from backup";
+bool ReplicationThread::isRestoringError(std::string_view err) {
+  return err == std::string(RESP_PREFIX_ERROR) + redis::errRestoringBackup;
 }
 
-bool ReplicationThread::isWrongPsyncNum(const char *err) {
-  return std::string(err) == "-ERR wrong number of arguments";
+bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
+  return err == std::string(RESP_PREFIX_ERROR) + redis::errWrongNumArguments;
 }
 
-bool ReplicationThread::isUnknownOption(const char *err) { return std::string(err) == "-ERR unknown option"; }
+bool ReplicationThread::isUnknownOption(std::string_view err) {
+  return err == fmt::format("{}ERR {}", RESP_PREFIX_ERROR, redis::errUnknownOption);
+}
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {
   type_ = kBatchTypeNone;
-  if (column_family_id == kColumnFamilyIDPubSub) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PubSub)) {
     type_ = kBatchTypePublish;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
-  } else if (column_family_id == kColumnFamilyIDPropagate) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Propagate)) {
     type_ = kBatchTypePropagate;
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
-  } else if (column_family_id == kColumnFamilyIDStream) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
     type_ = kBatchTypeStream;
     kv_ = std::make_pair(key.ToString(), value.ToString());
+    return rocksdb::Status::OK();
   }
   return rocksdb::Status::OK();
 }

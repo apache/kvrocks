@@ -21,82 +21,69 @@
 #include "slot_import.h"
 
 SlotImport::SlotImport(Server *srv)
-    : Database(srv->storage, kDefaultNamespace),
-      srv_(srv),
-      import_slot_(-1),
-      import_status_(kImportNone),
-      import_fd_(-1) {
+    : Database(srv->storage, kDefaultNamespace), srv_(srv), import_slot_(-1), import_status_(kImportNone) {
   std::lock_guard<std::mutex> guard(mutex_);
   // Let metadata_cf_handle_ be nullptr, then get them in real time while use them.
   // See comments in SlotMigrator::SlotMigrator for detailed reason.
   metadata_cf_handle_ = nullptr;
 }
 
-bool SlotImport::Start(int fd, int slot) {
+Status SlotImport::Start(int slot) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_status_ == kImportStart) {
-    LOG(ERROR) << "[import] Only one slot importing is allowed"
-               << ", current slot is " << import_slot_ << ", cannot import slot " << slot;
-    return false;
+    // return ok if the same slot is importing
+    if (import_slot_ == slot) {
+      return Status::OK();
+    }
+    return {Status::NotOK, fmt::format("only one importing slot is allowed, current slot is: {}", import_slot_)};
   }
 
   // Clean slot data first
   auto s = ClearKeysOfSlot(namespace_, slot);
   if (!s.ok()) {
-    LOG(INFO) << "[import] Failed to clear keys of slot " << slot << "current status is importing 'START'"
-              << ", Err: " << s.ToString();
-    return false;
+    return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
   }
 
   import_status_ = kImportStart;
   import_slot_ = slot;
-  import_fd_ = fd;
-
-  return true;
+  return Status::OK();
 }
 
-bool SlotImport::Success(int slot) {
+Status SlotImport::Success(int slot) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_slot_ != slot) {
-    LOG(ERROR) << "[import] Wrong slot, importing slot: " << import_slot_ << ", but got slot: " << slot;
-    return false;
+    return {Status::NotOK, fmt::format("mismatch slot, importing slot: {}, but got: {}", import_slot_, slot)};
   }
 
   Status s = srv_->cluster->SetSlotImported(import_slot_);
   if (!s.IsOK()) {
-    LOG(ERROR) << "[import] Failed to set slot, Err: " << s.Msg();
-    return false;
+    return {Status::NotOK, fmt::format("unable to set imported status: {}", slot)};
   }
 
   import_status_ = kImportSuccess;
-  import_fd_ = -1;
-
-  return true;
+  return Status::OK();
 }
 
-bool SlotImport::Fail(int slot) {
+Status SlotImport::Fail(int slot) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_slot_ != slot) {
-    LOG(ERROR) << "[import] Wrong slot, importing slot: " << import_slot_ << ", but got slot: " << slot;
-    return false;
+    return {Status::NotOK, fmt::format("mismatch slot, importing slot: {}, but got: {}", import_slot_, slot)};
   }
 
   // Clean imported slot data
   auto s = ClearKeysOfSlot(namespace_, slot);
   if (!s.ok()) {
-    LOG(INFO) << "[import] Failed to clear keys of slot " << slot << ", current importing status is importing 'FAIL'"
-              << ", Err: " << s.ToString();
+    return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
   }
 
   import_status_ = kImportFailed;
-  import_fd_ = -1;
-
-  return true;
+  return Status::OK();
 }
 
-void SlotImport::StopForLinkError(int fd) {
+Status SlotImport::StopForLinkError() {
   std::lock_guard<std::mutex> guard(mutex_);
-  if (import_status_ != kImportStart) return;
+  // We don't need to do anything if the importer is not started yet.
+  if (import_status_ != kImportStart) return Status::OK();
 
   // Maybe server has failovered
   // Situation:
@@ -111,18 +98,20 @@ void SlotImport::StopForLinkError(int fd) {
     // Clean imported slot data
     auto s = ClearKeysOfSlot(namespace_, import_slot_);
     if (!s.ok()) {
-      LOG(WARNING) << "[import] Failed to clear keys of slot " << import_slot_ << " Current status is link error"
-                   << ", Err: " << s.ToString();
+      return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
     }
   }
 
-  LOG(INFO) << "[import] Stop importing for link error, slot: " << import_slot_;
   import_status_ = kImportFailed;
-  import_fd_ = -1;
+  return Status::OK();
 }
 
 int SlotImport::GetSlot() {
   std::lock_guard<std::mutex> guard(mutex_);
+  // import_slot_ only be set when import_status_ is kImportStart
+  if (import_status_ != kImportStart) {
+    return -1;
+  }
   return import_slot_;
 }
 

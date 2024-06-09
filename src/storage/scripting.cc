@@ -30,6 +30,7 @@
 #include <string>
 
 #include "commands/commander.h"
+#include "commands/error_constants.h"
 #include "db_util.h"
 #include "fmt/format.h"
 #include "lua.h"
@@ -442,7 +443,7 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto *cf = srv->storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto iter = util::UniqueIterator(srv->storage, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
@@ -478,7 +479,7 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto *cf = srv->storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto iter = util::UniqueIterator(srv->storage, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
@@ -556,7 +557,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
   }
 
   auto storage = srv->storage;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
 
   for (size_t i = 1; i <= lua_objlen(lua, -1); ++i) {
     lua_rawgeti(lua, -1, static_cast<int>(i));
@@ -610,7 +611,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return {Status::NotOK, "NOSCRIPT No matching script. Please use EVAL"};
+        *output = redis::Error(redis::errNoMatchingScript);
+        return Status::OK();
       }
     } else {
       body = body_or_sha;

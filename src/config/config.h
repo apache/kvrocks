@@ -122,6 +122,8 @@ struct Config {
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
+  std::string backup_dir;  // GUARD_BY(backup_mu_)
+  std::string pidfile;
   std::string backup_sync_dir;
   std::string checkpoint_dir;
   std::string sync_checkpoint_dir;
@@ -135,6 +137,7 @@ struct Config {
   uint32_t master_port = 0;
   Cron compact_cron;
   Cron bgsave_cron;
+  Cron dbsize_scan_cron;
   CompactionCheckerRange compaction_checker_range{-1, -1};
   int64_t force_compact_file_age;
   int force_compact_file_min_deleted_percentage;
@@ -199,6 +202,7 @@ struct Config {
     int level0_stop_writes_trigger;
     int level0_file_num_compaction_trigger;
     rocksdb::CompressionType compression;
+    int compression_level;
     bool disable_auto_compactions;
     bool enable_blob_files;
     int min_blob_size;
@@ -236,17 +240,14 @@ struct Config {
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }
   bool HasConfigFile() const { return !path_.empty(); }
-  std::string GetBackupDir() const { return backup_dir_.empty() ? dir + "/backup" : backup_dir_; }
-  std::string GetPidFile() const { return pidfile_.empty() ? dir + "/kvrocks.pid" : pidfile_; }
 
  private:
   std::string path_;
-  std::string backup_dir_;  // GUARD_BY(backup_mu_)
-  std::string pidfile_;
   std::string binds_str_;
   std::string slaveof_;
   std::string compact_cron_str_;
   std::string bgsave_cron_str_;
+  std::string dbsize_scan_cron_str_;
   std::string compaction_checker_range_str_;
   std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;

@@ -77,7 +77,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y clang-format-14 clang-tidy-14
-      - uses: apache/skywalking-eyes/header@v0.5.0
+      - uses: apache/skywalking-eyes/header@v0.6.0
         with:
           config: .github/config/licenserc.yml
       - name: Check with clang-format
@@ -112,6 +112,9 @@ jobs:
         include:
           - name: Darwin Clang
             os: macos-11
+            compiler: auto
+          - name: Darwin Clang arm64
+            os: macos-14
             compiler: auto
           - name: Darwin Clang without Jemalloc
             os: macos-11
@@ -163,6 +166,11 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
+          - name: Ubuntu Clang UBSAN
+            os: ubuntu-20.04
+            with_sanitizer: -DENABLE_UBSAN=ON
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+            compiler: clang
           - name: Ubuntu GCC Ninja
             os: ubuntu-20.04
             with_ninja: --ninja
@@ -172,7 +180,7 @@ jobs:
             compiler: gcc
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang with OpenSSL
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: clang
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
@@ -183,14 +191,14 @@ jobs:
             os: ubuntu-20.04
             without_luajit: -DENABLE_LUAJIT=OFF
             compiler: clang
-          - name: Ubuntu GCC with new encoding
+          - name: Ubuntu GCC with old encoding
             os: ubuntu-20.04
             compiler: gcc
-            new_encoding: -DENABLE_NEW_ENCODING=TRUE
-          - name: Ubuntu Clang with new encoding
-            os: ubuntu-20.04
+            new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          - name: Ubuntu Clang with old encoding
+            os: ubuntu-22.04
             compiler: clang
-            new_encoding: -DENABLE_NEW_ENCODING=TRUE
+            new_encoding: -DENABLE_NEW_ENCODING=FALSE
           - name: Ubuntu GCC with speedb enabled
             os: ubuntu-20.04
             compiler: gcc
@@ -219,14 +227,22 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+      - name: Cache redis server
+        id: cache-redis-server
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/local/bin/redis-server
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-server
       - name: Install redis
-        if: steps.cache-redis.outputs.cache-hit != 'true'
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
-          tar -xzvf redis-6.2.7.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
+          tar -xzvf redis-6.2.14.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.7 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v4
         with:
@@ -257,6 +273,8 @@ jobs:
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+          cp -r build _build
           build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Setup Coredump
@@ -281,7 +299,7 @@ jobs:
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
-            cd minica && go build && cd ..
+            cd minica && git checkout 96a5c93723cf3d34b50b3e723a9f05cd3765bc67 && go build && cd ..
             ./minica/minica --domains localhost
             cp localhost/cert.pem tests/gocase/tls/cert/server.crt
             cp localhost/key.pem tests/gocase/tls/cert/server.key
@@ -289,6 +307,29 @@ jobs:
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
           ./x.py test go build $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
+
+      - name: Install redis-py
+        run: pip3 install redis==4.3.6
+
+      - name: Run kvrocks2redis Test
+        # Currently, when enabling Tsan/Asan or running in macOS 11/14, the value mismatch in destination redis server.
+        # See https://github.com/apache/kvrocks/issues/2195.
+        if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') }}
+        run: |
+          ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p kvrocks2redis-ci-data
+          ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 10s
+          echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
       - name: Find reports and crashes
         if: always()
@@ -335,13 +376,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sonarcloud-data
-          path: ${{ env.SONARCLOUD_OUTPUT_DIR }}
+          path: |
+            ${{ env.SONARCLOUD_OUTPUT_DIR }}
+            _build
 
   check-docker:
     name: Check Docker image
     needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Get core numbers
@@ -394,7 +437,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
           yum install -y centos-release-scl-rh
-          yum install -y devtoolset-11 python3 autoconf automake wget git gcc gcc-c++
+          yum install -y devtoolset-11 python3 python3-pip autoconf automake wget git gcc gcc-c++
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
           mv /usr/bin/gcc /usr/bin/gcc-4.8.5
           ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
@@ -405,13 +448,13 @@ jobs:
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
           pacman -Syu --noconfirm
-          pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make gcc
+          pacman -Sy --noconfirm autoconf automake python3 python-redis git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 curl tar gzip cmake go
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -426,19 +469,29 @@ jobs:
             ~/local/bin/redis-cli
           key: ${{ matrix.image }}-redis-cli
 
+      - name: Cache redis server
+        id: cache-redis-server
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/local/bin/redis-server
+          key: ${{ matrix.image }}-redis-server
+
       - name: Install redis
-        if: steps.cache-redis.outputs.cache-hit != 'true'
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
-          curl -O https://download.redis.io/releases/redis-6.2.7.tar.gz
-          tar -xzvf redis-6.2.7.tar.gz
+          curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
+          tar -xzvf redis-6.2.14.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.7 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - name: Install cmake
         if: ${{ startsWith(matrix.image, 'centos') }}
         run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4-linux-x86_64.sh
-          bash cmake-3.26.4-linux-x86_64.sh --skip-license --prefix=/usr
+          VERSION=3.26.4
+          wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
+          bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
 
       - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
       - uses: actions/setup-go@v4 #v5 use Node 20 too
@@ -460,6 +513,24 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
           ./x.py test go build $GOCASE_RUN_ARGS
+
+      - name: Install redis-py
+        if: ${{ !startsWith(matrix.image, 'archlinux') }}  # already installed
+        run: pip3 install redis==4.3.6
+
+      - name: Run kvrocks2redis Test
+        run: |
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p kvrocks2redis-ci-data
+          ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 10s
+          echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
 
   required:
     if: always()

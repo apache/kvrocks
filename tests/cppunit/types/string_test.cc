@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_string.h"
 
 class RedisStringTest : public TestBase {
@@ -68,7 +69,7 @@ TEST_F(RedisStringTest, GetAndSet) {
 }
 
 TEST_F(RedisStringTest, MGetAndMSet) {
-  string_->MSet(pairs_);
+  string_->MSet(pairs_, 0);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
@@ -172,10 +173,10 @@ TEST_F(RedisStringTest, GetDel) {
 
 TEST_F(RedisStringTest, MSetXX) {
   bool flag = false;
-  string_->SetXX(key_, "test-value", 3000, &flag);
+  string_->SetXX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   EXPECT_FALSE(flag);
   string_->Set(key_, "test-value");
-  string_->SetXX(key_, "test-value", 3000, &flag);
+  string_->SetXX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   EXPECT_TRUE(flag);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
@@ -211,7 +212,7 @@ TEST_F(RedisStringTest, MSetNX) {
 
 TEST_F(RedisStringTest, MSetNXWithTTL) {
   bool flag = false;
-  string_->SetNX(key_, "test-value", 3000, &flag);
+  string_->SetNX(key_, "test-value", util::GetTimeStampMS() + 3000, &flag);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
@@ -219,7 +220,7 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
 }
 
 TEST_F(RedisStringTest, SetEX) {
-  string_->SetEX(key_, "test-value", 3000);
+  string_->SetEX(key_, "test-value", util::GetTimeStampMS() + 3000);
   int64_t ttl = 0;
   auto s = string_->TTL(key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
@@ -258,15 +259,15 @@ TEST_F(RedisStringTest, CAS) {
   auto status = string_->Set(key, value);
   ASSERT_TRUE(status.ok());
 
-  status = string_->CAS("non_exist_key", value, new_value, 10000, &flag);
+  status = string_->CAS("non_exist_key", value, new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(-1, flag);
 
-  status = string_->CAS(key, "cas_value_err", new_value, 10000, &flag);
+  status = string_->CAS(key, "cas_value_err", new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(0, flag);
 
-  status = string_->CAS(key, value, new_value, 10000, &flag);
+  status = string_->CAS(key, value, new_value, util::GetTimeStampMS() + 10000, &flag);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(1, flag);
 
@@ -306,4 +307,55 @@ TEST_F(RedisStringTest, CAD) {
   ASSERT_TRUE(status.IsNotFound());
 
   status = string_->Del(key);
+}
+
+TEST_F(RedisStringTest, LCS) {
+  auto expect_result_eq = [](const StringLCSIdxResult &val1, const StringLCSIdxResult &val2) {
+    ASSERT_EQ(val1.len, val2.len);
+    ASSERT_EQ(val1.matches.size(), val2.matches.size());
+    for (size_t i = 0; i < val1.matches.size(); i++) {
+      ASSERT_EQ(val1.matches[i].match_len, val2.matches[i].match_len);
+      ASSERT_EQ(val1.matches[i].a.start, val2.matches[i].a.start);
+      ASSERT_EQ(val1.matches[i].a.end, val2.matches[i].a.end);
+      ASSERT_EQ(val1.matches[i].b.start, val2.matches[i].b.start);
+      ASSERT_EQ(val1.matches[i].b.end, val2.matches[i].b.end);
+    }
+  };
+
+  StringLCSResult rst;
+  std::string key1 = "lcs_key1";
+  std::string key2 = "lcs_key2";
+  std::string value1 = "abcdef";
+  std::string value2 = "acdf";
+
+  auto status = string_->Set(key1, value1);
+  ASSERT_TRUE(status.ok());
+  status = string_->Set(key2, value2);
+  ASSERT_TRUE(status.ok());
+
+  status = string_->LCS(key1, key2, {}, &rst);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ("acdf", std::get<std::string>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::LEN}, &rst);
+  ASSERT_TRUE(status.ok());
+  EXPECT_EQ(4, std::get<uint32_t>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::IDX}, &rst);
+  ASSERT_TRUE(status.ok());
+  expect_result_eq({{
+                        {{5, 5}, {3, 3}, 1},
+                        {{2, 3}, {1, 2}, 2},
+                        {{0, 0}, {0, 0}, 1},
+                    },
+                    4},
+                   std::get<StringLCSIdxResult>(rst));
+
+  status = string_->LCS(key1, key2, {StringLCSType::IDX, 2}, &rst);
+  ASSERT_TRUE(status.ok());
+  expect_result_eq({{
+                        {{2, 3}, {1, 2}, 2},
+                    },
+                    4},
+                   std::get<StringLCSIdxResult>(rst));
 }

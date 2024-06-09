@@ -25,12 +25,9 @@
 #include <vector>
 
 #include "common/bitfield_util.h"
+#include "common/port.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
-
-#if defined(__sparc__) || defined(__arm__)
-#define USE_ALIGNED_ACCESS
-#endif
 
 enum BitOpFlags {
   kBitOpAnd,
@@ -53,7 +50,8 @@ class Bitmap : public Database {
   rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
   rocksdb::Status SetBit(const Slice &user_key, uint32_t bit_offset, bool new_bit, bool *old_bit);
   rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, bool is_bit_index, uint32_t *cnt);
-  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos);
+  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos,
+                         bool is_bit_index);
   rocksdb::Status BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
                         const std::vector<Slice> &op_keys, int64_t *len);
   rocksdb::Status Bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
@@ -75,7 +73,8 @@ class Bitmap : public Database {
                            std::vector<std::optional<BitfieldValue>> *rets);
   static bool bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                     const std::vector<BitfieldOperation> &ops);
-  rocksdb::Status GetMetadata(const Slice &ns_key, BitmapMetadata *metadata, std::string *raw_value);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, BitmapMetadata *metadata,
+                              std::string *raw_value);
 
   template <bool ReadOnly>
   static rocksdb::Status runBitfieldOperationsWithCache(SegmentCacheStore &cache,

@@ -34,6 +34,7 @@ function(FetchContent_MakeAvailableWithArgs dep)
       parse_var(${arg} key value)
       set(${key}_OLD ${${key}})
       set(${key} ${value} CACHE INTERNAL "")
+      message("In ${dep}: ${key} set to ${value}")
     endforeach()
 
     add_subdirectory(${${dep}_SOURCE_DIR} ${${dep}_BINARY_DIR} EXCLUDE_FROM_ALL)
@@ -55,6 +56,13 @@ endfunction()
 function(FetchContent_DeclareGitHubWithMirror dep repo tag hash)
   FetchContent_DeclareWithMirror(${dep}
     https://github.com/${repo}/archive/${tag}.zip
+    ${hash}
+  )
+endfunction()
+
+function(FetchContent_DeclareGitHubTarWithMirror dep repo tag hash)
+  FetchContent_DeclareWithMirror(${dep}
+    https://github.com/${repo}/archive/${tag}.tar.gz
     ${hash}
   )
 endfunction()

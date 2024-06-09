@@ -31,6 +31,41 @@
 
 namespace redis {
 
+class CommandXAck : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    stream_name_ = args[1];
+    group_name_ = args[2];
+    StreamEntryID tmp_id;
+    for (size_t i = 3; i < args.size(); ++i) {
+      auto s = ParseStreamEntryID(args[i], &tmp_id);
+      if (!s.IsOK()) {
+        return {Status::RedisParseErr, s.Msg()};
+      }
+      entry_ids_.emplace_back(tmp_id);
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    uint64_t acknowledged = 0;
+    auto s = stream_db.DeletePelEntries(stream_name_, group_name_, entry_ids_, &acknowledged);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(acknowledged);
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  std::string group_name_;
+  std::vector<StreamEntryID> entry_ids_;
+};
+
 class CommandXAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -207,6 +242,128 @@ class CommandXDel : public Commander {
   std::vector<redis::StreamEntryID> ids_;
 };
 
+class CommandXClaim : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 6) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    CommandParser parser(args, 1);
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
+    consumer_name_ = GET_OR_RET(parser.TakeStr());
+    auto parse_result = parser.TakeInt<int64_t>();
+    if (!parse_result.IsOK()) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    min_idle_time_ms_ = parse_result.GetValue();
+    if (min_idle_time_ms_ < 0) {
+      min_idle_time_ms_ = 0;
+    }
+
+    while (parser.Good() && !isOption(parser.RawPeek())) {
+      auto raw_id = GET_OR_RET(parser.TakeStr());
+      redis::StreamEntryID id;
+      auto s = ParseStreamEntryID(raw_id, &id);
+      if (!s.IsOK()) {
+        return s;
+      }
+      entry_ids_.emplace_back(id);
+    }
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("idle")) {
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "IDLE for XCLAIM must be non-negative"};
+        }
+        stream_claim_options_.idle_time_ms = parse_result.GetValue();
+      } else if (parser.EatEqICase("time")) {
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "TIME for XCLAIM must be non-negative"};
+        }
+        stream_claim_options_.with_time = true;
+        stream_claim_options_.last_delivery_time_ms = parse_result.GetValue();
+      } else if (parser.EatEqICase("retrycount")) {
+        auto parse_result = parser.TakeInt<int64_t>();
+        if (!parse_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (parse_result.GetValue() < 0) {
+          return {Status::RedisParseErr, "RETRYCOUNT for XCLAIM must be non-negative"};
+        }
+        stream_claim_options_.with_retry_count = true;
+        stream_claim_options_.last_delivery_count = parse_result.GetValue();
+      } else if (parser.EatEqICase("force")) {
+        stream_claim_options_.force = true;
+      } else if (parser.EatEqICase("justid")) {
+        stream_claim_options_.just_id = true;
+      } else if (parser.EatEqICase("lastid")) {
+        auto last_id = GET_OR_RET(parser.TakeStr());
+        auto s = ParseStreamEntryID(last_id, &stream_claim_options_.last_delivered_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    StreamClaimResult result;
+    auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_ms_, entry_ids_,
+                                       stream_claim_options_, &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, errNoSuchKey};
+    }
+
+    if (!stream_claim_options_.just_id) {
+      output->append(redis::MultiLen(result.entries.size()));
+
+      for (const auto &e : result.entries) {
+        output->append(redis::MultiLen(2));
+        output->append(redis::BulkString(e.key));
+        output->append(conn->MultiBulkString(e.values));
+      }
+    } else {
+      output->append(redis::MultiLen(result.ids.size()));
+      for (const auto &id : result.ids) {
+        output->append(redis::BulkString(id));
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  std::string group_name_;
+  std::string consumer_name_;
+  uint64_t min_idle_time_ms_;
+  std::vector<StreamEntryID> entry_ids_;
+  StreamClaimOptions stream_claim_options_;
+
+  bool static isOption(const std::string &arg) {
+    static const std::unordered_set<std::string> options = {"idle", "time", "retrycount", "force", "justid", "lastid"};
+    return options.find(util::ToLower(arg)) != options.end();
+  }
+};
+
 class CommandXGroup : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -250,7 +407,7 @@ class CommandXGroup : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "createconsumer") {
+    if (subcommand_ == "createconsumer" || subcommand_ == "delconsumer") {
       if (args.size() != 5) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
@@ -320,6 +477,16 @@ class CommandXGroup : public Commander {
       }
 
       *output = redis::Integer(created_number);
+    }
+
+    if (subcommand_ == "delconsumer") {
+      uint64_t deleted_pel = 0;
+      auto s = stream_db.DestroyConsumer(stream_name_, group_name_, consumer_name_, deleted_pel);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      *output = redis::Integer(deleted_pel);
     }
 
     if (subcommand_ == "setid") {
@@ -543,7 +710,7 @@ class CommandXInfo : public Commander {
     }
 
     output->append(redis::MultiLen(result_vector.size()));
-    auto now = util::GetTimeStampMS();
+    auto now_ms = util::GetTimeStampMS();
     for (auto const &it : result_vector) {
       output->append(conn->HeaderOfMap(4));
       output->append(redis::BulkString("name"));
@@ -551,9 +718,9 @@ class CommandXInfo : public Commander {
       output->append(redis::BulkString("pending"));
       output->append(redis::Integer(it.second.pending_number));
       output->append(redis::BulkString("idle"));
-      output->append(redis::Integer(now - it.second.last_idle));
+      output->append(redis::Integer(now_ms - it.second.last_attempted_interaction_ms));
       output->append(redis::BulkString("inactive"));
-      output->append(redis::Integer(now - it.second.last_active));
+      output->append(redis::Integer(now_ms - it.second.last_successful_interaction_ms));
     }
 
     return Status::OK();
@@ -1486,8 +1653,10 @@ class CommandXSetId : public Commander {
   std::optional<uint64_t> entries_added_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),

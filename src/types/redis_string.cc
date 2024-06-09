@@ -27,6 +27,7 @@
 #include <string>
 
 #include "parse_util.h"
+#include "server/redis_request.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
@@ -61,7 +62,7 @@ std::vector<rocksdb::Status> String::getRawValues(const std::vector<Slice> &keys
 rocksdb::Status String::getRawValue(const std::string &ns_key, std::string *raw_value) {
   raw_value->clear();
 
-  auto s = GetRawMetadata(ns_key, raw_value);
+  auto s = GetRawMetadata(GetOptions{}, ns_key, raw_value);
   if (!s.ok()) return s;
 
   Metadata metadata(kRedisNone, false);
@@ -147,12 +148,7 @@ rocksdb::Status String::Get(const std::string &user_key, std::string *value) {
   return getValue(ns_key, value);
 }
 
-rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, uint64_t ttl, bool persist) {
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
+rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, std::optional<uint64_t> expire) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -161,8 +157,8 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
   std::string raw_data;
   Metadata metadata(kRedisString, false);
-  if (ttl > 0 || persist) {
-    metadata.expire = expire;
+  if (expire.has_value()) {
+    metadata.expire = expire.value();
   } else {
     // If there is no ttl or persist is false, then skip the following updates.
     return rocksdb::Status::OK();
@@ -180,7 +176,7 @@ rocksdb::Status String::GetEx(const std::string &user_key, std::string *value, u
 
 rocksdb::Status String::GetSet(const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
-  auto s = Set(user_key, new_value, {/*ttl=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
+  auto s = Set(user_key, new_value, {/*expire=*/0, StringSetType::NONE, /*get=*/true, /*keep_ttl=*/false}, old_value);
   return s;
 }
 rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) {
@@ -195,7 +191,7 @@ rocksdb::Status String::GetDel(const std::string &user_key, std::string *value) 
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(pairs, /*ttl=*/0, /*lock=*/true);
+  return MSet(pairs, /*expire=*/0, /*lock=*/true);
 }
 
 rocksdb::Status String::Set(const std::string &user_key, const std::string &value, StringSetArgs args,
@@ -246,9 +242,8 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   }
 
   // Handle expire time
-  if (args.ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + args.ttl;
+  if (!args.keep_ttl) {
+    expire = args.expire;
   }
 
   // Create new value
@@ -260,21 +255,21 @@ rocksdb::Status String::Set(const std::string &user_key, const std::string &valu
   return updateRawValue(ns_key, new_raw_value);
 }
 
-rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t ttl) {
+rocksdb::Status String::SetEX(const std::string &user_key, const std::string &value, uint64_t expire_ms) {
   std::optional<std::string> ret;
-  return Set(user_key, value, {ttl, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
+  return Set(user_key, value, {expire_ms, StringSetType::NONE, /*get=*/false, /*keep_ttl=*/false}, ret);
 }
 
-rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
+rocksdb::Status String::SetNX(const std::string &user_key, const std::string &value, uint64_t expire_ms, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire_ms, StringSetType::NX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
 
-rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t ttl, bool *flag) {
+rocksdb::Status String::SetXX(const std::string &user_key, const std::string &value, uint64_t expire_ms, bool *flag) {
   std::optional<std::string> ret;
-  auto s = Set(user_key, value, {ttl, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
+  auto s = Set(user_key, value, {expire_ms, StringSetType::XX, /*get=*/false, /*keep_ttl=*/false}, ret);
   *flag = ret.has_value();
   return s;
 }
@@ -389,13 +384,7 @@ rocksdb::Status String::IncrByFloat(const std::string &user_key, double incremen
   return updateRawValue(ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl, bool lock) {
-  uint64_t expire = 0;
-  if (ttl > 0) {
-    uint64_t now = util::GetTimeStampMS();
-    expire = now + ttl;
-  }
-
+rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t expire_ms, bool lock) {
   // Data race, key string maybe overwrite by other key while didn't lock the keys here,
   // to improve the set performance
   std::optional<MultiLockGuard> guard;
@@ -415,7 +404,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
   for (const auto &pair : pairs) {
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire;
+    metadata.expire = expire_ms;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     std::string ns_key = AppendNamespacePrefix(pair.key);
@@ -424,7 +413,7 @@ rocksdb::Status String::MSet(const std::vector<StringPair> &pairs, uint64_t ttl,
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t ttl, bool *flag) {
+rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t expire_ms, bool *flag) {
   *flag = false;
 
   int exists = 0;
@@ -446,7 +435,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
     return rocksdb::Status::OK();
   }
 
-  rocksdb::Status s = MSet(pairs, /*ttl=*/ttl, /*lock=*/false);
+  rocksdb::Status s = MSet(pairs, /*expire_ms=*/expire_ms, /*lock=*/false);
   if (!s.ok()) return s;
 
   *flag = true;
@@ -459,7 +448,7 @@ rocksdb::Status String::MSetNX(const std::vector<StringPair> &pairs, uint64_t tt
 //  -1 if the user_key does not exist
 //  0 if the operation fails
 rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_value, const std::string &new_value,
-                            uint64_t ttl, int *flag) {
+                            uint64_t expire, int *flag) {
   *flag = 0;
 
   std::string current_value;
@@ -479,12 +468,7 @@ rocksdb::Status String::CAS(const std::string &user_key, const std::string &old_
 
   if (old_value == current_value) {
     std::string raw_value;
-    uint64_t expire = 0;
     Metadata metadata(kRedisString, false);
-    if (ttl > 0) {
-      uint64_t now = util::GetTimeStampMS();
-      expire = now + ttl;
-    }
     metadata.expire = expire;
     metadata.Encode(&raw_value);
     raw_value.append(new_value);
@@ -519,12 +503,164 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   }
 
   if (value == current_value) {
-    auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
-                                          storage_->GetCFHandle(engine::kMetadataColumnFamilyName), ns_key);
+    auto delete_status =
+        storage_->Delete(storage_->DefaultWriteOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key);
     if (!delete_status.ok()) {
       return delete_status;
     }
     *flag = 1;
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::LCS(const std::string &user_key1, const std::string &user_key2, StringLCSArgs args,
+                            StringLCSResult *rst) {
+  if (args.type == StringLCSType::LEN) {
+    *rst = static_cast<uint32_t>(0);
+  } else if (args.type == StringLCSType::IDX) {
+    *rst = StringLCSIdxResult{{}, 0};
+  } else {
+    *rst = std::string{};
+  }
+
+  std::string a;
+  std::string b;
+  std::string ns_key1 = AppendNamespacePrefix(user_key1);
+  std::string ns_key2 = AppendNamespacePrefix(user_key2);
+  auto s1 = getValue(ns_key1, &a);
+  auto s2 = getValue(ns_key2, &b);
+
+  if (!s1.ok() && !s1.IsNotFound()) {
+    return s1;
+  }
+  if (!s2.ok() && !s2.IsNotFound()) {
+    return s2;
+  }
+  if (s1.IsNotFound()) a = "";
+  if (s2.IsNotFound()) b = "";
+
+  // Detect string truncation or later overflows.
+  if (a.length() >= UINT32_MAX - 1 || b.length() >= UINT32_MAX - 1) {
+    return rocksdb::Status::InvalidArgument("String too long for LCS");
+  }
+
+  // Compute the LCS using the vanilla dynamic programming technique of
+  // building a table of LCS(x, y) substrings.
+  auto alen = static_cast<uint32_t>(a.length());
+  auto blen = static_cast<uint32_t>(b.length());
+
+  // Allocate the LCS table.
+  uint64_t dp_size = (alen + 1) * (blen + 1);
+  uint64_t bulk_size = dp_size * sizeof(uint32_t);
+  if (bulk_size > PROTO_BULK_MAX_SIZE || bulk_size / dp_size != sizeof(uint32_t)) {
+    return rocksdb::Status::Aborted("Insufficient memory, transient memory for LCS exceeds proto-max-bulk-len");
+  }
+  std::vector<uint32_t> dp(dp_size, 0);
+  auto lcs = [&dp, blen](const uint32_t i, const uint32_t j) -> uint32_t & { return dp[i * (blen + 1) + j]; };
+
+  // Start building the LCS table.
+  for (uint32_t i = 1; i <= alen; i++) {
+    for (uint32_t j = 1; j <= blen; j++) {
+      if (a[i - 1] == b[j - 1]) {
+        // The len LCS (and the LCS itself) of two
+        // sequences with the same final character, is the
+        // LCS of the two sequences without the last char
+        // plus that last char.
+        lcs(i, j) = lcs(i - 1, j - 1) + 1;
+      } else {
+        // If the last character is different, take the longest
+        // between the LCS of the first string and the second
+        // minus the last char, and the reverse.
+        lcs(i, j) = std::max(lcs(i - 1, j), lcs(i, j - 1));
+      }
+    }
+  }
+
+  uint32_t idx = lcs(alen, blen);
+
+  // Only compute the length of LCS.
+  if (auto result = std::get_if<uint32_t>(rst)) {
+    *result = idx;
+    return rocksdb::Status::OK();
+  }
+
+  // Store the length of the LCS first if needed.
+  if (auto result = std::get_if<StringLCSIdxResult>(rst)) {
+    result->len = idx;
+  }
+
+  // Allocate when we need to compute the actual LCS string.
+  if (auto result = std::get_if<std::string>(rst)) {
+    result->resize(idx);
+  }
+
+  uint32_t i = alen;
+  uint32_t j = blen;
+  uint32_t arange_start = alen;  // alen signals that values are not set.
+  uint32_t arange_end = 0;
+  uint32_t brange_start = 0;
+  uint32_t brange_end = 0;
+  while (i > 0 && j > 0) {
+    bool emit_range = false;
+    if (a[i - 1] == b[j - 1]) {
+      // If there is a match, store the character if needed.
+      // And reduce the indexes to look for a new match.
+      if (auto result = std::get_if<std::string>(rst)) {
+        result->at(idx - 1) = a[i - 1];
+      }
+
+      // Track the current range.
+      if (arange_start == alen) {
+        arange_start = i - 1;
+        arange_end = i - 1;
+        brange_start = j - 1;
+        brange_end = j - 1;
+      }
+      // Let's see if we can extend the range backward since
+      // it is contiguous.
+      else if (arange_start == i && brange_start == j) {
+        arange_start--;
+        brange_start--;
+      } else {
+        emit_range = true;
+      }
+
+      // Emit the range if we matched with the first byte of
+      // one of the two strings. We'll exit the loop ASAP.
+      if (arange_start == 0 || brange_start == 0) {
+        emit_range = true;
+      }
+      idx--;
+      i--;
+      j--;
+    } else {
+      // Otherwise reduce i and j depending on the largest
+      // LCS between, to understand what direction we need to go.
+      uint32_t lcs1 = lcs(i - 1, j);
+      uint32_t lcs2 = lcs(i, j - 1);
+      if (lcs1 > lcs2)
+        i--;
+      else
+        j--;
+      if (arange_start != alen) emit_range = true;
+    }
+
+    // Emit the current range if needed.
+    if (emit_range) {
+      if (auto result = std::get_if<StringLCSIdxResult>(rst)) {
+        uint32_t match_len = arange_end - arange_start + 1;
+
+        // Always emit the range when the `min_match_len` is not set.
+        if (args.min_match_len == 0 || match_len >= args.min_match_len) {
+          result->matches.emplace_back(StringLCSRange{arange_start, arange_end},
+                                       StringLCSRange{brange_start, brange_end}, match_len);
+        }
+      }
+
+      // Restart at the next match.
+      arange_start = alen;
+    }
   }
 
   return rocksdb::Status::OK();

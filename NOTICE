@@ -71,6 +71,7 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 * lua(https://github.com/KvrocksLabs/lua, alternative to LuaJIT)
 * hat-trie(https://github.com/Tessil/hat-trie)
 * pegtl(https://github.com/taocpp/PEGTL, NOTE: changed to Boost Software License Version 1.0 in main branch)
+* cpptrace(https://github.com/jeremy-rifkin/cpptrace)
 
 ================================================================
 Boost Software License Version 1.0

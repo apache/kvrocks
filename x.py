@@ -107,7 +107,7 @@ def enable_git_hooks(target_hook_name: str) -> None:
             os.remove(dst)
         os.link(hook_path, dst)
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
-        print(target_hook_name, "installed at", dst)
+        print(hook.split('.')[0], "installed at", dst)
 
 def disable_git_hooks(target_hook_name: str) -> None:
     for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):

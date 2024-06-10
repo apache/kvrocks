@@ -24,6 +24,7 @@
 #include <utility>
 
 #include "parse_util.h"
+#include "string_util.h"
 
 std::string Scheduler::ToString() const {
   auto param2string = [](int n, bool is_interval) -> std::string {
@@ -63,18 +64,16 @@ bool Cron::IsTimeMatch(const tm *tm) {
   }
   for (const auto &st : schedulers_) {
     bool minuteMatch = (st.minute == -1 || tm->tm_min == st.minute ||
-                        (st.minute > 0 && st.minute <= 59 && tm->tm_min % st.minute == 0) ||
-                        (st.minute == 0 && tm->tm_min == 0));
+                        (st.minute > 0 && st.minute <= 59 && tm->tm_min % st.minute == 0 && st.minute_interval));
     bool hourMatch = (st.hour == -1 || tm->tm_hour == st.hour ||
-                      (st.hour > 0 && st.hour <= 23 && tm->tm_hour % st.hour == 0) ||
-                      (st.hour == 0 && tm->tm_hour == 0));
+                      (st.hour > 0 && st.hour <= 23 && tm->tm_hour % st.hour == 0 && st.hour_interval));
     bool mdayMatch = (st.mday == -1 || tm->tm_mday == st.mday ||
-                      (st.mday > 0 && st.mday <= 31 && tm->tm_mday % st.mday == 0) ||
+                      (st.mday > 0 && st.mday <= 31 && tm->tm_mday % st.mday == 0 && st.mday_interval) ||
                       (st.mday == 0 && tm->tm_mday == 1));
     bool monthMatch = (st.month == -1 || tm->tm_mon == st.month ||
-                       (st.month > 0 && st.month <= 12 && (tm->tm_mon - 1) % st.month == 0));
+                       (st.month > 0 && st.month <= 12 && (tm->tm_mon - 1) % st.month == 0 && st.month_interval));
     bool wdayMatch = (st.wday == -1 || tm->tm_wday == st.wday ||
-                      (st.wday >= 0 && st.wday <= 6 && tm->tm_wday % st.wday == 0));
+                      (st.wday >= 0 && st.wday <= 6 && tm->tm_wday % st.wday == 0 && st.wday_interval));
 
     if (minuteMatch && hourMatch && mdayMatch && monthMatch && wdayMatch) {
       last_tm_ = *tm;
@@ -115,7 +114,7 @@ StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int 
   }
 
   // Check for interval syntax (*/n)
-  if (HasPrefix(param, "*/")) {
+  if (util::HasPrefix(param, "*/")) {
     auto s = ParseInt<int>(param.substr(2), {lower_bound, upper_bound}, 10);
     if (!s) {
       return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));

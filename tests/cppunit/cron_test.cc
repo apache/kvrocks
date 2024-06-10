@@ -234,6 +234,3 @@ TEST_F(CronTestWeekDayInterval, ToString) {
   std::string got = cron_->ToString();
   ASSERT_EQ("0 * * * */4", got);
 }
-
-
-

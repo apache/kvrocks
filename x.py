@@ -95,12 +95,10 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
 GIT_HOOKS_DIR = ".git/hooks/"
 KVROCKS_GIT_HOOKS_DIR = "./utils/git-hooks/"
-
-def enable_git_hooks(target_hook_name: str) -> None:
+def prepare() -> None:
+    # install git hooks
     os.makedirs(GIT_HOOKS_DIR, exist_ok=True)
     for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
-        if target_hook_name != "all" and target_hook_name != hook.split('.')[0]:
-            continue
         hook_path = os.path.join(KVROCKS_GIT_HOOKS_DIR, hook)
         dst = os.path.join(GIT_HOOKS_DIR, hook.split('.')[0])
         if os.path.exists(dst):
@@ -109,22 +107,6 @@ def enable_git_hooks(target_hook_name: str) -> None:
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
         print(hook.split('.')[0], "installed at", dst)
 
-def disable_git_hooks(target_hook_name: str) -> None:
-    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
-        if target_hook_name != "all" and target_hook_name != hook.split('.')[0]:
-            continue
-        dst = os.path.join(GIT_HOOKS_DIR, hook.split('.')[0])
-        if os.path.exists(dst):
-            os.remove(dst)
-        print(dst, "disabled")
-
-def list_git_hooks() -> None:
-    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
-        hook_name = hook.split('.')[0]
-        dst = os.path.join(GIT_HOOKS_DIR, hook_name)
-        status = "enabled" if os.path.exists(dst) else "disabled"
-        print(hook_name, status)
-        
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
@@ -447,31 +429,12 @@ if __name__ == '__main__':
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
 
-    parser_config_git_hooks = subparsers.add_parser(
-        'config-git-hooks',
-        description="Config git hooks",
-        help="Config git hooks in utils/git-hooks"
+    parser_prepare = subparsers.add_parser(
+        'prepare',
+        description="Prepare scripts such as git hooks",
+        help="Prepare scripts such as git hooks"
     )
-    parser_check.set_defaults(func=parser_config_git_hooks.print_help)
-    parser_config_git_hooks_subparsers = parser_config_git_hooks.add_subparsers()
-    parser_enable_git_hooks = parser_config_git_hooks_subparsers.add_parser(
-        'enable'
-        , description="enable git hooks",
-        help="enable git hooks in utils/git-hooks")
-    parser_enable_git_hooks.add_argument("--target_hook_name", default="all", help="default=all, enable all git hooks")
-    parser_enable_git_hooks.set_defaults(func=enable_git_hooks)
-    parser_disable_git_hooks = parser_config_git_hooks_subparsers.add_parser(
-        'disable', 
-        description="disable git hooks", 
-        help="disable git hooks in .git/hooks")
-    parser_disable_git_hooks.add_argument("--target_hook_name", default="all", help="default=all, disable all git hooks")
-    parser_disable_git_hooks.set_defaults(func=disable_git_hooks)
-    parser_list_git_hooks = parser_config_git_hooks_subparsers.add_parser(
-        'list',
-        description="list status of git hooks", 
-        help="list status of git hooks in utils/git-hooks"
-    )   
-    parser_list_git_hooks.set_defaults(func=list_git_hooks)
+    parser_prepare.set_defaults(func=prepare)
 
     args = parser.parse_args()
 

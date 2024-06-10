@@ -20,7 +20,6 @@
 
 #include "cron.h"
 
-#include <regex>
 #include <stdexcept>
 #include <utility>
 
@@ -116,16 +115,13 @@ StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int 
   }
 
   // Check for interval syntax (*/n)
-  std::regex interval_regex(R"(\*/(\d+))");
-  std::smatch match;
-  if (std::regex_match(param, match, interval_regex)) {
-    int interval = std::stoi(match[1].str());
-    if (interval >= lower_bound && interval <= upper_bound) {
-      is_interval = true;
-      return interval;
-    } else {
-      return {Status::NotOK, "interval value out of bounds"};
+  if (HasPrefix(param, "*/")) {
+    auto s = ParseInt<int>(param.substr(2), {lower_bound, upper_bound}, 10);
+    if (!s) {
+      return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
     }
+    is_interval = true;
+    return *s;
   }
 
   auto s = ParseInt<int>(param, {lower_bound, upper_bound}, 10);

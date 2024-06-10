@@ -124,6 +124,7 @@ def list_git_hooks() -> None:
         dst = os.path.join(GIT_HOOKS_DIR, hook_name)
         status = "enabled" if os.path.exists(dst) else "disabled"
         print(hook_name, status)
+        
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
@@ -457,13 +458,13 @@ if __name__ == '__main__':
         'enable'
         , description="enable git hooks",
         help="enable git hooks in utils/git-hooks")
-    parser_enable_git_hooks.add_argument("--target_hook_name", default="all")
+    parser_enable_git_hooks.add_argument("--target_hook_name", default="all", help="default=all, enable all git hooks")
     parser_enable_git_hooks.set_defaults(func=enable_git_hooks)
     parser_disable_git_hooks = parser_config_git_hooks_subparsers.add_parser(
         'disable', 
         description="disable git hooks", 
         help="disable git hooks in .git/hooks")
-    parser_disable_git_hooks.add_argument("--target_hook_name", default="all")
+    parser_disable_git_hooks.add_argument("--target_hook_name", default="all", help="default=all, disable all git hooks")
     parser_disable_git_hooks.set_defaults(func=disable_git_hooks)
     parser_list_git_hooks = parser_config_git_hooks_subparsers.add_parser(
         'list',

@@ -92,15 +92,38 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
         raise RuntimeError(f"{prog_name} {require_version} or higher is required, got: {current}")
 
     return semver
-def enable_git_hook(hook_path : str) -> None:
-    hook_name = os.path.basename(hook_path)
-    dst = ".git/hooks/" + hook_name.split('.')[0]
-    if os.path.exists(dst):
-        os.remove(dst)
-    os.link(hook_path, dst)
-    os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
-    print(hook_name, "installed at", dst)
 
+GIT_HOOKS_DIR = ".git/hooks/"
+KVROCKS_GIT_HOOKS_DIR = "./utils/git-hooks/"
+
+def enable_git_hooks(target_hook_name: str) -> None:
+    os.makedirs(GIT_HOOKS_DIR, exist_ok=True)
+    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
+        if target_hook_name != "all" and target_hook_name != hook.split('.')[0]:
+            continue
+        hook_path = os.path.join(KVROCKS_GIT_HOOKS_DIR, hook)
+        dst = os.path.join(GIT_HOOKS_DIR, hook.split('.')[0])
+        if os.path.exists(dst):
+            os.remove(dst)
+        os.link(hook_path, dst)
+        os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
+        print(target_hook_name, "installed at", dst)
+
+def disable_git_hooks(target_hook_name: str) -> None:
+    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
+        if target_hook_name != "all" and target_hook_name != hook.split('.')[0]:
+            continue
+        dst = os.path.join(GIT_HOOKS_DIR, hook.split('.')[0])
+        if os.path.exists(dst):
+            os.remove(dst)
+        print(dst, "disabled")
+
+def list_git_hooks() -> None:
+    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
+        hook_name = hook.split('.')[0]
+        dst = os.path.join(GIT_HOOKS_DIR, hook_name)
+        status = "enabled" if os.path.exists(dst) else "disabled"
+        print(hook_name, status)
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
@@ -129,9 +152,6 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
         cmake_options += [f"-D{o}" for o in D]
 
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
-
-    os.makedirs("./git/hooks", exist_ok=True)
-    enable_git_hook("pre-push.sh")
 
     if skip_build:
         return
@@ -425,6 +445,32 @@ if __name__ == '__main__':
     parser_test_go.add_argument('--cli-path', default='redis-cli', help="path of redis-cli to test kvrocks")
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
+
+    parser_config_git_hooks = subparsers.add_parser(
+        'config-git-hooks',
+        description="Config git hooks",
+        help="Config git hooks in utils/git-hooks"
+    )
+    parser_check.set_defaults(func=parser_config_git_hooks.print_help)
+    parser_config_git_hooks_subparsers = parser_config_git_hooks.add_subparsers()
+    parser_enable_git_hooks = parser_config_git_hooks_subparsers.add_parser(
+        'enable'
+        , description="enable git hooks",
+        help="enable git hooks in utils/git-hooks")
+    parser_enable_git_hooks.add_argument("--target_hook_name", default="all")
+    parser_enable_git_hooks.set_defaults(func=enable_git_hooks)
+    parser_disable_git_hooks = parser_config_git_hooks_subparsers.add_parser(
+        'disable', 
+        description="disable git hooks", 
+        help="disable git hooks in .git/hooks")
+    parser_disable_git_hooks.add_argument("--target_hook_name", default="all")
+    parser_disable_git_hooks.set_defaults(func=disable_git_hooks)
+    parser_list_git_hooks = parser_config_git_hooks_subparsers.add_parser(
+        'list',
+        description="list status of git hooks", 
+        help="list status of git hooks in utils/git-hooks"
+    )   
+    parser_list_git_hooks.set_defaults(func=list_git_hooks)
 
     args = parser.parse_args()
 

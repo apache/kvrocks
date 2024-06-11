@@ -62,18 +62,19 @@ bool Cron::IsTimeMatch(const tm *tm) {
       tm->tm_mon == last_tm_.tm_mon && tm->tm_wday == last_tm_.tm_wday) {
     return false;
   }
+
+  auto match = [](int current, int val, bool interval) {
+    if (val == -1) return true;
+    if (interval) return current % val == 0;
+    return val == current;
+  };
+
   for (const auto &st : schedulers_) {
-    bool minute_match = (st.minute == -1 || tm->tm_min == st.minute ||
-                         (st.minute > 0 && st.minute <= 59 && tm->tm_min % st.minute == 0 && st.minute_interval));
-    bool hour_match = (st.hour == -1 || tm->tm_hour == st.hour ||
-                       (st.hour > 0 && st.hour <= 23 && tm->tm_hour % st.hour == 0 && st.hour_interval));
-    bool mday_match = (st.mday == -1 || tm->tm_mday == st.mday ||
-                       (st.mday > 0 && st.mday <= 31 && tm->tm_mday % st.mday == 0 && st.mday_interval) ||
-                       (st.mday == 0 && tm->tm_mday == 1));
-    bool month_match = (st.month == -1 || tm->tm_mon == st.month ||
-                        (st.month > 0 && st.month <= 12 && (tm->tm_mon - 1) % st.month == 0 && st.month_interval));
-    bool wday_match = (st.wday == -1 || tm->tm_wday == st.wday ||
-                       (st.wday >= 0 && st.wday <= 6 && tm->tm_wday % st.wday == 0 && st.wday_interval));
+    bool minute_match = match(tm->tm_min, st.minute, st.minute_interval);
+    bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval);
+    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval);
+    bool month_match = match(tm->tm_mon - 1, st.month, st.month_interval);
+    bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval);
 
     if (minute_match && hour_match && mday_match && month_match && wday_match) {
       last_tm_ = *tm;

@@ -68,7 +68,7 @@ void SyncMigrateContext::OnWrite(bufferevent *bev) {
   if (migrate_result_) {
     conn_->Reply(redis::SimpleString("OK"));
   } else {
-    conn_->Reply(redis::Error("ERR " + migrate_result_.Msg()));
+    conn_->Reply(redis::Error(redis::ErrorType::Err, migrate_result_.Msg()));
   }
 
   timer_.reset();

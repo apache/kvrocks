@@ -369,7 +369,7 @@ class CommandBZPop : public BlockingCommander {
     redis::ZSet zset_db(srv_->storage, conn_->GetNamespace());
     auto s = PopFromMultipleZsets(&zset_db, keys_, min_, 1, &user_key, &member_scores);
     if (!s.ok()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error(ErrorType::Err, s.ToString()));
       return true;
     }
 
@@ -548,7 +548,7 @@ class CommandBZMPop : public BlockingCommander {
     redis::ZSet zset_db(srv_->storage, conn_->GetNamespace());
     auto s = PopFromMultipleZsets(&zset_db, keys_, flag_ == ZSET_MIN, count_, &user_key, &member_scores);
     if (!s.ok()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error(ErrorType::Err, s.ToString()));
       return true;
     }
 

@@ -304,7 +304,7 @@ class CommandBPop : public BlockingCommander {
         conn_->Reply(conn_->MultiBulkString({*last_key_ptr, std::move(elem)}));
       }
     } else if (!s.IsNotFound()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error(ErrorType::Err, s.ToString()));
     }
 
     return s;
@@ -414,7 +414,7 @@ class CommandBLMPop : public BlockingCommander {
         conn_->Reply(redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)}));
       }
     } else if (!s.IsNotFound()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error(ErrorType::Err, s.ToString()));
     }
 
     return s;
@@ -757,7 +757,7 @@ class CommandBLMove : public BlockingCommander {
     std::string elem;
     auto s = list_db.LMove(args_[1], args_[2], src_left_, dst_left_, &elem);
     if (!s.ok() && !s.IsNotFound()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error(ErrorType::Err, s.ToString()));
       return true;
     }
 

@@ -40,10 +40,10 @@ inline constexpr const char *errLimitOptionNotAllowed =
 inline constexpr const char *errZSetLTGTNX = "GT, LT, and/or NX options at the same time are not compatible";
 inline constexpr const char *errScoreIsNotValidFloat = "score is not a valid float";
 inline constexpr const char *errValueIsNotFloat = "value is not a valid float";
-inline constexpr const char *errNoMatchingScript = "NOSCRIPT No matching script. Please use EVAL";
+inline constexpr const char *errNoMatchingScript = "No matching script. Please use EVAL";
 inline constexpr const char *errUnknownOption = "unknown option";
 inline constexpr const char *errUnknownSubcommandOrWrongArguments = "Unknown subcommand or wrong number of arguments";
 inline constexpr const char *errWrongNumArguments = "ERR wrong number of arguments";
-inline constexpr const char *errRestoringBackup = "LOADING kvrocks is restoring the db from backup";
+inline constexpr const char *errRestoringBackup = "kvrocks is restoring the db from backup";
 
 }  // namespace redis

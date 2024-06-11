@@ -95,17 +95,17 @@ class CommandNamespace : public Commander {
       }
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = srv->GetNamespace()->Set(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(ErrorType::Err, s.Msg());
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = srv->GetNamespace()->Add(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(ErrorType::Err, s.Msg());
       LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(ErrorType::Err, s.Msg());
       LOG(WARNING) << "Deleted namespace: " << args_[2] << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else {
       return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD"};
@@ -630,9 +630,9 @@ class CommandDebug : public Commander {
       } else if (protocol_type_ == "verbatim") {  // verbatim string
         *output = conn->VerbatimString("txt", "verbatim string");
       } else {
-        *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: "
-            "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
+        *output = redis::Error(ErrorType::None,
+                               "Wrong protocol type name. Please use one of the following: "
+                               "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
       }
     } else if (subcommand_ == "dbsize-limit") {
       srv->storage->SetDBSizeLimit(dbsize_limit_);
@@ -741,7 +741,7 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        conn->Reply(redis::Error("NOPROTO unsupported protocol version"));
+        conn->Reply(redis::Error(ErrorType::NoProto, "unsupported protocol version"));
         return Status::OK();
       }
     }

@@ -28,7 +28,44 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const std::string &err) { return "-" + err + CRLF; }
+std::string Error(const ErrorType type, const std::string &message) {
+  std::string prefix;
+  switch (type) {
+    case ErrorType::Loading:
+      prefix = "LOADING";
+      break;
+    case ErrorType::NoScript:
+      prefix = "NOSCRIPT";
+      break;
+    case ErrorType::WrongType:
+      prefix = "WRONGTYPE";
+      break;
+    case ErrorType::NoProto:
+      prefix = "NOPROTO";
+      break;
+    case ErrorType::NoAuth:
+      prefix = "NOAUTH";
+      break;
+    case ErrorType::Readonly:
+      prefix = "READONLY";
+      break;
+    case ErrorType::MasterDown:
+      prefix = "MASTERDOWN";
+      break;
+    case ErrorType::ExecAbort:
+      prefix = "EXECABORT";
+      break;
+    case ErrorType::Err:
+      prefix = "ERR";
+      break;
+    default:
+      break;
+  }
+  if (prefix.empty()) {
+    return RESP_PREFIX_ERROR + message + CRLF;
+  }
+  return RESP_PREFIX_ERROR + prefix + " " + message + CRLF;
+}
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 

@@ -31,11 +31,24 @@
 
 namespace redis {
 
+enum class ErrorType {
+  None,
+  WrongType,
+  NoScript,
+  NoProto,
+  NoAuth,
+  Loading,
+  Readonly,
+  MasterDown,
+  ExecAbort,
+  Err,
+};
+
 enum class RESP { v2, v3 };
 
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
-std::string Error(const std::string &err);
+std::string Error(ErrorType type, const std::string &message);
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string Integer(T data) {

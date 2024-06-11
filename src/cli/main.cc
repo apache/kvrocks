@@ -112,9 +112,7 @@ static void InitGoogleLog(const Config *config) {
   } else {
     FLAGS_log_dir = config->log_dir + "/";
     if (config->log_retention_days != -1) {
-      auto minutes =
-          std::chrono::duration_cast<std::chrono::minutes>(std::chrono::hours(24) * config->log_retention_days);
-      google::EnableLogCleaner(minutes);
+      google::EnableLogCleaner(std::chrono::hours(24) * config->log_retention_days);
     }
   }
 }

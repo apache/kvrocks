@@ -87,7 +87,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
-    Reply(redis::Error(ErrorType::Err, s.Msg()));
+    Reply(redis::Error(s));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -493,7 +493,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error(ErrorType::Err, s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 
@@ -585,7 +585,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Reply for MULTI
     if (!s.IsOK()) {
-      Reply(redis::Error(ErrorType::Err, s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 

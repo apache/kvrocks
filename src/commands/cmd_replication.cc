@@ -102,7 +102,7 @@ class CommandPSync : public Commander {
     srv->stats.IncrPSyncOKCount();
     s = srv->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
-      std::string err = redis::Error(ErrorType::None, s.Msg());
+      std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();

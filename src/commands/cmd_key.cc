@@ -508,7 +508,7 @@ class CommandSort : public Commander {
 
     switch (res) {
       case Database::SortResult::UNKNOWN_TYPE:
-        *output = redis::Error(ErrorType::Err, "Unknown Type");
+        *output = redis::Error(ErrorType::None, "Unknown Type");
         break;
       case Database::SortResult::DOUBLE_CONVERT_ERROR:
         *output = redis::Error(ErrorType::None, "One or more scores can't be converted into double");

@@ -116,7 +116,7 @@ StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int 
   // Check for interval syntax (*/n)
   if (util::HasPrefix(param, "*/")) {
     auto s = ParseInt<int>(param.substr(2), {lower_bound, upper_bound}, 10);
-    if (!s) {
+    if (!s || *s == 0) {
       return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
     }
     is_interval = true;

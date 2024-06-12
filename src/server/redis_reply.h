@@ -52,7 +52,7 @@ void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
 
 std::string Error(ErrorKind kind, const std::string &message);
-std::string Error(const Status &s) { return Error(ErrorKind::Err, s.Msg()); }
+std::string Error(const Status &s);
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string Integer(T data) {

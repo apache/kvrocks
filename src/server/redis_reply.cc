@@ -67,6 +67,8 @@ std::string Error(const ErrorKind kind, const std::string &message) {
   return RESP_PREFIX_ERROR + prefix + " " + message + CRLF;
 }
 
+std::string Error(const Status &s) { return Error(ErrorKind::Err, s.Msg()); }
+
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
 std::string Array(const std::vector<std::string> &list) {

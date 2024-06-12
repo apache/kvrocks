@@ -63,18 +63,18 @@ bool Cron::IsTimeMatch(const tm *tm) {
     return false;
   }
 
-  auto match = [](int current, int val, bool interval) {
+  auto match = [](int current, int val, bool interval, int interval_offset) {
     if (val == -1) return true;
-    if (interval) return current % val == 0;
+    if (interval) return (current - interval_offset) % val == 0;
     return val == current;
   };
 
   for (const auto &st : schedulers_) {
-    bool minute_match = match(tm->tm_min, st.minute, st.minute_interval);
-    bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval);
-    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval);
-    bool month_match = match(tm->tm_mon - 1, st.month, st.month_interval);
-    bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval);
+    bool minute_match = match(tm->tm_min, st.minute, st.minute_interval, 0);
+    bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval, 0);
+    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval, 0);
+    bool month_match = match(tm->tm_mon + 1, st.month, st.month_interval, 1);
+    bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval, 0);
 
     if (minute_match && hour_match && mday_match && month_match && wday_match) {
       last_tm_ = *tm;

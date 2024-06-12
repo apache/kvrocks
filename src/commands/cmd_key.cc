@@ -480,7 +480,7 @@ class CommandSort : public Commander {
     }
 
     if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
-      *output = Error(ErrorType::WrongType, "Operation against a key holding the wrong kind of value");
+      *output = Error(ErrorKind::WrongType, "Operation against a key holding the wrong kind of value");
       return Status::OK();
     }
 
@@ -508,13 +508,13 @@ class CommandSort : public Commander {
 
     switch (res) {
       case Database::SortResult::UNKNOWN_TYPE:
-        *output = redis::Error(ErrorType::None, "Unknown Type");
+        *output = redis::Error(ErrorKind::None, "Unknown Type");
         break;
       case Database::SortResult::DOUBLE_CONVERT_ERROR:
-        *output = redis::Error(ErrorType::None, "One or more scores can't be converted into double");
+        *output = redis::Error(ErrorKind::None, "One or more scores can't be converted into double");
         break;
       case Database::SortResult::LIMIT_EXCEEDED:
-        *output = redis::Error(ErrorType::None, "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
+        *output = redis::Error(ErrorKind::None, "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
                                                     std::to_string(SORT_LENGTH_LIMIT));
         break;
       case Database::SortResult::DONE:

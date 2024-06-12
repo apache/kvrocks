@@ -28,34 +28,34 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const ErrorType type, const std::string &message) {
+std::string Error(const ErrorKind kind, const std::string &message) {
   std::string prefix;
-  switch (type) {
-    case ErrorType::Loading:
+  switch (kind) {
+    case ErrorKind::Loading:
       prefix = "LOADING";
       break;
-    case ErrorType::NoScript:
+    case ErrorKind::NoScript:
       prefix = "NOSCRIPT";
       break;
-    case ErrorType::WrongType:
+    case ErrorKind::WrongType:
       prefix = "WRONGTYPE";
       break;
-    case ErrorType::NoProto:
+    case ErrorKind::NoProto:
       prefix = "NOPROTO";
       break;
-    case ErrorType::NoAuth:
+    case ErrorKind::NoAuth:
       prefix = "NOAUTH";
       break;
-    case ErrorType::Readonly:
+    case ErrorKind::Readonly:
       prefix = "READONLY";
       break;
-    case ErrorType::MasterDown:
+    case ErrorKind::MasterDown:
       prefix = "MASTERDOWN";
       break;
-    case ErrorType::ExecAbort:
+    case ErrorKind::ExecAbort:
       prefix = "EXECABORT";
       break;
-    case ErrorType::Err:
+    case ErrorKind::Err:
       prefix = "ERR";
       break;
     default:

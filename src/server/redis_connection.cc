@@ -432,7 +432,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error(ErrorType::Err, "unknown command " + cmd_tokens.front()));
+      Reply(redis::Error(ErrorKind::Err, "unknown command " + cmd_tokens.front()));
       continue;
     }
     auto current_cmd = std::move(*cmd_s);
@@ -444,7 +444,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (GetNamespace().empty()) {
       if (!password.empty()) {
         if (cmd_name != "auth" && cmd_name != "hello") {
-          Reply(redis::Error(ErrorType::NoAuth, "Authentication required."));
+          Reply(redis::Error(ErrorKind::NoAuth, "Authentication required."));
           continue;
         }
       } else {
@@ -477,7 +477,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
-      Reply(redis::Error(ErrorType::Loading, errRestoringBackup));
+      Reply(redis::Error(ErrorKind::Loading, errRestoringBackup));
       if (is_multi_exec) multi_error_ = true;
       continue;
     }
@@ -485,7 +485,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error(ErrorType::Err, "wrong number of arguments"));
+      Reply(redis::Error(ErrorKind::Err, "wrong number of arguments"));
       continue;
     }
 
@@ -498,7 +498,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
-      Reply(redis::Error(ErrorType::Err, "Can't execute " + cmd_name + " in MULTI"));
+      Reply(redis::Error(ErrorKind::Err, "Can't execute " + cmd_name + " in MULTI"));
       multi_error_ = true;
       continue;
     }
@@ -507,7 +507,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (is_multi_exec) multi_error_ = true;
-        Reply(redis::Error(ErrorType::None, s.Msg()));
+        Reply(redis::Error(ErrorKind::None, s.Msg()));
         continue;
       }
     }
@@ -525,18 +525,18 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
-      Reply(redis::Error(ErrorType::Readonly, "You can't write against a read only slave."));
+      Reply(redis::Error(ErrorKind::Readonly, "You can't write against a read only slave."));
       continue;
     }
 
     if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {
-      Reply(redis::Error(ErrorType::Err, "write command not allowed when reached max-db-size."));
+      Reply(redis::Error(ErrorKind::Err, "write command not allowed when reached max-db-size."));
       continue;
     }
 
     if (!config->slave_serve_stale_data && srv_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         srv_->GetReplicationState() != kReplConnected) {
-      Reply(redis::Error(ErrorType::MasterDown,
+      Reply(redis::Error(ErrorKind::MasterDown,
                          "Link with MASTER is down "
                          "and slave-serve-stale-data is set to 'no'."));
       continue;

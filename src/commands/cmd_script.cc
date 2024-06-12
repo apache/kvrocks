@@ -31,7 +31,7 @@ class CommandEvalImpl : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (evalsha && args_[1].size() != 40) {
-      *output = redis::Error(ErrorType::NoScript, errNoMatchingScript);
+      *output = redis::Error(ErrorKind::NoScript, errNoMatchingScript);
       return Status::OK();
     }
 

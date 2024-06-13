@@ -119,7 +119,7 @@ class CommandBFAdd : public Commander {
         *output = redis::Integer(0);
         break;
       case BloomFilterAddResult::kFull:
-        *output = redis::Error(ErrorKind::Err, errFilterFull);
+        *output = redis::Error({ErrorKind::Err, errFilterFull});
         break;
     }
     return Status::OK();
@@ -152,7 +152,7 @@ class CommandBFMAdd : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error(ErrorKind::Err, errFilterFull);
+          *output += redis::Error({ErrorKind::Err, errFilterFull});
           break;
       }
     }
@@ -248,7 +248,7 @@ class CommandBFInsert : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error(ErrorKind::Err, errFilterFull);
+          *output += redis::Error({ErrorKind::Err, errFilterFull});
           break;
       }
     }

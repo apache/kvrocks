@@ -630,9 +630,9 @@ class CommandDebug : public Commander {
       } else if (protocol_type_ == "verbatim") {  // verbatim string
         *output = conn->VerbatimString("txt", "verbatim string");
       } else {
-        *output = redis::Error(ErrorKind::None,
-                               "Wrong protocol type name. Please use one of the following: "
-                               "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
+        return {ErrorKind::None,
+                "Wrong protocol type name. Please use one of the following: "
+                "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim"};
       }
     } else if (subcommand_ == "dbsize-limit") {
       srv->storage->SetDBSizeLimit(dbsize_limit_);
@@ -741,8 +741,7 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        conn->Reply(redis::Error(ErrorKind::NoProto, "unsupported protocol version"));
-        return Status::OK();
+        return {ErrorKind::NoProto, "unsupported protocol version"};
       }
     }
 

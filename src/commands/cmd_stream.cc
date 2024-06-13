@@ -1130,7 +1130,7 @@ class CommandXRead : public Commander,
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok() && !s.IsNotFound()) {
-        conn_->Reply(redis::Error(ErrorKind::Err, s.ToString()));
+        conn_->Reply(redis::Error({ErrorKind::Err, s.ToString()}));
         return;
       }
 
@@ -1423,7 +1423,7 @@ class CommandXReadGroup : public Commander,
       auto s = stream_db.RangeWithPending(streams_[i], options, &result, group_name_, consumer_name_, noack_,
                                           latest_marks_[i]);
       if (!s.ok() && !s.IsNotFound()) {
-        conn_->Reply(redis::Error(ErrorKind::Err, s.ToString()));
+        conn_->Reply(redis::Error({ErrorKind::Err, s.ToString()}));
         return;
       }
 

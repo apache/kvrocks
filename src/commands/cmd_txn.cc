@@ -68,8 +68,7 @@ class CommandExec : public Commander {
     auto reset_multiexec = MakeScopeExit([conn] { conn->ResetMultiExec(); });
 
     if (conn->IsMultiError()) {
-      *output = redis::Error(ErrorKind::ExecAbort, "Transaction discarded");
-      return Status::OK();
+      return {ErrorKind::ExecAbort, "Transaction discarded"};
     }
 
     if (srv->IsWatchedKeysModified(conn)) {

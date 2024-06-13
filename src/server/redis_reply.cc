@@ -28,46 +28,17 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const ErrorKind kind, const std::string &message) {
-  std::string prefix;
-  switch (kind) {
-    case ErrorKind::Loading:
-      prefix = "LOADING";
-      break;
-    case ErrorKind::NoScript:
-      prefix = "NOSCRIPT";
-      break;
-    case ErrorKind::WrongType:
-      prefix = "WRONGTYPE";
-      break;
-    case ErrorKind::NoProto:
-      prefix = "NOPROTO";
-      break;
-    case ErrorKind::NoAuth:
-      prefix = "NOAUTH";
-      break;
-    case ErrorKind::Readonly:
-      prefix = "READONLY";
-      break;
-    case ErrorKind::MasterDown:
-      prefix = "MASTERDOWN";
-      break;
-    case ErrorKind::ExecAbort:
-      prefix = "EXECABORT";
-      break;
-    case ErrorKind::Err:
-      prefix = "ERR";
-      break;
-    default:
-      break;
+std::string Error(const Status &s) {
+  CHECK(!s.IsOK());
+  if (!s.Is<Status::RedisError>()) {
+    return "-ERR " + s.Msg() + CRLF;
   }
+  auto prefix = ErrorKindToPrefix(s.GetErrorKind());
   if (prefix.empty()) {
-    return RESP_PREFIX_ERROR + message + CRLF;
+    return "-" + s.Msg() + CRLF;
   }
-  return RESP_PREFIX_ERROR + prefix + " " + message + CRLF;
+  return "-" + prefix + " " + s.Msg() + CRLF;
 }
-
-std::string Error(const Status &s) { return Error(ErrorKind::Err, s.Msg()); }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 

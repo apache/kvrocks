@@ -30,6 +30,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "redis_error.h"
 #include "type_util.h"
 
 class [[nodiscard]] Status {
@@ -46,6 +47,7 @@ class [[nodiscard]] Status {
     DBGetWALErr,
 
     // Redis
+    RedisError,
     RedisUnknownCmd,
     RedisInvalidCmd,
     RedisParseErr,
@@ -68,6 +70,7 @@ class [[nodiscard]] Status {
   Status(Code code, std::string msg = {}) : impl_{new Impl{code, std::move(msg)}} {  // NOLINT
     CHECK(code != cOK);
   }
+  Status(redis::ErrorKind kind, std::string msg) : impl_{new Impl{RedisError, std::move(msg), kind}} {}
 
   Status(const Status& s) : impl_{s.impl_ ? new Impl{s.impl_->code, s.impl_->msg} : nullptr} {}
   Status(Status&&) = default;
@@ -89,6 +92,7 @@ class [[nodiscard]] Status {
   explicit operator bool() const { return IsOK(); }
 
   Code GetCode() const { return impl_ ? impl_->code : cOK; }
+  redis::ErrorKind GetErrorKind() const { return impl_ ? impl_->kind : redis::ErrorKind::None; }
 
   std::string Msg() const& {
     if (*this) return ok_msg;
@@ -120,6 +124,9 @@ class [[nodiscard]] Status {
   struct Impl {
     Code code;
     std::string msg;
+    // Error kind is used to distinguish different types of Redis errors,
+    // it only takes effect when code is RedisError.
+    redis::ErrorKind kind = redis::ErrorKind::None;
   };
 
   std::unique_ptr<Impl> impl_;

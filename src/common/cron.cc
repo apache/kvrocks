@@ -72,7 +72,7 @@ bool Cron::IsTimeMatch(const tm *tm) {
   for (const auto &st : schedulers_) {
     bool minute_match = match(tm->tm_min, st.minute, st.minute_interval, 0);
     bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval, 0);
-    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval, 0);
+    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval, 1);
     bool month_match = match(tm->tm_mon + 1, st.month, st.month_interval, 1);
     bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval, 0);
 

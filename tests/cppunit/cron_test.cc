@@ -257,6 +257,7 @@ TEST_F(CronTestHourInterval, ToString) {
 }
 
 // At minute 0 on every 4th day-of-month
+// https://crontab.guru/#0_0_*/4_*_* (click on next)
 class CronTestMonthDayInterval : public testing::Test {
  protected:
   explicit CronTestMonthDayInterval() {
@@ -275,16 +276,20 @@ TEST_F(CronTestMonthDayInterval, IsTimeMatch) {
   std::tm *now = std::localtime(&t);
   now->tm_min = 0;
   now->tm_hour = 3;
-  now->tm_mday = 4;
+  now->tm_mday = 17;
+  now->tm_mon = 6;
   ASSERT_TRUE(cron_->IsTimeMatch(now));
   now->tm_hour = 5;
-  now->tm_mday = 8;
+  now->tm_mday = 21;
+  now->tm_mon = 6;
   ASSERT_TRUE(cron_->IsTimeMatch(now));
   now->tm_hour = 6;
-  now->tm_mday = 12;
+  now->tm_mday = 25;
+  now->tm_mon = 6;
   ASSERT_TRUE(cron_->IsTimeMatch(now));
   now->tm_hour = 1;
-  now->tm_mday = 3;
+  now->tm_mday = 2;
+  now->tm_mon = 7;
   ASSERT_FALSE(cron_->IsTimeMatch(now));
   now->tm_hour = 1;
   now->tm_mday = 99;

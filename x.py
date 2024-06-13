@@ -93,7 +93,6 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
-
 def prepare() -> None:
     basedir = Path(__file__).parent.absolute()
     # install git hooks

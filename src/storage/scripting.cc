@@ -754,7 +754,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   if (config->cluster_enabled) {
     auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
-      PushError(lua, s.Msg().c_str());
+      PushError(lua, redis::StatusToRedisError(s).c_str());
       return raise_error ? RaiseError(lua) : 1;
     }
   }

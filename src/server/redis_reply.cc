@@ -28,15 +28,17 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const Status &s) {
+std::string Error(const Status &s) { return RESP_PREFIX_ERROR + StatusToRedisError(s); }
+
+std::string StatusToRedisError(const Status &s) {
   CHECK(!s.IsOK());
   if (!s.Is<Status::RedisError>()) {
-    return "-ERR " + s.Msg() + CRLF;
+    return "ERR " + s.Msg() + CRLF;
   }
   if (auto iter = ErrorKindMap.find(s.GetErrorKind()); iter != ErrorKindMap.end()) {
-    return "-" + iter->second + " " + s.Msg() + CRLF;
+    return iter->second + " " + s.Msg() + CRLF;
   }
-  return "-" + s.Msg() + CRLF;
+  return s.Msg() + CRLF;
 }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }

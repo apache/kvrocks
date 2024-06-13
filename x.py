@@ -93,19 +93,21 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
-GIT_HOOKS_DIR = ".git/hooks/"
-KVROCKS_GIT_HOOKS_DIR = "./utils/git-hooks/"
+
 def prepare() -> None:
+    basedir = Path(__file__).parent.absolute()
     # install git hooks
-    os.makedirs(GIT_HOOKS_DIR, exist_ok=True)
-    for hook in os.listdir(KVROCKS_GIT_HOOKS_DIR):
-        hook_path = os.path.join(KVROCKS_GIT_HOOKS_DIR, hook)
-        dst = os.path.join(GIT_HOOKS_DIR, hook.split('.')[0])
+    git_hooks_dir = basedir / ".git/hooks/"
+    kvrocks_git_hooks_dir = basedir / "utils/git-hooks/"
+    os.makedirs(git_hooks_dir, exist_ok=True)
+    for hook in os.listdir(kvrocks_git_hooks_dir):
+        dst = os.path.join(git_hooks_dir, hook.split('.')[0])
+        hook_path = os.path.join(kvrocks_git_hooks_dir, hook)
         if os.path.exists(dst):
             os.remove(dst)
-        os.link(hook_path, dst)
+        os.symlink(hook_path, dst)
         os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
-        print(hook.split('.')[0], "installed at", dst)
+        print(hook.split('.')[0], "installed at", os.path.abspath(dst))
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:

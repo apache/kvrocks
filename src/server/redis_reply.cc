@@ -33,11 +33,10 @@ std::string Error(const Status &s) {
   if (!s.Is<Status::RedisError>()) {
     return "-ERR " + s.Msg() + CRLF;
   }
-  auto prefix = ErrorKindToPrefix(s.GetErrorKind());
-  if (prefix.empty()) {
-    return "-" + s.Msg() + CRLF;
+  if (auto iter = ErrorKindMap.find(s.GetErrorKind()); iter != ErrorKindMap.end()) {
+    return "-" + iter->second + " " + s.Msg() + CRLF;
   }
-  return "-" + prefix + " " + s.Msg() + CRLF;
+  return "-" + s.Msg() + CRLF;
 }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }

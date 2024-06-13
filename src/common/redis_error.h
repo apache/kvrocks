@@ -20,10 +20,13 @@
 
 #pragma once
 
+#include <map>
+
 namespace redis {
 
 enum class ErrorKind {
   None,
+  Err,
   WrongType,
   NoScript,
   NoProto,
@@ -32,32 +35,24 @@ enum class ErrorKind {
   Readonly,
   MasterDown,
   ExecAbort,
-  Err,
+  Moved,
+  TryAgain,
+  ClusterDown,
+  CrossSlot,
 };
 
-inline std::string ErrorKindToPrefix(ErrorKind kind) {
-  switch (kind) {
-    case ErrorKind::Loading:
-      return "LOADING";
-    case ErrorKind::NoScript:
-      return "NOSCRIPT";
-    case ErrorKind::WrongType:
-      return "WRONGTYPE";
-    case ErrorKind::NoProto:
-      return "NOPROTO";
-    case ErrorKind::NoAuth:
-      return "NOAUTH";
-    case ErrorKind::Readonly:
-      return "READONLY";
-    case ErrorKind::MasterDown:
-      return "MASTERDOWN";
-    case ErrorKind::ExecAbort:
-      return "EXECABORT";
-    case ErrorKind::Err:
-      return "ERR";
-    default:
-      return {};
-  }
-}
+const std::map<ErrorKind, std::string> ErrorKindMap = {{ErrorKind::Err, "ERR"},
+                                                       {ErrorKind::WrongType, "WRONGTYPE"},
+                                                       {ErrorKind::NoScript, "NOSCRIPT"},
+                                                       {ErrorKind::NoProto, "NOPROTO"},
+                                                       {ErrorKind::NoAuth, "NOAUTH"},
+                                                       {ErrorKind::Loading, "LOADING"},
+                                                       {ErrorKind::Readonly, "READONLY"},
+                                                       {ErrorKind::MasterDown, "MASTERDOWN"},
+                                                       {ErrorKind::ExecAbort, "EXECABORT"},
+                                                       {ErrorKind::Moved, "MOVED"},
+                                                       {ErrorKind::TryAgain, "TRYAGAIN"},
+                                                       {ErrorKind::ClusterDown, "CLUSTERDOWN"},
+                                                       {ErrorKind::CrossSlot, "CROSSSLOT"}};
 
 }  // namespace redis

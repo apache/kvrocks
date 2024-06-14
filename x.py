@@ -111,8 +111,7 @@ def prepare() -> None:
                 print(f"Deleting {dst}.")
                 dst.unlink()
         dst.symlink_to(hook)
-        print(hook.name, "installed at", dst)
-
+        print(f"{hook.name} installed at {dst}.")
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:

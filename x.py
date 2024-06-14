@@ -98,15 +98,21 @@ def prepare() -> None:
     # install git hooks
     git_hooks_dir = basedir / ".git/hooks/"
     kvrocks_git_hooks_dir = basedir / "utils/git-hooks/"
-    os.makedirs(git_hooks_dir, exist_ok=True)
-    for hook in os.listdir(kvrocks_git_hooks_dir):
-        dst = os.path.join(git_hooks_dir, hook.split('.')[0])
-        hook_path = os.path.join(kvrocks_git_hooks_dir, hook)
-        if os.path.exists(dst):
-            os.remove(dst)
-        os.symlink(hook_path, dst)
-        os.chmod(dst, os.stat(dst).st_mode | stat.S_IEXEC)
-        print(hook.split('.')[0], "installed at", os.path.abspath(dst))
+    git_hooks_dir.mkdir(exist_ok=True)
+    for hook in kvrocks_git_hooks_dir.iterdir():
+        dst = git_hooks_dir / hook.name
+        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)
+        if dst.exists():
+            response = input(f"{dst} already exists. Do you want to delete it and create a new symlink? (y/n): ")
+            if response.lower() != 'y':
+                print(f"Skipping installation of {hook.name} as {dst} already exists.")
+                continue
+            else:
+                print(f"Deleting {dst}.")
+                dst.unlink()
+        dst.symlink_to(hook)
+        print(hook.name, "installed at", dst)
+
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:

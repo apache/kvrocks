@@ -24,11 +24,16 @@
 #include <utility>
 
 #include "parse_util.h"
+#include "string_util.h"
 
 std::string Scheduler::ToString() const {
-  auto param2string = [](int n) -> std::string { return n == -1 ? "*" : std::to_string(n); };
-  return param2string(minute) + " " + param2string(hour) + " " + param2string(mday) + " " + param2string(month) + " " +
-         param2string(wday);
+  auto param2string = [](int n, bool is_interval) -> std::string {
+    if (n == -1) return "*";
+    return is_interval ? "*/" + std::to_string(n) : std::to_string(n);
+  };
+  return param2string(minute, minute_interval) + " " + param2string(hour, hour_interval) + " " +
+         param2string(mday, mday_interval) + " " + param2string(month, month_interval) + " " +
+         param2string(wday, wday_interval);
 }
 
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
@@ -57,10 +62,21 @@ bool Cron::IsTimeMatch(const tm *tm) {
       tm->tm_mon == last_tm_.tm_mon && tm->tm_wday == last_tm_.tm_wday) {
     return false;
   }
+
+  auto match = [](int current, int val, bool interval, int interval_offset) {
+    if (val == -1) return true;
+    if (interval) return (current - interval_offset) % val == 0;
+    return val == current;
+  };
+
   for (const auto &st : schedulers_) {
-    if ((st.minute == -1 || tm->tm_min == st.minute) && (st.hour == -1 || tm->tm_hour == st.hour) &&
-        (st.mday == -1 || tm->tm_mday == st.mday) && (st.month == -1 || (tm->tm_mon + 1) == st.month) &&
-        (st.wday == -1 || tm->tm_wday == st.wday)) {
+    bool minute_match = match(tm->tm_min, st.minute, st.minute_interval, 0);
+    bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval, 0);
+    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval, 1);
+    bool month_match = match(tm->tm_mon + 1, st.month, st.month_interval, 1);
+    bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval, 0);
+
+    if (minute_match && hour_match && mday_match && month_match && wday_match) {
       last_tm_ = *tm;
       return true;
     }
@@ -84,18 +100,28 @@ StatusOr<Scheduler> Cron::convertToScheduleTime(const std::string &minute, const
                                                 const std::string &wday) {
   Scheduler st;
 
-  st.minute = GET_OR_RET(convertParam(minute, 0, 59));
-  st.hour = GET_OR_RET(convertParam(hour, 0, 23));
-  st.mday = GET_OR_RET(convertParam(mday, 1, 31));
-  st.month = GET_OR_RET(convertParam(month, 1, 12));
-  st.wday = GET_OR_RET(convertParam(wday, 0, 6));
+  st.minute = GET_OR_RET(convertParam(minute, 0, 59, st.minute_interval));
+  st.hour = GET_OR_RET(convertParam(hour, 0, 23, st.hour_interval));
+  st.mday = GET_OR_RET(convertParam(mday, 1, 31, st.mday_interval));
+  st.month = GET_OR_RET(convertParam(month, 1, 12, st.month_interval));
+  st.wday = GET_OR_RET(convertParam(wday, 0, 6, st.wday_interval));
 
   return st;
 }
 
-StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int upper_bound) {
+StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int upper_bound, bool &is_interval) {
   if (param == "*") {
     return -1;
+  }
+
+  // Check for interval syntax (*/n)
+  if (util::HasPrefix(param, "*/")) {
+    auto s = ParseInt<int>(param.substr(2), {lower_bound, upper_bound}, 10);
+    if (!s || *s == 0) {
+      return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
+    }
+    is_interval = true;
+    return *s;
   }
 
   auto s = ParseInt<int>(param, {lower_bound, upper_bound}, 10);

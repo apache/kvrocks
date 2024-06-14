@@ -32,7 +32,7 @@ run_check() {
     ./x.py check "$check_name"
 
     if [ $? -ne 0 ]; then
-        echo "You may use \`git push --no-verify\` to skip this check."
+        echo 'You may use `git push --no-verify` to skip this check.'
         exit 1
     fi
 }

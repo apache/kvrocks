@@ -22,7 +22,7 @@ from glob import glob
 import os
 from pathlib import Path
 import re
-import stat
+import filecmp
 from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
@@ -95,23 +95,22 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
 def prepare() -> None:
     basedir = Path(__file__).parent.absolute()
-    # install git hooks
-    git_hooks_dir = basedir / ".git/hooks/"
-    kvrocks_git_hooks_dir = basedir / "utils/git-hooks/"
-    git_hooks_dir.mkdir(exist_ok=True)
-    for hook in kvrocks_git_hooks_dir.iterdir():
-        dst = git_hooks_dir / hook.name
-        hook.chmod(hook.stat().st_mode | stat.S_IEXEC)
+    
+    # Install Git hooks
+    hooks = basedir / "dev" / "hooks"
+    git_hooks = basedir / ".git" / "hooks"
+
+    git_hooks.mkdir(exist_ok=True)
+    for hook in hooks.iterdir():
+        dst = git_hooks / hook.name
         if dst.exists():
-            response = input(f"{dst} already exists. Do you want to delete it and create a new symlink? (y/n): ")
-            if response.lower() != 'y':
-                print(f"Skipping installation of {hook.name} as {dst} already exists.")
+            if filecmp.cmp(hook, dst, shallow=False):
+                print(f"{hook.name} already installed.")
                 continue
-            else:
-                print(f"Deleting {dst}.")
-                dst.unlink()
-        dst.symlink_to(hook)
-        print(f"{hook.name} installed at {dst}.")
+            raise RuntimeError(f"{dst} already exists; please remove it first")
+        else:
+            dst.symlink_to(hook)
+            print(f"{hook.name} installed at {dst}.")
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:

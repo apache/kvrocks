@@ -39,9 +39,7 @@ class CommandXAck : public Commander {
     StreamEntryID tmp_id;
     for (size_t i = 3; i < args.size(); ++i) {
       auto s = ParseStreamEntryID(args[i], &tmp_id);
-      if (!s.IsOK()) {
-        return {Status::RedisParseErr, s.Msg()};
-      }
+      if (!s.IsOK()) return s;
       entry_ids_.emplace_back(tmp_id);
     }
 
@@ -130,9 +128,7 @@ class CommandXAdd : public Commander {
         }
 
         auto s = ParseStreamEntryID(args[min_id_idx], &min_id_);
-        if (!s.IsOK()) {
-          return {Status::RedisParseErr, s.Msg()};
-        }
+        if (!s.IsOK()) return s;
 
         with_min_id_ = true;
         i += eq_sign_found ? 3 : 2;
@@ -145,9 +141,7 @@ class CommandXAdd : public Commander {
 
       if (!entry_id_found) {
         auto result = ParseNextStreamEntryIDStrategy(val);
-        if (!result.IsOK()) {
-          return {Status::RedisParseErr, result.Msg()};
-        }
+        if (!result.IsOK()) return result;
 
         next_id_strategy_ = std::move(*result);
 
@@ -1130,7 +1124,7 @@ class CommandXRead : public Commander,
       std::vector<StreamEntry> result;
       auto s = stream_db.Range(streams_[i], options, &result);
       if (!s.ok() && !s.IsNotFound()) {
-        conn_->Reply(redis::Error({ErrorKind::Err, s.ToString()}));
+        conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
         return;
       }
 
@@ -1423,7 +1417,7 @@ class CommandXReadGroup : public Commander,
       auto s = stream_db.RangeWithPending(streams_[i], options, &result, group_name_, consumer_name_, noack_,
                                           latest_marks_[i]);
       if (!s.ok() && !s.IsNotFound()) {
-        conn_->Reply(redis::Error({ErrorKind::Err, s.ToString()}));
+        conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
         return;
       }
 
@@ -1599,9 +1593,7 @@ class CommandXSetId : public Commander {
     stream_name_ = args[1];
 
     auto s = redis::ParseStreamEntryID(args[2], &last_id_);
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
 
     if (args.size() == 3) {
       return Status::OK();
@@ -1619,9 +1611,7 @@ class CommandXSetId : public Commander {
       } else if (util::EqualICase(args[i], "maxdeletedid") && i + 1 < args.size()) {
         StreamEntryID id;
         s = redis::ParseStreamEntryID(args[i + 1], &id);
-        if (!s.IsOK()) {
-          return {Status::RedisParseErr, s.Msg()};
-        }
+        if (!s.IsOK()) return s;
 
         max_deleted_id_ = std::make_optional<StreamEntryID>(id.ms, id.seq);
         i += 2;

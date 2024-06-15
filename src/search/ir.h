@@ -363,7 +363,7 @@ struct SelectClause : Node {
 
   explicit SelectClause(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
 
-  std::string_view Name() const override { return "SelectExpr"; }
+  std::string_view Name() const override { return "SelectClause"; }
   std::string Dump() const override {
     if (fields.empty()) return "select *";
     return fmt::format("select {}", util::StringJoin(fields, [](const auto &v) { return v->Dump(); }));
@@ -412,7 +412,7 @@ struct SearchExpr : Node {
         limit(std::move(limit)),
         sort_by(std::move(sort_by)) {}
 
-  std::string_view Name() const override { return "SearchStmt"; }
+  std::string_view Name() const override { return "SearchExpr"; }
   std::string Dump() const override {
     std::string opt;
     if (sort_by) opt += " " + sort_by->Dump();

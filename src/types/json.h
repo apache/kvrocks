@@ -238,7 +238,7 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    if (!s) return {Status::NotOK, s.Msg()};
+    if (!s) return s;
 
     return results;
   }

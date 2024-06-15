@@ -33,7 +33,7 @@ constexpr const char *errInvalidErrorRate = "error rate should be between 0 and 
 constexpr const char *errInvalidCapacity = "capacity should be larger than 0";
 constexpr const char *errInvalidExpansion = "expansion should be greater or equal to 1";
 constexpr const char *errNonscalingButExpand = "nonscaling filters cannot expand";
-constexpr const char *errFilterFull = "ERR nonscaling filter is full";
+constexpr const char *errFilterFull = "nonscaling filter is full";
 }  // namespace
 
 namespace redis {
@@ -119,7 +119,7 @@ class CommandBFAdd : public Commander {
         *output = redis::Integer(0);
         break;
       case BloomFilterAddResult::kFull:
-        *output = redis::Error(errFilterFull);
+        *output = redis::Error({Status::NotOK, errFilterFull});
         break;
     }
     return Status::OK();
@@ -152,7 +152,7 @@ class CommandBFMAdd : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error(errFilterFull);
+          *output += redis::Error({Status::NotOK, errFilterFull});
           break;
       }
     }
@@ -248,7 +248,7 @@ class CommandBFInsert : public Commander {
           *output += redis::Integer(0);
           break;
         case BloomFilterAddResult::kFull:
-          *output += redis::Error(errFilterFull);
+          *output += redis::Error({Status::NotOK, errFilterFull});
           break;
       }
     }

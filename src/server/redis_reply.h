@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+#include "status.h"
+
 #define CRLF "\r\n"                    // NOLINT
 #define RESP_PREFIX_ERROR "-"          // NOLINT
 #define RESP_PREFIX_SIMPLE_STRING "+"  // NOLINT
@@ -35,7 +37,9 @@ enum class RESP { v2, v3 };
 
 void Reply(evbuffer *output, const std::string &data);
 std::string SimpleString(const std::string &data);
-std::string Error(const std::string &err);
+
+std::string Error(const Status &s);
+std::string StatusToRedisErrorMsg(const Status &s);
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string Integer(T data) {

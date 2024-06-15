@@ -95,17 +95,17 @@ class CommandNamespace : public Commander {
       }
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = srv->GetNamespace()->Set(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s);
       LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = srv->GetNamespace()->Add(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s);
       LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
                    << ", result: " << s.Msg();
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
-      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error("ERR " + s.Msg());
+      *output = s.IsOK() ? redis::SimpleString("OK") : redis::Error(s);
       LOG(WARNING) << "Deleted namespace: " << args_[2] << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
     } else {
       return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD"};
@@ -224,7 +224,7 @@ class CommandConfig : public Commander {
 
     if (args_.size() == 2 && sub_command == "rewrite") {
       Status s = config->Rewrite(srv->GetNamespace()->List());
-      if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+      if (!s.IsOK()) return s;
 
       *output = redis::SimpleString("OK");
       LOG(INFO) << "# CONFIG REWRITE executed with success";
@@ -315,7 +315,7 @@ class CommandDBSize : public Commander {
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");
       } else {
-        return {Status::RedisExecErr, s.Msg()};
+        return s;
       }
     } else {
       return {Status::RedisExecErr, "DBSIZE subcommand only supports scan"};
@@ -630,9 +630,9 @@ class CommandDebug : public Commander {
       } else if (protocol_type_ == "verbatim") {  // verbatim string
         *output = conn->VerbatimString("txt", "verbatim string");
       } else {
-        *output = redis::Error(
-            "Wrong protocol type name. Please use one of the following: "
-            "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim");
+        return {Status::RedisErrorNoPrefix,
+                "Wrong protocol type name. Please use one of the following: "
+                "string|integer|double|array|set|bignum|true|false|null|attrib|verbatim"};
       }
     } else if (subcommand_ == "dbsize-limit") {
       srv->storage->SetDBSizeLimit(dbsize_limit_);
@@ -741,8 +741,7 @@ class CommandHello final : public Commander {
       // kvrocks only supports REPL2 by now, but for supporting some
       // `hello 3`, it will not report error when using 3.
       if (protocol < 2 || protocol > 3) {
-        conn->Reply(redis::Error("NOPROTO unsupported protocol version"));
-        return Status::OK();
+        return {Status::RedisNoProto, "unsupported protocol version"};
       }
     }
 
@@ -986,9 +985,7 @@ class CommandSlaveOf : public Commander {
     }
 
     auto s = IsTryingToReplicateItself(srv, host_, port_);
-    if (!s.IsOK()) {
-      return {Status::RedisExecErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
     s = srv->AddMaster(host_, port_, false);
     if (s.IsOK()) {
       *output = redis::SimpleString("OK");
@@ -1101,7 +1098,7 @@ class CommandRestore : public Commander {
     auto stream_ptr = std::make_unique<RdbStringStream>(args_[3]);
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
     auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
-    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+    if (!s.IsOK()) return s;
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -1215,9 +1212,8 @@ class CommandApplyBatch : public Commander {
     auto options = svr->storage->DefaultWriteOptions();
     options.low_pri = low_pri_;
     auto s = svr->storage->ApplyWriteBatch(options, std::move(raw_batch_));
-    if (!s.IsOK()) {
-      return {Status::RedisExecErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
+
     *output = redis::Integer(size);
     return Status::OK();
   }
@@ -1262,7 +1258,7 @@ class CommandDump : public Commander {
     auto stream_ptr = std::make_unique<RdbStringStream>(result);
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
     auto s = rdb.Dump(key, type);
-    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+    if (!s.IsOK()) return s;
     CHECK(dynamic_cast<RdbStringStream *>(rdb.GetStream().get()) != nullptr);
     *output = redis::BulkString(static_cast<RdbStringStream *>(rdb.GetStream().get())->GetInput());
     return Status::OK();

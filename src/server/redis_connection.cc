@@ -87,7 +87,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
-    Reply(redis::Error("ERR " + s.Msg()));
+    Reply(redis::Error(s));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -432,7 +432,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
+      Reply(redis::Error({Status::NotOK, "unknown command " + cmd_tokens.front()}));
       continue;
     }
     auto current_cmd = std::move(*cmd_s);
@@ -444,7 +444,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (GetNamespace().empty()) {
       if (!password.empty()) {
         if (cmd_name != "auth" && cmd_name != "hello") {
-          Reply(redis::Error("NOAUTH Authentication required."));
+          Reply(redis::Error({Status::RedisNoAuth, "Authentication required."}));
           continue;
         }
       } else {
@@ -477,7 +477,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
-      Reply(redis::Error(errRestoringBackup));
+      Reply(redis::Error({Status::RedisLoading, errRestoringBackup}));
       if (is_multi_exec) multi_error_ = true;
       continue;
     }
@@ -485,7 +485,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR wrong number of arguments"));
+      Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
       continue;
     }
 
@@ -493,12 +493,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
-      Reply(redis::Error("ERR Can't execute " + cmd_name + " in MULTI"));
+      Reply(redis::Error({Status::NotOK, "Can't execute " + cmd_name + " in MULTI"}));
       multi_error_ = true;
       continue;
     }
@@ -507,7 +507,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (is_multi_exec) multi_error_ = true;
-        Reply(redis::Error(s.Msg()));
+        Reply(redis::Error(s));
         continue;
       }
     }
@@ -525,20 +525,20 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
-      Reply(redis::Error("READONLY You can't write against a read only slave."));
+      Reply(redis::Error({Status::RedisReadOnly, "You can't write against a read only slave."}));
       continue;
     }
 
     if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {
-      Reply(redis::Error("ERR write command not allowed when reached max-db-size."));
+      Reply(redis::Error({Status::NotOK, "write command not allowed when reached max-db-size."}));
       continue;
     }
 
     if (!config->slave_serve_stale_data && srv_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         srv_->GetReplicationState() != kReplConnected) {
-      Reply(
-          redis::Error("MASTERDOWN Link with MASTER is down "
-                       "and slave-serve-stale-data is set to 'no'."));
+      Reply(redis::Error({Status::RedisMasterDown,
+                          "Link with MASTER is down "
+                          "and slave-serve-stale-data is set to 'no'."}));
       continue;
     }
 
@@ -585,7 +585,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Reply for MULTI
     if (!s.IsOK()) {
-      Reply(redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 

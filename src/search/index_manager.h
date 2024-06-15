@@ -194,12 +194,6 @@ struct IndexManager {
     return plan_op;
   }
 
-  StatusOr<std::string> Explain(std::unique_ptr<kqir::Node> ir, const std::string &ns) const {
-    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
-
-    return plan_op->Dump();
-  }
-
   StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
                                                                const std::string &ns) const {
     auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));

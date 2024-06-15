@@ -1000,15 +1000,18 @@ Status ReplicationThread::parseWriteBatch(const std::string &batch_string) {
 }
 
 bool ReplicationThread::isRestoringError(std::string_view err) {
-  return err == redis::Error({Status::RedisLoading, redis::errRestoringBackup});
+  // err doesn't contain the CRLF, so cannot use redis::Error here.
+  return err == RESP_PREFIX_ERROR + redis::StatusToRedisError({Status::RedisLoading, redis::errRestoringBackup});
 }
 
 bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
-  return err == redis::Error({Status::NotOK, redis::errWrongNumArguments});
+  // err doesn't contain the CRLF, so cannot use redis::Error here.
+  return err == RESP_PREFIX_ERROR + redis::StatusToRedisError({Status::NotOK, redis::errWrongNumArguments});
 }
 
 bool ReplicationThread::isUnknownOption(std::string_view err) {
-  return err == redis::Error({Status::NotOK, redis::errUnknownOption});
+  // err doesn't contain the CRLF, so cannot use redis::Error here.
+  return err == RESP_PREFIX_ERROR + redis::StatusToRedisError({Status::NotOK, redis::errUnknownOption});
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

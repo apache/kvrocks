@@ -38,7 +38,7 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const Status &s) { return RESP_PREFIX_ERROR + StatusToRedisError(s); }
+std::string Error(const Status &s) { return RESP_PREFIX_ERROR + StatusToRedisError(s) + CRLF; }
 
 std::string StatusToRedisError(const Status &s) {
   CHECK(!s.IsOK());
@@ -46,10 +46,10 @@ std::string StatusToRedisError(const Status &s) {
   if (auto it = redisErrorPrefixMapping.find(s.GetCode()); it != redisErrorPrefixMapping.end()) {
     prefix = it->second;
   }
-  if (!prefix.empty()) {
-    prefix = prefix + " ";
+  if (prefix.empty()) {
+    return s.Msg();
   }
-  return prefix + s.Msg() + CRLF;
+  return prefix + " " + s.Msg();
 }
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }

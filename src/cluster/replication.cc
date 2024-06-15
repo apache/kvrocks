@@ -1000,15 +1000,15 @@ Status ReplicationThread::parseWriteBatch(const std::string &batch_string) {
 }
 
 bool ReplicationThread::isRestoringError(std::string_view err) {
-  return err == std::string(RESP_PREFIX_ERROR) + redis::errRestoringBackup;
+  return err == redis::Error({Status::RedisLoading, redis::errRestoringBackup});
 }
 
 bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
-  return err == std::string(RESP_PREFIX_ERROR) + redis::errWrongNumArguments;
+  return err == redis::Error({Status::NotOK, redis::errWrongNumArguments});
 }
 
 bool ReplicationThread::isUnknownOption(std::string_view err) {
-  return err == fmt::format("{}ERR {}", RESP_PREFIX_ERROR, redis::errUnknownOption);
+  return err == redis::Error({Status::NotOK, redis::errUnknownOption});
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

@@ -30,6 +30,8 @@
 #include "storage/storage.h"
 #include "string_util.h"
 #include "types/redis_hash.h"
+#include "search/hnsw_indexer.h"
+
 
 namespace redis {
 
@@ -192,6 +194,25 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, std::string_view o
   return Status::OK();
 }
 
+Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, std::string_view original, std::string_view current,
+                                            const SearchKey &search_key, HnswVectorFieldMetadata *vector) const {
+  auto *storage = indexer->storage;
+  auto batch = storage->GetWriteBatchBase();
+
+  if (!original.empty()) {
+    // TODO: delete
+  }
+
+  if (!current.empty()) {
+    auto hnsw = HnswIndex(search_key, vector, indexer->storage);
+    hnsw.InsertVectorEntry(key, current, batch);
+  }
+
+  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
 Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
                                  std::string_view current) const {
   if (original == current) {
@@ -210,6 +231,8 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
     GET_OR_RET(UpdateNumericIndex(key, original, current, search_key, numeric));
+  } else if (auto vector = dynamic_cast<HnswVectorFieldMetadata *>(metadata)) {
+    GET_OR_RET(UpdateHnswVectorIndex(key, original, current, search_key, vector));
   } else {
     return {Status::NotOK, "Unexpected field type"};
   }

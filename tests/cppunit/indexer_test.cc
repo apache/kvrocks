@@ -30,6 +30,8 @@
 #include "storage/redis_metadata.h"
 #include "types/redis_hash.h"
 
+static auto T(const std::string& v) { return kqir::MakeValue<kqir::StringArray>(util::Split(v, ",")); }
+
 struct IndexerTest : TestBase {
   redis::GlobalIndexer indexer;
   kqir::IndexMap map;
@@ -115,7 +117,7 @@ TEST_F(IndexerTest, HashTag) {
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_EQ(s->fields.size(), 1);
-    ASSERT_EQ(s->fields["x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->fields["x"], T("food,kitChen,Beauty"));
 
     uint64_t cnt = 0;
     auto s_set = db.Set(key1, "x", "Clothing,FOOD,sport", &cnt);
@@ -205,7 +207,7 @@ TEST_F(IndexerTest, JsonTag) {
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_EQ(s->fields.size(), 1);
-    ASSERT_EQ(s->fields["$.x"], "food,kitChen,Beauty");
+    ASSERT_EQ(s->fields["$.x"], T("food,kitChen,Beauty"));
 
     auto s_set = db.Set(key1, "$.x", "\"Clothing,FOOD,sport\"");
     ASSERT_TRUE(s_set.ok());

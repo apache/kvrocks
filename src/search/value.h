@@ -40,8 +40,8 @@ using String = std::string;  // e.g. a single tag
 using NumericArray = std::vector<Numeric>;  // used for vector fields
 using StringArray = std::vector<String>;    // used for tag fields, e.g. a list for tags
 
-struct Value : std::variant<Null, Numeric, StringArray> {
-  using Base = std::variant<Null, Numeric, StringArray>;
+struct Value : std::variant<Null, Numeric, StringArray, NumericArray> {
+  using Base = std::variant<Null, Numeric, StringArray, NumericArray>;
 
   using Base::Base;
 
@@ -72,6 +72,9 @@ struct Value : std::variant<Null, Numeric, StringArray> {
     } else if (Is<StringArray>()) {
       return util::StringJoin(
           Get<StringArray>(), [](const auto &v) -> decltype(auto) { return v; }, sep);
+    } else if (Is<NumericArray>()) {
+      return util::StringJoin(
+          Get<NumericArray>(), [](const auto &v) -> decltype(auto) { return std::to_string(v); }, sep);
     }
 
     __builtin_unreachable();
@@ -87,6 +90,8 @@ struct Value : std::variant<Null, Numeric, StringArray> {
       char sep = tag ? tag->separator : ',';
       return util::StringJoin(
           Get<StringArray>(), [](const auto &v) -> decltype(auto) { return v; }, std::string(1, sep));
+    } else if (Is<NumericArray>()) {
+      return util::StringJoin(Get<NumericArray>(), [](const auto &v) -> decltype(auto) { return std::to_string(v); });
     }
 
     __builtin_unreachable();

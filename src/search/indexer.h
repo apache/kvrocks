@@ -65,6 +65,9 @@ struct FieldValueRetriever {
   explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonData>, std::move(json)) {}
 
   StatusOr<kqir::Value> Retrieve(std::string_view field, const redis::IndexFieldMetadata *type);
+
+  static StatusOr<kqir::Value> ParseFromJson(const jsoncons::json &value, const redis::IndexFieldMetadata *type);
+  static StatusOr<kqir::Value> ParseFromHash(const std::string &value, const redis::IndexFieldMetadata *type);
 };
 
 struct IndexUpdater {

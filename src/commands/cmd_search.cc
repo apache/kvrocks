@@ -150,7 +150,7 @@ static void DumpQueryResult(const std::vector<kqir::ExecutorContext::RowType> &r
     output->append(MultiLen(fields.size() * 2));
     for (const auto &[info, field] : fields) {
       output->append(redis::BulkString(info->name));
-      output->append(redis::BulkString(field));
+      output->append(redis::BulkString(field.ToString(info->metadata.get())));
     }
   }
 }

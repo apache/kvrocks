@@ -38,7 +38,7 @@ namespace ir = kqir;
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
     Rule,
-    parse_tree::store_content::on<Boolean, Number, String, Identifier, NumericCompareOp, AscOrDesc, UnsignedInteger>,
+    parse_tree::store_content::on<Boolean, Number, StringL, Identifier, NumericCompareOp, AscOrDesc, UnsignedInteger>,
     parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr,
                                    FromExpr, WhereClause, OrderByClause, LimitClause, SearchStmt>>;
 
@@ -58,7 +58,7 @@ struct Transformer : ir::TreeTransformer {
       return Node::Create<ir::BoolLiteral>(node->string_view() == "true");
     } else if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
-    } else if (Is<String>(node)) {
+    } else if (Is<StringL>(node)) {
       return Node::Create<ir::StringLiteral>(GET_OR_RET(UnescapeString(node->string_view())));
     } else if (Is<HasTagExpr>(node)) {
       CHECK(node->children.size() == 2);

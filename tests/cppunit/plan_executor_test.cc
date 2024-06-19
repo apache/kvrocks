@@ -29,6 +29,8 @@
 #include "search/interval.h"
 #include "search/ir.h"
 #include "search/ir_plan.h"
+#include "search/value.h"
+#include "string_util.h"
 #include "test_base.h"
 #include "types/redis_json.h"
 
@@ -81,12 +83,15 @@ TEST(PlanExecutorTest, Mock) {
 static auto IndexI() -> const IndexInfo* { return index_map.Find("ia", "search_ns")->second.get(); }
 static auto FieldI(const std::string& f) -> const FieldInfo* { return &IndexI()->fields.at(f); }
 
+static auto N(double n) { return MakeValue<Numeric>(n); }
+static auto T(const std::string& v) { return MakeValue<StringArray>(util::Split(v, ",")); }
+
 TEST(PlanExecutorTest, TopNSort) {
   std::vector<ExecutorNode::RowType> data{
-      {"a", {{FieldI("f3"), "4"}}, IndexI()}, {"b", {{FieldI("f3"), "2"}}, IndexI()},
-      {"c", {{FieldI("f3"), "7"}}, IndexI()}, {"d", {{FieldI("f3"), "3"}}, IndexI()},
-      {"e", {{FieldI("f3"), "1"}}, IndexI()}, {"f", {{FieldI("f3"), "6"}}, IndexI()},
-      {"g", {{FieldI("f3"), "8"}}, IndexI()},
+      {"a", {{FieldI("f3"), N(4)}}, IndexI()}, {"b", {{FieldI("f3"), N(2)}}, IndexI()},
+      {"c", {{FieldI("f3"), N(7)}}, IndexI()}, {"d", {{FieldI("f3"), N(3)}}, IndexI()},
+      {"e", {{FieldI("f3"), N(1)}}, IndexI()}, {"f", {{FieldI("f3"), N(6)}}, IndexI()},
+      {"g", {{FieldI("f3"), N(8)}}, IndexI()},
   };
   {
     auto op = std::make_unique<TopNSort>(
@@ -118,10 +123,10 @@ TEST(PlanExecutorTest, TopNSort) {
 
 TEST(PlanExecutorTest, Filter) {
   std::vector<ExecutorNode::RowType> data{
-      {"a", {{FieldI("f3"), "4"}}, IndexI()}, {"b", {{FieldI("f3"), "2"}}, IndexI()},
-      {"c", {{FieldI("f3"), "7"}}, IndexI()}, {"d", {{FieldI("f3"), "3"}}, IndexI()},
-      {"e", {{FieldI("f3"), "1"}}, IndexI()}, {"f", {{FieldI("f3"), "6"}}, IndexI()},
-      {"g", {{FieldI("f3"), "8"}}, IndexI()},
+      {"a", {{FieldI("f3"), N(4)}}, IndexI()}, {"b", {{FieldI("f3"), N(2)}}, IndexI()},
+      {"c", {{FieldI("f3"), N(7)}}, IndexI()}, {"d", {{FieldI("f3"), N(3)}}, IndexI()},
+      {"e", {{FieldI("f3"), N(1)}}, IndexI()}, {"f", {{FieldI("f3"), N(6)}}, IndexI()},
+      {"g", {{FieldI("f3"), N(8)}}, IndexI()},
   };
   {
     auto field = std::make_unique<FieldRef>("f3", FieldI("f3"));
@@ -157,10 +162,10 @@ TEST(PlanExecutorTest, Filter) {
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 
-  data = {{"a", {{FieldI("f1"), "cpp,java"}}, IndexI()},    {"b", {{FieldI("f1"), "python,cpp,c"}}, IndexI()},
-          {"c", {{FieldI("f1"), "c,perl"}}, IndexI()},      {"d", {{FieldI("f1"), "rust,python"}}, IndexI()},
-          {"e", {{FieldI("f1"), "java,kotlin"}}, IndexI()}, {"f", {{FieldI("f1"), "c,rust"}}, IndexI()},
-          {"g", {{FieldI("f1"), "c,cpp,java"}}, IndexI()}};
+  data = {{"a", {{FieldI("f1"), T("cpp,java")}}, IndexI()},    {"b", {{FieldI("f1"), T("python,cpp,c")}}, IndexI()},
+          {"c", {{FieldI("f1"), T("c,perl")}}, IndexI()},      {"d", {{FieldI("f1"), T("rust,python")}}, IndexI()},
+          {"e", {{FieldI("f1"), T("java,kotlin")}}, IndexI()}, {"f", {{FieldI("f1"), T("c,rust")}}, IndexI()},
+          {"g", {{FieldI("f1"), T("c,cpp,java")}}, IndexI()}};
   {
     auto field = std::make_unique<FieldRef>("f1", FieldI("f1"));
     auto op = std::make_unique<Filter>(
@@ -192,10 +197,10 @@ TEST(PlanExecutorTest, Filter) {
 
 TEST(PlanExecutorTest, Limit) {
   std::vector<ExecutorNode::RowType> data{
-      {"a", {{FieldI("f3"), "4"}}, IndexI()}, {"b", {{FieldI("f3"), "2"}}, IndexI()},
-      {"c", {{FieldI("f3"), "7"}}, IndexI()}, {"d", {{FieldI("f3"), "3"}}, IndexI()},
-      {"e", {{FieldI("f3"), "1"}}, IndexI()}, {"f", {{FieldI("f3"), "6"}}, IndexI()},
-      {"g", {{FieldI("f3"), "8"}}, IndexI()},
+      {"a", {{FieldI("f3"), N(4)}}, IndexI()}, {"b", {{FieldI("f3"), N(2)}}, IndexI()},
+      {"c", {{FieldI("f3"), N(7)}}, IndexI()}, {"d", {{FieldI("f3"), N(3)}}, IndexI()},
+      {"e", {{FieldI("f3"), N(1)}}, IndexI()}, {"f", {{FieldI("f3"), N(6)}}, IndexI()},
+      {"g", {{FieldI("f3"), N(8)}}, IndexI()},
   };
   {
     auto op = std::make_unique<Limit>(std::make_unique<Mock>(data), std::make_unique<LimitClause>(1, 2));
@@ -219,12 +224,12 @@ TEST(PlanExecutorTest, Limit) {
 
 TEST(PlanExecutorTest, Merge) {
   std::vector<ExecutorNode::RowType> data1{
-      {"a", {{FieldI("f3"), "4"}}, IndexI()},
-      {"b", {{FieldI("f3"), "2"}}, IndexI()},
+      {"a", {{FieldI("f3"), N(4)}}, IndexI()},
+      {"b", {{FieldI("f3"), N(2)}}, IndexI()},
   };
-  std::vector<ExecutorNode::RowType> data2{{"c", {{FieldI("f3"), "7"}}, IndexI()},
-                                           {"d", {{FieldI("f3"), "3"}}, IndexI()},
-                                           {"e", {{FieldI("f3"), "1"}}, IndexI()}};
+  std::vector<ExecutorNode::RowType> data2{{"c", {{FieldI("f3"), N(7)}}, IndexI()},
+                                           {"d", {{FieldI("f3"), N(3)}}, IndexI()},
+                                           {"e", {{FieldI("f3"), N(1)}}, IndexI()}};
   {
     auto op =
         std::make_unique<Merge>(Node::List<PlanOperator>(std::make_unique<Mock>(data1), std::make_unique<Mock>(data2)));

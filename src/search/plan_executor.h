@@ -24,6 +24,7 @@
 
 #include "ir_plan.h"
 #include "search/index_info.h"
+#include "search/value.h"
 #include "storage/storage.h"
 #include "string_util.h"
 
@@ -33,7 +34,7 @@ struct ExecutorContext;
 
 struct ExecutorNode {
   using KeyType = std::string;
-  using ValueType = std::string;
+  using ValueType = kqir::Value;
   struct RowType {
     KeyType key;
     std::map<const FieldInfo *, ValueType> fields;
@@ -52,8 +53,9 @@ struct ExecutorNode {
       } else {
         os << row.key;
       }
-      return os << " {" << util::StringJoin(row.fields, [](const auto &v) { return v.first->name + ": " + v.second; })
-                << "}";
+      return os << " {" << util::StringJoin(row.fields, [](const auto &v) {
+               return v.first->name + ": " + v.second.ToString();
+             }) << "}";
     }
   };
 

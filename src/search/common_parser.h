@@ -42,7 +42,7 @@ struct UnescapedChar : peg::utf8::range<0x20, 0x10FFFF> {};
 struct Char : peg::if_then_else<peg::one<'\\'>, EscapedChar, UnescapedChar> {};
 
 struct StringContent : peg::until<peg::at<peg::one<'"'>>, Char> {};
-struct String : peg::seq<peg::one<'"'>, StringContent, peg::any> {};
+struct StringL : peg::seq<peg::one<'"'>, StringContent, peg::any> {};
 
 struct Identifier : peg::identifier {};
 

@@ -38,7 +38,7 @@
 #include "string_util.h"
 #include "type_util.h"
 
-// kqir stands for Kvorcks Query Intermediate Representation
+// kqir stands for Kvrocks Query Intermediate Representation
 namespace kqir {
 
 struct Node {

@@ -36,7 +36,7 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector =
-    parse_tree::selector<Rule, parse_tree::store_content::on<Number, String, Identifier, Inf>,
+    parse_tree::selector<Rule, parse_tree::store_content::on<Number, StringL, Identifier, Inf>,
                          parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr,
                                                         AndExpr, OrExpr, Wildcard>>;
 

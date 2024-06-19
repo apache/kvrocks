@@ -26,6 +26,7 @@
 #include "encoding.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
+#include "search/value.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
@@ -108,7 +109,7 @@ struct NumericFieldScanExecutor : ExecutorNode {
     } else {
       iter->Prev();
     }
-    return RowType{key_str, {{scan->field->info, std::to_string(curr)}}, scan->field->info->index};
+    return RowType{key_str, {{scan->field->info, kqir::MakeValue<kqir::Numeric>(curr)}}, scan->field->info->index};
   }
 };
 

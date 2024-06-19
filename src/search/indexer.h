@@ -36,6 +36,7 @@
 #include "storage/storage.h"
 #include "types/redis_hash.h"
 #include "types/redis_json.h"
+#include "value.h"
 
 namespace redis {
 
@@ -63,11 +64,11 @@ struct FieldValueRetriever {
 
   explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonData>, std::move(json)) {}
 
-  rocksdb::Status Retrieve(std::string_view field, std::string *output);
+  StatusOr<kqir::Value> Retrieve(std::string_view field, const redis::IndexFieldMetadata *type);
 };
 
 struct IndexUpdater {
-  using FieldValues = std::map<std::string, std::string>;
+  using FieldValues = std::map<std::string, kqir::Value>;
 
   const kqir::IndexInfo *info = nullptr;
   GlobalIndexer *indexer = nullptr;
@@ -75,15 +76,15 @@ struct IndexUpdater {
   explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
 
   StatusOr<FieldValues> Record(std::string_view key) const;
-  Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                     std::string_view current) const;
+  Status UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
+                     const kqir::Value &current) const;
   Status Update(const FieldValues &original, std::string_view key) const;
 
   Status Build() const;
 
-  Status UpdateTagIndex(std::string_view key, std::string_view original, std::string_view current,
+  Status UpdateTagIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                         const SearchKey &search_key, const TagFieldMetadata *tag) const;
-  Status UpdateNumericIndex(std::string_view key, std::string_view original, std::string_view current,
+  Status UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                             const SearchKey &search_key, const NumericFieldMetadata *num) const;
 };
 

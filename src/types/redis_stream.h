@@ -22,14 +22,12 @@
 
 #include <rocksdb/status.h>
 
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
-#include "types/redis_stream_base.h"
 
 using rocksdb::Slice;
 
@@ -58,7 +56,7 @@ class Stream : public SubKeyScanner {
                                   const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,
                                   StreamClaimResult *result);
   rocksdb::Status AutoClaim(const Slice &stream_name, const std::string &group_name, const std::string &consumer_name,
-                                  const StreamAutoClaimOptions& options, StreamAutoClaimResult *result);
+                            const StreamAutoClaimOptions &options, StreamAutoClaimResult *result);
   rocksdb::Status Len(const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(const Slice &stream_name, bool full, uint64_t count, StreamInfo *info);
   rocksdb::Status GetGroupInfo(const Slice &stream_name,

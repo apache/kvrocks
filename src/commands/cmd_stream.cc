@@ -18,25 +18,17 @@
  *
  */
 
-#include <glog/logging.h>
-
-#include <cstdint>
 #include <limits>
 #include <memory>
 #include <stdexcept>
-#include <string>
-#include <vector>
 
 #include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
 #include "event_util.h"
-#include "server/redis_reply.h"
 #include "server/server.h"
-#include "status.h"
 #include "time_util.h"
 #include "types/redis_stream.h"
-#include "types/redis_stream_base.h"
 
 namespace redis {
 
@@ -374,23 +366,19 @@ class CommandAutoClaim : public Commander {
     key_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
     consumer_name_ = GET_OR_RET(parser.TakeStr());
-    LOG(INFO) << "key_name: " << key_name_ << " group_name: " << group_name_ << " consumer_name: " << consumer_name_;
     {
       auto s = parser.TakeInt<uint64_t>();
       if (!s.IsOK()) {
         return {Status::RedisParseErr, "Invalid min-idle-time argument for XAUTOCLAIM"};
       }
       options_.min_idle_time_ms = s.GetValue();
-      LOG(INFO) << "Min-idle-time: " << options_.min_idle_time_ms;
     }
     {
       auto start_str = GET_OR_RET(parser.TakeStr());
       if (!start_str.empty() && start_str.front() == '(') {
         options_.exclude_start = true;
         start_str = start_str.substr(1);
-        LOG(INFO) << "excluded start: true";
       }
-      LOG(INFO) << "Start string: " << start_str;
       if (!options_.exclude_start && start_str == "-") {
         options_.start_id = StreamEntryID::Minimum();
       } else {
@@ -399,7 +387,6 @@ class CommandAutoClaim : public Commander {
           return s;
         }
       }
-      LOG(INFO) << "Start entry: " << options_.start_id.ToString();
     }
 
     if (parser.EatEqICase("count")) {
@@ -411,12 +398,10 @@ class CommandAutoClaim : public Commander {
         return {Status::RedisParseErr, "COUNT must be > 0"};
       }
       options_.count = count;
-      LOG(INFO) << "Count: " << options_.count;
     }
 
     if (parser.Good() && parser.EatEqICase("justid")) {
       options_.just_id = true;
-      LOG(INFO) << "justid: true";
     }
 
     return Status::OK();
@@ -429,16 +414,6 @@ class CommandAutoClaim : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    LOG(INFO) << "AutoClaim next-claim-id: " << result.next_claim_id << ", "
-              << "entries: ";
-    for (const auto &entry : result.entries) {
-      LOG(INFO) << "key: " << entry.key << ", values: ";
-    }
-    LOG(INFO) << "deleted-ids: ";
-    for (const auto &id : result.deleted_ids) {
-      LOG(INFO) << id;
-    }
-
     return sendResults(conn, result, output);
   }
 
@@ -473,7 +448,6 @@ class CommandAutoClaim : public Commander {
   std::string group_name_;
   std::string consumer_name_;
   StreamAutoClaimOptions options_;
-  // StreamEntryID start_entry_id_;
 };
 
 class CommandXGroup : public Commander {

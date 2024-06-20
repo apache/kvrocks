@@ -22,16 +22,12 @@
 
 #include <rocksdb/status.h>
 
-#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "db_util.h"
-#include "storage/redis_db.h"
-#include "storage/redis_metadata.h"
 #include "time_util.h"
-#include "types/redis_stream_base.h"
 
 namespace redis {
 
@@ -550,14 +546,7 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
   }
 
   StreamConsumerMetadata current_consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
-  LOG(INFO) << "current consumer: " << consumer_name << " , consumer_key: " << consumer_key << ", consumer_metadata: " 
-  << current_consumer_metadata.pending_number << ", " << current_consumer_metadata.last_attempted_interaction_ms << ", "
-  << current_consumer_metadata.last_successful_interaction_ms;
-
   std::map<std::string, uint64_t> claimed_consumer_entity_count;
-
-  LOG(INFO) << "start_id, ms: " << options.start_id.ms << " seq: " << options.start_id.seq << ", to_string: " << options.start_id.ToString();
-
   std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
   std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Maximum());
 
@@ -569,7 +558,6 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
   read_options.iterate_lower_bound = &lower_bound;
   read_options.iterate_upper_bound = &upper_bound;
 
-  // constexpr uint32_t attempts_factor = 10;
   auto count = options.count;
   uint64_t attempts = options.attempts_factors * count;
   auto now_ms = util::GetTimeStampMS();
@@ -626,7 +614,6 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
       --count;
 
       if (penl_entry.consumer_name != consumer_name) {
-        LOG(INFO) << "penl_entry.consumer_name: " << penl_entry.consumer_name << " consumer_name: " << consumer_name;
         ++total_claimed_count;
         claimed_consumer_entity_count[penl_entry.consumer_name] += 1;
         penl_entry.consumer_name = consumer_name;
@@ -641,9 +628,6 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
     current_consumer_metadata.pending_number += total_claimed_count;
     current_consumer_metadata.last_attempted_interaction_ms = now_ms;
 
-    LOG(INFO) << "current consumer metadata: " << current_consumer_metadata.pending_number << " "
-              << current_consumer_metadata.last_attempted_interaction_ms << " "
-              << current_consumer_metadata.last_successful_interaction_ms;
     batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(current_consumer_metadata));
 
     for (const auto &[consumer, count] : claimed_consumer_entity_count) {
@@ -654,21 +638,13 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
         return s;
       }
       StreamConsumerMetadata tmp_consumer_metadata = decodeStreamConsumerMetadataValue(tmp_consumer_value);
-      LOG(INFO) << "tmp consumer metadata: " << tmp_consumer_metadata.pending_number << " "
-                << tmp_consumer_metadata.last_attempted_interaction_ms << " "
-                << tmp_consumer_metadata.last_successful_interaction_ms;
-      LOG(INFO) << "consumer: " << consumer << " count: " << count;
-      // tmp_consumer_metadata.last_attempted_interaction_ms = now_ms;
       tmp_consumer_metadata.pending_number -= count;
-      LOG(INFO) << "tmp consumer metadata(updated): " << tmp_consumer_metadata.pending_number << " "
-                << tmp_consumer_metadata.last_attempted_interaction_ms << " "
-                << tmp_consumer_metadata.last_successful_interaction_ms;
       batch->Put(stream_cf_handle_, tmp_consumer_key, encodeStreamConsumerMetadataValue(tmp_consumer_metadata));
     }
   }
 
   bool has_next_entry = false;
-  for(; iter->Valid(); iter->Next()) {
+  for (; iter->Valid(); iter->Next()) {
     if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
       has_next_entry = true;
       break;

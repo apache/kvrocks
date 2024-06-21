@@ -31,7 +31,7 @@ namespace sql {
 using namespace peg;
 
 struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
-struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, String>> {};
+struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, StringL>> {};
 
 struct NumericAtomExpr : WSPad<sor<Number, Identifier>> {};
 struct NumericCompareOp : sor<string<'!', '='>, string<'<', '='>, string<'>', '='>, one<'=', '<', '>'>> {};

@@ -1598,24 +1598,24 @@ func TestStreamOffset(t *testing.T) {
 		}
 
 		{
-			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-				Stream:   streamName,
-				Group:    groupName,
-				Consumer: consumer2,
-				MinIdle:  10 * time.Millisecond,
-				Count:    3,
-				Start:    "-",
-			})
-			require.NoError(t, rsp.Err())
-			msgs, start := rsp.Val()
-			require.Equal(t, id4, start)
-			require.Len(t, msgs, 2)
-			require.Len(t, msgs[0].Values, 1)
-			require.Equal(t, "1", msgs[0].Values["a"])
-			require.Len(t, msgs[1].Values, 1)
-			require.Equal(t, "3", msgs[1].Values["c"])
-			// there is no delete item in response, we should add test case when it is supported
-			// there should be one delete item in response
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, consumer2, 10, "-", "COUNT", 3)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				id4,
+				[]interface{}{
+					[]interface{}{
+						id1,
+						[]interface{}{"a", "1"},
+					},
+					[]interface{}{
+						id3,
+						[]interface{}{"c", "3"},
+					},
+				},
+				[]interface{}{
+					id2,
+				},
+			}, cmd.Val())
 		}
 
 		{
@@ -1787,22 +1787,24 @@ func TestStreamOffset(t *testing.T) {
 		}
 		{
 			require.NoError(t, rdb.XDel(ctx, streamName, "2-0").Err())
-			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-				Stream:   streamName,
-				Group:    groupName,
-				Consumer: "Bob",
-				MinIdle:  0,
-				Start:    "0-0",
-			})
-			require.NoError(t, rsp.Err())
-			msgs, start := rsp.Val()
-			require.Equal(t, "0-0", start)
-			require.Len(t, msgs, 2)
-			require.Equal(t, "1-0", msgs[0].ID)
-			require.Equal(t, "v", msgs[0].Values["f"])
-			require.Equal(t, "3-0", msgs[1].ID)
-			require.Equal(t, "v", msgs[1].Values["f"])
-			// current client does not have delete response, we should add it to test when it is supported
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0")
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"0-0",
+				[]interface{}{
+					[]interface{}{
+						"1-0",
+						[]interface{}{"f", "v"},
+					},
+					[]interface{}{
+						"3-0",
+						[]interface{}{"f", "v"},
+					},
+				},
+				[]interface{}{
+					"2-0",
+				},
+			}, cmd.Val())
 		}
 	})
 
@@ -1845,50 +1847,40 @@ func TestStreamOffset(t *testing.T) {
 		{
 			require.NoError(t, rdb.XDel(ctx, streamName, "1-0").Err())
 			require.NoError(t, rdb.XDel(ctx, streamName, "2-0").Err())
-			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-				Stream:   streamName,
-				Group:    groupName,
-				Consumer: "Bob",
-				MinIdle:  0,
-				Start:    "0-0",
-				Count:    1,
-			})
-			require.NoError(t, rsp.Err())
-			msgs, start := rsp.Val()
-			require.Equal(t, "2-0", start)
-			require.Empty(t, msgs)
-			// client doesn't return deleted ids, we should add it to test case when it is supported
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"2-0",
+				[]interface{}{},
+				[]interface{}{
+					"1-0",
+				},
+			}, cmd.Val())
 		}
 		{
-			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-				Stream:   streamName,
-				Group:    groupName,
-				Consumer: "Bob",
-				MinIdle:  0,
-				Start:    "2-0",
-				Count:    1,
-			})
-			require.NoError(t, rsp.Err())
-			msgs, start := rsp.Val()
-			require.Equal(t, "3-0", start)
-			require.Empty(t, msgs)
-			// client doesn't return deleted ids, we should add it to test case when it is supported
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "2-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"3-0",
+				[]interface{}{},
+				[]interface{}{
+					"2-0",
+				},
+			}, cmd.Val())
 		}
 		{
-			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-				Stream:   streamName,
-				Group:    groupName,
-				Consumer: "Bob",
-				MinIdle:  0,
-				Start:    "3-0",
-				Count:    1,
-			})
-			require.NoError(t, rsp.Err())
-			msgs, start := rsp.Val()
-			require.Equal(t, "0-0", start)
-			require.Len(t, msgs, 1)
-			require.Equal(t, "3-0", msgs[0].ID)
-			require.Equal(t, "v", msgs[0].Values["f"])
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "3-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"0-0",
+				[]interface{}{
+					[]interface{}{
+						"3-0",
+						[]interface{}{"f", "v"},
+					},
+				},
+				[]interface{}{},
+			}, cmd.Val())
 		}
 		// assert_equal [XPENDING x grp - + 10 Alice] {}
 		// add xpending to this test case when it is supported
@@ -1905,6 +1897,12 @@ func TestStreamOffset(t *testing.T) {
 		}).Err()
 		require.Error(t, err)
 		require.True(t, strings.HasPrefix(err.Error(), "ERR COUNT"))
+	})
+
+	t.Run("XAUTOCLAIM COUNT must be > 0", func(t *testing.T) {
+		cmd := rdb.Do(ctx, "XAUTOCLAIM", "key", "group", "consumer", 1, 1, "COUNT", 0)
+		require.Error(t, cmd.Err())
+		require.Equal(t, "ERR COUNT must be > 0", cmd.Err().Error())
 	})
 }
 

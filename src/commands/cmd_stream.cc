@@ -393,8 +393,8 @@ class CommandAutoClaim : public Commander {
     if (parser.EatEqICase("count")) {
       uint64_t count = GET_OR_RET(parser.TakeInt<uint64_t>());
       constexpr uint64_t min_count = 1;
-      uint64_t max_count =
-          std::numeric_limits<int64_t>::max() / (std::max(sizeof(StreamEntryID), options_.attempts_factors));
+      uint64_t max_count = std::numeric_limits<int64_t>::max() /
+                           (std::max(static_cast<uint64_t>(sizeof(StreamEntryID)), options_.attempts_factors));
       if (count < min_count || count > max_count) {
         return {Status::RedisParseErr, "COUNT must be > 0"};
       }

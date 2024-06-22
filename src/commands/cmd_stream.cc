@@ -413,6 +413,10 @@ class CommandAutoClaim : public Commander {
     StreamAutoClaimResult result;
     auto s = stream_db.AutoClaim(key_name_, group_name_, consumer_name_, options_, &result);
     if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr,
+                "NOGROUP No such key '" + key_name_ + "' or consumer group '" + group_name_ + "'"};
+      }
       return {Status::RedisExecErr, s.ToString()};
     }
     return sendResults(conn, result, output);

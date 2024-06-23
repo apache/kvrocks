@@ -661,7 +661,8 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
 
   result->entries = std::move(pending_entries);
   result->deleted_ids.clear();
-  std::transform(deleted_entries.begin(), deleted_entries.end(), std::back_inserter(result->deleted_ids),
+  result->deleted_ids.reserve(deleted_entries.size());
+  std::transform(deleted_entries.cbegin(), deleted_entries.cend(), std::back_inserter(result->deleted_ids),
                  [](const StreamEntryID &id) { return id.ToString(); });
 
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());

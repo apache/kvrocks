@@ -367,26 +367,23 @@ class CommandAutoClaim : public Commander {
     key_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
     consumer_name_ = GET_OR_RET(parser.TakeStr());
-    {
-      auto s = parser.TakeInt<uint64_t>();
-      if (!s.IsOK()) {
-        return {Status::RedisParseErr, "Invalid min-idle-time argument for XAUTOCLAIM"};
-      }
-      options_.min_idle_time_ms = s.GetValue();
+    auto parse_int_status = parser.TakeInt<uint64_t>();
+    if (!parse_int_status.IsOK()) {
+      return {Status::RedisParseErr, "Invalid min-idle-time argument for XAUTOCLAIM"};
     }
-    {
-      auto start_str = GET_OR_RET(parser.TakeStr());
-      if (!start_str.empty() && start_str.front() == '(') {
-        options_.exclude_start = true;
-        start_str = start_str.substr(1);
-      }
-      if (!options_.exclude_start && start_str == "-") {
-        options_.start_id = StreamEntryID::Minimum();
-      } else {
-        auto s = ParseRangeStart(start_str, &options_.start_id);
-        if (!s.IsOK()) {
-          return s;
-        }
+    options_.min_idle_time_ms = parse_int_status.GetValue();
+
+    auto start_str = GET_OR_RET(parser.TakeStr());
+    if (!start_str.empty() && start_str.front() == '(') {
+      options_.exclude_start = true;
+      start_str = start_str.substr(1);
+    }
+    if (!options_.exclude_start && start_str == "-") {
+      options_.start_id = StreamEntryID::Minimum();
+    } else {
+      auto parse_range_status = ParseRangeStart(start_str, &options_.start_id);
+      if (!parse_range_status.IsOK()) {
+        return parse_range_status;
       }
     }
 
@@ -429,7 +426,6 @@ class CommandAutoClaim : public Commander {
     output->append(redis::MultiLen(result.entries.size()));
     for (const auto &item : result.entries) {
       if (options_.just_id) {
-        // output->append(redis::MultiLen(1));
         output->append(redis::BulkString(item.key));
       } else {
         output->append(redis::MultiLen(2));

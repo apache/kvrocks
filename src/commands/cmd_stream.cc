@@ -367,11 +367,11 @@ class CommandAutoClaim : public Commander {
     key_name_ = GET_OR_RET(parser.TakeStr());
     group_name_ = GET_OR_RET(parser.TakeStr());
     consumer_name_ = GET_OR_RET(parser.TakeStr());
-    auto parse_int_status = parser.TakeInt<uint64_t>();
-    if (!parse_int_status.IsOK()) {
+    if (auto parse_status = parser.TakeInt<uint64_t>(); !parse_status.IsOK()) {
       return {Status::RedisParseErr, "Invalid min-idle-time argument for XAUTOCLAIM"};
+    } else {
+      options_.min_idle_time_ms = parse_status.GetValue();
     }
-    options_.min_idle_time_ms = parse_int_status.GetValue();
 
     auto start_str = GET_OR_RET(parser.TakeStr());
     if (!start_str.empty() && start_str.front() == '(') {
@@ -381,9 +381,9 @@ class CommandAutoClaim : public Commander {
     if (!options_.exclude_start && start_str == "-") {
       options_.start_id = StreamEntryID::Minimum();
     } else {
-      auto parse_range_status = ParseRangeStart(start_str, &options_.start_id);
-      if (!parse_range_status.IsOK()) {
-        return parse_range_status;
+      auto parse_status = ParseRangeStart(start_str, &options_.start_id);
+      if (!parse_status.IsOK()) {
+        return parse_status;
       }
     }
 

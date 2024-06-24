@@ -423,8 +423,7 @@ class CommandJsonArrTrim : public Commander {
     auto s = json.ArrTrim(args_[1], path_, start_, stop_, &results);
 
     if (s.IsNotFound()) {
-      *output = conn->NilString();
-      return Status::OK();
+      return {Status::RedisExecErr, "could not perform this operation on a key that doesn't exist"};
     }
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 

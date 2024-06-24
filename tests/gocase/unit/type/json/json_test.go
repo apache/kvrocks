@@ -356,7 +356,7 @@ func TestJson(t *testing.T) {
 	t.Run("JSON.ARRTRIM basics", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		// key no exists
-		require.EqualError(t, rdb.Do(ctx, "JSON.ARRTRIM", "not_exists", "$", 0, 0).Err(), redis.Nil.Error())
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.ARRTRIM", "not_exists", "$", 0, 0).Err(), "could not perform this operation on a key that doesn't exist")
 		// key not json
 		require.NoError(t, rdb.Do(ctx, "SET", "no_json", "1").Err())
 		require.Error(t, rdb.Do(ctx, "JSON.ARRTRIM", "no_json", "$", 0, 0).Err())

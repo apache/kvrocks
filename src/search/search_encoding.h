@@ -33,6 +33,7 @@ enum class IndexOnDataType : uint8_t {
 };
 
 inline constexpr auto kErrorInsufficientLength = "insufficient length while decoding metadata";
+inline constexpr auto kErrorIncorrectLength = "length is too short or too long to be parsed as a vector";
 
 class IndexMetadata {
  public:
@@ -410,24 +411,36 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
 
 struct HnswNodeFieldMetadata {
   uint16_t num_neighbours;
-  std::string vector;
+  std::vector<double> vector;
 
   HnswNodeFieldMetadata() {}
-  HnswNodeFieldMetadata(uint16_t num_neighbours, std::string_view vector) : num_neighbours(num_neighbours), vector(vector) {}
+  HnswNodeFieldMetadata(uint16_t num_neighbours, std::vector<double> vector)
+      : num_neighbours(num_neighbours), vector(vector) {}
 
   void Encode(std::string *dst) const {
     PutFixed16(dst, uint16_t(num_neighbours));
-    PutSizedString(dst, vector);
+    PutFixed16(dst, uint16_t(vector.size()));
+    for (size_t i = 0; i < vector.size(); ++i) {
+      PutDouble(dst, vector[i]);
+    }
   }
 
   rocksdb::Status Decode(Slice *input) {
-    if (input->size() < 2 + 4) {
+    if (input->size() < 2 + 2) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
     GetFixed16(input, (uint16_t *)(&num_neighbours));
-    Slice value;
-    GetSizedString(input, &value);
-    vector = value.ToString();
+
+    uint16_t dim;
+    GetFixed16(input, (uint16_t *)(&dim));
+
+    if (input->size() != dim * sizeof(double)) {
+      return rocksdb::Status::Corruption(kErrorIncorrectLength);
+    }
+
+    for (size_t i = 0; i < dim; ++i) {
+      GetDouble(input, &vector[i]);
+    }
     return rocksdb::Status::OK();
   }
 };

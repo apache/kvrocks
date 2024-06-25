@@ -25,14 +25,13 @@
 
 #include "db_util.h"
 #include "parse_util.h"
+#include "search/hnsw_indexer.h"
 #include "search/search_encoding.h"
 #include "search/value.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "string_util.h"
 #include "types/redis_hash.h"
-#include "search/hnsw_indexer.h"
-
 
 namespace redis {
 
@@ -59,10 +58,6 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
   }
 }
 
-// placeholders, remove them after vector indexing is implemented
-static bool IsVectorType(const redis::IndexFieldMetadata *) { return false; }
-static size_t GetVectorDim(const redis::IndexFieldMetadata *) { return 1; }
-
 StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &val,
                                                          const redis::IndexFieldMetadata *type) {
   if (auto numeric [[maybe_unused]] = dynamic_cast<const redis::NumericFieldMetadata *>(type)) {
@@ -84,8 +79,8 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &v
     } else {
       return {Status::NotOK, "json value should be string or array of strings for tag fields"};
     }
-  } else if (IsVectorType(type)) {
-    size_t dim = GetVectorDim(type);
+  } else if (auto vector = dynamic_cast<const redis::HnswVectorFieldMetadata *>(type)) {
+    const auto dim = vector->dim;
     if (!val.is_array()) return {Status::NotOK, "json value should be array of numbers for vector fields"};
     if (dim != val.size()) return {Status::NotOK, "the size of the json array is not equal to the dim of the vector"};
     std::vector<double> nums;
@@ -109,8 +104,8 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(const std::string &valu
     const char delim[] = {tag->separator, '\0'};
     auto vec = util::Split(value, delim);
     return kqir::MakeValue<kqir::StringArray>(vec);
-  } else if (IsVectorType(type)) {
-    const size_t dim = GetVectorDim(type);
+  } else if (auto vector = dynamic_cast<const redis::HnswVectorFieldMetadata *>(type)) {
+    const auto dim = vector->dim;
     if (value.size() != dim * sizeof(double)) {
       return {Status::NotOK, "field value is too short or too long to be parsed as a vector"};
     }
@@ -248,7 +243,7 @@ Status IndexUpdater::UpdateTagIndex(std::string_view key, const kqir::Value &ori
 Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                                         const SearchKey &search_key, const NumericFieldMetadata *num) const {
   CHECK(original.IsNull() || original.Is<kqir::Numeric>());
-  CHECK(original.IsNull() || original.Is<kqir::Numeric>());
+  CHECK(current.IsNull() || current.Is<kqir::Numeric>());
 
   auto *storage = indexer->storage;
   auto batch = storage->GetWriteBatchBase();
@@ -271,18 +266,22 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value 
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, std::string_view original, std::string_view current,
-                                            const SearchKey &search_key, HnswVectorFieldMetadata *vector) const {
+Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original,
+                                           const kqir::Value &current, const SearchKey &search_key,
+                                           HnswVectorFieldMetadata *vector) const {
+  CHECK(original.IsNull() || original.Is<kqir::NumericArray>());
+  CHECK(current.IsNull() || current.Is<kqir::NumericArray>());
+
   auto *storage = indexer->storage;
   auto batch = storage->GetWriteBatchBase();
 
-  if (!original.empty()) {
+  if (!original.IsNull()) {
     // TODO: delete
   }
 
-  if (!current.empty()) {
+  if (!current.IsNull()) {
     auto hnsw = HnswIndex(search_key, vector, indexer->storage);
-    hnsw.InsertVectorEntry(key, current, batch);
+    GET_OR_RET(hnsw.InsertVectorEntry(key, current.Get<kqir::NumericArray>(), batch));
   }
 
   auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());

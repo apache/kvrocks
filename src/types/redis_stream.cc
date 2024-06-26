@@ -618,7 +618,10 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
         claimed_consumer_entity_count[penl_entry.consumer_name] += 1;
         penl_entry.consumer_name = consumer_name;
         penl_entry.last_delivery_time_ms = now_ms;
-        penl_entry.last_delivery_count += 1;
+        // Increment the delivery attempts counter unless JUSTID option provided
+        if (!options.just_id) {
+          penl_entry.last_delivery_count += 1;
+        }
         batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(penl_entry));
       }
     }

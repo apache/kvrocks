@@ -34,6 +34,13 @@ struct Scheduler {
   int month;
   int wday;
 
+  // Whether we use */n interval syntax
+  bool minute_interval = false;
+  bool hour_interval = false;
+  bool mday_interval = false;
+  bool month_interval = false;
+  bool wday_interval = false;
+
   std::string ToString() const;
 };
 
@@ -54,5 +61,5 @@ class Cron {
   static StatusOr<Scheduler> convertToScheduleTime(const std::string &minute, const std::string &hour,
                                                    const std::string &mday, const std::string &month,
                                                    const std::string &wday);
-  static StatusOr<int> convertParam(const std::string &param, int lower_bound, int upper_bound);
+  static StatusOr<int> convertParam(const std::string &param, int lower_bound, int upper_bound, bool &is_interval);
 };

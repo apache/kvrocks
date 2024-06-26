@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,23 +16,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+# Check 'format' and 'golangci-lint' before 'git push',
+# Copy this script to .git/hooks to activate,
+# and remove it from .git/hooks to deactivate.
 
-include(cmake/utils.cmake)
+set -Euo pipefail
 
-FetchContent_DeclareGitHubWithMirror(cpptrace
-  jeremy-rifkin/cpptrace v0.6.2
-  MD5=b13786adcc1785cb900746ea96c50bee
-)
+unset GIT_DIR
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
 
-if (SYMBOLIZE_BACKEND STREQUAL "libbacktrace")
-  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_LIBBACKTRACE=ON")
-elseif (SYMBOLIZE_BACKEND STREQUAL "libdwarf")
-  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF=ON")
-else ()
-  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE=ON")
-endif ()
+run_check() {
+    local check_name=$1
+    echo "Running pre-push script $ROOT_DIR/x.py $check_name"
+    ./x.py check "$check_name"
 
-FetchContent_MakeAvailableWithArgs(cpptrace
-  ${CPPTRACE_BACKEND_OPTION}
-)
+    if [ $? -ne 0 ]; then
+        echo 'You may use `git push --no-verify` to skip this check.'
+        exit 1
+    fi
+}
+
+run_check format
+run_check golangci-lint

@@ -363,7 +363,7 @@ Status Cluster::ImportSlot(redis::Connection *conn, int slot, int state) {
 
 Status Cluster::GetClusterInfo(std::string *cluster_infos) {
   if (version_ < 0) {
-    return {Status::ClusterDown, errClusterNoInitialized};
+    return {Status::RedisClusterDown, errClusterNoInitialized};
   }
 
   cluster_infos->clear();
@@ -421,7 +421,7 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
 //          ... continued until done
 Status Cluster::GetSlotsInfo(std::vector<SlotInfo> *slots_infos) {
   if (version_ < 0) {
-    return {Status::ClusterDown, errClusterNoInitialized};
+    return {Status::RedisClusterDown, errClusterNoInitialized};
   }
 
   slots_infos->clear();
@@ -464,7 +464,7 @@ SlotInfo Cluster::genSlotNodeInfo(int start, int end, const std::shared_ptr<Clus
 // $version $connected $slot_range
 Status Cluster::GetClusterNodes(std::string *nodes_str) {
   if (version_ < 0) {
-    return {Status::ClusterDown, errClusterNoInitialized};
+    return {Status::RedisClusterDown, errClusterNoInitialized};
   }
 
   *nodes_str = genNodesDescription();
@@ -473,7 +473,7 @@ Status Cluster::GetClusterNodes(std::string *nodes_str) {
 
 StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
   if (version_ < 0) {
-    return {Status::ClusterDown, errClusterNoInitialized};
+    return {Status::RedisClusterDown, errClusterNoInitialized};
   }
 
   auto item = nodes_.find(node_id);
@@ -821,13 +821,13 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     int cur_slot = GetSlotIdFromKey(cmd_tokens[i]);
     if (slot == -1) slot = cur_slot;
     if (slot != cur_slot) {
-      return {Status::RedisExecErr, "CROSSSLOT Attempted to access keys that don't hash to the same slot"};
+      return {Status::RedisCrossSlot, "Attempted to access keys that don't hash to the same slot"};
     }
   }
   if (slot == -1) return Status::OK();
 
   if (slots_nodes_[slot] == nullptr) {
-    return {Status::ClusterDown, "CLUSTERDOWN Hash slot not served"};
+    return {Status::RedisClusterDown, "Hash slot not served"};
   }
 
   if (myself_ && myself_ == slots_nodes_[slot]) {
@@ -835,12 +835,12 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     // Server can't change the topology directly, so we record the migrated slots
     // to move the requests of the migrated slots to the destination node.
     if (migrated_slots_.count(slot) > 0) {  // I'm not serving the migrated slot
-      return {Status::RedisExecErr, fmt::format("MOVED {} {}", slot, migrated_slots_[slot])};
+      return {Status::RedisMoved, fmt::format("{} {}", slot, migrated_slots_[slot])};
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
     if ((attributes->flags & redis::kCmdWrite) && IsWriteForbiddenSlot(slot)) {
-      return {Status::RedisExecErr, "TRYAGAIN Can't write to slot being migrated which is in write forbidden phase"};
+      return {Status::RedisTryAgain, "Can't write to slot being migrated which is in write forbidden phase"};
     }
 
     return Status::OK();  // I'm serving this slot
@@ -868,8 +868,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // My master is serving this slot
   }
 
-  return {Status::RedisExecErr,
-          fmt::format("MOVED {} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+  return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
 }
 
 // Only HARD mode is meaningful to the Kvrocks cluster,

@@ -688,9 +688,9 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
   /* Serialize the object in an RDB-like format. It consist of an object type
    * byte followed by the serialized object. This is understood by RESTORE. */
   auto s = SaveObjectType(type);
-  if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+  if (!s.IsOK()) return s;
   s = SaveObject(key, type);
-  if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+  if (!s.IsOK()) return s;
 
   /* Write the footer, this is how it looks like:
    * ----------------+---------------------+---------------+
@@ -705,21 +705,14 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
   buf[0] = MinRDBVersion & 0xff;
   buf[1] = (MinRDBVersion >> 8) & 0xff;
   s = stream_->Write((const char *)buf, 2);
-  if (!s.IsOK()) {
-    return {Status::RedisExecErr, s.Msg()};
-  }
+  if (!s.IsOK()) return s;
 
   /* CRC64 */
   CHECK(dynamic_cast<RdbStringStream *>(stream_.get()) != nullptr);
   std::string &output = static_cast<RdbStringStream *>(stream_.get())->GetInput();
   uint64_t crc = crc64(0, (unsigned char *)(output.c_str()), output.length());
   memrev64ifbe(&crc);
-  s = stream_->Write((const char *)(&crc), 8);
-  if (!s.IsOK()) {
-    return {Status::RedisExecErr, s.Msg()};
-  }
-
-  return Status::OK();
+  return stream_->Write((const char *)(&crc), 8);
 }
 
 Status RDB::SaveObjectType(const RedisType type) {
@@ -797,48 +790,28 @@ Status RDB::RdbSaveLen(uint64_t len) {
   if (len < (1 << 6)) {
     /* Save a 6 bit len */
     buf[0] = (len & 0xFF) | (RDB6BitLen << 6);
-    auto status = stream_->Write((const char *)buf, 1);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
-    return Status::OK();
+    return stream_->Write((const char *)buf, 1);
   } else if (len < (1 << 14)) {
     /* Save a 14 bit len */
     buf[0] = ((len >> 8) & 0xFF) | (RDB14BitLen << 6);
     buf[1] = len & 0xFF;
-    auto status = stream_->Write((const char *)buf, 2);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
-    return Status::OK();
+    return stream_->Write((const char *)buf, 2);
   } else if (len <= UINT32_MAX) {
     /* Save a 32 bit len */
     buf[0] = RDB32BitLen;
     auto status = stream_->Write((const char *)buf, 1);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     uint32_t len32 = htonl(len);
-    status = stream_->Write((const char *)(&len32), 4);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
-    return Status::OK();
+    return stream_->Write((const char *)(&len32), 4);
   } else {
     /* Save a 64 bit len */
     buf[0] = RDB64BitLen;
     auto status = stream_->Write((const char *)buf, 1);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     len = htonu64(len);
-    status = stream_->Write((const char *)(&len), 8);
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
-    return Status::OK();
+    return stream_->Write((const char *)(&len), 8);
   }
 }
 
@@ -857,11 +830,7 @@ Status RDB::SaveStringObject(const std::string &value) {
       // encode integer
       enclen = rdbEncodeInteger(integer_value, buf);
       if (enclen > 0) {
-        auto status = stream_->Write((const char *)buf, enclen);
-        if (!status.IsOK()) {
-          return {Status::RedisExecErr, status.Msg()};
-        }
-        return Status::OK();
+        return stream_->Write((const char *)buf, enclen);
       }
     }
   }
@@ -871,14 +840,9 @@ Status RDB::SaveStringObject(const std::string &value) {
 
   /* Store verbatim */
   auto status = RdbSaveLen(value.length());
-  if (!status.IsOK()) {
-    return {Status::RedisExecErr, status.Msg()};
-  }
+  if (!status.IsOK()) return status;
   if (value.length() > 0) {
-    status = stream_->Write(value.c_str(), value.length());
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    return stream_->Write(value.c_str(), value.length());
   }
   return Status::OK();
 }
@@ -886,15 +850,11 @@ Status RDB::SaveStringObject(const std::string &value) {
 Status RDB::SaveListObject(const std::vector<std::string> &elems) {
   if (elems.size() > 0) {
     auto status = RdbSaveLen(elems.size());
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     for (const auto &elem : elems) {
       auto status = rdbSaveZipListObject(elem);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
     }
   } else {
     LOG(WARNING) << "the size of elems is zero";
@@ -906,15 +866,11 @@ Status RDB::SaveListObject(const std::vector<std::string> &elems) {
 Status RDB::SaveSetObject(const std::vector<std::string> &members) {
   if (members.size() > 0) {
     auto status = RdbSaveLen(members.size());
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     for (const auto &elem : members) {
       status = SaveStringObject(elem);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
     }
   } else {
     LOG(WARNING) << "the size of elems is zero";
@@ -926,20 +882,14 @@ Status RDB::SaveSetObject(const std::vector<std::string> &members) {
 Status RDB::SaveZSetObject(const std::vector<MemberScore> &member_scores) {
   if (member_scores.size() > 0) {
     auto status = RdbSaveLen(member_scores.size());
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     for (const auto &elem : member_scores) {
       status = SaveStringObject(elem.member);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
 
       status = rdbSaveBinaryDoubleValue(elem.score);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
     }
   } else {
     LOG(WARNING) << "the size of member_scores is zero";
@@ -951,20 +901,14 @@ Status RDB::SaveZSetObject(const std::vector<MemberScore> &member_scores) {
 Status RDB::SaveHashObject(const std::vector<FieldValue> &field_values) {
   if (field_values.size() > 0) {
     auto status = RdbSaveLen(field_values.size());
-    if (!status.IsOK()) {
-      return {Status::RedisExecErr, status.Msg()};
-    }
+    if (!status.IsOK()) return status;
 
     for (const auto &p : field_values) {
       status = SaveStringObject(p.field);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
 
       status = SaveStringObject(p.value);
-      if (!status.IsOK()) {
-        return {Status::RedisExecErr, status.Msg()};
-      }
+      if (!status.IsOK()) return status;
     }
   } else {
     LOG(WARNING) << "the size of field_values is zero";
@@ -1024,10 +968,5 @@ Status RDB::rdbSaveZipListObject(const std::string &elem) {
   ZipList::SetZipListLength(zl_ptr, ziplist_size, 1);
   zl_ptr[ziplist_size - 1] = zlEnd;
 
-  auto status = SaveStringObject(zl_string);
-  if (!status.IsOK()) {
-    return {Status::RedisExecErr, status.Msg()};
-  }
-
-  return Status::OK();
+  return SaveStringObject(zl_string);
 }

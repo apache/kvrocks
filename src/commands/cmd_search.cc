@@ -19,18 +19,21 @@
  */
 
 #include <memory>
+#include <sstream>
 #include <variant>
 
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "search/index_info.h"
 #include "search/ir.h"
+#include "search/ir_dot_dumper.h"
 #include "search/plan_executor.h"
 #include "search/redis_query_transformer.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "string_util.h"
 #include "tao/pegtl/string_input.hpp"
 
 namespace redis {
@@ -147,23 +150,51 @@ static void DumpQueryResult(const std::vector<kqir::ExecutorContext::RowType> &r
     output->append(MultiLen(fields.size() * 2));
     for (const auto &[info, field] : fields) {
       output->append(redis::BulkString(info->name));
-      output->append(redis::BulkString(field));
+      output->append(redis::BulkString(field.ToString(info->metadata.get())));
     }
   }
 }
 
 class CommandFTExplainSQL : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 3) {
+      if (util::EqualICase(args[2], "simple")) {
+        format_ = SIMPLE;
+      } else if (util::EqualICase(args[2], "dot")) {
+        format_ = DOT_GRAPH;
+      } else {
+        return {Status::NotOK, "output format should be SIMPLE or DOT"};
+      }
+    }
+
+    if (args.size() > 3) {
+      return {Status::NotOK, "more arguments than expected"};
+    }
+
+    return Status::OK();
+  }
+
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     const auto &sql = args_[1];
 
     auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.explainsql")));
 
-    auto result = GET_OR_RET(srv->index_mgr.Explain(std::move(ir), conn->GetNamespace()));
+    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir), conn->GetNamespace()));
 
-    output->append(BulkString(result));
+    if (format_ == SIMPLE) {
+      output->append(BulkString(plan->Dump()));
+    } else if (format_ == DOT_GRAPH) {
+      std::ostringstream ss;
+      kqir::DotDumper dumper(ss);
+
+      dumper.Dump(plan.get());
+      output->append(BulkString(ss.str()));
+    }
 
     return Status::OK();
   };
+
+  enum OutputFormat { SIMPLE, DOT_GRAPH } format_ = SIMPLE;
 };
 
 class CommandFTSearchSQL : public Commander {
@@ -233,9 +264,9 @@ class CommandFTExplain : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     CHECK(ir_);
-    auto result = GET_OR_RET(srv->index_mgr.Explain(std::move(ir_), conn->GetNamespace()));
+    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
 
-    output->append(redis::SimpleString(result));
+    output->append(redis::BulkString(plan->Dump()));
 
     return Status::OK();
   };
@@ -330,7 +361,7 @@ class CommandFTDrop : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),

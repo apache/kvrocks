@@ -50,6 +50,10 @@ struct CronPattern {
       auto interval = GET_OR_RET(ParseInt<int>(std::string(num_str.begin(), num_str.end()), minmax)
                                      .Prefixed("an integer is expected after `*/` in a cron expression"));
 
+      if (interval == 0) {
+        return {Status::NotOK, "interval value after `*/` cannot be zero"};
+      }
+
       return CronPattern{Interval{interval}};
     } else {
       auto num_strs = util::Split(str, ",");

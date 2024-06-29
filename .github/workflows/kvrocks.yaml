@@ -390,7 +390,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}

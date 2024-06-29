@@ -79,6 +79,10 @@ struct CronPattern {
         }
       }
 
+      if (results.empty()) {
+        return {Status::NotOK, "invalid cron expression"};
+      }
+
       return CronPattern{results};
     }
   }

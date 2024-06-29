@@ -76,8 +76,15 @@ struct QueryExprEvaluator {
     auto val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
 
     CHECK(val.Is<kqir::StringArray>());
-    auto split = val.Get<kqir::StringArray>();
-    return std::find(split.begin(), split.end(), v->tag->val) != split.end();
+    auto tags = val.Get<kqir::StringArray>();
+
+    auto meta = v->field->info->MetadataAs<redis::TagFieldMetadata>();
+    if (meta->case_sensitive) {
+      return std::find(tags.begin(), tags.end(), v->tag->val) != tags.end();
+    } else {
+      return std::find_if(tags.begin(), tags.end(),
+                          [v](const auto &tag) { return util::EqualICase(tag, v->tag->val); }) != tags.end();
+    }
   }
 
   StatusOr<bool> Visit(NumericCompareExpr *v) const {

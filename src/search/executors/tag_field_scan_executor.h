@@ -29,6 +29,7 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
+#include "string_util.h"
 
 namespace kqir {
 
@@ -39,13 +40,15 @@ struct TagFieldScanExecutor : ExecutorNode {
 
   IndexInfo *index;
   std::string index_key;
+  bool case_sensitive;
 
   TagFieldScanExecutor(ExecutorContext *ctx, TagFieldScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
         ss(ctx->storage),
         index(scan->field->info->index),
-        index_key(redis::SearchKey(index->ns, index->name, scan->field->name).ConstructTagFieldData(scan->tag, {})) {}
+        index_key(redis::SearchKey(index->ns, index->name, scan->field->name).ConstructTagFieldData(scan->tag, {})),
+        case_sensitive(scan->field->info->MetadataAs<redis::TagFieldMetadata>()->case_sensitive) {}
 
   bool InRangeDecode(Slice key, Slice *user_key) const {
     uint8_t ns_size = 0;
@@ -66,7 +69,7 @@ struct TagFieldScanExecutor : ExecutorNode {
     if (value != scan->field->name) return false;
 
     if (!GetSizedString(&key, &value)) return false;
-    if (value != scan->tag) return false;
+    if (case_sensitive ? value != scan->tag : !util::EqualICase(value.ToStringView(), scan->tag)) return false;
 
     if (!GetSizedString(&key, user_key)) return false;
 

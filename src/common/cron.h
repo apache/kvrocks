@@ -63,10 +63,10 @@ struct CronPattern {
         if (auto pos = num_str.find('-'); pos != num_str.npos) {
           auto l_str = num_str.substr(0, pos);
           auto r_str = num_str.substr(pos + 1);
-          auto l = GET_OR_RET(ParseInt<int>(std::string(num_str.begin(), num_str.end()), minmax)
-                                  .Prefixed("an integer is expected before `-` in a cron expression"));
-          auto r = GET_OR_RET(ParseInt<int>(std::string(num_str.begin(), num_str.end()), minmax)
-                                  .Prefixed("an integer is expected after `-` in a cron expression"));
+          auto l = GET_OR_RET(
+              ParseInt<int>(l_str, minmax).Prefixed("an integer is expected before `-` in a cron expression"));
+          auto r = GET_OR_RET(
+              ParseInt<int>(r_str, minmax).Prefixed("an integer is expected after `-` in a cron expression"));
 
           if (l >= r) {
             return {Status::NotOK, "for pattern `l-r` in cron expression, r should be larger than l"};

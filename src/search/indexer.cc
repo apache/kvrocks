@@ -26,6 +26,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "search/search_encoding.h"
+#include "search/value.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "string_util.h"
@@ -56,25 +57,100 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
   }
 }
 
-rocksdb::Status FieldValueRetriever::Retrieve(std::string_view field, std::string *output) {
+// placeholders, remove them after vector indexing is implemented
+static bool IsVectorType(const redis::IndexFieldMetadata *) { return false; }
+static size_t GetVectorDim(const redis::IndexFieldMetadata *) { return 1; }
+
+StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &val,
+                                                         const redis::IndexFieldMetadata *type) {
+  if (auto numeric [[maybe_unused]] = dynamic_cast<const redis::NumericFieldMetadata *>(type)) {
+    if (!val.is_number() || val.is_string()) return {Status::NotOK, "json value cannot be string for numeric fields"};
+    return kqir::MakeValue<kqir::Numeric>(val.as_double());
+  } else if (auto tag = dynamic_cast<const redis::TagFieldMetadata *>(type)) {
+    if (val.is_string()) {
+      const char delim[] = {tag->separator, '\0'};
+      auto vec = util::Split(val.as_string(), delim);
+      return kqir::MakeValue<kqir::StringArray>(vec);
+    } else if (val.is_array()) {
+      std::vector<std::string> strs;
+      for (size_t i = 0; i < val.size(); ++i) {
+        if (!val[i].is_string())
+          return {Status::NotOK, "json value should be string or array of strings for tag fields"};
+        strs.push_back(val[i].as_string());
+      }
+      return kqir::MakeValue<kqir::StringArray>(strs);
+    } else {
+      return {Status::NotOK, "json value should be string or array of strings for tag fields"};
+    }
+  } else if (IsVectorType(type)) {
+    size_t dim = GetVectorDim(type);
+    if (!val.is_array()) return {Status::NotOK, "json value should be array of numbers for vector fields"};
+    if (dim != val.size()) return {Status::NotOK, "the size of the json array is not equal to the dim of the vector"};
+    std::vector<double> nums;
+    for (size_t i = 0; i < dim; ++i) {
+      if (!val[i].is_number() || val[i].is_string())
+        return {Status::NotOK, "json value should be array of numbers for vector fields"};
+      nums.push_back(val[i].as_double());
+    }
+    return kqir::MakeValue<kqir::NumericArray>(nums);
+  } else {
+    return {Status::NotOK, "unknown field type to retrieve"};
+  }
+}
+
+StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(const std::string &value,
+                                                         const redis::IndexFieldMetadata *type) {
+  if (auto numeric [[maybe_unused]] = dynamic_cast<const redis::NumericFieldMetadata *>(type)) {
+    auto num = GET_OR_RET(ParseFloat(value));
+    return kqir::MakeValue<kqir::Numeric>(num);
+  } else if (auto tag = dynamic_cast<const redis::TagFieldMetadata *>(type)) {
+    const char delim[] = {tag->separator, '\0'};
+    auto vec = util::Split(value, delim);
+    return kqir::MakeValue<kqir::StringArray>(vec);
+  } else if (IsVectorType(type)) {
+    const size_t dim = GetVectorDim(type);
+    if (value.size() != dim * sizeof(double)) {
+      return {Status::NotOK, "field value is too short or too long to be parsed as a vector"};
+    }
+    std::vector<double> vec;
+    for (size_t i = 0; i < dim; ++i) {
+      // TODO: care about endian later
+      // TODO: currently only support 64bit floating point
+      vec.push_back(*(reinterpret_cast<const double *>(value.data()) + i));
+    }
+    return kqir::MakeValue<kqir::NumericArray>(vec);
+  } else {
+    return {Status::NotOK, "unknown field type to retrieve"};
+  }
+}
+
+StatusOr<kqir::Value> FieldValueRetriever::Retrieve(std::string_view field, const redis::IndexFieldMetadata *type) {
   if (std::holds_alternative<HashData>(db)) {
     auto &[hash, metadata, key] = std::get<HashData>(db);
     std::string ns_key = hash.AppendNamespacePrefix(key);
+
     LatestSnapShot ss(hash.storage_);
     rocksdb::ReadOptions read_options;
     read_options.snapshot = ss.GetSnapShot();
     std::string sub_key = InternalKey(ns_key, field, metadata.version, hash.storage_->IsSlotIdEncoded()).Encode();
-    return hash.storage_->Get(read_options, sub_key, output);
+    std::string value;
+    auto s = hash.storage_->Get(read_options, sub_key, &value);
+    if (s.IsNotFound()) return {Status::NotFound, s.ToString()};
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+    return ParseFromHash(value, type);
   } else if (std::holds_alternative<JsonData>(db)) {
     auto &value = std::get<JsonData>(db);
+
     auto s = value.Get(field.front() == '$' ? field : fmt::format("$.{}", field));
-    if (!s.IsOK()) return rocksdb::Status::Corruption(s.Msg());
+    if (!s.IsOK()) return {Status::NotOK, s.Msg()};
     if (s->value.size() != 1)
-      return rocksdb::Status::NotFound("json value specified by the field (json path) should exist and be unique");
-    *output = s->value[0].as_string();
-    return rocksdb::Status::OK();
+      return {Status::NotFound, "json value specified by the field (json path) should exist and be unique"};
+    auto val = s->value[0];
+
+    return ParseFromJson(val, type);
   } else {
-    __builtin_unreachable();
+    return {Status::NotOK, "unknown redis data type to retrieve"};
   }
 }
 
@@ -102,22 +178,22 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key) c
       continue;
     }
 
-    std::string value;
-    auto s = retriever.Retrieve(field, &value);
-    if (s.IsNotFound()) continue;
-    if (!s.ok()) return {Status::NotOK, s.ToString()};
+    auto s = retriever.Retrieve(field, i.metadata.get());
+    if (s.Is<Status::NotFound>()) continue;
+    if (!s) return s;
 
-    values.emplace(field, value);
+    values.emplace(field, *s);
   }
 
   return values;
 }
 
-Status IndexUpdater::UpdateTagIndex(std::string_view key, std::string_view original, std::string_view current,
+Status IndexUpdater::UpdateTagIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                                     const SearchKey &search_key, const TagFieldMetadata *tag) const {
-  const char delim[] = {tag->separator, '\0'};
-  auto original_tags = util::Split(original, delim);
-  auto current_tags = util::Split(current, delim);
+  CHECK(original.IsNull() || original.Is<kqir::StringArray>());
+  CHECK(current.IsNull() || current.Is<kqir::StringArray>());
+  auto original_tags = original.IsNull() ? std::vector<std::string>() : original.Get<kqir::StringArray>();
+  auto current_tags = current.IsNull() ? std::vector<std::string>() : current.Get<kqir::StringArray>();
 
   auto to_tag_set = [](const std::vector<std::string> &tags, bool case_sensitive) -> std::set<std::string> {
     if (case_sensitive) {
@@ -167,22 +243,23 @@ Status IndexUpdater::UpdateTagIndex(std::string_view key, std::string_view origi
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateNumericIndex(std::string_view key, std::string_view original, std::string_view current,
+Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                                         const SearchKey &search_key, const NumericFieldMetadata *num) const {
+  CHECK(original.IsNull() || original.Is<kqir::Numeric>());
+  CHECK(original.IsNull() || original.Is<kqir::Numeric>());
+
   auto *storage = indexer->storage;
   auto batch = storage->GetWriteBatchBase();
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
 
-  if (!original.empty()) {
-    auto original_num = GET_OR_RET(ParseFloat(std::string(original.begin(), original.end())));
-    auto index_key = search_key.ConstructNumericFieldData(original_num, key);
+  if (!original.IsNull()) {
+    auto index_key = search_key.ConstructNumericFieldData(original.Get<kqir::Numeric>(), key);
 
     batch->Delete(cf_handle, index_key);
   }
 
-  if (!current.empty()) {
-    auto current_num = GET_OR_RET(ParseFloat(std::string(current.begin(), current.end())));
-    auto index_key = search_key.ConstructNumericFieldData(current_num, key);
+  if (!current.IsNull()) {
+    auto index_key = search_key.ConstructNumericFieldData(current.Get<kqir::Numeric>(), key);
 
     batch->Put(cf_handle, index_key, Slice());
   }
@@ -192,8 +269,8 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, std::string_view o
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                                 std::string_view current) const {
+Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
+                                 const kqir::Value &current) const {
   if (original == current) {
     // the value of this field is unchanged, no need to update
     return Status::OK();
@@ -225,7 +302,7 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key) c
       continue;
     }
 
-    std::string_view original_val, current_val;
+    kqir::Value original_val, current_val;
 
     if (auto it = original.find(field); it != original.end()) {
       original_val = it->second;

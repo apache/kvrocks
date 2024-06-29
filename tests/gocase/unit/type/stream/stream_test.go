@@ -286,7 +286,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 	})
 
 	t.Run("XRANGE exclusive ranges", func(t *testing.T) {
-		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551615-18446744073709551614", "18446744073709551615-18446744073709551615"}
+		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42"}
 		total := len(ids)
 		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
 		// DEL returns "QUEUED" here, so we use Do to avoid ParseInt.

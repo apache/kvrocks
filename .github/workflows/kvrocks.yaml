@@ -111,21 +111,21 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang
-            os: macos-12
+            os: macos-13
             compiler: auto
           - name: Darwin Clang arm64
             os: macos-14
             compiler: auto
           - name: Darwin Clang without Jemalloc
-            os: macos-12
+            os: macos-13
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Darwin Clang with OpenSSL
-            os: macos-12
+            os: macos-13
             compiler: auto
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Darwin Clang without luaJIT
-            os: macos-12
+            os: macos-13
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC

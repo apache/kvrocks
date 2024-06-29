@@ -40,7 +40,7 @@ struct CronPattern {
   struct Any {};                                             // *
   using Numbers = std::vector<std::variant<Number, Range>>;  // 1,2,3-6,7
 
-  std::variant<Numbers, Interval, Any> val;
+  std::variant<Any, Numbers, Interval> val;
 
   static StatusOr<CronPattern> Parse(std::string_view str, std::tuple<int, int> minmax) {
     if (str == "*") {
@@ -160,6 +160,8 @@ class Cron {
   ~Cron() = default;
 
   Status SetScheduleTime(const std::vector<std::string> &args);
+  void Clear();
+
   bool IsTimeMatch(const tm *tm);
   std::string ToString() const;
   bool IsEnabled() const;

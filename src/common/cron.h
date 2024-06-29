@@ -147,6 +147,11 @@ struct CronScheduler {
   CronPattern wday;
 
   std::string ToString() const;
+
+  static StatusOr<CronScheduler> Parse(std::string_view minute, std::string_view hour, std::string_view mday,
+                                       std::string_view month, std::string_view wday);
+
+  bool IsMatch(const tm *tm) const;
 };
 
 class Cron {
@@ -162,8 +167,4 @@ class Cron {
  private:
   std::vector<CronScheduler> schedulers_;
   tm last_tm_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr};
-
-  static StatusOr<CronScheduler> convertToScheduleTime(const std::string &minute, const std::string &hour,
-                                                       const std::string &mday, const std::string &month,
-                                                       const std::string &wday);
 };

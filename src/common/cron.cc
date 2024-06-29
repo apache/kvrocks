@@ -32,6 +32,29 @@ std::string CronScheduler::ToString() const {
                      wday.ToString());
 }
 
+bool CronScheduler::IsMatch(const tm *tm) const {
+  bool minute_match = minute.IsMatch(tm->tm_min);
+  bool hour_match = hour.IsMatch(tm->tm_hour);
+  bool mday_match = mday.IsMatch(tm->tm_mday, 1);
+  bool month_match = month.IsMatch(tm->tm_mon + 1, 1);
+  bool wday_match = wday.IsMatch(tm->tm_wday);
+
+  return minute_match && hour_match && mday_match && month_match && wday_match;
+}
+
+StatusOr<CronScheduler> CronScheduler::Parse(std::string_view minute, std::string_view hour, std::string_view mday,
+                                             std::string_view month, std::string_view wday) {
+  CronScheduler st;
+
+  st.minute = GET_OR_RET(CronPattern::Parse(minute, {0, 59}));
+  st.hour = GET_OR_RET(CronPattern::Parse(hour, {0, 23}));
+  st.mday = GET_OR_RET(CronPattern::Parse(mday, {1, 31}));
+  st.month = GET_OR_RET(CronPattern::Parse(month, {1, 12}));
+  st.wday = GET_OR_RET(CronPattern::Parse(wday, {0, 6}));
+
+  return st;
+}
+
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   if (args.empty()) {
     schedulers_.clear();
@@ -43,7 +66,7 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
 
   std::vector<CronScheduler> new_schedulers;
   for (size_t i = 0; i < args.size(); i += 5) {
-    auto s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4]);
+    auto s = CronScheduler::Parse(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4]);
     if (!s.IsOK()) {
       return std::move(s).Prefixed("cron expression format error");
     }
@@ -60,13 +83,7 @@ bool Cron::IsTimeMatch(const tm *tm) {
   }
 
   for (const auto &st : schedulers_) {
-    bool minute_match = st.minute.IsMatch(tm->tm_min);
-    bool hour_match = st.hour.IsMatch(tm->tm_hour);
-    bool mday_match = st.mday.IsMatch(tm->tm_mday, 1);
-    bool month_match = st.month.IsMatch(tm->tm_mon + 1, 1);
-    bool wday_match = st.wday.IsMatch(tm->tm_wday);
-
-    if (minute_match && hour_match && mday_match && month_match && wday_match) {
+    if (st.IsMatch(tm)) {
       last_tm_ = *tm;
       return true;
     }
@@ -83,18 +100,4 @@ std::string Cron::ToString() const {
     if (i != schedulers_.size() - 1) ret += " ";
   }
   return ret;
-}
-
-StatusOr<CronScheduler> Cron::convertToScheduleTime(const std::string &minute, const std::string &hour,
-                                                    const std::string &mday, const std::string &month,
-                                                    const std::string &wday) {
-  CronScheduler st;
-
-  st.minute = GET_OR_RET(CronPattern::Parse(minute, {0, 59}));
-  st.hour = GET_OR_RET(CronPattern::Parse(hour, {0, 23}));
-  st.mday = GET_OR_RET(CronPattern::Parse(mday, {1, 31}));
-  st.month = GET_OR_RET(CronPattern::Parse(month, {1, 12}));
-  st.wday = GET_OR_RET(CronPattern::Parse(wday, {0, 6}));
-
-  return st;
 }

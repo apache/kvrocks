@@ -19,18 +19,21 @@
  */
 
 #include <memory>
+#include <sstream>
 #include <variant>
 
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "search/index_info.h"
 #include "search/ir.h"
+#include "search/ir_dot_dumper.h"
 #include "search/plan_executor.h"
 #include "search/redis_query_transformer.h"
 #include "search/search_encoding.h"
 #include "search/sql_transformer.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "string_util.h"
 #include "tao/pegtl/string_input.hpp"
 
 namespace redis {
@@ -147,10 +150,52 @@ static void DumpQueryResult(const std::vector<kqir::ExecutorContext::RowType> &r
     output->append(MultiLen(fields.size() * 2));
     for (const auto &[info, field] : fields) {
       output->append(redis::BulkString(info->name));
-      output->append(redis::BulkString(field));
+      output->append(redis::BulkString(field.ToString(info->metadata.get())));
     }
   }
 }
+
+class CommandFTExplainSQL : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 3) {
+      if (util::EqualICase(args[2], "simple")) {
+        format_ = SIMPLE;
+      } else if (util::EqualICase(args[2], "dot")) {
+        format_ = DOT_GRAPH;
+      } else {
+        return {Status::NotOK, "output format should be SIMPLE or DOT"};
+      }
+    }
+
+    if (args.size() > 3) {
+      return {Status::NotOK, "more arguments than expected"};
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &sql = args_[1];
+
+    auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.explainsql")));
+
+    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir), conn->GetNamespace()));
+
+    if (format_ == SIMPLE) {
+      output->append(BulkString(plan->Dump()));
+    } else if (format_ == DOT_GRAPH) {
+      std::ostringstream ss;
+      kqir::DotDumper dumper(ss);
+
+      dumper.Dump(plan.get());
+      output->append(BulkString(ss.str()));
+    }
+
+    return Status::OK();
+  };
+
+  enum OutputFormat { SIMPLE, DOT_GRAPH } format_ = SIMPLE;
+};
 
 class CommandFTSearchSQL : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -166,50 +211,73 @@ class CommandFTSearchSQL : public Commander {
   };
 };
 
+static StatusOr<std::unique_ptr<kqir::Node>> ParseRediSearchQuery(const std::vector<std::string> &args) {
+  CommandParser parser(args, 1);
+
+  auto index_name = GET_OR_RET(parser.TakeStr());
+  auto query_str = GET_OR_RET(parser.TakeStr());
+
+  auto index_ref = std::make_unique<kqir::IndexRef>(index_name);
+  auto query = kqir::Node::MustAs<kqir::QueryExpr>(
+      GET_OR_RET(kqir::redis_query::ParseToIR(kqir::peg::string_input(query_str, "ft.search"))));
+
+  auto select = std::make_unique<kqir::SelectClause>(std::vector<std::unique_ptr<kqir::FieldRef>>{});
+  std::unique_ptr<kqir::SortByClause> sort_by;
+  std::unique_ptr<kqir::LimitClause> limit;
+  while (parser.Good()) {
+    if (parser.EatEqICase("RETURNS")) {
+      auto count = GET_OR_RET(parser.TakeInt<size_t>());
+
+      for (size_t i = 0; i < count; ++i) {
+        auto field = GET_OR_RET(parser.TakeStr());
+        select->fields.push_back(std::make_unique<kqir::FieldRef>(field));
+      }
+    } else if (parser.EatEqICase("SORTBY")) {
+      auto field = GET_OR_RET(parser.TakeStr());
+      auto order = kqir::SortByClause::ASC;
+      if (parser.EatEqICase("ASC")) {
+        // NOOP
+      } else if (parser.EatEqICase("DESC")) {
+        order = kqir::SortByClause::DESC;
+      }
+
+      sort_by = std::make_unique<kqir::SortByClause>(order, std::make_unique<kqir::FieldRef>(field));
+    } else if (parser.EatEqICase("LIMIT")) {
+      auto offset = GET_OR_RET(parser.TakeInt<size_t>());
+      auto count = GET_OR_RET(parser.TakeInt<size_t>());
+
+      limit = std::make_unique<kqir::LimitClause>(offset, count);
+    } else {
+      return parser.InvalidSyntax();
+    }
+  }
+
+  return std::make_unique<kqir::SearchExpr>(std::move(index_ref), std::move(query), std::move(limit),
+                                            std::move(sort_by), std::move(select));
+}
+
+class CommandFTExplain : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    ir_ = GET_OR_RET(ParseRediSearchQuery(args));
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    CHECK(ir_);
+    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
+
+    output->append(redis::BulkString(plan->Dump()));
+
+    return Status::OK();
+  };
+
+ private:
+  std::unique_ptr<kqir::Node> ir_;
+};
+
 class CommandFTSearch : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 1);
-
-    auto index_name = GET_OR_RET(parser.TakeStr());
-    auto query_str = GET_OR_RET(parser.TakeStr());
-
-    auto index_ref = std::make_unique<kqir::IndexRef>(index_name);
-    auto query = kqir::Node::MustAs<kqir::QueryExpr>(
-        GET_OR_RET(kqir::redis_query::ParseToIR(kqir::peg::string_input(query_str, "ft.search"))));
-
-    auto select = std::make_unique<kqir::SelectClause>(std::vector<std::unique_ptr<kqir::FieldRef>>{});
-    std::unique_ptr<kqir::SortByClause> sort_by;
-    std::unique_ptr<kqir::LimitClause> limit;
-    while (parser.Good()) {
-      if (parser.EatEqICase("RETURNS")) {
-        auto count = GET_OR_RET(parser.TakeInt<size_t>());
-
-        for (size_t i = 0; i < count; ++i) {
-          auto field = GET_OR_RET(parser.TakeStr());
-          select->fields.push_back(std::make_unique<kqir::FieldRef>(field));
-        }
-      } else if (parser.EatEqICase("SORTBY")) {
-        auto field = GET_OR_RET(parser.TakeStr());
-        auto order = kqir::SortByClause::ASC;
-        if (parser.EatEqICase("ASC")) {
-          // NOOP
-        } else if (parser.EatEqICase("DESC")) {
-          order = kqir::SortByClause::DESC;
-        }
-
-        sort_by = std::make_unique<kqir::SortByClause>(order, std::make_unique<kqir::FieldRef>(field));
-      } else if (parser.EatEqICase("LIMIT")) {
-        auto offset = GET_OR_RET(parser.TakeInt<size_t>());
-        auto count = GET_OR_RET(parser.TakeInt<size_t>());
-
-        limit = std::make_unique<kqir::LimitClause>(offset, count);
-      } else {
-        return parser.InvalidSyntax();
-      }
-    }
-
-    ir_ = std::make_unique<kqir::SearchExpr>(std::move(index_ref), std::move(query), std::move(limit),
-                                             std::move(sort_by), std::move(select));
+    ir_ = GET_OR_RET(ParseRediSearchQuery(args));
     return Status::OK();
   }
 
@@ -293,6 +361,8 @@ class CommandFTDrop : public Commander {
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));

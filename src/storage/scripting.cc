@@ -611,8 +611,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        *output = redis::Error(redis::errNoMatchingScript);
-        return Status::OK();
+        return {Status::RedisNoScript, redis::errNoMatchingScript};
       }
     } else {
       body = body_or_sha;
@@ -640,8 +639,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   SetGlobalArray(lua, "ARGV", argv);
 
   if (lua_pcall(lua, 0, 1, -2)) {
-    auto msg = fmt::format("ERR running script (call to {}): {}", funcname, lua_tostring(lua, -1));
-    *output = redis::Error(msg);
+    auto msg = fmt::format("running script (call to {}): {}", funcname, lua_tostring(lua, -1));
+    *output = redis::Error({Status::NotOK, msg});
     lua_pop(lua, 2);
   } else {
     *output = ReplyToRedisReply(conn, lua);
@@ -755,7 +754,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   if (config->cluster_enabled) {
     auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
-      PushError(lua, s.Msg().c_str());
+      PushError(lua, redis::StatusToRedisErrorMsg(s).c_str());
       return raise_error ? RaiseError(lua) : 1;
     }
   }
@@ -1192,7 +1191,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = redis::Error(lua_tostring(lua, -1));
+        output = redis::Error({Status::RedisErrorNoPrefix, lua_tostring(lua, -1)});
         lua_pop(lua, 1);
         return output;
       }

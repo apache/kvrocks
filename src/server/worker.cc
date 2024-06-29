@@ -167,7 +167,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
 
   s = AddConnection(conn);
   if (!s.IsOK()) {
-    std::string err_msg = redis::Error("ERR " + s.Msg());
+    std::string err_msg = redis::Error({Status::NotOK, s.Msg()});
     s = util::SockSend(fd, err_msg, ssl);
     if (!s.IsOK()) {
       LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
@@ -200,8 +200,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
 
   auto s = AddConnection(conn);
   if (!s.IsOK()) {
-    std::string err_msg = redis::Error("ERR " + s.Msg());
-    s = util::SockSend(fd, err_msg);
+    s = util::SockSend(fd, redis::Error(s));
     if (!s.IsOK()) {
       LOG(WARNING) << "Failed to send error response to socket: " << s.Msg();
     }

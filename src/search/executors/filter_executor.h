@@ -74,17 +74,24 @@ struct QueryExprEvaluator {
 
   StatusOr<bool> Visit(TagContainExpr *v) const {
     auto val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
-    auto meta = v->field->info->MetadataAs<redis::TagFieldMetadata>();
 
-    auto split = util::Split(val, std::string(1, meta->separator));
-    return std::find(split.begin(), split.end(), v->tag->val) != split.end();
+    CHECK(val.Is<kqir::StringArray>());
+    auto tags = val.Get<kqir::StringArray>();
+
+    auto meta = v->field->info->MetadataAs<redis::TagFieldMetadata>();
+    if (meta->case_sensitive) {
+      return std::find(tags.begin(), tags.end(), v->tag->val) != tags.end();
+    } else {
+      return std::find_if(tags.begin(), tags.end(),
+                          [v](const auto &tag) { return util::EqualICase(tag, v->tag->val); }) != tags.end();
+    }
   }
 
   StatusOr<bool> Visit(NumericCompareExpr *v) const {
-    auto l_str = GET_OR_RET(ctx->Retrieve(row, v->field->info));
+    auto l_val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
 
-    // TODO: reconsider how to handle failure case here
-    auto l = GET_OR_RET(ParseFloat(l_str));
+    CHECK(l_val.Is<kqir::Numeric>());
+    auto l = l_val.Get<kqir::Numeric>();
     auto r = v->num->val;
 
     switch (v->op) {

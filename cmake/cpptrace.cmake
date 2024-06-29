@@ -19,13 +19,19 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.6.0
-  MD5=1b246d4d0e8a011d33e0813b256198ef
+FetchContent_DeclareGitHubWithMirror(cpptrace
+  jeremy-rifkin/cpptrace v0.6.2
+  MD5=b13786adcc1785cb900746ea96c50bee
 )
 
-FetchContent_MakeAvailableWithArgs(glog
-  WITH_GFLAGS=OFF
-  WITH_GTEST=OFF
-  BUILD_SHARED_LIBS=OFF
+if (SYMBOLIZE_BACKEND STREQUAL "libbacktrace")
+  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_LIBBACKTRACE=ON")
+elseif (SYMBOLIZE_BACKEND STREQUAL "libdwarf")
+  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_LIBDWARF=ON")
+else ()
+  set(CPPTRACE_BACKEND_OPTION "CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE=ON")
+endif ()
+
+FetchContent_MakeAvailableWithArgs(cpptrace
+  ${CPPTRACE_BACKEND_OPTION}
 )

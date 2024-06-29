@@ -178,8 +178,8 @@ struct IndexManager {
     return Status::OK();
   }
 
-  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
-                                                               const std::string &ns) const {
+  StatusOr<std::unique_ptr<kqir::PlanOperator>> GeneratePlan(std::unique_ptr<kqir::Node> ir,
+                                                             const std::string &ns) const {
     kqir::SemaChecker sema_checker(index_map);
     sema_checker.ns = ns;
 
@@ -190,6 +190,13 @@ struct IndexManager {
     if (plan_op = kqir::Node::As<kqir::PlanOperator>(std::move(plan_ir)); !plan_op) {
       return {Status::NotOK, "failed to convert the query to plan operators"};
     }
+
+    return plan_op;
+  }
+
+  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
+                                                               const std::string &ns) const {
+    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
 
     kqir::ExecutorContext executor_ctx(plan_op.get(), storage);
 

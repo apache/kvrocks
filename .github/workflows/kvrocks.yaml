@@ -110,24 +110,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Darwin Clang
-            os: macos-11
-            compiler: auto
+          # FIXME: update macos-11 to macos-12/13
+          # - name: Darwin Clang
+          #   os: macos-11
+          #   compiler: auto
           - name: Darwin Clang arm64
             os: macos-14
             compiler: auto
-          - name: Darwin Clang without Jemalloc
-            os: macos-11
-            compiler: auto
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - name: Darwin Clang with OpenSSL
-            os: macos-11
-            compiler: auto
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Darwin Clang without luaJIT
-            os: macos-11
-            compiler: auto
-            without_luajit: -DENABLE_LUAJIT=OFF
+          # - name: Darwin Clang without Jemalloc
+          #   os: macos-11
+          #   compiler: auto
+          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
+          # - name: Darwin Clang with OpenSSL
+          #   os: macos-11
+          #   compiler: auto
+          #   with_openssl: -DENABLE_OPENSSL=ON
+          # - name: Darwin Clang without luaJIT
+          #   os: macos-11
+          #   compiler: auto
+          #   without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-20.04
             compiler: gcc
@@ -389,7 +390,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}

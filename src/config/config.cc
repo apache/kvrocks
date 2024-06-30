@@ -141,6 +141,7 @@ Config::Config() {
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
+      {"compaction-checker-cron", false, new StringField(&compaction_checker_cron_str_, "")},
       {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
       {"force-compact-file-min-deleted-percentage", false,
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
@@ -300,21 +301,19 @@ void Config::initFieldValidator() {
        }},
       {"compaction-checker-range",
        [this](const std::string &k, const std::string &v) -> Status {
+         if (!compaction_checker_cron_str_.empty()) {
+           return {Status::NotOK, "compaction-checker-range cannot be set while compaction-checker-cron is set"};
+         }
          if (v.empty()) {
-           compaction_checker_range.start = -1;
-           compaction_checker_range.stop = -1;
+           compaction_checker_cron.Clear();
            return Status::OK();
          }
-         std::vector<std::string> args = util::Split(v, "-");
-         if (args.size() != 2) {
-           return {Status::NotOK, "invalid range format, the range should be between 0 and 24"};
-         }
-         auto start = GET_OR_RET(ParseInt<int>(args[0], {0, 24}, 10)),
-              stop = GET_OR_RET(ParseInt<int>(args[1], {0, 24}, 10));
-         if (start > stop) return {Status::NotOK, "invalid range format, start should be smaller than stop"};
-         compaction_checker_range.start = start;
-         compaction_checker_range.stop = stop;
-         return Status::OK();
+         return compaction_checker_cron.SetScheduleTime({"*", v, "*", "*", "*"});
+       }},
+      {"compaction-checker-cron",
+       [this](const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> args = util::Split(v, " \t");
+         return compaction_checker_cron.SetScheduleTime(args);
        }},
       {"rename-command",
        [](const std::string &k, const std::string &v) -> Status {

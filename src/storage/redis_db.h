@@ -27,6 +27,7 @@
 #include <variant>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
 #include "redis_metadata.h"
 #include "server/redis_reply.h"
 #include "storage.h"
@@ -135,6 +136,7 @@ class Database {
   [[nodiscard]] rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
+  [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(const rocksdb::Slice &ns, const SlotRange &slot_range);
   [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
 
   // Copy <key,value> to <new_key,value> (already an internal key)

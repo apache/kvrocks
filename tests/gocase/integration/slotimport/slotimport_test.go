@@ -83,8 +83,8 @@ func TestImportedServer(t *testing.T) {
 	require.NoError(t, rdbB.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
 	t.Run("IMPORT - error slot", func(t *testing.T) {
-		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", -1, 0).Err(), "Slot is out of range")
-		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", 16384, 0).Err(), "Slot is out of range")
+		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", -1, 0).Err(), "Invalid slot range")
+		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", 16384, 0).Err(), "Invalid slot id: out of numeric range")
 	})
 
 	t.Run("IMPORT - slot with error state", func(t *testing.T) {

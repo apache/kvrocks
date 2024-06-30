@@ -21,6 +21,7 @@
 #pragma once
 
 #include "cluster/redis_slot.h"
+#include "fmt/format.h"
 
 enum {
   kClusterMaster = 1,
@@ -33,6 +34,7 @@ enum {
 inline constexpr const char *errInvalidNodeID = "Invalid cluster node id";
 inline constexpr const char *errInvalidSlotID = "Invalid slot id";
 inline constexpr const char *errSlotOutOfRange = "Slot is out of range";
+inline constexpr const char *errSlotRangeInvalid = "Slot range is invalid";
 inline constexpr const char *errInvalidClusterVersion = "Invalid cluster version";
 inline constexpr const char *errSlotOverlapped = "Slot distribution is overlapped";
 inline constexpr const char *errNoMasterNode = "The node isn't a master";
@@ -40,4 +42,30 @@ inline constexpr const char *errClusterNoInitialized = "The cluster is not initi
 inline constexpr const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
 inline constexpr const char *errInvalidImportState = "Invalid import state";
 
-using SlotRange = std::pair<int, int>;
+struct SlotRange {
+  SlotRange(int start, int end) : start(start), end(end) {}
+  SlotRange() : start(-1), end(-1) {}
+  bool IsValid() const {
+    return start >= 0 && start < kClusterSlots && end >= 0 && end < kClusterSlots && start <= end;
+  }
+
+  bool Contain(int slot) const { return IsValid() && slot >= start && slot <= end; }
+
+  bool CheckIntersection(const SlotRange &rhs) const {
+    if (!IsValid() || !rhs.IsValid()) return false;
+    if (start < rhs.start && end < rhs.start) return false;
+    if (rhs.start < start && rhs.end < start) return false;
+    return true;
+  }
+  std::string String() const {
+    if (!IsValid()) return "empty";
+    if (start == end) return fmt::format("{}", start);
+    return fmt::format("{}-{}", start, end);
+  }
+
+  bool operator==(const SlotRange &rhs) const { return start == rhs.start && end == rhs.end; }
+  bool operator!=(const SlotRange &rhs) const { return !(*this == rhs); }
+
+  int start;
+  int end;
+};

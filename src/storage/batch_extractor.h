@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "status.h"
@@ -32,8 +33,8 @@
 // An extractor to extract update from raw write batch
 class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
  public:
-  explicit WriteBatchExtractor(bool is_slot_id_encoded, int16_t slot_id = -1, bool to_redis = false)
-      : is_slot_id_encoded_(is_slot_id_encoded), slot_id_(slot_id), to_redis_(to_redis) {}
+  explicit WriteBatchExtractor(bool is_slot_id_encoded, SlotRange slot_range = {-1, -1}, bool to_redis = false)
+      : is_slot_id_encoded_(is_slot_id_encoded), slot_range_(slot_range), to_redis_(to_redis) {}
 
   void LogData(const rocksdb::Slice &blob) override;
   rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override;
@@ -49,6 +50,6 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
   redis::WriteBatchLogData log_data_;
   bool first_seen_ = true;
   bool is_slot_id_encoded_ = false;
-  int slot_id_;
+  SlotRange slot_range_;
   bool to_redis_;
 };

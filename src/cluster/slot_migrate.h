@@ -55,8 +55,9 @@ enum class SlotMigrationStage { kNone, kStart, kSnapshot, kWAL, kSuccess, kFaile
 enum class KeyMigrationResult { kMigrated, kExpired, kUnderlyingStructEmpty };
 
 struct SlotMigrationJob {
-  SlotMigrationJob(int slot_id, std::string dst_ip, int dst_port, int speed, int pipeline_size, int seq_gap)
-      : slot_id(static_cast<int16_t>(slot_id)),
+  SlotMigrationJob(const SlotRange &slot_range, std::string dst_ip, int dst_port, int speed, int pipeline_size,
+                   int seq_gap)
+      : slot_range(slot_range),
         dst_ip(std::move(dst_ip)),
         dst_port(dst_port),
         max_speed(speed),
@@ -66,7 +67,7 @@ struct SlotMigrationJob {
   SlotMigrationJob &operator=(const SlotMigrationJob &other) = delete;
   ~SlotMigrationJob() = default;
 
-  int16_t slot_id;
+  SlotRange slot_range;
   std::string dst_ip;
   int dst_port;
   int max_speed;
@@ -84,9 +85,9 @@ class SlotMigrator : public redis::Database {
   ~SlotMigrator();
 
   Status CreateMigrationThread();
-  Status PerformSlotMigration(const std::string &node_id, std::string &dst_ip, int dst_port, int slot_id,
-                              SyncMigrateContext *blocking_ctx = nullptr);
-  void ReleaseForbiddenSlot();
+  Status PerformSlotRangeMigration(const std::string &node_id, std::string &dst_ip, int dst_port,
+                                   const SlotRange &range, SyncMigrateContext *blocking_ctx = nullptr);
+  void ReleaseForbiddenSlotRange();
   void SetMaxMigrationSpeed(int value) {
     if (value >= 0) max_migration_speed_ = value;
   }
@@ -101,8 +102,8 @@ class SlotMigrator : public redis::Database {
   void SetStopMigrationFlag(bool value) { stop_migration_ = value; }
   bool IsMigrationInProgress() const { return migration_state_ == MigrationState::kStarted; }
   SlotMigrationStage GetCurrentSlotMigrationStage() const { return current_stage_; }
-  int16_t GetForbiddenSlot() const { return forbidden_slot_; }
-  int16_t GetMigratingSlot() const { return migrating_slot_; }
+  SlotRange GetForbiddenSlotRange() const { return forbidden_slot_range_; }
+  SlotRange GetMigratingSlotRange() const { return slot_range_; }
   std::string GetDstNode() const { return dst_node_; }
   void GetMigrationInfo(std::string *info) const;
   void CancelSyncCtx();
@@ -149,7 +150,7 @@ class SlotMigrator : public redis::Database {
   bool catchUpIncrementalWAL();
   Status migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender);
 
-  void setForbiddenSlot(int16_t slot);
+  void setForbiddenSlotRange(const SlotRange &slot_range);
   std::unique_lock<std::mutex> blockingLock() { return std::unique_lock<std::mutex>(blocking_mutex_); }
 
   void resumeSyncCtx(const Status &migrate_result);
@@ -190,9 +191,9 @@ class SlotMigrator : public redis::Database {
   UniqueFD dst_fd_;
 
   MigrationType migration_type_ = MigrationType::kRedisCommand;
-  std::atomic<int16_t> forbidden_slot_ = -1;
-  std::atomic<int16_t> migrating_slot_ = -1;
-  int16_t migrate_failed_slot_ = -1;
+  std::atomic<SlotRange> forbidden_slot_range_ = SlotRange{-1, -1};
+  std::atomic<SlotRange> slot_range_ = SlotRange{-1, -1};
+  SlotRange migrate_failed_slot_range_ = {-1, -1};
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
   uint64_t wal_begin_seq_ = 0;

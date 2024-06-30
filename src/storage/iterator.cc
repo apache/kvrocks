@@ -167,7 +167,8 @@ void SubKeyIterator::Reset() {
 }
 
 rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
-  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+  auto key_slot_id = ExtractSlotId(key);
+  if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypePut, column_family_id, key.ToString(), value.ToString());
@@ -175,7 +176,8 @@ rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice 
 }
 
 rocksdb::Status WALBatchExtractor::DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) {
-  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+  auto key_slot_id = ExtractSlotId(key);
+  if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypeDelete, column_family_id, key.ToString(), std::string{});
@@ -245,7 +247,7 @@ void WALIterator::nextBatch() {
 }
 
 void WALIterator::Seek(rocksdb::SequenceNumber seq) {
-  if (slot_ != -1 && !storage_->IsSlotIdEncoded()) {
+  if (slot_range_.IsValid() && !storage_->IsSlotIdEncoded()) {
     Reset();
     return;
   }

@@ -167,7 +167,7 @@ Status Parser::parseBitmapSegment(const Slice &ns, const Slice &user_key, int in
 
 Status Parser::ParseWriteBatch(const std::string &batch_string) {
   rocksdb::WriteBatch write_batch(batch_string);
-  WriteBatchExtractor write_batch_extractor(slot_id_encoded_, -1, true);
+  WriteBatchExtractor write_batch_extractor(slot_id_encoded_, {-1, -1}, true);
 
   auto db_status = write_batch.Iterate(&write_batch_extractor);
   if (!db_status.ok())

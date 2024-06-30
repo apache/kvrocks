@@ -534,6 +534,20 @@ rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Database::ClearKeysOfSlotRange(const rocksdb::Slice &ns, const SlotRange &slot_range) {
+  if (!storage_->IsSlotIdEncoded()) {
+    return rocksdb::Status::Aborted("It is not in cluster mode");
+  }
+
+  std::string prefix = ComposeSlotKeyPrefix(ns, slot_range.start);
+  std::string prefix_end = ComposeSlotKeyPrefix(ns, slot_range.end + 1);
+  auto s = storage_->DeleteRange(prefix, prefix_end);
+  if (!s.ok()) {
+    return s;
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Database::KeyExist(const std::string &key) {
   int cnt = 0;
   std::vector<rocksdb::Slice> keys{key};

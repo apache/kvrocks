@@ -53,7 +53,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 
   if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -112,7 +113,8 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
     InternalKey ikey(key, is_slot_id_encoded_);
     user_key = ikey.GetKey().ToString();
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -279,7 +281,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     std::string user_key;
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -287,7 +290,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
     InternalKey ikey(key, is_slot_id_encoded_);
     std::string user_key = ikey.GetKey().ToString();
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 

@@ -1707,4 +1707,90 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamGetPendingEntryResult &pending_infos,
+                                          std::vector<StreamGetExtPendingEntryResult> &ext_results) {
+  const std::string &stream_name = options.stream_name;
+  const std::string &group_name = options.group_name;
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string get_group_value;
+  s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
+  std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
+
+  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+  LatestSnapShot ss(storage_);
+  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::Slice upper_bound(end_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
+  std::unordered_set<std::string> consumer_names;
+  StreamEntryID smallest_id{StreamEntryID::Maximum()};
+  StreamEntryID greatest_id{StreamEntryID::Minimum()};
+  uint64_t count = 0;
+  for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+    if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
+      if (options.with_count && options.count <= count) {
+        break;
+      }
+      std::string tmp_group_name;
+      StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
+      if (tmp_group_name != group_name) continue;
+
+      if (smallest_id > entry_id) {
+        smallest_id = entry_id;
+      }
+      if (greatest_id < entry_id) {
+        greatest_id = entry_id;
+      }
+      StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
+      const std::string &consumer_name = pel_entry.consumer_name;
+
+      if (options.with_consumer && options.consumer != consumer_name) {
+        continue;
+      }
+
+      ext_results.push_back({entry_id, consumer_name, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count});
+
+      if (options.with_count) {
+        continue;
+      }
+      std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+      std::string get_consumer_value;
+      s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (s.IsNotFound()) {
+        return rocksdb::Status::OK();
+      }
+
+      StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
+      if (consumer_names.find(consumer_name) == consumer_names.end()) {
+        consumer_names.insert(consumer_name);
+        pending_infos.consumer_infos.emplace_back(consumer_name, consumer_metadata.pending_number);
+      }
+      count++;
+    }
+  }
+  pending_infos.greatest_id = greatest_id;
+  pending_infos.smallest_id = smallest_id;
+  pending_infos.pending_number = count;
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

@@ -239,6 +239,36 @@ struct StreamAutoClaimResult {
   std::vector<std::string> deleted_ids;
 };
 
+struct StreamPendingOptions {
+  uint64_t idle_time = 0;
+  bool with_time = false;
+
+  StreamEntryID start_id{StreamEntryID::Minimum()};
+  StreamEntryID end_id{StreamEntryID::Maximum()};
+
+  uint64_t count;
+  bool with_count = false;
+  bool with_consumer = false;
+
+  std::string consumer;
+  std::string stream_name;
+  std::string group_name;
+};
+
+struct StreamGetPendingEntryResult {
+  uint64_t pending_number;
+  StreamEntryID smallest_id;
+  StreamEntryID greatest_id;
+  std::vector<std::pair<std::string, int>> consumer_infos;
+};
+
+struct StreamGetExtPendingEntryResult {
+  StreamEntryID id;
+  std::string consumer_name;
+  uint64_t delivered_time;
+  uint64_t delivered_count;
+};
+
 Status IncrementStreamEntryID(StreamEntryID *id);
 Status ParseStreamEntryID(const std::string &input, StreamEntryID *id);
 StatusOr<std::unique_ptr<NextStreamEntryIDGenerationStrategy>> ParseNextStreamEntryIDStrategy(const std::string &input);

@@ -28,6 +28,7 @@
 #include "error_constants.h"
 #include "event_util.h"
 #include "server/server.h"
+#include "status.h"
 #include "time_util.h"
 #include "types/redis_stream.h"
 
@@ -812,6 +813,98 @@ class CommandXInfo : public Commander {
 
     return Status::OK();
   }
+};
+
+class CommandXPending : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+    group_name_ = GET_OR_RET(parser.TakeStr());
+    if (parser.EatEqICase("idle")) {
+      options_.idle_time = GET_OR_RET(parser.TakeInt<uint64_t>());
+      options_.with_time = true;
+    }
+
+    if (parser.Good()) {
+      std::string start_id, end_id;
+      start_id = GET_OR_RET(parser.TakeStr());
+      end_id = GET_OR_RET(parser.TakeStr());
+      if (start_id != "-") {
+        auto s = ParseStreamEntryID(start_id, &options_.start_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      }
+
+      if (end_id != "+") {
+        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+      }
+
+      options_.count = GET_OR_RET(parser.TakeInt<uint64_t>());
+      options_.with_count = true;
+      if (parser.Good()) {
+        options_.consumer = GET_OR_RET(parser.TakeStr());
+        options_.with_consumer = true;
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<std::pair<std::string, int>> pending_infos;
+    StreamGetPendingEntryResult results;
+    options_.stream_name = stream_name_;
+    options_.group_name = group_name_;
+    std::vector<StreamGetExtPendingEntryResult> ext_results;
+    auto s = stream_db.GetPendingEntries(options_, results, ext_results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (options_.with_count) {
+      return SendExtResults(conn, output, ext_results);
+    }
+    return SendResults(conn, output, results);
+  }
+
+  static Status SendResults(Connection *conn, std::string *output, StreamGetPendingEntryResult &results) {
+    output->append(redis::MultiLen(3 + results.consumer_infos.size()));
+    output->append(redis::Integer(results.pending_number));
+    output->append(redis::BulkString(results.smallest_id.ToString()));
+    output->append(redis::BulkString(results.greatest_id.ToString()));
+    for (const auto &entry : results.consumer_infos) {
+      output->append(redis::MultiLen(1));
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(entry.first));
+      output->append(redis::BulkString(std::to_string(entry.second)));
+    }
+
+    return Status::OK();
+  }
+
+  static Status SendExtResults(Connection *conn, std::string *output,
+                               std::vector<StreamGetExtPendingEntryResult> &ext_results) {
+    output->append(redis::MultiLen(ext_results.size()));
+    for (const auto &entry : ext_results) {
+      output->append(redis::MultiLen(4));
+      output->append(redis::BulkString(entry.id.ToString()));
+      output->append(redis::BulkString(entry.consumer_name));
+      output->append(redis::Integer(entry.delivered_time));
+      output->append(redis::Integer(entry.delivered_count));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string group_name_;
+  std::string stream_name_;
+  std::string consumer_name_;
+  StreamPendingOptions options_;
 };
 
 class CommandXRange : public Commander {
@@ -1744,6 +1837,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-ch
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
                         MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandXPending>("xpending", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),

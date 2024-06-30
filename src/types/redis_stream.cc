@@ -1708,7 +1708,7 @@ rocksdb::Status Stream::SetId(const Slice &stream_name, const StreamEntryID &las
 }
 
 rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamGetPendingEntryResult &pending_infos,
-                                          std::vector<StreamGetExtPendingEntryResult> &ext_results) {
+                                          std::vector<StreamNACK> &ext_results) {
   const std::string &stream_name = options.stream_name;
   const std::string &group_name = options.group_name;
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -1739,8 +1739,8 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
 
   auto iter = util::UniqueIterator(storage_, read_options, stream_cf_handle_);
   std::unordered_set<std::string> consumer_names;
-  StreamEntryID smallest_id{StreamEntryID::Maximum()};
-  StreamEntryID greatest_id{StreamEntryID::Minimum()};
+  StreamEntryID first_entry_id{StreamEntryID::Maximum()};
+  StreamEntryID last_entry_id{StreamEntryID::Minimum()};
   uint64_t count = 0;
   for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
     if (identifySubkeyType(iter->key()) == StreamSubkeyType::StreamPelEntry) {
@@ -1751,11 +1751,11 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
       StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
       if (tmp_group_name != group_name) continue;
 
-      if (smallest_id > entry_id) {
-        smallest_id = entry_id;
+      if (first_entry_id > entry_id) {
+        first_entry_id = entry_id;
       }
-      if (greatest_id < entry_id) {
-        greatest_id = entry_id;
+      if (last_entry_id < entry_id) {
+        last_entry_id = entry_id;
       }
       StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
       const std::string &consumer_name = pel_entry.consumer_name;
@@ -1764,7 +1764,7 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
         continue;
       }
 
-      ext_results.push_back({entry_id, consumer_name, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count});
+      ext_results.push_back({entry_id, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, consumer_name});
 
       if (options.with_count) {
         continue;
@@ -1787,8 +1787,8 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
       count++;
     }
   }
-  pending_infos.greatest_id = greatest_id;
-  pending_infos.smallest_id = smallest_id;
+  pending_infos.last_entry_id = last_entry_id;
+  pending_infos.first_entry_id = first_entry_id;
   pending_infos.pending_number = count;
   return rocksdb::Status::OK();
 }

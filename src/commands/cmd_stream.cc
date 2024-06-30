@@ -860,7 +860,7 @@ class CommandXPending : public Commander {
     StreamGetPendingEntryResult results;
     options_.stream_name = stream_name_;
     options_.group_name = group_name_;
-    std::vector<StreamGetExtPendingEntryResult> ext_results;
+    std::vector<StreamNACK> ext_results;
     auto s = stream_db.GetPendingEntries(options_, results, ext_results);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -874,10 +874,10 @@ class CommandXPending : public Commander {
   static Status SendResults(Connection *conn, std::string *output, StreamGetPendingEntryResult &results) {
     output->append(redis::MultiLen(3 + results.consumer_infos.size()));
     output->append(redis::Integer(results.pending_number));
-    output->append(redis::BulkString(results.smallest_id.ToString()));
-    output->append(redis::BulkString(results.greatest_id.ToString()));
+    output->append(redis::BulkString(results.first_entry_id.ToString()));
+    output->append(redis::BulkString(results.last_entry_id.ToString()));
+    output->append(redis::MultiLen(results.consumer_infos.size()));
     for (const auto &entry : results.consumer_infos) {
-      output->append(redis::MultiLen(1));
       output->append(redis::MultiLen(2));
       output->append(redis::BulkString(entry.first));
       output->append(redis::BulkString(std::to_string(entry.second)));
@@ -886,15 +886,14 @@ class CommandXPending : public Commander {
     return Status::OK();
   }
 
-  static Status SendExtResults(Connection *conn, std::string *output,
-                               std::vector<StreamGetExtPendingEntryResult> &ext_results) {
+  static Status SendExtResults(Connection *conn, std::string *output, std::vector<StreamNACK> &ext_results) {
     output->append(redis::MultiLen(ext_results.size()));
     for (const auto &entry : ext_results) {
       output->append(redis::MultiLen(4));
       output->append(redis::BulkString(entry.id.ToString()));
-      output->append(redis::BulkString(entry.consumer_name));
-      output->append(redis::Integer(entry.delivered_time));
-      output->append(redis::Integer(entry.delivered_count));
+      output->append(redis::BulkString(entry.pel_entry.consumer_name));
+      output->append(redis::Integer(entry.pel_entry.last_delivery_time_ms));
+      output->append(redis::Integer(entry.pel_entry.last_delivery_count));
     }
 
     return Status::OK();

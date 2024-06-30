@@ -64,7 +64,7 @@ class Stream : public SubKeyScanner {
   rocksdb::Status GetConsumerInfo(const Slice &stream_name, const std::string &group_name,
                                   std::vector<std::pair<std::string, StreamConsumerMetadata>> &consumer_metadata);
   rocksdb::Status GetPendingEntries(StreamPendingOptions &options, StreamGetPendingEntryResult &pending_infos,
-                                    std::vector<StreamGetExtPendingEntryResult> &ext_results);
+                                    std::vector<StreamNACK> &ext_results);
   rocksdb::Status Range(const Slice &stream_name, const StreamRangeOptions &options, std::vector<StreamEntry> *entries);
   rocksdb::Status RangeWithPending(const Slice &stream_name, StreamRangeOptions &options,
                                    std::vector<StreamEntry> *entries, std::string &group_name,

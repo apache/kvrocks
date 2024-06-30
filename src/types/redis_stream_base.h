@@ -257,16 +257,14 @@ struct StreamPendingOptions {
 
 struct StreamGetPendingEntryResult {
   uint64_t pending_number;
-  StreamEntryID smallest_id;
-  StreamEntryID greatest_id;
+  StreamEntryID first_entry_id;
+  StreamEntryID last_entry_id;
   std::vector<std::pair<std::string, int>> consumer_infos;
 };
 
-struct StreamGetExtPendingEntryResult {
+struct StreamNACK {
   StreamEntryID id;
-  std::string consumer_name;
-  uint64_t delivered_time;
-  uint64_t delivered_count;
+  StreamPelEntry pel_entry;
 };
 
 Status IncrementStreamEntryID(StreamEntryID *id);

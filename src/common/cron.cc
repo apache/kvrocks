@@ -55,6 +55,8 @@ StatusOr<CronScheduler> CronScheduler::Parse(std::string_view minute, std::strin
   return st;
 }
 
+void Cron::Clear() { schedulers_.clear(); }
+
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   if (args.empty()) {
     schedulers_.clear();

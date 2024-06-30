@@ -372,3 +372,43 @@ TEST_F(CronTestWeekDayInterval, ToString) {
   std::string got = cron_->ToString();
   ASSERT_EQ("0 * * * */4", got);
 }
+
+class CronTestNumberAndRange : public testing::Test {
+ protected:
+  explicit CronTestNumberAndRange() {
+    cron_ = std::make_unique<Cron>();
+    std::vector<std::string> schedule{"*", "1,3,6-10,20", "*", "*", "*"};
+    auto s = cron_->SetScheduleTime(schedule);
+    EXPECT_TRUE(s.IsOK());
+  }
+  ~CronTestNumberAndRange() override = default;
+
+  std::unique_ptr<Cron> cron_;
+};
+
+TEST_F(CronTestNumberAndRange, IsTimeMatch) {
+  std::time_t t = std::time(nullptr);
+  std::tm *now = std::localtime(&t);
+  now->tm_hour = 1;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 3;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 6;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 8;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 10;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 20;
+  ASSERT_TRUE(cron_->IsTimeMatch(now));
+  now->tm_hour = 0;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+  now->tm_hour = 2;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+  now->tm_hour = 5;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+  now->tm_hour = 14;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+  now->tm_hour = 22;
+  ASSERT_FALSE(cron_->IsTimeMatch(now));
+}

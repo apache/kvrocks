@@ -57,10 +57,10 @@ jobs:
       FORCE_COLOR: 1
     steps:
       - uses: actions/checkout@v4
-      - name: Install typos
-        run: curl -LsSf https://github.com/crate-ci/typos/releases/download/v1.18.2/typos-v1.18.2-x86_64-unknown-linux-musl.tar.gz | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-      - name: Run typos check
-        run: typos --config .github/config/typos.toml
+      - name: Check typos
+        uses: crate-ci/typos@v1.18.2
+        with:
+          config: .github/config/typos.toml
 
   check-and-lint:
     name: Lint and check code

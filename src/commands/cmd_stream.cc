@@ -655,10 +655,10 @@ class CommandXInfo : public Commander {
 
         count_ = *parse_result;
       }
-    } else if (val == "groups" && args.size() == 3) {
-      subcommand_ = "groups";
-    } else if (val == "consumers" && args.size() == 4) {
-      subcommand_ = "consumers";
+      // } else if (val == "groups" && args.size() == 3) {
+      //   subcommand_ = "groups";
+      // } else if (val == "consumers" && args.size() == 4) {
+      //   subcommand_ = "consumers";
     } else {
       return {Status::RedisParseErr, errUnknownSubcommandOrWrongArguments};
     }
@@ -1736,19 +1736,20 @@ class CommandXSetId : public Commander {
   std::optional<uint64_t> entries_added_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandAutoClaim>("xautoclaim", -6, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
-                        MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandXReadGroup>("xreadgroup", -7, "write", 0, 0, 0),
-                        MakeCmdAttr<CommandXTrim>("xtrim", -4, "write no-dbsize-check", 1, 1, 1),
-                        MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
+REDIS_REGISTER_COMMANDS(
+    // MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
+    MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
+    MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
+    // MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),
+    // MakeCmdAttr<CommandAutoClaim>("xautoclaim", -6, "write", 1, 1, 1),
+    // MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),
+    MakeCmdAttr<CommandXLen>("xlen", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", 0, 0, 0),
+    MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandXRead>("xread", -4, "read-only", 0, 0, 0),
+    // MakeCmdAttr<CommandXReadGroup>("xreadgroup", -7, "write", 0, 0, 0),
+    MakeCmdAttr<CommandXTrim>("xtrim", -4, "write no-dbsize-check", 1, 1, 1),
+    MakeCmdAttr<CommandXSetId>("xsetid", -3, "write", 1, 1, 1))
 
 }  // namespace redis

@@ -204,16 +204,18 @@ Status Server::Start() {
       if (storage->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
-        auto now_hours = util::GetTimeStamp<std::chrono::hours>();
-        if (now_hours >= config_->compaction_checker_range.start &&
-            now_hours <= config_->compaction_checker_range.stop) {
+          && config_->compaction_checker_cron.IsEnabled()) {
+        auto t_now = static_cast<time_t>(util::GetTimeStamp());
+        std::tm now{};
+        localtime_r(&t_now, &now);
+        if (config_->compaction_checker_cron.IsTimeMatch(&now)) {
           const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
           for (auto &column_family : column_family_list) {
             compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
+        auto now_hours = t_now / 3600;
         if (now_hours != 0 && last_compact_date != now_hours / 24) {
           last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
@@ -756,7 +758,7 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+      if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();

@@ -52,8 +52,9 @@ struct SlotRange {
   bool Contain(int slot) const { return IsValid() && slot >= start && slot <= end; }
 
   bool CheckIntersection(const SlotRange &rhs) const {
-    return IsValid() && rhs.IsValid() && !(end < rhs.start || rhs.end < start);
+    return IsValid() && rhs.IsValid() && end >= rhs.start && rhs.end >= start;
   }
+
   std::string String() const {
     if (!IsValid()) return "empty";
     if (start == end) return fmt::format("{}", start);

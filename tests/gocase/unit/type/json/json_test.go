@@ -657,6 +657,38 @@ func TestJson(t *testing.T) {
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Val())
 
 	})
+	t.Run("JSON.RESP basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:2", "$", `{"name":"Wireless earbuds","description":"Wireless Bluetooth in-ear headphones","connection":{"wireless":true,"type":"Bluetooth"},"price":64.99,"stock":17,"colors":["black","white"], "max_level":[80, 100, 120]}`).Err())
+		//array object both have
+		var result = make([]interface{}, 0)
+		var resultarray1 = make([]interface{}, 0)
+		var resultobject1 = make([]interface{}, 0)
+		var resultarray2 = make([]interface{}, 0)
+		resultobject1 = append(resultobject1, "{", "type", "Bluetooth", "wireless", "true")
+		resultarray1 = append(resultarray1, "[", "black", "white")
+		resultarray2 = append(resultarray2, "[", int64(80), int64(100), int64(120))
+		result = append(result, "{", "colors", []interface{}{resultarray1}, "connection", []interface{}{resultobject1}, "description", "Wireless Bluetooth in-ear headphones", "max_level", []interface{}{resultarray2}, "name", "Wireless earbuds", "price", "64.99", "stock", int64(17))
+		//require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
+		//array
+		require.Equal(t, []interface{}{resultarray1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.colors").Val())
+		//object
+		require.Equal(t, []interface{}{resultobject1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection").Val())
+		//string
+		var stringvalue = make([]interface{}, 0)
+		require.Equal(t, append(stringvalue, "Wireless Bluetooth in-ear headphones"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.description").Val())
+		//bool
+		var boolvalue = make([]interface{}, 0)
+		require.Equal(t, append(boolvalue, "true"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection.wireless").Val())
+		//int
+		var intvalue = make([]interface{}, 0)
+		require.Equal(t, append(intvalue, int64(17)), rdb.Do(ctx, "JSON.RESP", "item:2", "$.stock").Val())
+		//key no_exists
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "item:3", "$").Err(), redis.Nil)
+		//have key no find
+		require.Equal(t, make([]interface{}, 0), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
+
+	})
+
 }
 
 func EqualJSON(t *testing.T, expected string, actual interface{}) {

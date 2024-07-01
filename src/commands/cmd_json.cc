@@ -53,6 +53,29 @@ std::string SizeToString(const std::vector<std::size_t> &elems) {
   return result;
 }
 
+void SendJsonRespResult(const Connection *conn, std::vector<std::unique_ptr<JsonResp<VariantType>>> &elems,
+                        std::string *output) {
+  output->append(MultiLen(elems.size()));
+  for (auto &json_resp : elems) {
+    std::visit(
+        [&](auto &&value) {
+          using JSONVALUE = std::decay_t<decltype(value)>;
+          if constexpr (std::is_same_v<JSONVALUE, std::string>) {
+            output->append(BulkString(value));
+          } else if constexpr (std::is_same_v<JSONVALUE, int64_t>) {
+            output->append(redis::Integer(value));
+          } else if constexpr (std::is_same_v<JSONVALUE, bool>) {
+            // redis stack return true as SimpleString
+            output->append(redis::SimpleString(std::string(value ? "true" : "false")));
+          }
+        },
+        json_resp.get()->value);
+    if (!json_resp.get()->children.empty()) {
+      SendJsonRespResult(conn, json_resp.get()->children, output);
+    }
+  }
+}
+
 class CommandJsonSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -673,6 +696,32 @@ class CommandJsonDebug : public Commander {
     return Status::OK();
   }
 };
+
+class CommandJsonResp : public Commander {
+ public:
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    redis::Json json(svr->storage, conn->GetNamespace());
+
+    std::string path = "$";
+    if (args_.size() == 3) {
+      path = args_[2];
+    } else if (args_.size() > 3) {
+      return {Status::RedisExecErr, "The number of arguments is more than expected"};
+    }
+
+    std::vector<std::unique_ptr<JsonResp<VariantType>>> results;
+    auto s = json.Resp(args_[1], path, &results);
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    SendJsonRespResult(conn, results, output);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandJsonGet>("json.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonInfo>("json.info", 2, "read-only", 1, 1, 1),
@@ -697,6 +746,7 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandJsonSet>("json.set", 4, "write", 1, 1
                         MakeCmdAttr<CommandJsonStrLen>("json.strlen", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandJsonMGet>("json.mget", -3, "read-only", 1, -2, 1),
                         MakeCmdAttr<CommandJsonMSet>("json.mset", -4, "write", 1, -3, 3),
-                        MakeCmdAttr<CommandJsonDebug>("json.debug", -3, "read-only", 2, 2, 1));
+                        MakeCmdAttr<CommandJsonDebug>("json.debug", -3, "read-only", 2, 2, 1),
+                        MakeCmdAttr<CommandJsonResp>("json.resp", -2, "read-only", 1, 1, 1));
 
 }  // namespace redis

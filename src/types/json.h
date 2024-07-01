@@ -49,7 +49,7 @@ template <typename T>
 struct JsonResp {
   std::vector<std::unique_ptr<JsonResp<VariantType>>> children;
   T value;
-  explicit JsonResp(T value) : value(value) {}
+  explicit JsonResp(T value) : value(std::move(value)) {}
 };
 struct JsonValue {
   enum class NumOpEnum : uint8_t {

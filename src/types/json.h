@@ -697,7 +697,10 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    return json_resps;
+    if (path == "$") {
+      return std::move(json_resps.back()->children);
+    }
+    return std::move(json_resps);
   }
 
   JsonValue(const JsonValue &) = default;

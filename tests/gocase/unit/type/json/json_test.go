@@ -667,8 +667,8 @@ func TestJson(t *testing.T) {
 		resultobject1 = append(resultobject1, "{", "type", "Bluetooth", "wireless", "true")
 		resultarray1 = append(resultarray1, "[", "black", "white")
 		resultarray2 = append(resultarray2, "[", int64(80), int64(100), int64(120))
-		result = append(result, "{", "colors", []interface{}{resultarray1}, "connection", []interface{}{resultobject1}, "description", "Wireless Bluetooth in-ear headphones", "max_level", []interface{}{resultarray2}, "name", "Wireless earbuds", "price", "64.99", "stock", int64(17))
-		//require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
+		result = append(result, "{", "colors", resultarray1, "connection", resultobject1, "description", "Wireless Bluetooth in-ear headphones", "max_level", resultarray2, "name", "Wireless earbuds", "price", "64.99", "stock", int64(17))
+		require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
 		//array
 		require.Equal(t, []interface{}{resultarray1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.colors").Val())
 		//object

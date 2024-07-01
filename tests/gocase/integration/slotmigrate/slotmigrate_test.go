@@ -1205,13 +1205,13 @@ func waitForImportState(t testing.TB, client *redis.Client, n int, state SlotImp
 			strings.Contains(i, fmt.Sprintf("import_state: %s", state))
 	}, 10*time.Second, 100*time.Millisecond)
 }
-func migrateSlotRangeAndSetSlot(t *testing.T, ctx context.Context, source *redis.Client, dest *redis.Client, destId string, slotRange string) {
-	require.Equal(t, "OK", source.Do(ctx, "clusterx", "migrate", slotRange, destId).Val())
+func migrateSlotRangeAndSetSlot(t *testing.T, ctx context.Context, source *redis.Client, dest *redis.Client, destID string, slotRange string) {
+	require.Equal(t, "OK", source.Do(ctx, "clusterx", "migrate", slotRange, destID).Val())
 	waitForMigrateSlotRangeState(t, source, slotRange, SlotMigrationStateSuccess)
-	source_version, _ := source.Do(ctx, "clusterx", "version").Int()
-	dest_version, _ := dest.Do(ctx, "clusterx", "version").Int()
-	require.NoError(t, source.Do(ctx, "clusterx", "setslot", slotRange, "node", destId, source_version+1).Err())
-	require.NoError(t, dest.Do(ctx, "clusterx", "setslot", slotRange, "node", destId, dest_version+1).Err())
+	sourceVersion, _ := source.Do(ctx, "clusterx", "version").Int()
+	destVersion, _ := dest.Do(ctx, "clusterx", "version").Int()
+	require.NoError(t, source.Do(ctx, "clusterx", "setslot", slotRange, "node", destID, sourceVersion+1).Err())
+	require.NoError(t, dest.Do(ctx, "clusterx", "setslot", slotRange, "node", destID, destVersion+1).Err())
 }
 
 func TestSlotRangeMigrate(t *testing.T) {

@@ -47,7 +47,7 @@ class CommandCluster : public Commander {
 
     if (subcommand_ == "import") {
       if (args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
-      // slot_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+
       Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
       if (!s.IsOK()) {
         return s;
@@ -113,6 +113,7 @@ class CommandCluster : public Commander {
         return s;
       }
     } else if (subcommand_ == "import") {
+      // TODO: support multiple slot ranges
       Status s = srv->cluster->ImportSlotRange(conn, slot_ranges_[0], state_);
       if (s.IsOK()) {
         *output = redis::SimpleString("OK");

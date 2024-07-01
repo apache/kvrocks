@@ -33,7 +33,9 @@
 // An extractor to extract update from raw write batch
 class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
  public:
-  explicit WriteBatchExtractor(bool is_slot_id_encoded, SlotRange slot_range = {-1, -1}, bool to_redis = false)
+  explicit WriteBatchExtractor(bool is_slot_id_encoded, int slot = -1, bool to_redis = false)
+      : is_slot_id_encoded_(is_slot_id_encoded), slot_range_(slot, slot), to_redis_(to_redis) {}
+  explicit WriteBatchExtractor(bool is_slot_id_encoded, const SlotRange &slot_range, bool to_redis = false)
       : is_slot_id_encoded_(is_slot_id_encoded), slot_range_(slot_range), to_redis_(to_redis) {}
 
   void LogData(const rocksdb::Slice &blob) override;

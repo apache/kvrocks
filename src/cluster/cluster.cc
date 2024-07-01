@@ -888,7 +888,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 // Only HARD mode is meaningful to the Kvrocks cluster,
 // so it will force clearing all information after resetting.
 Status Cluster::Reset() {
-  if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlotRange() != SlotRange{-1, -1}) {
+  if (srv_->slot_migrator && srv_->slot_migrator->GetMigratingSlotRange().IsValid()) {
     return {Status::NotOK, "Can't reset cluster while migrating slot"};
   }
   if (srv_->slot_import && srv_->slot_import->GetSlotRange().IsValid()) {

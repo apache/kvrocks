@@ -1758,6 +1758,10 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
         last_entry_id = entry_id;
       }
       StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
+      if (options.with_time && util::GetTimeStampMS() - pel_entry.last_delivery_time_ms < options.idle_time) {
+        continue;
+      }
+
       const std::string &consumer_name = pel_entry.consumer_name;
 
       if (options.with_consumer && options.consumer != consumer_name) {

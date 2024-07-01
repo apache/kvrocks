@@ -45,6 +45,13 @@ struct Node {
   void PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   void DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage);
+  Status AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
+                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+  Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
+                         ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+  Status UpdateNeighbours(std::vector<NodeKey>& neighbours, const SearchKey& search_key, engine::Storage* storage,
+                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
+                          std::unordered_set<NodeKey>& deleted_neighbours);
 
   friend class HnswIndex;
 };
@@ -62,7 +69,7 @@ struct VectorItem {
   bool operator<(const VectorItem& other) const;
 };
 
-StatusOr<double> ComputeDistance(const VectorItem& left, const VectorItem& right);
+StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right);
 
 class HnswIndex {
  public:

@@ -276,7 +276,7 @@ Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Val
   auto batch = storage->GetWriteBatchBase();
 
   if (!original.IsNull()) {
-    // TODO: delete
+    // TODO(Beihao): implement vector deletion
   }
 
   if (!current.IsNull()) {

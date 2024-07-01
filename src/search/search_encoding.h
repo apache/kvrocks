@@ -82,7 +82,6 @@ enum class IndexFieldType : uint8_t {
 };
 
 enum class VectorType : uint8_t {
-  FLOAT32 = 0,
   FLOAT64 = 1,
 };
 
@@ -418,9 +417,9 @@ struct HnswNodeFieldMetadata {
       : num_neighbours(num_neighbours), vector(std::move(vector)) {}
 
   void Encode(std::string *dst) const {
-    PutFixed16(dst, uint16_t(num_neighbours));
-    PutFixed16(dst, uint16_t(vector.size()));
-    for (auto element : vector) {
+    PutFixed16(dst, num_neighbours);
+    PutFixed16(dst, static_cast<uint16_t>(vector.size()));
+    for (double element : vector) {
       PutDouble(dst, element);
     }
   }
@@ -437,8 +436,9 @@ struct HnswNodeFieldMetadata {
     if (input->size() != dim * sizeof(double)) {
       return rocksdb::Status::Corruption(kErrorIncorrectLength);
     }
+    vector.resize(dim);
 
-    for (size_t i = 0; i < dim; ++i) {
+    for (auto i = 0; i < dim; ++i) {
       GetDouble(input, &vector[i]);
     }
     return rocksdb::Status::OK();

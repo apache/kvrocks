@@ -1,0 +1,177 @@
+#include <encoding.h>
+#include <gtest/gtest.h>
+#include <test_base.h>
+
+#include <iostream>
+#include <memory>
+#include <unordered_set>
+
+#include "search/hnsw_indexer.h"
+#include "search/indexer.h"
+#include "search/search_encoding.h"
+#include "storage/storage.h"
+
+class NodeTest : public TestBase {
+ protected:
+  std::string ns = "node_test_ns";
+  std::string idx_name = "node_test_idx";
+  std::string key = "vector";
+  redis::SearchKey search_key_;
+
+  NodeTest() : search_key_(ns, idx_name, key) {}
+
+  void TearDown() override {}
+};
+
+TEST_F(NodeTest, PutAndDecodeMetadata) {
+  uint16_t layer = 0;
+  redis::Node node1("node1", layer);
+  redis::Node node2("node2", layer);
+  redis::Node node3("node3", layer);
+
+  redis::HnswNodeFieldMetadata metadata1(0, {1, 2, 3});
+  redis::HnswNodeFieldMetadata metadata2(0, {4, 5, 6});
+  redis::HnswNodeFieldMetadata metadata3(0, {7, 8, 9});
+
+  auto batch = storage_->GetWriteBatchBase();
+  node1.PutMetadata(&metadata1, search_key_, storage_.get(), batch);
+  node2.PutMetadata(&metadata2, search_key_, storage_.get(), batch);
+  node3.PutMetadata(&metadata3, search_key_, storage_.get(), batch);
+  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  auto decoded_metadata1 = node1.DecodeMetadata(search_key_, storage_.get());
+  ASSERT_TRUE(decoded_metadata1.IsOK());
+  ASSERT_EQ(decoded_metadata1.GetValue().num_neighbours, 0);
+  ASSERT_EQ(decoded_metadata1.GetValue().vector, std::vector<double>({1, 2, 3}));
+
+  auto decoded_metadata2 = node2.DecodeMetadata(search_key_, storage_.get());
+  ASSERT_TRUE(decoded_metadata2.IsOK());
+  ASSERT_EQ(decoded_metadata2.GetValue().num_neighbours, 0);
+  ASSERT_EQ(decoded_metadata2.GetValue().vector, std::vector<double>({4, 5, 6}));
+
+  auto decoded_metadata3 = node3.DecodeMetadata(search_key_, storage_.get());
+  ASSERT_TRUE(decoded_metadata3.IsOK());
+  ASSERT_EQ(decoded_metadata3.GetValue().num_neighbours, 0);
+  ASSERT_EQ(decoded_metadata3.GetValue().vector, std::vector<double>({7, 8, 9}));
+
+  // Prepare edges between node1 and node2
+  batch = storage_->GetWriteBatchBase();
+  auto edge1 = search_key_.ConstructHnswEdge(layer, "node1", "node2");
+  auto edge2 = search_key_.ConstructHnswEdge(layer, "node2", "node1");
+  auto edge3 = search_key_.ConstructHnswEdge(layer, "node2", "node3");
+  auto edge4 = search_key_.ConstructHnswEdge(layer, "node3", "node2");
+
+  batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge1, Slice());
+  batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge2, Slice());
+  batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge3, Slice());
+  batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge4, Slice());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  node1.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node1.neighbours.size(), 1);
+  EXPECT_EQ(node1.neighbours[0], "node2");
+
+  node2.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node2.neighbours.size(), 2);
+  std::unordered_set<std::string> expected_neighbours = {"node1", "node3"};
+  std::unordered_set<std::string> actual_neighbours(node2.neighbours.begin(), node2.neighbours.end());
+  EXPECT_EQ(actual_neighbours, expected_neighbours);
+
+  node3.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node3.neighbours.size(), 1);
+  EXPECT_EQ(node3.neighbours[0], "node2");
+}
+
+TEST_F(NodeTest, ModifyNeighbours) {
+  uint16_t layer = 1;
+  redis::Node node1("node1", layer);
+  redis::Node node2("node2", layer);
+  redis::Node node3("node3", layer);
+  redis::Node node4("node4", layer);
+
+  redis::HnswNodeFieldMetadata metadata1(0, {1, 2, 3});
+  redis::HnswNodeFieldMetadata metadata2(0, {4, 5, 6});
+  redis::HnswNodeFieldMetadata metadata3(0, {7, 8, 9});
+  redis::HnswNodeFieldMetadata metadata4(0, {10, 11, 12});
+
+  // Add Nodes
+  auto batch1 = storage_->GetWriteBatchBase();
+  node1.PutMetadata(&metadata1, search_key_, storage_.get(), batch1);
+  node2.PutMetadata(&metadata2, search_key_, storage_.get(), batch1);
+  node3.PutMetadata(&metadata3, search_key_, storage_.get(), batch1);
+  node4.PutMetadata(&metadata4, search_key_, storage_.get(), batch1);
+  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch1->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Add Edges
+  auto batch2 = storage_->GetWriteBatchBase();
+  auto s1 = node1.AddNeighbour("node2", search_key_, storage_.get(), batch2);
+  ASSERT_TRUE(s1.IsOK());
+  auto s2 = node2.AddNeighbour("node1", search_key_, storage_.get(), batch2);
+  ASSERT_TRUE(s2.IsOK());
+  auto s3 = node2.AddNeighbour("node3", search_key_, storage_.get(), batch2);
+  ASSERT_TRUE(s3.IsOK());
+  auto s4 = node3.AddNeighbour("node2", search_key_, storage_.get(), batch2);
+  ASSERT_TRUE(s4.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch2->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  node1.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node1.neighbours.size(), 1);
+  EXPECT_EQ(node1.neighbours[0], "node2");
+
+  node2.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node2.neighbours.size(), 2);
+  std::unordered_set<std::string> expected_neighbours = {"node1", "node3"};
+  std::unordered_set<std::string> actual_neighbours(node2.neighbours.begin(), node2.neighbours.end());
+  EXPECT_EQ(actual_neighbours, expected_neighbours);
+
+  node3.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node3.neighbours.size(), 1);
+  EXPECT_EQ(node3.neighbours[0], "node2");
+
+  // Remove Edges
+  auto batch3 = storage_->GetWriteBatchBase();
+  auto s5 = node2.RemoveNeighbour("node3", search_key_, storage_.get(), batch3);
+  ASSERT_TRUE(s5.IsOK());
+
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch3->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  node2.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node2.neighbours.size(), 1);
+  EXPECT_EQ(node2.neighbours[0], "node1");
+
+  // Update neighbours with fully new edge
+  auto batch4 = storage_->GetWriteBatchBase();
+  std::vector<std::string> new_neighbours = {"node3"};
+  std::unordered_set<std::string> deleted_neighbours;
+  auto s6 = node1.UpdateNeighbours(new_neighbours, search_key_, storage_.get(), batch4, deleted_neighbours);
+  ASSERT_TRUE(s5.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch4->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  node1.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node1.neighbours.size(), 1);
+  EXPECT_EQ(node1.neighbours[0], "node3");
+
+  EXPECT_EQ(deleted_neighbours.size(), 1);
+  EXPECT_TRUE(deleted_neighbours.count("node2"));
+
+  // Update neighbours with existing neighbours included
+  auto batch5 = storage_->GetWriteBatchBase();
+  new_neighbours = {"node3", "node4"};
+  auto s7 = node1.UpdateNeighbours(new_neighbours, search_key_, storage_.get(), batch5, deleted_neighbours);
+  ASSERT_TRUE(s6.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch5->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  node1.DecodeNeighbours(search_key_, storage_.get());
+  EXPECT_EQ(node1.neighbours.size(), 2);
+  expected_neighbours = {new_neighbours.begin(), new_neighbours.end()};
+  actual_neighbours = {node1.neighbours.begin(), node1.neighbours.end()};
+  EXPECT_EQ(actual_neighbours, expected_neighbours);
+  EXPECT_EQ(deleted_neighbours.size(), 0);
+}

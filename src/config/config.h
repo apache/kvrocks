@@ -27,6 +27,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "config_type.h"
@@ -106,6 +107,7 @@ struct Config {
   int max_replication_mb = 0;
   int max_io_mb = 0;
   int max_bitmap_to_string_mb = 16;
+  int max_scan_num = 2;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   bool auto_resize_block_and_sst = true;
@@ -252,4 +254,16 @@ struct Config {
   Status parseConfigFromString(const std::string &input, int line_number);
   bool checkFieldValueIsDefault(const std::string &key, const std::string &value) const;
   Status finish();
+};
+
+struct ScanConfig{
+   public:
+    ScanConfig(uint64_t scan_matched_limt_value, uint64_t scan_mismatched_limt_value,const std::string& match_str_value)
+        : scan_matched_limt(scan_matched_limt_value),
+          scan_mismatched_limt(scan_mismatched_limt_value),
+          match_str(match_str_value) {}
+
+    uint64_t scan_matched_limt;
+    uint64_t scan_mismatched_limt;
+    const std::string& match_str;
 };

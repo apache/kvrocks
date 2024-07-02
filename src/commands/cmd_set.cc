@@ -427,12 +427,12 @@ class CommandSScan : public CommandSubkeyScanBase {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     std::vector<std::string> members;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeSet);
-    auto s = set_db.Scan(key_, key_name, limit_, prefix_, &members);
+    ScanConfig scan_config(limit_, srv->GetConfig()->max_scan_num, prefix_);
+    auto s = set_db.Scan(key_, key_name, &members, scan_config, *match_mode_);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
-    *output = CommandScanBase::GenerateOutput(srv, conn, members, CursorType::kTypeSet);
+    *output = CommandScanBase::GenerateOutput(srv, conn, members, set_db.end_cursor);
     return Status::OK();
   }
 };

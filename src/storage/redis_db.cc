@@ -20,15 +20,20 @@
 
 #include "redis_db.h"
 
+#include <cassert>
+#include <cstdint>
 #include <ctime>
 #include <map>
+#include <string>
 #include <utility>
 
 #include "cluster/redis_slot.h"
 #include "common/scope_exit.h"
+#include "config/config.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "server/server.h"
 #include "storage/iterator.h"
@@ -315,10 +320,11 @@ rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::strin
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                               std::vector<std::string> *keys, std::string *end_cursor, RedisType type) {
+rocksdb::Status Database::Scan(const std::string &cursor, std::vector<std::string> *keys, const ScanConfig &scan_config,
+                               const BaseMatchType &match_mode, std::string *end_cursor, RedisType type) {
   end_cursor->clear();
-  uint64_t cnt = 0;
+  uint64_t cnt_success = 0;
+  uint64_t cnt_false = 0;
   uint16_t slot_start = 0;
   std::string ns_prefix;
   std::string user_key;
@@ -329,17 +335,14 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   auto iter = util::UniqueIterator(storage_, read_options, metadata_cf_handle_);
 
   std::string ns_cursor = AppendNamespacePrefix(cursor);
+  ns_prefix = ComposeNamespaceKey(namespace_, "", false);
   if (storage_->IsSlotIdEncoded()) {
     slot_start = cursor.empty() ? 0 : GetSlotIdFromKey(cursor);
-    ns_prefix = ComposeNamespaceKey(namespace_, "", false);
-    if (!prefix.empty()) {
+    if (!scan_config.match_str.empty()) {
       PutFixed16(&ns_prefix, slot_start);
-      ns_prefix.append(prefix);
     }
-  } else {
-    ns_prefix = AppendNamespacePrefix(prefix);
   }
-
+  if (match_mode.IsPerfixMatch()) ns_prefix.append(scan_config.match_str);
   if (!cursor.empty()) {
     iter->Seek(ns_cursor);
     if (iter->Valid()) {
@@ -352,11 +355,28 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
   }
 
   uint16_t slot_id = slot_start;
+
+  auto scan_match_check = [&]() -> bool {
+    if (ns_prefix.empty()) {
+      return true;
+    }
+    auto key_view = iter->key().ToStringView();
+    auto sub_key_view = static_cast<Slice>(key_view.substr(ns_prefix.size(), key_view.size() - ns_prefix.size()));
+    return match_mode.IsMatch(sub_key_view, scan_config.match_str);
+  };
+
   while (true) {
-    for (; iter->Valid() && cnt < limit; iter->Next()) {
-      if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
-        break;
+    for (; iter->Valid() && cnt_success < scan_config.scan_matched_limt; iter->Next()) {
+      if (!scan_match_check()) {
+        cnt_false++;
+        if (cnt_false < scan_config.scan_mismatched_limt) {
+          continue;
+        } else {
+          break;
+        }
       }
+      // The user_key must be updated either when the scan is successful, or when the number of consecutive failures
+      // reaches its limit
       Metadata metadata(kRedisNone, false);
       auto s = metadata.Decode(iter->value());
       if (!s.ok()) continue;
@@ -366,16 +386,19 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);
-      cnt++;
+      cnt_success++;
     }
-    if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
-      if (!keys->empty() && cnt >= limit) {
+    if (!storage_->IsSlotIdEncoded() || scan_config.match_str.empty()) {
+      if (!keys->empty() && (cnt_success >= scan_config.scan_matched_limt)) {
+        end_cursor->append(user_key);
+      }
+      if (cnt_false >= scan_config.scan_mismatched_limt) {
         end_cursor->append(user_key);
       }
       break;
     }
 
-    if (cnt >= limit) {
+    if (cnt_success >= scan_config.scan_matched_limt || cnt_false >= scan_config.scan_mismatched_limt) {
       end_cursor->append(user_key);
       break;
     }
@@ -388,14 +411,13 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       if (keys->empty()) {
         if (iter->Valid()) {
           std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
-          auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
-          if (res.first == prefix.end()) {
+          auto res = std::mismatch(scan_config.match_str.begin(), scan_config.match_str.end(), user_key.begin());
+          if (res.first == scan_config.match_str.end()) {
             keys->emplace_back(user_key);
           }
 
           end_cursor->append(user_key);
         }
-      } else {
         end_cursor->append(user_key);
       }
       break;
@@ -403,7 +425,7 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
 
     ns_prefix = ComposeNamespaceKey(namespace_, "", false);
     PutFixed16(&ns_prefix, slot_id);
-    ns_prefix.append(prefix);
+    if (match_mode.IsPerfixMatch()) ns_prefix.append(scan_config.match_str);
     iter->Seek(ns_prefix);
   }
   return rocksdb::Status::OK();
@@ -414,13 +436,16 @@ rocksdb::Status Database::RandomKey(const std::string &cursor, std::string *key)
 
   std::string end_cursor;
   std::vector<std::string> keys;
-  auto s = Scan(cursor, RANDOM_KEY_SCAN_LIMIT, "", &keys, &end_cursor);
+
+  ScanConfig scan_config( RANDOM_KEY_SCAN_LIMIT, 1,"");
+  PerfixMatchType match_mode;
+  auto s = Scan(cursor, &keys, scan_config, match_mode, &end_cursor);
   if (!s.ok()) {
     return s;
   }
   if (keys.empty() && !cursor.empty()) {
     // if reach the end, restart from beginning
-    s = Scan("", RANDOM_KEY_SCAN_LIMIT, "", &keys, &end_cursor);
+    s = Scan(cursor, &keys, scan_config, match_mode, &end_cursor);
     if (!s.ok()) {
       return s;
     }
@@ -547,10 +572,12 @@ rocksdb::Status Database::KeyExist(const std::string &key) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
-                                    const std::string &subkey_prefix, std::vector<std::string> *keys,
-                                    std::vector<std::string> *values) {
-  uint64_t cnt = 0;
+rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const std::string &cursor,
+                                    std::vector<std::string> *keys, const ScanConfig &scan_config,
+                                    const BaseMatchType &macth_mode, std::vector<std::string> *values) {
+  end_cursor = "0";
+  uint64_t success_cnt = 0;
+  uint64_t false_cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
   LatestSnapShot ss(storage_);
@@ -559,8 +586,9 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   auto iter = util::UniqueIterator(storage_, read_options);
-  std::string match_prefix_key =
-      InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string match_prefix_key = InternalKey(ns_key, macth_mode.IsPerfixMatch() ? scan_config.match_str : "",
+                                             metadata.version, storage_->IsSlotIdEncoded())
+                                     .Encode();
 
   std::string start_key;
   if (!cursor.empty()) {
@@ -574,16 +602,23 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
       // because we already return that key in the last scan
       continue;
     }
-    if (!iter->key().starts_with(match_prefix_key)) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    auto sub_key = ikey.GetSubKey();
+    if (scan_config.scan_mismatched_limt > 0 && false_cnt >= scan_config.scan_mismatched_limt) {
+      end_cursor = sub_key.ToString();
       break;
     }
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    keys->emplace_back(ikey.GetSubKey().ToString());
+    if(!macth_mode.IsMatch(sub_key, match_prefix_key)){
+      false_cnt++;
+      break;
+    }
+    keys->emplace_back(sub_key.ToString());
     if (values != nullptr) {
       values->emplace_back(iter->value().ToString());
     }
-    cnt++;
-    if (limit > 0 && cnt >= limit) {
+    success_cnt++;
+    if (scan_config.scan_matched_limt > 0 && success_cnt >= scan_config.scan_matched_limt) {
+      end_cursor = sub_key.ToString();
       break;
     }
   }

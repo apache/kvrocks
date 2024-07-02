@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -58,8 +59,8 @@ class Hash : public SubKeyScanner {
                        std::vector<rocksdb::Status> *statuses);
   rocksdb::Status GetAll(const Slice &user_key, std::vector<FieldValue> *field_values,
                          HashFetchType type = HashFetchType::kAll);
-  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                       const std::string &field_prefix, std::vector<std::string> *fields,
+  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *fields,
+                       const ScanConfig &scan_config, const BaseMatchType &match_mode,
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
                             HashFetchType type = HashFetchType::kOnlyKey);

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -129,9 +130,9 @@ class Database {
   [[nodiscard]] rocksdb::Status GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
   [[nodiscard]] rocksdb::Status Keys(const std::string &prefix, std::vector<std::string> *keys = nullptr,
                                      KeyNumStats *stats = nullptr);
-  [[nodiscard]] rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr,
-                                     RedisType type = kRedisNone);
+  [[nodiscard]] rocksdb::Status Scan(const std::string &cursor, std::vector<std::string> *keys,
+                                     const ScanConfig &scan_config, const BaseMatchType &match_mode,
+                                     std::string *end_cursor = nullptr, RedisType type = kRedisNone);
   [[nodiscard]] rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlot(const rocksdb::Slice &ns, int slot);
@@ -197,9 +198,10 @@ class LatestSnapShot {
 class SubKeyScanner : public redis::Database {
  public:
   explicit SubKeyScanner(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
-                       const std::string &subkey_prefix, std::vector<std::string> *keys,
+  rocksdb::Status Scan(RedisType type, const Slice &user_key, const std::string &cursor, std::vector<std::string> *keys,
+                       const ScanConfig &scan_config, const BaseMatchType &macth_mode,
                        std::vector<std::string> *values = nullptr);
+  std::string end_cursor;
 };
 
 class WriteBatchLogData {

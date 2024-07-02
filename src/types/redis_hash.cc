@@ -31,6 +31,8 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "sample_helper.h"
+#include "storage/redis_db.h"
+#include "storage/redis_metadata.h"
 
 namespace redis {
 
@@ -374,10 +376,10 @@ rocksdb::Status Hash::GetAll(const Slice &user_key, std::vector<FieldValue> *fie
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                           const std::string &field_prefix, std::vector<std::string> *fields,
+rocksdb::Status Hash::Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *fields,
+                           const ScanConfig &scan_config, const BaseMatchType &match_mode,
                            std::vector<std::string> *values) {
-  return SubKeyScanner::Scan(kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
+  return SubKeyScanner::Scan(kRedisHash, user_key, cursor, fields, scan_config, match_mode, values);
 }
 
 rocksdb::Status Hash::RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,

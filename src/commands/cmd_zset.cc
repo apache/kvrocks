@@ -1342,12 +1342,12 @@ class CommandZScan : public CommandSubkeyScanBase {
     std::vector<std::string> members;
     std::vector<double> scores;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeZSet);
-    auto s = zset_db.Scan(key_, key_name, limit_, prefix_, &members, &scores);
+    ScanConfig scan_config(limit_, srv->GetConfig()->max_scan_num, prefix_);
+    auto s = zset_db.Scan(key_, key_name, &members, scan_config, *match_mode_, &scores);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
-    auto cursor = GetNextCursor(srv, members, CursorType::kTypeZSet);
+    auto cursor = srv->GenerateCursorFromKeyName(zset_db.end_cursor, CursorType::kTypeZSet);
     std::vector<std::string> entries;
     entries.reserve(2 * members.size());
     for (size_t i = 0; i < members.size(); i++) {

@@ -21,6 +21,7 @@
 #include "redis_zset.h"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>
@@ -29,6 +30,7 @@
 
 #include "db_util.h"
 #include "sample_helper.h"
+#include "storage/redis_metadata.h"
 
 namespace redis {
 
@@ -808,12 +810,12 @@ rocksdb::Status ZSet::Union(const std::vector<KeyWeight> &keys_weights, Aggregat
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                           const std::string &member_prefix, std::vector<std::string> *members,
+rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *members,
+                           const ScanConfig &scan_config, const BaseMatchType &match_mode,
                            std::vector<double> *scores) {
   if (scores != nullptr) {
     std::vector<std::string> values;
-    auto s = SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members, &values);
+    auto s = SubKeyScanner::Scan(kRedisZSet, user_key, cursor, members, scan_config, match_mode, &values);
     if (!s.ok()) return s;
 
     for (const auto &value : values) {
@@ -822,7 +824,7 @@ rocksdb::Status ZSet::Scan(const Slice &user_key, const std::string &cursor, uin
     }
     return s;
   }
-  return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, limit, member_prefix, members);
+  return SubKeyScanner::Scan(kRedisZSet, user_key, cursor, members, scan_config, match_mode, nullptr);
 }
 
 rocksdb::Status ZSet::MGet(const Slice &user_key, const std::vector<Slice> &members,

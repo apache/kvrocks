@@ -42,6 +42,7 @@ version.h
 .cache
 
 compactdb
+test
 testdb
 
 build

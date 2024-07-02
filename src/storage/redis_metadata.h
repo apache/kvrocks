@@ -37,6 +37,40 @@ constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 // explicitly since it cannot be changed once confirmed
 // Note that if you want to add a new redis type in `RedisType`
 // you should also add a type name to the `RedisTypeNames` below
+
+class BaseMatchType {
+ public:
+  virtual bool IsPerfixMatch() const { return false; }
+  virtual bool IsMatch(const rocksdb::Slice &, const rocksdb::Slice &) const = 0;
+};
+
+class PerfixMatchType final : public BaseMatchType {
+ public:
+  bool IsPerfixMatch() const override { return true; }
+  bool IsMatch(const rocksdb::Slice &sub_key, const rocksdb::Slice &match_prefix_key) const override {
+    return sub_key.starts_with(match_prefix_key);
+  }
+};
+
+class SubStringMatchType final : public BaseMatchType {
+ public:
+  bool IsMatch(const rocksdb::Slice &sub_key, const rocksdb::Slice &match_prefix_key) const override {
+    return sub_key.ToStringView().find(match_prefix_key.ToStringView()) != std::string::npos;
+  }
+};
+
+class SuffixMatchType final : public BaseMatchType {
+ public:
+  bool IsMatch(const rocksdb::Slice &sub_key, const rocksdb::Slice &match_prefix_key) const override {
+    return sub_key.ends_with(match_prefix_key);
+  }
+};
+
+enum class MatchType {
+  PREFIX,
+  SUFFIX,
+  SUBSTRING,
+};
 enum RedisType : uint8_t {
   kRedisNone = 0,
   kRedisString = 1,

@@ -103,8 +103,8 @@ class ZSet : public SubKeyScanner {
   rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt);
   rocksdb::Status Pop(const Slice &user_key, int count, bool min, MemberScores *mscores);
   rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);
-  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
-                       const std::string &member_prefix, std::vector<std::string> *members,
+  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, std::vector<std::string> *members,
+                       const ScanConfig &scan_config, const BaseMatchType &match_mode,
                        std::vector<double> *scores = nullptr);
   rocksdb::Status Overwrite(const Slice &user_key, const MemberScores &mscores);
   rocksdb::Status InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,

@@ -473,7 +473,8 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
-      - uses: actions/setup-go@v4 #v5 use Node 20 too
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'

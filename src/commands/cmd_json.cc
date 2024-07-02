@@ -53,25 +53,18 @@ std::string SizeToString(const std::vector<std::size_t> &elems) {
   return result;
 }
 
-void SendJsonRespResult(const Connection *conn, std::vector<std::unique_ptr<JsonResp<VariantType>>> &elems,
-                        std::string *output) {
+void SendJsonRespResult(const Connection *conn, Optionals<JsonResp> &elems, std::string *output) {
   output->append(MultiLen(elems.size()));
   for (auto &json_resp : elems) {
-    std::visit(
-        [&](auto &&value) {
-          using JSONVALUE = std::decay_t<decltype(value)>;
-          if constexpr (std::is_same_v<JSONVALUE, std::string>) {
-            output->append(BulkString(value));
-          } else if constexpr (std::is_same_v<JSONVALUE, int64_t>) {
-            output->append(redis::Integer(value));
-          } else if constexpr (std::is_same_v<JSONVALUE, bool>) {
-            // redis stack return true as SimpleString
-            output->append(redis::SimpleString(std::string(value ? "true" : "false")));
-          }
-        },
-        json_resp.get()->value);
-    if (!json_resp.get()->children.empty()) {
-      SendJsonRespResult(conn, json_resp.get()->children, output);
+    if (json_resp.has_value()) {
+      if (!json_resp.value().value.empty()) {
+        output->append(json_resp.value().value);
+      }
+    } else {
+      output->append(conn->NilString());
+    }
+    if (json_resp.has_value() && !json_resp.value().children.empty()) {
+      SendJsonRespResult(conn, json_resp.value().children, output);
     }
   }
 }
@@ -709,7 +702,7 @@ class CommandJsonResp : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
 
-    std::vector<std::unique_ptr<JsonResp<VariantType>>> results;
+    Optionals<JsonResp> results;
     auto s = json.Resp(args_[1], path, &results);
     if (s.IsNotFound()) {
       *output = conn->NilString();

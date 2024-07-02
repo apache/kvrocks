@@ -38,18 +38,16 @@
 
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
+#include "server/redis_reply.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 
 template <class T>
 using Optionals = std::vector<std::optional<T>>;
-struct ArrayOrObjectPlaceHolder {};
-using VariantType = std::variant<std::string, int64_t, ArrayOrObjectPlaceHolder, bool>;
-template <typename T>
 struct JsonResp {
-  std::vector<std::unique_ptr<JsonResp<VariantType>>> children;
-  T value;
-  explicit JsonResp(T value) : value(std::move(value)) {}
+  Optionals<JsonResp> children;
+  std::string value;
+  explicit JsonResp(std::string value) : value(std::move(value)) {}
 };
 struct JsonValue {
   enum class NumOpEnum : uint8_t {
@@ -635,61 +633,53 @@ struct JsonValue {
     }
     return status;
   }
-  static void TransformResp(const jsoncons::json &origin,
-                            std::vector<std::unique_ptr<JsonResp<VariantType>>> &json_resps) {
+  static void TransformResp(const jsoncons::json &origin, Optionals<JsonResp> &json_resps) {
     if (origin.is_object()) {
-      std::unique_ptr<JsonResp<VariantType>> json_object_place_holder =
-          std::make_unique<JsonResp<VariantType>>(ArrayOrObjectPlaceHolder());
-      std::unique_ptr<JsonResp<VariantType>> json_object_begin =
-          std::make_unique<JsonResp<VariantType>>(std::string("{"));
-      json_object_place_holder->children.emplace_back(std::move(json_object_begin));
+      // Because Redis uses jsonpath to query non $cases, it will wrap a layer of arrays and return them as an empty
+      // array
+      JsonResp json_object_place_holder = JsonResp("");
+      JsonResp json_object_begin = JsonResp(redis::BulkString("{"));
+
+      json_object_place_holder.children.emplace_back(json_object_begin);
 
       for (const auto &json_kv : origin.object_range()) {
-        std::unique_ptr<JsonResp<VariantType>> json_object_key = std::make_unique<JsonResp<VariantType>>(json_kv.key());
-        json_object_place_holder->children.emplace_back(std::move(json_object_key));
-        TransformResp(json_kv.value(), json_object_place_holder->children);
+        JsonResp json_object_key = JsonResp(redis::BulkString(json_kv.key()));
+        json_object_place_holder.children.emplace_back(json_object_key);
+        TransformResp(json_kv.value(), json_object_place_holder.children);
       }
 
-      json_resps.emplace_back(std::move(json_object_place_holder));
+      json_resps.emplace_back(json_object_place_holder);
 
     } else if (origin.is_int64() || origin.is_uint64()) {
-      std::unique_ptr<JsonResp<VariantType>> json_int_value =
-          std::make_unique<JsonResp<VariantType>>(origin.as_integer<int64_t>());
-      json_resps.emplace_back(std::move(json_int_value));
+      json_resps.emplace_back(redis::Integer(origin.as_integer<int64_t>()));
 
     } else if (origin.is_double()) {
-      std::unique_ptr<JsonResp<VariantType>> json_double_value =
-          std::make_unique<JsonResp<VariantType>>(origin.as_string());
-      json_resps.emplace_back(std::move(json_double_value));
+      json_resps.emplace_back(redis::BulkString(origin.as_string()));
 
     } else if (origin.is_string()) {
-      std::unique_ptr<JsonResp<VariantType>> json_string_value =
-          std::make_unique<JsonResp<VariantType>>(origin.as_string());
-      json_resps.emplace_back(std::move(json_string_value));
+      json_resps.emplace_back(redis::BulkString(origin.as_string()));
 
     } else if (origin.is_bool()) {
-      std::unique_ptr<JsonResp<VariantType>> json_bool_value =
-          std::make_unique<JsonResp<VariantType>>(origin.as_bool());
-      json_resps.emplace_back(std::move(json_bool_value));
+      json_resps.emplace_back(redis::SimpleString(std::string(origin.as_bool() ? "true" : "false")));
+
+    } else if (origin.is_null()) {
+      json_resps.emplace_back(std::nullopt);
 
     } else if (origin.is_array()) {
-      std::unique_ptr<JsonResp<VariantType>> json_object_place_holder =
-          std::make_unique<JsonResp<VariantType>>(ArrayOrObjectPlaceHolder());
+      JsonResp json_array_place_holder = JsonResp("");
+      JsonResp json_array_begin = JsonResp(redis::BulkString("["));
 
-      std::unique_ptr<JsonResp<VariantType>> json_array_begin =
-          std::make_unique<JsonResp<VariantType>>(std::string("["));
-
-      json_object_place_holder->children.emplace_back(std::move(json_array_begin));
+      json_array_place_holder.children.emplace_back(json_array_begin);
 
       for (const auto &json_array_value : origin.array_range()) {
-        TransformResp(json_array_value, json_object_place_holder->children);
+        TransformResp(json_array_value, json_array_place_holder.children);
       }
-      json_resps.emplace_back(std::move(json_object_place_holder));
+      json_resps.emplace_back(json_array_place_holder);
     }
   }
 
-  StatusOr<std::vector<std::unique_ptr<JsonResp<VariantType>>>> JsonConvertResp(std::string_view path) const {
-    std::vector<std::unique_ptr<JsonResp<VariantType>>> json_resps;
+  StatusOr<Optionals<JsonResp>> JsonConvertResp(std::string_view path) const {
+    Optionals<JsonResp> json_resps;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
         TransformResp(origin, json_resps);
@@ -698,9 +688,9 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     if (path == "$") {
-      return std::move(json_resps.back()->children);
+      return json_resps.back()->children;
     }
-    return std::move(json_resps);
+    return json_resps;
   }
 
   JsonValue(const JsonValue &) = default;

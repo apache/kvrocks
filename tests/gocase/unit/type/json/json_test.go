@@ -684,7 +684,7 @@ func TestJson(t *testing.T) {
 		var intvalue = make([]interface{}, 0)
 		require.Equal(t, append(intvalue, int64(17)), rdb.Do(ctx, "JSON.RESP", "item:2", "$.stock").Val())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:3", "$", `{ "c1": [ { "a2": 1, "b2": "John Doe", "c2": 30, "d2": [ "Developer", "Team Lead" ] }, { "a2": 2, "b2": "Jane Smith", "c2": 25, "d2": [ "Developer" ] } ] }`).Err())
-		require.Equal(t, append([]interface{}{int64(1), int64(2)}), rdb.Do(ctx, "JSON.RESP", "item:3", "$..a2").Val())
+		require.Equal(t, []interface{}{int64(1), int64(2)}, rdb.Do(ctx, "JSON.RESP", "item:3", "$..a2").Val())
 
 		//key no_exists
 		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists", "$").Err(), redis.Nil)

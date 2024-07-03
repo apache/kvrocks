@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.18.2
+        uses: crate-ci/typos@v1.22.9
         with:
           config: .github/config/typos.toml
 
@@ -420,9 +420,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: CentOS 7
-            image: centos:7
-            compiler: gcc
           - name: openSUSE Leap 15
             image: opensuse/leap:15
             compiler: gcc
@@ -434,17 +431,6 @@ jobs:
     container:
       image: ${{ matrix.image }}
     steps:
-      - name: Setup CentOS
-        if: ${{ startsWith(matrix.image, 'centos') }}
-        run: |
-          yum install -y centos-release-scl-rh
-          yum install -y devtoolset-11 python3 python3-pip autoconf automake wget git gcc gcc-c++
-          echo "NPROC=$(nproc)" >> $GITHUB_ENV
-          mv /usr/bin/gcc /usr/bin/gcc-4.8.5
-          ln -s /opt/rh/devtoolset-11/root/bin/gcc /usr/bin/gcc
-          mv /usr/bin/g++ /usr/bin/g++-4.8.5
-          ln -s /opt/rh/devtoolset-11/root/bin/g++ /usr/bin/g++
-
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
@@ -487,15 +473,8 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
-      - name: Install cmake
-        if: ${{ startsWith(matrix.image, 'centos') }}
-        run: |
-          VERSION=3.26.4
-          wget https://github.com/Kitware/CMake/releases/download/v$VERSION/cmake-$VERSION-linux-x86_64.sh
-          bash cmake-$VERSION-linux-x86_64.sh --skip-license --prefix=/usr
-
-      - uses: actions/checkout@v3 #v4 use Node 20 and not working at CentOS 7
-      - uses: actions/setup-go@v4 #v5 use Node 20 too
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'

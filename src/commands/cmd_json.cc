@@ -53,22 +53,6 @@ std::string SizeToString(const std::vector<std::size_t> &elems) {
   return result;
 }
 
-void SendJsonRespResult(const Connection *conn, Optionals<JsonResp> &elems, std::string *output) {
-  output->append(MultiLen(elems.size()));
-  for (auto &json_resp : elems) {
-    if (json_resp.has_value()) {
-      if (!json_resp.value().value.empty()) {
-        output->append(json_resp.value().value);
-      }
-    } else {
-      output->append(conn->NilString());
-    }
-    if (json_resp.has_value() && !json_resp.value().children.empty()) {
-      SendJsonRespResult(conn, json_resp.value().children, output);
-    }
-  }
-}
-
 class CommandJsonSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -701,16 +685,15 @@ class CommandJsonResp : public Commander {
     } else if (args_.size() > 3) {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
-
-    Optionals<JsonResp> results;
-    auto s = json.Resp(args_[1], path, &results);
+    std::string results;
+    auto s = json.Resp(args_[1], path, &results, conn);
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    SendJsonRespResult(conn, results, output);
+    output->append(results);
     return Status::OK();
   }
 };

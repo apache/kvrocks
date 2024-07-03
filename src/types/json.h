@@ -38,17 +38,14 @@
 
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
+#include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 
 template <class T>
 using Optionals = std::vector<std::optional<T>>;
-struct JsonResp {
-  Optionals<JsonResp> children;
-  std::string value;
-  explicit JsonResp(std::string value) : value(std::move(value)) {}
-};
+
 struct JsonValue {
   enum class NumOpEnum : uint8_t {
     Incr = 1,
@@ -633,62 +630,54 @@ struct JsonValue {
     }
     return status;
   }
-  static void TransformResp(const jsoncons::json &origin, Optionals<JsonResp> &json_resps) {
+  static void TransformResp(const jsoncons::json &origin, std::string &json_resps, redis::Connection *conn) {
     if (origin.is_object()) {
-      // Because Redis uses jsonpath to query non $cases, it will wrap a layer of arrays and return them as an empty
-      // array
-      JsonResp json_object_place_holder = JsonResp("");
-      JsonResp json_object_begin = JsonResp(redis::BulkString("{"));
-
-      json_object_place_holder.children.emplace_back(json_object_begin);
+      json_resps = json_resps + redis::MultiLen(origin.size() * 2 + 1);
+      json_resps = json_resps + redis::SimpleString("{");
 
       for (const auto &json_kv : origin.object_range()) {
-        JsonResp json_object_key = JsonResp(redis::BulkString(json_kv.key()));
-        json_object_place_holder.children.emplace_back(json_object_key);
-        TransformResp(json_kv.value(), json_object_place_holder.children);
+        json_resps = json_resps + redis::BulkString(json_kv.key());
+        TransformResp(json_kv.value(), json_resps, conn);
       }
-
-      json_resps.emplace_back(json_object_place_holder);
 
     } else if (origin.is_int64() || origin.is_uint64()) {
-      json_resps.emplace_back(redis::Integer(origin.as_integer<int64_t>()));
+      json_resps = json_resps + redis::Integer(origin.as_integer<int64_t>());
 
     } else if (origin.is_double()) {
-      json_resps.emplace_back(redis::BulkString(origin.as_string()));
+      json_resps = json_resps + redis::BulkString(origin.as_string());
 
     } else if (origin.is_string()) {
-      json_resps.emplace_back(redis::BulkString(origin.as_string()));
+      json_resps = json_resps + redis::BulkString(origin.as_string());
 
     } else if (origin.is_bool()) {
-      json_resps.emplace_back(redis::SimpleString(std::string(origin.as_bool() ? "true" : "false")));
+      json_resps = json_resps + redis::SimpleString(std::string(origin.as_bool() ? "true" : "false"));
 
     } else if (origin.is_null()) {
-      json_resps.emplace_back(std::nullopt);
+      json_resps = json_resps + conn->NilString();
 
     } else if (origin.is_array()) {
-      JsonResp json_array_place_holder = JsonResp("");
-      JsonResp json_array_begin = JsonResp(redis::BulkString("["));
-
-      json_array_place_holder.children.emplace_back(json_array_begin);
+      json_resps = json_resps + redis::MultiLen(origin.size() + 1);
+      json_resps = json_resps + redis::SimpleString("[");
 
       for (const auto &json_array_value : origin.array_range()) {
-        TransformResp(json_array_value, json_array_place_holder.children);
+        TransformResp(json_array_value, json_resps, conn);
       }
-      json_resps.emplace_back(json_array_place_holder);
     }
   }
 
-  StatusOr<Optionals<JsonResp>> JsonConvertResp(std::string_view path) const {
-    Optionals<JsonResp> json_resps;
+  StatusOr<std::string> JsonConvertResp(std::string_view path, redis::Connection *conn) const {
+    std::string json_resps;
+    int query_count = 0;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
-        TransformResp(origin, json_resps);
+        query_count++;
+        TransformResp(origin, json_resps, conn);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
-    if (path == "$") {
-      return json_resps.back()->children;
+    if (path != "$") {
+      json_resps = redis::MultiLen(query_count) + json_resps;
     }
     return json_resps;
   }

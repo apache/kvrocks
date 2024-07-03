@@ -646,14 +646,15 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, Optionals<JsonResp> *results) {
+rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, std::string *results,
+                           Connection *conn) {
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
   JsonValue json_val;
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto json_resps = json_val.JsonConvertResp(path);
+  auto json_resps = json_val.JsonConvertResp(path, conn);
   if (!json_resps) return rocksdb::Status::InvalidArgument(json_resps.Msg());
   *results = std::move(*json_resps);
   return rocksdb::Status::OK();

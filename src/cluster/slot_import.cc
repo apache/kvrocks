@@ -36,13 +36,13 @@ Status SlotImport::Start(const SlotRange &slot_range) {
       return Status::OK();
     }
     return {Status::NotOK,
-            fmt::format("only one importing slot is allowed, current slot is: {}", import_slot_range_.String())};
+            fmt::format("only one importing job is allowed, current importing: {}", import_slot_range_.String())};
   }
 
   // Clean slot data first
   auto s = ClearKeysOfSlotRange(namespace_, slot_range);
   if (!s.ok()) {
-    return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
+    return {Status::NotOK, fmt::format("clear keys of slot(s) error: {}", s.ToString())};
   }
 
   import_status_ = kImportStart;
@@ -53,7 +53,7 @@ Status SlotImport::Start(const SlotRange &slot_range) {
 Status SlotImport::Success(const SlotRange &slot_range) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_slot_range_ != slot_range) {
-    return {Status::NotOK, fmt::format("mismatch slot, importing slot: {}, but got: {}", import_slot_range_.String(),
+    return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
                                        slot_range.String())};
   }
 
@@ -69,14 +69,14 @@ Status SlotImport::Success(const SlotRange &slot_range) {
 Status SlotImport::Fail(const SlotRange &slot_range) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_slot_range_ != slot_range) {
-    return {Status::NotOK, fmt::format("mismatch slot, importing slot: {}, but got: {}", import_slot_range_.String(),
+    return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
                                        slot_range.String())};
   }
 
   // Clean imported slot data
   auto s = ClearKeysOfSlotRange(namespace_, slot_range);
   if (!s.ok()) {
-    return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
+    return {Status::NotOK, fmt::format("clear keys of slot(s) error: {}", s.ToString())};
   }
 
   import_status_ = kImportFailed;
@@ -148,5 +148,5 @@ void SlotImport::GetImportInfo(std::string *info) {
       break;
   }
 
-  *info = fmt::format("importing_slot: {}\r\nimport_state: {}\r\n", import_slot_range_.String(), import_stat);
+  *info = fmt::format("importing_slot(s): {}\r\nimport_state: {}\r\n", import_slot_range_.String(), import_stat);
 }

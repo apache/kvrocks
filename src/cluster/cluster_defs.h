@@ -45,18 +45,16 @@ inline constexpr const char *errInvalidImportState = "Invalid import state";
 struct SlotRange {
   SlotRange(int start, int end) : start(start), end(end) {}
   SlotRange() : start(-1), end(-1) {}
-  bool IsValid() const {
-    return start >= 0 && start < kClusterSlots && end >= 0 && end < kClusterSlots && start <= end;
-  }
+  bool IsValid() const { return start >= 0 && end >= 0 && start <= end && end < kClusterSlots; }
 
-  bool Contain(int slot) const { return IsValid() && slot >= start && slot <= end; }
+  bool Contains(int slot) const { return IsValid() && slot >= start && slot <= end; }
 
-  bool CheckIntersection(const SlotRange &rhs) const {
+  bool HasOverlap(const SlotRange &rhs) const {
     return IsValid() && rhs.IsValid() && end >= rhs.start && rhs.end >= start;
   }
 
   std::string String() const {
-    if (!IsValid()) return "empty";
+    if (!IsValid()) return "-1";
     if (start == end) return fmt::format("{}", start);
     return fmt::format("{}-{}", start, end);
   }

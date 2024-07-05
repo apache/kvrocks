@@ -54,7 +54,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
     auto key_slot_id = GetSlotIdFromKey(user_key);
-    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -114,7 +114,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     InternalKey ikey(key, is_slot_id_encoded_);
     user_key = ikey.GetKey().ToString();
     auto key_slot_id = GetSlotIdFromKey(user_key);
-    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -282,7 +282,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
     auto key_slot_id = GetSlotIdFromKey(user_key);
-    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -291,7 +291,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     InternalKey ikey(key, is_slot_id_encoded_);
     std::string user_key = ikey.GetKey().ToString();
     auto key_slot_id = GetSlotIdFromKey(user_key);
-    if (slot_range_.IsValid() && !slot_range_.Contain(key_slot_id)) {
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 

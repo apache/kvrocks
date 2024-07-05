@@ -115,7 +115,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
   //  2. Add the slot into to-assign node
   //  3. Update the map of slots to nodes.
   // remember: The atomicity of the process is based on
-  // the transactionality of ClearKeysOfSlot().
+  // the transactionality of ClearKeysOfSlotRange().
   for (auto [s_start, s_end] : slot_ranges) {
     for (int slot = s_start; slot <= s_end; slot++) {
       std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
@@ -129,7 +129,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       if (old_node == myself_ && old_node != to_assign_node) {
         // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
-          auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
+          auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, {slot, slot});
           if (!s.ok()) {
             LOG(ERROR) << "failed to clear data of migrated slot: " << s.ToString();
           }
@@ -214,7 +214,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   if (!migrated_slots_.empty()) {
     for (const auto &[slot, _] : migrated_slots_) {
       if (slots_nodes_[slot] != myself_) {
-        auto s = srv_->slot_migrator->ClearKeysOfSlot(kDefaultNamespace, slot);
+        auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, {slot, slot});
         if (!s.ok()) {
           LOG(ERROR) << "failed to clear data of migrated slots: " << s.ToString();
         }
@@ -349,21 +349,21 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range](int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          LOG(ERROR) << fmt::format("[import] Failed to stop importing slot {}: {}", slot_range.String(), s.Msg());
+          LOG(ERROR) << fmt::format("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range == srv_->slot_migrator->GetForbiddenSlotRange()) srv_->slot_migrator->ReleaseForbiddenSlotRange();
-      LOG(INFO) << fmt::format("[import] Start importing slot {}", slot_range.String());
+      LOG(INFO) << fmt::format("[import] Start importing slot(s) {}", slot_range.String());
       break;
     case kImportSuccess:
       s = srv_->slot_import->Success(slot_range);
       if (!s.IsOK()) return s;
-      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as succeed", slot_range.String());
+      LOG(INFO) << fmt::format("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot_range);
       if (!s.IsOK()) return s;
-      LOG(INFO) << fmt::format("[import] Mark the importing slot {} as failed", slot_range.String());
+      LOG(INFO) << fmt::format("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -815,7 +815,7 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 }
 
 bool Cluster::IsWriteForbiddenSlot(int slot) const {
-  return srv_->slot_migrator->GetForbiddenSlotRange().Contain(slot);
+  return srv_->slot_migrator->GetForbiddenSlotRange().Contains(slot);
 }
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
@@ -860,7 +860,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // I'm serving this slot
   }
 
-  if (myself_ && myself_->importing_slot_range.Contain(slot) &&
+  if (myself_ && myself_->importing_slot_range.Contains(slot) &&
       (conn->IsImporting() || conn->IsFlagEnabled(redis::Connection::kAsking))) {
     // While data migrating, the topology of the destination node has not been changed.
     // The destination node has to serve the requests from the migrating slot,

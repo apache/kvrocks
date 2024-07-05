@@ -80,10 +80,10 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
   // Only one slot migration job at the same time
   SlotRange no_slot_range = {-1, -1};
   if (!slot_range_.compare_exchange_strong(no_slot_range, slot_range)) {
-    return {Status::NotOK, "There is already a migrating slot"};
+    return {Status::NotOK, "There is already a migrating job"};
   }
 
-  if (slot_range.CheckIntersection(forbidden_slot_range_)) {
+  if (slot_range.HasOverlap(forbidden_slot_range_)) {
     // Have to release migrate slot set above
     slot_range_ = no_slot_range;
     return {Status::NotOK, "Can't migrate slot which has been migrated"};
@@ -122,7 +122,7 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
     job_cv_.notify_one();
   }
 
-  LOG(INFO) << "[migrate] Start migrating slot " << slot_range.String() << " to " << dst_ip << ":" << dst_port;
+  LOG(INFO) << "[migrate] Start migrating slot(s) " << slot_range.String() << " to " << dst_ip << ":" << dst_port;
 
   return Status::OK();
 }
@@ -159,7 +159,7 @@ void SlotMigrator::loop() {
       return;
     }
 
-    LOG(INFO) << "[migrate] Migrating slot: " << migration_job_->slot_range.String()
+    LOG(INFO) << "[migrate] Migrating slot(s): " << migration_job_->slot_range.String()
               << ", dst_ip: " << migration_job_->dst_ip << ", dst_port: " << migration_job_->dst_port
               << ", max_speed: " << migration_job_->max_speed
               << ", max_pipeline_size: " << migration_job_->max_pipeline_size;
@@ -188,10 +188,10 @@ void SlotMigrator::runMigrationProcess() {
       case SlotMigrationStage::kStart: {
         auto s = startMigration();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to start migrating slot " << slot_range_.load().String();
+          LOG(INFO) << "[migrate] Succeed to start migrating slot(s) " << slot_range_.load().String();
           current_stage_ = SlotMigrationStage::kSnapshot;
         } else {
-          LOG(ERROR) << "[migrate] Failed to start migrating slot " << slot_range_.load().String()
+          LOG(ERROR) << "[migrate] Failed to start migrating slot(s) " << slot_range_.load().String()
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
           resumeSyncCtx(s);
@@ -203,7 +203,7 @@ void SlotMigrator::runMigrationProcess() {
         if (s.IsOK()) {
           current_stage_ = SlotMigrationStage::kWAL;
         } else {
-          LOG(ERROR) << "[migrate] Failed to send snapshot of slot " << slot_range_.load().String()
+          LOG(ERROR) << "[migrate] Failed to send snapshot of slot(s) " << slot_range_.load().String()
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
           resumeSyncCtx(s);
@@ -213,10 +213,10 @@ void SlotMigrator::runMigrationProcess() {
       case SlotMigrationStage::kWAL: {
         auto s = syncWAL();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to sync from WAL for a slot " << slot_range_.load().String();
+          LOG(INFO) << "[migrate] Succeed to sync from WAL for slot(s) " << slot_range_.load().String();
           current_stage_ = SlotMigrationStage::kSuccess;
         } else {
-          LOG(ERROR) << "[migrate] Failed to sync from WAL for a slot " << slot_range_.load().String()
+          LOG(ERROR) << "[migrate] Failed to sync from WAL for slot(s) " << slot_range_.load().String()
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
           resumeSyncCtx(s);
@@ -226,12 +226,12 @@ void SlotMigrator::runMigrationProcess() {
       case SlotMigrationStage::kSuccess: {
         auto s = finishSuccessfulMigration();
         if (s.IsOK()) {
-          LOG(INFO) << "[migrate] Succeed to migrate slot " << slot_range_.load().String();
+          LOG(INFO) << "[migrate] Succeed to migrate slot(s) " << slot_range_.load().String();
           current_stage_ = SlotMigrationStage::kClean;
           migration_state_ = MigrationState::kSuccess;
           resumeSyncCtx(s);
         } else {
-          LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot " << slot_range_.load().String()
+          LOG(ERROR) << "[migrate] Failed to finish a successful migration of slot(s) " << slot_range_.load().String()
                      << ". Error: " << s.Msg();
           current_stage_ = SlotMigrationStage::kFailed;
           resumeSyncCtx(s);
@@ -241,10 +241,10 @@ void SlotMigrator::runMigrationProcess() {
       case SlotMigrationStage::kFailed: {
         auto s = finishFailedMigration();
         if (!s.IsOK()) {
-          LOG(ERROR) << "[migrate] Failed to finish a failed migration of slot " << slot_range_.load().String()
+          LOG(ERROR) << "[migrate] Failed to finish a failed migration of slot(s) " << slot_range_.load().String()
                      << ". Error: " << s.Msg();
         }
-        LOG(INFO) << "[migrate] Failed to migrate a slot " << slot_range_.load().String();
+        LOG(INFO) << "[migrate] Failed to migrate a slot(s) " << slot_range_.load().String();
         migration_state_ = MigrationState::kFailed;
         current_stage_ = SlotMigrationStage::kClean;
         break;
@@ -306,7 +306,7 @@ Status SlotMigrator::startMigration() {
     }
   }
 
-  LOG(INFO) << "[migrate] Start migrating slot " << slot_range_.load().String() << ", connect destination fd "
+  LOG(INFO) << "[migrate] Start migrating slot(s) " << slot_range_.load().String() << ", connect destination fd "
             << *dst_fd_;
 
   return Status::OK();
@@ -337,11 +337,11 @@ Status SlotMigrator::sendSnapshotByCmd() {
   std::string restore_cmds;
   SlotRange slot_range = slot_range_;
 
-  LOG(INFO) << "[migrate] Start migrating snapshot of slot" << slot_range.String();
+  LOG(INFO) << "[migrate] Start migrating snapshot of slot(s)" << slot_range.String();
 
   // Construct key prefix to iterate the keys belong to the target slot
   std::string prefix = ComposeSlotKeyPrefix(namespace_, slot_range.start);
-  LOG(INFO) << "[migrate] Iterate keys of slot, key's prefix: " << prefix;
+  LOG(INFO) << "[migrate] Iterate keys of slot(s), key's prefix: " << prefix;
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
@@ -360,7 +360,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
 
     // Iteration is out of range
     auto key_slot_id = ExtractSlotId(iter->key());
-    if (!slot_range.Contain(key_slot_id)) {
+    if (!slot_range.Contains(key_slot_id)) {
       break;
     }
 
@@ -395,7 +395,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
     return s.Prefixed(errFailedToSendCommands);
   }
 
-  LOG(INFO) << "[migrate] Succeed to migrate slot snapshot, slot: " << slot_range.String()
+  LOG(INFO) << "[migrate] Succeed to migrate slot(s) snapshot, slot(s): " << slot_range.String()
             << ", Migrated keys: " << migrated_key_cnt << ", Expired keys: " << expired_key_cnt
             << ", Empty keys: " << empty_key_cnt;
 
@@ -434,7 +434,8 @@ Status SlotMigrator::finishSuccessfulMigration() {
   std::string dst_ip_port = dst_ip_ + ":" + std::to_string(dst_port_);
   s = srv_->cluster->SetSlotRangeMigrated(slot_range_, dst_ip_port);
   if (!s.IsOK()) {
-    return s.Prefixed(fmt::format("failed to set slot {} as migrated to {}", slot_range_.load().String(), dst_ip_port));
+    return s.Prefixed(
+        fmt::format("failed to set slot(s) {} as migrated to {}", slot_range_.load().String(), dst_ip_port));
   }
 
   migrate_failed_slot_range_ = {-1, -1};
@@ -457,7 +458,7 @@ Status SlotMigrator::finishFailedMigration() {
 }
 
 void SlotMigrator::clean() {
-  LOG(INFO) << "[migrate] Clean resources of migrating slot " << slot_range_.load().String();
+  LOG(INFO) << "[migrate] Clean resources of migrating slot(s) " << slot_range_.load().String();
   if (slot_snapshot_) {
     storage_->GetDB()->ReleaseSnapshot(slot_snapshot_);
     slot_snapshot_ = nullptr;
@@ -981,7 +982,7 @@ Status SlotMigrator::sendCmdsPipelineIfNeed(std::string *commands, bool need) {
 }
 
 void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
-  LOG(INFO) << "[migrate] Setting forbidden slot " << slot_range.String();
+  LOG(INFO) << "[migrate] Setting forbidden slot(s) " << slot_range.String();
   // Block server to set forbidden slot
   uint64_t during = util::GetTimeStampUS();
   {
@@ -993,7 +994,7 @@ void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
 }
 
 void SlotMigrator::ReleaseForbiddenSlotRange() {
-  LOG(INFO) << "[migrate] Release forbidden slot " << forbidden_slot_range_.load().String();
+  LOG(INFO) << "[migrate] Release forbidden slot(s) " << forbidden_slot_range_.load().String();
   forbidden_slot_range_ = {-1, -1};
 }
 
@@ -1182,7 +1183,7 @@ void SlotMigrator::GetMigrationInfo(std::string *info) const {
       break;
   }
 
-  *info = fmt::format("migrating_slot: {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot_range.String(),
+  *info = fmt::format("migrating_slot(s): {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot_range.String(),
                       dst_node_, task_state);
 }
 
@@ -1210,7 +1211,7 @@ Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
 Status SlotMigrator::sendSnapshotByRawKV() {
   uint64_t start_ts = util::GetTimeStampMS();
   auto slot_range = slot_range_.load();
-  LOG(INFO) << "[migrate] Migrating snapshot of slot " << slot_range.String() << " by raw key value";
+  LOG(INFO) << "[migrate] Migrating snapshot of slot(s) " << slot_range.String() << " by raw key value";
 
   auto prefix = ComposeSlotKeyPrefix(namespace_, slot_range.start);
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
@@ -1224,7 +1225,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   for (iter.Seek(prefix); iter.Valid(); iter.Next()) {
     // Iteration is out of range
     auto key_slot_id = ExtractSlotId(iter.Key());
-    if (!slot_range.Contain(key_slot_id)) {
+    if (!slot_range.Contains(key_slot_id)) {
       break;
     }
 
@@ -1272,7 +1273,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
   auto elapsed = util::GetTimeStampMS() - start_ts;
   LOG(INFO) << fmt::format(
-      "[migrate] Succeed to migrate snapshot range, slot: {}, elapsed: {} ms, "
+      "[migrate] Succeed to migrate snapshot range, slot(s): {}, elapsed: {} ms, "
       "sent: {} bytes, rate: {:.2f} kb/s, batches: {}, entries: {}",
       slot_range.String(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
       batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
@@ -1282,7 +1283,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
 Status SlotMigrator::syncWALByRawKV() {
   uint64_t start_ts = util::GetTimeStampMS();
-  LOG(INFO) << "[migrate] Syncing WAL of slot " << slot_range_.load().String() << " by raw key value";
+  LOG(INFO) << "[migrate] Syncing WAL of slot(s) " << slot_range_.load().String() << " by raw key value";
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 
   int epoch = 1;
@@ -1317,7 +1318,7 @@ Status SlotMigrator::syncWALByRawKV() {
 
   auto elapsed = util::GetTimeStampMS() - start_ts;
   LOG(INFO) << fmt::format(
-      "[migrate] Succeed to migrate incremental data, slot: {}, elapsed: {} ms, "
+      "[migrate] Succeed to migrate incremental data, slot(s): {}, elapsed: {} ms, "
       "sent: {} bytes, rate: {:.2f} kb/s, batches: {}, entries: {}",
       slot_range_.load().String(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
       batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
@@ -1328,8 +1329,9 @@ Status SlotMigrator::syncWALByRawKV() {
 bool SlotMigrator::catchUpIncrementalWAL() {
   uint64_t gap = storage_->GetDB()->GetLatestSequenceNumber() - wal_begin_seq_;
   if (gap <= seq_gap_limit_) {
-    LOG(INFO) << fmt::format("[migrate] Incremental data sequence gap: {}, less than limit: {}, set forbidden slot: {}",
-                             gap, seq_gap_limit_, slot_range_.load().String());
+    LOG(INFO) << fmt::format(
+        "[migrate] Incremental data sequence gap: {}, less than limit: {}, set forbidden slot(s): {}", gap,
+        seq_gap_limit_, slot_range_.load().String());
     return true;
   }
   return false;

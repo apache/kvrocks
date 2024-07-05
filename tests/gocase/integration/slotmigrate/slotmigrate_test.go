@@ -476,7 +476,7 @@ func TestSlotMigrateSync(t *testing.T) {
 			err := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync", timeout).Err()
 			// go-redis will auto-retry if occurs timeout error, so it may return the already migrated slot error,
 			// so we just allow this error here to prevent the flaky test failure.
-			if err != nil && !strings.Contains(err.Error(), "ERR There is already a migrating slot") {
+			if err != nil && !strings.Contains(err.Error(), "ERR There is already a migrating job") {
 				require.NoError(t, err)
 			}
 		}
@@ -525,7 +525,7 @@ func TestSlotMigrateDataType(t *testing.T) {
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
 		otherSlot := 2
-		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", otherSlot, id1).Err(), "There is already a migrating slot")
+		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", otherSlot, id1).Err(), "There is already a migrating job")
 		waitForMigrateState(t, rdb0, slot, SlotMigrationStateSuccess)
 		require.EqualValues(t, cnt, rdb1.LLen(ctx, util.SlotTable[slot]).Val())
 	})
@@ -1169,7 +1169,7 @@ func waitForMigrateSlotRangeState(t testing.TB, client *redis.Client, slotRange 
 func waitForMigrateStateInDuration(t testing.TB, client *redis.Client, slot int, state SlotMigrationState, d time.Duration) {
 	require.Eventually(t, func() bool {
 		i := client.ClusterInfo(context.Background()).Val()
-		return strings.Contains(i, fmt.Sprintf("migrating_slot: %d", slot)) &&
+		return strings.Contains(i, fmt.Sprintf("migrating_slot(s): %d", slot)) &&
 			strings.Contains(i, fmt.Sprintf("migrating_state: %s", state))
 	}, d, 100*time.Millisecond)
 }
@@ -1181,27 +1181,27 @@ func waitForMigrateSlotRangeStateInDuration(t testing.TB, client *redis.Client, 
 	}
 	require.Eventually(t, func() bool {
 		i := client.ClusterInfo(context.Background()).Val()
-		return strings.Contains(i, fmt.Sprintf("migrating_slot: %s", slotRange)) &&
+		return strings.Contains(i, fmt.Sprintf("migrating_slot(s): %s", slotRange)) &&
 			strings.Contains(i, fmt.Sprintf("migrating_state: %s", state))
 	}, d, 100*time.Millisecond)
 }
 
 func requireMigrateState(t testing.TB, client *redis.Client, slot int, state SlotMigrationState) {
 	i := client.ClusterInfo(context.Background()).Val()
-	require.Contains(t, i, fmt.Sprintf("migrating_slot: %d", slot))
+	require.Contains(t, i, fmt.Sprintf("migrating_slot(s): %d", slot))
 	require.Contains(t, i, fmt.Sprintf("migrating_state: %s", state))
 }
 
 func requireMigrateSlotRangeState(t testing.TB, client *redis.Client, slotRange string, state SlotMigrationState) {
 	i := client.ClusterInfo(context.Background()).Val()
-	require.Contains(t, i, fmt.Sprintf("migrating_slot: %s", slotRange))
+	require.Contains(t, i, fmt.Sprintf("migrating_slot(s): %s", slotRange))
 	require.Contains(t, i, fmt.Sprintf("migrating_state: %s", state))
 }
 
 func waitForImportState(t testing.TB, client *redis.Client, n int, state SlotImportState) {
 	require.Eventually(t, func() bool {
 		i := client.ClusterInfo(context.Background()).Val()
-		return strings.Contains(i, fmt.Sprintf("importing_slot: %d", n)) &&
+		return strings.Contains(i, fmt.Sprintf("importing_slot(s): %d", n)) &&
 			strings.Contains(i, fmt.Sprintf("import_state: %s", state))
 	}, 10*time.Second, 100*time.Millisecond)
 }

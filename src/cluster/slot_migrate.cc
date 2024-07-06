@@ -385,7 +385,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
   if (auto s = iter->status(); !s.ok()) {
     auto err_str = s.ToString();
     LOG(ERROR) << "[migrate] Failed to iterate keys of slot " << slot << ": " << err_str;
-    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", slot, s.ToString())};
+    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", slot, err_str)};
   }
 
   // It's necessary to send commands that are still in the pipeline since the final pipeline may not be sent

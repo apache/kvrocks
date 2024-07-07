@@ -31,8 +31,7 @@
 #include "search/search_encoding.h"
 #include "storage/storage.h"
 
-class NodeTest : public TestBase {
- protected:
+struct NodeTest : public TestBase {
   std::string ns = "node_test_ns";
   std::string idx_name = "node_test_idx";
   std::string key = "vector";

@@ -72,7 +72,7 @@ void Node::DecodeNeighbours(const SearchKey& search_key, engine::Storage* storag
 }
 
 Status Node::AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   auto edge_index_key = search_key.ConstructHnswEdge(level, key, neighbour_key);
   batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key, Slice());
 
@@ -83,7 +83,7 @@ Status Node::AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_
 }
 
 Status Node::RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   auto edge_index_key = search_key.ConstructHnswEdge(level, key, neighbour_key);
   auto s = batch->Delete(storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key);
   if (!s.ok()) {
@@ -306,9 +306,9 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
   return candidates;
 }
 
-Status HnswIndex::InsertVectorEntryInternal(std::string_view key, kqir::NumericArray vector,
+Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
                                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
-                                            uint16_t target_level) {
+                                            uint16_t target_level) const {
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
   auto inserted_vector_item = VectorItem(std::string(key), vector, metadata);
   std::vector<VectorItem> nearest_vec_items;
@@ -334,15 +334,15 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, kqir::NumericA
       std::unordered_map<NodeKey, std::unordered_set<NodeKey>> deleted_edges_map;
 
       // Check if candidate node has room for more outgoing edges
-      auto has_room_for_more_edges = [&](int candidate_node_num_neighbours) {
+      auto has_room_for_more_edges = [&](uint16_t candidate_node_num_neighbours) {
         return candidate_node_num_neighbours < m_max;
       };
 
       // Check if candidate node has room after some other nodes' are pruned in current batch
-      auto has_room_after_deletions = [&](const Node& candidate_node, int candidate_node_num_neighbours) {
+      auto has_room_after_deletions = [&](const Node& candidate_node, uint16_t candidate_node_num_neighbours) {
         auto it = deleted_edges_map.find(candidate_node.key);
         if (it != deleted_edges_map.end()) {
-          int num_deleted_edges = it->second.size();
+          auto num_deleted_edges = static_cast<uint16_t>(it->second.size());
           return (candidate_node_num_neighbours - num_deleted_edges) < m_max;
         }
         return false;
@@ -450,7 +450,7 @@ Status HnswIndex::InsertVectorEntry(std::string_view key, kqir::NumericArray vec
   return InsertVectorEntryInternal(key, std::move(vector), batch, target_level);
 }
 
-Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   std::string node_key(key);
   for (uint16_t level = 0; level < metadata->num_levels; level++) {
     auto node = Node(node_key, level);

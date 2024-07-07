@@ -48,9 +48,9 @@ struct Node {
 
   // For testing purpose
   Status AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                         ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                         ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   friend class HnswIndex;
 };
 
@@ -97,11 +97,11 @@ struct HnswIndex {
                                                     uint16_t layer) const;
   StatusOr<std::vector<VectorItem>> SearchLayer(uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
                                                 const std::vector<NodeKey>& entry_points) const;
-  Status InsertVectorEntryInternal(std::string_view key, kqir::NumericArray vector,
-                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer);
+  Status InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
+                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer) const;
   Status InsertVectorEntry(std::string_view key, kqir::NumericArray vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
-  Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+  Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
 };
 
 }  // namespace redis

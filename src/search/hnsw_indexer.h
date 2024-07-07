@@ -39,11 +39,11 @@ struct Node {
   uint16_t level;
   std::vector<NodeKey> neighbours;
 
-  Node(const NodeKey& key, uint16_t level);
+  Node(NodeKey key, uint16_t level);
 
-  StatusOr<HnswNodeFieldMetadata> DecodeMetadata(const SearchKey& search_key, engine::Storage* storage);
+  StatusOr<HnswNodeFieldMetadata> DecodeMetadata(const SearchKey& search_key, engine::Storage* storage) const;
   void PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
-                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   void DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage);
 
   // For testing purpose
@@ -61,8 +61,8 @@ struct VectorItem {
   kqir::NumericArray vector;
   const HnswVectorFieldMetadata* metadata;
 
-  VectorItem(const NodeKey& key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata);
-  VectorItem(const NodeKey& key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata);
+  VectorItem(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata);
+  VectorItem(NodeKey key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata);
 
   bool operator==(const VectorItem& other) const;
   bool operator<(const VectorItem& other) const;
@@ -70,16 +70,15 @@ struct VectorItem {
 
 StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right);
 
-class HnswIndex {
- public:
+struct HnswIndex {
   using NodeKey = Node::NodeKey;
 
-  SearchKey search_key_;
-  HnswVectorFieldMetadata* metadata_;
-  engine::Storage* storage_ = nullptr;
+  SearchKey search_key;
+  HnswVectorFieldMetadata* metadata;
+  engine::Storage* storage = nullptr;
 
-  std::mt19937 generator_;
-  double m_level_normalization_factor_;
+  std::mt19937 generator;
+  double m_level_normalization_factor;
 
   HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage);
 
@@ -88,16 +87,16 @@ class HnswIndex {
                                                                     engine::Storage* storage,
                                                                     const HnswVectorFieldMetadata* metadata);
   uint16_t RandomizeLayer();
-  StatusOr<NodeKey> DefaultEntryPoint(uint16_t level);
+  StatusOr<NodeKey> DefaultEntryPoint(uint16_t level) const;
   Status AddEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
-                 ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                 ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   Status RemoveEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
-                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
 
   StatusOr<std::vector<VectorItem>> SelectNeighbors(const VectorItem& vec, const std::vector<VectorItem>& vectors,
-                                                    uint16_t layer);
+                                                    uint16_t layer) const;
   StatusOr<std::vector<VectorItem>> SearchLayer(uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
-                                                const std::vector<NodeKey>& entry_points);
+                                                const std::vector<NodeKey>& entry_points) const;
   Status InsertVectorEntryInternal(std::string_view key, kqir::NumericArray vector,
                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer);
   Status InsertVectorEntry(std::string_view key, kqir::NumericArray vector,

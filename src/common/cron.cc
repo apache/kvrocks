@@ -23,18 +23,39 @@
 #include <stdexcept>
 #include <utility>
 
+#include "fmt/core.h"
 #include "parse_util.h"
 #include "string_util.h"
 
-std::string Scheduler::ToString() const {
-  auto param2string = [](int n, bool is_interval) -> std::string {
-    if (n == -1) return "*";
-    return is_interval ? "*/" + std::to_string(n) : std::to_string(n);
-  };
-  return param2string(minute, minute_interval) + " " + param2string(hour, hour_interval) + " " +
-         param2string(mday, mday_interval) + " " + param2string(month, month_interval) + " " +
-         param2string(wday, wday_interval);
+std::string CronScheduler::ToString() const {
+  return fmt::format("{} {} {} {} {}", minute.ToString(), hour.ToString(), mday.ToString(), month.ToString(),
+                     wday.ToString());
 }
+
+bool CronScheduler::IsMatch(const tm *tm) const {
+  bool minute_match = minute.IsMatch(tm->tm_min);
+  bool hour_match = hour.IsMatch(tm->tm_hour);
+  bool mday_match = mday.IsMatch(tm->tm_mday, 1);
+  bool month_match = month.IsMatch(tm->tm_mon + 1, 1);
+  bool wday_match = wday.IsMatch(tm->tm_wday);
+
+  return minute_match && hour_match && mday_match && month_match && wday_match;
+}
+
+StatusOr<CronScheduler> CronScheduler::Parse(std::string_view minute, std::string_view hour, std::string_view mday,
+                                             std::string_view month, std::string_view wday) {
+  CronScheduler st;
+
+  st.minute = GET_OR_RET(CronPattern::Parse(minute, {0, 59}));
+  st.hour = GET_OR_RET(CronPattern::Parse(hour, {0, 23}));
+  st.mday = GET_OR_RET(CronPattern::Parse(mday, {1, 31}));
+  st.month = GET_OR_RET(CronPattern::Parse(month, {1, 12}));
+  st.wday = GET_OR_RET(CronPattern::Parse(wday, {0, 6}));
+
+  return st;
+}
+
+void Cron::Clear() { schedulers_.clear(); }
 
 Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
   if (args.empty()) {
@@ -42,14 +63,14 @@ Status Cron::SetScheduleTime(const std::vector<std::string> &args) {
     return Status::OK();
   }
   if (args.size() % 5 != 0) {
-    return {Status::NotOK, "time expression format error,should only contain 5x fields"};
+    return {Status::NotOK, "cron expression format error, should only contain 5x fields"};
   }
 
-  std::vector<Scheduler> new_schedulers;
+  std::vector<CronScheduler> new_schedulers;
   for (size_t i = 0; i < args.size(); i += 5) {
-    auto s = convertToScheduleTime(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4]);
+    auto s = CronScheduler::Parse(args[i], args[i + 1], args[i + 2], args[i + 3], args[i + 4]);
     if (!s.IsOK()) {
-      return std::move(s).Prefixed("time expression format error");
+      return std::move(s).Prefixed("cron expression format error");
     }
     new_schedulers.push_back(*s);
   }
@@ -63,20 +84,8 @@ bool Cron::IsTimeMatch(const tm *tm) {
     return false;
   }
 
-  auto match = [](int current, int val, bool interval, int interval_offset) {
-    if (val == -1) return true;
-    if (interval) return (current - interval_offset) % val == 0;
-    return val == current;
-  };
-
   for (const auto &st : schedulers_) {
-    bool minute_match = match(tm->tm_min, st.minute, st.minute_interval, 0);
-    bool hour_match = match(tm->tm_hour, st.hour, st.hour_interval, 0);
-    bool mday_match = match(tm->tm_mday, st.mday, st.mday_interval, 1);
-    bool month_match = match(tm->tm_mon + 1, st.month, st.month_interval, 1);
-    bool wday_match = match(tm->tm_wday, st.wday, st.wday_interval, 0);
-
-    if (minute_match && hour_match && mday_match && month_match && wday_match) {
+    if (st.IsMatch(tm)) {
       last_tm_ = *tm;
       return true;
     }
@@ -93,41 +102,4 @@ std::string Cron::ToString() const {
     if (i != schedulers_.size() - 1) ret += " ";
   }
   return ret;
-}
-
-StatusOr<Scheduler> Cron::convertToScheduleTime(const std::string &minute, const std::string &hour,
-                                                const std::string &mday, const std::string &month,
-                                                const std::string &wday) {
-  Scheduler st;
-
-  st.minute = GET_OR_RET(convertParam(minute, 0, 59, st.minute_interval));
-  st.hour = GET_OR_RET(convertParam(hour, 0, 23, st.hour_interval));
-  st.mday = GET_OR_RET(convertParam(mday, 1, 31, st.mday_interval));
-  st.month = GET_OR_RET(convertParam(month, 1, 12, st.month_interval));
-  st.wday = GET_OR_RET(convertParam(wday, 0, 6, st.wday_interval));
-
-  return st;
-}
-
-StatusOr<int> Cron::convertParam(const std::string &param, int lower_bound, int upper_bound, bool &is_interval) {
-  if (param == "*") {
-    return -1;
-  }
-
-  // Check for interval syntax (*/n)
-  if (util::HasPrefix(param, "*/")) {
-    auto s = ParseInt<int>(param.substr(2), {lower_bound, upper_bound}, 10);
-    if (!s || *s == 0) {
-      return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
-    }
-    is_interval = true;
-    return *s;
-  }
-
-  auto s = ParseInt<int>(param, {lower_bound, upper_bound}, 10);
-  if (!s) {
-    return std::move(s).Prefixed(fmt::format("malformed cron token `{}`", param));
-  }
-
-  return *s;
 }

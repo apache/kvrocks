@@ -129,6 +129,10 @@ struct IndexManager {
       index_map.Insert(std::move(info));
     }
 
+    if (auto s = iter->status(); !s.ok()) {
+      return {Status::NotOK, fmt::format("fail to load index metadata: {}", s.ToString())};
+    }
+
     return Status::OK();
   }
 

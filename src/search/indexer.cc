@@ -334,6 +334,10 @@ Status IndexUpdater::Build() const {
       if (s.Is<Status::TypeMismatched>()) continue;
       if (!s.OK()) return s;
     }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
   }
 
   return Status::OK();

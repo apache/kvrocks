@@ -299,6 +299,10 @@ rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::strin
       }
     }
 
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded()) break;
     if (prefix.empty()) break;
     if (++slot_id >= HASH_SLOTS_SIZE) break;
@@ -368,6 +372,11 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       keys->emplace_back(user_key);
       cnt++;
     }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty() && cnt >= limit) {
         end_cursor->append(user_key);
@@ -587,7 +596,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
       break;
     }
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

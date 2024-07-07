@@ -654,6 +654,10 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
     }
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   if (has_next_entry) {
     std::string tmp_group_name;
     StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
@@ -761,6 +765,10 @@ rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     batch->Delete(stream_cf_handle_, iter->key());
     *delete_cnt += 1;
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
   }
 
   if (*delete_cnt != 0) {
@@ -895,6 +903,11 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
       }
     }
   }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   batch->Delete(stream_cf_handle_, consumer_key);
   StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   group_metadata.consumer_number -= 1;
@@ -1101,6 +1114,10 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
     }
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   return rocksdb::Status::OK();
 }
 
@@ -1176,6 +1193,10 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     if (options.with_count && entries->size() == options.count) {
       break;
     }
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
   }
 
   return rocksdb::Status::OK();
@@ -1341,7 +1362,7 @@ rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
       group_metadata.push_back(tmp_item);
     }
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 rocksdb::Status Stream::GetConsumerInfo(
@@ -1375,7 +1396,7 @@ rocksdb::Status Stream::GetConsumerInfo(
       consumer_metadata.push_back(tmp_item);
     }
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions &options,
@@ -1538,6 +1559,10 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
         ++count;
         if (count >= options.count) break;
       }
+    }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
     }
   }
   batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(consumergroup_metadata));

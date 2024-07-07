@@ -382,6 +382,12 @@ Status SlotMigrator::sendSnapshotByCmd() {
     }
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    auto err_str = s.ToString();
+    LOG(ERROR) << "[migrate] Failed to iterate keys of slot " << slot << ": " << err_str;
+    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", slot, err_str)};
+  }
+
   // It's necessary to send commands that are still in the pipeline since the final pipeline may not be sent
   // while iterating keys because its size could be less than max_pipeline_size_
   auto s = sendCmdsPipelineIfNeed(&restore_cmds, true);
@@ -820,6 +826,11 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
     }
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK,
+            fmt::format("failed to iterate values of the complex key {}: {}", key.ToString(), s.ToString())};
+  }
+
   // Have to check the item count of the last command list
   if (item_count % kMaxItemsInCommand != 0) {
     *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
@@ -878,6 +889,11 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
     if (!s.IsOK()) {
       return s.Prefixed(errFailedToSendCommands);
     }
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK,
+            fmt::format("failed to iterate values of the stream key {}: {}", key.ToString(), s.ToString())};
   }
 
   // commands like XTRIM and XDEL affect stream's metadata, but we use only XADD for a slot migration

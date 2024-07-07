@@ -49,10 +49,6 @@ struct Node {
                       ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
-  Status UpdateNeighbours(std::vector<NodeKey>& neighbours, const SearchKey& search_key, engine::Storage* storage,
-                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
-                          std::unordered_set<NodeKey>& deleted_neighbours);
-
   friend class HnswIndex;
 };
 
@@ -66,6 +62,7 @@ struct VectorItem {
   VectorItem(const NodeKey& key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata);
   VectorItem(const NodeKey& key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata);
 
+  bool operator==(const VectorItem& other) const;
   bool operator<(const VectorItem& other) const;
 };
 
@@ -84,16 +81,23 @@ class HnswIndex {
 
   HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage);
 
+  static StatusOr<std::vector<VectorItem>> DecodeNodesToVectorItems(const std::vector<NodeKey>& node_key,
+                                                                    uint16_t level, const SearchKey& search_key,
+                                                                    engine::Storage* storage,
+                                                                    const HnswVectorFieldMetadata* metadata);
   uint16_t RandomizeLayer();
   StatusOr<NodeKey> DefaultEntryPoint(uint16_t level);
-  Status Connect(uint16_t layer, const NodeKey& node_key1, const NodeKey& node_key2,
+  Status AddEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
                  ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
-  Status PruneEdges(const VectorItem& vec, const std::vector<VectorItem>& new_neighbour_vectors, uint16_t layer,
+  Status RemoveEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
                     ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+
   StatusOr<std::vector<VectorItem>> SelectNeighbors(const VectorItem& vec, const std::vector<VectorItem>& vectors,
                                                     uint16_t layer);
   StatusOr<std::vector<VectorItem>> SearchLayer(uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
                                                 const std::vector<NodeKey>& entry_points);
+  Status InsertVectorEntryInternal(std::string_view key, kqir::NumericArray vector,
+                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer);
   Status InsertVectorEntry(std::string_view key, kqir::NumericArray vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
 };

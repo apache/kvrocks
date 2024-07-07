@@ -369,7 +369,7 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
   uint32_t ef_construction = 200;
   uint32_t ef_runtime = 10;
   double epsilon = 0.01;
-  uint16_t num_levels = 10;
+  uint16_t num_levels = 0;
 
   HnswVectorFieldMetadata() : IndexFieldMetadata(IndexFieldType::VECTOR) {}
 

@@ -143,35 +143,4 @@ TEST_F(NodeTest, ModifyNeighbours) {
   node2.DecodeNeighbours(search_key_, storage_.get());
   EXPECT_EQ(node2.neighbours.size(), 1);
   EXPECT_EQ(node2.neighbours[0], "node1");
-
-  // Update neighbours with fully new edge
-  auto batch4 = storage_->GetWriteBatchBase();
-  std::vector<std::string> new_neighbours = {"node3"};
-  std::unordered_set<std::string> deleted_neighbours;
-  auto s6 = node1.UpdateNeighbours(new_neighbours, search_key_, storage_.get(), batch4, deleted_neighbours);
-  ASSERT_TRUE(s5.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch4->GetWriteBatch());
-  ASSERT_TRUE(s.ok());
-
-  node1.DecodeNeighbours(search_key_, storage_.get());
-  EXPECT_EQ(node1.neighbours.size(), 1);
-  EXPECT_EQ(node1.neighbours[0], "node3");
-
-  EXPECT_EQ(deleted_neighbours.size(), 1);
-  EXPECT_TRUE(deleted_neighbours.count("node2"));
-
-  // Update neighbours with existing neighbours included
-  auto batch5 = storage_->GetWriteBatchBase();
-  new_neighbours = {"node3", "node4"};
-  auto s7 = node1.UpdateNeighbours(new_neighbours, search_key_, storage_.get(), batch5, deleted_neighbours);
-  ASSERT_TRUE(s6.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch5->GetWriteBatch());
-  ASSERT_TRUE(s.ok());
-
-  node1.DecodeNeighbours(search_key_, storage_.get());
-  EXPECT_EQ(node1.neighbours.size(), 2);
-  expected_neighbours = {new_neighbours.begin(), new_neighbours.end()};
-  actual_neighbours = {node1.neighbours.begin(), node1.neighbours.end()};
-  EXPECT_EQ(actual_neighbours, expected_neighbours);
-  EXPECT_EQ(deleted_neighbours.size(), 0);
 }

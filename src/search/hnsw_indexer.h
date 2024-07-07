@@ -45,6 +45,8 @@ struct Node {
   void PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   void DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage);
+
+  // For testing purpose
   Status AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
                       ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
@@ -100,6 +102,7 @@ class HnswIndex {
                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer);
   Status InsertVectorEntry(std::string_view key, kqir::NumericArray vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+  Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
 };
 
 }  // namespace redis

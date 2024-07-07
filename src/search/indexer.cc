@@ -272,20 +272,23 @@ Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Val
   CHECK(original.IsNull() || original.Is<kqir::NumericArray>());
   CHECK(current.IsNull() || current.Is<kqir::NumericArray>());
 
-  auto *storage = indexer->storage;
-  auto batch = storage->GetWriteBatchBase();
+  auto storage = indexer->storage;
+  auto hnsw = HnswIndex(search_key, vector, storage);
 
   if (!original.IsNull()) {
-    // TODO(Beihao): implement vector deletion
+    auto batch = storage->GetWriteBatchBase();
+    GET_OR_RET(hnsw.DeleteVectorEntry(key, batch));
+    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
   if (!current.IsNull()) {
-    auto hnsw = HnswIndex(search_key, vector, indexer->storage);
+    auto batch = storage->GetWriteBatchBase();
     GET_OR_RET(hnsw.InsertVectorEntry(key, current.Get<kqir::NumericArray>(), batch));
+    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
-  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
-  if (!s.ok()) return {Status::NotOK, s.ToString()};
   return Status::OK();
 }
 

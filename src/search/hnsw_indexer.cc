@@ -210,14 +210,14 @@ Status HnswIndex::AddEdge(const NodeKey& node_key1, const NodeKey& node_key2, ui
 
 Status HnswIndex::RemoveEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
                              ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
-  auto edge_index_key = search_key_.ConstructHnswEdge(layer, node_key1, node_key2);
-  auto s = batch->Delete(storage_->GetCFHandle(ColumnFamilyID::Search), edge_index_key);
+  auto edge_index_key1 = search_key_.ConstructHnswEdge(layer, node_key1, node_key2);
+  auto s = batch->Delete(storage_->GetCFHandle(ColumnFamilyID::Search), edge_index_key1);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete edge, {}", s.ToString())};
   }
 
-  edge_index_key = search_key_.ConstructHnswEdge(layer, node_key2, node_key1);
-  s = batch->Delete(storage_->GetCFHandle(ColumnFamilyID::Search), edge_index_key);
+  auto edge_index_key2 = search_key_.ConstructHnswEdge(layer, node_key2, node_key1);
+  s = batch->Delete(storage_->GetCFHandle(ColumnFamilyID::Search), edge_index_key2);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete edge, {}", s.ToString())};
   }
@@ -331,12 +331,12 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, kqir::NumericA
       std::unordered_set<NodeKey> connected_edges_set;
       std::unordered_map<NodeKey, std::unordered_set<NodeKey>> deleted_edges_map;
 
-      // Check against if candidate node has room for more outgoing edges
+      // Check if candidate node has room for more outgoing edges
       auto has_room_for_more_edges = [&](int candidate_node_num_neighbours) {
         return candidate_node_num_neighbours < m_max;
       };
 
-      // Check against if candidate node has room after some other nodes' are pruned in current batch
+      // Check if candidate node has room after some other nodes' are pruned in current batch
       auto has_room_after_deletions = [&](const Node& candidate_node, int candidate_node_num_neighbours) {
         auto it = deleted_edges_map.find(candidate_node.key);
         if (it != deleted_edges_map.end()) {
@@ -446,6 +446,67 @@ Status HnswIndex::InsertVectorEntry(std::string_view key, kqir::NumericArray vec
                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
   auto target_level = RandomizeLayer();
   return InsertVectorEntryInternal(key, vector, batch, target_level);
+}
+
+Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+  std::string node_key(key);
+  for (uint16_t level = 0; level < metadata_->num_levels; level++) {
+    auto node = Node(node_key, level);
+    auto node_metadata_status = node.DecodeMetadata(search_key_, storage_);
+    if (!node_metadata_status.IsOK()) {
+      break;
+    }
+
+    auto node_metadata = std::move(node_metadata_status).GetValue();
+    auto node_index_key = search_key_.ConstructHnswNode(level, key);
+    auto s = batch->Delete(storage_->GetCFHandle(ColumnFamilyID::Search), node_index_key);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+
+    node.DecodeNeighbours(search_key_, storage_);
+    for (const auto& neighbour_key : node.neighbours) {
+      GET_OR_RET(RemoveEdge(node_key, neighbour_key, level, batch));
+      auto neighbour_node = Node(neighbour_key, level);
+      HnswNodeFieldMetadata neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(search_key_, storage_));
+      neighbour_node_metadata.num_neighbours--;
+      neighbour_node.PutMetadata(&neighbour_node_metadata, search_key_, storage_, batch);
+    }
+  }
+
+  auto hasOtherNodesAtLevel = [&](uint16_t level, std::string_view skip_key) -> bool {
+    auto prefix = search_key_.ConstructHnswLevelNodePrefix(level);
+    util::UniqueIterator it(storage_, storage_->DefaultScanOptions(), ColumnFamilyID::Search);
+    it->Seek(prefix);
+
+    Slice node_key;
+    Slice node_key_dst;
+    while (it->Valid() && it->key().starts_with(prefix)) {
+      node_key = Slice(it->key().ToString().substr(prefix.size()));
+      if (!GetSizedString(&node_key, &node_key_dst)) {
+        continue;
+      }
+      if (node_key_dst.ToString() != skip_key) {
+        return true;
+      }
+      it->Next();
+    }
+    return false;
+  };
+
+  while (metadata_->num_levels > 0) {
+    if (hasOtherNodesAtLevel(metadata_->num_levels - 1, key)) {
+      break;
+    }
+    metadata_->num_levels--;
+  }
+
+  std::string encoded_index_metadata;
+  metadata_->Encode(&encoded_index_metadata);
+  auto index_meta_key = search_key_.ConstructFieldMeta();
+  batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), index_meta_key, encoded_index_metadata);
+
+  return Status::OK();
 }
 
 }  // namespace redis

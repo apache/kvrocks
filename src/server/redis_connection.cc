@@ -439,7 +439,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
-
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
     if (GetNamespace().empty()) {

@@ -32,7 +32,7 @@ using namespace peg;
 
 struct Field : seq<one<'@'>, Identifier> {};
 
-struct Tag : sor<Identifier, String> {};
+struct Tag : sor<Identifier, StringL> {};
 struct TagList : seq<one<'{'>, WSPad<Tag>, star<seq<one<'|'>, WSPad<Tag>>>, one<'}'>> {};
 
 struct Inf : seq<opt<one<'+', '-'>>, string<'i', 'n', 'f'>> {};

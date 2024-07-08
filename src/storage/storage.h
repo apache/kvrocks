@@ -247,8 +247,9 @@ class Storage {
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
   [[nodiscard]] rocksdb::Status Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                        rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key);
-  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, const std::string &first_key,
-                                            const std::string &last_key);
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                            rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end);
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, Slice begin, Slice end);
   [[nodiscard]] rocksdb::Status FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                              rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }

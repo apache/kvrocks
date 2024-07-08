@@ -137,9 +137,7 @@ class CommandZCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = ParseRangeScoreSpec(args[2], args[3], &spec_);
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
     return Commander::Parse(args);
   }
 
@@ -208,9 +206,7 @@ class CommandZLexCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
 
     return Commander::Parse(args);
   }
@@ -378,7 +374,7 @@ class CommandBZPop : public BlockingCommander {
     engine::Context ctx(srv_->storage);
     auto s = PopFromMultipleZsets(ctx, &zset_db, keys_, min_, 1, &user_key, &member_scores);
     if (!s.ok()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
       return true;
     }
 
@@ -560,7 +556,7 @@ class CommandBZMPop : public BlockingCommander {
     engine::Context ctx(srv_->storage);
     auto s = PopFromMultipleZsets(ctx, &zset_db, keys_, flag_ == ZSET_MIN, count_, &user_key, &member_scores);
     if (!s.ok()) {
-      conn_->Reply(redis::Error("ERR " + s.ToString()));
+      conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
       return true;
     }
 
@@ -1002,9 +998,7 @@ class CommandZRemRangeByScore : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = ParseRangeScoreSpec(args[2], args[3], &spec_);
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
     return Commander::Parse(args);
   }
 
@@ -1032,9 +1026,7 @@ class CommandZRemRangeByLex : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     Status s = ParseRangeLexSpec(args[2], args[3], &spec_);
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
+    if (!s.IsOK()) return s;
     return Commander::Parse(args);
   }
 

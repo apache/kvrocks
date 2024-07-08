@@ -339,16 +339,11 @@ class CommandHRangeByLex : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    Status s;
     if (spec_.reversed) {
-      s = ParseRangeLexSpec(args[3], args[2], &spec_);
+      return ParseRangeLexSpec(args[3], args[2], &spec_);
     } else {
-      s = ParseRangeLexSpec(args[2], args[3], &spec_);
+      return ParseRangeLexSpec(args[2], args[3], &spec_);
     }
-    if (!s.IsOK()) {
-      return {Status::RedisParseErr, s.Msg()};
-    }
-    return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {

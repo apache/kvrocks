@@ -455,12 +455,11 @@ rocksdb::Status Json::NumMultBy(engine::Context &ctx, const std::string &user_ke
 
 rocksdb::Status Json::numop(engine::Context &ctx, JsonValue::NumOpEnum op, const std::string &user_key,
                             const std::string &path, const std::string &value, JsonValue *result) {
-  JsonValue number;
   auto number_res = JsonValue::FromString(value);
-  if (!number_res || !number_res.GetValue().value.is_number()) {
-    return rocksdb::Status::InvalidArgument("should be a number");
+  if (!number_res || !number_res.GetValue().value.is_number() || number_res.GetValue().value.is_string()) {
+    return rocksdb::Status::InvalidArgument("the input value should be a number");
   }
-  number = std::move(number_res.GetValue());
+  JsonValue number = std::move(number_res.GetValue());
 
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
@@ -635,6 +634,28 @@ std::vector<rocksdb::Status> Json::readMulti(engine::Context &ctx, const std::ve
     if (!statuses[i].ok()) continue;
   }
   return statuses;
+}
+
+rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string &path, std::vector<size_t> *results) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+  // TODO: ctx?
+  engine::Context ctx(storage_);
+  JsonMetadata metadata;
+  if (path == "$") {
+    std::string bytes;
+    Slice rest;
+    auto s = GetMetadata(ctx, {kRedisJson}, ns_key, &bytes, &metadata, &rest);
+    if (!s.ok()) return s;
+    results->emplace_back(rest.size());
+  } else {
+    JsonValue json_val;
+    auto s = read(ctx, ns_key, &metadata, &json_val);
+    if (!s.ok()) return s;
+    auto str_bytes = json_val.GetBytes(path, metadata.format, storage_->GetConfig()->json_max_nesting_depth);
+    if (!str_bytes) return rocksdb::Status::InvalidArgument(str_bytes.Msg());
+    *results = std::move(*str_bytes);
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

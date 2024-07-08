@@ -57,15 +57,14 @@ jobs:
             fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/sonarcloud-data.zip`, Buffer.from(download.data));
       - name: 'Unzip code coverage'
         run: |
-          unzip sonarcloud-data.zip -d sonarcloud-data
-          ls -a sonarcloud-data
+          unzip sonarcloud-data.zip
+          mv _build build
+          mkdir -p build/CMakeFiles/CMakeTmp
+          ls -a sonarcloud-data build
 
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Configure Kvrocks
-        run: |
-          ./x.py build -j$(nproc) --compiler gcc --skip-build
 
       - name: Run sonar-scanner
         env:

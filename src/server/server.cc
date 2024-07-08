@@ -39,6 +39,7 @@
 
 #include "commands/commander.h"
 #include "config.h"
+#include "config/config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
@@ -52,7 +53,12 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage),
+      indexer(storage),
+      index_mgr(&indexer, storage),
+      start_time_secs_(util::GetTimeStamp()),
+      config_(config),
+      namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -151,6 +157,13 @@ Status Server::Start() {
     }
   }
 
+  if (!config_->cluster_enabled) {
+    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    for (auto [_, ns] : namespace_.List()) {
+      GET_OR_RET(index_mgr.Load(ns));
+    }
+  }
+
   if (config_->cluster_enabled) {
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
@@ -192,16 +205,18 @@ Status Server::Start() {
       if (storage->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
-        auto now_hours = util::GetTimeStamp<std::chrono::hours>();
-        if (now_hours >= config_->compaction_checker_range.start &&
-            now_hours <= config_->compaction_checker_range.stop) {
+          && config_->compaction_checker_cron.IsEnabled()) {
+        auto t_now = static_cast<time_t>(util::GetTimeStamp());
+        std::tm now{};
+        localtime_r(&t_now, &now);
+        if (config_->compaction_checker_cron.IsTimeMatch(&now)) {
           const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
           for (auto &column_family : column_family_list) {
             compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
+        auto now_hours = t_now / 3600;
         if (now_hours != 0 && last_compact_date != now_hours / 24) {
           last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
@@ -745,7 +760,7 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+      if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
@@ -810,8 +825,12 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      storage->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
+      auto s = storage->GetDB()->Resume();
+      if (s.ok()) {
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
+      } else {
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
+      }
       storage->SetDBInRetryableIOError(false);
     }
 

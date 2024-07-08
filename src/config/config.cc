@@ -141,6 +141,7 @@ Config::Config() {
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
+      {"compaction-checker-cron", false, new StringField(&compaction_checker_cron_str_, "")},
       {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
       {"force-compact-file-min-deleted-percentage", false,
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
@@ -251,7 +252,7 @@ Config::Config() {
        new YesNoField(&rocks_db.write_options.memtable_insert_hint_per_batch, false)},
 
       /* rocksdb read options */
-      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, false)},
+      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, true)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;
@@ -300,21 +301,19 @@ void Config::initFieldValidator() {
        }},
       {"compaction-checker-range",
        [this](const std::string &k, const std::string &v) -> Status {
+         if (!compaction_checker_cron_str_.empty()) {
+           return {Status::NotOK, "compaction-checker-range cannot be set while compaction-checker-cron is set"};
+         }
          if (v.empty()) {
-           compaction_checker_range.start = -1;
-           compaction_checker_range.stop = -1;
+           compaction_checker_cron.Clear();
            return Status::OK();
          }
-         std::vector<std::string> args = util::Split(v, "-");
-         if (args.size() != 2) {
-           return {Status::NotOK, "invalid range format, the range should be between 0 and 24"};
-         }
-         auto start = GET_OR_RET(ParseInt<int>(args[0], {0, 24}, 10)),
-              stop = GET_OR_RET(ParseInt<int>(args[1], {0, 24}, 10));
-         if (start > stop) return {Status::NotOK, "invalid range format, start should be smaller than stop"};
-         compaction_checker_range.start = start;
-         compaction_checker_range.stop = stop;
-         return Status::OK();
+         return compaction_checker_cron.SetScheduleTime({"*", v, "*", "*", "*"});
+       }},
+      {"compaction-checker-cron",
+       [this](const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> args = util::Split(v, " \t");
+         return compaction_checker_cron.SetScheduleTime(args);
        }},
       {"rename-command",
        [](const std::string &k, const std::string &v) -> Status {
@@ -885,11 +884,20 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
+  auto origin_value = field->ToString();
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
   if (field->callback) {
-    return field->callback(srv, key, value);
+    s = field->callback(srv, key, value);
+    if (!s.IsOK()) {
+      // rollback the value if the callback failed
+      auto set_status = field->Set(origin_value);
+      if (!set_status.IsOK()) {
+        return set_status.Prefixed("failed to rollback the value");
+      }
+    }
+    return s;
   }
 
   return Status::OK();

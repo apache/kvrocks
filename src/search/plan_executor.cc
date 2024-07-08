@@ -152,12 +152,11 @@ auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr
   auto retriever = GET_OR_RET(
       redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns));
 
-  std::string result;
-  auto s = retriever.Retrieve(field->name, &result);
-  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  auto s = retriever.Retrieve(field->name, field->metadata.get());
+  if (!s) return s;
 
-  row.fields.emplace(field, result);
-  return result;
+  row.fields.emplace(field, *s);
+  return *s;
 }
 
 }  // namespace kqir

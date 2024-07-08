@@ -173,6 +173,15 @@ struct StreamClaimOptions {
   StreamEntryID last_delivered_id;
 };
 
+struct StreamAutoClaimOptions {
+  uint64_t min_idle_time_ms;
+  uint64_t count = 100;
+  uint64_t attempts_factors = 10;
+  StreamEntryID start_id;
+  bool just_id = false;
+  bool exclude_start = false;
+};
+
 struct StreamConsumerGroupMetadata {
   uint64_t consumer_number = 0;
   uint64_t pending_number = 0;
@@ -183,8 +192,8 @@ struct StreamConsumerGroupMetadata {
 
 struct StreamConsumerMetadata {
   uint64_t pending_number = 0;
-  uint64_t last_idle_ms;
-  uint64_t last_active_ms;
+  uint64_t last_attempted_interaction_ms;
+  uint64_t last_successful_interaction_ms;
 };
 
 enum class StreamSubkeyType {
@@ -222,6 +231,12 @@ struct StreamReadResult {
 struct StreamClaimResult {
   std::vector<std::string> ids;
   std::vector<StreamEntry> entries;
+};
+
+struct StreamAutoClaimResult {
+  std::string next_claim_id;
+  std::vector<StreamEntry> entries;
+  std::vector<std::string> deleted_ids;
 };
 
 Status IncrementStreamEntryID(StreamEntryID *id);

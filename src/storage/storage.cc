@@ -339,6 +339,13 @@ Status Storage::Open(DBOpenMode mode) {
   propagate_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&propagate_opts);
 
+  rocksdb::BlockBasedTableOptions search_table_opts = InitTableOptions();
+  rocksdb::ColumnFamilyOptions search_opts(options);
+  search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(search_table_opts));
+  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>();
+  search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+  SetBlobDB(&search_opts);
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
@@ -347,7 +354,7 @@ Status Storage::Open(DBOpenMode mode) {
   column_families.emplace_back(std::string(kPubSubColumnFamilyName), pubsub_opts);
   column_families.emplace_back(std::string(kPropagateColumnFamilyName), propagate_opts);
   column_families.emplace_back(std::string(kStreamColumnFamilyName), subkey_opts);
-  column_families.emplace_back(std::string(kSearchColumnFamilyName), subkey_opts);
+  column_families.emplace_back(std::string(kSearchColumnFamilyName), search_opts);
 
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
@@ -699,20 +706,19 @@ rocksdb::Status Storage::Delete(engine::Context &ctx, const rocksdb::WriteOption
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::DeleteRange(engine::Context &ctx, const std::string &first_key, const std::string &last_key) {
+rocksdb::Status Storage::DeleteRange(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                     rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end) {
   auto batch = GetWriteBatchBase();
-  rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(ColumnFamilyID::Metadata);
-  auto s = batch->DeleteRange(cf_handle, first_key, last_key);
+  auto s = batch->DeleteRange(cf_handle, begin, end);
   if (!s.ok()) {
     return s;
   }
 
-  s = batch->Delete(cf_handle, last_key);
-  if (!s.ok()) {
-    return s;
-  }
+  return Write(ctx, options, batch->GetWriteBatch());
+}
 
-  return Write(ctx, default_write_opts_, batch->GetWriteBatch());
+rocksdb::Status Storage::DeleteRange(engine::Context &ctx, Slice begin, Slice end) {
+  return DeleteRange(ctx, default_write_opts_, GetCFHandle(ColumnFamilyID::Metadata), begin, end);
 }
 
 rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
@@ -785,22 +791,18 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
     return sst_file_manager_->GetTotalSize();
   }
 
-  std::string begin_key, end_key;
-  std::string prefix = ComposeNamespaceKey(ns, "", false);
+  auto begin_key = ComposeNamespaceKey(ns, "", false);
+  auto end_key = util::StringNext(begin_key);
 
   redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;
   rocksdb::DB::SizeApproximationFlags include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
 
-  engine::Context ctx(this);
   for (auto cf_handle : cf_handles_) {
     if (cf_handle == GetCFHandle(ColumnFamilyID::PubSub) || cf_handle == GetCFHandle(ColumnFamilyID::Propagate)) {
       continue;
     }
-
-    auto s = db.FindKeyRangeWithPrefix(ctx, prefix, std::string(), &begin_key, &end_key, cf_handle);
-    if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
     db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);

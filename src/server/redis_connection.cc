@@ -26,7 +26,10 @@
 #include <shared_mutex>
 
 #include "commands/commander.h"
+#include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "search/indexer.h"
+#include "server/redis_reply.h"
 #include "string_util.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
@@ -84,7 +87,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
-    Reply(redis::Error("ERR " + s.Msg()));
+    Reply(redis::Error(s));
     LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
     return;
   }
@@ -138,7 +141,7 @@ std::string Connection::Bool(bool b) const {
 }
 
 std::string Connection::MultiBulkString(const std::vector<std::string> &values) const {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  std::string result = MultiLen(values.size());
   for (const auto &value : values) {
     if (value.empty()) {
       result += NilString();
@@ -151,7 +154,7 @@ std::string Connection::MultiBulkString(const std::vector<std::string> &values) 
 
 std::string Connection::MultiBulkString(const std::vector<std::string> &values,
                                         const std::vector<rocksdb::Status> &statuses) const {
-  std::string result = "*" + std::to_string(values.size()) + CRLF;
+  std::string result = MultiLen(values.size());
   for (size_t i = 0; i < values.size(); i++) {
     if (i < statuses.size() && !statuses[i].ok()) {
       result += NilString();
@@ -409,6 +412,10 @@ Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector
   return s;
 }
 
+static bool IsHashOrJsonCommand(const std::string &cmd) {
+  return util::HasPrefix(cmd, "h") || util::HasPrefix(cmd, "json.");
+}
+
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
@@ -425,7 +432,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR unknown command " + cmd_tokens.front()));
+      Reply(redis::Error({Status::NotOK, "unknown command " + cmd_tokens.front()}));
       continue;
     }
     auto current_cmd = std::move(*cmd_s);
@@ -438,7 +445,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (GetNamespace().empty()) {
       if (!password.empty()) {
         if (cmd_name != "auth" && cmd_name != "hello") {
-          Reply(redis::Error("NOAUTH Authentication required."));
+          Reply(redis::Error({Status::RedisNoAuth, "Authentication required."}));
           continue;
         }
       } else {
@@ -471,7 +478,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
-      Reply(redis::Error("LOADING kvrocks is restoring the db from backup"));
+      Reply(redis::Error({Status::RedisLoading, errRestoringBackup}));
       if (is_multi_exec) multi_error_ = true;
       continue;
     }
@@ -479,7 +486,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR wrong number of arguments"));
+      Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
       continue;
     }
 
@@ -487,12 +494,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
-      Reply(redis::Error("ERR Can't execute " + cmd_name + " in MULTI"));
+      Reply(redis::Error({Status::NotOK, "Can't execute " + cmd_name + " in MULTI"}));
       multi_error_ = true;
       continue;
     }
@@ -501,7 +508,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
         if (is_multi_exec) multi_error_ = true;
-        Reply(redis::Error(s.Msg()));
+        Reply(redis::Error(s));
         continue;
       }
     }
@@ -519,25 +526,52 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
-      Reply(redis::Error("READONLY You can't write against a read only slave."));
+      Reply(redis::Error({Status::RedisReadOnly, "You can't write against a read only slave."}));
       continue;
     }
 
     if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {
-      Reply(redis::Error("ERR write command not allowed when reached max-db-size."));
+      Reply(redis::Error({Status::NotOK, "write command not allowed when reached max-db-size."}));
       continue;
     }
 
     if (!config->slave_serve_stale_data && srv_->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&
         srv_->GetReplicationState() != kReplConnected) {
-      Reply(
-          redis::Error("MASTERDOWN Link with MASTER is down "
-                       "and slave-serve-stale-data is set to 'no'."));
+      Reply(redis::Error({Status::RedisMasterDown,
+                          "Link with MASTER is down "
+                          "and slave-serve-stale-data is set to 'no'."}));
       continue;
+    }
+
+    // TODO: transaction support for index recording
+    std::vector<GlobalIndexer::RecordResult> index_records;
+    if (IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) && !config->cluster_enabled) {
+      attributes->ForEachKeyRange(
+          [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
+            key_range.ForEachKey(
+                [&, this](const std::string &key) {
+                  auto res = srv_->indexer.Record(key, ns_);
+                  if (res.IsOK()) {
+                    index_records.push_back(*res);
+                  } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
+                    LOG(WARNING) << "index recording failed for key: " << key;
+                  }
+                },
+                args);
+          },
+          cmd_tokens);
     }
 
     SetLastCmd(cmd_name);
     s = ExecuteCommand(cmd_name, cmd_tokens, current_cmd.get(), &reply);
+
+    // TODO: transaction support for index updating
+    for (const auto &record : index_records) {
+      auto s = GlobalIndexer::Update(record);
+      if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
+        LOG(WARNING) << "index updating failed for key: " << record.key;
+      }
+    }
 
     // Break the execution loop when occurring the blocking command like BLPOP or BRPOP,
     // it will suspend the connection and wait for the wakeup signal.
@@ -552,7 +586,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Reply for MULTI
     if (!s.IsOK()) {
-      Reply(redis::Error("ERR " + s.Msg()));
+      Reply(redis::Error(s));
       continue;
     }
 

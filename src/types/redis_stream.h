@@ -57,6 +57,9 @@ class Stream : public SubKeyScanner {
                                   const std::string &consumer_name, uint64_t min_idle_time_ms,
                                   const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,
                                   StreamClaimResult *result);
+  rocksdb::Status AutoClaim(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
+                            const std::string &consumer_name, const StreamAutoClaimOptions &options,
+                            StreamAutoClaimResult *result);
   rocksdb::Status Len(engine::Context &ctx, const Slice &stream_name, const StreamLenOptions &options, uint64_t *size);
   rocksdb::Status GetStreamInfo(engine::Context &ctx, const Slice &stream_name, bool full, uint64_t count,
                                 StreamInfo *info);

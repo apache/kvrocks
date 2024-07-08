@@ -499,8 +499,7 @@ class CommandSort : public Commander {
     }
 
     if (type != RedisType::kRedisList && type != RedisType::kRedisSet && type != RedisType::kRedisZSet) {
-      *output = Error("WRONGTYPE Operation against a key holding the wrong kind of value");
-      return Status::OK();
+      return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
     }
 
     /* When sorting a set with no sort specified, we must sort the output
@@ -527,15 +526,12 @@ class CommandSort : public Commander {
 
     switch (res) {
       case Database::SortResult::UNKNOWN_TYPE:
-        *output = redis::Error("Unknown Type");
-        break;
+        return {Status::RedisErrorNoPrefix, "Unknown Type"};
       case Database::SortResult::DOUBLE_CONVERT_ERROR:
-        *output = redis::Error("One or more scores can't be converted into double");
-        break;
+        return {Status::RedisErrorNoPrefix, "One or more scores can't be converted into double"};
       case Database::SortResult::LIMIT_EXCEEDED:
-        *output = redis::Error("The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
-                               std::to_string(SORT_LENGTH_LIMIT));
-        break;
+        return {Status::RedisErrorNoPrefix,
+                "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " + std::to_string(SORT_LENGTH_LIMIT)};
       case Database::SortResult::DONE:
         if (sort_argument_.storekey.empty()) {
           std::vector<std::string> output_vec;

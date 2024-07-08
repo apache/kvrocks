@@ -72,7 +72,7 @@ struct IndexSelection : Visitor {
   bool HasGoodOrder() const { return order && order->field->info->HasIndex(); }
 
   std::unique_ptr<PlanOperator> GenerateScanFromOrder() const {
-    if (order->field->info->MetadataAs<redis::SearchNumericFieldMetadata>()) {
+    if (order->field->info->MetadataAs<redis::NumericFieldMetadata>()) {
       return std::make_unique<NumericFieldScan>(order->field->CloneAs<FieldRef>(), Interval::Full(), order->order);
     } else {
       CHECK(false) << "current only numeric field is supported for ordering";

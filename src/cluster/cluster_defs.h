@@ -36,7 +36,7 @@ inline constexpr const char *errSlotOutOfRange = "Slot is out of range";
 inline constexpr const char *errInvalidClusterVersion = "Invalid cluster version";
 inline constexpr const char *errSlotOverlapped = "Slot distribution is overlapped";
 inline constexpr const char *errNoMasterNode = "The node isn't a master";
-inline constexpr const char *errClusterNoInitialized = "CLUSTERDOWN The cluster is not initialized";
+inline constexpr const char *errClusterNoInitialized = "The cluster is not initialized";
 inline constexpr const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
 inline constexpr const char *errInvalidImportState = "Invalid import state";
 

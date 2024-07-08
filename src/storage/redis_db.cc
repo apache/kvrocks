@@ -288,6 +288,10 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
       }
     }
 
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded()) break;
     if (prefix.empty()) break;
     if (++slot_id >= HASH_SLOTS_SIZE) break;
@@ -355,6 +359,11 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
       keys->emplace_back(user_key);
       cnt++;
     }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty() && cnt >= limit) {
         end_cursor->append(user_key);
@@ -420,12 +429,9 @@ rocksdb::Status Database::RandomKey(engine::Context &ctx, const std::string &cur
 }
 
 rocksdb::Status Database::FlushDB(engine::Context &ctx) {
-  std::string begin_key, end_key;
-  std::string prefix = ComposeNamespaceKey(namespace_, "", false);
-  auto s = FindKeyRangeWithPrefix(ctx, prefix, std::string(), &begin_key, &end_key);
-  if (!s.ok()) {
-    return rocksdb::Status::OK();
-  }
+  auto begin_key = ComposeNamespaceKey(namespace_, "", false);
+  auto end_key = util::StringNext(begin_key);
+
   return storage_->DeleteRange(ctx, begin_key, end_key);
 }
 
@@ -440,7 +446,7 @@ rocksdb::Status Database::FlushAll(engine::Context &ctx) {
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
   }
-  auto last_key = iter->key().ToString();
+  auto last_key = util::StringNext(iter->key().ToString());
   return storage_->DeleteRange(ctx, first_key, last_key);
 }
 
@@ -502,51 +508,6 @@ rocksdb::Status Database::Type(engine::Context &ctx, const Slice &key, RedisType
 
 std::string Database::AppendNamespacePrefix(const Slice &user_key) {
   return ComposeNamespaceKey(namespace_, user_key, storage_->IsSlotIdEncoded());
-}
-
-rocksdb::Status Database::FindKeyRangeWithPrefix(engine::Context &ctx, const std::string &prefix,
-                                                 const std::string &prefix_end, std::string *begin, std::string *end,
-                                                 rocksdb::ColumnFamilyHandle *cf_handle) {
-  if (cf_handle == nullptr) {
-    cf_handle = metadata_cf_handle_;
-  }
-  if (prefix.empty()) {
-    return rocksdb::Status::NotFound();
-  }
-  begin->clear();
-  end->clear();
-
-  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), cf_handle);
-  iter->Seek(prefix);
-  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    return rocksdb::Status::NotFound();
-  }
-  *begin = iter->key().ToString();
-
-  // it's ok to increase the last char in prefix as the boundary of the prefix
-  // while we limit the namespace last char shouldn't be larger than 128.
-  std::string next_prefix;
-  if (!prefix_end.empty()) {
-    next_prefix = prefix_end;
-  } else {
-    next_prefix = prefix;
-    char last_char = next_prefix.back();
-    last_char++;
-    next_prefix.pop_back();
-    next_prefix.push_back(last_char);
-  }
-  iter->SeekForPrev(next_prefix);
-  int max_prev_limit = 128;  // prevent unpredicted long while loop
-  int i = 0;
-  // reversed seek the key til with prefix or end of the iterator
-  while (i++ < max_prev_limit && iter->Valid() && !iter->key().starts_with(prefix)) {
-    iter->Prev();
-  }
-  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    return rocksdb::Status::NotFound();
-  }
-  *end = iter->key().ToString();
-  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Database::ClearKeysOfSlot(engine::Context &ctx, const rocksdb::Slice &ns, int slot) {
@@ -615,7 +576,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       break;
     }
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

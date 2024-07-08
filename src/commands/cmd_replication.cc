@@ -22,6 +22,7 @@
 #include "error_constants.h"
 #include "io_util.h"
 #include "scope_exit.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -101,7 +102,7 @@ class CommandPSync : public Commander {
     srv->stats.IncrPSyncOKCount();
     s = srv->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
-      std::string err = "-ERR " + s.Msg() + "\r\n";
+      std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
@@ -229,7 +230,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(srv->storage, &files);
       if (!s.IsOK()) {
-        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint", bev);
+        s = util::SockSend(repl_fd, redis::Error({Status::RedisErrorNoPrefix, "can't create db checkpoint"}), bev);
         if (!s.IsOK()) {
           LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
         }

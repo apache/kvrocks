@@ -273,7 +273,7 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
   }
 
   while (!explore_heap.empty()) {
-    auto [dist, current_vector] = std::move(explore_heap.top());
+    auto [dist, current_vector] = explore_heap.top();
     explore_heap.pop();
     if (dist > result_heap.top().first) {
       break;

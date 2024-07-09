@@ -402,7 +402,7 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
     GetFixed16(input, &m);
     GetFixed32(input, &ef_construction);
     GetFixed32(input, &ef_runtime);
-    GetDouble(input, (double *)(&epsilon));
+    GetDouble(input, &epsilon);
     GetFixed16(input, &num_levels);
     return rocksdb::Status::OK();
   }

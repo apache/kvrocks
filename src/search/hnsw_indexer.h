@@ -33,29 +33,29 @@ namespace redis {
 
 class HnswIndex;
 
-struct Node {
+struct HnswNode {
   using NodeKey = std::string;
   NodeKey key;
   uint16_t level;
   std::vector<NodeKey> neighbours;
 
-  Node(NodeKey key, uint16_t level);
+  HnswNode(NodeKey key, uint16_t level);
 
   StatusOr<HnswNodeFieldMetadata> DecodeMetadata(const SearchKey& search_key, engine::Storage* storage) const;
   void PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
-                   ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
+                   rocksdb::WriteBatchBase* batch) const;
   void DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage);
 
   // For testing purpose
   Status AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
+                      rocksdb::WriteBatchBase* batch) const;
   Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
-                         ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
+                         rocksdb::WriteBatchBase* batch) const;
   friend class HnswIndex;
 };
 
 struct VectorItem {
-  using NodeKey = Node::NodeKey;
+  using NodeKey = HnswNode::NodeKey;
 
   NodeKey key;
   kqir::NumericArray vector;
@@ -71,7 +71,7 @@ struct VectorItem {
 StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right);
 
 struct HnswIndex {
-  using NodeKey = Node::NodeKey;
+  using NodeKey = HnswNode::NodeKey;
 
   SearchKey search_key;
   HnswVectorFieldMetadata* metadata;
@@ -99,7 +99,7 @@ struct HnswIndex {
                                                 const std::vector<NodeKey>& entry_points) const;
   Status InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer) const;
-  Status InsertVectorEntry(std::string_view key, kqir::NumericArray vector,
+  Status InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
 };

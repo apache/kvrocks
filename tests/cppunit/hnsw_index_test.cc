@@ -141,18 +141,18 @@ TEST_F(HnswIndexTest, DecodeNodesToVectorItems) {
   std::string node_key2 = "node2";
   std::string node_key3 = "node3";
 
-  redis::Node node1(node_key1, layer);
-  redis::Node node2(node_key2, layer);
-  redis::Node node3(node_key3, layer);
+  redis::HnswNode node1(node_key1, layer);
+  redis::HnswNode node2(node_key2, layer);
+  redis::HnswNode node3(node_key3, layer);
 
   redis::HnswNodeFieldMetadata metadata1(0, {1, 2, 3});
   redis::HnswNodeFieldMetadata metadata2(0, {4, 5, 6});
   redis::HnswNodeFieldMetadata metadata3(0, {7, 8, 9});
 
   auto batch = storage_->GetWriteBatchBase();
-  node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch);
-  node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch);
-  node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch);
+  node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
@@ -221,11 +221,11 @@ TEST_F(HnswIndexTest, SearchLayer) {
   std::string node_key4 = "node4";
   std::string node_key5 = "node5";
 
-  redis::Node node1(node_key1, layer);
-  redis::Node node2(node_key2, layer);
-  redis::Node node3(node_key3, layer);
-  redis::Node node4(node_key4, layer);
-  redis::Node node5(node_key5, layer);
+  redis::HnswNode node1(node_key1, layer);
+  redis::HnswNode node2(node_key2, layer);
+  redis::HnswNode node3(node_key3, layer);
+  redis::HnswNode node4(node_key4, layer);
+  redis::HnswNode node5(node_key5, layer);
 
   redis::HnswNodeFieldMetadata metadata1(0, {1.0, 2.0, 3.0});
   redis::HnswNodeFieldMetadata metadata2(0, {4.0, 5.0, 6.0});
@@ -235,31 +235,31 @@ TEST_F(HnswIndexTest, SearchLayer) {
 
   // Add Nodes
   auto batch = storage_->GetWriteBatchBase();
-  node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch);
-  node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch);
-  node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch);
-  node4.PutMetadata(&metadata4, hnsw_index->search_key, hnsw_index->storage, batch);
-  node5.PutMetadata(&metadata5, hnsw_index->search_key, hnsw_index->storage, batch);
+  node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node4.PutMetadata(&metadata4, hnsw_index->search_key, hnsw_index->storage, batch.Get());
+  node5.PutMetadata(&metadata5, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   // Add Neighbours
   batch = storage_->GetWriteBatchBase();
-  auto s1 = node1.AddNeighbour("node2", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s1 = node1.AddNeighbour("node2", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s1.IsOK());
-  auto s2 = node1.AddNeighbour("node4", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s2 = node1.AddNeighbour("node4", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s2.IsOK());
-  auto s3 = node2.AddNeighbour("node1", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s3 = node2.AddNeighbour("node1", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s3.IsOK());
-  auto s4 = node2.AddNeighbour("node3", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s4 = node2.AddNeighbour("node3", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s1.IsOK());
-  auto s5 = node3.AddNeighbour("node2", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s5 = node3.AddNeighbour("node2", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s5.IsOK());
-  auto s6 = node3.AddNeighbour("node5", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s6 = node3.AddNeighbour("node5", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s6.IsOK());
-  auto s7 = node4.AddNeighbour("node1", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s7 = node4.AddNeighbour("node1", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s7.IsOK());
-  auto s8 = node5.AddNeighbour("node3", hnsw_index->search_key, hnsw_index->storage, batch);
+  auto s8 = node5.AddNeighbour("node3", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s8.IsOK());
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
@@ -334,13 +334,13 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   decoded_metadata.Decode(&value);
   ASSERT_TRUE(decoded_metadata.num_levels == 2);
 
-  redis::Node node1_layer0(key1, 0);
+  redis::HnswNode node1_layer0(key1, 0);
   auto s2 = node1_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s2.IsOK());
   redis::HnswNodeFieldMetadata node1_layer0_meta = s2.GetValue();
   EXPECT_EQ(node1_layer0_meta.num_neighbours, 0);
 
-  redis::Node node1_layer1(key1, 1);
+  redis::HnswNode node1_layer1(key1, 1);
   auto s3 = node1_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s3.IsOK());
   redis::HnswNodeFieldMetadata node1_layer1_meta = s2.GetValue();
@@ -369,23 +369,23 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   EXPECT_EQ(node1_layer1.neighbours.size(), 1);
   EXPECT_EQ(node1_layer1.neighbours[0], "n2");
 
-  redis::Node node2_layer0(key2, 0);
+  redis::HnswNode node2_layer0(key2, 0);
   node2_layer0.DecodeNeighbours(hnsw_index->search_key, hnsw_index->storage);
   EXPECT_EQ(node2_layer0.neighbours.size(), 1);
   EXPECT_EQ(node2_layer0.neighbours[0], "n1");
 
-  redis::Node node2_layer1(key2, 1);
+  redis::HnswNode node2_layer1(key2, 1);
   node2_layer1.DecodeNeighbours(hnsw_index->search_key, hnsw_index->storage);
   EXPECT_EQ(node2_layer1.neighbours.size(), 1);
   EXPECT_EQ(node2_layer1.neighbours[0], "n1");
 
-  redis::Node node2_layer2(key2, 2);
+  redis::HnswNode node2_layer2(key2, 2);
   auto s5 = node2_layer2.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s5.IsOK());
   redis::HnswNodeFieldMetadata node2_layer2_meta = s5.GetValue();
   EXPECT_EQ(node2_layer2_meta.num_neighbours, 0);
 
-  redis::Node node2_layer3(key2, 3);
+  redis::HnswNode node2_layer3(key2, 3);
   auto s6 = node2_layer3.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s6.IsOK());
   redis::HnswNodeFieldMetadata node2_layer3_meta = s6.GetValue();
@@ -406,7 +406,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   decoded_metadata.Decode(&value);
   ASSERT_TRUE(decoded_metadata.num_levels == 4);
 
-  redis::Node node3_layer2(key3, target_level);
+  redis::HnswNode node3_layer2(key3, target_level);
   auto s8 = node3_layer2.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s8.IsOK());
   redis::HnswNodeFieldMetadata node3_layer2_meta = s8.GetValue();
@@ -415,7 +415,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   EXPECT_EQ(node3_layer2.neighbours.size(), 1);
   EXPECT_EQ(node3_layer2.neighbours[0], "n2");
 
-  redis::Node node3_layer1(key3, 1);
+  redis::HnswNode node3_layer1(key3, 1);
   auto s9 = node3_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s9.IsOK());
   redis::HnswNodeFieldMetadata node3_layer1_meta = s9.GetValue();
@@ -434,7 +434,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  redis::Node node4_layer0(key4, 0);
+  redis::HnswNode node4_layer0(key4, 0);
   auto s11 = node4_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s11.IsOK());
   redis::HnswNodeFieldMetadata node4_layer0_meta = s11.GetValue();
@@ -492,7 +492,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   actual_set = {node3_layer1.neighbours.begin(), node3_layer1.neighbours.end()};
   EXPECT_EQ(actual_set, expected_set);
 
-  redis::Node node4_layer1(key4, 1);
+  redis::HnswNode node4_layer1(key4, 1);
   auto s18 = node4_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s18.IsOK());
   auto node4_layer1_meta = s18.GetValue();
@@ -502,7 +502,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   actual_set = {node4_layer1.neighbours.begin(), node4_layer1.neighbours.end()};
   EXPECT_EQ(actual_set, expected_set);
 
-  redis::Node node5_layer1(key5, 1);
+  redis::HnswNode node5_layer1(key5, 1);
   auto s19 = node5_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s19.IsOK());
   auto node5_layer1_meta = s19.GetValue();
@@ -521,7 +521,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   actual_set = {node1_layer0.neighbours.begin(), node1_layer0.neighbours.end()};
   EXPECT_EQ(actual_set, expected_set);
 
-  redis::Node node5_layer0(key5, 0);
+  redis::HnswNode node5_layer0(key5, 0);
   auto s21 = node5_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s21.IsOK());
   auto node5_layer0_meta = s21.GetValue();
@@ -607,7 +607,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   actual_set = {node1_layer0.neighbours.begin(), node1_layer0.neighbours.end()};
   EXPECT_EQ(actual_set, expected_set);
 
-  redis::Node node3_layer0(key3, 0);
+  redis::HnswNode node3_layer0(key3, 0);
   auto s33 = node3_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s33.IsOK());
   auto node3_layer0_meta = s33.GetValue();

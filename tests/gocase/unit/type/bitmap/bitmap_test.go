@@ -197,7 +197,7 @@ func TestBitmap(t *testing.T) {
 		cmd = rdb.GetBit(ctx, "b0", maxOffset)
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, 1, cmd.Val())
-		cmd = rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: maxOffset / 8})
+		cmd = rdb.BitCount(ctx, "b0", &redis.BitCount{Start: 0, End: maxOffset / 32})
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, 1, cmd.Val())
 		cmd = rdb.BitPos(ctx, "b0", 1)

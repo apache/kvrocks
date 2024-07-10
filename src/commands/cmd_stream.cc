@@ -321,11 +321,10 @@ class CommandXClaim : public Commander {
     auto s = stream_db.ClaimPelEntries(stream_name_, group_name_, consumer_name_, min_idle_time_ms_, entry_ids_,
                                        stream_claim_options_, &result);
     if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisNoGroup, "No such key '" + stream_name_ + "' or consumer group '" + group_name_ + "'"};
+      }
       return {Status::RedisExecErr, s.ToString()};
-    }
-
-    if (s.IsNotFound()) {
-      return {Status::RedisExecErr, errNoSuchKey};
     }
 
     if (!stream_claim_options_.just_id) {
@@ -411,8 +410,7 @@ class CommandAutoClaim : public Commander {
     auto s = stream_db.AutoClaim(key_name_, group_name_, consumer_name_, options_, &result);
     if (!s.ok()) {
       if (s.IsNotFound()) {
-        return {Status::RedisExecErr,
-                "NOGROUP No such key '" + key_name_ + "' or consumer group '" + group_name_ + "'"};
+        return {Status::RedisNoGroup, "No such key '" + key_name_ + "' or consumer group '" + group_name_ + "'"};
       }
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -536,6 +534,9 @@ class CommandXGroup : public Commander {
     if (subcommand_ == "create") {
       auto s = stream_db.CreateGroup(stream_name_, xgroup_create_options_, group_name_);
       if (!s.ok()) {
+        if (s.IsBusy()) {
+          return {Status::RedisBusyGroup, "consumer group name '" + group_name_ + "' already exists"};
+        }
         return {Status::RedisExecErr, s.ToString()};
       }
 
@@ -560,6 +561,9 @@ class CommandXGroup : public Commander {
       int created_number = 0;
       auto s = stream_db.CreateConsumer(stream_name_, group_name_, consumer_name_, &created_number);
       if (!s.ok()) {
+        if (s.IsNotFound()) {
+          return {Status::RedisNoGroup, "No such consumer group " + group_name_ + " for key name " + stream_name_};
+        }
         return {Status::RedisExecErr, s.ToString()};
       }
 
@@ -570,6 +574,9 @@ class CommandXGroup : public Commander {
       uint64_t deleted_pel = 0;
       auto s = stream_db.DestroyConsumer(stream_name_, group_name_, consumer_name_, deleted_pel);
       if (!s.ok()) {
+        if (s.IsNotFound()) {
+          return {Status::RedisNoGroup, "No such consumer group " + group_name_ + " for key name " + stream_name_};
+        }
         return {Status::RedisExecErr, s.ToString()};
       }
 
@@ -579,6 +586,9 @@ class CommandXGroup : public Commander {
     if (subcommand_ == "setid") {
       auto s = stream_db.GroupSetId(stream_name_, group_name_, xgroup_create_options_);
       if (!s.ok()) {
+        if (s.IsNotFound()) {
+          return {Status::RedisNoGroup, "No such consumer group " + group_name_ + " for key name " + stream_name_};
+        }
         return {Status::RedisExecErr, s.ToString()};
       }
 

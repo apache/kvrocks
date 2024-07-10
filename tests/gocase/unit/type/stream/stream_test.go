@@ -889,6 +889,9 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "myStream").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"iTeM", "1", "vAluE", "a"}}).Err())
 		require.NoError(t, rdb.XGroupCreate(ctx, "myStream", "myGroup", "$").Err())
+		// duplicate create group
+		require.EqualError(t, rdb.XGroupCreate(ctx, "myStream", "myGroup", "$").Err(),
+			"BUSYGROUP consumer group name 'myGroup' already exists")
 		result, err := rdb.XGroupDestroy(ctx, "myStream", "myGroup").Result()
 		require.NoError(t, err)
 		require.Equal(t, int64(1), result)
@@ -931,8 +934,12 @@ func TestStreamOffset(t *testing.T) {
 			ID:     "1-0",
 			Values: []string{"data", "a"},
 		}).Err())
+
 		//no such group
-		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		expectedError := fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName)
+		require.EqualError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
+		require.EqualError(t, rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
+
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
 
@@ -1009,7 +1016,8 @@ func TestStreamOffset(t *testing.T) {
 			Values: []string{"data", "a"},
 		}).Err())
 		//No such group
-		require.Error(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err())
+		require.EqualError(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err(),
+			fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName))
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 
 		require.NoError(t, rdb.XGroupSetID(ctx, streamName, groupName, "0-0").Err())
@@ -1342,6 +1350,17 @@ func TestStreamOffset(t *testing.T) {
 			ID:     "1-0",
 			Values: []string{"field1", "data1"},
 		}).Err())
+
+		// No such group
+		err := rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumer1Name,
+			MinIdle:  0,
+			Messages: []string{"1-0"},
+		}).Err()
+		require.EqualError(t, err, fmt.Sprintf("NOGROUP No such key '%s' or consumer group '%s'", streamName, groupName))
+
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
 		r, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
@@ -1547,6 +1566,15 @@ func TestStreamOffset(t *testing.T) {
 			id4 = rsp.Val()
 		}
 
+		// No such group
+		err := rdb.XAutoClaimJustID(ctx, &redis.XAutoClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: "consumer",
+			MinIdle:  10 * time.Millisecond,
+			Start:    "-",
+		}).Err()
+		require.EqualError(t, err, fmt.Sprintf("NOGROUP No such key '%s' or consumer group '%s'", streamName, groupName))
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
 
 		consumer1 := "consumer1"

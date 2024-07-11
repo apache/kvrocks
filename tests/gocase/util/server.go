@@ -87,7 +87,13 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 	if options.Addr == "" {
 		options.Addr = s.addr.String()
 	}
-	return redis.NewClient(options)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := redis.NewClient(options)
+	require.NoError(s.t, client.Ping(ctx).Err())
+	return client
 }
 
 func (s *KvrocksServer) NewTCPClient() *TCPClient {

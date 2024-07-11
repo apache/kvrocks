@@ -124,8 +124,14 @@ func TestBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		DialTimeout:  30 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		PoolTimeout:  30 * time.Second,
+	})
 	defer func() { require.NoError(t, rdb.Close()) }()
+
 	t.Run("GET bitmap string after setbit", func(t *testing.T) {
 		require.NoError(t, rdb.SetBit(ctx, "b0", 0, 0).Err())
 		require.NoError(t, rdb.SetBit(ctx, "b1", 35, 0).Err())

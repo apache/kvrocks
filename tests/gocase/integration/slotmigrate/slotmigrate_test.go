@@ -1281,7 +1281,7 @@ func TestSlotRangeMigrate(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Repeat migration cases", func(t *testing.T) {
-		// Disjoint
+		// non-overlapping
 		migrateSlotRangeAndSetSlot(t, ctx, rdb0, rdb1, id1, "104-106")
 		time.Sleep(1 * time.Second)
 		migrateSlotRangeAndSetSlot(t, ctx, rdb0, rdb1, id1, "107-108")
@@ -1291,14 +1291,13 @@ func TestSlotRangeMigrate(t *testing.T) {
 		nodes := rdb0.ClusterNodes(ctx).Val()
 		require.Contains(t, nodes, "12-101 109-10000 16383", "0-11 102-108 10001-16382")
 
-		// Intersection
+		// overlap
 		errMsg := "Can't migrate slot which doesn't belong to me"
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "100-102", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "100-104", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "108-109", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "106-109", id1).Err(), errMsg)
 
-		// Subset
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "102-108", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "101-109", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "105", id1).Err(), errMsg)
@@ -1307,26 +1306,26 @@ func TestSlotRangeMigrate(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Repeat migration cases, but does not immediately update the topology via setslot", func(t *testing.T) {
-		// Disjoint
+		// non-overlapping
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "114-116", id1).Val())
 		waitForMigrateSlotRangeState(t, rdb0, "114-116", SlotMigrationStateSuccess)
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "117-118", id1).Val())
 		waitForMigrateSlotRangeState(t, rdb0, "117-118", SlotMigrationStateSuccess)
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "112-113", id1).Val())
 		waitForMigrateSlotRangeState(t, rdb0, "112-113", SlotMigrationStateSuccess)
+		for slot := 112; slot <= 118; slot++ {
+			require.Contains(t, rdb0.LPush(ctx, util.SlotTable[slot], 10).Err(), "MOVED")
+		}
 
+		// overlap
 		errMsg := "Can't migrate slot which has been migrated"
-		// TODO: Migrating 112-113, but 114-116, 117-118 is covered and cannot be detected.
-		// require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "114-116", id1).Err(), errMsg)
-		// require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "117-118", id1).Err(), errMsg)
-
-		// Intersection
+		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "114-116", id1).Err(), errMsg)
+		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "117-118", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "112", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "112-112", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "113", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "113-113", id1).Err(), errMsg)
 
-		// Subset
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "112-113", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "112-120", id1).Err(), errMsg)
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "110-112", id1).Err(), errMsg)

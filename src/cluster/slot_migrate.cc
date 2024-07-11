@@ -445,7 +445,7 @@ Status SlotMigrator::finishSuccessfulMigration() {
 
 Status SlotMigrator::finishFailedMigration() {
   // Stop slot will forbid writing
-  migrate_failed_slot_range_ = slot_range_;
+  migrate_failed_slot_range_ = slot_range_.load();
   forbidden_slot_range_ = {-1, -1};
 
   // Set import status on the destination node to FAILED
@@ -1156,7 +1156,7 @@ Status SlotMigrator::syncWalAfterForbiddingSlot() {
 void SlotMigrator::GetMigrationInfo(std::string *info) const {
   info->clear();
   if (!slot_range_.load().IsValid() && !forbidden_slot_range_.load().IsValid() &&
-      !migrate_failed_slot_range_.IsValid()) {
+      !migrate_failed_slot_range_.load().IsValid()) {
     return;
   }
 

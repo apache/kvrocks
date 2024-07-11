@@ -296,6 +296,11 @@ Status Cluster::MigrateSlotRange(const SlotRange &slot_range, const std::string 
     return {Status::NotOK, errSlotRangeInvalid};
   }
 
+  if (!migrated_slots_.empty() &&
+      slot_range.HasOverlap({migrated_slots_.begin()->first, migrated_slots_.rbegin()->first})) {
+    return {Status::NotOK, "Can't migrate slot which has been migrated"};
+  }
+
   for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
     if (slots_nodes_[slot] != myself_) {
       return {Status::NotOK, "Can't migrate slot which doesn't belong to me"};

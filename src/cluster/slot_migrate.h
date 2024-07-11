@@ -193,7 +193,7 @@ class SlotMigrator : public redis::Database {
   MigrationType migration_type_ = MigrationType::kRedisCommand;
   std::atomic<SlotRange> forbidden_slot_range_ = SlotRange{-1, -1};
   std::atomic<SlotRange> slot_range_ = SlotRange{-1, -1};
-  SlotRange migrate_failed_slot_range_ = {-1, -1};
+  std::atomic<SlotRange> migrate_failed_slot_range_ = SlotRange{-1, -1};
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
   uint64_t wal_begin_seq_ = 0;

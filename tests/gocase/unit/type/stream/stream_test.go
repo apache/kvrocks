@@ -306,7 +306,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 		require.Len(t, rdb.XRange(ctx, "vipstream", "(1-0", "(42-42").Val(), 1)
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(-", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(+").Err(), "ERR")
-		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551615-18446744073709551615", "+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551614-18446744073709551615", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(0-0").Err(), "ERR")
 	})
 

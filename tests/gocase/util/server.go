@@ -92,7 +92,10 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 	defer cancel()
 
 	client := redis.NewClient(options)
-	require.NoError(s.t, client.Ping(ctx).Err())
+	err := client.Ping(ctx).Err()
+	if err != nil {
+		require.Contains(s.t, err.Error(), "NOAUTH") // check the connection, Authentication error is allowed here
+	}
 	return client
 }
 

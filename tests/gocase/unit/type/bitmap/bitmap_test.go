@@ -123,6 +123,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 func TestBitmap(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
+
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{
 		DialTimeout:  30 * time.Second,

@@ -400,15 +400,9 @@ rocksdb::Status Stream::ClaimPelEntries(const Slice &stream_name, const std::str
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
-  StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
+  if (!s.ok()) return s;
 
+  StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
@@ -655,6 +649,10 @@ rocksdb::Status Stream::AutoClaim(const Slice &stream_name, const std::string &g
     break;
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   if (has_next_entry) {
     std::string tmp_group_name;
     StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
@@ -713,7 +711,7 @@ rocksdb::Status Stream::CreateGroup(const Slice &stream_name, const StreamXGroup
     if (!s.ok()) {
       return s;
     }
-    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
+    return rocksdb::Status::Busy();
   }
 
   batch->Put(stream_cf_handle_, entry_key, entry_value);
@@ -764,6 +762,10 @@ rocksdb::Status Stream::DestroyGroup(const Slice &stream_name, const std::string
     *delete_cnt += 1;
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   if (*delete_cnt != 0) {
     metadata.group_number -= 1;
     std::string metadata_bytes;
@@ -792,13 +794,7 @@ rocksdb::Status Stream::createConsumerWithoutLock(const Slice &stream_name, cons
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_entry_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   StreamConsumerMetadata consumer_metadata;
   auto now = util::GetTimeStampMS();
@@ -849,13 +845,7 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
@@ -891,6 +881,11 @@ rocksdb::Status Stream::DestroyConsumer(const Slice &stream_name, const std::str
       batch->Delete(stream_cf_handle_, iter->key());
     }
   }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   batch->Delete(stream_cf_handle_, consumer_key);
   StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   group_metadata.consumer_number -= 1;
@@ -915,13 +910,7 @@ rocksdb::Status Stream::GroupSetId(const Slice &stream_name, const std::string &
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_entry_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
   if (options.last_id == "$") {
@@ -1097,6 +1086,10 @@ rocksdb::Status Stream::Len(const Slice &stream_name, const StreamLenOptions &op
     }
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+
   return rocksdb::Status::OK();
 }
 
@@ -1172,6 +1165,10 @@ rocksdb::Status Stream::range(const std::string &ns_key, const StreamMetadata &m
     if (options.with_count && entries->size() == options.count) {
       break;
     }
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
   }
 
   return rocksdb::Status::OK();
@@ -1338,7 +1335,7 @@ rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
     std::pair<std::string, StreamConsumerGroupMetadata> tmp_item(group_name, cg_metadata);
     group_metadata.push_back(tmp_item);
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 rocksdb::Status Stream::GetConsumerInfo(
@@ -1374,7 +1371,7 @@ rocksdb::Status Stream::GetConsumerInfo(
     std::pair<std::string, StreamConsumerMetadata> tmp_item(consumer_name, c_metadata);
     consumer_metadata.push_back(tmp_item);
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 rocksdb::Status Stream::Range(const Slice &stream_name, const StreamRangeOptions &options,
@@ -1433,13 +1430,7 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
@@ -1534,6 +1525,10 @@ rocksdb::Status Stream::RangeWithPending(const Slice &stream_name, StreamRangeOp
       batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(pel_entry));
       ++count;
       if (count >= options.count) break;
+    }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
     }
   }
   batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(consumergroup_metadata));

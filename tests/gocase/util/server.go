@@ -80,14 +80,29 @@ func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
-	return s.NewClientWithOption(&redis.Options{})
+	options := &redis.Options{
+		DialTimeout:  30 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		PoolTimeout:  30 * time.Second,
+	}
+	return s.NewClientWithOption(options)
 }
 
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
 	if options.Addr == "" {
 		options.Addr = s.addr.String()
 	}
-	return redis.NewClient(options)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := redis.NewClient(options)
+	err := client.Ping(ctx).Err()
+	if err != nil {
+		require.Contains(s.t, err.Error(), "NOAUTH") // check the connection, Authentication error is allowed here
+	}
+	return client
 }
 
 func (s *KvrocksServer) NewTCPClient() *TCPClient {

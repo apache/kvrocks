@@ -168,7 +168,7 @@ rocksdb::Status Stream::Add(const Slice &stream_name, const StreamAddOptions &op
 std::string Stream::internalKeyFromGroupName(const std::string &ns_key, const StreamMetadata &metadata,
                                              const std::string &group_name) const {
   std::string sub_key;
-  PutFixed64(&sub_key, (uint64_t)(-1));
+  PutFixed64(&sub_key, UINT64_MAX);
   PutFixed8(&sub_key, (uint8_t)StreamSubkeyType::StreamConsumerGroupMetadata);
   PutFixed64(&sub_key, group_name.size());
   sub_key += group_name;
@@ -218,7 +218,7 @@ StreamConsumerGroupMetadata Stream::decodeStreamConsumerGroupMetadataValue(const
 std::string Stream::internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
                                                 const std::string &group_name, const std::string &consumer_name) const {
   std::string sub_key;
-  PutFixed64(&sub_key, (uint64_t)(-1));
+  PutFixed64(&sub_key, UINT64_MAX);
   PutFixed8(&sub_key, (uint8_t)StreamSubkeyType::StreamConsumerMetadata);
   PutFixed64(&sub_key, group_name.size());
   sub_key += group_name;
@@ -263,7 +263,7 @@ StreamConsumerMetadata Stream::decodeStreamConsumerMetadataValue(const std::stri
 std::string Stream::internalPelKeyFromGroupAndEntryId(const std::string &ns_key, const StreamMetadata &metadata,
                                                       const std::string &group_name, const StreamEntryID &id) {
   std::string sub_key;
-  PutFixed64(&sub_key, (uint64_t)(-1));
+  PutFixed64(&sub_key, UINT64_MAX);
   PutFixed8(&sub_key, (uint8_t)StreamSubkeyType::StreamPelEntry);
   PutFixed64(&sub_key, group_name.size());
   sub_key += group_name;
@@ -315,7 +315,7 @@ StreamSubkeyType Stream::identifySubkeyType(const rocksdb::Slice &key) const {
   Slice subkey = ikey.GetSubKey();
   uint64_t entry_delimiter = 0;
   GetFixed64(&subkey, &entry_delimiter);
-  if (entry_delimiter != (uint64_t)(-1)) {
+  if (entry_delimiter != UINT64_MAX) {
     return StreamSubkeyType::StreamEntry;
   }
   uint8_t type_delimiter = 0;
@@ -1312,7 +1312,7 @@ rocksdb::Status Stream::GetGroupInfo(const Slice &stream_name,
   rocksdb::Status s = GetMetadata(GetOptions{}, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  std::string subkey_type_delimiter = std::to_string((uint64_t)(-1));
+  std::string subkey_type_delimiter = std::to_string(UINT64_MAX);
   PutFixed8(&subkey_type_delimiter, (uint8_t)StreamSubkeyType::StreamConsumerGroupMetadata);
   std::string next_version_prefix_key =
       InternalKey(ns_key, subkey_type_delimiter, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
@@ -1347,7 +1347,7 @@ rocksdb::Status Stream::GetConsumerInfo(
   if (!s.ok()) return s;
 
   std::string subkey_type_delimiter;
-  PutFixed64(&subkey_type_delimiter, (uint64_t)(-1));
+  PutFixed64(&subkey_type_delimiter, UINT64_MAX);
   PutFixed8(&subkey_type_delimiter, (uint8_t)StreamSubkeyType::StreamConsumerMetadata);
   PutFixed64(&subkey_type_delimiter, group_name.size());
   subkey_type_delimiter += group_name;

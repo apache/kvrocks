@@ -122,10 +122,10 @@ TEST_F(HnswIndexTest, RandomizeLayer) {
   }
 
   for (const auto& [layer, freq] : layer_frequency) {
-    if (layer < expected_frequencies.size() / 2) {
+    if (layer < expected_frequencies.size() / 3) {
       double expected_freq = expected_frequencies[layer];
       double deviation = std::abs(static_cast<double>(freq) - expected_freq) / expected_freq;
-      EXPECT_LE(deviation, 0.2) << "Layer: " << layer << " Frequency: " << freq << " Expected: " << expected_freq;
+      EXPECT_LE(deviation, 0.1) << "Layer: " << layer << " Frequency: " << freq << " Expected: " << expected_freq;
     }
   }
 }

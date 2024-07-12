@@ -170,7 +170,8 @@ StatusOr<HnswIndex::NodeKey> HnswIndex::DefaultEntryPoint(uint16_t level) const 
   Slice node_key;
   Slice node_key_dst;
   if (it->Valid() && it->key().starts_with(prefix)) {
-    node_key = Slice(it->key().ToString().substr(prefix.size()));
+    std::string node_key_str = it->key().ToString().substr(prefix.size());
+    node_key = Slice(node_key_str);
     if (!GetSizedString(&node_key, &node_key_dst)) {
       return {Status::NotOK, fmt::format("fail to decode the default node key layer {}", level)};
     }
@@ -491,7 +492,8 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
     Slice node_key;
     Slice node_key_dst;
     while (it->Valid() && it->key().starts_with(prefix)) {
-      node_key = Slice(it->key().ToString().substr(prefix.size()));
+      std::string node_key_str = it->key().ToString().substr(prefix.size());
+      node_key = Slice(node_key_str);
       if (!GetSizedString(&node_key, &node_key_dst)) {
         continue;
       }

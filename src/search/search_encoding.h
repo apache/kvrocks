@@ -364,12 +364,12 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
   uint16_t dim;
   DistanceMetric distance_metric;
 
-  uint32_t initial_cap = 500000;
-  uint16_t m = 16;
-  uint32_t ef_construction = 200;
-  uint32_t ef_runtime = 10;
-  double epsilon = 0.01;
-  uint16_t num_levels = 0;
+  uint32_t initial_cap = 500000;   // Initial vector capacity
+  uint16_t m = 16;                 // Max allowed outgoing edges per node
+  uint32_t ef_construction = 200;  // Max potential outgoing edge candidates during construction
+  uint32_t ef_runtime = 10;        // Max top candidates held during KNN search
+  double epsilon = 0.01;           // Relative factor setting search boundaries in range queries
+  uint16_t num_levels = 0;         // Number of levels in the HNSW graph
 
   HnswVectorFieldMetadata() : IndexFieldMetadata(IndexFieldType::VECTOR) {}
 
@@ -391,7 +391,11 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
       return s;
     }
 
-    if (input->size() < 1 + 2 + 1 + 4 + 2 + 4 + 4 + 8 + 2) {
+    constexpr size_t required_size = sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint8_t) + sizeof(uint32_t) +
+                                     sizeof(uint16_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint64_t) +
+                                     sizeof(uint16_t);
+
+    if (input->size() < required_size) {
       return rocksdb::Status::Corruption(kErrorInsufficientLength);
     }
 

@@ -36,7 +36,7 @@ class HnswIndex;
 struct HnswNode {
   using NodeKey = std::string;
   NodeKey key;
-  uint16_t level;
+  uint16_t level{};
   std::vector<NodeKey> neighbours;
 
   HnswNode(NodeKey key, uint16_t level);

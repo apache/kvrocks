@@ -351,6 +351,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
+  auto current_slot = slot_range.start;
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
     // The migrating task has to be stopped, if server role is changed from master to slave
     // or flush command (flushdb or flushall) is executed
@@ -359,8 +360,8 @@ Status SlotMigrator::sendSnapshotByCmd() {
     }
 
     // Iteration is out of range
-    auto key_slot_id = ExtractSlotId(iter->key());
-    if (!slot_range.Contains(key_slot_id)) {
+    current_slot = ExtractSlotId(iter->key());
+    if (!slot_range.Contains(current_slot)) {
       break;
     }
 
@@ -390,8 +391,8 @@ Status SlotMigrator::sendSnapshotByCmd() {
 
   if (auto s = iter->status(); !s.ok()) {
     auto err_str = s.ToString();
-    LOG(ERROR) << "[migrate] Failed to iterate keys of slot " << slot << ": " << err_str;
-    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", slot, err_str)};
+    LOG(ERROR) << "[migrate] Failed to iterate keys of slot " << current_slot << ": " << err_str;
+    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", current_slot, err_str)};
   }
 
   // It's necessary to send commands that are still in the pipeline since the final pipeline may not be sent

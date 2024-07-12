@@ -59,6 +59,8 @@ class [[nodiscard]] Status {
     RedisWrongType,
     RedisReadOnly,
     RedisExecAbort,
+    RedisBusyGroup,
+    RedisNoGroup,
     RedisMoved,
     RedisCrossSlot,
     RedisTryAgain,

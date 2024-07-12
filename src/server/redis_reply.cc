@@ -24,13 +24,14 @@
 #include <numeric>
 
 const std::map<Status::Code, std::string> redisErrorPrefixMapping = {
-    {Status::RedisErrorNoPrefix, ""},         {Status::RedisNoProto, "NOPROTO"},
-    {Status::RedisLoading, "LOADING"},        {Status::RedisMasterDown, "MASTERDOWN"},
-    {Status::RedisNoScript, "NOSCRIPT"},      {Status::RedisNoAuth, "NOAUTH"},
-    {Status::RedisWrongType, "WRONGTYPE"},    {Status::RedisReadOnly, "READONLY"},
-    {Status::RedisExecAbort, "EXECABORT"},    {Status::RedisMoved, "MOVED"},
-    {Status::RedisCrossSlot, "CROSSSLOT"},    {Status::RedisTryAgain, "TRYAGAIN"},
-    {Status::RedisClusterDown, "CLUSTERDOWN"}};
+    {Status::RedisErrorNoPrefix, ""},          {Status::RedisNoProto, "NOPROTO"},
+    {Status::RedisLoading, "LOADING"},         {Status::RedisMasterDown, "MASTERDOWN"},
+    {Status::RedisNoScript, "NOSCRIPT"},       {Status::RedisNoAuth, "NOAUTH"},
+    {Status::RedisWrongType, "WRONGTYPE"},     {Status::RedisReadOnly, "READONLY"},
+    {Status::RedisExecAbort, "EXECABORT"},     {Status::RedisMoved, "MOVED"},
+    {Status::RedisCrossSlot, "CROSSSLOT"},     {Status::RedisTryAgain, "TRYAGAIN"},
+    {Status::RedisClusterDown, "CLUSTERDOWN"}, {Status::RedisNoGroup, "NOGROUP"},
+    {Status::RedisBusyGroup, "BUSYGROUP"}};
 
 namespace redis {
 

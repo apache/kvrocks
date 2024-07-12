@@ -452,6 +452,10 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
     result.emplace_back(lib.ToString(), iter->value().ToString());
   }
 
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+
   output->append(redis::MultiLen(result.size()));
   for (const auto &[lib, code] : result) {
     output->append(conn->HeaderOfMap(with_code ? 2 : 1));
@@ -486,6 +490,10 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
     Slice func = iter->key();
     func.remove_prefix(strlen(engine::kLuaLibCodePrefix));
     result.emplace_back(func.ToString(), iter->value().ToString());
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
   }
 
   output->append(redis::MultiLen(result.size()));

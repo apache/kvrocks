@@ -96,14 +96,35 @@ Status HnswNode::RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& 
   return Status::OK();
 }
 
-VectorItem::VectorItem(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata)
-    : key(std::move(key)), vector(vector), metadata(metadata) {}
-VectorItem::VectorItem(NodeKey key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata)
-    : key(std::move(key)), vector(std::move(vector)), metadata(metadata) {}
+Status VectorItem::Create(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata,
+                          VectorItem* out) {
+  if (metadata->dim != vector.size()) {
+    return {Status::InvalidArgument, "VectorItem's metadata dimension must be consistent with the vector itself."};
+  }
+
+  *out = VectorItem(std::move(key), vector, metadata);
+  return Status::OK();
+}
+
+Status VectorItem::Create(NodeKey key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata,
+                          VectorItem* out) {
+  if (metadata->dim != vector.size()) {
+    return {Status::InvalidArgument, "VectorItem's metadata dimension must be consistent with the vector itself."};
+  }
+
+  *out = VectorItem(std::move(key), std::move(vector), metadata);
+  return Status::OK();
+}
 
 bool VectorItem::operator==(const VectorItem& other) const { return key == other.key; }
 
 bool VectorItem::operator<(const VectorItem& other) const { return key < other.key; }
+
+VectorItem::VectorItem(NodeKey&& key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata)
+    : key(std::move(key)), vector(vector), metadata(metadata) {}
+
+VectorItem::VectorItem(NodeKey&& key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata)
+    : key(std::move(key)), vector(std::move(vector)), metadata(metadata) {}
 
 StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right) {
   if (left.metadata->distance_metric != right.metadata->distance_metric || left.metadata->dim != right.metadata->dim)
@@ -194,7 +215,9 @@ StatusOr<std::vector<VectorItem>> HnswIndex::DecodeNodesToVectorItems(const std:
       continue;  // Skip this neighbour if metadata can't be decoded
     }
     auto neighbour_metadata = neighbour_metadata_status.GetValue();
-    vector_items.emplace_back(VectorItem(neighbour_key, std::move(neighbour_metadata.vector), metadata));
+    VectorItem item;
+    GET_OR_RET(VectorItem::Create(neighbour_key, std::move(neighbour_metadata.vector), metadata, &item));
+    vector_items.emplace_back(std::move(item));
   }
   return vector_items;
 }
@@ -265,7 +288,9 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
     HnswNode entry_node = HnswNode(entry_point_key, level);
     auto entry_node_metadata = GET_OR_RET(entry_node.DecodeMetadata(search_key, storage));
 
-    auto entry_point_vector = VectorItem(entry_point_key, std::move(entry_node_metadata.vector), metadata);
+    VectorItem entry_point_vector;
+    GET_OR_RET(
+        VectorItem::Create(entry_point_key, std::move(entry_node_metadata.vector), metadata, &entry_point_vector));
     auto dist = GET_OR_RET(ComputeSimilarity(target_vector, entry_point_vector));
 
     explore_heap.push(std::make_pair(dist, entry_point_vector));
@@ -291,7 +316,10 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
 
       auto neighbour_node = HnswNode(neighbour_key, level);
       auto neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(search_key, storage));
-      auto neighbour_node_vector = VectorItem(neighbour_key, std::move(neighbour_node_metadata.vector), metadata);
+
+      VectorItem neighbour_node_vector;
+      GET_OR_RET(VectorItem::Create(neighbour_key, std::move(neighbour_node_metadata.vector), metadata,
+                                    &neighbour_node_vector));
 
       auto dist = GET_OR_RET(ComputeSimilarity(target_vector, neighbour_node_vector));
       explore_heap.push(std::make_pair(dist, neighbour_node_vector));
@@ -315,7 +343,8 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
                                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
                                             uint16_t target_level) const {
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
-  auto inserted_vector_item = VectorItem(std::string(key), vector, metadata);
+  VectorItem inserted_vector_item;
+  GET_OR_RET(VectorItem::Create(std::string(key), vector, metadata, &inserted_vector_item));
   std::vector<VectorItem> nearest_vec_items;
 
   if (metadata->num_levels != 0) {

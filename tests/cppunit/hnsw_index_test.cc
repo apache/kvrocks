@@ -40,7 +40,7 @@ struct HnswIndexTest : TestBase {
 
   HnswIndexTest() {
     metadata.vector_type = redis::VectorType::FLOAT64;
-    metadata.dim = 4;
+    metadata.dim = 3;
     metadata.m = 3;
     metadata.distance_metric = redis::DistanceMetric::L2;
     auto search_key = redis::SearchKey(ns, idx_name, key);
@@ -51,9 +51,15 @@ struct HnswIndexTest : TestBase {
 };
 
 TEST_F(HnswIndexTest, ComputeSimilarity) {
-  redis::VectorItem vec1 = {"1", {1.0, 1.2, 1.4, 1.6}, hnsw_index->metadata};
-  redis::VectorItem vec2 = {"2", {3.0, 3.2, 3.4, 3.6}, hnsw_index->metadata};
-  redis::VectorItem vec3 = {"3", {1.0, 1.2, 1.4, 1.6}, hnsw_index->metadata};  // identical to vec1
+  redis::VectorItem vec1;
+  auto status1 = redis::VectorItem::Create("1", {1.0, 1.2, 1.4}, hnsw_index->metadata, &vec1);
+  ASSERT_TRUE(status1.IsOK());
+  redis::VectorItem vec2;
+  auto status2 = redis::VectorItem::Create("2", {3.0, 3.2, 3.4}, hnsw_index->metadata, &vec2);
+  ASSERT_TRUE(status2.IsOK());
+  redis::VectorItem vec3;  // identical to vec1
+  auto status3 = redis::VectorItem::Create("3", {1.0, 1.2, 1.4}, hnsw_index->metadata, &vec3);
+  ASSERT_TRUE(status3.IsOK());
 
   auto s1 = redis::ComputeSimilarity(vec1, vec3);
   ASSERT_TRUE(s1.IsOK());
@@ -63,18 +69,17 @@ TEST_F(HnswIndexTest, ComputeSimilarity) {
   auto s2 = redis::ComputeSimilarity(vec1, vec2);
   ASSERT_TRUE(s2.IsOK());
   similarity = s2.GetValue();
-  EXPECT_EQ(similarity, 4.0);
+  EXPECT_NEAR(similarity, std::sqrt(12), 1e-5);
 
   hnsw_index->metadata->distance_metric = redis::DistanceMetric::IP;
   auto s3 = redis::ComputeSimilarity(vec1, vec2);
   ASSERT_TRUE(s3.IsOK());
   similarity = s3.GetValue();
-  EXPECT_NEAR(similarity, -17.36, 1e-5);
+  EXPECT_NEAR(similarity, -(1.0 * 3.0 + 1.2 * 3.2 + 1.4 * 3.4), 1e-5);
 
   hnsw_index->metadata->distance_metric = redis::DistanceMetric::COSINE;
-  double expected_res =
-      (1.0 * 3.0 + 1.2 * 3.2 + 1.4 * 3.4 + 1.6 * 3.6) /
-      std::sqrt((1.0 * 1.0 + 1.2 * 1.2 + 1.4 * 1.4 + 1.6 * 1.6) * (3.0 * 3.0 + 3.2 * 3.2 + 3.4 * 3.4 + 3.6 * 3.6));
+  double expected_res = (1.0 * 3.0 + 1.2 * 3.2 + 1.4 * 3.4) /
+                        std::sqrt((1.0 * 1.0 + 1.2 * 1.2 + 1.4 * 1.4) * (3.0 * 3.0 + 3.2 * 3.2 + 3.4 * 3.4));
   auto s4 = redis::ComputeSimilarity(vec1, vec2);
   ASSERT_TRUE(s4.IsOK());
   similarity = s4.GetValue();
@@ -172,13 +177,33 @@ TEST_F(HnswIndexTest, DecodeNodesToVectorItems) {
 }
 
 TEST_F(HnswIndexTest, SelectNeighbors) {
-  redis::VectorItem vec1 = {"1", {1.0, 1.0, 1.0, 1.0}, hnsw_index->metadata};
-  redis::VectorItem vec2 = {"2", {2.0, 2.0, 2.0, 2.0}, hnsw_index->metadata};
-  redis::VectorItem vec3 = {"3", {3.0, 3.0, 3.0, 3.0}, hnsw_index->metadata};
-  redis::VectorItem vec4 = {"4", {4.0, 4.0, 4.0, 4.0}, hnsw_index->metadata};
-  redis::VectorItem vec5 = {"5", {5.0, 5.0, 5.0, 5.0}, hnsw_index->metadata};
-  redis::VectorItem vec6 = {"6", {6.0, 6.0, 6.0, 6.0}, hnsw_index->metadata};
-  redis::VectorItem vec7 = {"7", {7.0, 7.0, 7.0, 7.0}, hnsw_index->metadata};
+  redis::VectorItem vec1;
+  auto status1 = redis::VectorItem::Create("1", {1.0, 1.0, 1.0}, hnsw_index->metadata, &vec1);
+  ASSERT_TRUE(status1.IsOK());
+
+  redis::VectorItem vec2;
+  auto status2 = redis::VectorItem::Create("2", {2.0, 2.0, 2.0}, hnsw_index->metadata, &vec2);
+  ASSERT_TRUE(status2.IsOK());
+
+  redis::VectorItem vec3;
+  auto status3 = redis::VectorItem::Create("3", {3.0, 3.0, 3.0}, hnsw_index->metadata, &vec3);
+  ASSERT_TRUE(status3.IsOK());
+
+  redis::VectorItem vec4;
+  auto status4 = redis::VectorItem::Create("4", {4.0, 4.0, 4.0}, hnsw_index->metadata, &vec4);
+  ASSERT_TRUE(status4.IsOK());
+
+  redis::VectorItem vec5;
+  auto status5 = redis::VectorItem::Create("5", {5.0, 5.0, 5.0}, hnsw_index->metadata, &vec5);
+  ASSERT_TRUE(status5.IsOK());
+
+  redis::VectorItem vec6;
+  auto status6 = redis::VectorItem::Create("6", {6.0, 6.0, 6.0}, hnsw_index->metadata, &vec6);
+  ASSERT_TRUE(status6.IsOK());
+
+  redis::VectorItem vec7;
+  auto status7 = redis::VectorItem::Create("7", {7.0, 7.0, 7.0}, hnsw_index->metadata, &vec7);
+  ASSERT_TRUE(status7.IsOK());
 
   std::vector<redis::VectorItem> candidates = {vec3, vec2};
   auto s1 = hnsw_index->SelectNeighbors(vec1, candidates, 1);
@@ -264,7 +289,9 @@ TEST_F(HnswIndexTest, SearchLayer) {
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  redis::VectorItem target_vector("target", {2.0, 3.0, 4.0}, hnsw_index->metadata);
+  redis::VectorItem target_vector;
+  auto status = redis::VectorItem::Create("target", {2.0, 3.0, 4.0}, hnsw_index->metadata, &target_vector);
+  ASSERT_TRUE(status.IsOK());
 
   // Test with multiple entry points
   std::vector<std::string> entry_points = {"node3", "node2"};

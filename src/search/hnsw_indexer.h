@@ -61,11 +61,19 @@ struct VectorItem {
   kqir::NumericArray vector;
   const HnswVectorFieldMetadata* metadata;
 
-  VectorItem(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata);
-  VectorItem(NodeKey key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata);
+  VectorItem() : metadata(nullptr) {}
+
+  static Status Create(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata,
+                       VectorItem* out);
+  static Status Create(NodeKey key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata,
+                       VectorItem* out);
 
   bool operator==(const VectorItem& other) const;
   bool operator<(const VectorItem& other) const;
+
+ private:
+  VectorItem(NodeKey&& key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata);
+  VectorItem(NodeKey&& key, kqir::NumericArray&& vector, const HnswVectorFieldMetadata* metadata);
 };
 
 StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right);

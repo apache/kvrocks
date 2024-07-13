@@ -98,7 +98,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   }
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfAttribute(T len) const {
-    return redis::HeaderOfAttribute(protocol_version_, len);
+    return redis::HeaderOfAttribute(len);
   }
   std::string HeaderOfPush(int64_t len) const { return redis::HeaderOfPush(protocol_version_, len); }
 

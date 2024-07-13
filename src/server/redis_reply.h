@@ -84,7 +84,7 @@ inline std::string VerbatimString(RESP ver, std::string ext, const std::string &
                          : BulkString(data);
 }
 
-std::string NilArray(RESP ver) { return ver == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
+inline std::string NilArray(RESP ver) { return ver == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
 std::string MultiBulkString(RESP ver, const std::vector<std::string> &values);
 std::string MultiBulkString(RESP ver, const std::vector<std::string> &values,
                             const std::vector<rocksdb::Status> &statuses);

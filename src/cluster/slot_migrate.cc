@@ -78,14 +78,14 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
                                                const SlotRange &slot_range, SyncMigrateContext *blocking_ctx) {
   // TODO: concurrent migration, multiple migration jobs
   // Only one slot migration job at the same time
-  SlotRange no_slot_range = {-1, -1};
-  if (!slot_range_.compare_exchange_strong(no_slot_range, slot_range)) {
+  SlotRange empty_slot_range = {-1, -1};
+  if (!slot_range_.compare_exchange_strong(empty_slot_range, slot_range)) {
     return {Status::NotOK, "There is already a migrating job"};
   }
 
   if (slot_range.HasOverlap(forbidden_slot_range_)) {
     // Have to release migrate slot set above
-    slot_range_ = no_slot_range;
+    slot_range_ = empty_slot_range;
     return {Status::NotOK, "Can't migrate slot which has been migrated"};
   }
   migration_state_ = MigrationState::kStarted;

@@ -492,7 +492,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // TODO: transaction support for index recording
     std::vector<GlobalIndexer::RecordResult> index_records;
-    if (IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) && !config->cluster_enabled) {
+    if (!srv_->index_mgr.index_map.empty() && IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) &&
+        !config->cluster_enabled) {
       attributes->ForEachKeyRange(
           [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
             key_range.ForEachKey(

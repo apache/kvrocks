@@ -3,7 +3,7 @@ module github.com/apache/kvrocks/tests/gocase
 go 1.21
 
 require (
-	github.com/redis/go-redis/v9 v9.5.3
+	github.com/redis/go-redis/v9 v9.5.4
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/exp v0.0.0-20240707233637-46b078467d37

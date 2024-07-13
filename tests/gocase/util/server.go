@@ -80,13 +80,14 @@ func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 }
 
 func (s *KvrocksServer) NewClient() *redis.Client {
-	options := &redis.Options{
-		DialTimeout:  30 * time.Second,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		PoolTimeout:  30 * time.Second,
-	}
-	return s.NewClientWithOption(options)
+	return s.NewClientWithOption(&redis.Options{})
+}
+
+func optionsWithTimeouts(options *redis.Options) *redis.Options {
+	options.DialTimeout = 30 * time.Second
+	options.ReadTimeout = 30 * time.Second
+	options.WriteTimeout = 30 * time.Second
+	return options
 }
 
 func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Client {
@@ -94,15 +95,7 @@ func (s *KvrocksServer) NewClientWithOption(options *redis.Options) *redis.Clien
 		options.Addr = s.addr.String()
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client := redis.NewClient(options)
-	err := client.Ping(ctx).Err()
-	if err != nil {
-		require.Contains(s.t, err.Error(), "NOAUTH") // check the connection, Authentication error is allowed here
-	}
-	return client
+	return redis.NewClient(optionsWithTimeouts(options))
 }
 
 func (s *KvrocksServer) NewTCPClient() *TCPClient {

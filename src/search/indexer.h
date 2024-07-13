@@ -89,6 +89,8 @@ struct IndexUpdater {
                         const SearchKey &search_key, const TagFieldMetadata *tag) const;
   Status UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                             const SearchKey &search_key, const NumericFieldMetadata *num) const;
+  Status UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
+                               const SearchKey &search_key, HnswVectorFieldMetadata *vector) const;
 };
 
 struct GlobalIndexer {

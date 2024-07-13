@@ -25,6 +25,7 @@
 
 #include "db_util.h"
 #include "parse_util.h"
+#include "search/hnsw_indexer.h"
 #include "search/search_encoding.h"
 #include "search/value.h"
 #include "storage/redis_metadata.h"
@@ -57,10 +58,6 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
   }
 }
 
-// placeholders, remove them after vector indexing is implemented
-static bool IsVectorType(const redis::IndexFieldMetadata *) { return false; }
-static size_t GetVectorDim(const redis::IndexFieldMetadata *) { return 1; }
-
 StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &val,
                                                          const redis::IndexFieldMetadata *type) {
   if (auto numeric [[maybe_unused]] = dynamic_cast<const redis::NumericFieldMetadata *>(type)) {
@@ -82,8 +79,8 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &v
     } else {
       return {Status::NotOK, "json value should be string or array of strings for tag fields"};
     }
-  } else if (IsVectorType(type)) {
-    size_t dim = GetVectorDim(type);
+  } else if (auto vector = dynamic_cast<const redis::HnswVectorFieldMetadata *>(type)) {
+    const auto dim = vector->dim;
     if (!val.is_array()) return {Status::NotOK, "json value should be array of numbers for vector fields"};
     if (dim != val.size()) return {Status::NotOK, "the size of the json array is not equal to the dim of the vector"};
     std::vector<double> nums;
@@ -107,8 +104,8 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(const std::string &valu
     const char delim[] = {tag->separator, '\0'};
     auto vec = util::Split(value, delim);
     return kqir::MakeValue<kqir::StringArray>(vec);
-  } else if (IsVectorType(type)) {
-    const size_t dim = GetVectorDim(type);
+  } else if (auto vector = dynamic_cast<const redis::HnswVectorFieldMetadata *>(type)) {
+    const auto dim = vector->dim;
     if (value.size() != dim * sizeof(double)) {
       return {Status::NotOK, "field value is too short or too long to be parsed as a vector"};
     }
@@ -246,7 +243,7 @@ Status IndexUpdater::UpdateTagIndex(std::string_view key, const kqir::Value &ori
 Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
                                         const SearchKey &search_key, const NumericFieldMetadata *num) const {
   CHECK(original.IsNull() || original.Is<kqir::Numeric>());
-  CHECK(original.IsNull() || original.Is<kqir::Numeric>());
+  CHECK(current.IsNull() || current.Is<kqir::Numeric>());
 
   auto *storage = indexer->storage;
   auto batch = storage->GetWriteBatchBase();
@@ -269,6 +266,32 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value 
   return Status::OK();
 }
 
+Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original,
+                                           const kqir::Value &current, const SearchKey &search_key,
+                                           HnswVectorFieldMetadata *vector) const {
+  CHECK(original.IsNull() || original.Is<kqir::NumericArray>());
+  CHECK(current.IsNull() || current.Is<kqir::NumericArray>());
+
+  auto storage = indexer->storage;
+  auto hnsw = HnswIndex(search_key, vector, storage);
+
+  if (!original.IsNull()) {
+    auto batch = storage->GetWriteBatchBase();
+    GET_OR_RET(hnsw.DeleteVectorEntry(key, batch));
+    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
+  }
+
+  if (!current.IsNull()) {
+    auto batch = storage->GetWriteBatchBase();
+    GET_OR_RET(hnsw.InsertVectorEntry(key, current.Get<kqir::NumericArray>(), batch));
+    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
+  }
+
+  return Status::OK();
+}
+
 Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
                                  const kqir::Value &current) const {
   if (original == current) {
@@ -287,6 +310,8 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
     GET_OR_RET(UpdateNumericIndex(key, original, current, search_key, numeric));
+  } else if (auto vector = dynamic_cast<HnswVectorFieldMetadata *>(metadata)) {
+    GET_OR_RET(UpdateHnswVectorIndex(key, original, current, search_key, vector));
   } else {
     return {Status::NotOK, "Unexpected field type"};
   }

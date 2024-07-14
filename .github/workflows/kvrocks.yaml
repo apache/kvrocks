@@ -110,25 +110,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # FIXME: update macos-11 to macos-12/13
-          # - name: Darwin Clang
-          #   os: macos-11
-          #   compiler: auto
+          - name: Darwin Clang
+            os: macos-13
+            compiler: auto
           - name: Darwin Clang arm64
             os: macos-14
             compiler: auto
-          # - name: Darwin Clang without Jemalloc
-          #   os: macos-11
-          #   compiler: auto
-          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
-          # - name: Darwin Clang with OpenSSL
-          #   os: macos-11
-          #   compiler: auto
-          #   with_openssl: -DENABLE_OPENSSL=ON
-          # - name: Darwin Clang without luaJIT
-          #   os: macos-11
-          #   compiler: auto
-          #   without_luajit: -DENABLE_LUAJIT=OFF
+          - name: Darwin Clang without Jemalloc
+            os: macos-13
+            compiler: auto
+            without_jemalloc: -DDISABLE_JEMALLOC=ON
+          - name: Darwin Clang with OpenSSL
+            os: macos-13
+            compiler: auto
+            with_openssl: -DENABLE_OPENSSL=ON
+          - name: Darwin Clang without luaJIT
+            os: macos-13
+            compiler: auto
+            without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc
@@ -212,7 +211,7 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install cmake gcc autoconf automake libtool openssl
+          brew install cmake gcc autoconf automake libtool openssl coreutils
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
       - name: Setup Linux

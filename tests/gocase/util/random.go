@@ -45,6 +45,11 @@ func RandomInt(max int64) int64 {
 	return rand.Int63() % max
 }
 
+func RandomIntWithSeed(max, seed int64) int64 {
+	r := rand.New(rand.NewSource(seed))
+	return r.Int63() % max
+}
+
 func RandomBool() bool {
 	return RandomInt(2) != 0
 }
@@ -81,6 +86,41 @@ func RandStringWithSeed(min, max int, typ RandStringType, seed int64) string {
 }
 
 func RandomValue() string {
+	return RandPath(
+		// Small enough to likely collide
+		func() string {
+			return fmt.Sprintf("%d", RandomSignedInt(1000))
+		},
+		// 32 bit compressible signed/unsigned
+		func() string {
+			return RandPath(
+				func() string {
+					return fmt.Sprintf("%d", rand.Int63n(2000000000))
+				},
+				func() string {
+					return fmt.Sprintf("%d", rand.Int63n(4000000000))
+				},
+			)
+		},
+		// 64 bit
+		func() string {
+			return fmt.Sprintf("%d", rand.Int63n(1000000000000))
+		},
+		// Random string
+		func() string {
+			return RandPath(
+				func() string {
+					return RandString(0, 256, Alpha)
+				},
+				func() string {
+					return RandString(0, 256, Binary)
+				},
+			)
+		},
+	)
+}
+
+func RandomValueWithSeed(seed int64) string {
 	return RandPath(
 		// Small enough to likely collide
 		func() string {

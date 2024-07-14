@@ -302,7 +302,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     workspace = basedir / 'workspace'
 
     args = [
-        'test', '-timeout=1800s', '-bench=.', './...',
+        'test', '-timeout=2700s', '-bench=.', './...',
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',

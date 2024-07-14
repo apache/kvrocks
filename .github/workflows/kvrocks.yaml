@@ -138,12 +138,13 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-22.04
             compiler: clang
-          - name: Ubuntu 24 GCC
-            os: ubuntu-24.04
-            compiler: gcc
-          - name: Ubuntu 24 Clang
-            os: ubuntu-24.04
-            compiler: clang
+          # FIXME: https://github.com/apache/kvrocks/issues/2411
+          # - name: Ubuntu 24 GCC
+          #   os: ubuntu-24.04
+          #   compiler: gcc
+          # - name: Ubuntu 24 Clang
+          #   os: ubuntu-24.04
+          #   compiler: clang
           - name: Ubuntu GCC ASan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON

@@ -22,6 +22,7 @@
 #include <rocksdb/iterator.h>
 #include <rocksdb/options.h>
 
+#include "cluster/cluster_defs.h"
 #include "storage.h"
 
 namespace engine {
@@ -102,7 +103,8 @@ struct WALItem {
 class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
  public:
   // If set slot, storage must enable slot id encoding
-  explicit WALBatchExtractor(int slot = -1) : slot_(slot) {}
+  explicit WALBatchExtractor(int slot = -1) : slot_range_(slot, slot) {}
+  explicit WALBatchExtractor(const SlotRange &slot_range) : slot_range_(slot_range) {}
 
   rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override;
 
@@ -133,13 +135,15 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
 
  private:
   std::vector<WALItem> items_;
-  int slot_;
+  SlotRange slot_range_;
 };
 
 class WALIterator {
  public:
+  explicit WALIterator(engine::Storage *storage, const SlotRange &slot_range)
+      : storage_(storage), slot_range_(slot_range), extractor_(slot_range), next_batch_seq_(0){};
   explicit WALIterator(engine::Storage *storage, int slot = -1)
-      : storage_(storage), slot_(slot), extractor_(slot), next_batch_seq_(0){};
+      : storage_(storage), slot_range_(slot, slot), extractor_(slot), next_batch_seq_(0){};
   ~WALIterator() = default;
 
   bool Valid() const;
@@ -154,7 +158,7 @@ class WALIterator {
   void nextBatch();
 
   engine::Storage *storage_;
-  int slot_;
+  SlotRange slot_range_;
 
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_;
   WALBatchExtractor extractor_;

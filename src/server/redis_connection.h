@@ -32,6 +32,7 @@
 #include "commands/commander.h"
 #include "event_util.h"
 #include "redis_request.h"
+#include "server/redis_reply.h"
 
 class Worker;
 
@@ -66,46 +67,40 @@ class Connection : public EvbufCallbackBase<Connection> {
   void Reply(const std::string &msg);
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
-  std::string Bool(bool b) const;
-  std::string BigNumber(const std::string &n) const {
-    return protocol_version_ == RESP::v3 ? "(" + n + CRLF : BulkString(n);
-  }
-  std::string Double(double d) const {
-    return protocol_version_ == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
-  }
-  // ext is the extension of file to send, 'txt' for text file, 'md ' for markdown file
-  // at most 3 chars, padded with space
-  // if RESP is V2, treat verbatim string as blob string
-  // https://github.com/redis/redis/blob/7.2/src/networking.c#L1099
+  std::string Bool(bool b) const { return redis::Bool(protocol_version_, b); }
+  std::string BigNumber(const std::string &n) const { return redis::BigNumber(protocol_version_, n); }
+  std::string Double(double d) const { return redis::Double(protocol_version_, d); }
   std::string VerbatimString(std::string ext, const std::string &data) const {
-    CHECK(ext.size() <= 3);
-    size_t padded_len = 3 - ext.size();
-    ext = ext + std::string(padded_len, ' ');
-    return protocol_version_ == RESP::v3 ? "=" + std::to_string(3 + 1 + data.size()) + CRLF + ext + ":" + data + CRLF
-                                         : BulkString(data);
+    return redis::VerbatimString(protocol_version_, std::move(ext), data);
   }
   std::string NilString() const { return redis::NilString(protocol_version_); }
-  std::string NilArray() const { return protocol_version_ == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
-  std::string MultiBulkString(const std::vector<std::string> &values) const;
+  std::string NilArray() const { return redis::NilArray(protocol_version_); }
+  std::string MultiBulkString(const std::vector<std::string> &values) const {
+    return redis::MultiBulkString(protocol_version_, values);
+  }
   std::string MultiBulkString(const std::vector<std::string> &values,
-                              const std::vector<rocksdb::Status> &statuses) const;
+                              const std::vector<rocksdb::Status> &statuses) const {
+    return redis::MultiBulkString(protocol_version_, values, statuses);
+  }
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfSet(T len) const {
-    return protocol_version_ == RESP::v3 ? "~" + std::to_string(len) + CRLF : MultiLen(len);
+    return redis::HeaderOfSet(protocol_version_, len);
   }
-  std::string SetOfBulkStrings(const std::vector<std::string> &elems) const;
+  std::string SetOfBulkStrings(const std::vector<std::string> &elems) const {
+    return redis::SetOfBulkStrings(protocol_version_, elems);
+  }
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfMap(T len) const {
-    return protocol_version_ == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
+    return redis::HeaderOfMap(protocol_version_, len);
   }
-  std::string MapOfBulkStrings(const std::vector<std::string> &elems) const;
+  std::string MapOfBulkStrings(const std::vector<std::string> &elems) const {
+    return redis::MapOfBulkStrings(protocol_version_, elems);
+  }
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfAttribute(T len) const {
-    return "|" + std::to_string(len) + CRLF;
+    return redis::HeaderOfAttribute(len);
   }
-  std::string HeaderOfPush(int64_t len) const {
-    return protocol_version_ == RESP::v3 ? ">" + std::to_string(len) + CRLF : MultiLen(len);
-  }
+  std::string HeaderOfPush(int64_t len) const { return redis::HeaderOfPush(protocol_version_, len); }
 
   using UnsubscribeCallback = std::function<void(std::string, int)>;
   void SubscribeChannel(const std::string &channel);

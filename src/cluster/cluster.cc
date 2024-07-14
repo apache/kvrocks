@@ -129,7 +129,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       if (old_node == myself_ && old_node != to_assign_node) {
         // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
-          auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, {slot, slot});
+          auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
             LOG(ERROR) << "failed to clear data of migrated slot: " << s.ToString();
           }
@@ -214,7 +214,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   if (!migrated_slots_.empty()) {
     for (const auto &[slot, _] : migrated_slots_) {
       if (slots_nodes_[slot] != myself_) {
-        auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, {slot, slot});
+        auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, SlotRange::GetPoint(slot));
         if (!s.ok()) {
           LOG(ERROR) << "failed to clear data of migrated slots: " << s.ToString();
         }

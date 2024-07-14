@@ -55,9 +55,9 @@ enum class SlotMigrationStage { kNone, kStart, kSnapshot, kWAL, kSuccess, kFaile
 enum class KeyMigrationResult { kMigrated, kExpired, kUnderlyingStructEmpty };
 
 struct SlotMigrationJob {
-  SlotMigrationJob(const SlotRange &slot_range, std::string dst_ip, int dst_port, int speed, int pipeline_size,
+  SlotMigrationJob(const SlotRange &slot_range_in, std::string dst_ip, int dst_port, int speed, int pipeline_size,
                    int seq_gap)
-      : slot_range(slot_range),
+      : slot_range(slot_range_in),
         dst_ip(std::move(dst_ip)),
         dst_port(dst_port),
         max_speed(speed),
@@ -191,9 +191,12 @@ class SlotMigrator : public redis::Database {
   UniqueFD dst_fd_;
 
   MigrationType migration_type_ = MigrationType::kRedisCommand;
+
+  static_assert(std::atomic<SlotRange>::is_always_lock_free, "SlotRange is not lock free.");
   std::atomic<SlotRange> forbidden_slot_range_ = SlotRange{-1, -1};
   std::atomic<SlotRange> slot_range_ = SlotRange{-1, -1};
   std::atomic<SlotRange> migrate_failed_slot_range_ = SlotRange{-1, -1};
+
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
   uint64_t wal_begin_seq_ = 0;

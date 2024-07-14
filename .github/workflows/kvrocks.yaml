@@ -129,28 +129,29 @@ jobs:
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
           - name: SonarCloud with Coverage
             os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
           - name: Ubuntu Clang
-            os: ubuntu-20.04
-            compiler: clang
-          - name: Ubuntu 22 GCC
-            os: ubuntu-22.04
-            compiler: gcc
-          - name: Ubuntu 22 Clang
             os: ubuntu-22.04
             compiler: clang
+          # FIXME: https://github.com/apache/kvrocks/issues/2411
+          # - name: Ubuntu 24 GCC
+          #   os: ubuntu-24.04
+          #   compiler: gcc
+          # - name: Ubuntu 24 Clang
+          #   os: ubuntu-24.04
+          #   compiler: clang
           - name: Ubuntu GCC ASan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: gcc
           - name: Ubuntu Clang ASan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
@@ -161,22 +162,22 @@ jobs:
             compiler: gcc
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang UBSAN
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_sanitizer: -DENABLE_UBSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
           - name: Ubuntu GCC Ninja
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_ninja: --ninja
             compiler: gcc
           - name: Ubuntu GCC with OpenSSL
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang with OpenSSL
@@ -184,15 +185,15 @@ jobs:
             compiler: clang
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_luajit: -DENABLE_LUAJIT=OFF
             compiler: gcc
           - name: Ubuntu Clang without luaJIT
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_luajit: -DENABLE_LUAJIT=OFF
             compiler: clang
           - name: Ubuntu GCC with old encoding
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
           - name: Ubuntu Clang with old encoding
@@ -200,7 +201,7 @@ jobs:
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
           - name: Ubuntu GCC with speedb enabled
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
             with_speedb: -DENABLE_SPEEDB=ON
 

@@ -133,58 +133,6 @@ void Connection::Reply(const std::string &msg) {
   redis::Reply(bufferevent_get_output(bev_), msg);
 }
 
-std::string Connection::Bool(bool b) const {
-  if (protocol_version_ == RESP::v3) {
-    return b ? "#t" CRLF : "#f" CRLF;
-  }
-  return Integer(b ? 1 : 0);
-}
-
-std::string Connection::MultiBulkString(const std::vector<std::string> &values) const {
-  std::string result = MultiLen(values.size());
-  for (const auto &value : values) {
-    if (value.empty()) {
-      result += NilString();
-    } else {
-      result += BulkString(value);
-    }
-  }
-  return result;
-}
-
-std::string Connection::MultiBulkString(const std::vector<std::string> &values,
-                                        const std::vector<rocksdb::Status> &statuses) const {
-  std::string result = MultiLen(values.size());
-  for (size_t i = 0; i < values.size(); i++) {
-    if (i < statuses.size() && !statuses[i].ok()) {
-      result += NilString();
-    } else {
-      result += BulkString(values[i]);
-    }
-  }
-  return result;
-}
-
-std::string Connection::SetOfBulkStrings(const std::vector<std::string> &elems) const {
-  std::string result;
-  result += HeaderOfSet(elems.size());
-  for (const auto &elem : elems) {
-    result += BulkString(elem);
-  }
-  return result;
-}
-
-std::string Connection::MapOfBulkStrings(const std::vector<std::string> &elems) const {
-  CHECK(elems.size() % 2 == 0);
-
-  std::string result;
-  result += HeaderOfMap(elems.size() / 2);
-  for (const auto &elem : elems) {
-    result += BulkString(elem);
-  }
-  return result;
-}
-
 void Connection::SendFile(int fd) {
   // NOTE: we don't need to close the fd, the libevent will do that
   auto output = bufferevent_get_output(bev_);
@@ -544,7 +492,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // TODO: transaction support for index recording
     std::vector<GlobalIndexer::RecordResult> index_records;
-    if (IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) && !config->cluster_enabled) {
+    if (!srv_->index_mgr.index_map.empty() && IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) &&
+        !config->cluster_enabled) {
       attributes->ForEachKeyRange(
           [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
             key_range.ForEachKey(

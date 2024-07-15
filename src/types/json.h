@@ -38,7 +38,6 @@
 
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
-#include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "status.h"
 #include "storage/redis_metadata.h"

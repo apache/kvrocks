@@ -158,7 +158,8 @@ TEST_F(HnswIndexTest, DecodeNodesToVectorItems) {
   node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch.Get());
-  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  engine::Context ctx(storage_.get());
+  auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   std::vector<std::string> keys = {node_key1, node_key2, node_key3};
@@ -265,7 +266,8 @@ TEST_F(HnswIndexTest, SearchLayer) {
   node3.PutMetadata(&metadata3, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   node4.PutMetadata(&metadata4, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   node5.PutMetadata(&metadata5, hnsw_index->search_key, hnsw_index->storage, batch.Get());
-  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  engine::Context ctx(storage_.get());
+  auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   // Add Neighbours
@@ -286,7 +288,7 @@ TEST_F(HnswIndexTest, SearchLayer) {
   ASSERT_TRUE(s7.IsOK());
   auto s8 = node5.AddNeighbour("node3", hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s8.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   redis::VectorItem target_vector;
@@ -347,14 +349,15 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   // Insert n1 into layer 1
   uint16_t target_level = 1;
   auto batch = storage_->GetWriteBatchBase();
+  engine::Context ctx(storage_.get());
   auto s1 = hnsw_index->InsertVectorEntryInternal(key1, vec1, batch, target_level);
   ASSERT_TRUE(s1.IsOK());
-  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   rocksdb::PinnableSlice value;
   auto index_meta_key = hnsw_index->search_key.ConstructFieldMeta();
-  s = storage_->Get(rocksdb::ReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
+  s = storage_->Get(ctx, ctx.GetReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
                     &value);
   ASSERT_TRUE(s.ok());
   redis::HnswVectorFieldMetadata decoded_metadata;
@@ -378,11 +381,11 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   target_level = 3;
   auto s4 = hnsw_index->InsertVectorEntryInternal(key2, vec2, batch, target_level);
   ASSERT_TRUE(s4.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   index_meta_key = hnsw_index->search_key.ConstructFieldMeta();
-  s = storage_->Get(rocksdb::ReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
+  s = storage_->Get(ctx, ctx.GetReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
                     &value);
   ASSERT_TRUE(s.ok());
   decoded_metadata.Decode(&value);
@@ -423,11 +426,11 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   target_level = 2;
   auto s7 = hnsw_index->InsertVectorEntryInternal(key3, vec3, batch, target_level);
   ASSERT_TRUE(s7.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   index_meta_key = hnsw_index->search_key.ConstructFieldMeta();
-  s = storage_->Get(rocksdb::ReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
+  s = storage_->Get(ctx, ctx.GetReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
                     &value);
   ASSERT_TRUE(s.ok());
   decoded_metadata.Decode(&value);
@@ -458,7 +461,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   target_level = 1;
   auto s10 = hnsw_index->InsertVectorEntryInternal(key4, vec4, batch, target_level);
   ASSERT_TRUE(s10.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   redis::HnswNode node4_layer0(key4, 0);
@@ -498,7 +501,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   batch = storage_->GetWriteBatchBase();
   auto s15 = hnsw_index->InsertVectorEntryInternal(key5, vec5, batch, target_level);
   ASSERT_TRUE(s15.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   auto s16 = node2_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
@@ -562,11 +565,11 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   batch = storage_->GetWriteBatchBase();
   auto s22 = hnsw_index->DeleteVectorEntry(key2, batch);
   ASSERT_TRUE(s22.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   index_meta_key = hnsw_index->search_key.ConstructFieldMeta();
-  s = storage_->Get(rocksdb::ReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
+  s = storage_->Get(ctx, ctx.GetReadOptions(), hnsw_index->storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key,
                     &value);
   ASSERT_TRUE(s.ok());
   decoded_metadata.Decode(&value);

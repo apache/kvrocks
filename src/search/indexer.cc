@@ -281,17 +281,20 @@ Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Val
   auto storage = indexer->storage;
   auto hnsw = HnswIndex(search_key, vector, storage);
 
+  // TODO: ctx?
+  engine::Context ctx(storage);
+
   if (!original.IsNull()) {
     auto batch = storage->GetWriteBatchBase();
     GET_OR_RET(hnsw.DeleteVectorEntry(key, batch));
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
   if (!current.IsNull()) {
     auto batch = storage->GetWriteBatchBase();
     GET_OR_RET(hnsw.InsertVectorEntry(key, current.Get<kqir::NumericArray>(), batch));
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 

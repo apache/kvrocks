@@ -135,7 +135,8 @@ class Database {
                                      std::string *end_cursor = nullptr, RedisType type = kRedisNone);
   [[nodiscard]] rocksdb::Status RandomKey(engine::Context &ctx, const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
-  [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns, const SlotRange &slot_range);
+  [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns,
+                                                     const SlotRange &slot_range);
   [[nodiscard]] rocksdb::Status KeyExist(engine::Context &ctx, const std::string &key);
 
   // Copy <key,value> to <new_key,value> (already an internal key)

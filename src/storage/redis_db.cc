@@ -510,7 +510,8 @@ std::string Database::AppendNamespacePrefix(const Slice &user_key) {
   return ComposeNamespaceKey(namespace_, user_key, storage_->IsSlotIdEncoded());
 }
 
-rocksdb::Status Database::ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns, const SlotRange &slot_range) {
+rocksdb::Status Database::ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns,
+                                               const SlotRange &slot_range) {
   if (!storage_->IsSlotIdEncoded()) {
     return rocksdb::Status::Aborted("It is not in cluster mode");
   }

@@ -56,7 +56,8 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   node1.PutMetadata(&metadata1, search_key, storage_.get(), batch.Get());
   node2.PutMetadata(&metadata2, search_key, storage_.get(), batch.Get());
   node3.PutMetadata(&metadata3, search_key, storage_.get(), batch.Get());
-  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  engine::Context ctx(storage_.get());
+  auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   auto decoded_metadata1 = node1.DecodeMetadata(search_key, storage_.get());
@@ -85,7 +86,7 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge2, Slice());
   batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge3, Slice());
   batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge4, Slice());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   node1.DecodeNeighbours(search_key, storage_.get());
@@ -121,7 +122,8 @@ TEST_F(NodeTest, ModifyNeighbours) {
   node2.PutMetadata(&metadata2, search_key, storage_.get(), batch1.Get());
   node3.PutMetadata(&metadata3, search_key, storage_.get(), batch1.Get());
   node4.PutMetadata(&metadata4, search_key, storage_.get(), batch1.Get());
-  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch1->GetWriteBatch());
+  engine::Context ctx(storage_.get());
+  auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch1->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   // Add Edges
@@ -134,7 +136,7 @@ TEST_F(NodeTest, ModifyNeighbours) {
   ASSERT_TRUE(s3.IsOK());
   auto s4 = node3.AddNeighbour("node2", search_key, storage_.get(), batch2.Get());
   ASSERT_TRUE(s4.IsOK());
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch2->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch2->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   node1.DecodeNeighbours(search_key, storage_.get());
@@ -156,7 +158,7 @@ TEST_F(NodeTest, ModifyNeighbours) {
   auto s5 = node2.RemoveNeighbour("node3", search_key, storage_.get(), batch3.Get());
   ASSERT_TRUE(s5.IsOK());
 
-  s = storage_->Write(storage_->DefaultWriteOptions(), batch3->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch3->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
   node2.DecodeNeighbours(search_key, storage_.get());

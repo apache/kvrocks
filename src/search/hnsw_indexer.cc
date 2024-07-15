@@ -37,9 +37,12 @@ namespace redis {
 HnswNode::HnswNode(NodeKey key, uint16_t level) : key(std::move(key)), level(level) {}
 
 StatusOr<HnswNodeFieldMetadata> HnswNode::DecodeMetadata(const SearchKey& search_key, engine::Storage* storage) const {
+  // TODO: ctx?
+  engine::Context ctx(storage);
   auto node_index_key = search_key.ConstructHnswNode(level, key);
   rocksdb::PinnableSlice value;
-  auto s = storage->Get(rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), node_index_key, &value);
+  auto s =
+      storage->Get(ctx, ctx.GetReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), node_index_key, &value);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   HnswNodeFieldMetadata metadata;
@@ -58,7 +61,9 @@ void HnswNode::PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& se
 void HnswNode::DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage) {
   neighbours.clear();
   auto edge_prefix = search_key.ConstructHnswEdgeWithSingleEnd(level, key);
-  util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+  // TODO: ctx?
+  engine::Context ctx(storage);
+  util::UniqueIterator iter(ctx, storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
   for (iter->Seek(edge_prefix); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(edge_prefix)) {
       break;
@@ -185,7 +190,9 @@ uint16_t HnswIndex::RandomizeLayer() {
 
 StatusOr<HnswIndex::NodeKey> HnswIndex::DefaultEntryPoint(uint16_t level) const {
   auto prefix = search_key.ConstructHnswLevelNodePrefix(level);
-  util::UniqueIterator it(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+  // TODO: ctx?
+  engine::Context ctx(storage);
+  util::UniqueIterator it(ctx, storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
   it->Seek(prefix);
 
   Slice node_key;
@@ -515,7 +522,9 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
 
   auto has_other_nodes_at_level = [&](uint16_t level, std::string_view skip_key) -> bool {
     auto prefix = search_key.ConstructHnswLevelNodePrefix(level);
-    util::UniqueIterator it(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+    // TODO: ctx?
+    engine::Context ctx(storage);
+    util::UniqueIterator it(ctx, storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
     it->Seek(prefix);
 
     Slice node_key;

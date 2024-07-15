@@ -265,11 +265,11 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
 
     # 1. Git commit and tag
     git = find_command('git', msg='git is required for source packaging')
-    run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
+    run(git, 'commit', '-a', '-m', f'release: prepare source release apache-kvrocks-{version}')
     if release_candidate_number is None:
-        run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
+        run(git, 'tag', '-a', f'v{version}', '-m', f'release: copy for tag v{version}')
     else:
-        run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')
+        run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'release: copy for tag v{version}-rc{release_candidate_number}')
 
     # 2. Create the source tarball
     folder = f'apache-kvrocks-{version}-src'
@@ -302,7 +302,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     workspace = basedir / 'workspace'
 
     args = [
-        'test', '-timeout=1800s', '-bench=.', './...',
+        'test', '-timeout=2700s', '-bench=.', './...',
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',

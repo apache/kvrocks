@@ -391,15 +391,9 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
-  StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
+  if (!s.ok()) return s;
 
+  StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
@@ -714,7 +708,7 @@ rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_na
     if (!s.ok()) {
       return s;
     }
-    return rocksdb::Status::InvalidArgument("BUSYGROUP Consumer Group name already exists");
+    return rocksdb::Status::Busy();
   }
 
   batch->Put(stream_cf_handle_, entry_key, entry_value);
@@ -798,13 +792,7 @@ rocksdb::Status Stream::createConsumerWithoutLock(engine::Context &ctx, const Sl
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_entry_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   StreamConsumerMetadata consumer_metadata;
   auto now = util::GetTimeStampMS();
@@ -855,13 +843,7 @@ rocksdb::Status Stream::DestroyConsumer(engine::Context &ctx, const Slice &strea
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;
@@ -930,13 +912,7 @@ rocksdb::Status Stream::GroupSetId(engine::Context &ctx, const Slice &stream_nam
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_entry_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, entry_key, &get_entry_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   StreamConsumerGroupMetadata consumer_group_metadata = decodeStreamConsumerGroupMetadataValue(get_entry_value);
   if (options.last_id == "$") {
@@ -1451,13 +1427,7 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
   std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string get_group_value;
   s = storage_->Get(ctx, rocksdb::ReadOptions(), stream_cf_handle_, group_key, &get_group_value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    return rocksdb::Status::InvalidArgument("NOGROUP No such consumer group " + group_name + " for key name " +
-                                            stream_name.ToString());
-  }
+  if (!s.ok()) return s;
 
   std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
   std::string get_consumer_value;

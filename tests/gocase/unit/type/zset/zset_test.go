@@ -618,7 +618,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		for i := 0; i < 20; i++ {
 			var args [3]int64
 			for j := 0; j < 3; j++ {
-				rand.Seed(time.Now().UnixNano())
+				rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 				args[j] = rand.Int63n(20) - 10
 			}
 			if args[2] == 0 {
@@ -1380,21 +1380,21 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		// ZRANDMEMBER zset len(members) WITHSCORES
 		res := rdb.ZRandMemberWithScores(ctx, "zset", len(members)).Val()
 		sort.Slice(res, func(i, j int) bool {
-			return res[i].Member < res[j].Member
+			return res[i].Member.(string) < res[j].Member.(string)
 		})
 		require.Equal(t, z, res)
 
 		// ZRANDMEMBER zset len(members)+10 WITHSCORES
 		res = rdb.ZRandMemberWithScores(ctx, "zset", len(members)+10).Val()
 		sort.Slice(res, func(i, j int) bool {
-			return res[i].Member < res[j].Member
+			return res[i].Member.(string) < res[j].Member.(string)
 		})
 		require.Equal(t, z, res)
 
 		// ZRANDMEMBER zset -len(members) WITHSCORES
 		res = rdb.ZRandMemberWithScores(ctx, "zset", -len(members)).Val()
 		sort.Slice(res, func(i, j int) bool {
-			return res[i].Member < res[j].Member
+			return res[i].Member.(string) < res[j].Member.(string)
 		})
 		for _, v := range res {
 			require.Contains(t, z, v)
@@ -1421,7 +1421,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		memberMap := make(map[string]struct{})
 		for _, v := range res {
 			require.Contains(t, z, v)
-			memberMap[v.Member] = struct{}{}
+			memberMap[v.Member.(string)] = struct{}{}
 		}
 		require.Equal(t, len(res), len(memberMap))
 
@@ -1698,7 +1698,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 				} else if auxList[i].Score > auxList[j].Score {
 					return false
 				} else {
-					if strings.Compare(auxList[i].Member, auxList[j].Member) == 1 {
+					if strings.Compare(auxList[i].Member.(string), auxList[j].Member.(string)) == 1 {
 						return false
 					} else {
 						return true
@@ -1707,7 +1707,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 			})
 			var aux []string
 			for _, z := range auxList {
-				aux = append(aux, z.Member)
+				aux = append(aux, z.Member.(string))
 			}
 			fromRedis := rdb.ZRange(ctx, "myzset", 0, -1).Val()
 			for i := 0; i < len(fromRedis); i++ {

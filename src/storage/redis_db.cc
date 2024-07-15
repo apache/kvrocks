@@ -510,18 +510,14 @@ std::string Database::AppendNamespacePrefix(const Slice &user_key) {
   return ComposeNamespaceKey(namespace_, user_key, storage_->IsSlotIdEncoded());
 }
 
-rocksdb::Status Database::ClearKeysOfSlot(engine::Context &ctx, const rocksdb::Slice &ns, int slot) {
+rocksdb::Status Database::ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns, const SlotRange &slot_range) {
   if (!storage_->IsSlotIdEncoded()) {
     return rocksdb::Status::Aborted("It is not in cluster mode");
   }
 
-  std::string prefix = ComposeSlotKeyPrefix(ns, slot);
-  std::string prefix_end = ComposeSlotKeyPrefix(ns, slot + 1);
-  auto s = storage_->DeleteRange(ctx, prefix, prefix_end);
-  if (!s.ok()) {
-    return s;
-  }
-  return rocksdb::Status::OK();
+  std::string prefix = ComposeSlotKeyPrefix(ns, slot_range.start);
+  std::string prefix_end = ComposeSlotKeyPrefix(ns, slot_range.end + 1);
+  return storage_->DeleteRange(ctx, prefix, prefix_end);
 }
 
 rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key) {

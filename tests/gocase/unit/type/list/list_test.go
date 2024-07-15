@@ -53,7 +53,6 @@ func TestLTRIM(t *testing.T) {
 	key := "myList"
 	startLen := int64(32)
 
-	rand.Seed(0)
 	for typ, value := range largeValue {
 		t.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(t *testing.T) {
 			var myList []string
@@ -98,8 +97,6 @@ func TestZipList(t *testing.T) {
 		MaxRetries:  -1, // disable retry
 	})
 	defer func() { require.NoError(t, rdb.Close()) }()
-
-	rand.Seed(0)
 
 	t.Run("Explicit regression for a list bug", func(t *testing.T) {
 		key := "l"

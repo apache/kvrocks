@@ -686,7 +686,7 @@ class CommandJsonResp : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
     std::string results;
-    auto s = json.Resp(args_[1], path, &results, conn);
+    auto s = json.Resp(args_[1], path, &results, conn->GetProtocolVersion());
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();

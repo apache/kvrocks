@@ -630,54 +630,50 @@ struct JsonValue {
     }
     return status;
   }
-  static void TransformResp(const jsoncons::json &origin, std::string &json_resps, redis::Connection *conn) {
+  static void TransformResp(const jsoncons::json &origin, std::string &json_resps, redis::RESP resp) {
     if (origin.is_object()) {
-      json_resps = json_resps + redis::MultiLen(origin.size() * 2 + 1);
-      json_resps = json_resps + redis::SimpleString("{");
+      json_resps += redis::MultiLen(origin.size() * 2 + 1);
+      json_resps += redis::SimpleString("{");
 
       for (const auto &json_kv : origin.object_range()) {
-        json_resps = json_resps + redis::BulkString(json_kv.key());
-        TransformResp(json_kv.value(), json_resps, conn);
+        json_resps += redis::BulkString(json_kv.key());
+        TransformResp(json_kv.value(), json_resps, resp);
       }
 
     } else if (origin.is_int64() || origin.is_uint64()) {
-      json_resps = json_resps + redis::Integer(origin.as_integer<int64_t>());
+      json_resps += redis::Integer(origin.as_integer<int64_t>());
 
-    } else if (origin.is_double()) {
-      json_resps = json_resps + redis::BulkString(origin.as_string());
-
-    } else if (origin.is_string()) {
-      json_resps = json_resps + redis::BulkString(origin.as_string());
-
+    } else if (origin.is_string() || origin.is_double()) {
+      json_resps += redis::BulkString(origin.as_string());
     } else if (origin.is_bool()) {
-      json_resps = json_resps + redis::SimpleString(std::string(origin.as_bool() ? "true" : "false"));
+      json_resps += redis::SimpleString(std::string(origin.as_bool() ? "true" : "false"));
 
     } else if (origin.is_null()) {
-      json_resps = json_resps + conn->NilString();
+      json_resps += redis::NilString(resp);
 
     } else if (origin.is_array()) {
-      json_resps = json_resps + redis::MultiLen(origin.size() + 1);
-      json_resps = json_resps + redis::SimpleString("[");
+      json_resps += redis::MultiLen(origin.size() + 1);
+      json_resps += redis::SimpleString("[");
 
       for (const auto &json_array_value : origin.array_range()) {
-        TransformResp(json_array_value, json_resps, conn);
+        TransformResp(json_array_value, json_resps, resp);
       }
     }
   }
 
-  StatusOr<std::string> JsonConvertResp(std::string_view path, redis::Connection *conn) const {
+  StatusOr<std::string> JsonConvertResp(std::string_view path, redis::RESP resp) const {
     std::string json_resps;
     int query_count = 0;
     try {
       jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
         query_count++;
-        TransformResp(origin, json_resps, conn);
+        TransformResp(origin, json_resps, resp);
       });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
     if (path != "$") {
-      json_resps = redis::MultiLen(query_count) + json_resps;
+      return redis::MultiLen(query_count) += json_resps;
     }
     return json_resps;
   }

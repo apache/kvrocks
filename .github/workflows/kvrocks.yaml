@@ -431,7 +431,6 @@ jobs:
             compiler: gcc
 
     runs-on: ubuntu-22.04
-    shell: bash
     container:
       image: ${{ matrix.image }}
     steps:

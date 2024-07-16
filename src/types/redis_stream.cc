@@ -1252,7 +1252,7 @@ rocksdb::Status Stream::GetStreamInfo(const rocksdb::Slice &stream_name, bool fu
 }
 
 static bool StreamRangeHasTombstones(const StreamMetadata &metadata, StreamEntryID start_id) {
-  StreamEntryID end_id = StreamEntryID{UINT64_MAX, UINT64_MAX};
+  StreamEntryID end_id = StreamEntryID::Maximum();
   if (metadata.size == 0 || metadata.max_deleted_entry_id == StreamEntryID{0, 0}) {
     return false;
   }

@@ -101,7 +101,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 
 	t.Run("XADD IDs correctly report an error when overflowing", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
-		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551615-18446744073709551615", Values: []string{"a", "b"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551614-18446744073709551615", Values: []string{"a", "b"}}).Err())
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "*", Values: []string{"c", "d"}}).Err(), "ERR")
 	})
 

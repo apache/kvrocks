@@ -110,6 +110,7 @@ struct HnswIndex {
   Status InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
+  StatusOr<std::vector<std::string>> KnnSearch(const kqir::NumericArray& query_vector, uint32_t k);
 };
 
 }  // namespace redis

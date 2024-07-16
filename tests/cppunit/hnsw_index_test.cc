@@ -662,3 +662,31 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   actual_set = {node5_layer0.neighbours.begin(), node5_layer0.neighbours.end()};
   EXPECT_EQ(actual_set, expected_set);
 }
+
+// TEST_F(HnswIndexTest, SearchInEmptyIndex) {
+//   std::vector<double> query_vector = {31.0, 32.0, 23.0};
+//   uint32_t k = 5;
+//   auto s1 = hnsw_index->KnnSearch(query_vector, k);
+//   ASSERT_FALSE(s1.IsOK());
+//   EXPECT_EQ(s1.GetCode(), Status::NotFound);
+
+//   std::vector<double> vec1 = {11.0, 12.0, 13.0};
+//   std::vector<double> vec2 = {14.0, 15.0, 16.0};
+//   std::vector<double> vec3 = {17.0, 18.0, 19.0};
+//   std::vector<double> vec4 = {12.0, 13.0, 14.0};
+//   std::vector<double> vec5 = {30.0, 40.0, 35.0};
+
+//   std::string key1 = "key1";
+//   std::string key2 = "key2";
+//   std::string key3 = "key3";
+//   std::string key4 = "key4";
+//   std::string key5 = "key5";
+
+//   // Insert n1 into layer 1
+//   uint16_t target_level = 1;
+//   auto batch = storage_->GetWriteBatchBase();
+//   auto s1 = hnsw_index->InsertVectorEntryInternal(key1, vec1, batch, target_level);
+//   ASSERT_TRUE(s1.IsOK());
+//   auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+//   ASSERT_TRUE(s.ok());
+// }

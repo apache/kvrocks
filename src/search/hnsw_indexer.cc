@@ -549,4 +549,32 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
   return Status::OK();
 }
 
+StatusOr<std::vector<std::string>> HnswIndex::KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) {
+  VectorItem query_vector_item;
+  GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));
+  uint32_t effective_ef = std::max(metadata->ef_runtime, k);  // Ensure ef_runtime is at least k
+
+  if (metadata->num_levels == 0) {
+    return {Status::NotFound, fmt::format("No vector found in the HNSW index")};
+  }
+
+  auto level = metadata->num_levels - 1;
+  auto default_entry_node = GET_OR_RET(DefaultEntryPoint(level));
+  std::vector<NodeKey> entry_points{default_entry_node};
+  std::vector<VectorItem> nearest_vec_items;
+
+  for (; level > 0; level--) {
+    nearest_vec_items = GET_OR_RET(SearchLayer(level, query_vector_item, effective_ef, entry_points));
+    entry_points = {nearest_vec_items[0].key};
+  }
+  nearest_vec_items = GET_OR_RET(SearchLayer(0, query_vector_item, effective_ef, entry_points));
+
+  uint32_t result_length = std::min(k, static_cast<uint32_t>(nearest_vec_items.size()));
+  std::vector<std::string> nearest_neighbours_key(result_length);
+  for (uint32_t result_idx = 0; result_idx < result_length; result_idx++) {
+    nearest_neighbours_key[result_idx] = std::move(nearest_vec_items[result_idx].key);
+  }
+  return nearest_neighbours_key;
+}
+
 }  // namespace redis

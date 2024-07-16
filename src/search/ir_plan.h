@@ -26,6 +26,7 @@
 #include "ir.h"
 #include "search/interval.h"
 #include "search/ir_sema_checker.h"
+#include "search/value.h"
 #include "string_util.h"
 
 namespace kqir {
@@ -93,6 +94,26 @@ struct TagFieldScan : FieldScan {
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<TagFieldScan>(field->CloneAs<FieldRef>(), tag);
+  }
+};
+
+struct HnswVectorFieldKnnScan : FieldScan {
+  // TODO: wrap the fields into IR expression
+  kqir::NumericArray vector;
+  uint16_t k;
+
+  HnswVectorFieldKnnScan(std::unique_ptr<FieldRef> field, kqir::NumericArray vector, uint16_t k)
+      : FieldScan(std::move(field)), vector(std::move(vector)), k(k) {}
+
+  std::string_view Name() const override { return "HnswVectorFieldKnnScan"; };
+  std::string Content() const override { return kqir::MakeValue<kqir::NumericArray>(vector).ToString(); };
+  std::string Dump() const override {
+    return fmt::format("hnsw-vector-knn-scan {}, {}", field->name,
+                       kqir::MakeValue<kqir::NumericArray>(vector).ToString());
+  }
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<HnswVectorFieldKnnScan>(field->CloneAs<FieldRef>(), vector, k);
   }
 };
 

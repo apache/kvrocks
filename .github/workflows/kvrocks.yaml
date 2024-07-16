@@ -455,7 +455,10 @@ jobs:
         if: ${{ startsWith(matrix.image, 'debian') }}
         run: |
           apt update
-          apt install -y gcc g++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
+          apt install -y gcc g++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake 
+          wget https://golang.org/dl/go1.22.5.linux-amd64.tar.gz
+          tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
+          export PATH=$PATH:/usr/local/go/bin
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

@@ -426,6 +426,9 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+          - name: Debian 11
+            image: debian:bullseye
+            compiler: gcc
 
     runs-on: ubuntu-22.04
     container:

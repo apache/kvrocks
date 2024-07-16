@@ -223,7 +223,7 @@ TEST_F(RedisStreamTest, NextIDCurrentTimestampWithSpecificSeqNumber) {
   }
 
   {
-    last_id = redis::StreamEntryID(UINT64_MAX-1, 0);
+    last_id = redis::StreamEntryID(UINT64_MAX - 1, 0);
     auto strategy = ParseNextStreamEntryIDStrategy("*-123456");
     auto s = (*strategy)->GenerateID(last_id, &next_id);
     EXPECT_FALSE(s.IsOK());
@@ -364,7 +364,7 @@ TEST_F(RedisStreamTest, AddEntryWithExistingMsAnySeqNoAndExistingSeqNoIsAlreadyM
 }
 
 TEST_F(RedisStreamTest, AddEntryAndExistingMsAndSeqNoAreAlreadyMax) {
-  uint64_t ms = UINT64_MAX-1;
+  uint64_t ms = UINT64_MAX - 1;
   uint64_t seq = UINT64_MAX;
   redis::StreamAddOptions options;
   options.next_id_strategy = *ParseNextStreamEntryIDStrategy(fmt::format("{}-{}", ms, seq));

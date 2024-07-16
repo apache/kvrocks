@@ -431,6 +431,7 @@ jobs:
             compiler: gcc
 
     runs-on: ubuntu-22.04
+    shell: bash
     container:
       image: ${{ matrix.image }}
     steps:
@@ -454,12 +455,12 @@ jobs:
       - name: Setup Debian
         if: ${{ startsWith(matrix.image, 'debian') }}
         run: |
-          apt update
-          apt install -y gcc g++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake 
-          wget https://golang.org/dl/go1.22.5.linux-amd64.tar.gz
-          tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
-          export PATH=$PATH:/usr/local/go/bin
-          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+            apt update
+            apt install -y build-essential wget cmake libtool python3 libssl-dev python3 python3-pip
+            wget https://golang.org/dl/go1.22.5.linux-amd64.tar.gz
+            tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
+            export PATH=$PATH:/usr/local/go/bin
+            echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
         id: cache-redis

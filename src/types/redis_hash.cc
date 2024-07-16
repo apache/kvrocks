@@ -74,7 +74,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
     std::string value_bytes;
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value_bytes);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       auto parse_result = ParseInt<int64_t>(value_bytes, 10);
@@ -122,7 +122,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
     std::string value_bytes;
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value_bytes);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       auto value_stat = ParseFloat(value_bytes);
@@ -165,7 +165,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
   }
 
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   std::vector<rocksdb::Slice> keys;
 
   keys.reserve(fields.size());
@@ -216,7 +216,7 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
       continue;
     }
     std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.ok()) {
       *deleted_cnt += 1;
       batch->Delete(sub_key);
@@ -257,7 +257,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
 
     if (metadata.size > 0) {
       std::string field_value;
-      s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &field_value);
+      s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &field_value);
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
@@ -300,7 +300,7 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
@@ -355,7 +355,7 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
 

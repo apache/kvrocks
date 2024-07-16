@@ -439,7 +439,7 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
 
   engine::Context ctx(srv->storage);
   rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
@@ -479,7 +479,7 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
 
   engine::Context ctx(srv->storage);
   rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 

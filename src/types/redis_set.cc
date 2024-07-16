@@ -74,7 +74,7 @@ rocksdb::Status Set::Add(engine::Context &ctx, const Slice &user_key, const std:
       continue;
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *added_cnt += 1;
@@ -109,7 +109,7 @@ rocksdb::Status Set::Remove(engine::Context &ctx, const Slice &user_key, const s
       continue;
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *removed_cnt += 1;
@@ -152,7 +152,7 @@ rocksdb::Status Set::Members(engine::Context &ctx, const Slice &user_key, std::v
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 

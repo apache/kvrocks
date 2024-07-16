@@ -369,17 +369,23 @@ class Storage {
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
 };
 
+/// Context passes fixed snapshot and batche between APIs
+/// Limitations: Performing a large number of writes on the same Context may reduce performance.
+/// Please choose to use the same Context or create a new Context based on the actual situation.
+/// Context does not provide thread safety guarantees and is generally only passed as a parameter between APIs.
 struct Context {
   engine::Storage *storage = nullptr;
+  /// Snapshot should be specified instead of nullptr when used,
+  /// and should be consistent with snapshot in ReadOptions to avoid ambiguity.
+  /// Normally it will be fixed to the latest Snapshot when the Context is constructed
   const rocksdb::Snapshot *snapshot = nullptr;
   std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
 
-  rocksdb::ReadOptions GetReadOptions();
-  const rocksdb::Snapshot *GetSnapShot();
+  /// GetReadOptions returns a ReadOptions whose snapshot is specified by Context
+  [[nodiscard]] rocksdb::ReadOptions GetReadOptions() const;
   void SetLatestSnapshot();
 
   explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
-  Context() = default;
   ~Context() {
     if (storage && storage->GetDB()) {
       storage->GetDB()->ReleaseSnapshot(snapshot);

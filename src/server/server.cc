@@ -1674,7 +1674,7 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   engine::Context ctx(storage);
-  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, body);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1691,7 +1691,7 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
   std::string func_name = engine::kLuaLibCodePrefix + lib;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   engine::Context ctx(storage);
-  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, code);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1702,7 +1702,7 @@ Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   engine::Context ctx(storage);
-  auto s = storage->Get(ctx, rocksdb::ReadOptions(), cf, func_name, lib);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }

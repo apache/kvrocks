@@ -127,7 +127,7 @@ StatusOr<kqir::Value> FieldValueRetriever::Retrieve(std::string_view field, cons
   if (std::holds_alternative<HashData>(db)) {
     auto &[hash, metadata, key] = std::get<HashData>(db);
     std::string ns_key = hash.AppendNamespacePrefix(key);
-
+    // TODO: ctx remove latestsnapshot?
     LatestSnapShot ss(hash.storage_);
     rocksdb::ReadOptions read_options;
     read_options.snapshot = ss.GetSnapShot();

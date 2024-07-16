@@ -617,7 +617,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
 std::vector<rocksdb::Status> Json::readMulti(engine::Context &ctx, const std::vector<Slice> &ns_keys,
                                              std::vector<JsonValue> &values) {
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
 
   std::vector<rocksdb::Status> statuses(ns_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(ns_keys.size());

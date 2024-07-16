@@ -597,6 +597,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
 rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              std::string *value) {
+  DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
@@ -647,6 +648,7 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
 
 rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
+  DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   auto iter = db_->NewIterator(options, column_family);
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     return txn_write_batch_->NewIteratorWithBase(column_family, iter, &options);
@@ -659,6 +661,7 @@ rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::Rea
 void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options,
                        rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
                        rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
+  DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     txn_write_batch_->MultiGetFromBatchAndDB(db_.get(), options, column_family, num_keys, keys, values, statuses,
                                              false);
@@ -1247,17 +1250,10 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   return crc == tmp_crc;
 }
 
-rocksdb::ReadOptions Context::GetReadOptions() {
+[[nodiscard]] rocksdb::ReadOptions Context::GetReadOptions() const {
   rocksdb::ReadOptions read_opts;
-  read_opts.snapshot = GetSnapShot();
+  read_opts.snapshot = snapshot;
   return read_opts;
-}
-
-const rocksdb::Snapshot *Context::GetSnapShot() {
-  if (storage && snapshot == nullptr) {
-    snapshot = storage->GetDB()->GetSnapshot();
-  }
-  return snapshot;
 }
 
 void Context::SetLatestSnapshot() {

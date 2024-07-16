@@ -38,7 +38,7 @@ std::vector<rocksdb::Status> String::getRawValues(engine::Context &ctx, const st
   raw_values->clear();
 
   rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   raw_values->resize(keys.size());
   std::vector<rocksdb::Status> statuses(keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(keys.size());

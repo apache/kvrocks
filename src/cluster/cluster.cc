@@ -211,13 +211,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     }
   }
 
-  engine::Context ctx;
-  if (srv_ != nullptr) {
-    ctx.storage = srv_->storage;
-  }
-
   // Clear data of migrated slots
   if (!migrated_slots_.empty()) {
+    engine::Context ctx(srv_->storage);
     for (const auto &[slot, _] : migrated_slots_) {
       if (slots_nodes_[slot] != myself_) {
         auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));

@@ -153,7 +153,7 @@ rocksdb::Status Bitmap::GetString(engine::Context &ctx, const Slice &user_key, c
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   Slice prefix_key_slice(prefix_key);
   read_options.iterate_lower_bound = &prefix_key_slice;
 
@@ -200,7 +200,7 @@ rocksdb::Status Bitmap::SetBit(engine::Context &ctx, const Slice &user_key, uint
   std::string sub_key =
       InternalKey(ns_key, std::to_string(segment_index), metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
-    s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
   }
   uint32_t bit_offset_in_segment = bit_offset % kBitmapSegmentBits;
@@ -264,7 +264,7 @@ rocksdb::Status Bitmap::BitCount(engine::Context &ctx, const Slice &user_key, in
   auto u_stop = static_cast<uint32_t>(stop_byte);
 
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   uint32_t start_index = u_start / kBitmapSegmentBytes;
   uint32_t stop_index = u_stop / kBitmapSegmentBytes;
   // Don't use multi get to prevent large range query, and take too much memory
@@ -355,7 +355,7 @@ rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool
   };
 
   rocksdb::ReadOptions read_options;
-  read_options.snapshot = ctx.GetSnapShot();
+  read_options.snapshot = ctx.snapshot;
   // if bit index, (Eg start = 1, stop = 35), then
   // u_start = 1/8 = 0, u_stop = 35/8 = 4 (in bytes)
   uint32_t start_segment_index = (u_start / to_bit_factor) / kBitmapSegmentBytes;
@@ -508,7 +508,7 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
 
     rocksdb::ReadOptions read_options;
-    read_options.snapshot = ctx.GetSnapShot();
+    read_options.snapshot = ctx.snapshot;
     for (uint64_t frag_index = 0; frag_index <= stop_index; frag_index++) {
       std::vector<rocksdb::PinnableSlice> fragments;
       uint16_t frag_maxlen = 0, frag_minlen = 0;
@@ -703,7 +703,7 @@ class Bitmap::SegmentCacheStore {
       is_dirty = false;
       std::string sub_key =
           InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
-      rocksdb::Status s = storage_->Get(ctx, rocksdb::ReadOptions(), sub_key, &str);
+      rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &str);
       if (!s.ok() && !s.IsNotFound()) {
         return s;
       }

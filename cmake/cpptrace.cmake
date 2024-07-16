@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(cpptrace
-  jeremy-rifkin/cpptrace v0.6.2
-  MD5=b13786adcc1785cb900746ea96c50bee
+  jeremy-rifkin/cpptrace v0.6.3
+  MD5=32f3c0087c676f3d96df4d53e42ca5e9
 )
 
 if (SYMBOLIZE_BACKEND STREQUAL "libbacktrace")

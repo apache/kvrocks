@@ -24,13 +24,14 @@
 #include <numeric>
 
 const std::map<Status::Code, std::string> redisErrorPrefixMapping = {
-    {Status::RedisErrorNoPrefix, ""},         {Status::RedisNoProto, "NOPROTO"},
-    {Status::RedisLoading, "LOADING"},        {Status::RedisMasterDown, "MASTERDOWN"},
-    {Status::RedisNoScript, "NOSCRIPT"},      {Status::RedisNoAuth, "NOAUTH"},
-    {Status::RedisWrongType, "WRONGTYPE"},    {Status::RedisReadOnly, "READONLY"},
-    {Status::RedisExecAbort, "EXECABORT"},    {Status::RedisMoved, "MOVED"},
-    {Status::RedisCrossSlot, "CROSSSLOT"},    {Status::RedisTryAgain, "TRYAGAIN"},
-    {Status::RedisClusterDown, "CLUSTERDOWN"}};
+    {Status::RedisErrorNoPrefix, ""},          {Status::RedisNoProto, "NOPROTO"},
+    {Status::RedisLoading, "LOADING"},         {Status::RedisMasterDown, "MASTERDOWN"},
+    {Status::RedisNoScript, "NOSCRIPT"},       {Status::RedisNoAuth, "NOAUTH"},
+    {Status::RedisWrongType, "WRONGTYPE"},     {Status::RedisReadOnly, "READONLY"},
+    {Status::RedisExecAbort, "EXECABORT"},     {Status::RedisMoved, "MOVED"},
+    {Status::RedisCrossSlot, "CROSSSLOT"},     {Status::RedisTryAgain, "TRYAGAIN"},
+    {Status::RedisClusterDown, "CLUSTERDOWN"}, {Status::RedisNoGroup, "NOGROUP"},
+    {Status::RedisBusyGroup, "BUSYGROUP"}};
 
 namespace redis {
 
@@ -65,6 +66,58 @@ std::string Array(const std::vector<std::string> &list) {
 
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
   std::string result = MultiLen(elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
+std::string Bool(RESP ver, bool b) {
+  if (ver == RESP::v3) {
+    return b ? "#t" CRLF : "#f" CRLF;
+  }
+  return Integer(b ? 1 : 0);
+}
+
+std::string MultiBulkString(RESP ver, const std::vector<std::string> &values) {
+  std::string result = MultiLen(values.size());
+  for (const auto &value : values) {
+    if (value.empty()) {
+      result += NilString(ver);
+    } else {
+      result += BulkString(value);
+    }
+  }
+  return result;
+}
+
+std::string MultiBulkString(RESP ver, const std::vector<std::string> &values,
+                            const std::vector<rocksdb::Status> &statuses) {
+  std::string result = MultiLen(values.size());
+  for (size_t i = 0; i < values.size(); i++) {
+    if (i < statuses.size() && !statuses[i].ok()) {
+      result += NilString(ver);
+    } else {
+      result += BulkString(values[i]);
+    }
+  }
+  return result;
+}
+
+std::string SetOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
+  std::string result;
+  result += HeaderOfSet(ver, elems.size());
+  for (const auto &elem : elems) {
+    result += BulkString(elem);
+  }
+  return result;
+}
+
+std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
+  CHECK(elems.size() % 2 == 0);
+
+  std::string result;
+  result += HeaderOfMap(ver, elems.size() / 2);
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

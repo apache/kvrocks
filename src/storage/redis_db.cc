@@ -299,6 +299,10 @@ rocksdb::Status Database::Keys(const std::string &prefix, std::vector<std::strin
       }
     }
 
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded()) break;
     if (prefix.empty()) break;
     if (++slot_id >= HASH_SLOTS_SIZE) break;
@@ -368,6 +372,11 @@ rocksdb::Status Database::Scan(const std::string &cursor, uint64_t limit, const 
       keys->emplace_back(user_key);
       cnt++;
     }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
     if (!storage_->IsSlotIdEncoded() || prefix.empty()) {
       if (!keys->empty() && cnt >= limit) {
         end_cursor->append(user_key);
@@ -520,18 +529,14 @@ std::string Database::AppendNamespacePrefix(const Slice &user_key) {
   return ComposeNamespaceKey(namespace_, user_key, storage_->IsSlotIdEncoded());
 }
 
-rocksdb::Status Database::ClearKeysOfSlot(const rocksdb::Slice &ns, int slot) {
+rocksdb::Status Database::ClearKeysOfSlotRange(const rocksdb::Slice &ns, const SlotRange &slot_range) {
   if (!storage_->IsSlotIdEncoded()) {
     return rocksdb::Status::Aborted("It is not in cluster mode");
   }
 
-  std::string prefix = ComposeSlotKeyPrefix(ns, slot);
-  std::string prefix_end = ComposeSlotKeyPrefix(ns, slot + 1);
-  auto s = storage_->DeleteRange(prefix, prefix_end);
-  if (!s.ok()) {
-    return s;
-  }
-  return rocksdb::Status::OK();
+  std::string prefix = ComposeSlotKeyPrefix(ns, slot_range.start);
+  std::string prefix_end = ComposeSlotKeyPrefix(ns, slot_range.end + 1);
+  return storage_->DeleteRange(prefix, prefix_end);
 }
 
 rocksdb::Status Database::KeyExist(const std::string &key) {
@@ -587,7 +592,7 @@ rocksdb::Status SubKeyScanner::Scan(RedisType type, const Slice &user_key, const
       break;
     }
   }
-  return rocksdb::Status::OK();
+  return iter->status();
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

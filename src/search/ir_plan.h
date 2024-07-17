@@ -98,7 +98,6 @@ struct TagFieldScan : FieldScan {
 };
 
 struct HnswVectorFieldKnnScan : FieldScan {
-  // TODO: wrap the fields into IR expression
   kqir::NumericArray vector;
   uint16_t k;
 

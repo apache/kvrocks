@@ -275,7 +275,6 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SelectNeighbors(const VectorItem& v
   return selected_vs;
 }
 
-// TODO(Beihao): Consider using snapshot for KnnSearch
 StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const VectorItem& target_vector,
                                                          uint32_t ef_runtime,
                                                          const std::vector<NodeKey>& entry_points) const {
@@ -482,12 +481,14 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
   return Status::OK();
 }
 
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 Status HnswIndex::InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
   auto target_level = RandomizeLayer();
   return InsertVectorEntryInternal(key, vector, batch, target_level);
 }
 
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   std::string node_key(key);
   for (uint16_t level = 0; level < metadata->num_levels; level++) {
@@ -550,6 +551,7 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
   return Status::OK();
 }
 
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 StatusOr<std::vector<std::string>> HnswIndex::KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) {
   VectorItem query_vector_item;
   GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));

@@ -443,8 +443,9 @@ TEST_F(PlanExecutorTestC, HnswVectorFieldKnnScan) {
   }
 
   {
-    std::vector<double> target_vector = {14,15,16};
-    auto op = std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 5);
+    std::vector<double> target_vector = {14, 15, 16};
+    auto op =
+        std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 5);
 
     auto ctx = ExecutorContext(op.get(), storage_.get());
     ASSERT_EQ(NextRow(ctx).key, "test2:e");
@@ -456,8 +457,9 @@ TEST_F(PlanExecutorTestC, HnswVectorFieldKnnScan) {
   }
 
   {
-    std::vector<double> target_vector = {24,25,26};
-    auto op = std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 3);
+    std::vector<double> target_vector = {24, 25, 26};
+    auto op =
+        std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 3);
 
     auto ctx = ExecutorContext(op.get(), storage_.get());
     ASSERT_EQ(NextRow(ctx).key, "test2:f");

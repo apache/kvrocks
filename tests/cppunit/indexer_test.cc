@@ -60,7 +60,7 @@ struct IndexerTest : TestBase {
     hnsw_field_meta->vector_type = redis::VectorType::FLOAT64;
     hnsw_field_meta->dim = 3;
     hnsw_field_meta->distance_metric = redis::DistanceMetric::L2;
-    json_info->Add(kqir::FieldInfo("$.z", std::move(hnsw_field_meta)));    
+    json_info->Add(kqir::FieldInfo("$.z", std::move(hnsw_field_meta)));
     json_info->prefixes.prefixes.emplace_back("idxtestjson");
 
     map.emplace("jsontest", std::move(json_info));
@@ -315,7 +315,7 @@ TEST_F(IndexerTest, JsonHnswVector) {
     std::string val;
     auto s3 = storage_->Get(storage_->DefaultMultiGetOptions(), cfhandler, search_key, &val);
     ASSERT_TRUE(s3.ok());
-    
+
     redis::HnswNodeFieldMetadata node_meta;
     Slice input(val);
     node_meta.Decode(&input);

@@ -55,7 +55,7 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      // TODO(Beihao): Consider pass snapshot as well
+      // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
       auto hnsw_index = redis::HnswIndex(search_key, &field_metadata, ctx->storage);
       row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->k));
       row_keys_iter = row_keys.begin();

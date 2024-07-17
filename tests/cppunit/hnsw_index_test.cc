@@ -663,30 +663,91 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   EXPECT_EQ(actual_set, expected_set);
 }
 
-// TEST_F(HnswIndexTest, SearchInEmptyIndex) {
-//   std::vector<double> query_vector = {31.0, 32.0, 23.0};
-//   uint32_t k = 5;
-//   auto s1 = hnsw_index->KnnSearch(query_vector, k);
-//   ASSERT_FALSE(s1.IsOK());
-//   EXPECT_EQ(s1.GetCode(), Status::NotFound);
+TEST_F(HnswIndexTest, KnnSearch) {
+  std::vector<double> query_vector = {31.0, 32.0, 23.0};
+  uint32_t k = 3;
+  auto s1 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_FALSE(s1.IsOK());
+  EXPECT_EQ(s1.GetCode(), Status::NotFound);
 
-//   std::vector<double> vec1 = {11.0, 12.0, 13.0};
-//   std::vector<double> vec2 = {14.0, 15.0, 16.0};
-//   std::vector<double> vec3 = {17.0, 18.0, 19.0};
-//   std::vector<double> vec4 = {12.0, 13.0, 14.0};
-//   std::vector<double> vec5 = {30.0, 40.0, 35.0};
+  std::vector<double> vec1 = {11.0, 12.0, 13.0};
+  std::vector<double> vec2 = {14.0, 15.0, 16.0};
+  std::vector<double> vec3 = {17.0, 18.0, 19.0};
+  std::vector<double> vec4 = {12.0, 13.0, 14.0};
+  std::vector<double> vec5 = {30.0, 40.0, 35.0};
 
-//   std::string key1 = "key1";
-//   std::string key2 = "key2";
-//   std::string key3 = "key3";
-//   std::string key4 = "key4";
-//   std::string key5 = "key5";
+  std::string key1 = "key1";
+  std::string key2 = "key2";
+  std::string key3 = "key3";
+  std::string key4 = "key4";
+  std::string key5 = "key5";
 
-//   // Insert n1 into layer 1
-//   uint16_t target_level = 1;
-//   auto batch = storage_->GetWriteBatchBase();
-//   auto s1 = hnsw_index->InsertVectorEntryInternal(key1, vec1, batch, target_level);
-//   ASSERT_TRUE(s1.IsOK());
-//   auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-//   ASSERT_TRUE(s.ok());
-// }
+  // Insert key1 into layer 1
+  uint16_t target_level = 1;
+  auto batch = storage_->GetWriteBatchBase();
+  auto s2 = hnsw_index->InsertVectorEntryInternal(key1, vec1, batch, target_level);
+  ASSERT_TRUE(s2.IsOK());
+  auto s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Search when HNSW graph contains less than k nodes
+  auto s3 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s3.IsOK());
+  auto key_strs = s3.GetValue();
+  std::vector<std::string> expected = {"key1"};
+  EXPECT_EQ(key_strs, expected);
+
+  // Insert key2 into layer 2
+  target_level = 2;
+  batch = storage_->GetWriteBatchBase();
+  auto s4 = hnsw_index->InsertVectorEntryInternal(key2, vec2, batch, target_level);
+  ASSERT_TRUE(s4.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Insert key3 into layer 0
+  target_level = 0;
+  batch = storage_->GetWriteBatchBase();
+  auto s5 = hnsw_index->InsertVectorEntryInternal(key3, vec3, batch, target_level);
+  ASSERT_TRUE(s5.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Search when HNSW graph contains exactly k nodes
+  auto s6 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s6.IsOK());
+  key_strs = s6.GetValue();
+  expected = {"key3", "key2", "key1"};
+  EXPECT_EQ(key_strs, expected);
+
+  // Insert key4 into layer 1
+  target_level = 1;
+  batch = storage_->GetWriteBatchBase();
+  auto s7 = hnsw_index->InsertVectorEntryInternal(key4, vec4, batch, target_level);
+  ASSERT_TRUE(s7.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Insert key5 into layer 0
+  target_level = 0;
+  batch = storage_->GetWriteBatchBase();
+  auto s8 = hnsw_index->InsertVectorEntryInternal(key5, vec5, batch, target_level);
+  ASSERT_TRUE(s8.IsOK());
+  s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok());
+
+  // Search when HNSW graph contains more than k nodes
+  auto s9 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s9.IsOK());
+  key_strs = s9.GetValue();
+  expected = {"key5", "key3", "key2"};
+  EXPECT_EQ(key_strs, expected);
+
+  // Edge case: If ef_runtime is smaller than k, enlarge ef_runtime equal to k
+  hnsw_index->metadata->ef_runtime = 1;
+  auto s10 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s10.IsOK());
+  key_strs = s10.GetValue();
+  expected = {"key5", "key3", "key2"};
+  EXPECT_EQ(key_strs, expected);
+}

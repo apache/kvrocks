@@ -275,6 +275,7 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SelectNeighbors(const VectorItem& v
   return selected_vs;
 }
 
+// TODO(Beihao): Consider using snapshot for KnnSearch
 StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const VectorItem& target_vector,
                                                          uint32_t ef_runtime,
                                                          const std::vector<NodeKey>& entry_points) const {

@@ -24,6 +24,7 @@
 
 #include "db_util.h"
 #include "encoding.h"
+#include "search/hnsw_indexer.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
 #include "storage/redis_db.h"
@@ -36,33 +37,38 @@ namespace kqir {
 struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   HnswVectorFieldKnnScan *scan;
   redis::LatestSnapShot ss;
-  // util::UniqueIterator iter{nullptr};
   bool initialized = false;
 
   IndexInfo *index;
   redis::SearchKey search_key;
+  redis::HnswVectorFieldMetadata field_metadata;
+  std::vector<std::string> row_keys;
+  decltype(row_keys)::iterator row_keys_iter;
 
   HnswVectorFieldKnnScanExecutor(ExecutorContext *ctx, HnswVectorFieldKnnScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
         ss(ctx->storage),
         index(scan->field->info->index),
-        search_key(index->ns, index->name, scan->field->name) {}
+        search_key(index->ns, index->name, scan->field->name),
+        field_metadata(*(scan->field->info->MetadataAs<redis::HnswVectorFieldMetadata>())) {}
 
   StatusOr<Result> Next() override {
-    // Not initialized
     if (!initialized) {
-      rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
-      read_options.snapshot = ss.GetSnapShot();
-
-      // snapshot read
+      // TODO(Beihao): Consider pass snapshot as well
+      auto hnsw_index = redis::HnswIndex(search_key, &field_metadata, ctx->storage);
+      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->k));
+      row_keys_iter = row_keys.begin();
       initialized = true;
     }
 
-    // Invalid
+    if (row_keys_iter == row_keys.end()) {
+      return end;
+    }
 
-    // search
-    return RowType{"placeholder", {}, scan->field->info->index};
+    auto key_str = *row_keys_iter;
+    row_keys_iter++;
+    return RowType{key_str, {}, scan->field->info->index};
   }
 };
 

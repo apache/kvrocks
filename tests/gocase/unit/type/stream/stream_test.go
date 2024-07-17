@@ -101,7 +101,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 
 	t.Run("XADD IDs correctly report an error when overflowing", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
-		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551615-18446744073709551615", Values: []string{"a", "b"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551614-18446744073709551615", Values: []string{"a", "b"}}).Err())
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "*", Values: []string{"c", "d"}}).Err(), "ERR")
 	})
 
@@ -286,7 +286,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 	})
 
 	t.Run("XRANGE exclusive ranges", func(t *testing.T) {
-		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551615-18446744073709551614", "18446744073709551615-18446744073709551615"}
+		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551614-18446744073709551614", "18446744073709551614-18446744073709551615"}
 		total := len(ids)
 		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
 		// DEL returns "QUEUED" here, so we use Do to avoid ParseInt.
@@ -306,7 +306,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 		require.Len(t, rdb.XRange(ctx, "vipstream", "(1-0", "(42-42").Val(), 1)
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(-", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(+").Err(), "ERR")
-		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551615-18446744073709551615", "+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551614-18446744073709551615", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(0-0").Err(), "ERR")
 	})
 

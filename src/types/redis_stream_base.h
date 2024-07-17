@@ -44,7 +44,7 @@ struct StreamEntryID {
     seq = 0;
   }
 
-  bool IsMaximum() const { return ms == UINT64_MAX && seq == UINT64_MAX; }
+  bool IsMaximum() const { return ms == UINT64_MAX - 1 && seq == UINT64_MAX; }
   bool IsMinimum() const { return ms == 0 && seq == 0; }
 
   bool operator<(const StreamEntryID &rhs) const {
@@ -64,7 +64,7 @@ struct StreamEntryID {
   std::string ToString() const { return fmt::format("{}-{}", ms, seq); }
 
   static StreamEntryID Minimum() { return StreamEntryID{0, 0}; }
-  static StreamEntryID Maximum() { return StreamEntryID{UINT64_MAX, UINT64_MAX}; }
+  static StreamEntryID Maximum() { return StreamEntryID{UINT64_MAX - 1, UINT64_MAX}; }
 };
 
 class NextStreamEntryIDGenerationStrategy {

@@ -479,6 +479,7 @@ jobs:
 
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
+        shell: bash
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
           tar -xzvf redis-6.2.14.tar.gz

@@ -1732,9 +1732,10 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
   std::unordered_set<std::string> consumer_names;
   StreamEntryID first_entry_id{StreamEntryID::Maximum()};
   StreamEntryID last_entry_id{StreamEntryID::Minimum()};
-  uint64_t count = 0;
+  uint64_t ext_result_count = 0;
+  uint64_t summary_result_count = 0;
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    if (options.with_count && options.count <= count) {
+    if (options.with_count && options.count <= ext_result_count) {
       break;
     }
     std::string tmp_group_name;
@@ -1757,9 +1758,9 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
       continue;
     }
 
-    ext_results.push_back({entry_id, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, consumer_name});
-
     if (options.with_count) {
+      ext_results.push_back({entry_id, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, consumer_name});
+      ext_result_count++;
       continue;
     }
     std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
@@ -1777,11 +1778,11 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
       consumer_names.insert(consumer_name);
       pending_infos.consumer_infos.emplace_back(consumer_name, consumer_metadata.pending_number);
     }
-    count++;
+    summary_result_count++;
   }
   pending_infos.last_entry_id = last_entry_id;
   pending_infos.first_entry_id = first_entry_id;
-  pending_infos.pending_number = count;
+  pending_infos.pending_number = summary_result_count;
   return rocksdb::Status::OK();
 }
 

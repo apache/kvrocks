@@ -645,7 +645,7 @@ struct JsonValue {
     } else if (origin.is_string() || origin.is_double()) {
       json_resps += redis::BulkString(origin.as_string());
     } else if (origin.is_bool()) {
-      json_resps += redis::SimpleString(std::string(origin.as_bool() ? "true" : "false"));
+      json_resps += redis::SimpleString(origin.as_bool() ? "true" : "false");
 
     } else if (origin.is_null()) {
       json_resps += redis::NilString(resp);
@@ -660,7 +660,7 @@ struct JsonValue {
     }
   }
 
-  StatusOr<std::string> JsonConvertResp(std::string_view path, redis::RESP resp) const {
+  StatusOr<std::string> ConvertToResp(std::string_view path, redis::RESP resp) const {
     std::string json_resps;
     int query_count = 0;
     try {
@@ -672,7 +672,7 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     if (path != "$") {
-      return redis::MultiLen(query_count) += json_resps;
+      return redis::MultiLen(query_count) + json_resps;
     }
     return json_resps;
   }

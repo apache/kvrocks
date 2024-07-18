@@ -653,7 +653,7 @@ rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path,
   auto s = read(ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 
-  auto json_resps = json_val.JsonConvertResp(path, resp);
+  auto json_resps = json_val.ConvertToResp(path, resp);
   if (!json_resps) return rocksdb::Status::InvalidArgument(json_resps.Msg());
   *results = std::move(*json_resps);
   return rocksdb::Status::OK();

@@ -31,8 +31,7 @@ class CommandEvalImpl : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if (evalsha && args_[1].size() != 40) {
-      *output = redis::Error(errNoMatchingScript);
-      return Status::OK();
+      return {Status::RedisNoScript, errNoMatchingScript};
     }
 
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
@@ -114,6 +113,14 @@ CommandKeyRange GetScriptEvalKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
 
   return {3, 2 + numkeys, 1};
+}
+
+uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &args) {
+  if (util::EqualICase(args[1], "load") || util::EqualICase(args[1], "flush")) {
+    return flags | kCmdWrite;
+  }
+
+  return flags;
 }
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),

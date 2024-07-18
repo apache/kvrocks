@@ -39,6 +39,7 @@
 
 #include "commands/commander.h"
 #include "config.h"
+#include "config/config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
@@ -52,7 +53,12 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage),
+      indexer(storage),
+      index_mgr(&indexer, storage),
+      start_time_secs_(util::GetTimeStamp()),
+      config_(config),
+      namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -150,6 +156,13 @@ Status Server::Start() {
     }
   }
 
+  if (!config_->cluster_enabled) {
+    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    for (auto [_, ns] : namespace_.List()) {
+      GET_OR_RET(index_mgr.Load(ns));
+    }
+  }
+
   if (config_->cluster_enabled) {
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
@@ -179,7 +192,7 @@ Status Server::Start() {
 
   compaction_checker_thread_ = GET_OR_RET(util::CreateThread("compact-check", [this] {
     uint64_t counter = 0;
-    time_t last_compact_date = 0;
+    int64_t last_compact_date = 0;
     CompactionChecker compaction_checker{this->storage};
 
     while (!stop_) {
@@ -191,21 +204,20 @@ Status Server::Start() {
       if (storage->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
-        auto now = static_cast<time_t>(util::GetTimeStamp());
-        std::tm local_time{};
-        localtime_r(&now, &local_time);
-        if (local_time.tm_hour >= config_->compaction_checker_range.start &&
-            local_time.tm_hour <= config_->compaction_checker_range.stop) {
-          std::vector<std::string> cf_names = {engine::kMetadataColumnFamilyName, engine::kSubkeyColumnFamilyName,
-                                               engine::kZSetScoreColumnFamilyName, engine::kStreamColumnFamilyName};
-          for (const auto &cf_name : cf_names) {
-            compaction_checker.PickCompactionFiles(cf_name);
+          && config_->compaction_checker_cron.IsEnabled()) {
+        auto t_now = static_cast<time_t>(util::GetTimeStamp());
+        std::tm now{};
+        localtime_r(&t_now, &now);
+        if (config_->compaction_checker_cron.IsTimeMatch(&now)) {
+          const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
+          for (auto &column_family : column_family_list) {
+            compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
-        if (now != 0 && last_compact_date != now / 86400) {
-          last_compact_date = now / 86400;
+        auto now_hours = t_now / 3600;
+        if (now_hours != 0 && last_compact_date != now_hours / 24) {
+          last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
         }
       }
@@ -344,9 +356,9 @@ void Server::CleanupExitedSlaves() {
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
-  auto now = util::GetTimeStampUS();
+  auto now_us = util::GetTimeStampUS();
   std::string output =
-      fmt::format("{}.{} [{} {}]", now / 1000000, now % 1000000, conn->GetNamespace(), conn->GetAddr());
+      fmt::format("{}.{} [{} {}]", now_us / 1000000, now_us % 1000000, conn->GetNamespace(), conn->GetAddr());
   for (const auto &token : tokens) {
     output += " \"";
     output += util::EscapeString(token);
@@ -674,7 +686,7 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
   }
 }
 
-void Server::updateCachedTime() { unix_time.store(util::GetTimeStamp()); }
+void Server::updateCachedTime() { unix_time_secs.store(util::GetTimeStamp()); }
 
 int Server::IncrClientNum() {
   total_clients_.fetch_add(1, std::memory_order_relaxed);
@@ -746,7 +758,7 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+      if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
@@ -754,6 +766,24 @@ void Server::cron() {
       if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
         Status s = AsyncBgSaveDB();
         LOG(INFO) << "[server] Schedule to bgsave the db, result: " << s.Msg();
+      }
+      if (config_->dbsize_scan_cron.IsEnabled() && config_->dbsize_scan_cron.IsTimeMatch(&now)) {
+        auto tokens = namespace_.List();
+        std::vector<std::string> namespaces;
+
+        // Number of namespaces (custom namespaces + default one)
+        namespaces.reserve(tokens.size() + 1);
+        for (auto &token : tokens) {
+          namespaces.emplace_back(token.second);  // namespace
+        }
+
+        // add default namespace as fallback
+        namespaces.emplace_back(kDefaultNamespace);
+
+        for (auto &ns : namespaces) {
+          Status s = AsyncScanDBSize(ns);
+          LOG(INFO) << "[server] Schedule to recalculate the db size on namespace: " << ns << ", result: " << s.Msg();
+        }
       }
     }
     // check every 10s
@@ -769,13 +799,14 @@ void Server::cron() {
 
     // No replica uses this checkpoint, we can remove it.
     if (counter != 0 && counter % 100 == 0) {
-      time_t create_time = storage->GetCheckpointCreateTime();
-      time_t access_time = storage->GetCheckpointAccessTime();
+      int64_t create_time_secs = storage->GetCheckpointCreateTimeSecs();
+      int64_t access_time_secs = storage->GetCheckpointAccessTimeSecs();
 
       if (storage->ExistCheckpoint()) {
         // TODO(shooterit): support to config the alive time of checkpoint
-        auto now = static_cast<time_t>(util::GetTimeStamp());
-        if ((GetFetchFileThreadNum() == 0 && now - access_time > 30) || (now - create_time > 24 * 60 * 60)) {
+        int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
+        if ((GetFetchFileThreadNum() == 0 && now_secs - access_time_secs > 30) ||
+            (now_secs - create_time_secs > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
             LOG(WARNING) << "[server] Fail to clean checkpoint, error: " << s.ToString();
@@ -792,8 +823,12 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      storage->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
+      auto s = storage->GetDB()->Resume();
+      if (s.ok()) {
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
+      } else {
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
+      }
       storage->SetDBInRetryableIOError(false);
     }
 
@@ -828,16 +863,26 @@ void Server::GetRocksDBInfo(std::string *info) {
   db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
 
   string_stream << "# RocksDB\r\n";
+
+  {
+    // All column families share the same block cache, so it's good to count a single one.
+    uint64_t block_cache_usage = 0;
+    uint64_t block_cache_pinned_usage = 0;
+    auto subkey_cf_handle = storage->GetCFHandle(ColumnFamilyID::PrimarySubkey);
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
+    string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
+    string_stream << "block_cache_pinned_usage[" << subkey_cf_handle->GetName() << "]:" << block_cache_pinned_usage
+                  << "\r\n";
+  }
+
   for (const auto &cf_handle : *storage->GetCFHandles()) {
-    uint64_t estimate_keys = 0, block_cache_usage = 0, block_cache_pinned_usage = 0, index_and_filter_cache_usage = 0;
+    uint64_t estimate_keys = 0;
+    uint64_t index_and_filter_cache_usage = 0;
     std::map<std::string, std::string> cf_stats_map;
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateNumKeys, &estimate_keys);
     string_stream << "estimate_keys[" << cf_handle->GetName() << "]:" << estimate_keys << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-usage", &block_cache_usage);
-    string_stream << "block_cache_usage[" << cf_handle->GetName() << "]:" << block_cache_usage << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage);
-    string_stream << "block_cache_pinned_usage[" << cf_handle->GetName() << "]:" << block_cache_pinned_usage << "\r\n";
-    db->GetIntProperty(cf_handle, "rocksdb.estimate-table-readers-mem", &index_and_filter_cache_usage);
+    db->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateTableReadersMem, &index_and_filter_cache_usage);
     string_stream << "index_and_filter_cache_usage[" << cf_handle->GetName() << "]:" << index_and_filter_cache_usage
                   << "\r\n";
     db->GetMapProperty(cf_handle, rocksdb::DB::Properties::kCFStats, &cf_stats_map);
@@ -935,9 +980,9 @@ void Server::GetServerInfo(std::string *info) {
   string_stream << "arch_bits:" << sizeof(void *) * 8 << "\r\n";
   string_stream << "process_id:" << getpid() << "\r\n";
   string_stream << "tcp_port:" << config_->port << "\r\n";
-  int64_t now = util::GetTimeStamp();
-  string_stream << "uptime_in_seconds:" << now - start_time_ << "\r\n";
-  string_stream << "uptime_in_days:" << (now - start_time_) / 86400 << "\r\n";
+  int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
+  string_stream << "uptime_in_seconds:" << now_secs - start_time_secs_ << "\r\n";
+  string_stream << "uptime_in_days:" << (now_secs - start_time_secs_) / 86400 << "\r\n";
   *info = string_stream.str();
 }
 
@@ -972,14 +1017,14 @@ void Server::GetReplicationInfo(std::string *info) {
   string_stream << "# Replication\r\n";
   string_stream << "role:" << (IsSlave() ? "slave" : "master") << "\r\n";
   if (IsSlave()) {
-    time_t now = util::GetTimeStamp();
+    int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
     string_stream << "master_host:" << master_host_ << "\r\n";
     string_stream << "master_port:" << master_port_ << "\r\n";
     ReplState state = GetReplicationState();
     string_stream << "master_link_status:" << (state == kReplConnected ? "up" : "down") << "\r\n";
     string_stream << "master_sync_unrecoverable_error:" << (state == kReplError ? "yes" : "no") << "\r\n";
     string_stream << "master_sync_in_progress:" << (state == kReplFetchMeta || state == kReplFetchSST) << "\r\n";
-    string_stream << "master_last_io_seconds_ago:" << now - replication_thread_->LastIOTime() << "\r\n";
+    string_stream << "master_last_io_seconds_ago:" << now_secs - replication_thread_->LastIOTimeSecs() << "\r\n";
     string_stream << "slave_repl_offset:" << storage->LatestSeqNumber() << "\r\n";
     string_stream << "slave_priority:" << config_->slave_priority << "\r\n";
   }
@@ -1063,15 +1108,15 @@ void Server::SetLastRandomKeyCursor(const std::string &cursor) {
 }
 
 int64_t Server::GetCachedUnixTime() {
-  if (unix_time.load() == 0) {
+  if (unix_time_secs.load() == 0) {
     updateCachedTime();
   }
-  return unix_time.load();
+  return unix_time_secs.load();
 }
 
 int64_t Server::GetLastBgsaveTime() {
   std::lock_guard<std::mutex> lg(db_job_mu_);
-  return last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_;
+  return last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_;
 }
 
 void Server::GetStatsInfo(std::string *info) {
@@ -1113,7 +1158,7 @@ void Server::GetCommandsStatsInfo(std::string *info) {
 
     auto latency = cmd_stat.second.latency.load();
     string_stream << "cmdstat_" << cmd_stat.first << ":calls=" << calls << ",usec=" << latency
-                  << ",usec_per_call=" << ((calls == 0) ? 0 : static_cast<float>(latency / calls)) << "\r\n";
+                  << ",usec_per_call=" << static_cast<float>(latency / calls) << "\r\n";
   }
 
   *info = string_stream.str();
@@ -1167,9 +1212,10 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     string_stream << "bgsave_in_progress:" << (is_bgsave_in_progress_ ? 1 : 0) << "\r\n";
-    string_stream << "last_bgsave_time:" << (last_bgsave_time_ == -1 ? start_time_ : last_bgsave_time_) << "\r\n";
+    string_stream << "last_bgsave_time:"
+                  << (last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_) << "\r\n";
     string_stream << "last_bgsave_status:" << last_bgsave_status_ << "\r\n";
-    string_stream << "last_bgsave_time_sec:" << last_bgsave_time_sec_ << "\r\n";
+    string_stream << "last_bgsave_time_sec:" << last_bgsave_duration_secs_ << "\r\n";
   }
 
   if (all || section == "stats") {
@@ -1226,8 +1272,11 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
           GetLatestKeyNumStats(ns, &stats);
     }
     
-    time_t last_scan_time = GetLastScanTime(ns);
-    tm last_scan_tm{};
+    //time_t last_scan_time = GetLastScanTime(ns);
+    //tm last_scan_tm{};
+    // FIXME(mwish): output still requires std::tm.
+    auto last_scan_time = static_cast<time_t>(GetLastScanTime(ns));
+    std::tm last_scan_tm{};
     localtime_r(&last_scan_time, &last_scan_tm);
 
     if (section_cnt++) string_stream << "\r\n";
@@ -1398,15 +1447,15 @@ Status Server::AsyncBgSaveDB() {
   is_bgsave_in_progress_ = true;
 
   return task_runner_.TryPublish([this] {
-    auto start_bgsave_time = util::GetTimeStamp();
+    auto start_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
     Status s = storage->CreateBackup();
-    auto stop_bgsave_time = util::GetTimeStamp();
+    auto stop_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
     is_bgsave_in_progress_ = false;
-    last_bgsave_time_ = start_bgsave_time;
+    last_bgsave_timestamp_secs_ = start_bgsave_time_secs;
     last_bgsave_status_ = s.IsOK() ? "ok" : "err";
-    last_bgsave_time_sec_ = stop_bgsave_time - start_bgsave_time;
+    last_bgsave_duration_secs_ = stop_bgsave_time_secs - start_bgsave_time_secs;
   });
 }
 
@@ -1441,7 +1490,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     std::lock_guard<std::mutex> lg(db_job_mu_);
 
     db_scan_infos_[ns].key_num_stats = stats;
-    db_scan_infos_[ns].last_scan_time = util::GetTimeStamp();
+    db_scan_infos_[ns].last_scan_time_secs = util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
   });
 }
@@ -1534,10 +1583,10 @@ void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   }
 }
 
-time_t Server::GetLastScanTime(const std::string &ns) {
+int64_t Server::GetLastScanTime(const std::string &ns) const {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
-    return iter->second.last_scan_time;
+    return iter->second.last_scan_time_secs;
   }
   return 0;
 }
@@ -1641,7 +1690,7 @@ StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const
   auto cmd = cmd_attr->factory();
   cmd->SetAttributes(cmd_attr);
 
-  return cmd;
+  return std::move(cmd);
 }
 
 Status Server::ScriptExists(const std::string &sha) {
@@ -1655,7 +1704,7 @@ Status Server::ScriptExists(const std::string &sha) {
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1670,7 +1719,7 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) const 
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1680,7 +1729,7 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1704,7 +1753,7 @@ void Server::ScriptReset() {
 }
 
 Status Server::ScriptFlush() {
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
@@ -2051,4 +2100,23 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
 
   return {};
+}
+
+AuthResult Server::AuthenticateUser(const std::string &user_password, std::string *ns) {
+  const auto &requirepass = GetConfig()->requirepass;
+  if (requirepass.empty()) {
+    return AuthResult::NO_REQUIRE_PASS;
+  }
+
+  auto get_ns = GetNamespace()->GetByToken(user_password);
+  if (get_ns.IsOK()) {
+    *ns = get_ns.GetValue();
+    return AuthResult::IS_USER;
+  }
+
+  if (user_password != requirepass) {
+    return AuthResult::INVALID_PASSWORD;
+  }
+  *ns = kDefaultNamespace;
+  return AuthResult::IS_ADMIN;
 }

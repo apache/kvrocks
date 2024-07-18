@@ -52,7 +52,7 @@ class Set : public SubKeyScanner {
                        const std::string &member_prefix, std::vector<std::string> *members);
 
  private:
-  rocksdb::Status GetMetadata(const Slice &ns_key, SetMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions options, const Slice &ns_key, SetMetadata *metadata);
 };
 
 }  // namespace redis

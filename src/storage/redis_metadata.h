@@ -49,7 +49,6 @@ enum RedisType : uint8_t {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
-  kRedisSearch = 11,
 };
 
 struct RedisTypes {
@@ -65,7 +64,7 @@ struct RedisTypes {
     return RedisTypes(types);
   }
 
-  bool Contains(RedisType type) { return types_[type]; }
+  bool Contains(RedisType type) const { return types_[type]; }
 
  private:
   using UnderlyingType = std::bitset<128>;
@@ -310,21 +309,6 @@ class JsonMetadata : public Metadata {
   JsonStorageFormat format = JsonStorageFormat::JSON;
 
   explicit JsonMetadata(bool generate_version = true) : Metadata(kRedisJson, generate_version) {}
-
-  void Encode(std::string *dst) const override;
-  rocksdb::Status Decode(Slice *input) override;
-};
-
-enum class SearchOnDataType : uint8_t {
-  HASH = kRedisHash,
-  JSON = kRedisJson,
-};
-
-class SearchMetadata : public Metadata {
- public:
-  SearchOnDataType on_data_type;
-
-  explicit SearchMetadata(bool generate_version = true) : Metadata(kRedisSearch, generate_version) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

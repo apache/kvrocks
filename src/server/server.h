@@ -44,6 +44,8 @@
 #include "commands/commander.h"
 #include "lua.hpp"
 #include "namespace.h"
+#include "search/index_manager.h"
+#include "search/indexer.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
@@ -56,7 +58,8 @@
 constexpr const char *REDIS_VERSION = "4.0.0";
 
 struct DBScanInfo {
-  time_t last_scan_time = 0;
+  // Last scan system clock in seconds
+  int64_t last_scan_time_secs = 0;
   KeyNumStats key_num_stats;
   bool is_scanning = false;
 };
@@ -138,6 +141,13 @@ enum ClientType {
 };
 
 enum ServerLogType { kServerLogNone, kReplIdLog };
+
+enum class AuthResult {
+  IS_USER,
+  IS_ADMIN,
+  INVALID_PASSWORD,
+  NO_REQUIRE_PASS,
+};
 
 class ServerLogData {
  public:
@@ -242,7 +252,7 @@ class Server {
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
-  time_t GetLastScanTime(const std::string &ns);
+  int64_t GetLastScanTime(const std::string &ns) const;
 
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
@@ -287,7 +297,7 @@ class Server {
   Stats stats;
   engine::Storage *storage;
   std::unique_ptr<Cluster> cluster;
-  static inline std::atomic<int64_t> unix_time = 0;
+  static inline std::atomic<int64_t> unix_time_secs = 0;
   std::unique_ptr<SlotMigrator> slot_migrator;
   std::unique_ptr<SlotImport> slot_import;
 
@@ -299,9 +309,15 @@ class Server {
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
   Namespace *GetNamespace() { return &namespace_; }
 
+  AuthResult AuthenticateUser(const std::string &user_password, std::string *ns);
+
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
 #endif
+
+  // search
+  redis::GlobalIndexer indexer;
+  redis::IndexManager index_mgr;
 
  private:
   void cron();
@@ -316,7 +332,7 @@ class Server {
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;
-  int64_t start_time_;
+  int64_t start_time_secs_;
   std::mutex slaveof_mu_;
   std::string master_host_;
   uint32_t master_port_ = 0;
@@ -346,9 +362,9 @@ class Server {
   std::mutex db_job_mu_;
   bool db_compacting_ = false;
   bool is_bgsave_in_progress_ = false;
-  int64_t last_bgsave_time_ = -1;
+  int64_t last_bgsave_timestamp_secs_ = -1;
   std::string last_bgsave_status_ = "ok";
-  int64_t last_bgsave_time_sec_ = -1;
+  int64_t last_bgsave_duration_secs_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
 

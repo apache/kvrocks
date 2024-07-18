@@ -102,6 +102,21 @@ inline bool GetFixed16(rocksdb::Slice *input, uint16_t *value) { return GetFixed
 inline bool GetFixed32(rocksdb::Slice *input, uint32_t *value) { return GetFixed(input, value); }
 inline bool GetFixed64(rocksdb::Slice *input, uint64_t *value) { return GetFixed(input, value); }
 
+inline void PutSizedString(std::string *dst, rocksdb::Slice value) {
+  PutFixed32(dst, value.size());
+  dst->append(value.ToStringView());
+}
+
+inline bool GetSizedString(rocksdb::Slice *input, rocksdb::Slice *value) {
+  uint32_t size = 0;
+  if (!GetFixed32(input, &size)) return false;
+
+  if (input->size() < size) return false;
+  *value = rocksdb::Slice(input->data(), size);
+  input->remove_prefix(size);
+  return true;
+}
+
 char *EncodeDouble(char *buf, double value);
 void PutDouble(std::string *dst, double value);
 double DecodeDouble(const char *ptr);

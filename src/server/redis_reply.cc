@@ -20,7 +20,17 @@
 
 #include "redis_reply.h"
 
+#include <map>
 #include <numeric>
+
+const std::map<Status::Code, std::string> redisErrorPrefixMapping = {
+    {Status::RedisErrorNoPrefix, ""},         {Status::RedisNoProto, "NOPROTO"},
+    {Status::RedisLoading, "LOADING"},        {Status::RedisMasterDown, "MASTERDOWN"},
+    {Status::RedisNoScript, "NOSCRIPT"},      {Status::RedisNoAuth, "NOAUTH"},
+    {Status::RedisWrongType, "WRONGTYPE"},    {Status::RedisReadOnly, "READONLY"},
+    {Status::RedisExecAbort, "EXECABORT"},    {Status::RedisMoved, "MOVED"},
+    {Status::RedisCrossSlot, "CROSSSLOT"},    {Status::RedisTryAgain, "TRYAGAIN"},
+    {Status::RedisClusterDown, "CLUSTERDOWN"}};
 
 namespace redis {
 
@@ -28,13 +38,25 @@ void Reply(evbuffer *output, const std::string &data) { evbuffer_add(output, dat
 
 std::string SimpleString(const std::string &data) { return "+" + data + CRLF; }
 
-std::string Error(const std::string &err) { return "-" + err + CRLF; }
+std::string Error(const Status &s) { return RESP_PREFIX_ERROR + StatusToRedisErrorMsg(s) + CRLF; }
+
+std::string StatusToRedisErrorMsg(const Status &s) {
+  CHECK(!s.IsOK());
+  std::string prefix = "ERR";
+  if (auto it = redisErrorPrefixMapping.find(s.GetCode()); it != redisErrorPrefixMapping.end()) {
+    prefix = it->second;
+  }
+  if (prefix.empty()) {
+    return s.Msg();
+  }
+  return prefix + " " + s.Msg();
+}
 
 std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
 
 std::string Array(const std::vector<std::string> &list) {
   size_t n = std::accumulate(list.begin(), list.end(), 0, [](size_t n, const std::string &s) { return n + s.size(); });
-  std::string result = "*" + std::to_string(list.size()) + CRLF;
+  std::string result = MultiLen(list.size());
   std::string::size_type final_size = result.size() + n;
   result.reserve(final_size);
   for (const auto &i : list) result += i;
@@ -42,7 +64,7 @@ std::string Array(const std::vector<std::string> &list) {
 }
 
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
-  std::string result = "*" + std::to_string(elems.size()) + CRLF;
+  std::string result = MultiLen(elems.size());
   for (const auto &elem : elems) {
     result += BulkString(elem);
   }

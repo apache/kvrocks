@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
@@ -31,8 +32,6 @@
 #include <jsoncons_ext/jsonpath/flatten.hpp>
 #include <jsoncons_ext/jsonpath/json_query.hpp>
 #include <jsoncons_ext/jsonpath/jsonpath_error.hpp>
-#include <jsoncons_ext/jsonpointer/jsonpointer.hpp>
-#include <jsoncons_ext/jsonpointer/jsonpointer_error.hpp>
 #include <jsoncons_ext/mergepatch/mergepatch.hpp>
 #include <limits>
 #include <string>
@@ -40,6 +39,7 @@
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
 #include "status.h"
+#include "storage/redis_metadata.h"
 
 template <class T>
 using Optionals = std::vector<std::optional<T>>;
@@ -151,9 +151,21 @@ struct JsonValue {
 
   Status Set(std::string_view path, JsonValue &&new_value) {
     try {
-      jsoncons::jsonpath::json_replace(value, path, [&new_value](const std::string & /*path*/, jsoncons::json &origin) {
-        origin = new_value.value;
-      });
+      bool is_set = false;
+      jsoncons::jsonpath::json_replace(value, path,
+                                       [&new_value, &is_set](const std::string & /*path*/, jsoncons::json &origin) {
+                                         origin = new_value.value;
+                                         is_set = true;
+                                       });
+
+      if (!is_set) {
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
+        // and in this workaround we can only accept normalized path
+        // refer to https://github.com/danielaparker/jsoncons/issues/496
+        jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
+
+        jsoncons::jsonpath::replace(value, location, new_value.value, true);
+      }
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
@@ -204,6 +216,30 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
+    return results;
+  }
+
+  StatusOr<std::vector<size_t>> GetBytes(std::string_view path, JsonStorageFormat format,
+                                         int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    std::vector<size_t> results;
+    Status s;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
+        if (!s) return;
+        std::string buffer;
+        JsonValue query_value(origin);
+        if (format == JsonStorageFormat::JSON) {
+          s = query_value.Dump(&buffer, max_nesting_depth);
+        } else if (format == JsonStorageFormat::CBOR) {
+          s = query_value.DumpCBOR(&buffer, max_nesting_depth);
+        }
+        results.emplace_back(buffer.size());
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    if (!s) return s;
+
     return results;
   }
 
@@ -413,17 +449,12 @@ struct JsonValue {
       bool not_exists = jsoncons::jsonpath::json_query(value, path).empty();
 
       if (not_exists) {
+        // NOTE: this is a workaround since jsonpath doesn't support replace for nonexistent paths in jsoncons
+        // and in this workaround we can only accept normalized path
+        // refer to https://github.com/danielaparker/jsoncons/issues/496
         jsoncons::jsonpath::json_location location = jsoncons::jsonpath::json_location::parse(path);
-        jsoncons::jsonpointer::json_pointer ptr{};
 
-        for (const auto &element : location) {
-          if (element.has_name())
-            ptr /= element.name();
-          else {
-            ptr /= element.index();
-          }
-        }
-        jsoncons::jsonpointer::replace(value, ptr, patch_value, true);
+        jsoncons::jsonpath::replace(value, location, patch_value, true);
 
         is_updated = true;
       } else if (path == json_root_path) {
@@ -442,8 +473,6 @@ struct JsonValue {
         jsoncons::jsonpath::remove(value, path);
         is_updated = true;
       }
-    } catch (const jsoncons::jsonpointer::jsonpointer_error &e) {
-      return {Status::NotOK, e.what()};
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     } catch (const jsoncons::ser_error &e) {
@@ -568,28 +597,29 @@ struct JsonValue {
         if (!status.IsOK()) {
           return;
         }
-        if (!origin.is_number()) {
+        // is_number() will return true
+        // if it's actually a string but can convert to a number
+        // so here we should exclude such case
+        if (!origin.is_number() || origin.is_string()) {
           result->value.push_back(jsoncons::json::null());
           return;
         }
-        if (number.value.is_double() || origin.is_double()) {
-          double v = 0;
-          if (op == NumOpEnum::Incr) {
-            v = origin.as_double() + number.value.as_double();
-          } else if (op == NumOpEnum::Mul) {
-            v = origin.as_double() * number.value.as_double();
-          }
-          if (std::isinf(v)) {
-            status = {Status::RedisExecErr, "result is an infinite number"};
-            return;
-          }
-          origin = v;
+        double v = 0;
+        if (op == NumOpEnum::Incr) {
+          v = origin.as_double() + number.value.as_double();
+        } else if (op == NumOpEnum::Mul) {
+          v = origin.as_double() * number.value.as_double();
+        }
+        if (std::isinf(v)) {
+          status = {Status::RedisExecErr, "the result is an infinite number"};
+          return;
+        }
+        double v_int = 0;
+        if (std::modf(v, &v_int) == 0 && double(std::numeric_limits<int64_t>::min()) < v &&
+            v < double(std::numeric_limits<int64_t>::max())) {
+          origin = int64_t(v);
         } else {
-          if (op == NumOpEnum::Incr) {
-            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
-          } else if (op == NumOpEnum::Mul) {
-            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
-          }
+          origin = v;
         }
         result->value.push_back(origin);
       });

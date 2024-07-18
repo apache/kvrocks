@@ -42,6 +42,9 @@
 #include "status.h"
 #include "storage/redis_metadata.h"
 
+constexpr const char *kDefaultDir = "/tmp/kvrocks";
+constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
+constexpr const char *kDefaultPidfile = "/tmp/kvrocks/kvrocks.pid";
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
 constexpr const char *errBlobDbNotEnabled = "Must set rocksdb.enable_blob_files to yes first.";
@@ -134,18 +137,20 @@ Config::Config() {
       {"slaveof", true, new StringField(&slaveof_, "")},
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
+      {"dbsize-scan-cron", false, new StringField(&dbsize_scan_cron_str_, "")},
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
+      {"compaction-checker-cron", false, new StringField(&compaction_checker_cron_str_, "")},
       {"force-compact-file-age", false, new Int64Field(&force_compact_file_age, 2 * 24 * 3600, 60, INT64_MAX)},
       {"force-compact-file-min-deleted-percentage", false,
        new IntField(&force_compact_file_min_deleted_percentage, 10, 1, 100)},
       {"db-name", true, new StringField(&db_name, "change.me.db")},
-      {"dir", true, new StringField(&dir, "/tmp/kvrocks")},
-      {"backup-dir", false, new StringField(&backup_dir_, "")},
+      {"dir", true, new StringField(&dir, kDefaultDir)},
+      {"backup-dir", false, new StringField(&backup_dir, kDefaultBackupDir)},
       {"log-dir", true, new StringField(&log_dir, "")},
       {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
-      {"pidfile", true, new StringField(&pidfile_, "")},
+      {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},
@@ -191,6 +196,7 @@ Config::Config() {
       {"rocksdb.compression", false,
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
+      {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
@@ -247,7 +253,7 @@ Config::Config() {
        new YesNoField(&rocks_db.write_options.memtable_insert_hint_per_batch, false)},
 
       /* rocksdb read options */
-      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, false)},
+      {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, true)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;
@@ -289,23 +295,26 @@ void Config::initFieldValidator() {
          std::vector<std::string> args = util::Split(v, " \t");
          return bgsave_cron.SetScheduleTime(args);
        }},
+      {"dbsize-scan-cron",
+       [this](const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> args = util::Split(v, " \t");
+         return dbsize_scan_cron.SetScheduleTime(args);
+       }},
       {"compaction-checker-range",
        [this](const std::string &k, const std::string &v) -> Status {
+         if (!compaction_checker_cron_str_.empty()) {
+           return {Status::NotOK, "compaction-checker-range cannot be set while compaction-checker-cron is set"};
+         }
          if (v.empty()) {
-           compaction_checker_range.start = -1;
-           compaction_checker_range.stop = -1;
+           compaction_checker_cron.Clear();
            return Status::OK();
          }
-         std::vector<std::string> args = util::Split(v, "-");
-         if (args.size() != 2) {
-           return {Status::NotOK, "invalid range format, the range should be between 0 and 24"};
-         }
-         auto start = GET_OR_RET(ParseInt<int>(args[0], {0, 24}, 10)),
-              stop = GET_OR_RET(ParseInt<int>(args[1], {0, 24}, 10));
-         if (start > stop) return {Status::NotOK, "invalid range format, start should be smaller than stop"};
-         compaction_checker_range.start = start;
-         compaction_checker_range.stop = stop;
-         return Status::OK();
+         return compaction_checker_cron.SetScheduleTime({"*", v, "*", "*", "*"});
+       }},
+      {"compaction-checker-cron",
+       [this](const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> args = util::Split(v, " \t");
+         return compaction_checker_cron.SetScheduleTime(args);
        }},
       {"rename-command",
        [](const std::string &k, const std::string &v) -> Status {
@@ -403,6 +412,8 @@ void Config::initFieldCallback() {
              checkpoint_dir = dir + "/checkpoint";
              sync_checkpoint_dir = dir + "/sync_checkpoint";
              backup_sync_dir = dir + "/backup_for_sync";
+             if (backup_dir == kDefaultBackupDir) backup_dir = dir + "/backup";
+             if (pidfile == kDefaultPidfile) pidfile = dir + "/kvrocks.pid";
              return Status::OK();
            }},
           {"backup-dir",
@@ -412,8 +423,8 @@ void Config::initFieldCallback() {
                // Note: currently, backup_mu_ may block by backing up or purging,
                //  the command may wait for seconds.
                std::lock_guard<std::mutex> lg(this->backup_mu);
-               previous_backup = std::move(backup_dir_);
-               backup_dir_ = v;
+               previous_backup = std::move(backup_dir);
+               backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
                // LOG(INFO) should be called after log is initialized and server is loaded.
@@ -727,7 +738,7 @@ void Config::ClearMaster() {
 
 Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
   std::string field_key = util::ToLower(input.first);
-  const char ns_str[] = "namespace.";
+  constexpr const char ns_str[] = "namespace.";
   size_t ns_str_size = sizeof(ns_str) - 1;
   if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
     // namespace should keep key case-sensitive
@@ -778,9 +789,7 @@ Status Config::finish() {
   if (master_port != 0 && binds.size() == 0) {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
-  if (backup_dir_.empty()) backup_dir_ = dir + "/backup";
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (pidfile_.empty()) pidfile_ = dir + "/kvrocks.pid";
   if (log_dir.empty()) log_dir = dir;
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {
@@ -876,11 +885,20 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
+  auto origin_value = field->ToString();
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
   if (field->callback) {
-    return field->callback(srv, key, value);
+    s = field->callback(srv, key, value);
+    if (!s.IsOK()) {
+      // rollback the value if the callback failed
+      auto set_status = field->Set(origin_value);
+      if (!set_status.IsOK()) {
+        return set_status.Prefixed("failed to rollback the value");
+      }
+    }
+    return s;
   }
 
   return Status::OK();

@@ -357,6 +357,12 @@ std::string EscapeString(std::string_view s) {
       case '\b':
         str += "\\b";
         break;
+      case '\v':
+        str += "\\v";
+        break;
+      case '\f':
+        str += "\\f";
+        break;
       default:
         if (isprint(ch)) {
           str += ch;
@@ -369,6 +375,16 @@ std::string EscapeString(std::string_view s) {
   }
 
   return str;
+}
+
+std::string StringNext(std::string s) {
+  for (auto iter = s.rbegin(); iter != s.rend(); ++iter) {
+    if (*iter != char(0xff)) {
+      (*iter)++;
+      break;
+    }
+  }
+  return s;
 }
 
 }  // namespace util

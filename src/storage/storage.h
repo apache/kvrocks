@@ -51,31 +51,25 @@ inline constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType::KVRO
 
 const int kReplIdLength = 16;
 
-enum ColumnFamilyID {
-  kColumnFamilyIDDefault = 0,
-  kColumnFamilyIDMetadata,
-  kColumnFamilyIDZSetScore,
-  kColumnFamilyIDPubSub,
-  kColumnFamilyIDPropagate,
-  kColumnFamilyIDStream,
-  kColumnFamilyIDSearch,
-};
-
 enum DBOpenMode {
   kDBOpenModeDefault,
   kDBOpenModeForReadOnly,
   kDBOpenModeAsSecondaryInstance,
 };
 
-namespace engine {
+enum class ColumnFamilyID : uint32_t {
+  PrimarySubkey = 0,
+  Metadata,
+  SecondarySubkey,
+  PubSub,
+  Propagate,
+  Stream,
+  Search,
+};
 
-constexpr const char *kPubSubColumnFamilyName = "pubsub";
-constexpr const char *kZSetScoreColumnFamilyName = "zset_score";
-constexpr const char *kMetadataColumnFamilyName = "metadata";
-constexpr const char *kSubkeyColumnFamilyName = "default";
-constexpr const char *kPropagateColumnFamilyName = "propagate";
-constexpr const char *kStreamColumnFamilyName = "stream";
-constexpr const char *kSearchColumnFamilyName = "search";
+constexpr uint32_t kMaxColumnFamilyID = static_cast<uint32_t>(ColumnFamilyID::Search);
+
+namespace engine {
 
 constexpr const char *kPropagateScriptCommand = "script";
 
@@ -122,6 +116,84 @@ struct DBStats {
   alignas(CACHE_LINE_SIZE) std::atomic<uint_fast64_t> keyspace_misses = 0;
 };
 
+class ColumnFamilyConfig {
+ public:
+  ColumnFamilyConfig(ColumnFamilyID id, std::string_view name, bool is_minor)
+      : id_(id), name_(name), is_minor_(is_minor) {}
+  ColumnFamilyID Id() const { return id_; }
+  std::string_view Name() const { return name_; }
+  bool IsMinor() const { return is_minor_; }
+
+ private:
+  ColumnFamilyID id_;
+  std::string_view name_;
+  bool is_minor_;
+};
+
+constexpr const std::string_view kPrimarySubkeyColumnFamilyName = "default";
+constexpr const std::string_view kMetadataColumnFamilyName = "metadata";
+constexpr const std::string_view kSecondarySubkeyColumnFamilyName = "zset_score";
+constexpr const std::string_view kPubSubColumnFamilyName = "pubsub";
+constexpr const std::string_view kPropagateColumnFamilyName = "propagate";
+constexpr const std::string_view kStreamColumnFamilyName = "stream";
+constexpr const std::string_view kSearchColumnFamilyName = "search";
+
+class ColumnFamilyConfigs {
+ public:
+  /// DefaultSubkeyColumnFamily is the default column family in rocksdb.
+  /// In kvrocks, we use it to store the data if metadata is not enough.
+  static ColumnFamilyConfig PrimarySubkeyColumnFamily() {
+    return {ColumnFamilyID::PrimarySubkey, kPrimarySubkeyColumnFamilyName, /*is_minor=*/false};
+  }
+
+  /// MetadataColumnFamily stores the metadata of data-structures.
+  static ColumnFamilyConfig MetadataColumnFamily() {
+    return {ColumnFamilyID::Metadata, kMetadataColumnFamilyName, /*is_minor=*/false};
+  }
+
+  /// SecondarySubkeyColumnFamily stores the score of zset or other secondary subkey.
+  /// See https://kvrocks.apache.org/community/data-structure-on-rocksdb#zset for more details.
+  static ColumnFamilyConfig SecondarySubkeyColumnFamily() {
+    return {ColumnFamilyID::SecondarySubkey, kSecondarySubkeyColumnFamilyName,
+            /*is_minor=*/true};
+  }
+
+  /// PubSubColumnFamily stores the pubsub data.
+  static ColumnFamilyConfig PubSubColumnFamily() {
+    return {ColumnFamilyID::PubSub, kPubSubColumnFamilyName, /*is_minor=*/true};
+  }
+
+  static ColumnFamilyConfig PropagateColumnFamily() {
+    return {ColumnFamilyID::Propagate, kPropagateColumnFamilyName, /*is_minor=*/true};
+  }
+
+  static ColumnFamilyConfig StreamColumnFamily() {
+    return {ColumnFamilyID::Stream, kStreamColumnFamilyName, /*is_minor=*/true};
+  }
+
+  static ColumnFamilyConfig SearchColumnFamily() {
+    return {ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true};
+  }
+
+  /// ListAllColumnFamilies returns all column families in kvrocks.
+  static const std::vector<ColumnFamilyConfig> &ListAllColumnFamilies() { return AllCfs; }
+
+  static const std::vector<ColumnFamilyConfig> &ListColumnFamiliesWithoutDefault() { return AllCfsWithoutDefault; }
+
+  static const ColumnFamilyConfig &GetColumnFamily(ColumnFamilyID id) { return AllCfs[static_cast<size_t>(id)]; }
+
+ private:
+  // Caution: don't change the order of column family, or the handle will be mismatched
+  inline const static std::vector<ColumnFamilyConfig> AllCfs = {
+      PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
+      PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
+  };
+  inline const static std::vector<ColumnFamilyConfig> AllCfsWithoutDefault = {
+      MetadataColumnFamily(),  SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
+      PropagateColumnFamily(), StreamColumnFamily(),          SearchColumnFamily(),
+  };
+};
+
 class Storage {
  public:
   explicit Storage(Config *config);
@@ -130,6 +202,7 @@ class Storage {
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
   Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
+  bool IsEmptyDB();
   void EmptyDB();
   rocksdb::BlockBasedTableOptions InitTableOptions();
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
@@ -162,12 +235,14 @@ class Storage {
   rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
 
   [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
-  const rocksdb::WriteOptions &DefaultWriteOptions() { return write_opts_; }
+  const rocksdb::WriteOptions &DefaultWriteOptions() { return default_write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
   [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
                                        const rocksdb::Slice &key);
-  [[nodiscard]] rocksdb::Status DeleteRange(const std::string &first_key, const std::string &last_key);
+  [[nodiscard]] rocksdb::Status DeleteRange(const rocksdb::WriteOptions &options,
+                                            rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end);
+  [[nodiscard]] rocksdb::Status DeleteRange(Slice begin, Slice end);
   [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
                                              rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
@@ -179,7 +254,7 @@ class Storage {
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
-  rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
+  /// Get the column family handle by the column family id.
   rocksdb::ColumnFamilyHandle *GetCFHandle(ColumnFamilyID id);
   std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
@@ -214,8 +289,10 @@ class Storage {
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);
     static Status CleanInvalidFiles(Storage *storage, const std::string &dir, std::vector<std::string> valid_files);
     struct CheckpointInfo {
-      std::atomic<time_t> create_time = 0;
-      std::atomic<time_t> access_time = 0;
+      // System clock time when the checkpoint was created.
+      std::atomic<int64_t> create_time_secs = 0;
+      // System clock time when the checkpoint was last accessed.
+      std::atomic<int64_t> access_time_secs = 0;
       uint64_t latest_seq = 0;
     };
 
@@ -237,9 +314,9 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
-  time_t GetCheckpointCreateTime() const { return checkpoint_info_.create_time; }
-  void SetCheckpointAccessTime(time_t t) { checkpoint_info_.access_time = t; }
-  time_t GetCheckpointAccessTime() const { return checkpoint_info_.access_time; }
+  int64_t GetCheckpointCreateTimeSecs() const { return checkpoint_info_.create_time_secs; }
+  void SetCheckpointAccessTimeSecs(int64_t t) { checkpoint_info_.access_time_secs = t; }
+  int64_t GetCheckpointAccessTimeSecs() const { return checkpoint_info_.access_time_secs; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
@@ -250,7 +327,8 @@ class Storage {
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
-  time_t backup_creating_time_;
+  // The system clock time when the backup was created.
+  int64_t backup_creating_time_secs_;
   std::unique_ptr<rocksdb::BackupEngine> backup_ = nullptr;
   rocksdb::Env *env_;
   std::shared_ptr<rocksdb::SstFileManager> sst_file_manager_;
@@ -278,7 +356,7 @@ class Storage {
   // command, so it won't have multi transactions to be executed at the same time.
   std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
-  rocksdb::WriteOptions write_opts_ = rocksdb::WriteOptions();
+  rocksdb::WriteOptions default_write_opts_ = rocksdb::WriteOptions();
 
   rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);

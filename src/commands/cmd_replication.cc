@@ -22,6 +22,7 @@
 #include "error_constants.h"
 #include "io_util.h"
 #include "scope_exit.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -101,7 +102,7 @@ class CommandPSync : public Commander {
     srv->stats.IncrPSyncOKCount();
     s = srv->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
-      std::string err = "-ERR " + s.Msg() + "\r\n";
+      std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
@@ -229,7 +230,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(srv->storage, &files);
       if (!s.IsOK()) {
-        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint", bev);
+        s = util::SockSend(repl_fd, redis::Error({Status::RedisErrorNoPrefix, "can't create db checkpoint"}), bev);
         if (!s.IsOK()) {
           LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
         }
@@ -242,8 +243,8 @@ class CommandFetchMeta : public Commander {
       } else {
         LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << strerror(errno);
       }
-      auto now = static_cast<time_t>(util::GetTimeStamp());
-      srv->storage->SetCheckpointAccessTime(now);
+      auto now_secs = static_cast<time_t>(util::GetTimeStamp());
+      srv->storage->SetCheckpointAccessTimeSecs(now_secs);
     }));
 
     if (auto s = util::ThreadDetach(t); !s) {
@@ -283,7 +284,7 @@ class CommandFetchFile : public Commander {
         if (srv->IsStopped()) break;
 
         uint64_t file_size = 0, max_replication_bytes = 0;
-        if (srv->GetConfig()->max_replication_mb > 0) {
+        if (srv->GetConfig()->max_replication_mb > 0 && srv->GetFetchFileThreadNum() != 0) {
           max_replication_bytes = (srv->GetConfig()->max_replication_mb * MiB) / srv->GetFetchFileThreadNum();
         }
         auto start = std::chrono::high_resolution_clock::now();
@@ -303,16 +304,18 @@ class CommandFetchFile : public Commander {
         // Sleep if the speed of sending file is more than replication speed limit
         auto end = std::chrono::high_resolution_clock::now();
         uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
-                                              static_cast<double>(max_replication_bytes) * (1000 * 1000));
-        if (max_replication_bytes > 0 && duration < shortest) {
-          LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
-                    << " ms since of sending files too quickly";
-          usleep(shortest - duration);
+        if (max_replication_bytes > 0) {
+          auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
+                                                static_cast<double>(max_replication_bytes) * (1000 * 1000));
+          if (duration < shortest) {
+            LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
+                      << " ms since of sending files too quickly";
+            usleep(shortest - duration);
+          }
         }
       }
-      auto now = static_cast<time_t>(util::GetTimeStamp());
-      srv->storage->SetCheckpointAccessTime(now);
+      auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
+      srv->storage->SetCheckpointAccessTimeSecs(now_secs);
       srv->DecrFetchFileThread();
     }));
 

@@ -96,6 +96,14 @@ TEST_F(RedisJsonTest, Set) {
   ASSERT_EQ(json_val_.Dump().GetValue(), "[{},[]]");
   ASSERT_THAT(json_->Set(key_, "$[1]", "invalid").ToString(), MatchesRegex(".*syntax_error.*"));
   ASSERT_TRUE(json_->Del(key_, "$", &result).ok());
+
+  ASSERT_TRUE(json_->Set(key_, "$", R"({"a":1})").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.b", "2").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.c", R"({"x":3})").ok());
+  ASSERT_TRUE(json_->Set(key_, "$.c.y", "4").ok());
+
+  ASSERT_TRUE(json_->Get(key_, {}, &json_val_).ok());
+  ASSERT_EQ(json_val_.value, jsoncons::json::parse(R"({"a":1,"b":2,"c":{"x":3,"y":4}})"));
 }
 
 TEST_F(RedisJsonTest, Get) {
@@ -612,7 +620,7 @@ TEST_F(RedisJsonTest, NumMultBy) {
   ASSERT_EQ(res.Print(0, true).GetValue(), "[2]");
   res.value.clear();
   ASSERT_TRUE(json_->NumMultBy(key_, "$.foo", "0.5", &res).ok());
-  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
   res.value.clear();
 
   ASSERT_TRUE(json_->NumMultBy(key_, "$.bar", "1", &res).ok());
@@ -626,7 +634,7 @@ TEST_F(RedisJsonTest, NumMultBy) {
   // num object
   ASSERT_TRUE(json_->Set(key_, "$", "1.0").ok());
   ASSERT_TRUE(json_->NumMultBy(key_, "$", "1", &res).ok());
-  ASSERT_EQ(res.Print(0, true).GetValue(), "[1.0]");
+  ASSERT_EQ(res.Print(0, true).GetValue(), "[1]");
   res.value.clear();
   ASSERT_TRUE(json_->NumMultBy(key_, "$", "1.5", &res).ok());
   ASSERT_EQ(res.Print(0, true).GetValue(), "[1.5]");

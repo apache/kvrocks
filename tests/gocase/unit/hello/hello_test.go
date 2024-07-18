@@ -38,7 +38,7 @@ func TestHello(t *testing.T) {
 
 	t.Run("hello with wrong protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "1")
-		require.ErrorContains(t, r.Err(), "-NOPROTO unsupported protocol version")
+		require.ErrorContains(t, r.Err(), "NOPROTO unsupported protocol version")
 	})
 
 	t.Run("hello with protocol 2", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestHello(t *testing.T) {
 
 	t.Run("hello with wrong protocol", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "5")
-		require.ErrorContains(t, r.Err(), "-NOPROTO unsupported protocol version")
+		require.ErrorContains(t, r.Err(), "NOPROTO unsupported protocol version")
 	})
 
 	t.Run("hello with non protocol", func(t *testing.T) {
@@ -114,12 +114,12 @@ func TestHelloWithAuth(t *testing.T) {
 
 	t.Run("AUTH fails when a wrong password is given", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "wrong!")
-		require.ErrorContains(t, r.Err(), "invalid password")
+		require.ErrorContains(t, r.Err(), "Invalid password")
 	})
 
 	t.Run("AUTH fails when a wrong username is given", func(t *testing.T) {
 		r := rdb.Do(ctx, "HELLO", "3", "AUTH", "wrong!", "foobar")
-		require.ErrorContains(t, r.Err(), "invalid password")
+		require.ErrorContains(t, r.Err(), "Invalid password")
 	})
 
 	t.Run("Arbitrary command gives an error when AUTH is required", func(t *testing.T) {

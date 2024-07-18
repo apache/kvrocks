@@ -38,8 +38,6 @@ Kvrocks has the following key features:
 * High Availability: Support Redis sentinel to failover when master or slave was failed.
 * Cluster: Centralized management but accessible via any Redis cluster client.
 
-Thanks to designers [Lingyu Tian](https://github.com/tianlingyu1997) and Shili Fan for contributing the logo of Kvrocks.
-
 ## Who uses Kvrocks
 
 You can find Kvrocks users at [the Users page](https://kvrocks.apache.org/users/).
@@ -113,6 +111,8 @@ $ docker run -it -p 6666:6666 apache/kvrocks --bind 0.0.0.0
 $ docker run -it -p 6666:6666 apache/kvrocks:nightly
 ```
 
+Please visit [Apache Kvrocks on DockerHub](https://hub.docker.com/r/apache/kvrocks) for additional details about images.
+
 ### Connect Kvrocks service
 
 ```sh
@@ -182,41 +182,6 @@ Documents are hosted at the [official website](https://kvrocks.apache.org/docs/g
 ## Contributing
 
 Kvrocks community welcomes all forms of contribution and you can find out how to get involved on the [Community](https://kvrocks.apache.org/community/) and [How to Contribute](https://kvrocks.apache.org/community/contributing) pages.
-
-## Performance
-
-### Hardware
-
-* CPU: 48 cores Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
-* Memory: 32 GiB
-* NET:  Intel Corporation I350 Gigabit Network Connection
-* DISK: 2TB NVMe Intel SSD DC P4600
-
-> Benchmark Client: multi-thread redis-benchmark(unstable branch)
-
-### 1. Commands QPS
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-commands.png)
-
-### 2. QPS on different payloads
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-values.png)
-
-### 3. QPS on different workers
-
-> kvrocks: workers = 16, benchmark: 8 threads/ 512 conns / 128 payload
-
-latency: 99.9% < 10ms
-
-![image](assets/chart-threads.png)
 
 ## License
 

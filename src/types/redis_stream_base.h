@@ -161,6 +161,27 @@ struct StreamXGroupCreateOptions {
   std::string last_id;
 };
 
+struct StreamClaimOptions {
+  uint64_t idle_time_ms = 0;
+  bool with_time = false;
+  bool with_retry_count = false;
+  bool force = false;
+  bool just_id = false;
+  bool with_last_id = false;
+  uint64_t last_delivery_time_ms;
+  uint64_t last_delivery_count;
+  StreamEntryID last_delivered_id;
+};
+
+struct StreamAutoClaimOptions {
+  uint64_t min_idle_time_ms;
+  uint64_t count = 100;
+  uint64_t attempts_factors = 10;
+  StreamEntryID start_id;
+  bool just_id = false;
+  bool exclude_start = false;
+};
+
 struct StreamConsumerGroupMetadata {
   uint64_t consumer_number = 0;
   uint64_t pending_number = 0;
@@ -171,8 +192,8 @@ struct StreamConsumerGroupMetadata {
 
 struct StreamConsumerMetadata {
   uint64_t pending_number = 0;
-  uint64_t last_idle;
-  uint64_t last_active;
+  uint64_t last_attempted_interaction_ms;
+  uint64_t last_successful_interaction_ms;
 };
 
 enum class StreamSubkeyType {
@@ -183,7 +204,7 @@ enum class StreamSubkeyType {
 };
 
 struct StreamPelEntry {
-  uint64_t last_delivery_time;
+  uint64_t last_delivery_time_ms;
   uint64_t last_delivery_count;
   std::string consumer_name;
 };
@@ -205,6 +226,17 @@ struct StreamReadResult {
 
   StreamReadResult(std::string name, std::vector<StreamEntry> result)
       : name(std::move(name)), entries(std::move(result)) {}
+};
+
+struct StreamClaimResult {
+  std::vector<std::string> ids;
+  std::vector<StreamEntry> entries;
+};
+
+struct StreamAutoClaimResult {
+  std::string next_claim_id;
+  std::vector<StreamEntry> entries;
+  std::vector<std::string> deleted_ids;
 };
 
 Status IncrementStreamEntryID(StreamEntryID *id);

@@ -311,7 +311,6 @@ class CommandClusterX : public Commander {
   std::string nodes_str_;
   std::string dst_node_id_;
   int64_t set_version_ = 0;
-  int64_t slot_ = -1;
   std::vector<SlotRange> slot_ranges_;
   bool force_ = false;
 

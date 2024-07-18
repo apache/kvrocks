@@ -31,7 +31,7 @@
 
 namespace redis {
 
-class HnswIndex;
+struct HnswIndex;
 
 struct HnswNode {
   using NodeKey = std::string;
@@ -51,7 +51,7 @@ struct HnswNode {
                       rocksdb::WriteBatchBase* batch) const;
   Status RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
                          rocksdb::WriteBatchBase* batch) const;
-  friend class HnswIndex;
+  friend struct HnswIndex;
 };
 
 struct VectorItem {

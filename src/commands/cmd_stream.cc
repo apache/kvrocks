@@ -1107,7 +1107,7 @@ class CommandXRead : public Commander,
       redis::StreamRangeOptions options;
       options.reverse = false;
       options.start = ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.end = StreamEntryID::Maximum();
       options.with_count = with_count_;
       options.count = count_;
       options.exclude_start = true;
@@ -1218,7 +1218,7 @@ class CommandXRead : public Commander,
       redis::StreamRangeOptions options;
       options.reverse = false;
       options.start = ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.end = StreamEntryID::Maximum();
       options.with_count = with_count_;
       options.count = count_;
       options.exclude_start = true;
@@ -1405,7 +1405,7 @@ class CommandXReadGroup : public Commander,
       redis::StreamRangeOptions options;
       options.reverse = false;
       options.start = ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.end = StreamEntryID::Maximum();
       options.with_count = with_count_;
       options.count = count_;
       options.exclude_start = true;
@@ -1510,7 +1510,7 @@ class CommandXReadGroup : public Commander,
       redis::StreamRangeOptions options;
       options.reverse = false;
       options.start = ids_[i];
-      options.end = StreamEntryID{UINT64_MAX, UINT64_MAX};
+      options.end = StreamEntryID::Maximum();
       options.with_count = with_count_;
       options.count = count_;
       options.exclude_start = true;

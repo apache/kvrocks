@@ -79,8 +79,8 @@ struct Desc : string<'d', 'e', 's', 'c'> {};
 struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
 struct WhereClause : seq<Where, QueryExpr> {};
-struct AscOrDesc : WSPad<sor<Asc, Desc>> {};
-struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<AscOrDesc>> {};
+struct AscOrDesc : sor<Asc, Desc> {};
+struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<WSPad<AscOrDesc>>> {};
 struct LimitClause : seq<Limit, opt<seq<WSPad<UnsignedInteger>, one<','>>>, WSPad<UnsignedInteger>> {};
 
 struct SearchStmt

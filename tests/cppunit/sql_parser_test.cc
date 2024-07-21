@@ -125,6 +125,7 @@ TEST(SQLParserTest, Simple) {
   AssertIR(Parse("select a from b limit 2, 3"), "select a from b where true limit 2, 3");
   AssertIR(Parse("select a from b order by a"), "select a from b where true sortby a, asc");
   AssertIR(Parse("select a from b order by c desc"), "select a from b where true sortby c, desc");
+  AssertIR(Parse("select a from b order by c desc limit 10"), "select a from b where true sortby c, desc limit 0, 10");
   AssertIR(Parse("select a from b order by a limit 10"), "select a from b where true sortby a, asc limit 0, 10");
   AssertIR(Parse("select a from b where c = 1 limit 10"), "select a from b where c = 1 limit 0, 10");
   AssertIR(Parse("select a from b where c = 1 and d hastag \"x\" order by e"),

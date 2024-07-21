@@ -370,8 +370,10 @@ class Storage {
 };
 
 /// Context passes fixed snapshot and batche between APIs
+///
 /// Limitations: Performing a large number of writes on the same Context may reduce performance.
 /// Please choose to use the same Context or create a new Context based on the actual situation.
+///
 /// Context does not provide thread safety guarantees and is generally only passed as a parameter between APIs.
 struct Context {
   engine::Storage *storage = nullptr;

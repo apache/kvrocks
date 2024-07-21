@@ -852,11 +852,11 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
   bool cross_slot_ok = false;
   if (script_run_ctx) {
     std::cout << "Check script_run_ctx\n";
-    if(script_run_ctx->current_slot != -1 && script_run_ctx->current_slot != slot) {
-      if(getNodeIDBySlot(script_run_ctx->current_slot) != getNodeIDBySlot(slot)) {
+    if (script_run_ctx->current_slot != -1 && script_run_ctx->current_slot != slot) {
+      if (getNodeIDBySlot(script_run_ctx->current_slot) != getNodeIDBySlot(slot)) {
         return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
       }
-      if(!(script_run_ctx->flags & lua::ScriptFlags::kScriptAllowCrossSlotKeys)) {
+      if (!(script_run_ctx->flags & lua::ScriptFlags::kScriptAllowCrossSlotKeys)) {
         return {Status::RedisCrossSlot, "Script attempted to access keys that do not hash to the same slot"};
       }
     }
@@ -902,8 +902,8 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
       conn->IsFlagEnabled(redis::Connection::kReadOnly)) {
     return Status::OK();  // My master is serving this slot
   }
-  
-  if(!cross_slot_ok) {
+
+  if (!cross_slot_ok) {
     return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
   }
 

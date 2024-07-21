@@ -225,8 +225,8 @@ T *GetFromRegistry(lua_State *lua, const char *name) {
 
   /* must be light user data */
   CHECK(lua_islightuserdata(lua, -1));
-  auto *ptr = static_cast<T*>(lua_touserdata(lua, -1));
-  
+  auto *ptr = static_cast<T *>(lua_touserdata(lua, -1));
+
   CHECK_NOTNULL(ptr);
 
   /* pops the value */

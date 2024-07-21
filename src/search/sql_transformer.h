@@ -133,8 +133,7 @@ struct Transformer : ir::TreeTransformer {
       }
 
       return Node::Create<ir::LimitClause>(offset, count);
-    }
-    if (Is<OrderByClause>(node)) {
+    } else if (Is<OrderByClause>(node)) {
       CHECK(node->children.size() == 1 || node->children.size() == 2);
 
       auto field = std::make_unique<FieldRef>(node->children[0]->string());

@@ -432,8 +432,8 @@ struct SearchExpr : Node {
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<SearchExpr>(
         Node::MustAs<IndexRef>(index->Clone()), Node::MustAs<QueryExpr>(query_expr->Clone()),
-        Node::MustAs<LimitClause>(limit->Clone()), Node::MustAs<SortByClause>(sort_by->Clone()),
-        Node::MustAs<SelectClause>(select->Clone()));
+        limit ? Node::MustAs<LimitClause>(limit->Clone()) : nullptr,
+        sort_by ? Node::MustAs<SortByClause>(sort_by->Clone()) : nullptr, Node::MustAs<SelectClause>(select->Clone()));
   }
 };
 

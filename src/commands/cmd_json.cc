@@ -693,7 +693,7 @@ class CommandJsonResp : public Commander {
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (path == "$") {
+    if (args_.size() == 2) {
       output->append(results.back());
     } else {
       output->append(MultiLen(results.size()));

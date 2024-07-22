@@ -669,7 +669,9 @@ func TestJson(t *testing.T) {
 		resultarray1 = append(resultarray1, "[", nil, "white")
 		resultarray2 = append(resultarray2, "[", int64(80), int64(100), int64(120))
 		result = append(result, "{", "colors", resultarray1, "connection", resultobject1, "description", "Wireless Bluetooth in-ear headphones", "max_level", resultarray2, "name", "Wireless earbuds", "price", "64.99", "stock", int64(17))
-		require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
+		require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2").Val())
+		require.Equal(t, []interface{}{result}, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
+
 		//array
 		require.Equal(t, []interface{}{resultarray1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.colors").Val())
 		//object
@@ -688,6 +690,8 @@ func TestJson(t *testing.T) {
 
 		//key no_exists
 		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists", "$").Err(), redis.Nil)
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists").Err(), redis.Nil)
+
 		//have key no find
 		require.Equal(t, make([]interface{}, 0), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
 

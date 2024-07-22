@@ -184,7 +184,7 @@ Config::Config() {
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
-      {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
+      {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},

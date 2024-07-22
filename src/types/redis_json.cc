@@ -646,7 +646,8 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, std::string *results, RESP resp) {
+rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, std::vector<std::string> *results,
+                           RESP resp) {
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
   JsonValue json_val;

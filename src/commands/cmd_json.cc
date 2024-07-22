@@ -685,7 +685,7 @@ class CommandJsonResp : public Commander {
     } else if (args_.size() > 3) {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
-    std::string results;
+    std::vector<std::string> results;
     auto s = json.Resp(args_[1], path, &results, conn->GetProtocolVersion());
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -693,7 +693,14 @@ class CommandJsonResp : public Commander {
     }
 
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    output->append(results);
+    if (path == "$") {
+      output->append(results.back());
+    } else {
+      output->append(MultiLen(results.size()));
+      for (const auto &result : results) {
+        output->append(result);
+      }
+    }
     return Status::OK();
   }
 };

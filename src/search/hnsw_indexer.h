@@ -119,8 +119,8 @@ struct HnswIndex {
   Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   StatusOr<std::vector<KeyWithDistance>> KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) const;
   StatusOr<std::vector<KeyWithDistance>> ExpandSearchScope(const kqir::NumericArray& query_vector,
-                                                                std::vector<redis::KeyWithDistance>&& initial_keys,
-                                                                std::unordered_set<std::string>& visited) const;
+                                                           std::vector<redis::KeyWithDistance>&& initial_keys,
+                                                           std::unordered_set<std::string>& visited) const;
 };
 
 }  // namespace redis

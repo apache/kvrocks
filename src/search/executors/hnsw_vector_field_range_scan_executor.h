@@ -70,6 +70,10 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
       row_keys_iter = row_keys.begin();
     }
 
+    if (row_keys_iter->first > scan->range * (1 + field_metadata.epsilon)) {
+      return end;
+    }
+
     auto key_str = row_keys_iter->second;
     row_keys_iter++;
     visited.insert(key_str);

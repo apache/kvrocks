@@ -584,14 +584,15 @@ StatusOr<std::vector<KeyWithDistance>> HnswIndex::KnnSearch(const kqir::NumericA
   uint32_t result_length = std::min(k, static_cast<uint32_t>(nearest_vec_with_distance.size()));
   std::vector<KeyWithDistance> nearest_neighbours;
   for (uint32_t result_idx = 0; result_idx < result_length; result_idx++) {
-    nearest_neighbours.emplace_back(nearest_vec_with_distance[result_idx].first, std::move(nearest_vec_with_distance[result_idx].second.key));
+    nearest_neighbours.emplace_back(nearest_vec_with_distance[result_idx].first,
+                                    std::move(nearest_vec_with_distance[result_idx].second.key));
   }
   return nearest_neighbours;
 }
 
 StatusOr<std::vector<KeyWithDistance>> HnswIndex::ExpandSearchScope(const kqir::NumericArray& query_vector,
-                                                                std::vector<redis::KeyWithDistance>&& initial_keys,
-                                                                std::unordered_set<std::string>& visited) const {
+                                                                    std::vector<redis::KeyWithDistance>&& initial_keys,
+                                                                    std::unordered_set<std::string>& visited) const {
   constexpr uint16_t level = 0;
   VectorItem query_vector_item;
   GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));

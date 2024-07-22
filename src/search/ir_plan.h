@@ -105,14 +105,31 @@ struct HnswVectorFieldKnnScan : FieldScan {
       : FieldScan(std::move(field)), vector(std::move(vector)), k(k) {}
 
   std::string_view Name() const override { return "HnswVectorFieldKnnScan"; };
-  std::string Content() const override { return kqir::MakeValue<kqir::NumericArray>(vector).ToString(); };
-  std::string Dump() const override {
-    return fmt::format("hnsw-vector-knn-scan {}, {}", field->name,
-                       kqir::MakeValue<kqir::NumericArray>(vector).ToString());
-  }
+  std::string Content() const override {
+    return fmt::format("[{}], {}", util::StringJoin(vector, [](auto v) { return std::to_string(v); }), k);
+  };
+  std::string Dump() const override { return fmt::format("hnsw-vector-knn-scan {}, {}", field->name, Content()); }
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<HnswVectorFieldKnnScan>(field->CloneAs<FieldRef>(), vector, k);
+  }
+};
+
+struct HnswVectorFieldRangeScan : FieldScan {
+  kqir::NumericArray vector;
+  uint32_t range;
+
+  HnswVectorFieldRangeScan(std::unique_ptr<FieldRef> field, kqir::NumericArray vector, uint32_t range)
+      : FieldScan(std::move(field)), vector(std::move(vector)), range(range) {}
+
+  std::string_view Name() const override { return "HnswVectorFieldRangeScan"; };
+  std::string Content() const override {
+    return fmt::format("[{}], {}", util::StringJoin(vector, [](auto v) { return std::to_string(v); }), range);
+  };
+  std::string Dump() const override { return fmt::format("hnsw-vector-range-scan {}, {}", field->name, Content()); }
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<HnswVectorFieldRangeScan>(field->CloneAs<FieldRef>(), vector, range);
   }
 };
 

@@ -275,14 +275,13 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SelectNeighbors(const VectorItem& v
   return selected_vs;
 }
 
-StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const VectorItem& target_vector,
-                                                         uint32_t ef_runtime,
-                                                         const std::vector<NodeKey>& entry_points) const {
-  std::vector<VectorItem> candidates;
+StatusOr<std::vector<VectorItemWithDistance>> HnswIndex::SearchLayerInternal(
+    uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
+    const std::vector<NodeKey>& entry_points) const {
+  std::vector<VectorItemWithDistance> result;
   std::unordered_set<NodeKey> visited;
-  std::priority_queue<std::pair<double, VectorItem>, std::vector<std::pair<double, VectorItem>>, std::greater<>>
-      explore_heap;
-  std::priority_queue<std::pair<double, VectorItem>> result_heap;
+  std::priority_queue<VectorItemWithDistance, std::vector<VectorItemWithDistance>, std::greater<>> explore_heap;
+  std::priority_queue<VectorItemWithDistance> result_heap;
 
   for (const auto& entry_point_key : entry_points) {
     HnswNode entry_node = HnswNode(entry_point_key, level);
@@ -330,13 +329,25 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
     }
   }
 
+  result.resize(result_heap.size());
+  auto idx = result_heap.size() - 1;
   while (!result_heap.empty()) {
-    candidates.push_back(result_heap.top().second);
+    result[idx] = result_heap.top();
     result_heap.pop();
+    idx--;
   }
+  return result;
+}
 
-  std::reverse(candidates.begin(), candidates.end());
-  return candidates;
+StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const VectorItem& target_vector,
+                                                         uint32_t ef_runtime,
+                                                         const std::vector<NodeKey>& entry_points) const {
+  std::vector<VectorItem> result;
+  auto result_with_distance = GET_OR_RET(SearchLayerInternal(level, target_vector, ef_runtime, entry_points));
+  for (auto& [_, vector_item] : result_with_distance) {
+    result.push_back(std::move(vector_item));
+  }
+  return result;
 }
 
 Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
@@ -481,14 +492,12 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
   return Status::OK();
 }
 
-// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 Status HnswIndex::InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
   auto target_level = RandomizeLayer();
   return InsertVectorEntryInternal(key, vector, batch, target_level);
 }
 
-// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   std::string node_key(key);
   for (uint16_t level = 0; level < metadata->num_levels; level++) {
@@ -551,11 +560,9 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
   return Status::OK();
 }
 
-// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
-StatusOr<std::vector<std::string>> HnswIndex::KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) {
+StatusOr<std::vector<KeyWithDistance>> HnswIndex::KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) const {
   VectorItem query_vector_item;
   GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));
-  uint32_t effective_ef = std::max(metadata->ef_runtime, k);  // Ensure ef_runtime is at least k
 
   if (metadata->num_levels == 0) {
     return {Status::NotFound, fmt::format("No vector found in the HNSW index")};
@@ -567,17 +574,57 @@ StatusOr<std::vector<std::string>> HnswIndex::KnnSearch(const kqir::NumericArray
   std::vector<VectorItem> nearest_vec_items;
 
   for (; level > 0; level--) {
-    nearest_vec_items = GET_OR_RET(SearchLayer(level, query_vector_item, effective_ef, entry_points));
+    nearest_vec_items = GET_OR_RET(SearchLayer(level, query_vector_item, metadata->ef_runtime, entry_points));
     entry_points = {nearest_vec_items[0].key};
   }
-  nearest_vec_items = GET_OR_RET(SearchLayer(0, query_vector_item, effective_ef, entry_points));
 
-  uint32_t result_length = std::min(k, static_cast<uint32_t>(nearest_vec_items.size()));
-  std::vector<std::string> nearest_neighbours_key(result_length);
+  uint32_t effective_ef = std::max(metadata->ef_runtime, k);  // Ensure ef_runtime is at least k
+  auto nearest_vec_with_distance = GET_OR_RET(SearchLayerInternal(0, query_vector_item, effective_ef, entry_points));
+
+  uint32_t result_length = std::min(k, static_cast<uint32_t>(nearest_vec_with_distance.size()));
+  std::vector<KeyWithDistance> nearest_neighbours;
   for (uint32_t result_idx = 0; result_idx < result_length; result_idx++) {
-    nearest_neighbours_key[result_idx] = std::move(nearest_vec_items[result_idx].key);
+    nearest_neighbours.emplace_back(nearest_vec_with_distance[result_idx].first, std::move(nearest_vec_with_distance[result_idx].second.key));
   }
-  return nearest_neighbours_key;
+  return nearest_neighbours;
+}
+
+StatusOr<std::vector<KeyWithDistance>> HnswIndex::ExpandSearchScope(const kqir::NumericArray& query_vector,
+                                                                std::vector<redis::KeyWithDistance>&& initial_keys,
+                                                                std::unordered_set<std::string>& visited) const {
+  constexpr uint16_t level = 0;
+  VectorItem query_vector_item;
+  GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));
+  std::vector<KeyWithDistance> result;
+
+  while (!initial_keys.empty()) {
+    auto current_key = initial_keys.front().second;
+    initial_keys.erase(initial_keys.begin());
+
+    auto current_node = HnswNode(current_key, level);
+    current_node.DecodeNeighbours(search_key, storage);
+
+    for (const auto& neighbour_key : current_node.neighbours) {
+      if (visited.find(neighbour_key) != visited.end()) {
+        continue;
+      }
+      visited.insert(neighbour_key);
+
+      auto neighbour_node = HnswNode(neighbour_key, level);
+      auto neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(search_key, storage));
+
+      VectorItem neighbour_node_vector;
+      GET_OR_RET(VectorItem::Create(neighbour_key, std::move(neighbour_node_metadata.vector), metadata,
+                                    &neighbour_node_vector));
+
+      auto dist = GET_OR_RET(ComputeSimilarity(query_vector_item, neighbour_node_vector));
+      result.emplace_back(dist, std::move(neighbour_key));
+    }
+  }
+  std::sort(result.begin(), result.end(),
+            [](const KeyWithDistance& a, const KeyWithDistance& b) { return a.first < b.first; });
+
+  return result;
 }
 
 }  // namespace redis

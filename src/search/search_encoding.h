@@ -371,7 +371,6 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
   double epsilon = 0.01;           // Relative factor setting search boundaries in range queries
   uint16_t num_levels = 0;         // Number of levels in the HNSW graph
 
-  // TODO: Initialize with required fields?
   HnswVectorFieldMetadata() : IndexFieldMetadata(IndexFieldType::VECTOR) {}
 
   void Encode(std::string *dst) const override {

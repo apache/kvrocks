@@ -34,8 +34,8 @@
 
 namespace kqir {
 
-struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
-  HnswVectorFieldKnnScan *scan;
+struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
+  HnswVectorFieldRangeScan *scan;
   redis::LatestSnapShot ss;
   bool initialized = false;
 
@@ -44,9 +44,10 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   redis::HnswVectorFieldMetadata field_metadata;
   redis::HnswIndex hnsw_index;
   std::vector<redis::KeyWithDistance> row_keys;
+  std::unordered_set<std::string> visited;
   decltype(row_keys)::iterator row_keys_iter;
 
-  HnswVectorFieldKnnScanExecutor(ExecutorContext *ctx, HnswVectorFieldKnnScan *scan)
+  HnswVectorFieldRangeScanExecutor(ExecutorContext *ctx, HnswVectorFieldRangeScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
         ss(ctx->storage),
@@ -58,17 +59,20 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   StatusOr<Result> Next() override {
     if (!initialized) {
       // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
-      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->k));
+      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->range));
       row_keys_iter = row_keys.begin();
       initialized = true;
     }
 
     if (row_keys_iter == row_keys.end()) {
-      return end;
+      row_keys = GET_OR_RET(hnsw_index.ExpandSearchScope(scan->vector, std::move(row_keys), visited));
+      if (row_keys.empty()) return end;
+      row_keys_iter = row_keys.begin();
     }
 
     auto key_str = row_keys_iter->second;
     row_keys_iter++;
+    visited.insert(key_str);
     return RowType{key_str, {}, scan->field->info->index};
   }
 };

@@ -31,6 +31,14 @@
 #include "search/value.h"
 #include "storage/storage.h"
 
+auto GetVectorKeys(std::vector<redis::KeyWithDistance>&& keys_by_dist) -> std::vector<std::string> {
+  std::vector<std::string> result;
+  for (auto&& [dist, key] : keys_by_dist) {
+    result.push_back(key);
+  }
+  return result;
+}
+
 struct HnswIndexTest : TestBase {
   redis::HnswVectorFieldMetadata metadata;
   std::string ns = "hnsw_test_ns";
@@ -693,7 +701,7 @@ TEST_F(HnswIndexTest, KnnSearch) {
   // Search when HNSW graph contains less than k nodes
   auto s3 = hnsw_index->KnnSearch(query_vector, k);
   ASSERT_TRUE(s3.IsOK());
-  auto key_strs = s3.GetValue();
+  auto key_strs = GetVectorKeys(std::move(s3.GetValue()));
   std::vector<std::string> expected = {"key1"};
   EXPECT_EQ(key_strs, expected);
 
@@ -716,7 +724,7 @@ TEST_F(HnswIndexTest, KnnSearch) {
   // Search when HNSW graph contains exactly k nodes
   auto s6 = hnsw_index->KnnSearch(query_vector, k);
   ASSERT_TRUE(s6.IsOK());
-  key_strs = s6.GetValue();
+  key_strs = GetVectorKeys(std::move(s6.GetValue()));
   expected = {"key3", "key2", "key1"};
   EXPECT_EQ(key_strs, expected);
 
@@ -739,7 +747,7 @@ TEST_F(HnswIndexTest, KnnSearch) {
   // Search when HNSW graph contains more than k nodes
   auto s9 = hnsw_index->KnnSearch(query_vector, k);
   ASSERT_TRUE(s9.IsOK());
-  key_strs = s9.GetValue();
+  key_strs = GetVectorKeys(std::move(s9.GetValue()));
   expected = {"key5", "key3", "key2"};
   EXPECT_EQ(key_strs, expected);
 
@@ -747,7 +755,7 @@ TEST_F(HnswIndexTest, KnnSearch) {
   hnsw_index->metadata->ef_runtime = 1;
   auto s10 = hnsw_index->KnnSearch(query_vector, k);
   ASSERT_TRUE(s10.IsOK());
-  key_strs = s10.GetValue();
+  key_strs = GetVectorKeys(std::move(s10.GetValue()));
   expected = {"key5", "key3", "key2"};
   EXPECT_EQ(key_strs, expected);
 }

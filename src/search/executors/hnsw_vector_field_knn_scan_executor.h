@@ -34,6 +34,7 @@
 
 namespace kqir {
 
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   HnswVectorFieldKnnScan *scan;
   redis::LatestSnapShot ss;
@@ -57,7 +58,6 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
       row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->k));
       row_keys_iter = row_keys.begin();
       initialized = true;

@@ -34,6 +34,7 @@
 
 namespace kqir {
 
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
   HnswVectorFieldRangeScan *scan;
   redis::LatestSnapShot ss;
@@ -58,8 +59,7 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
-      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->range));
+      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, field_metadata.ef_runtime));
       row_keys_iter = row_keys.begin();
       initialized = true;
     }
@@ -70,7 +70,8 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
       row_keys_iter = row_keys.begin();
     }
 
-    if (row_keys_iter->first > scan->range * (1 + field_metadata.epsilon)) {
+    auto effective_range = scan->range * (1 + field_metadata.epsilon);
+    if (row_keys_iter->first > abs(effective_range) || row_keys_iter->first < -abs(effective_range)) {
       return end;
     }
 

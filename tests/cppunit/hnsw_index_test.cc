@@ -31,9 +31,9 @@
 #include "search/value.h"
 #include "storage/storage.h"
 
-auto GetVectorKeys(std::vector<redis::KeyWithDistance>&& keys_by_dist) -> std::vector<std::string> {
+auto GetVectorKeys(const std::vector<redis::KeyWithDistance>& keys_by_dist) -> std::vector<std::string> {
   std::vector<std::string> result;
-  for (auto&& [dist, key] : keys_by_dist) {
+  for (const auto& [dist, key] : keys_by_dist) {
     result.push_back(key);
   }
   return result;
@@ -436,9 +436,9 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   InsertEntryIntoHnswIndex(key4, vec4, target_level, hnsw_index.get(), storage_.get());
 
   redis::HnswNode node4_layer0(key4, 0);
-  auto s11 = node4_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
-  ASSERT_TRUE(s11.IsOK());
-  redis::HnswNodeFieldMetadata node4_layer0_meta = s11.GetValue();
+  auto s1 = node4_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
+  ASSERT_TRUE(s1.IsOK());
+  redis::HnswNodeFieldMetadata node4_layer0_meta = s1.GetValue();
   EXPECT_EQ(node4_layer0_meta.num_neighbours, 3);
 
   VerifyNodeMetadataAndNeighbours(&node1_layer1, hnsw_index.get(), {"n2", "n3", "n4"});
@@ -460,8 +460,8 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
 
   // Delete n2
   auto batch = storage_->GetWriteBatchBase();
-  auto s22 = hnsw_index->DeleteVectorEntry(key2, batch);
-  ASSERT_TRUE(s22.IsOK());
+  auto s2 = hnsw_index->DeleteVectorEntry(key2, batch);
+  ASSERT_TRUE(s2.IsOK());
   s = storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
@@ -472,14 +472,14 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   decoded_metadata.Decode(&value);
   ASSERT_TRUE(decoded_metadata.num_levels == 3);
 
-  auto s23 = node2_layer3.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
-  EXPECT_TRUE(!s23.IsOK());
-  auto s24 = node2_layer2.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
-  EXPECT_TRUE(!s24.IsOK());
-  auto s25 = node2_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
-  EXPECT_TRUE(!s25.IsOK());
-  auto s26 = node2_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
-  EXPECT_TRUE(!s26.IsOK());
+  auto s3 = node2_layer3.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
+  EXPECT_TRUE(!s3.IsOK());
+  auto s4 = node2_layer2.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
+  EXPECT_TRUE(!s4.IsOK());
+  auto s5 = node2_layer1.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
+  EXPECT_TRUE(!s5.IsOK());
+  auto s6 = node2_layer0.DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
+  EXPECT_TRUE(!s6.IsOK());
 
   VerifyNodeMetadataAndNeighbours(&node3_layer2, hnsw_index.get(), {});
   VerifyNodeMetadataAndNeighbours(&node1_layer1, hnsw_index.get(), {"n3", "n4"});
@@ -494,6 +494,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
 }
 
 TEST_F(HnswIndexTest, SearchKnnAndRange) {
+  hnsw_index->metadata->m = 3;
   std::vector<double> query_vector = {31.0, 32.0, 23.0};
   uint32_t k = 3;
   auto s1 = hnsw_index->KnnSearch(query_vector, k);
@@ -508,57 +509,89 @@ TEST_F(HnswIndexTest, SearchKnnAndRange) {
   std::vector<double> vec6 = {10.0, 9.0, 8.0};
   std::vector<double> vec7 = {7.0, 6.0, 5.0};
   std::vector<double> vec8 = {36.0, 37.0, 38.0};
+  std::vector<double> vec9 = {39.0, 40.0, 41.0};
+  std::vector<double> vec10 = {42.0, 43.0, 44.0};
+  std::vector<double> vec11 = {2.0, 3.0, 4.0};
+  std::vector<double> vec12 = {4.0, 5.0, 6.0};
 
   std::string key1 = "key1";
   std::string key2 = "key2";
   std::string key3 = "key3";
   std::string key4 = "key4";
   std::string key5 = "key5";
-  std::string key6 = "key5";
-  std::string key7 = "key5";
-  std::string key8 = "key5";
+  std::string key6 = "key6";
+  std::string key7 = "key7";
+  std::string key8 = "key8";
+  std::string key9 = "key9";
+  std::string key10 = "key10";
+  std::string key11 = "key11";
+  std::string key12 = "key12";
 
   uint16_t target_level = 1;
   InsertEntryIntoHnswIndex(key1, vec1, target_level, hnsw_index.get(), storage_.get());
 
   // Search when HNSW graph contains less than k nodes
-  auto s3 = hnsw_index->KnnSearch(query_vector, k);
-  ASSERT_TRUE(s3.IsOK());
-  auto key_strs = GetVectorKeys(std::move(s3.GetValue()));
+  auto s2 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s2.IsOK());
+  auto key_strs = GetVectorKeys(s2.GetValue());
   std::vector<std::string> expected = {"key1"};
   EXPECT_EQ(key_strs, expected);
 
   target_level = 2;
   InsertEntryIntoHnswIndex(key2, vec2, target_level, hnsw_index.get(), storage_.get());
-
   target_level = 0;
   InsertEntryIntoHnswIndex(key3, vec3, target_level, hnsw_index.get(), storage_.get());
 
   // Search when HNSW graph contains exactly k nodes
-  auto s6 = hnsw_index->KnnSearch(query_vector, k);
-  ASSERT_TRUE(s6.IsOK());
-  key_strs = GetVectorKeys(std::move(s6.GetValue()));
+  auto s3 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s3.IsOK());
+  key_strs = GetVectorKeys(s3.GetValue());
   expected = {"key3", "key2", "key1"};
   EXPECT_EQ(key_strs, expected);
 
   target_level = 1;
   InsertEntryIntoHnswIndex(key4, vec4, target_level, hnsw_index.get(), storage_.get());
-
   target_level = 0;
   InsertEntryIntoHnswIndex(key5, vec5, target_level, hnsw_index.get(), storage_.get());
 
   // Search when HNSW graph contains more than k nodes
-  auto s9 = hnsw_index->KnnSearch(query_vector, k);
-  ASSERT_TRUE(s9.IsOK());
-  key_strs = GetVectorKeys(std::move(s9.GetValue()));
+  auto s4 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s4.IsOK());
+  key_strs = GetVectorKeys(s4.GetValue());
   expected = {"key5", "key3", "key2"};
   EXPECT_EQ(key_strs, expected);
 
   // Edge case: If ef_runtime is smaller than k, enlarge ef_runtime equal to k
   hnsw_index->metadata->ef_runtime = 1;
-  auto s10 = hnsw_index->KnnSearch(query_vector, k);
-  ASSERT_TRUE(s10.IsOK());
-  key_strs = GetVectorKeys(std::move(s10.GetValue()));
+  auto s5 = hnsw_index->KnnSearch(query_vector, k);
+  ASSERT_TRUE(s5.IsOK());
+  auto result = s5.GetValue();
+  key_strs = GetVectorKeys(result);
   expected = {"key5", "key3", "key2"};
+  EXPECT_EQ(key_strs, expected);
+
+  hnsw_index->metadata->ef_runtime = 5;
+  InsertEntryIntoHnswIndex(key6, vec6, target_level, hnsw_index.get(), storage_.get());
+  InsertEntryIntoHnswIndex(key7, vec7, target_level, hnsw_index.get(), storage_.get());
+  InsertEntryIntoHnswIndex(key8, vec8, target_level, hnsw_index.get(), storage_.get());
+  InsertEntryIntoHnswIndex(key9, vec9, target_level, hnsw_index.get(), storage_.get());
+  target_level = 1;
+  InsertEntryIntoHnswIndex(key10, vec10, target_level, hnsw_index.get(), storage_.get());
+  InsertEntryIntoHnswIndex(key11, vec11, target_level, hnsw_index.get(), storage_.get());
+  target_level = 2;
+  InsertEntryIntoHnswIndex(key12, vec12, target_level, hnsw_index.get(), storage_.get());
+
+  std::unordered_set<std::string> visited{key_strs.begin(), key_strs.end()};
+  auto s6 = hnsw_index->ExpandSearchScope(query_vector, std::move(result), visited);
+  ASSERT_TRUE(s6.IsOK());
+  result = s6.GetValue();
+  key_strs = GetVectorKeys(result);
+  expected = {"key8", "key9", "key10", "key4", "key1", "key6", "key7", "key12"};
+  EXPECT_EQ(key_strs, expected);
+
+  auto s7 = hnsw_index->ExpandSearchScope(query_vector, std::move(result), visited);
+  ASSERT_TRUE(s7.IsOK());
+  key_strs = GetVectorKeys(s7.GetValue());
+  expected = {"key11"};
   EXPECT_EQ(key_strs, expected);
 }

@@ -64,13 +64,14 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
       initialized = true;
     }
 
-    if (row_keys_iter == row_keys.end()) {
+    auto effective_range = scan->range * (1 + field_metadata.epsilon);
+    if (row_keys_iter == row_keys.end() || row_keys_iter->first > abs(effective_range) ||
+        row_keys_iter->first < -abs(effective_range)) {
       row_keys = GET_OR_RET(hnsw_index.ExpandSearchScope(scan->vector, std::move(row_keys), visited));
       if (row_keys.empty()) return end;
       row_keys_iter = row_keys.begin();
     }
 
-    auto effective_range = scan->range * (1 + field_metadata.epsilon);
     if (row_keys_iter->first > abs(effective_range) || row_keys_iter->first < -abs(effective_range)) {
       return end;
     }

@@ -38,6 +38,7 @@
 
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
+#include "server/redis_reply.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 
@@ -627,6 +628,51 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     return status;
+  }
+  static void TransformResp(const jsoncons::json &origin, std::string &json_resp, redis::RESP resp) {
+    if (origin.is_object()) {
+      json_resp += redis::MultiLen(origin.size() * 2 + 1);
+      json_resp += redis::SimpleString("{");
+
+      for (const auto &json_kv : origin.object_range()) {
+        json_resp += redis::BulkString(json_kv.key());
+        TransformResp(json_kv.value(), json_resp, resp);
+      }
+
+    } else if (origin.is_int64() || origin.is_uint64()) {
+      json_resp += redis::Integer(origin.as_integer<int64_t>());
+
+    } else if (origin.is_string() || origin.is_double()) {
+      json_resp += redis::BulkString(origin.as_string());
+    } else if (origin.is_bool()) {
+      json_resp += redis::SimpleString(origin.as_bool() ? "true" : "false");
+
+    } else if (origin.is_null()) {
+      json_resp += redis::NilString(resp);
+
+    } else if (origin.is_array()) {
+      json_resp += redis::MultiLen(origin.size() + 1);
+      json_resp += redis::SimpleString("[");
+
+      for (const auto &json_array_value : origin.array_range()) {
+        TransformResp(json_array_value, json_resp, resp);
+      }
+    }
+  }
+
+  StatusOr<std::vector<std::string>> ConvertToResp(std::string_view path, redis::RESP resp) const {
+    std::vector<std::string> json_resps;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
+        std::string json_resp;
+        TransformResp(origin, json_resp, resp);
+        json_resps.emplace_back(json_resp);
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return json_resps;
   }
 
   JsonValue(const JsonValue &) = default;

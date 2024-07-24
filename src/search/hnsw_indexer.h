@@ -78,6 +78,10 @@ struct VectorItem {
 
 StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& right);
 
+using VectorItemWithDistance = std::pair<double, VectorItem>;
+using KeyWithDistance = std::pair<double, std::string>;
+
+// TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 struct HnswIndex {
   using NodeKey = HnswNode::NodeKey;
 
@@ -103,6 +107,9 @@ struct HnswIndex {
 
   StatusOr<std::vector<VectorItem>> SelectNeighbors(const VectorItem& vec, const std::vector<VectorItem>& vectors,
                                                     uint16_t layer) const;
+  StatusOr<std::vector<VectorItemWithDistance>> SearchLayerInternal(uint16_t level, const VectorItem& target_vector,
+                                                                    uint32_t ef_runtime,
+                                                                    const std::vector<NodeKey>& entry_points) const;
   StatusOr<std::vector<VectorItem>> SearchLayer(uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
                                                 const std::vector<NodeKey>& entry_points) const;
   Status InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
@@ -110,6 +117,10 @@ struct HnswIndex {
   Status InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
   Status DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
+  StatusOr<std::vector<KeyWithDistance>> KnnSearch(const kqir::NumericArray& query_vector, uint32_t k) const;
+  StatusOr<std::vector<KeyWithDistance>> ExpandSearchScope(const kqir::NumericArray& query_vector,
+                                                           std::vector<redis::KeyWithDistance>&& initial_keys,
+                                                           std::unordered_set<std::string>& visited) const;
 };
 
 }  // namespace redis

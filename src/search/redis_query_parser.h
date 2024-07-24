@@ -32,12 +32,16 @@ using namespace peg;
 
 struct Field : seq<one<'@'>, Identifier> {};
 
-struct Tag : sor<Identifier, StringL> {};
+struct Param : seq<one<'$'>, Identifier> {};
+
+struct Tag : sor<Identifier, StringL, Param> {};
 struct TagList : seq<one<'{'>, WSPad<Tag>, star<seq<one<'|'>, WSPad<Tag>>>, one<'}'>> {};
 
+struct NumberOrParam : sor<Number, Param> {};
+
 struct Inf : seq<opt<one<'+', '-'>>, string<'i', 'n', 'f'>> {};
-struct ExclusiveNumber : seq<one<'('>, Number> {};
-struct NumericRangePart : sor<Inf, ExclusiveNumber, Number> {};
+struct ExclusiveNumber : seq<one<'('>, NumberOrParam> {};
+struct NumericRangePart : sor<Inf, ExclusiveNumber, NumberOrParam> {};
 struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangePart>, one<']'>> {};
 
 struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<TagList, NumericRange>>> {};

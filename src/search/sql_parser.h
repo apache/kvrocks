@@ -30,10 +30,14 @@ namespace sql {
 
 using namespace peg;
 
-struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
-struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, StringL>> {};
+struct Param : seq<one<'@'>, Identifier> {};
+struct StringOrParam : sor<StringL, Param> {};
+struct NumberOrParam : sor<Number, Param> {};
 
-struct NumericAtomExpr : WSPad<sor<Number, Identifier>> {};
+struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
+struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, StringOrParam>> {};
+
+struct NumericAtomExpr : WSPad<sor<NumberOrParam, Identifier>> {};
 struct NumericCompareOp : sor<string<'!', '='>, string<'<', '='>, string<'>', '='>, one<'=', '<', '>'>> {};
 struct NumericCompareExpr : seq<NumericAtomExpr, NumericCompareOp, NumericAtomExpr> {};
 

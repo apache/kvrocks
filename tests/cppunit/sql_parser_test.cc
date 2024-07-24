@@ -21,11 +21,15 @@
 #include <gtest/gtest.h>
 #include <search/sql_transformer.h>
 
+#include "search/common_transformer.h"
+#include "search/value.h"
 #include "tao/pegtl/string_input.hpp"
 
 using namespace kqir::sql;
 
-static auto Parse(const std::string& in) { return ParseToIR(string_input(in, "test")); }
+static auto Parse(const std::string& in, const kqir::ParamMap& pm = {}) {
+  return ParseToIR(string_input(in, "test"), pm);
+}
 
 #define AssertSyntaxError(node) ASSERT_EQ(node.Msg(), "invalid syntax");  // NOLINT
 
@@ -132,4 +136,13 @@ TEST(SQLParserTest, Simple) {
            "select a from b where (and c = 1, d hastag \"x\") sortby e, asc");
   AssertIR(Parse("select a from b where c = 1 or d hastag \"x\" and 2 <= e order by e asc limit 0, 10"),
            "select a from b where (or c = 1, (and d hastag \"x\", e >= 2)) sortby e, asc limit 0, 10");
+}
+
+TEST(SQLParserTest, Params) {
+  AssertIR(Parse("select a from b where c = @what", {{"what", "1"}}), "select a from b where c = 1");
+  AssertIR(Parse("select a from b where @x = c", {{"x", "2"}}), "select a from b where c = 2");
+  AssertIR(Parse("select a from b where c hastag @y", {{"y", "hello"}}), "select a from b where c hastag \"hello\"");
+  AssertIR(Parse("select a from b where c hastag @y and @zzz = d", {{"y", "hello"}, {"zzz", "3"}}),
+           "select a from b where (and c hastag \"hello\", d = 3)");
+  ASSERT_EQ(Parse("select a from b where c hastag @y", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
 }

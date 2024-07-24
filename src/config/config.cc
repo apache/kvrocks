@@ -187,6 +187,7 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, false)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
+      {"proto-max-bulk-len", false, new UInt64Field(&proto_max_bulk_len, 512 * MiB, 1 * MiB, UINT64_MAX)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},

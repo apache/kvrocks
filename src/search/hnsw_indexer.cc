@@ -619,7 +619,7 @@ StatusOr<std::vector<KeyWithDistance>> HnswIndex::ExpandSearchScope(const kqir::
                                     &neighbour_node_vector));
 
       auto dist = GET_OR_RET(ComputeSimilarity(query_vector_item, neighbour_node_vector));
-      result.emplace_back(dist, std::move(neighbour_key));
+      result.emplace_back(dist, neighbour_key);
     }
   }
   std::sort(result.begin(), result.end(),

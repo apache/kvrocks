@@ -33,6 +33,7 @@
 
 auto GetVectorKeys(const std::vector<redis::KeyWithDistance>& keys_by_dist) -> std::vector<std::string> {
   std::vector<std::string> result;
+  result.reserve(keys_by_dist.size());
   for (const auto& [dist, key] : keys_by_dist) {
     result.push_back(key);
   }
@@ -49,7 +50,7 @@ void InsertEntryIntoHnswIndex(std::string_view key, const kqir::NumericArray& ve
 }
 
 void VerifyNodeMetadataAndNeighbours(redis::HnswNode* node, redis::HnswIndex* hnsw_index,
-                                     std::unordered_set<std::string> expected_set) {
+                                     const std::unordered_set<std::string>& expected_set) {
   auto s = node->DecodeMetadata(hnsw_index->search_key, hnsw_index->storage);
   ASSERT_TRUE(s.IsOK());
   auto node_meta = s.GetValue();

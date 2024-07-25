@@ -29,10 +29,12 @@
 
 inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
 inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";
+inline constexpr const char REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX[] = "__redis_registered_flags_";
 inline constexpr const char REDIS_LUA_SERVER_PTR[] = "__server_ptr";
 inline constexpr const char REDIS_FUNCTION_LIBNAME[] = "REDIS_FUNCTION_LIBNAME";
 inline constexpr const char REDIS_FUNCTION_NEEDSTORE[] = "REDIS_FUNCTION_NEEDSTORE";
-inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LIBRARIES";
+inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LxIBRARIES";
+inline constexpr const char REGISTRY_SCRIPT_RUN_CTX_NAME[] = "SCRIPT_RUN_CTX";
 
 namespace lua {
 
@@ -101,7 +103,13 @@ void SHA1Hex(char *digest, const char *script, size_t len);
 int RedisMathRandom(lua_State *l);
 int RedisMathRandomSeed(lua_State *l);
 
-// TODO 注释，默认值，uint=>int
+/// ScriptFlags turn on/off constraints or indicate properties in Eval scripts and functions
+///
+/// Note: The default for Eval scripts are different than the default for functions(default is 0).
+/// As soon as Redis sees the #! comment, it'll treat the script as if it declares flags, even if no flags are defined,
+/// it still has a different set of defaults compared to a script without a #! line.
+/// Another difference is that scripts without #! can run commands that access keys belonging to different cluster hash
+/// slots, but ones with #! inherit the default flags, so they cannot.
 enum ScriptFlags : uint64_t {
   kScriptNoWrites = 1ULL << 0,            // "no-writes" flag
   kScriptAllowOom = 1ULL << 1,            // "allow-oom" flag
@@ -110,97 +118,18 @@ enum ScriptFlags : uint64_t {
   kScriptAllowCrossSlotKeys = 1ULL << 4,  // "allow-cross-slot-keys" flag
 };
 
-class ShebangParser {
- public:
-  ShebangParser(const std::string &shebang) : shebang_(shebang) {}
+[[nodiscard]] Status ExtractLibNameFromShebang(const std::string &shebang, std::string &libname);
+[[nodiscard]] Status ExtractFlagsFromShebang(const std::string &shebang, uint64_t &flags);
 
-  [[nodiscard]] Status Parse() {
-    std::cout << "Start Parse\n";
-    static constexpr const char *shebang_prefix = "#!lua";
-    static constexpr const char *shebang_libname_prefix = "name=";
-    static constexpr const char *shebang_flags_prefix = "flags=";
-
-    if (!util::HasPrefix(shebang_, shebang_prefix)) {
-      return {Status::NotOK, "Expect shebang prefix \"#!lua\" at the beginning of the first line"};
-    }
-    auto shebang_content = shebang_.substr(strlen(shebang_prefix));
-    for (const auto &shebang_split : util::Split(shebang_content, " ")) {
-      std::cout << shebang_split << std::endl;
-      if (util::HasPrefix(shebang_split, shebang_libname_prefix)) {
-        if (!libname_.empty()) {
-          // TODO 已经有了
-          return {Status::NotOK, "Expect a valid library name in the Shebang statement"};
-        }
-        libname_ = shebang_split.substr(strlen(shebang_libname_prefix));
-        if (libname_.empty() ||
-            std::any_of(libname_.begin(), libname_.end(), [](char v) { return !std::isalnum(v) && v != '_'; })) {
-          return {Status::NotOK, "Expect a valid library name in the Shebang statement"};
-        }
-      } else if (util::HasPrefix(shebang_split, shebang_flags_prefix)) {
-        auto flags = shebang_split.substr(strlen(shebang_flags_prefix));
-        for (const auto &flag : util::Split(flags, ",")) {
-          if (flag == "no-writes") {
-            flags_ |= kScriptNoWrites;
-          } else if (flag == "allow-oom") {
-            return {Status::NotSupported, "allow-oom is not supported yet"};
-          } else if (flag == "allow-stale") {
-            return {Status::NotSupported, "allow-stale is not supported yet"};
-          } else if (flag == "no-cluster") {
-            flags_ |= kScriptNoCluster;
-          } else if (flag == "allow-cross-slot-keys") {
-            flags_ |= kScriptAllowCrossSlotKeys;
-          } else {
-            return {Status::NotOK, "Unexpected flag in script shebang: " + flag};
-          }
-        }
-      } else {
-        return {Status::NotOK, "Expect a valid Shebang statement"};
-      }
-    }
-    return Status::OK();
-  }
-
-  [[nodiscard]] uint64_t GetFlags() const { return flags_; }
-  [[nodiscard]] std::string GetLibName() const { return libname_; }
-
- private:
-  uint64_t flags_ = 0;
-  std::string libname_;
-  std::string shebang_;
-};
-
-inline constexpr const char *REGISTRY_SCRIPT_RUN_CTX_NAME = "SCRIPT_RUN_CTX";
-// TODO 注释
+/// ScriptRunCtx is used to record context information during the running of Eval scripts and functions.
 struct ScriptRunCtx {
+  // ScriptFlags
   uint64_t flags = 0;
+  // current_slot tracks the slot currently accessed by the script
+  // and is used to detect whether there is cross-slot access
+  // between multiple commands in a script or function.
   int current_slot = -1;
 };
-
-static void stackDump(lua_State *L) {
-  int top = lua_gettop(L);
-  for (auto i = top; i >= 1; i--) { /* repeat for each level */
-    int t = lua_type(L, i);
-    printf("%d: ", i);
-    switch (t) {
-      case LUA_TSTRING: /* strings */
-        printf("`%s'", lua_tostring(L, i));
-        break;
-
-      case LUA_TBOOLEAN: /* booleans */
-        printf(lua_toboolean(L, i) ? "true" : "false");
-        break;
-
-      case LUA_TNUMBER: /* numbers */
-        printf("%g", lua_tonumber(L, i));
-        break;
-      default: /* other values */
-        printf("%s", lua_typename(L, t));
-        break;
-    }
-    printf("\n"); /* put a separator */
-  }
-  printf("\n"); /* end the listing */
-}
 
 template <typename T>
 void SaveOnRegistry(lua_State *lua, const char *name, T *ptr) {
@@ -219,17 +148,18 @@ T *GetFromRegistry(lua_State *lua, const char *name) {
   lua_gettable(lua, LUA_REGISTRYINDEX);
 
   if (lua_isnil(lua, -1)) {
-    lua_pop(lua, 1); /* pops the value */
+    // pops the value
+    lua_pop(lua, 1);
     return nullptr;
   }
 
-  /* must be light user data */
+  // must be light user data
   CHECK(lua_islightuserdata(lua, -1));
   auto *ptr = static_cast<T *>(lua_touserdata(lua, -1));
 
   CHECK_NOTNULL(ptr);
 
-  /* pops the value */
+  // pops the value
   lua_pop(lua, 1);
 
   return ptr;

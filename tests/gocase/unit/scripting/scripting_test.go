@@ -480,6 +480,7 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 
 	t.Run("EVALSHA_RO - cannot run write commands", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+		// sha1 of `redis.call('del', KEYS[1]);`
 		r := rdb.Do(ctx, "EVALSHA_RO", "a1e63e1cd1bd1d5413851949332cfb9da4ee6dc0", "1", "foo")
 		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
 	})
@@ -708,7 +709,7 @@ func TestEvalScriptFlags(t *testing.T) {
 			`#!lua flags=allow-cross-slot-keys
 		redis.call('set', 'foo','value_foo');
 		return redis.call('set', 'bar', 'value_bar');`, "0")
-		util.ErrorRegexp(t, r.Err(), "ERR .* MOVED *")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
 
 		// There is a shebang prefix #!lua but crossslot is not allowed when flags are not set
 		r = rdb0.Do(ctx, "EVAL",
@@ -721,7 +722,7 @@ func TestEvalScriptFlags(t *testing.T) {
 			`#!lua
 		redis.call('get', 'foo');
 		return redis.call('get', 'bar');`, "0")
-		util.ErrorRegexp(t, r.Err(), "ERR .* MOVED *")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
 
 		// Old style: CrossSlot is allowed when there is neither #!lua nor flags set
 		r = rdb0.Do(ctx, "EVAL",
@@ -732,9 +733,9 @@ func TestEvalScriptFlags(t *testing.T) {
 		r = rdb0.Do(ctx, "EVAL",
 			`redis.call('get', 'foo');
 		return redis.call('get', 'bar');`, "0")
-		util.ErrorRegexp(t, r.Err(), "ERR .* MOVED *")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
 
-		// Pre-declared keys are not affected by Arlo-Cross-Slot-Keyes
+		// Pre-declared keys are not affected by allow-cross-slot-keys
 		r = rdb0.Do(ctx, "EVAL",
 			`#!lua flags=allow-cross-slot-keys
 		local key = redis.call('get', KEY[1]);
@@ -783,6 +784,7 @@ func TestEvalScriptFlags(t *testing.T) {
 			`#!lua flags=no-writes,allow-cross-slot-keys
 		redis.call('get', 'bar');
 		return redis.call('get', 'foo');`, "0")
-		util.ErrorRegexp(t, r.Err(), "ERR .* MOVED *")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
+
 	})
 }

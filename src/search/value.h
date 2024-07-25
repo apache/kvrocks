@@ -40,8 +40,8 @@ using String = std::string;  // e.g. a single tag
 using NumericArray = std::vector<Numeric>;  // used for vector fields
 using StringArray = std::vector<String>;    // used for tag fields, e.g. a list for tags
 
-struct Value : std::variant<Null, Numeric, StringArray, NumericArray> {
-  using Base = std::variant<Null, Numeric, StringArray, NumericArray>;
+struct Value : std::variant<Null, Numeric, String, StringArray, NumericArray> {
+  using Base = std::variant<Null, Numeric, String, StringArray, NumericArray>;
 
   using Base::Base;
 
@@ -50,6 +50,11 @@ struct Value : std::variant<Null, Numeric, StringArray, NumericArray> {
   template <typename T>
   bool Is() const {
     return std::holds_alternative<T>(*this);
+  }
+
+  template <typename T>
+  bool IsOrNull() const {
+    return Is<T>() || IsNull();
   }
 
   template <typename T>
@@ -69,6 +74,8 @@ struct Value : std::variant<Null, Numeric, StringArray, NumericArray> {
       return "";
     } else if (Is<Numeric>()) {
       return fmt::format("{}", Get<Numeric>());
+    } else if (Is<String>()) {
+      return Get<String>();
     } else if (Is<StringArray>()) {
       return util::StringJoin(
           Get<StringArray>(), [](const auto &v) -> decltype(auto) { return v; }, sep);
@@ -85,6 +92,8 @@ struct Value : std::variant<Null, Numeric, StringArray, NumericArray> {
       return "";
     } else if (Is<Numeric>()) {
       return fmt::format("{}", Get<Numeric>());
+    } else if (Is<String>()) {
+      return Get<String>();
     } else if (Is<StringArray>()) {
       auto tag = dynamic_cast<redis::TagFieldMetadata *>(meta);
       char sep = tag ? tag->separator : ',';

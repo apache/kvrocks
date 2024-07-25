@@ -20,40 +20,22 @@
 
 #pragma once
 
-#include <glog/logging.h>
+#include <memory>
 
-#include <mutex>
-#include <string>
-#include <vector>
+#include "search/ir.h"
+#include "search/ir_pass.h"
 
-#include "cluster_defs.h"
-#include "config/config.h"
-#include "server/server.h"
-#include "storage/redis_db.h"
+namespace kqir {
 
-enum ImportStatus {
-  kImportStart,
-  kImportSuccess,
-  kImportFailed,
-  kImportNone,
+struct Recorder : Pass {
+  std::vector<std::unique_ptr<Node>> &results;
+
+  explicit Recorder(std::vector<std::unique_ptr<Node>> &results) : results(results) {}
+
+  std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) override {
+    results.push_back(node->Clone());
+    return node;
+  }
 };
 
-class SlotImport : public redis::Database {
- public:
-  explicit SlotImport(Server *srv);
-  ~SlotImport() = default;
-
-  Status Start(const SlotRange &slot_range);
-  Status Success(const SlotRange &slot_range);
-  Status Fail(const SlotRange &slot_range);
-  Status StopForLinkError();
-  SlotRange GetSlotRange();
-  int GetStatus();
-  void GetImportInfo(std::string *info);
-
- private:
-  Server *srv_ = nullptr;
-  std::mutex mutex_;
-  SlotRange import_slot_range_;
-  int import_status_;
-};
+}  // namespace kqir

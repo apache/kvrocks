@@ -83,8 +83,8 @@ func TestImportedServer(t *testing.T) {
 	require.NoError(t, rdbB.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
 	t.Run("IMPORT - error slot", func(t *testing.T) {
-		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", -1, 0).Err(), "Slot is out of range")
-		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", 16384, 0).Err(), "Slot is out of range")
+		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", -1, 0).Err(), "Invalid slot range")
+		require.ErrorContains(t, rdbA.Do(ctx, "cluster", "import", 16384, 0).Err(), "Invalid slot id: out of numeric range")
 	})
 
 	t.Run("IMPORT - slot with error state", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestImportedServer(t *testing.T) {
 		require.Equal(t, "slot1", rdbA.Get(ctx, slotKey).Val())
 		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 0).Val())
 		clusterInfo := rdbB.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "importing_slot: 1")
+		require.Contains(t, clusterInfo, "importing_slot(s): 1")
 		require.Contains(t, clusterInfo, "import_state: start")
 		clusterNodes := rdbB.ClusterNodes(ctx).Val()
 		require.Contains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvAID))
@@ -114,14 +114,14 @@ func TestImportedServer(t *testing.T) {
 		require.NoError(t, rdbA.Do(ctx, "clusterx", "migrate", slotNum, srvBID).Err())
 		require.Eventually(t, func() bool {
 			clusterInfo := rdbA.ClusterInfo(context.Background()).Val()
-			return strings.Contains(clusterInfo, fmt.Sprintf("migrating_slot: %d", slotNum)) &&
+			return strings.Contains(clusterInfo, fmt.Sprintf("migrating_slot(s): %d", slotNum)) &&
 				strings.Contains(clusterInfo, fmt.Sprintf("migrating_state: %s", "success"))
 		}, 5*time.Second, 100*time.Millisecond)
 
 		// import success
 		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 1).Val())
 		clusterInfo = rdbB.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "importing_slot: 1")
+		require.Contains(t, clusterInfo, "importing_slot(s): 1")
 		require.Contains(t, clusterInfo, "import_state: success")
 
 		// import finish and should not contain the import section
@@ -145,7 +145,7 @@ func TestImportedServer(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		clusterInfo := rdbB.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "importing_slot: 10")
+		require.Contains(t, clusterInfo, "importing_slot(s): 10")
 		require.Contains(t, clusterInfo, "import_state: error")
 
 		// get empty
@@ -165,7 +165,7 @@ func TestImportedServer(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		clusterInfo := rdbB.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "importing_slot: 11")
+		require.Contains(t, clusterInfo, "importing_slot(s): 11")
 		require.Contains(t, clusterInfo, "import_state: error")
 
 		// get empty

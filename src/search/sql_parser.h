@@ -30,10 +30,14 @@ namespace sql {
 
 using namespace peg;
 
-struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
-struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, StringL>> {};
+struct Param : seq<one<'@'>, Identifier> {};
+struct StringOrParam : sor<StringL, Param> {};
+struct NumberOrParam : sor<Number, Param> {};
 
-struct NumericAtomExpr : WSPad<sor<Number, Identifier>> {};
+struct HasTag : string<'h', 'a', 's', 't', 'a', 'g'> {};
+struct HasTagExpr : WSPad<seq<Identifier, WSPad<HasTag>, StringOrParam>> {};
+
+struct NumericAtomExpr : WSPad<sor<NumberOrParam, Identifier>> {};
 struct NumericCompareOp : sor<string<'!', '='>, string<'<', '='>, string<'>', '='>, one<'=', '<', '>'>> {};
 struct NumericCompareExpr : seq<NumericAtomExpr, NumericCompareOp, NumericAtomExpr> {};
 
@@ -79,8 +83,8 @@ struct Desc : string<'d', 'e', 's', 'c'> {};
 struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
 struct WhereClause : seq<Where, QueryExpr> {};
-struct AscOrDesc : WSPad<sor<Asc, Desc>> {};
-struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<AscOrDesc>> {};
+struct AscOrDesc : sor<Asc, Desc> {};
+struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<WSPad<AscOrDesc>>> {};
 struct LimitClause : seq<Limit, opt<seq<WSPad<UnsignedInteger>, one<','>>>, WSPad<UnsignedInteger>> {};
 
 struct SearchStmt

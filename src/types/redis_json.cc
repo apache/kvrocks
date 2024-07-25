@@ -646,4 +646,18 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, std::vector<std::string> *results,
+                           RESP resp) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+  JsonMetadata metadata;
+  JsonValue json_val;
+  auto s = read(ns_key, &metadata, &json_val);
+  if (!s.ok()) return s;
+
+  auto json_resps = json_val.ConvertToResp(path, resp);
+  if (!json_resps) return rocksdb::Status::InvalidArgument(json_resps.Msg());
+  *results = std::move(*json_resps);
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

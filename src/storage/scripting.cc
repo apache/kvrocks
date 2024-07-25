@@ -392,7 +392,6 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
 
   uint64_t function_flags = read_only ? ScriptFlags::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
-  // script, myfunc, err_func, table
   if (!lua_isnil(lua, -1)) {
     int n = static_cast<int>(lua_objlen(lua, -1));
     for (int i = 1; i <= n; ++i) {
@@ -657,6 +656,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
    * EVAL received. */
   SetGlobalArray(lua, "KEYS", keys);
   SetGlobalArray(lua, "ARGV", argv);
+  
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("running script (call to {}): {}", funcname, lua_tostring(lua, -1));
     *output = redis::Error({Status::NotOK, msg});

@@ -656,7 +656,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
    * EVAL received. */
   SetGlobalArray(lua, "KEYS", keys);
   SetGlobalArray(lua, "ARGV", argv);
-  
+
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("running script (call to {}): {}", funcname, lua_tostring(lua, -1));
     *output = redis::Error({Status::NotOK, msg});

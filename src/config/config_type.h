@@ -29,6 +29,7 @@
 #include <string>
 #include <utility>
 
+#include "bit_util.h"
 #include "parse_util.h"
 #include "status.h"
 #include "string_util.h"
@@ -127,6 +128,7 @@ class IntegerField : public ConfigField {
  public:
   IntegerField(IntegerType *receiver, IntegerType n, IntegerType min, IntegerType max)
       : receiver_(receiver), default_(n), min_(min), max_(max) {
+    CHECK(min <= n && n <= max);
     *receiver_ = n;
   }
   ~IntegerField() override = default;
@@ -250,4 +252,91 @@ class EnumField : public ConfigField {
     }
     return {};
   }
+};
+
+enum class IntUnit { None = 0, K = 10, M = 20, G = 30, T = 40, P = 50 };
+
+template <typename T>
+class IntWithUnitField : public ConfigField {
+ public:
+  IntWithUnitField(T *receiver, std::string default_val, T min, T max)
+      : receiver_(receiver), default_val_(std::move(default_val)), min_(min), max_(max) {
+    CHECK(ReadFrom(default_val_));
+  }
+
+  std::string Default() const override { return default_val_; }
+  std::string ToString() const override { return ToString(*receiver_, current_unit_); }
+  Status ToNumber(int64_t *n) const override {
+    *n = static_cast<int64_t>(*receiver_);
+    return Status::OK();
+  }
+
+  Status Set(const std::string &v) override { return ReadFrom(v); }
+
+  Status ReadFrom(const std::string &val) {
+    auto [num, rest] = GET_OR_RET(TryParseInt<T>(val.c_str(), 10));
+
+    if (*rest == 0) {
+      *receiver_ = num;
+      current_unit_ = IntUnit::None;
+    } else if (util::EqualICase(rest, "k")) {
+      *receiver_ = GET_OR_RET(util::CheckedShiftLeft(num, 10));
+      current_unit_ = IntUnit::K;
+    } else if (util::EqualICase(rest, "m")) {
+      *receiver_ = GET_OR_RET(util::CheckedShiftLeft(num, 20));
+      current_unit_ = IntUnit::M;
+    } else if (util::EqualICase(rest, "g")) {
+      *receiver_ = GET_OR_RET(util::CheckedShiftLeft(num, 30));
+      current_unit_ = IntUnit::G;
+    } else if (util::EqualICase(rest, "t")) {
+      *receiver_ = GET_OR_RET(util::CheckedShiftLeft(num, 40));
+      current_unit_ = IntUnit::T;
+    } else if (util::EqualICase(rest, "p")) {
+      *receiver_ = GET_OR_RET(util::CheckedShiftLeft(num, 50));
+      current_unit_ = IntUnit::P;
+    } else {
+      return {Status::NotOK, fmt::format("encounter unexpected unit: `{}`", rest)};
+    }
+
+    if (min_ > *receiver_ || max_ < *receiver_) {
+      return {Status::NotOK, fmt::format("this config value shoule be between {} and {}", min_, max_)};
+    }
+
+    return Status::OK();
+  }
+
+  static std::string ToString(T val, IntUnit current_unit) {
+    std::string unit_str;
+
+    switch (current_unit) {
+      case IntUnit::None:
+        unit_str = "";
+        break;
+      case IntUnit::K:
+        unit_str = "K";
+        break;
+      case IntUnit::M:
+        unit_str = "M";
+        break;
+      case IntUnit::G:
+        unit_str = "G";
+        break;
+      case IntUnit::T:
+        unit_str = "T";
+        break;
+      case IntUnit::P:
+        unit_str = "P";
+        break;
+    }
+
+    return std::to_string(val >> int(current_unit)) + unit_str;
+  }
+
+ private:
+  // NOTE: the receiver here will get the converted integer (e.g. "10k" -> get 10240)
+  T *receiver_;
+  std::string default_val_;
+  T min_;
+  T max_;
+  IntUnit current_unit_ = IntUnit::None;
 };

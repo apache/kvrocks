@@ -299,7 +299,7 @@ class IntWithUnitField : public ConfigField {
     }
 
     if (min_ > *receiver_ || max_ < *receiver_) {
-      return {Status::NotOK, fmt::format("this config value shoule be between {} and {}", min_, max_)};
+      return {Status::NotOK, fmt::format("this config value should be between {} and {}", min_, max_)};
     }
 
     return Status::OK();

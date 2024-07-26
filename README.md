@@ -97,11 +97,11 @@ To build with lua instead of luaJIT, run:
 $ ./x.py build -DENABLE_LUAJIT=OFF
 ```
 
-Build with the development mode, run:
+Build with debug mode, run:
 
 ```shell
-# The default build type is RelWithDebInfo and its optimization level is O2.
-# You can change it to Debug in development mode.
+# The default build type is RelWithDebInfo and its optimization level is typically -O2.
+# You can change it to -O0 in debug mode.
 
 $ ./x.py build -DCMAKE_BUILD_TYPE=Debug
 ```

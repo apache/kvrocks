@@ -657,6 +657,16 @@ func TestEvalScriptFlags(t *testing.T) {
 			`#!errorengine flags=no-writes
 		return 'extract-flags'`, "0")
 		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!luaflags=no-writes
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua xxflags=no-writes
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
 	})
 
 	t.Run("SCRIPT LOAD extract-flags-error", func(t *testing.T) {
@@ -699,6 +709,16 @@ func TestEvalScriptFlags(t *testing.T) {
 			`#!errorengine flags=no-writes
 		return 'extract-flags'`)
 		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!luaflags=no-writes
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua xxflags=no-writes
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
 	})
 
 	t.Run("no-writes", func(t *testing.T) {

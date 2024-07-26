@@ -307,6 +307,21 @@ func TestFunctionScriptFlags(t *testing.T) {
 			`#!errorenine name=mylibname
 		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
 		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!luaname=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua xxxname=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname key=value
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
 	})
 
 	t.Run("Function extract-flags-error", func(t *testing.T) {

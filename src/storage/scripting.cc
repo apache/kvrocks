@@ -221,8 +221,8 @@ int RedisLogCommand(lua_State *lua) {
 int RedisRegisterFunction(lua_State *lua) {
   int argc = lua_gettop(lua);
 
-  if (argc < 2) {
-    lua_pushstring(lua, "redis.register_function() requires at least two arguments.");
+  if (argc < 2 || argc > 3) {
+    lua_pushstring(lua, "wrong number of arguments to redis.register_function().");
     return lua_error(lua);
   }
 
@@ -239,6 +239,13 @@ int RedisRegisterFunction(lua_State *lua) {
   // set this function to global
   std::string name = lua_tostring(lua, 1);
   if (argc == 3) {
+    auto flags = ExtractFlagsFromRegisterFunction(lua);
+    if (!flags) {
+      lua_pushstring(lua, flags.Msg().c_str());
+      return lua_error(lua);
+    }
+    // lua does not support unsigned integers, so flags are stored as strings
+    lua_pushstring(lua, std::to_string(flags.GetValue()).c_str());
     lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
   }
   lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
@@ -285,8 +292,7 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
     return {Status::NotOK, "Expect a Shebang statement in the first line"};
   }
 
-  std::string libname;
-  if (auto s = ExtractLibNameFromShebang(first_line, libname); !s.IsOK()) return s;
+  const auto libname = GET_OR_RET(ExtractLibNameFromShebang(first_line));
 
   auto srv = conn->GetServer();
   auto lua = read_only ? conn->Owner()->Lua() : srv->Lua();
@@ -390,29 +396,10 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
   }
 
-  uint64_t function_flags = read_only ? ScriptFlags::kScriptNoWrites : 0;
+  ScriptFlags function_flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
-  if (!lua_isnil(lua, -1)) {
-    int n = static_cast<int>(lua_objlen(lua, -1));
-    for (int i = 1; i <= n; ++i) {
-      lua_pushnumber(lua, i);
-      lua_gettable(lua, -2);
-      std::string flag = lua_tostring(lua, -1);
-      if (flag == "no-writes") {
-        function_flags |= kScriptNoWrites;
-      } else if (flag == "allow-oom") {
-        return {Status::NotSupported, "allow-oom is not supported yet"};
-      } else if (flag == "allow-stale") {
-        return {Status::NotSupported, "allow-stale is not supported yet"};
-      } else if (flag == "no-cluster") {
-        function_flags |= kScriptNoCluster;
-      } else if (flag == "allow-cross-slot-keys") {
-        function_flags |= kScriptAllowCrossSlotKeys;
-      } else {
-        return {Status::NotOK, "Unexpected function flag: " + flag};
-      }
-      lua_pop(lua, 1);
-    }
+  if (lua_isstring(lua, -1)) {
+    function_flags |= GET_OR_RET(ParseInt<ScriptFlags>(lua_tostring(lua, -1)));
   }
   lua_pop(lua, 1);
 
@@ -431,6 +418,22 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_pop(lua, 2);
   }
 
+  SaveOnRegistry<void>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, nullptr);
+
+  /* Call the Lua garbage collector from time to time to avoid a
+   * full cycle performed by Lua, which adds too latency.
+   *
+   * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
+   * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
+   * for every command uses too much CPU. */
+  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
+  static int64_t gc_count = 0;
+
+  gc_count++;
+  if (gc_count == LUA_GC_CYCLE_PERIOD) {
+    lua_gc(lua, LUA_GCSTEP, LUA_GC_CYCLE_PERIOD);
+    gc_count = 0;
+  }
   return Status::OK();
 }
 
@@ -641,9 +644,12 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   }
 
   ScriptRunCtx current_script_run_ctx;
-  auto s = srv->GetScriptFlags(funcname + 2, current_script_run_ctx.flags);
-  if (!s.IsOK()) return s;
-  if (read_only) current_script_run_ctx.flags |= ScriptFlags::kScriptNoWrites;
+  lua_getglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, funcname + 2).c_str());
+  if (lua_isstring(lua, -1)) {
+    current_script_run_ctx.flags = GET_OR_RET(ParseInt<ScriptFlags>(lua_tostring(lua, -1)));
+  }
+  lua_pop(lua, 1);
+  if (read_only) current_script_run_ctx.flags |= ScriptFlagType::kScriptNoWrites;
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &current_script_run_ctx);
 
   // For the Lua script, should be always run with RESP2 protocol,
@@ -748,7 +754,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   auto attributes = cmd->GetAttributes();
   auto cmd_flags = attributes->GenerateFlags(args);
 
-  if ((script_run_ctx->flags & ScriptFlags::kScriptNoWrites) && !(cmd_flags & redis::kCmdReadOnly)) {
+  if ((script_run_ctx->flags & ScriptFlagType::kScriptNoWrites) && !(cmd_flags & redis::kCmdReadOnly)) {
     PushError(lua, "Write commands are not allowed from read-only scripts");
     return raise_error ? RaiseError(lua) : 1;
   }
@@ -770,7 +776,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
 
   redis::Connection *conn = srv->GetCurrentConnection();
   if (config->cluster_enabled) {
-    if (script_run_ctx->flags & ScriptFlags::kScriptNoCluster) {
+    if (script_run_ctx->flags & ScriptFlagType::kScriptNoCluster) {
       PushError(lua, "Can not run script on cluster, 'no-cluster' flag is set");
       return raise_error ? RaiseError(lua) : 1;
     }
@@ -1489,72 +1495,132 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
   lua_setglobal(lua, funcname);
 
   // Cache the flags of the current script
-  uint64_t script_flags = 0;
+  ScriptFlags script_flags = 0;
   if (auto pos = body.find('\n'); pos != std::string::npos) {
     auto first_line = body.substr(0, pos);
-    if (util::HasPrefix(first_line, "#!lua")) {
-      uint64_t shebang_flags = 0;
-      if (auto s = ExtractFlagsFromShebang(first_line, shebang_flags); !s.IsOK()) {
-        lua_pop(lua, 1); /* remove the error handler from the stack. */
-        return s;
-      }
-      script_flags |= shebang_flags;
-    } else {
-      // scripts without #! can run commands that access keys belonging to different cluster hash slots,
-      // but ones with #! inherit the default flags, so they cannot.
-      script_flags |= ScriptFlags::kScriptAllowCrossSlotKeys;
-    }
+    script_flags = GET_OR_RET(ExtractFlagsFromShebang(first_line));
+  } else {
+    // scripts without #! can run commands that access keys belonging to different cluster hash slots
+    script_flags = kScriptAllowCrossSlotKeys;
   }
-  srv->CacheScriptFlags(*sha, script_flags);
+  lua_pushstring(lua, std::to_string(script_flags).c_str());
+  lua_setglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, *sha).c_str());
 
   // would store lua function into propagate column family and propagate those scripts to slaves
   return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();
 }
 
-[[nodiscard]] Status ExtractLibNameFromShebang(const std::string &shebang, std::string &libname) {
-  static constexpr const char *shebang_prefix = "#!lua";
-  static constexpr const char *shebang_libname_prefix = "name=";
+[[nodiscard]] StatusOr<std::string> ExtractLibNameFromShebang(std::string_view shebang) {
+  static constexpr std::string_view lua_shebang_prefix = "#!lua";
+  static constexpr std::string_view shebang_libname_prefix = "name=";
 
-  if (!util::HasPrefix(shebang, shebang_prefix)) {
-    return {Status::NotOK, "Expect shebang prefix \"#!lua\" at the beginning of the first line"};
+  if (shebang.substr(0, 2) != "#!") {
+    return {Status::NotOK, "Missing library meta"};
   }
 
-  if (auto pos = shebang.find(shebang_libname_prefix, strlen(shebang_prefix)); pos != std::string::npos) {
-    libname = shebang.substr(pos + strlen(shebang_libname_prefix));
+  auto shebang_splits = util::Split(shebang, " ");
+  if (shebang_splits.empty() || shebang_splits[0] != lua_shebang_prefix) {
+    return {Status::NotOK, "Unexpected engine in script shebang: " + shebang_splits[0]};
+  }
+
+  std::string libname;
+  bool found_libname = false;
+  for (size_t i = 1; i < shebang_splits.size(); i++) {
+    std::string_view shebang_split_sv = shebang_splits[i];
+    if (shebang_split_sv.substr(0, shebang_libname_prefix.size()) != shebang_libname_prefix) {
+      return {Status::NotOK, "Unknown lua shebang option: " + shebang_splits[i]};
+    }
+    if (found_libname) {
+      return {Status::NotOK, "Redundant library name in script shebang"};
+    }
+
+    libname = shebang_split_sv.substr(shebang_libname_prefix.size());
     if (libname.empty() ||
         std::any_of(libname.begin(), libname.end(), [](char v) { return !std::isalnum(v) && v != '_'; })) {
-      return {Status::NotOK, "Expect a valid library name in the Shebang statement"};
+      return {
+          Status::NotOK,
+          "Library names can only contain letters, numbers, or underscores(_) and must be at least one character long"};
     }
-    return Status::OK();
+    found_libname = true;
   }
 
-  return {Status::NotOK, "Expect a library name in the Shebang statement"};
+  if (found_libname) return libname;
+  return {Status::NotOK, "Library name was not given"};
 }
 
-[[nodiscard]] Status ExtractFlagsFromShebang(const std::string &shebang, uint64_t &flags) {
-  static constexpr const char *shebang_prefix = "#!lua";
-  static constexpr const char *shebang_flags_prefix = "flags=";
-
-  if (auto pos = shebang.find(shebang_flags_prefix, strlen(shebang_prefix)); pos != std::string::npos) {
-    auto flags_content = shebang.substr(pos + strlen(shebang_flags_prefix));
-    flags = 0;
-    for (const auto &flag : util::Split(flags_content, ",")) {
-      if (flag == "no-writes") {
-        flags |= kScriptNoWrites;
-      } else if (flag == "allow-oom") {
-        return {Status::NotSupported, "allow-oom is not supported yet"};
-      } else if (flag == "allow-stale") {
-        return {Status::NotSupported, "allow-stale is not supported yet"};
-      } else if (flag == "no-cluster") {
-        flags |= kScriptNoCluster;
-      } else if (flag == "allow-cross-slot-keys") {
-        flags |= kScriptAllowCrossSlotKeys;
-      } else {
-        return {Status::NotOK, "Unexpected flag in script shebang: " + flag};
-      }
+[[nodiscard]] StatusOr<ScriptFlags> GetFlagsFromStrings(const std::vector<std::string> &flags_content) {
+  ScriptFlags flags = 0;
+  for (const auto &flag : flags_content) {
+    if (flag == "no-writes") {
+      flags |= kScriptNoWrites;
+    } else if (flag == "allow-oom") {
+      return {Status::NotSupported, "allow-oom is not supported yet"};
+    } else if (flag == "allow-stale") {
+      return {Status::NotSupported, "allow-stale is not supported yet"};
+    } else if (flag == "no-cluster") {
+      flags |= kScriptNoCluster;
+    } else if (flag == "allow-cross-slot-keys") {
+      flags |= kScriptAllowCrossSlotKeys;
+    } else {
+      return {Status::NotOK, "Unknown flag given: " + flag};
     }
   }
-  return Status::OK();
+  return flags;
+}
+
+[[nodiscard]] StatusOr<ScriptFlags> ExtractFlagsFromShebang(std::string_view shebang) {
+  static constexpr std::string_view lua_shebang_prefix = "#!lua";
+  static constexpr std::string_view shebang_flags_prefix = "flags=";
+
+  ScriptFlags result_flags = 0;
+  if (shebang.substr(0, 2) == "#!") {
+    auto shebang_splits = util::Split(shebang, " ");
+    if (shebang_splits.empty() || shebang_splits[0] != lua_shebang_prefix) {
+      return {Status::NotOK, "Unexpected engine in script shebang: " + shebang_splits[0]};
+    }
+    bool found_flags = false;
+    for (size_t i = 1; i < shebang_splits.size(); i++) {
+      std::string_view shebang_split_sv = shebang_splits[i];
+      if (shebang_split_sv.substr(0, shebang_flags_prefix.size()) != shebang_flags_prefix) {
+        return {Status::NotOK, "Unknown lua shebang option: " + shebang_splits[i]};
+      }
+      if (found_flags) {
+        return {Status::NotOK, "Redundant flags in script shebang"};
+      }
+      auto flags_content = util::Split(shebang_split_sv.substr(shebang_flags_prefix.size()), ",");
+      result_flags |= GET_OR_RET(GetFlagsFromStrings(flags_content));
+      found_flags = true;
+    }
+  } else {
+    // scripts without #! can run commands that access keys belonging to different cluster hash slots,
+    // but ones with #! inherit the default flags, so they cannot.
+    result_flags = kScriptAllowCrossSlotKeys;
+  }
+
+  return result_flags;
+}
+
+[[nodiscard]] StatusOr<ScriptFlags> ExtractFlagsFromRegisterFunction(lua_State *lua) {
+  if (!lua_istable(lua, -1)) {
+    return {Status::NotOK, "Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' }"};
+  }
+  auto flag_count = static_cast<int>(lua_objlen(lua, -1));
+  std::vector<std::string> flags_content;
+  flags_content.reserve(flag_count);
+  for (int i = 1; i <= flag_count; ++i) {
+    lua_pushnumber(lua, i);
+    lua_gettable(lua, -2);
+    if (!lua_isstring(lua, -1)) {
+      return {Status::NotOK, "Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' }"};
+    }
+    flags_content.emplace_back(lua_tostring(lua, -1));
+    // pop up the current flag
+    lua_pop(lua, 1);
+  }
+  // pop up the corresponding table of the flags parameter
+  lua_pop(lua, 1);
+
+  return GetFlagsFromStrings(flags_content);
 }
 
 }  // namespace lua

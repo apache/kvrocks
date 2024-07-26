@@ -274,8 +274,6 @@ class Server {
   Status ScriptSet(const std::string &sha, const std::string &body) const;
   void ScriptReset();
   Status ScriptFlush();
-  void CacheScriptFlags(const std::string &sha, uint64_t flags);
-  [[nodiscard]] Status GetScriptFlags(const std::string &sha, uint64_t &flags) const;
 
   Status FunctionGetCode(const std::string &lib, std::string *code) const;
   Status FunctionGetLib(const std::string &func, std::string *lib) const;
@@ -343,8 +341,6 @@ class Server {
   std::mutex last_random_key_cursor_mu_;
 
   std::atomic<lua_State *> lua_;
-  // The cache of flag is cached when the script is created and cleared when the script is flushed.
-  std::unordered_map<std::string, uint64_t> script_flags_cache_;
 
   redis::Connection *curr_connection_ = nullptr;
 

@@ -855,7 +855,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
       if (getNodeIDBySlot(script_run_ctx->current_slot) != getNodeIDBySlot(slot)) {
         return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
       }
-      if (!(script_run_ctx->flags & lua::ScriptFlags::kScriptAllowCrossSlotKeys)) {
+      if (!(script_run_ctx->flags & lua::ScriptFlagType::kScriptAllowCrossSlotKeys)) {
         return {Status::RedisCrossSlot, "Script attempted to access keys that do not hash to the same slot"};
       }
     }

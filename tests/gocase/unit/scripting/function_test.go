@@ -117,13 +117,13 @@ var testFunctions = func(t *testing.T, enabledRESP3 string) {
 
 	t.Run("FUNCTION LOAD errors", func(t *testing.T) {
 		code := strings.Join(strings.Split(luaMylib1, "\n")[1:], "\n")
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err(), "ERR Expect shebang prefix \"#!lua\" at the beginning of the first line")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err(), "ERR Missing library meta")
 
 		code2 := "#!lua\n" + code
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Expect a library name in the Shebang statement")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library name was not given")
 
 		code2 = "#!lua name=$$$\n" + code
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), ".*valid library name.*")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library names can only contain letters, numbers, or underscores(_) and must be at least one character long")
 	})
 
 	t.Run("FUNCTION LOAD and FCALL mylib1", func(t *testing.T) {
@@ -287,6 +287,55 @@ func TestFunctionScriptFlags(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("Function extract-libname-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname flags=no-writes
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua flags=no-writes name=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname name=mylibname2
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "Redundant library name in script shebang")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!errorenine name=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+	})
+
+	t.Run("Function extract-flags-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 'invalid-flag' })`)
+		require.Error(t, r.Err(), "ERR Error while running new function lib: Unknown flag given: invalid-flag")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 'no-writes', 'invalid-flag' })`)
+		require.Error(t, r.Err(), "ERR Error while running new function lib: Unknown flag given: invalid-flag")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { {} }`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 123 }`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, 'no-writes'`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+	})
+
 	t.Run("no-writes", func(t *testing.T) {
 		r := rdb.Do(ctx, "FUNCTION", "LOAD",
 			`#!lua name=nowriteslib
@@ -428,16 +477,6 @@ func TestFunctionScriptFlags(t *testing.T) {
 		// Pre-declared keys are not affected by allow-cross-slot-keys
 		r = rdb0.Do(ctx, "FCALL", "allow_cross_slot_keys_func_3", 2, "bar", "test")
 		require.EqualError(t, r.Err(), "CROSSSLOT Attempted to access keys that don't hash to the same slot")
-	})
-
-	t.Run("invalid-flags", func(t *testing.T) {
-		r := rdb.Do(ctx, "FUNCTION", "LOAD",
-			`#!lua name=invalidflagslib
-		redis.register_function('invalid_flag_func', function() end, { 'invalid-flag' })`)
-		require.NoError(t, r.Err())
-		// Check whether the flag is valid only during FCALL, not during FUNCTION LOAD
-		r = rdb.Do(ctx, "FCALL", "invalid_flag_func", 0)
-		util.ErrorRegexp(t, r.Err(), "ERR Unexpected function flag:*")
 	})
 
 	t.Run("mixed-use", func(t *testing.T) {

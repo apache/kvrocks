@@ -617,6 +617,90 @@ func TestEvalScriptFlags(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
+	t.Run("Eval extract-flags-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "EVAL",
+			`#!lua name=mylib
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua flags=no-writes name=mylib
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua erroroption=no-writes
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua flags=invalid-flag
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown flag given:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua flags=no-writes,invalid-flag
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown flag given:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua flags=no-writes no-cluster
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!lua flags=no-writes flags=no-cluster
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Redundant flags in script shebang")
+
+		r = rdb.Do(ctx, "EVAL",
+			`#!errorengine flags=no-writes
+		return 'extract-flags'`, "0")
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+	})
+
+	t.Run("SCRIPT LOAD extract-flags-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua name=mylib
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua flags=no-writes name=mylib
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua erroroption=no-writes
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua flags=invalid-flag
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown flag given::*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua flags=no-writes,invalid-flag
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown flag given::*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua flags=no-writes no-cluster
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!lua flags=no-writes flags=no-cluster
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Redundant flags in script shebang")
+
+		r = rdb.Do(ctx, "SCRIPT", "LOAD",
+			`#!errorengine flags=no-writes
+		return 'extract-flags'`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+	})
+
 	t.Run("no-writes", func(t *testing.T) {
 		r := rdb.Do(ctx, "EVAL",
 			`#!lua flags=no-writes
@@ -741,13 +825,6 @@ func TestEvalScriptFlags(t *testing.T) {
 		local key = redis.call('get', KEY[1]);
 		return redis.call('get', KEY[2]);`, "2", "bar", "test")
 		require.EqualError(t, r.Err(), "CROSSSLOT Attempted to access keys that don't hash to the same slot")
-	})
-
-	t.Run("invalid-flags", func(t *testing.T) {
-		r := rdb0.Do(ctx, "EVAL",
-			`#!lua flags=invalid-flag
-		return redis.call('set', 'k','v');`, "0")
-		util.ErrorRegexp(t, r.Err(), "ERR Unexpected flag in script shebang:*")
 	})
 
 	t.Run("mixed use", func(t *testing.T) {

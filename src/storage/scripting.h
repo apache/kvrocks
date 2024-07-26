@@ -28,6 +28,7 @@
 #include "status.h"
 
 inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
+inline constexpr const char REDIS_LUA_FUNC_SHA_FLAGS[] = "f_{}_flags_";
 inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";
 inline constexpr const char REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX[] = "__redis_registered_flags_";
 inline constexpr const char REDIS_LUA_SERVER_PTR[] = "__server_ptr";
@@ -103,14 +104,14 @@ void SHA1Hex(char *digest, const char *script, size_t len);
 int RedisMathRandom(lua_State *l);
 int RedisMathRandomSeed(lua_State *l);
 
-/// ScriptFlags turn on/off constraints or indicate properties in Eval scripts and functions
+/// ScriptFlagType turn on/off constraints or indicate properties in Eval scripts and functions
 ///
 /// Note: The default for Eval scripts are different than the default for functions(default is 0).
 /// As soon as Redis sees the #! comment, it'll treat the script as if it declares flags, even if no flags are defined,
 /// it still has a different set of defaults compared to a script without a #! line.
 /// Another difference is that scripts without #! can run commands that access keys belonging to different cluster hash
 /// slots, but ones with #! inherit the default flags, so they cannot.
-enum ScriptFlags : uint64_t {
+enum ScriptFlagType : uint64_t {
   kScriptNoWrites = 1ULL << 0,            // "no-writes" flag
   kScriptAllowOom = 1ULL << 1,            // "allow-oom" flag
   kScriptAllowStale = 1ULL << 2,          // "allow-stale" flag
@@ -118,8 +119,24 @@ enum ScriptFlags : uint64_t {
   kScriptAllowCrossSlotKeys = 1ULL << 4,  // "allow-cross-slot-keys" flag
 };
 
-[[nodiscard]] Status ExtractLibNameFromShebang(const std::string &shebang, std::string &libname);
-[[nodiscard]] Status ExtractFlagsFromShebang(const std::string &shebang, uint64_t &flags);
+/// ScriptFlags is composed of one or more ScriptFlagTypes combined by an OR operation
+/// For example, ScriptFlags flags = kScriptNoWrites | kScriptNoCluster
+using ScriptFlags = uint64_t;
+
+[[nodiscard]] StatusOr<std::string> ExtractLibNameFromShebang(std::string_view shebang);
+[[nodiscard]] StatusOr<ScriptFlags> ExtractFlagsFromShebang(std::string_view shebang);
+
+/// GetFlagsFromStrings gets flags from flags_content and composites them together.
+/// Each element in flags_content should correspond to a string form of ScriptFlagType
+[[nodiscard]] StatusOr<ScriptFlags> GetFlagsFromStrings(const std::vector<std::string> &flags_content);
+
+/// ExtractFlagsFromRegisterFunction extracts the flags from the redis.register_function
+///
+/// Note: When using it, you should make sure that
+/// the top of the stack of lua is the flags parameter of redis.register_function.
+/// The flags parameter in Lua is a table that stores strings.
+/// After use, the original flags table on the top of the stack will be popped.
+[[nodiscard]] StatusOr<ScriptFlags> ExtractFlagsFromRegisterFunction(lua_State *lua);
 
 /// ScriptRunCtx is used to record context information during the running of Eval scripts and functions.
 struct ScriptRunCtx {
@@ -131,6 +148,9 @@ struct ScriptRunCtx {
   int current_slot = -1;
 };
 
+/// SaveOnRegistry saves user-defined data to lua REGISTRY
+///
+/// Note: Since lua_pushlightuserdata, you need to manage the life cycle of the data stored in the Registry yourself.
 template <typename T>
 void SaveOnRegistry(lua_State *lua, const char *name, T *ptr) {
   lua_pushstring(lua, name);

@@ -1682,16 +1682,6 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) const 
   return storage->WriteToPropagateCF(func_name, body);
 }
 
-void Server::CacheScriptFlags(const std::string &sha, uint64_t flags) { script_flags_cache_.try_emplace(sha, flags); }
-
-[[nodiscard]] Status Server::GetScriptFlags(const std::string &sha, uint64_t &flags) const {
-  if (script_flags_cache_.count(sha)) {
-    flags = script_flags_cache_.at(sha);
-    return Status::OK();
-  }
-  return {Status::NotFound, "The flags cache of script sha does not exist, sha: " + sha};
-}
-
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
@@ -1724,7 +1714,6 @@ Status Server::FunctionSetLib(const std::string &func, const std::string &lib) c
 
 void Server::ScriptReset() {
   auto lua = lua_.exchange(lua::CreateState(this));
-  script_flags_cache_.clear();
   lua::DestroyState(lua);
 }
 

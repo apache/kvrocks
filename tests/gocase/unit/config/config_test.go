@@ -245,3 +245,27 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
 	})
 }
+
+func TestChangeProtoMaxBulkLen(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Default value is 512MB
+	vals, err := rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
+	require.NoError(t, err)
+	require.EqualValues(t, "536870912", vals["proto-max-bulk-len"])
+
+	// Change to 2MB
+	require.NoError(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "2097152").Err())
+	vals, err = rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
+	require.NoError(t, err)
+	require.EqualValues(t, "2097152", vals["proto-max-bulk-len"])
+
+	// Must be >= 1MB
+	require.Error(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "1024").Err())
+}

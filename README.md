@@ -97,6 +97,15 @@ To build with lua instead of luaJIT, run:
 $ ./x.py build -DENABLE_LUAJIT=OFF
 ```
 
+Build with debug mode, run:
+
+```shell
+# The default build type is RelWithDebInfo and its optimization level is typically -O2.
+# You can change it to -O0 in debug mode.
+
+$ ./x.py build -DCMAKE_BUILD_TYPE=Debug
+```
+
 ### Running Kvrocks
 
 ```shell

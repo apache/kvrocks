@@ -46,6 +46,7 @@ class IntegerField;
 using IntField = IntegerField<int>;
 using UInt32Field = IntegerField<uint32_t>;
 using Int64Field = IntegerField<int64_t>;
+using UInt64Field = IntegerField<uint64_t>;
 
 template <typename Enum>
 struct ConfigEnum {

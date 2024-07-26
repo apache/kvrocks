@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <map>
 #include <tao/pegtl/contrib/parse_tree.hpp>
 #include <tao/pegtl/contrib/unescape.hpp>
 #include <tao/pegtl/demangle.hpp>
@@ -29,8 +30,26 @@
 
 namespace kqir {
 
+using ParamMap = std::map<std::string, std::string, std::less<>>;
+
 struct TreeTransformer {
   using TreeNode = std::unique_ptr<peg::parse_tree::node>;
+
+  const ParamMap& param_map;
+
+  explicit TreeTransformer(const ParamMap& param_map) : param_map(param_map) {}
+
+  StatusOr<std::string> GetParam(const TreeNode& node) {
+    // node->type must be Param here
+    auto name = node->string_view().substr(1);
+
+    auto iter = param_map.find(name);
+    if (iter == param_map.end()) {
+      return {Status::NotOK, fmt::format("parameter with name `{}` not found", name)};
+    }
+
+    return iter->second;
+  }
 
   template <typename T>
   static bool Is(const TreeNode& node) {

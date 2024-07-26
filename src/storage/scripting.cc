@@ -244,8 +244,7 @@ int RedisRegisterFunction(lua_State *lua) {
       lua_pushstring(lua, flags.Msg().c_str());
       return lua_error(lua);
     }
-    // lua does not support unsigned integers, so flags are stored as strings
-    lua_pushstring(lua, std::to_string(flags.GetValue()).c_str());
+    lua_pushinteger(lua, static_cast<lua_Integer>(flags.GetValue()));
     lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
   }
   lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
@@ -396,15 +395,17 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
   }
 
-  ScriptFlags function_flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
+  ScriptRunCtx script_run_ctx;
+  script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
-  if (lua_isstring(lua, -1)) {
-    function_flags |= GET_OR_RET(ParseInt<ScriptFlags>(lua_tostring(lua, -1)));
+  if (!lua_isnil(lua, -1)) {
+    int isnum = false;
+    auto function_flags = lua_tointegerx(lua, -1, &isnum);
+    if (!isnum) return {Status::NotOK, "Invalid function flags"};
+    script_run_ctx.flags |= function_flags;
   }
   lua_pop(lua, 1);
 
-  ScriptRunCtx script_run_ctx;
-  script_run_ctx.flags = function_flags;
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &script_run_ctx);
 
   PushArray(lua, keys);
@@ -644,12 +645,16 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   }
 
   ScriptRunCtx current_script_run_ctx;
+  current_script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, funcname + 2).c_str());
-  if (lua_isstring(lua, -1)) {
-    current_script_run_ctx.flags = GET_OR_RET(ParseInt<ScriptFlags>(lua_tostring(lua, -1)));
+  if (!lua_isnil(lua, -1)) {
+    int isnum = false;
+    auto script_flags = lua_tointegerx(lua, -1, &isnum);
+    if (!isnum) return {Status::NotOK, "Invalid Script flags"};
+    current_script_run_ctx.flags |= script_flags;
   }
   lua_pop(lua, 1);
-  if (read_only) current_script_run_ctx.flags |= ScriptFlagType::kScriptNoWrites;
+
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &current_script_run_ctx);
 
   // For the Lua script, should be always run with RESP2 protocol,
@@ -1503,7 +1508,7 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
     // scripts without #! can run commands that access keys belonging to different cluster hash slots
     script_flags = kScriptAllowCrossSlotKeys;
   }
-  lua_pushstring(lua, std::to_string(script_flags).c_str());
+  lua_pushinteger(lua, static_cast<lua_Integer>(script_flags));
   lua_setglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, *sha).c_str());
 
   // would store lua function into propagate column family and propagate those scripts to slaves

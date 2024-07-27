@@ -229,6 +229,63 @@ struct NumericCompareExpr : BoolAtomExpr {
   }
 };
 
+struct BlobLiteral : Literal {
+  std::vector<double> data;
+
+  explicit BlobLiteral(std::vector<double> &&data) : data(std::move(data)) {}
+
+  std::string_view Name() const override { return "BlobLiteral"; }
+  std::string Dump() const override {
+    return fmt::format("{}", util::StringJoin(data, [](auto v) { return std::to_string(v); }));
+  }
+  std::string Content() const override { return Dump(); }
+
+  std::unique_ptr<Node> Clone() const override { return std::make_unique<BlobLiteral>(*this); }
+};
+
+struct VectorRangeExpr : BoolAtomExpr {
+  std::unique_ptr<FieldRef> field;
+  std::unique_ptr<NumericLiteral> range;
+  std::unique_ptr<BlobLiteral> vector;
+
+  VectorRangeExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<NumericLiteral> &&range,
+                  std::unique_ptr<BlobLiteral> &&vector)
+      : field(std::move(field)), range(std::move(range)), vector(std::move(vector)) {}
+
+  std::string_view Name() const override { return "VectorRangeExpr"; }
+  std::string Dump() const override {
+    return fmt::format("{} vector_range {} {}", field->Dump(), range->Dump(), vector->Dump());
+  }
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<VectorRangeExpr>(Node::MustAs<FieldRef>(field->Clone()),
+                                             Node::MustAs<NumericLiteral>(range->Clone()),
+                                             Node::MustAs<BlobLiteral>(vector->Clone()));
+  }
+};
+
+struct VectorSearchExpr : BoolAtomExpr {
+  // TODO: Support pre-filter for hybrid query
+  std::unique_ptr<FieldRef> field;
+  std::unique_ptr<NumericLiteral> k;
+  std::unique_ptr<BlobLiteral> vector;
+
+  VectorSearchExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<NumericLiteral> &&k,
+                   std::unique_ptr<BlobLiteral> &&vector)
+      : field(std::move(field)), k(std::move(k)), vector(std::move(vector)) {}
+
+  std::string_view Name() const override { return "VectorSearchExpr"; }
+  std::string Dump() const override {
+    return fmt::format("{} vector_search {} {}", field->Dump(), k->Dump(), vector->Dump());
+  }
+
+  std::unique_ptr<Node> Clone() const override {
+    return std::make_unique<VectorRangeExpr>(Node::MustAs<FieldRef>(field->Clone()),
+                                             Node::MustAs<NumericLiteral>(k->Clone()),
+                                             Node::MustAs<BlobLiteral>(vector->Clone()));
+  }
+};
+
 struct BoolLiteral : BoolAtomExpr, Literal {
   bool val;
 

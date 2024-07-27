@@ -35,10 +35,10 @@ namespace redis_query {
 namespace ir = kqir;
 
 template <typename Rule>
-using TreeSelector =
-    parse_tree::selector<Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
-                         parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr,
-                                                        AndExpr, OrExpr, Wildcard>>;
+using TreeSelector = parse_tree::selector<
+    Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
+    parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
+                                   OrExpr, PrefilterExpr, KnnSearch, Wildcard, VECTOR_RANGE, KNN, ArrowOp>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -52,6 +52,20 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 
 struct Transformer : ir::TreeTransformer {
   explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
+
+  auto NumberOrParam(const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+    if (Is<Number>(node)) {
+      return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+    } else if (Is<Param>(node)) {
+      auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
+                                .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+
+      return std::make_unique<ir::NumericLiteral>(val);
+    } else {
+      return {Status::NotOK,
+              fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
+    }
+  };
 
   auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     if (Is<Number>(node)) {
@@ -88,33 +102,18 @@ struct Transformer : ir::TreeTransformer {
         } else {
           return std::make_unique<ir::OrExpr>(std::move(exprs));
         }
-      } else {  // NumericRange
+      } else if (Is<NumericRange>(query)) {
         std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
         const auto& lhs = query->children[0];
         const auto& rhs = query->children[1];
 
-        auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
-          if (Is<Number>(node)) {
-            return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
-          } else if (Is<Param>(node)) {
-            auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
-                                      .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
-
-            return std::make_unique<ir::NumericLiteral>(val);
-          } else {
-            return {Status::NotOK,
-                    fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
-          }
-        };
-
         if (Is<ExclusiveNumber>(lhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT,
-                                                               std::make_unique<FieldRef>(field),
-                                                               GET_OR_RET(number_or_param(lhs->children[0]))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(
+              NumericCompareExpr::GT, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(lhs->children[0]))));
         } else if (Is<Number>(lhs) || Is<Param>(lhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::GET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(lhs))));
+              NumericCompareExpr::GET, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(lhs))));
         } else {  // Inf
           if (lhs->string_view() == "+inf") {
             return {Status::NotOK, "it's not allowed to set the lower bound as positive infinity"};
@@ -122,12 +121,11 @@ struct Transformer : ir::TreeTransformer {
         }
 
         if (Is<ExclusiveNumber>(rhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT,
-                                                               std::make_unique<FieldRef>(field),
-                                                               GET_OR_RET(number_or_param(rhs->children[0]))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(
+              NumericCompareExpr::LT, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(rhs->children[0]))));
         } else if (Is<Number>(rhs) || Is<Param>(rhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::LET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(rhs))));
+              NumericCompareExpr::LET, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(rhs))));
         } else {  // Inf
           if (rhs->string_view() == "-inf") {
             return {Status::NotOK, "it's not allowed to set the upper bound as negative infinity"};
@@ -141,11 +139,31 @@ struct Transformer : ir::TreeTransformer {
         } else {
           return std::make_unique<ir::AndExpr>(std::move(exprs));
         }
+      } else if (Is<VectorRange>(query)) {
+        auto blob_str = GET_OR_RET(GetParam(query->children[2]));
+        std::vector<double> doubles = parseBinaryToDoubles(blob_str);
+        return std::make_unique<VectorRangeExpr>(std::make_unique<FieldRef>(field),
+                                                 GET_OR_RET(NumberOrParam(query->children[1])),
+                                                 std::make_unique<BlobLiteral>(std::move(doubles)));
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
       return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+    } else if (Is<PrefilterExpr>(node)) {
+      CHECK(node->children.size() == 3);
+
+      // TODO(Beihao): Support Hybrid Query
+      // const auto& prefilter = node->children[0];
+      const auto& knn_search = node->children[2];
+      CHECK(knn_search->children.size() == 4);
+
+      auto blob_str = GET_OR_RET(GetParam(knn_search->children[3]));
+      return std::make_unique<VectorSearchExpr>(
+          std::make_unique<FieldRef>(knn_search->children[2]->string()),
+          GET_OR_RET(NumberOrParam(knn_search->children[1])),
+          std::make_unique<BlobLiteral>(std::move(parseBinaryToDoubles(blob_str))));
+
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 

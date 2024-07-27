@@ -39,6 +39,23 @@ struct TreeTransformer {
 
   explicit TreeTransformer(const ParamMap& param_map) : param_map(param_map) {}
 
+  std::vector<double> parseBinaryToDoubles(const std::string& binaryData) {
+    if (binaryData.size() % sizeof(double) != 0) {
+      throw std::runtime_error("Invalid binary data length for conversion to doubles.");
+    }
+
+    std::vector<double> doubles;
+    doubles.reserve(binaryData.size() / sizeof(double));
+
+    for (size_t i = 0; i < binaryData.size(); i += sizeof(double)) {
+      double value;
+      std::memcpy(&value, &binaryData[i], sizeof(double));
+      doubles.push_back(value);
+    }
+
+    return doubles;
+  }
+
   StatusOr<std::string> GetParam(const TreeNode& node) {
     // node->type must be Param here
     auto name = node->string_view().substr(1);
@@ -49,6 +66,18 @@ struct TreeTransformer {
     }
 
     return iter->second;
+  }
+
+  StatusOr<std::vector<double>> GetBlobParam(const TreeNode& node) {
+    // node->type must be Param here
+    auto name = node->string_view().substr(1);
+
+    auto iter = param_map.find(name);
+    if (iter == param_map.end()) {
+      return {Status::NotOK, fmt::format("parameter with name `{}` not found", name)};
+    }
+
+    return parseBinaryToDoubles(iter->second);
   }
 
   template <typename T>

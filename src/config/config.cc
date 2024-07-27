@@ -887,7 +887,7 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
-  auto origin_value = field->ToString();
+  auto origin_value = field->ToStringForRewrite();
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
@@ -924,7 +924,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
       // so skip it here to avoid rewriting it as new item.
       continue;
     }
-    new_config[iter.first] = iter.second->ToString();
+    new_config[iter.first] = iter.second->ToStringForRewrite();
   }
 
   std::string namespace_prefix = "namespace.";

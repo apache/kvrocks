@@ -270,7 +270,7 @@ func TestChangeProtoMaxBulkLen(t *testing.T) {
 	require.NoError(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "100M").Err())
 	vals, err = rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
 	require.NoError(t, err)
-	require.EqualValues(t, "100M", vals["proto-max-bulk-len"])
+	require.EqualValues(t, "104857600", vals["proto-max-bulk-len"])
 
 	// Must be >= 1MB
 	require.Error(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "1024").Err())

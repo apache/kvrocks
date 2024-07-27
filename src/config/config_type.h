@@ -63,6 +63,7 @@ class ConfigField {
   virtual ~ConfigField() = default;
   virtual std::string Default() const = 0;
   virtual std::string ToString() const = 0;
+  virtual std::string ToStringForRewrite() const { return ToString(); }
   virtual Status Set(const std::string &v) = 0;
   virtual Status ToNumber(int64_t *n) const { return {Status::NotOK, "not supported"}; }
   virtual Status ToBool(bool *b) const { return {Status::NotOK, "not supported"}; }
@@ -265,7 +266,9 @@ class IntWithUnitField : public ConfigField {
   }
 
   std::string Default() const override { return default_val_; }
-  std::string ToString() const override { return ToString(*receiver_, current_unit_); }
+  std::string ToString() const override { return std::to_string(*receiver_); }
+  std::string ToStringForRewrite() const override { return ToString(*receiver_, current_unit_); }
+
   Status ToNumber(int64_t *n) const override {
     *n = static_cast<int64_t>(*receiver_);
     return Status::OK();

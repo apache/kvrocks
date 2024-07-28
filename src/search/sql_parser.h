@@ -41,7 +41,11 @@ struct NumericAtomExpr : WSPad<sor<NumberOrParam, Identifier>> {};
 struct NumericCompareOp : sor<string<'!', '='>, string<'<', '='>, string<'>', '='>, one<'=', '<', '>'>> {};
 struct NumericCompareExpr : seq<NumericAtomExpr, NumericCompareOp, NumericAtomExpr> {};
 
-struct BooleanAtomExpr : sor<HasTagExpr, NumericCompareExpr, WSPad<Boolean>> {};
+struct VectorCompareOp : sor<string<'<', '-', '>'>, string<'<', '#', '>'>, string<'<', '=', '>'>> {};
+struct VectorCompareExpr : seq<WSPad<Identifier>, VectorCompareOp, WSPad<StringOrParam>> {};
+struct VectorRangeExpr : seq<VectorCompareExpr, one<'<'>, WSPad<NumberOrParam>> {};
+
+struct BooleanAtomExpr : sor<HasTagExpr, NumericCompareExpr, VectorRangeExpr, WSPad<Boolean>> {};
 
 struct QueryExpr;
 
@@ -84,7 +88,8 @@ struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
 struct WhereClause : seq<Where, QueryExpr> {};
 struct AscOrDesc : sor<Asc, Desc> {};
-struct OrderByClause : seq<OrderBy, WSPad<Identifier>, opt<WSPad<AscOrDesc>>> {};
+struct OrderByExpr : sor<WSPad<VectorCompareExpr>, seq<WSPad<Identifier>, opt<WSPad<AscOrDesc>>>> {};
+struct OrderByClause : seq<OrderBy, OrderByExpr> {};
 struct LimitClause : seq<Limit, opt<seq<WSPad<UnsignedInteger>, one<','>>>, WSPad<UnsignedInteger>> {};
 
 struct SearchStmt

@@ -140,11 +140,10 @@ struct Transformer : ir::TreeTransformer {
           return std::make_unique<ir::AndExpr>(std::move(exprs));
         }
       } else if (Is<VectorRange>(query)) {
-        auto blob_str = GET_OR_RET(GetParam(query->children[2]));
-        std::vector<double> doubles = parseBinaryToDoubles(blob_str);
+        auto vector = GET_OR_RET(GetParam(query->children[2]));
         return std::make_unique<VectorRangeExpr>(std::make_unique<FieldRef>(field),
                                                  GET_OR_RET(NumberOrParam(query->children[1])),
-                                                 std::make_unique<BlobLiteral>(std::move(doubles)));
+                                                 std::make_unique<VectorLiteral>(std::move(vector)));
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
@@ -158,11 +157,10 @@ struct Transformer : ir::TreeTransformer {
       const auto& knn_search = node->children[2];
       CHECK(knn_search->children.size() == 4);
 
-      auto blob_str = GET_OR_RET(GetParam(knn_search->children[3]));
-      return std::make_unique<VectorSearchExpr>(
-          std::make_unique<FieldRef>(knn_search->children[2]->string()),
-          GET_OR_RET(NumberOrParam(knn_search->children[1])),
-          std::make_unique<BlobLiteral>(std::move(parseBinaryToDoubles(blob_str))));
+      auto vector_blob = GET_OR_RET(GetParam(knn_search->children[3]));
+      return std::make_unique<VectorSearchExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
+                                                GET_OR_RET(NumberOrParam(knn_search->children[1])),
+                                                std::make_unique<VectorLiteral>(std::move(vector_blob)));
 
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;

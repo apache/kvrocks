@@ -146,3 +146,10 @@ TEST(SQLParserTest, Params) {
            "select a from b where (and c hastag \"hello\", d = 3)");
   ASSERT_EQ(Parse("select a from b where c hastag @y", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
 }
+
+TEST(SQLParserTest, Vector) {
+  AssertIR(Parse("select a from b where embedding <-> \"[3,1,2]\" < 5"),
+           "select a from b where embedding vector_range 5 \"\"[3,1,2]\"\"");
+  AssertIR(Parse("select a from b order by embedding <-> \"[3,1,2]\" limit 5"),
+           "select a from b where embedding vector_search 5 \"\"[3,1,2]\"\"");
+}

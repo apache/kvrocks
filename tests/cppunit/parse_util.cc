@@ -90,3 +90,15 @@ TEST(ParseUtil, ParseFloat) {
   ASSERT_FALSE(ParseFloat("1.2 "));
   ASSERT_FALSE(ParseFloat("1.2hello"));
 }
+
+TEST(ParseUtil, ParseFloatArray) {
+  std::vector<double> expected{1.0, 2.0, 3.0};
+  ASSERT_EQ(*ParseFloatArray("1,2,3"), expected);
+
+  expected = {1.23, 3.14, -6.2};
+  ASSERT_EQ(*ParseFloatArray("1.23,3.14,-6.2"), expected);
+  ASSERT_EQ(*ParseFloatArray("1.23, 3.14,  -6.2"), expected);
+  ASSERT_FALSE(ParseFloatArray("   "));
+  ASSERT_FALSE(ParseFloatArray("1a,2b"));
+  ASSERT_FALSE(ParseFloatArray("cpp,rust,python"));
+}

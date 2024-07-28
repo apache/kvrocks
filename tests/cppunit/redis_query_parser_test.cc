@@ -103,16 +103,16 @@ TEST(RedisQueryParserTest, Params) {
 }
 
 TEST(RedisQueryParserTest, Vector) {
-  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}),
-           "field vector_range 10 \"@Y\v\x86l?\xF5?\"");
-  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}),
-           "doc_embedding vector_search 10 \"@Y\v\x86l?\xF5?\"");
-  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}),
-           "doc_embedding vector_search 10 \"@Y\v\x86l?\xF5?\"");
-  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}),
-           "vec_embedding vector_search 8 \"@Y\v\x86l?\xF5?\"");
-  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}),
-           "vector vector_search 5 \"@Y\v\x86l?\xF5?\"");
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+           "field vector_range 10 [1.327984]");
+  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+           "doc_embedding vector_search 10 [1.327984]");
+  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+           "doc_embedding vector_search 10 [1.327984]");
+  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+           "vec_embedding vector_search 8 [1.327984]");
+  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+           "vector vector_search 5 [1.327984]");
   AssertSyntaxError(
-      Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", "\x40\x59\x0b\x86\x6c\x3f\xf5\x3f"}}));
+      Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}));
 }

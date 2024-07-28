@@ -230,12 +230,14 @@ struct NumericCompareExpr : BoolAtomExpr {
 };
 
 struct VectorLiteral : Literal {
-  std::string data;
+  std::vector<double> values;
 
-  explicit VectorLiteral(std::string &&data) : data(std::move(data)) {}
+  explicit VectorLiteral(std::vector<double> &&values) : values(std::move(values)){};
 
   std::string_view Name() const override { return "VectorLiteral"; }
-  std::string Dump() const override { return fmt::format("\"{}\"", data); }
+  std::string Dump() const override {
+    return fmt::format("[{}]", util::StringJoin(values, [](auto v) { return std::to_string(v); }));
+  }
   std::string Content() const override { return Dump(); }
 
   std::unique_ptr<Node> Clone() const override { return std::make_unique<VectorLiteral>(*this); }
@@ -391,9 +393,9 @@ struct LimitClause : Node {
   std::string Content() const override { return fmt::format("{}, {}", offset, count); }
 
   std::unique_ptr<Node> Clone() const override { return std::make_unique<LimitClause>(*this); }
-  size_t GetOffset() const { return offset; }
+  size_t Offset() const { return offset; }
 
-  size_t GetCount() const { return count; }
+  size_t Count() const { return count; }
 };
 
 struct SortByClause : Node {

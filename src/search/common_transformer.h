@@ -105,6 +105,53 @@ struct TreeTransformer {
 
     return result;
   }
+
+  static StatusOr<std::vector<char>> Binary2Chars(std::string_view str) {
+    std::vector<char> data;
+    size_t i = 0;
+
+    auto hex_char_to_binary = [](char c) -> StatusOr<char> {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+      if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+      return {Status::NotOK, "invalid hexadecimal character"};
+    };
+
+    while (i + 3 < str.size()) {
+      if (str[i] == '\\' && str[i + 1] == 'x') {
+        auto high = GET_OR_RET(hex_char_to_binary(str[i + 2]));
+        auto low = GET_OR_RET(hex_char_to_binary(str[i + 3]));
+        data.push_back((high << 4) | low);
+        i += 4;
+      } else {
+        return {Status::NotOK, "invalid binary representation or unsupported character"};
+      }
+    }
+
+    if (i != str.size()) {
+      return {Status::NotOK, "input string does not align with expected length"};
+    }
+
+    return data;
+  }
+
+  template <typename T>
+  StatusOr<std::vector<T>> CharsToVector(const std::vector<char>& data) {
+    if (data.size() % sizeof(T) != 0) {
+      return {Status::NotOK, "Data size is not a multiple of the target type size"};
+    }
+
+    std::vector<T> converted_data;
+    converted_data.reserve(data.size() / sizeof(T));
+
+    for (size_t i = 0; i < data.size(); i += sizeof(T)) {
+      T value;
+      std::memcpy(&value, &data[i], sizeof(T));
+      converted_data.push_back(value);
+    }
+
+    return converted_data;
+  }
 };
 
 }  // namespace kqir

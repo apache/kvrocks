@@ -53,21 +53,29 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 struct Transformer : ir::TreeTransformer {
   explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
 
-  auto NumberOrParam(const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
-    if (Is<Number>(node)) {
-      return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
-    } else if (Is<Param>(node)) {
-      auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
-                                .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+  StatusOr<std::unique_ptr<VectorLiteral>> Transform2Vector(const TreeNode& node) {
+    std::string vector_str = GET_OR_RET(GetParam(node));
 
-      return std::make_unique<ir::NumericLiteral>(val);
-    } else {
-      return {Status::NotOK,
-              fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
-    }
+    auto vector_chars = GET_OR_RET(Binary2Chars(vector_str));
+    std::vector<double> values = GET_OR_RET(CharsToVector<double>(vector_chars));
+    return std::make_unique<ir::VectorLiteral>(std::move(values));
   };
 
   auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
+    auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+      if (Is<Number>(node)) {
+        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+      } else if (Is<Param>(node)) {
+        auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
+                                  .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+
+        return std::make_unique<ir::NumericLiteral>(val);
+      } else {
+        return {Status::NotOK,
+                fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
+      }
+    };
+
     if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
     } else if (Is<Wildcard>(node)) {
@@ -109,11 +117,12 @@ struct Transformer : ir::TreeTransformer {
         const auto& rhs = query->children[1];
 
         if (Is<ExclusiveNumber>(lhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::GT, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(lhs->children[0]))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT,
+                                                               std::make_unique<FieldRef>(field),
+                                                               GET_OR_RET(number_or_param(lhs->children[0]))));
         } else if (Is<Number>(lhs) || Is<Param>(lhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::GET, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(lhs))));
+              NumericCompareExpr::GET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(lhs))));
         } else {  // Inf
           if (lhs->string_view() == "+inf") {
             return {Status::NotOK, "it's not allowed to set the lower bound as positive infinity"};
@@ -121,11 +130,12 @@ struct Transformer : ir::TreeTransformer {
         }
 
         if (Is<ExclusiveNumber>(rhs)) {
-          exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::LT, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(rhs->children[0]))));
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT,
+                                                               std::make_unique<FieldRef>(field),
+                                                               GET_OR_RET(number_or_param(rhs->children[0]))));
         } else if (Is<Number>(rhs) || Is<Param>(rhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::LET, std::make_unique<FieldRef>(field), GET_OR_RET(NumberOrParam(rhs))));
+              NumericCompareExpr::LET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(rhs))));
         } else {  // Inf
           if (rhs->string_view() == "-inf") {
             return {Status::NotOK, "it's not allowed to set the upper bound as negative infinity"};
@@ -140,10 +150,9 @@ struct Transformer : ir::TreeTransformer {
           return std::make_unique<ir::AndExpr>(std::move(exprs));
         }
       } else if (Is<VectorRange>(query)) {
-        auto vector = GET_OR_RET(GetParam(query->children[2]));
         return std::make_unique<VectorRangeExpr>(std::make_unique<FieldRef>(field),
-                                                 GET_OR_RET(NumberOrParam(query->children[1])),
-                                                 std::make_unique<VectorLiteral>(std::move(vector)));
+                                                 GET_OR_RET(number_or_param(query->children[1])),
+                                                 GET_OR_RET(Transform2Vector(query->children[2])));
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
@@ -157,10 +166,9 @@ struct Transformer : ir::TreeTransformer {
       const auto& knn_search = node->children[2];
       CHECK(knn_search->children.size() == 4);
 
-      auto vector_blob = GET_OR_RET(GetParam(knn_search->children[3]));
       return std::make_unique<VectorSearchExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
-                                                GET_OR_RET(NumberOrParam(knn_search->children[1])),
-                                                std::make_unique<VectorLiteral>(std::move(vector_blob)));
+                                                GET_OR_RET(number_or_param(knn_search->children[1])),
+                                                GET_OR_RET(Transform2Vector(knn_search->children[3])));
 
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;

@@ -149,7 +149,9 @@ TEST(SQLParserTest, Params) {
 
 TEST(SQLParserTest, Vector) {
   AssertIR(Parse("select a from b where embedding <-> \"[3,1,2]\" < 5"),
-           "select a from b where embedding vector_range 5 \"\"[3,1,2]\"\"");
+           "select a from b where embedding vector_range 5 [3.000000, 1.000000, 2.000000]");
+  AssertIR(Parse("select a from b where embedding <-> \"[0.5,0.5]\" < 10 and c > 100"),
+           "select a from b where (and embedding vector_range 10 [0.500000, 0.500000], c > 100)");
   AssertIR(Parse("select a from b order by embedding <-> \"[3,1,2]\" limit 5"),
-           "select a from b where embedding vector_search 5 \"\"[3,1,2]\"\"");
+           "select a from b where embedding vector_search 5 [3.000000, 1.000000, 2.000000]");
 }

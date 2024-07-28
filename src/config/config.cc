@@ -25,6 +25,7 @@
 #include <strings.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -187,7 +188,8 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, false)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
-      {"proto-max-bulk-len", false, new UInt64Field(&proto_max_bulk_len, 512 * MiB, 1 * MiB, UINT64_MAX)},
+      {"proto-max-bulk-len", false,
+       new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB, UINT64_MAX)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
@@ -885,7 +887,7 @@ Status Config::Set(Server *srv, std::string key, const std::string &value) {
     if (!s.IsOK()) return s.Prefixed("invalid value");
   }
 
-  auto origin_value = field->ToString();
+  auto origin_value = field->ToStringForRewrite();
   auto s = field->Set(value);
   if (!s.IsOK()) return s.Prefixed("failed to set new value");
 
@@ -922,7 +924,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
       // so skip it here to avoid rewriting it as new item.
       continue;
     }
-    new_config[iter.first] = iter.second->ToString();
+    new_config[iter.first] = iter.second->ToStringForRewrite();
   }
 
   std::string namespace_prefix = "namespace.";

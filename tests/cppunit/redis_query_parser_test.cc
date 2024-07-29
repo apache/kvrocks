@@ -103,16 +103,30 @@ TEST(RedisQueryParserTest, Params) {
 }
 
 TEST(RedisQueryParserTest, Vector) {
-  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
-           "field vector_range 10 [1.327984]");
-  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+  std::string binary_vector = "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f";
+  AssertSyntaxError(Parse("@field:[RANGE 10 $vector]", {{"vector", binary_vector}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE 10 \"\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f\"]"));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector]", {{"vector", binary_vector}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector 10]", {{"vector", binary_vector}}));
+  AssertSyntaxError(Parse("* =>[knn 5 @field $BLOB]", {{"BLOB", binary_vector}}));
+  AssertSyntaxError(Parse("* =>[KNN 5 @field \"\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f\"]"));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", binary_vector}}));
+  AssertSyntaxError(Parse("[KNN 5 @vector $BLOB]", {{"BLOB", binary_vector}}));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", binary_vector}}));
+
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", binary_vector}}), "field vector_range 10 [1.327984]");
+  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", binary_vector}}),
            "doc_embedding vector_search 10 [1.327984]");
-  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", binary_vector}}),
            "doc_embedding vector_search 10 [1.327984]");
-  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
+  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", binary_vector}}),
            "vec_embedding vector_search 8 [1.327984]");
-  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}),
-           "vector vector_search 5 [1.327984]");
-  AssertSyntaxError(
-      Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", "\\x40\\x59\\x0b\\x86\\x6c\\x3f\\xf5\\x3f"}}));
+  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", binary_vector}}), "vector vector_search 5 [1.327984]");
+  AssertSyntaxError(Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", binary_vector}}));
+
+  binary_vector = "\\x40\\x59\\x0b";
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", binary_vector}}).Msg(),
+            "Data size is not a multiple of the target type size");
+  binary_vector = "";
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", binary_vector}}).Msg(), "empty vector is invalid");
 }

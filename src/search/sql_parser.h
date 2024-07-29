@@ -41,7 +41,7 @@ struct NumericAtomExpr : WSPad<sor<NumberOrParam, Identifier>> {};
 struct NumericCompareOp : sor<string<'!', '='>, string<'<', '='>, string<'>', '='>, one<'=', '<', '>'>> {};
 struct NumericCompareExpr : seq<NumericAtomExpr, NumericCompareOp, NumericAtomExpr> {};
 
-struct VectorCompareOp : sor<string<'<', '-', '>'>, string<'<', '#', '>'>, string<'<', '=', '>'>> {};
+struct VectorCompareOp : sor<string<'<', '-', '>'>> {};
 struct VectorCompareExpr : seq<WSPad<Identifier>, VectorCompareOp, WSPad<StringOrParam>> {};
 struct VectorRangeExpr : seq<VectorCompareExpr, one<'<'>, WSPad<NumberOrParam>> {};
 

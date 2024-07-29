@@ -121,10 +121,11 @@ struct TreeTransformer {
       if (str[i] == '\\' && str[i + 1] == 'x') {
         auto high = GET_OR_RET(hex_char_to_binary(str[i + 2]));
         auto low = GET_OR_RET(hex_char_to_binary(str[i + 3]));
-        data.push_back((high << 4) | low);
+        data.push_back(static_cast<char>((high << 4) | low));
         i += 4;
       } else {
-        return {Status::NotOK, "invalid binary representation or unsupported character"};
+        data.push_back(str[i]);
+        i++;
       }
     }
 

@@ -30,8 +30,8 @@ namespace redis_query {
 
 using namespace peg;
 
-struct VECTOR_RANGE : string<'V', 'E', 'C', 'T', 'O', 'R', '_', 'R', 'A', 'N', 'G', 'E'> {};
-struct KNN : string<'K', 'N', 'N'> {};
+struct VectorRangeKey : string<'V', 'E', 'C', 'T', 'O', 'R', '_', 'R', 'A', 'N', 'G', 'E'> {};
+struct KnnKey : string<'K', 'N', 'N'> {};
 struct ArrowOp : string<'=', '>'> {};
 struct Wildcard : one<'*'> {};
 
@@ -49,8 +49,8 @@ struct ExclusiveNumber : seq<one<'('>, NumberOrParam> {};
 struct NumericRangePart : sor<Inf, ExclusiveNumber, NumberOrParam> {};
 struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangePart>, one<']'>> {};
 
-struct KnnSearch : seq<one<'['>, WSPad<KNN>, WSPad<NumberOrParam>, WSPad<Field>, WSPad<Param>, one<']'>> {};
-struct VectorRange : seq<one<'['>, WSPad<VECTOR_RANGE>, WSPad<NumberOrParam>, WSPad<Param>, one<']'>> {};
+struct KnnSearch : seq<one<'['>, WSPad<KnnKey>, WSPad<NumberOrParam>, WSPad<Field>, WSPad<Param>, one<']'>> {};
+struct VectorRange : seq<one<'['>, WSPad<VectorRangeKey>, WSPad<NumberOrParam>, WSPad<Param>, one<']'>> {};
 
 struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<VectorRange, TagList, NumericRange>>> {};
 

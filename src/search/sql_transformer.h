@@ -73,6 +73,9 @@ struct Transformer : ir::TreeTransformer {
     }
 
     std::vector<double> values = GET_OR_RET(ParseFloatArray(vector_str.substr(1, vector_str.size() - 2)));
+    if (values.empty()) {
+      return {Status::NotOK, "empty vector is invalid"};
+    }
     return std::make_unique<ir::VectorLiteral>(std::move(values));
   };
 
@@ -235,6 +238,9 @@ struct Transformer : ir::TreeTransformer {
       }
 
       if (sort_by && sort_by->IsKnn()) {
+        if (!limit) {
+          return {Status::NotOK, "invalid knn search clause without limit"};
+        }
         CHECK(limit->Offset() == 0);
         query_expr = std::make_unique<VectorSearchExpr>(
             sort_by->GetFieldRef(), std::make_unique<NumericLiteral>(limit->Count()), sort_by->GetVectorLiteral());

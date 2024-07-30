@@ -33,6 +33,14 @@
 
 #include <stdint.h>
 
+#if !define(USE_ALIGNED_ACCESS)
+#if defined(__sparc__) || defined(__arm__)
+#define USE_ALIGNED_ACCESS
+#endif
+#endif
+
+// NOLINTBEGIN
+
 /* MurmurHash2, 64 bit version.
  * It was modified for Redis in order to provide the same result in
  * big and little endian archs (endian neutral). */
@@ -46,7 +54,7 @@ inline uint64_t HllMurMurHash64A(const void *key, int len, uint32_t seed) {
   while (data != end) {
     uint64_t k = 0;
 
-#if (BYTE_ORDER == LITTLE_ENDIAN)
+#if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #ifdef USE_ALIGNED_ACCESS
     memcpy(&k, data, sizeof(uint64_t));
 #else
@@ -94,3 +102,5 @@ inline uint64_t HllMurMurHash64A(const void *key, int len, uint32_t seed) {
   h ^= h >> r;
   return h;
 }
+
+// NOLINTEND

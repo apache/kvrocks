@@ -25,6 +25,7 @@
 #include <string>
 
 #include "json.h"
+#include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
 
 namespace redis {
@@ -68,6 +69,10 @@ class Json : public Database {
                                     std::vector<JsonValue> &results);
   rocksdb::Status MSet(const std::vector<std::string> &user_keys, const std::vector<std::string> &paths,
                        const std::vector<std::string> &values);
+  rocksdb::Status DebugMemory(const std::string &user_key, const std::string &path, std::vector<size_t> *results);
+
+  rocksdb::Status Resp(const std::string &user_key, const std::string &path, std::vector<std::string> *results,
+                       RESP resp);
 
  private:
   rocksdb::Status write(Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val);

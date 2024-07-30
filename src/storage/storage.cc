@@ -236,11 +236,12 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
   rocksdb::ColumnFamilyOptions cf_options(options);
   auto res = util::DBOpen(options, config_->db_dir);
   if (res) {
-    std::vector<std::string> cf_names = {kMetadataColumnFamilyName, kZSetScoreColumnFamilyName,
-                                         kPubSubColumnFamilyName,   kPropagateColumnFamilyName,
-                                         kStreamColumnFamilyName,   kSearchColumnFamilyName};
+    std::vector<std::string> cf_names_except_default;
+    for (const auto &cf : ColumnFamilyConfigs::ListColumnFamiliesWithoutDefault()) {
+      cf_names_except_default.emplace_back(cf.Name());
+    }
     std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
-    auto s = (*res)->CreateColumnFamilies(cf_options, cf_names, &cf_handles);
+    auto s = (*res)->CreateColumnFamilies(cf_options, cf_names_except_default, &cf_handles);
     if (!s.ok()) {
       return {Status::DBOpenErr, s.ToString()};
     }
@@ -307,7 +308,7 @@ Status Storage::Open(DBOpenMode mode) {
   metadata_opts.memtable_whole_key_filtering = true;
   metadata_opts.memtable_prefix_bloom_size_ratio = 0.1;
   metadata_opts.table_properties_collector_factories.emplace_back(
-      NewCompactOnExpiredTableCollectorFactory(kMetadataColumnFamilyName, 0.3));
+      NewCompactOnExpiredTableCollectorFactory(std::string(kMetadataColumnFamilyName), 0.3));
   SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
@@ -320,7 +321,7 @@ Status Storage::Open(DBOpenMode mode) {
   subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
   subkey_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   subkey_opts.table_properties_collector_factories.emplace_back(
-      NewCompactOnExpiredTableCollectorFactory(kSubkeyColumnFamilyName, 0.3));
+      NewCompactOnExpiredTableCollectorFactory(std::string(kPrimarySubkeyColumnFamilyName), 0.3));
   SetBlobDB(&subkey_opts);
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts = InitTableOptions();
@@ -337,15 +338,22 @@ Status Storage::Open(DBOpenMode mode) {
   propagate_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&propagate_opts);
 
+  rocksdb::BlockBasedTableOptions search_table_opts = InitTableOptions();
+  rocksdb::ColumnFamilyOptions search_opts(options);
+  search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(search_table_opts));
+  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>();
+  search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+  SetBlobDB(&search_opts);
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
-  column_families.emplace_back(kMetadataColumnFamilyName, metadata_opts);
-  column_families.emplace_back(kZSetScoreColumnFamilyName, subkey_opts);
-  column_families.emplace_back(kPubSubColumnFamilyName, pubsub_opts);
-  column_families.emplace_back(kPropagateColumnFamilyName, propagate_opts);
-  column_families.emplace_back(kStreamColumnFamilyName, subkey_opts);
-  column_families.emplace_back(kSearchColumnFamilyName, subkey_opts);
+  column_families.emplace_back(std::string(kMetadataColumnFamilyName), metadata_opts);
+  column_families.emplace_back(std::string(kSecondarySubkeyColumnFamilyName), subkey_opts);
+  column_families.emplace_back(std::string(kPubSubColumnFamilyName), pubsub_opts);
+  column_families.emplace_back(std::string(kPropagateColumnFamilyName), propagate_opts);
+  column_families.emplace_back(std::string(kStreamColumnFamilyName), subkey_opts);
+  column_families.emplace_back(std::string(kSearchColumnFamilyName), search_opts);
 
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
@@ -523,7 +531,7 @@ Status Storage::RestoreFromCheckpoint() {
 
 bool Storage::IsEmptyDB() {
   std::unique_ptr<rocksdb::Iterator> iter(
-      db_->NewIterator(DefaultScanOptions(), GetCFHandle(kMetadataColumnFamilyName)));
+      db_->NewIterator(DefaultScanOptions(), GetCFHandle(ColumnFamilyID::Metadata)));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     Metadata metadata(kRedisNone, false);
     // If cannot decode the metadata we think the key is alive, so the db is not empty
@@ -676,20 +684,19 @@ rocksdb::Status Storage::Delete(const rocksdb::WriteOptions &options, rocksdb::C
   return Write(options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::DeleteRange(const std::string &first_key, const std::string &last_key) {
+rocksdb::Status Storage::DeleteRange(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
+                                     Slice begin, Slice end) {
   auto batch = GetWriteBatchBase();
-  rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(kMetadataColumnFamilyName);
-  auto s = batch->DeleteRange(cf_handle, first_key, last_key);
+  auto s = batch->DeleteRange(cf_handle, begin, end);
   if (!s.ok()) {
     return s;
   }
 
-  s = batch->Delete(cf_handle, last_key);
-  if (!s.ok()) {
-    return s;
-  }
+  return Write(options, batch->GetWriteBatch());
+}
 
-  return Write(default_write_opts_, batch->GetWriteBatch());
+rocksdb::Status Storage::DeleteRange(Slice begin, Slice end) {
+  return DeleteRange(default_write_opts_, GetCFHandle(ColumnFamilyID::Metadata), begin, end);
 }
 
 rocksdb::Status Storage::FlushScripts(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle) {
@@ -740,23 +747,6 @@ void Storage::RecordStat(StatType type, uint64_t v) {
   }
 }
 
-rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
-  if (name == kMetadataColumnFamilyName) {
-    return cf_handles_[1];
-  } else if (name == kZSetScoreColumnFamilyName) {
-    return cf_handles_[2];
-  } else if (name == kPubSubColumnFamilyName) {
-    return cf_handles_[3];
-  } else if (name == kPropagateColumnFamilyName) {
-    return cf_handles_[4];
-  } else if (name == kStreamColumnFamilyName) {
-    return cf_handles_[5];
-  } else if (name == kSearchColumnFamilyName) {
-    return cf_handles_[6];
-  }
-  return cf_handles_[0];
-}
-
 rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(ColumnFamilyID id) { return cf_handles_[static_cast<size_t>(id)]; }
 
 rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *begin, const Slice *end) {
@@ -778,8 +768,8 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
     return sst_file_manager_->GetTotalSize();
   }
 
-  std::string begin_key, end_key;
-  std::string prefix = ComposeNamespaceKey(ns, "", false);
+  auto begin_key = ComposeNamespaceKey(ns, "", false);
+  auto end_key = util::StringNext(begin_key);
 
   redis::Database db(this, ns);
   uint64_t size = 0, total_size = 0;
@@ -787,12 +777,9 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
 
   for (auto cf_handle : cf_handles_) {
-    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) || cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
+    if (cf_handle == GetCFHandle(ColumnFamilyID::PubSub) || cf_handle == GetCFHandle(ColumnFamilyID::Propagate)) {
       continue;
     }
-
-    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle);
-    if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
     db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);
@@ -868,7 +855,7 @@ Status Storage::WriteToPropagateCF(const std::string &key, const std::string &va
     return {Status::NotOK, "cannot write to propagate column family in slave mode"};
   }
   auto batch = GetWriteBatchBase();
-  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  auto cf = GetCFHandle(ColumnFamilyID::Propagate);
   batch->Put(cf, key, value);
   auto s = Write(default_write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
@@ -945,7 +932,7 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
 
 std::string Storage::GetReplIdFromDbEngine() {
   std::string replid_in_db;
-  auto cf = GetCFHandle(kPropagateColumnFamilyName);
+  auto cf = GetCFHandle(ColumnFamilyID::Propagate);
   auto s = db_->Get(rocksdb::ReadOptions(), cf, kReplicationIdKey, &replid_in_db);
   return replid_in_db;
 }

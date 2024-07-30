@@ -32,11 +32,11 @@
 #include "index_info.h"
 #include "indexer.h"
 #include "search/search_encoding.h"
-#include "server/server.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
 #include "types/redis_json.h"
+#include "value.h"
 
 namespace redis {
 
@@ -56,7 +56,7 @@ struct FieldValueRetriever {
   using Variant = std::variant<HashData, JsonData>;
   Variant db;
 
-  static StatusOr<FieldValueRetriever> Create(SearchOnDataType type, std::string_view key, engine::Storage *storage,
+  static StatusOr<FieldValueRetriever> Create(IndexOnDataType type, std::string_view key, engine::Storage *storage,
                                               const std::string &ns);
 
   explicit FieldValueRetriever(Hash hash, HashMetadata metadata, std::string_view key)
@@ -64,36 +64,55 @@ struct FieldValueRetriever {
 
   explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonData>, std::move(json)) {}
 
-  rocksdb::Status Retrieve(std::string_view field, std::string *output);
+  StatusOr<kqir::Value> Retrieve(std::string_view field, const redis::IndexFieldMetadata *type);
+
+  static StatusOr<kqir::Value> ParseFromJson(const jsoncons::json &value, const redis::IndexFieldMetadata *type);
+  static StatusOr<kqir::Value> ParseFromHash(const std::string &value, const redis::IndexFieldMetadata *type);
 };
 
 struct IndexUpdater {
-  using FieldValues = std::map<std::string, std::string>;
+  using FieldValues = std::map<std::string, kqir::Value>;
 
   const kqir::IndexInfo *info = nullptr;
   GlobalIndexer *indexer = nullptr;
 
   explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
 
-  StatusOr<FieldValues> Record(std::string_view key, const std::string &ns) const;
-  Status UpdateIndex(const std::string &field, std::string_view key, std::string_view original,
-                     std::string_view current, const std::string &ns) const;
-  Status Update(const FieldValues &original, std::string_view key, const std::string &ns) const;
+  StatusOr<FieldValues> Record(std::string_view key) const;
+  Status UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
+                     const kqir::Value &current) const;
+  Status Update(const FieldValues &original, std::string_view key) const;
+
+  Status Build() const;
+
+  Status UpdateTagIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
+                        const SearchKey &search_key, const TagFieldMetadata *tag) const;
+  Status UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
+                            const SearchKey &search_key, const NumericFieldMetadata *num) const;
+  Status UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
+                               const SearchKey &search_key, HnswVectorFieldMetadata *vector) const;
 };
 
 struct GlobalIndexer {
   using FieldValues = IndexUpdater::FieldValues;
-  using RecordResult = std::pair<IndexUpdater, FieldValues>;
+  struct RecordResult {
+    IndexUpdater updater;
+    std::string key;
+    FieldValues fields;
+  };
 
   tsl::htrie_map<char, IndexUpdater> prefix_map;
+  std::vector<IndexUpdater> updater_list;
 
   engine::Storage *storage = nullptr;
 
   explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
 
   void Add(IndexUpdater updater);
+  void Remove(const kqir::IndexInfo *index);
+
   StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
-  static Status Update(const RecordResult &original, std::string_view key, const std::string &ns);
+  static Status Update(const RecordResult &original);
 };
 
 }  // namespace redis

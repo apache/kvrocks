@@ -57,14 +57,6 @@ constexpr const char *kDefaultNamespace = "__namespace";
 
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
-struct CompactionCheckerRange {
- public:
-  int start;
-  int stop;
-
-  bool Enabled() const { return start != -1 || stop != -1; }
-};
-
 struct CLIOptions {
   std::string conf_file;
   std::vector<std::pair<std::string, std::string>> cli_options;
@@ -104,6 +96,7 @@ struct Config {
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
+  uint64_t proto_max_bulk_len = 512 * 1024 * 1024;
   bool daemonize = false;
   SupervisedMode supervised_mode = kSupervisedNone;
   bool slave_readonly = true;
@@ -138,7 +131,7 @@ struct Config {
   Cron compact_cron;
   Cron bgsave_cron;
   Cron dbsize_scan_cron;
-  CompactionCheckerRange compaction_checker_range{-1, -1};
+  Cron compaction_checker_cron;
   int64_t force_compact_file_age;
   int force_compact_file_min_deleted_percentage;
   bool repl_namespace_enabled = false;
@@ -249,6 +242,7 @@ struct Config {
   std::string bgsave_cron_str_;
   std::string dbsize_scan_cron_str_;
   std::string compaction_checker_range_str_;
+  std::string compaction_checker_cron_str_;
   std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;

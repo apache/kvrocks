@@ -38,7 +38,7 @@
 #include "string_util.h"
 #include "type_util.h"
 
-// kqir stands for Kvorcks Query Intermediate Representation
+// kqir stands for Kvrocks Query Intermediate Representation
 namespace kqir {
 
 struct Node {
@@ -363,7 +363,7 @@ struct SelectClause : Node {
 
   explicit SelectClause(std::vector<std::unique_ptr<FieldRef>> &&fields) : fields(std::move(fields)) {}
 
-  std::string_view Name() const override { return "SelectExpr"; }
+  std::string_view Name() const override { return "SelectClause"; }
   std::string Dump() const override {
     if (fields.empty()) return "select *";
     return fmt::format("select {}", util::StringJoin(fields, [](const auto &v) { return v->Dump(); }));
@@ -412,7 +412,7 @@ struct SearchExpr : Node {
         limit(std::move(limit)),
         sort_by(std::move(sort_by)) {}
 
-  std::string_view Name() const override { return "SearchStmt"; }
+  std::string_view Name() const override { return "SearchExpr"; }
   std::string Dump() const override {
     std::string opt;
     if (sort_by) opt += " " + sort_by->Dump();
@@ -432,8 +432,8 @@ struct SearchExpr : Node {
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<SearchExpr>(
         Node::MustAs<IndexRef>(index->Clone()), Node::MustAs<QueryExpr>(query_expr->Clone()),
-        Node::MustAs<LimitClause>(limit->Clone()), Node::MustAs<SortByClause>(sort_by->Clone()),
-        Node::MustAs<SelectClause>(select->Clone()));
+        limit ? Node::MustAs<LimitClause>(limit->Clone()) : nullptr,
+        sort_by ? Node::MustAs<SortByClause>(sort_by->Clone()) : nullptr, Node::MustAs<SelectClause>(select->Clone()));
   }
 };
 

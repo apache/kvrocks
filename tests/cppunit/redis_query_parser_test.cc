@@ -21,11 +21,14 @@
 #include <gtest/gtest.h>
 #include <search/redis_query_transformer.h>
 
+#include "search/common_transformer.h"
 #include "tao/pegtl/string_input.hpp"
 
 using namespace kqir::redis_query;
 
-static auto Parse(const std::string& in) { return ParseToIR(string_input(in, "test")); }
+static auto Parse(const std::string& in, const kqir::ParamMap& pm = {}) {
+  return ParseToIR(string_input(in, "test"), pm);
+}
 
 #define AssertSyntaxError(node) ASSERT_EQ(node.Msg(), "invalid syntax");  // NOLINT
 
@@ -89,4 +92,12 @@ TEST(RedisQueryParserTest, Simple) {
   AssertIR(Parse("*"), "true");
   AssertIR(Parse("* *"), "(and true, true)");
   AssertIR(Parse("*|*"), "(or true, true)");
+}
+
+TEST(RedisQueryParserTest, Params) {
+  AssertIR(Parse("@c:[$left ($right]", {{"left", "1"}, {"right", "2"}}), "(and c >= 1, c < 2)");
+  AssertIR(Parse("@c:[($x $x]", {{"x", "2"}}), "(and c > 2, c <= 2)");
+  AssertIR(Parse("@c:{$y}", {{"y", "hello"}}), "c hastag \"hello\"");
+  AssertIR(Parse("@c:{$y} @d:[$zzz inf]", {{"y", "hello"}, {"zzz", "3"}}), "(and c hastag \"hello\", d >= 3)");
+  ASSERT_EQ(Parse("@c:{$y}", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
 }

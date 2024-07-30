@@ -36,7 +36,7 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector =
-    parse_tree::selector<Rule, parse_tree::store_content::on<Number, String, Identifier, Inf>,
+    parse_tree::selector<Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
                          parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr,
                                                         AndExpr, OrExpr, Wildcard>>;
 
@@ -51,7 +51,9 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 }
 
 struct Transformer : ir::TreeTransformer {
-  static auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
+  explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
+
+  auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
     } else if (Is<Wildcard>(node)) {
@@ -66,7 +68,17 @@ struct Transformer : ir::TreeTransformer {
         std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
         for (const auto& tag : query->children) {
-          auto tag_str = Is<Identifier>(tag) ? tag->string() : GET_OR_RET(UnescapeString(tag->string()));
+          std::string tag_str;
+          if (Is<Identifier>(tag)) {
+            tag_str = tag->string();
+          } else if (Is<StringL>(tag)) {
+            tag_str = GET_OR_RET(UnescapeString(tag->string()));
+          } else if (Is<Param>(tag)) {
+            tag_str = GET_OR_RET(GetParam(tag));
+          } else {
+            return {Status::NotOK, "encountered invalid tag"};
+          }
+
           exprs.push_back(std::make_unique<ir::TagContainExpr>(std::make_unique<FieldRef>(field),
                                                                std::make_unique<StringLiteral>(tag_str)));
         }
@@ -82,14 +94,27 @@ struct Transformer : ir::TreeTransformer {
         const auto& lhs = query->children[0];
         const auto& rhs = query->children[1];
 
+        auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+          if (Is<Number>(node)) {
+            return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+          } else if (Is<Param>(node)) {
+            auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
+                                      .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+
+            return std::make_unique<ir::NumericLiteral>(val);
+          } else {
+            return {Status::NotOK,
+                    fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
+          }
+        };
+
         if (Is<ExclusiveNumber>(lhs)) {
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT,
+                                                               std::make_unique<FieldRef>(field),
+                                                               GET_OR_RET(number_or_param(lhs->children[0]))));
+        } else if (Is<Number>(lhs) || Is<Param>(lhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::GT, std::make_unique<FieldRef>(field),
-              Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(lhs->children[0])))));
-        } else if (Is<Number>(lhs)) {
-          exprs.push_back(
-              std::make_unique<NumericCompareExpr>(NumericCompareExpr::GET, std::make_unique<FieldRef>(field),
-                                                   Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(lhs)))));
+              NumericCompareExpr::GET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(lhs))));
         } else {  // Inf
           if (lhs->string_view() == "+inf") {
             return {Status::NotOK, "it's not allowed to set the lower bound as positive infinity"};
@@ -97,13 +122,12 @@ struct Transformer : ir::TreeTransformer {
         }
 
         if (Is<ExclusiveNumber>(rhs)) {
+          exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::LT,
+                                                               std::make_unique<FieldRef>(field),
+                                                               GET_OR_RET(number_or_param(rhs->children[0]))));
+        } else if (Is<Number>(rhs) || Is<Param>(rhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(
-              NumericCompareExpr::LT, std::make_unique<FieldRef>(field),
-              Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(rhs->children[0])))));
-        } else if (Is<Number>(rhs)) {
-          exprs.push_back(
-              std::make_unique<NumericCompareExpr>(NumericCompareExpr::LET, std::make_unique<FieldRef>(field),
-                                                   Node::MustAs<NumericLiteral>(GET_OR_RET(Transform(rhs)))));
+              NumericCompareExpr::LET, std::make_unique<FieldRef>(field), GET_OR_RET(number_or_param(rhs))));
         } else {  // Inf
           if (rhs->string_view() == "-inf") {
             return {Status::NotOK, "it's not allowed to set the upper bound as negative infinity"};
@@ -150,8 +174,9 @@ struct Transformer : ir::TreeTransformer {
 };
 
 template <typename Input>
-StatusOr<std::unique_ptr<ir::Node>> ParseToIR(Input&& in) {
-  return Transformer::Transform(GET_OR_RET(ParseToTree(std::forward<Input>(in))));
+StatusOr<std::unique_ptr<ir::Node>> ParseToIR(Input&& in, const ParamMap& param_map = {}) {
+  Transformer transformer(param_map);
+  return transformer.Transform(GET_OR_RET(ParseToTree(std::forward<Input>(in))));
 }
 
 }  // namespace redis_query

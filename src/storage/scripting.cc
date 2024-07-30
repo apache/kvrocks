@@ -443,13 +443,17 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto *cf = srv->storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto iter = util::UniqueIterator(srv->storage, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice lib = iter->key();
     lib.remove_prefix(strlen(engine::kLuaLibCodePrefix));
     result.emplace_back(lib.ToString(), iter->value().ToString());
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
   }
 
   output->append(redis::MultiLen(result.size()));
@@ -479,13 +483,17 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto *cf = srv->storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto iter = util::UniqueIterator(srv->storage, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice func = iter->key();
     func.remove_prefix(strlen(engine::kLuaLibCodePrefix));
     result.emplace_back(func.ToString(), iter->value().ToString());
+  }
+
+  if (auto s = iter->status(); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
   }
 
   output->append(redis::MultiLen(result.size()));
@@ -557,7 +565,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
   }
 
   auto storage = srv->storage;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
 
   for (size_t i = 1; i <= lua_objlen(lua, -1); ++i) {
     lua_rawgeti(lua, -1, static_cast<int>(i));
@@ -611,8 +619,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
       auto s = srv->ScriptGet(funcname + 2, &body);
       if (!s.IsOK()) {
         lua_pop(lua, 1); /* remove the error handler from the stack. */
-        *output = redis::Error(redis::errNoMatchingScript);
-        return Status::OK();
+        return {Status::RedisNoScript, redis::errNoMatchingScript};
       }
     } else {
       body = body_or_sha;
@@ -640,8 +647,8 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   SetGlobalArray(lua, "ARGV", argv);
 
   if (lua_pcall(lua, 0, 1, -2)) {
-    auto msg = fmt::format("ERR running script (call to {}): {}", funcname, lua_tostring(lua, -1));
-    *output = redis::Error(msg);
+    auto msg = fmt::format("running script (call to {}): {}", funcname, lua_tostring(lua, -1));
+    *output = redis::Error({Status::NotOK, msg});
     lua_pop(lua, 2);
   } else {
     *output = ReplyToRedisReply(conn, lua);
@@ -755,7 +762,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   if (config->cluster_enabled) {
     auto s = srv->cluster->CanExecByMySelf(attributes, args, conn);
     if (!s.IsOK()) {
-      PushError(lua, s.Msg().c_str());
+      PushError(lua, redis::StatusToRedisErrorMsg(s).c_str());
       return raise_error ? RaiseError(lua) : 1;
     }
   }
@@ -1192,7 +1199,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = redis::Error(lua_tostring(lua, -1));
+        output = redis::Error({Status::RedisErrorNoPrefix, lua_tostring(lua, -1)});
         lua_pop(lua, 1);
         return output;
       }

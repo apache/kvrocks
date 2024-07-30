@@ -29,6 +29,7 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
+#include "string_util.h"
 
 namespace kqir {
 
@@ -38,35 +39,39 @@ struct TagFieldScanExecutor : ExecutorNode {
   util::UniqueIterator iter{nullptr};
 
   IndexInfo *index;
-  std::string ns_key;
   std::string index_key;
+  bool case_sensitive;
 
   TagFieldScanExecutor(ExecutorContext *ctx, TagFieldScan *scan)
-      : ExecutorNode(ctx), scan(scan), ss(ctx->storage), index(scan->field->info->index) {
-    ns_key = ComposeNamespaceKey(index->ns, index->name, ctx->storage->IsSlotIdEncoded());
-    index_key = InternalKey(ns_key, redis::ConstructTagFieldSubkey(scan->field->name, scan->tag, {}),
-                            index->metadata.version, ctx->storage->IsSlotIdEncoded())
-                    .Encode();
-  }
+      : ExecutorNode(ctx),
+        scan(scan),
+        ss(ctx->storage),
+        index(scan->field->info->index),
+        index_key(redis::SearchKey(index->ns, index->name, scan->field->name).ConstructTagFieldData(scan->tag, {})),
+        case_sensitive(scan->field->info->MetadataAs<redis::TagFieldMetadata>()->case_sensitive) {}
 
-  bool InRangeDecode(Slice key, Slice field, Slice *user_key) {
-    auto ikey = InternalKey(key, ctx->storage->IsSlotIdEncoded());
-    if (ikey.GetVersion() != index->metadata.version) return false;
-    auto subkey = ikey.GetSubKey();
+  bool InRangeDecode(Slice key, Slice *user_key) const {
+    uint8_t ns_size = 0;
+    if (!GetFixed8(&key, &ns_size)) return false;
+    if (ns_size != index->ns.size()) return false;
+    if (!key.starts_with(index->ns)) return false;
+    key.remove_prefix(ns_size);
 
-    uint8_t flag = 0;
-    if (!GetFixed8(&subkey, &flag)) return false;
-    if (flag != (uint8_t)redis::SearchSubkeyType::TAG_FIELD) return false;
+    uint8_t subkey_type = 0;
+    if (!GetFixed8(&key, &subkey_type)) return false;
+    if (subkey_type != (uint8_t)redis::SearchSubkeyType::FIELD) return false;
 
     Slice value;
-    if (!GetSizedString(&subkey, &value)) return false;
-    if (value != field) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (value != index->name) return false;
 
-    Slice tag;
-    if (!GetSizedString(&subkey, &tag)) return false;
-    if (tag != scan->tag) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (value != scan->field->name) return false;
 
-    if (!GetSizedString(&subkey, user_key)) return false;
+    if (!GetSizedString(&key, &value)) return false;
+    if (case_sensitive ? value != scan->tag : !util::EqualICase(value.ToStringView(), scan->tag)) return false;
+
+    if (!GetSizedString(&key, user_key)) return false;
 
     return true;
   }
@@ -76,8 +81,7 @@ struct TagFieldScanExecutor : ExecutorNode {
       rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
       read_options.snapshot = ss.GetSnapShot();
 
-      iter =
-          util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(engine::kSearchColumnFamilyName));
+      iter = util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Search));
       iter->Seek(index_key);
     }
 
@@ -86,7 +90,7 @@ struct TagFieldScanExecutor : ExecutorNode {
     }
 
     Slice user_key;
-    if (!InRangeDecode(iter->key(), scan->field->name, &user_key)) {
+    if (!InRangeDecode(iter->key(), &user_key)) {
       return end;
     }
 

@@ -340,7 +340,7 @@ class HyperLogLogMetadata : public Metadata {
     // The registers are stored in 6-bit format and each segment contains
     // 768 registers.
     DENSE = 0,
-    // TODO: sparse encoding
+    // TODO(mwish): sparse encoding
     // SPARSE = 1,
   };
 

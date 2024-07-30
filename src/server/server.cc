@@ -39,6 +39,7 @@
 
 #include "commands/commander.h"
 #include "config.h"
+#include "config/config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
@@ -52,7 +53,12 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage),
+      indexer(storage),
+      index_mgr(&indexer, storage),
+      start_time_secs_(util::GetTimeStamp()),
+      config_(config),
+      namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -150,6 +156,13 @@ Status Server::Start() {
     }
   }
 
+  if (!config_->cluster_enabled) {
+    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    for (auto [_, ns] : namespace_.List()) {
+      GET_OR_RET(index_mgr.Load(ns));
+    }
+  }
+
   if (config_->cluster_enabled) {
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
@@ -191,17 +204,18 @@ Status Server::Start() {
       if (storage->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
-        auto now_hours = util::GetTimeStamp<std::chrono::hours>();
-        if (now_hours >= config_->compaction_checker_range.start &&
-            now_hours <= config_->compaction_checker_range.stop) {
-          std::vector<std::string> cf_names = {engine::kMetadataColumnFamilyName, engine::kSubkeyColumnFamilyName,
-                                               engine::kZSetScoreColumnFamilyName, engine::kStreamColumnFamilyName};
-          for (const auto &cf_name : cf_names) {
-            compaction_checker.PickCompactionFiles(cf_name);
+          && config_->compaction_checker_cron.IsEnabled()) {
+        auto t_now = static_cast<time_t>(util::GetTimeStamp());
+        std::tm now{};
+        localtime_r(&t_now, &now);
+        if (config_->compaction_checker_cron.IsTimeMatch(&now)) {
+          const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
+          for (auto &column_family : column_family_list) {
+            compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
+        auto now_hours = t_now / 3600;
         if (now_hours != 0 && last_compact_date != now_hours / 24) {
           last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
@@ -744,7 +758,7 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+      if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
@@ -809,8 +823,12 @@ void Server::cron() {
     // In order to properly handle all possible situations on rocksdb, we manually resume here
     // when encountering no space error and disk quota exceeded error.
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
-      storage->GetDB()->Resume();
-      LOG(INFO) << "[server] Schedule to resume DB after retryable IO error";
+      auto s = storage->GetDB()->Resume();
+      if (s.ok()) {
+        LOG(WARNING) << "[server] Successfully resumed DB after retryable IO error";
+      } else {
+        LOG(ERROR) << "[server] Failed to resume DB after retryable IO error: " << s.ToString();
+      }
       storage->SetDBInRetryableIOError(false);
     }
 
@@ -850,7 +868,7 @@ void Server::GetRocksDBInfo(std::string *info) {
     // All column families share the same block cache, so it's good to count a single one.
     uint64_t block_cache_usage = 0;
     uint64_t block_cache_pinned_usage = 0;
-    auto subkey_cf_handle = storage->GetCFHandle(engine::kSubkeyColumnFamilyName);
+    auto subkey_cf_handle = storage->GetCFHandle(ColumnFamilyID::PrimarySubkey);
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
     string_stream << "block_cache_usage:" << block_cache_usage << "\r\n";
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
@@ -1651,7 +1669,7 @@ Status Server::ScriptExists(const std::string &sha) {
 
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1666,7 +1684,7 @@ Status Server::ScriptSet(const std::string &sha, const std::string &body) const 
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1676,7 +1694,7 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
@@ -1700,7 +1718,7 @@ void Server::ScriptReset() {
 }
 
 Status Server::ScriptFlush() {
-  auto cf = storage->GetCFHandle(engine::kPropagateColumnFamilyName);
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
   auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();

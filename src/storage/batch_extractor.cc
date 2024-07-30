@@ -44,16 +44,17 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
 }
 
 rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
-  if (column_family_id == kColumnFamilyIDZSetScore) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::SecondarySubkey)) {
     return rocksdb::Status::OK();
   }
 
   std::string ns, user_key;
   std::vector<std::string> command_args;
 
-  if (column_family_id == kColumnFamilyIDMetadata) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -109,10 +110,11 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     return rocksdb::Status::OK();
   }
 
-  if (column_family_id == kColumnFamilyIDDefault) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
     InternalKey ikey(key, is_slot_id_encoded_);
     user_key = ikey.GetKey().ToString();
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -252,7 +254,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       default:
         break;
     }
-  } else if (column_family_id == kColumnFamilyIDStream) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
     auto s = ExtractStreamAddCommand(is_slot_id_encoded_, key, value, &command_args);
     if (!s.IsOK()) {
       LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Stream: " << s.Msg();
@@ -268,26 +270,28 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
 }
 
 rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const Slice &key) {
-  if (column_family_id == kColumnFamilyIDZSetScore) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::SecondarySubkey)) {
     return rocksdb::Status::OK();
   }
 
   std::vector<std::string> command_args;
   std::string ns;
 
-  if (column_family_id == kColumnFamilyIDMetadata) {
+  if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
     std::string user_key;
     std::tie(ns, user_key) = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
 
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
     command_args = {"DEL", user_key};
-  } else if (column_family_id == kColumnFamilyIDDefault) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey)) {
     InternalKey ikey(key, is_slot_id_encoded_);
     std::string user_key = ikey.GetKey().ToString();
-    if (slot_id_ >= 0 && static_cast<uint16_t>(slot_id_) != GetSlotIdFromKey(user_key)) {
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
       return rocksdb::Status::OK();
     }
 
@@ -376,7 +380,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       default:
         break;
     }
-  } else if (column_family_id == kColumnFamilyIDStream) {
+  } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
     InternalKey ikey(key, is_slot_id_encoded_);
     Slice encoded_id = ikey.GetSubKey();
     redis::StreamEntryID entry_id;

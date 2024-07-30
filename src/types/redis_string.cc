@@ -27,7 +27,6 @@
 #include <string>
 
 #include "parse_util.h"
-#include "server/redis_request.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
@@ -503,8 +502,8 @@ rocksdb::Status String::CAD(const std::string &user_key, const std::string &valu
   }
 
   if (value == current_value) {
-    auto delete_status = storage_->Delete(storage_->DefaultWriteOptions(),
-                                          storage_->GetCFHandle(engine::kMetadataColumnFamilyName), ns_key);
+    auto delete_status =
+        storage_->Delete(storage_->DefaultWriteOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key);
     if (!delete_status.ok()) {
       return delete_status;
     }
@@ -553,7 +552,7 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
   // Allocate the LCS table.
   uint64_t dp_size = (alen + 1) * (blen + 1);
   uint64_t bulk_size = dp_size * sizeof(uint32_t);
-  if (bulk_size > PROTO_BULK_MAX_SIZE || bulk_size / dp_size != sizeof(uint32_t)) {
+  if (bulk_size > storage_->GetConfig()->proto_max_bulk_len || bulk_size / dp_size != sizeof(uint32_t)) {
     return rocksdb::Status::Aborted("Insufficient memory, transient memory for LCS exceeds proto-max-bulk-len");
   }
   std::vector<uint32_t> dp(dp_size, 0);
@@ -597,10 +596,10 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
 
   uint32_t i = alen;
   uint32_t j = blen;
-  uint32_t arange_start = alen;  // alen signals that values are not set.
-  uint32_t arange_end = 0;
-  uint32_t brange_start = 0;
-  uint32_t brange_end = 0;
+  uint32_t a_range_start = alen;  // alen signals that values are not set.
+  uint32_t a_range_end = 0;
+  uint32_t b_range_start = 0;
+  uint32_t b_range_end = 0;
   while (i > 0 && j > 0) {
     bool emit_range = false;
     if (a[i - 1] == b[j - 1]) {
@@ -611,24 +610,24 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
       }
 
       // Track the current range.
-      if (arange_start == alen) {
-        arange_start = i - 1;
-        arange_end = i - 1;
-        brange_start = j - 1;
-        brange_end = j - 1;
+      if (a_range_start == alen) {
+        a_range_start = i - 1;
+        a_range_end = i - 1;
+        b_range_start = j - 1;
+        b_range_end = j - 1;
       }
       // Let's see if we can extend the range backward since
       // it is contiguous.
-      else if (arange_start == i && brange_start == j) {
-        arange_start--;
-        brange_start--;
+      else if (a_range_start == i && b_range_start == j) {
+        a_range_start--;
+        b_range_start--;
       } else {
         emit_range = true;
       }
 
       // Emit the range if we matched with the first byte of
       // one of the two strings. We'll exit the loop ASAP.
-      if (arange_start == 0 || brange_start == 0) {
+      if (a_range_start == 0 || b_range_start == 0) {
         emit_range = true;
       }
       idx--;
@@ -643,23 +642,23 @@ rocksdb::Status String::LCS(const std::string &user_key1, const std::string &use
         i--;
       else
         j--;
-      if (arange_start != alen) emit_range = true;
+      if (a_range_start != alen) emit_range = true;
     }
 
     // Emit the current range if needed.
     if (emit_range) {
       if (auto result = std::get_if<StringLCSIdxResult>(rst)) {
-        uint32_t match_len = arange_end - arange_start + 1;
+        uint32_t match_len = a_range_end - a_range_start + 1;
 
         // Always emit the range when the `min_match_len` is not set.
         if (args.min_match_len == 0 || match_len >= args.min_match_len) {
-          result->matches.emplace_back(StringLCSRange{arange_start, arange_end},
-                                       StringLCSRange{brange_start, brange_end}, match_len);
+          result->matches.emplace_back(StringLCSRange{a_range_start, a_range_end},
+                                       StringLCSRange{b_range_start, b_range_end}, match_len);
         }
       }
 
       // Restart at the next match.
-      arange_start = alen;
+      a_range_start = alen;
     }
   }
 

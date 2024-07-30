@@ -26,8 +26,10 @@
 
 namespace engine {
 DBIterator::DBIterator(Storage *storage, rocksdb::ReadOptions read_options, int slot)
-    : storage_(storage), read_options_(std::move(read_options)), slot_(slot) {
-  metadata_cf_handle_ = storage_->GetCFHandle(kMetadataColumnFamilyName);
+    : storage_(storage),
+      read_options_(std::move(read_options)),
+      slot_(slot),
+      metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
   metadata_iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, metadata_cf_handle_));
 }
 
@@ -115,9 +117,9 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
 SubKeyIterator::SubKeyIterator(Storage *storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix)
     : storage_(storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
   if (type_ == kRedisStream) {
-    cf_handle_ = storage_->GetCFHandle(kStreamColumnFamilyName);
+    cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::Stream);
   } else {
-    cf_handle_ = storage_->GetCFHandle(kSubkeyColumnFamilyName);
+    cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey);
   }
   iter_ = util::UniqueIterator(storage_->NewIterator(read_options_, cf_handle_));
 }
@@ -165,7 +167,8 @@ void SubKeyIterator::Reset() {
 }
 
 rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {
-  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+  auto key_slot_id = ExtractSlotId(key);
+  if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypePut, column_family_id, key.ToString(), value.ToString());
@@ -173,7 +176,8 @@ rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice 
 }
 
 rocksdb::Status WALBatchExtractor::DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) {
-  if (slot_ != -1 && slot_ != ExtractSlotId(key)) {
+  auto key_slot_id = ExtractSlotId(key);
+  if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypeDelete, column_family_id, key.ToString(), std::string{});
@@ -243,7 +247,7 @@ void WALIterator::nextBatch() {
 }
 
 void WALIterator::Seek(rocksdb::SequenceNumber seq) {
-  if (slot_ != -1 && !storage_->IsSlotIdEncoded()) {
+  if (slot_range_.IsValid() && !storage_->IsSlotIdEncoded()) {
     Reset();
     return;
   }

@@ -96,6 +96,7 @@ std::string InternalKey::Encode() const {
 }
 
 bool InternalKey::operator==(const InternalKey &that) const {
+  if (namespace_ != this->namespace_) return false;
   if (key_ != that.key_) return false;
   if (sub_key_ != that.sub_key_) return false;
   return version_ == that.version_;

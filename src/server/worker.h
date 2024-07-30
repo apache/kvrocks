@@ -91,6 +91,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   UniqueEvent timer_;
   std::thread::id tid_;
   std::vector<evconnlistener *> listen_events_;
+  mutable std::mutex conns_mu_;  // refer to https://github.com/oneapi-src/oneTBB/issues/183, traverse and erase should
+                                 // be protected by mutex
   ConnMap conns_;
   ConnMap monitor_conns_;
   int last_iter_conn_fd_ = 0;  // fd of last processed connection in previous cron

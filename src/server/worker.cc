@@ -23,6 +23,7 @@
 #include <event2/util.h>
 #include <glog/logging.h>
 
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -78,17 +79,23 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
 Worker::~Worker() {
   // std::vector<redis::Connection *> conns;
   // conns.reserve(conns_.size() + monitor_conns_.size());
-
-  for (const auto &iter : conns_) {
-    if (ConnMap::accessor accessor; conns_.find(accessor, iter.first)) {
-      // conns.emplace_back(accessor->second);
-      accessor->second->Close();
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    for (const auto &iter : conns_) {
+      if (ConnMap::accessor accessor; conns_.find(accessor, iter.first)) {
+        // conns.emplace_back(accessor->second);
+        accessor->second->Close();
+      }
     }
   }
-  for (const auto &iter : monitor_conns_) {
-    if (ConnMap::accessor accessor; monitor_conns_.find(accessor, iter.first)) {
-      // conns.emplace_back(accessor->second);
-      accessor->second->Close();
+
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    for (const auto &iter : monitor_conns_) {
+      if (ConnMap::accessor accessor; monitor_conns_.find(accessor, iter.first)) {
+        // conns.emplace_back(accessor->second);
+        accessor->second->Close();
+      }
     }
   }
   // for (const auto &iter : conns) {
@@ -338,9 +345,12 @@ Status Worker::AddConnection(redis::Connection *c) {
 redis::Connection *Worker::removeConnection(int fd) {
   redis::Connection *conn = nullptr;
 
+  std::lock_guard<std::mutex> guard(conns_mu_);
   if (ConnMap::accessor accessor; conns_.find(accessor, fd)) {
-    conn = accessor->second;
-    conns_.erase(accessor);
+    {
+      conn = accessor->second;
+      conns_.erase(accessor);
+    }
     srv->DecrClientNum();
   }
 
@@ -411,12 +421,15 @@ void Worker::FreeConnection(redis::Connection *conn) {
 }
 
 void Worker::FreeConnectionByID(int fd, uint64_t id) {
+  std::lock_guard<std::mutex> guard(conns_mu_);
   if (ConnMap::accessor accessor; conns_.find(accessor, fd)) {
     if (rate_limit_group_ != nullptr) {
       bufferevent_remove_from_rate_limit_group(accessor->second->GetBufferEvent());
     }
+
     delete accessor->second;
     conns_.erase(accessor);
+
     srv->DecrClientNum();
   }
   if (ConnMap::accessor accessor; monitor_conns_.find(accessor, fd)) {
@@ -448,9 +461,11 @@ Status Worker::Reply(int fd, const std::string &reply) {
 }
 
 void Worker::BecomeMonitorConn(redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(conns_mu_);
   if (ConnMap::accessor accessor; conns_.find(accessor, conn->GetFD())) {
     conns_.erase(accessor);
     accessor.release();
+
     if (ConnMap::accessor accessor; monitor_conns_.find(accessor, conn->GetFD())) {
       accessor->second = conn;
     } else {
@@ -463,8 +478,11 @@ void Worker::BecomeMonitorConn(redis::Connection *conn) {
 
 void Worker::QuitMonitorConn(redis::Connection *conn) {
   if (ConnMap::accessor accessor; monitor_conns_.find(accessor, conn->GetFD())) {
-    monitor_conns_.erase(accessor);
-    accessor.release();
+    {
+      std::lock_guard<std::mutex> guard(conns_mu_);
+      monitor_conns_.erase(accessor);
+      accessor.release();
+    }
     if (ConnMap::accessor accessor; conns_.find(accessor, conn->GetFD())) {
       accessor->second = conn;
     } else {
@@ -476,6 +494,7 @@ void Worker::QuitMonitorConn(redis::Connection *conn) {
 }
 
 void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &response) {
+  std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &[key, _] : monitor_conns_) {
     if (ConnMap::accessor accessor; monitor_conns_.find(accessor, key)) {
       const auto &value = accessor->second;
@@ -489,6 +508,7 @@ void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &respon
 
 std::string Worker::GetClientsStr() {
   std::string output;
+  std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &[key, _] : conns_) {
     if (ConnMap::const_accessor accessor; conns_.find(accessor, key)) {
       output.append(accessor->second->ToString());
@@ -500,6 +520,7 @@ std::string Worker::GetClientsStr() {
 
 void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
                         int64_t *killed) {
+  std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &[key, _] : conns_) {
     if (ConnMap::accessor accessor; conns_.find(accessor, key)) {
       auto conn = accessor->second;
@@ -528,6 +549,7 @@ void Worker::KickoutIdleClients(int timeout) {
   std::vector<std::pair<int, uint64_t>> to_be_killed_conns;
 
   std::set<int> fds;
+  std::lock_guard<std::mutex> guard(conns_mu_);
   for (const auto &[key, _] : conns_) {
     fds.emplace(key);
   }
@@ -570,6 +592,7 @@ void WorkerThread::Start() {
 }
 
 std::map<int, redis::Connection *> Worker::GetConnections() const {
+  std::unique_lock<std::mutex> guard(conns_mu_);
   std::map<int, redis::Connection *> result;
   for (auto [fd, _] : conns_) {
     if (ConnMap::accessor accessor; conns_.find(accessor, fd)) {

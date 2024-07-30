@@ -22,15 +22,7 @@
 
 #include <limits>
 
-// num << bit <= MAX  ->  num <= MAX >> bit
-template <typename T, typename U>
-StatusOr<T> CheckedShiftLeft(T num, U bit) {
-  if (num <= std::numeric_limits<T>::max() >> bit) {
-    return num << bit;
-  }
-
-  return {Status::NotOK, "arithmetic overflow"};
-}
+#include "bit_util.h"
 
 StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
   auto [num, rest] = GET_OR_RET(TryParseInt<std::uint64_t>(v.c_str(), 10));
@@ -38,15 +30,15 @@ StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
   if (*rest == 0) {
     return num;
   } else if (util::EqualICase(rest, "k")) {
-    return CheckedShiftLeft(num, 10);
+    return util::CheckedShiftLeft(num, 10);
   } else if (util::EqualICase(rest, "m")) {
-    return CheckedShiftLeft(num, 20);
+    return util::CheckedShiftLeft(num, 20);
   } else if (util::EqualICase(rest, "g")) {
-    return CheckedShiftLeft(num, 30);
+    return util::CheckedShiftLeft(num, 30);
   } else if (util::EqualICase(rest, "t")) {
-    return CheckedShiftLeft(num, 40);
+    return util::CheckedShiftLeft(num, 40);
   } else if (util::EqualICase(rest, "p")) {
-    return CheckedShiftLeft(num, 50);
+    return util::CheckedShiftLeft(num, 50);
   }
 
   return {Status::NotOK, "encounter unexpected unit"};

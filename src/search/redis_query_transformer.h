@@ -38,7 +38,7 @@ template <typename Rule>
 using TreeSelector = parse_tree::selector<
     Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
     parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
-                                   OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeKey, KnnKey, ArrowOp>>;
+                                   OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -56,8 +56,7 @@ struct Transformer : ir::TreeTransformer {
   StatusOr<std::unique_ptr<VectorLiteral>> Transform2Vector(const TreeNode& node) {
     std::string vector_str = GET_OR_RET(GetParam(node));
 
-    auto vector_chars = GET_OR_RET(Binary2Chars(vector_str));
-    std::vector<double> values = GET_OR_RET(CharsToVector<double>(vector_chars));
+    std::vector<double> values = GET_OR_RET(Binary2Vector<double>(vector_str));
     if (values.empty()) {
       return {Status::NotOK, "empty vector is invalid"};
     }

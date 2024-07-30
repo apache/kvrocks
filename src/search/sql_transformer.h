@@ -41,9 +41,9 @@ using TreeSelector = parse_tree::selector<
     Rule,
     parse_tree::store_content::on<Boolean, Number, StringL, Param, Identifier, NumericCompareOp, VectorCompareOp,
                                   AscOrDesc, UnsignedInteger>,
-    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorCompareExpr, VectorRangeExpr, NotExpr, AndExpr,
-                                   OrExpr, Wildcard, SelectExpr, FromExpr, WhereClause, OrderByClause, OrderByExpr,
-                                   LimitClause, SearchStmt>>;
+    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorLiteral, VectorCompareExpr, VectorRangeExpr,
+                                   NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr, FromExpr, WhereClause, OrderByClause,
+                                   OrderByExpr, LimitClause, SearchStmt>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -57,27 +57,6 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 
 struct Transformer : ir::TreeTransformer {
   explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
-
-  StatusOr<std::unique_ptr<VectorLiteral>> Transform2Vector(const TreeNode& node) {
-    std::string vector_str;
-    if (Is<StringL>(node)) {
-      vector_str = GET_OR_RET(UnescapeString(node->string_view()));
-    } else if (Is<Param>(node)) {
-      vector_str = GET_OR_RET(GetParam(node));
-    } else {
-      return {Status::NotOK, "encountered invalid vector input"};
-    }
-
-    if (vector_str.size() < 2 || vector_str[0] != '[' || vector_str.back() != ']') {
-      return {Status::NotOK, "encountered invalid vector input without brackets"};
-    }
-
-    std::vector<double> values = GET_OR_RET(ParseFloatArray(vector_str.substr(1, vector_str.size() - 2)));
-    if (values.empty()) {
-      return {Status::NotOK, "empty vector is invalid"};
-    }
-    return std::make_unique<ir::VectorLiteral>(std::move(values));
-  };
 
   auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
     auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
@@ -100,6 +79,12 @@ struct Transformer : ir::TreeTransformer {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
     } else if (Is<StringL>(node)) {
       return Node::Create<ir::StringLiteral>(GET_OR_RET(UnescapeString(node->string_view())));
+    } else if (Is<VectorLiteral>(node)) {
+      std::vector<double> values;
+      for (const auto& child : node->children) {
+        values.push_back(*ParseFloat(child->string()));
+      }
+      return Node::Create<ir::VectorLiteral>(std::move(values));
     } else if (Is<HasTagExpr>(node)) {
       CHECK(node->children.size() == 2);
 
@@ -138,9 +123,10 @@ struct Transformer : ir::TreeTransformer {
       const auto& vector_comp_expr = node->children[0];
       CHECK(vector_comp_expr->children.size() == 3);
 
-      return Node::Create<ir::VectorRangeExpr>(std::make_unique<ir::FieldRef>(vector_comp_expr->children[0]->string()),
-                                               GET_OR_RET(number_or_param(node->children[1])),
-                                               GET_OR_RET(Transform2Vector(vector_comp_expr->children[2])));
+      return Node::Create<ir::VectorRangeExpr>(
+          std::make_unique<ir::FieldRef>(vector_comp_expr->children[0]->string()),
+          GET_OR_RET(number_or_param(node->children[1])),
+          Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_comp_expr->children[2]))));
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
@@ -202,8 +188,8 @@ struct Transformer : ir::TreeTransformer {
 
         // TODO(Beihao): Handle distance metric operator
         auto field = std::make_unique<FieldRef>(vector_compare_expr->children[0]->string());
-        return Node::Create<SortByClause>(std::move(field),
-                                          GET_OR_RET(Transform2Vector(vector_compare_expr->children[2])));
+        return Node::Create<SortByClause>(
+            std::move(field), Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_compare_expr->children[2]))));
       } else {
         auto field = std::make_unique<FieldRef>(order_by_expr->children[0]->string());
         auto order = SortByClause::Order::ASC;
@@ -242,10 +228,11 @@ struct Transformer : ir::TreeTransformer {
           return {Status::NotOK, "invalid knn search clause without limit"};
         }
         CHECK(limit->Offset() == 0);
-        query_expr = std::make_unique<VectorSearchExpr>(
-            sort_by->GetFieldRef(), std::make_unique<NumericLiteral>(limit->Count()), sort_by->GetVectorLiteral());
-        sort_by = nullptr;
-        limit = nullptr;
+        query_expr = std::make_unique<VectorSearchExpr>(std::move(sort_by->GetFieldRef()),
+                                                        std::make_unique<NumericLiteral>(limit->Count()),
+                                                        std::move(sort_by->GetVectorLiteral()));
+        sort_by.reset();
+        limit.reset();
       }
 
       return Node::Create<ir::SearchExpr>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),

@@ -97,6 +97,42 @@ struct SemaChecker {
       } else {
         v->field->info = &iter->second;
       }
+    } else if (auto v = dynamic_cast<VectorSearchExpr *>(node)) {
+      if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {
+        return {Status::NotOK, fmt::format("field `{}` is not a vector field", v->field->name)};
+      } else {
+        v->field->info = &iter->second;
+
+        auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+        if (v->vector->values.size() != meta->dim) {
+          return {Status::NotOK,
+                  fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+        }
+      }
+    } else if (auto v = dynamic_cast<VectorRangeExpr *>(node)) {
+      if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {
+        return {Status::NotOK, fmt::format("field `{}` is not a vector field", v->field->name)};
+      } else {
+        v->field->info = &iter->second;
+
+        auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+        if (meta->distance_metric == redis::DistanceMetric::L2 && v->range->val < 0) {
+          return {Status::NotOK, "range cannot be a negative number for l2 distance metric"};
+        }
+
+        if (meta->distance_metric == redis::DistanceMetric::COSINE && (v->range->val < 0 || v->range->val > 2)) {
+          return {Status::NotOK, "range has to be between 0 and 2 for cosine distance metric"};
+        }
+
+        if (v->vector->values.size() != meta->dim) {
+          return {Status::NotOK,
+                  fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+        }
+      }
     } else if (auto v = dynamic_cast<SelectClause *>(node)) {
       for (const auto &n : v->fields) {
         if (auto iter = current_index->fields.find(n->name); iter == current_index->fields.end()) {

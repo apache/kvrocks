@@ -38,10 +38,16 @@ static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
   auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
+  auto hnsw_field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+  hnsw_field_meta->vector_type = redis::VectorType::FLOAT64;
+  hnsw_field_meta->dim = 3;
+  hnsw_field_meta->distance_metric = redis::DistanceMetric::L2;
+  auto f4 = FieldInfo("f4", std::move(hnsw_field_meta));
   auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "");
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));
+  ia->Add(std::move(f4));
 
   IndexMap res;
   res.Insert(std::move(ia));
@@ -68,6 +74,12 @@ TEST(SemaCheckerTest, Simple) {
     ASSERT_EQ(checker.Check(Parse("select f1 from ia where f1 hastag \",\"")->get()).Msg(),
               "tag cannot contain the separator `,`");
     ASSERT_EQ(checker.Check(Parse("select f1 from ia order by a")->get()).Msg(), "field `a` not found in index `ia`");
+    ASSERT_EQ(checker.Check(Parse("select f4 from ia order by f4 <-> [3.6,4.7] limit 5")->get()).Msg(),
+              "vector should be of size `3` for field `f4`");
+    ASSERT_EQ(checker.Check(Parse("select f4 from ia where f4 <-> [3.6,4.7] < 5")->get()).Msg(),
+              "vector should be of size `3` for field `f4`");
+    ASSERT_EQ(checker.Check(Parse("select f4 from ia where f4 <-> [3.6,4.7,5.6] < -5")->get()).Msg(),
+              "range cannot be a negative number for l2 distance metric");
   }
 
   {

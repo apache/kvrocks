@@ -148,24 +148,22 @@ TEST(SQLParserTest, Params) {
 }
 
 TEST(SQLParserTest, Vector) {
-  AssertSyntaxError(Parse("select a from b where embedding <-> \"[3,1,2]\""));
-  AssertSyntaxError(Parse("select a from b where embedding <-> \"[3,1,2]\" <"));
-  AssertSyntaxError(Parse("select a from b where embedding \"[3,1,2]\" < 3"));
-  AssertSyntaxError(Parse("select a from b where embedding <> \"[3,1,2]\" < 4"));
-  AssertSyntaxError(Parse("select a from b where embedding <- \"[3,1,2]\" < 3"));
-  AssertSyntaxError(Parse("select a from b order by embedding <-> \"[1,2,3]\" < 3"));
-  AssertSyntaxError(Parse("select a from b where embedding <-> \"[1,2,3]\" limit 5"));
-  AssertSyntaxError(Parse("select a from b where \"[3,1,2]\" <-> embedding < 5"));
-  ASSERT_EQ(Parse("select a from b where embedding <-> \"[]\" < 5").Msg(), "empty vector is invalid");
-  ASSERT_EQ(Parse("select a from b order by embedding <-> \"[1,2,3]\"").Msg(),
-            "invalid knn search clause without limit");
+  AssertSyntaxError(Parse("select a from b where embedding <-> [3,1,2]"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [3,1,2] <"));
+  AssertSyntaxError(Parse("select a from b where embedding [3,1,2] < 3"));
+  AssertSyntaxError(Parse("select a from b where embedding <> [3,1,2] < 4"));
+  AssertSyntaxError(Parse("select a from b where embedding <- [3,1,2] < 3"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> [1,2,3] < 3"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [1,2,3] limit 5"));
+  AssertSyntaxError(Parse("select a from b where [3,1,2] <-> embedding < 5"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [] < 5"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> @vec limit 5", {{"vec", "[3.6,7.8]"}}));
+  ASSERT_EQ(Parse("select a from b order by embedding <-> [1,2,3]").Msg(), "invalid knn search clause without limit");
 
-  AssertIR(Parse("select a from b where embedding <-> \"[3,1,2]\" < 5"),
+  AssertIR(Parse("select a from b where embedding <-> [3,1,2] < 5"),
            "select a from b where embedding vector_range 5 [3.000000, 1.000000, 2.000000]");
-  AssertIR(Parse("select a from b where embedding <-> \"[0.5,0.5]\" < 10 and c > 100"),
+  AssertIR(Parse("select a from b where embedding <-> [0.5,0.5] < 10 and c > 100"),
            "select a from b where (and embedding vector_range 10 [0.500000, 0.500000], c > 100)");
-  AssertIR(Parse("select a from b order by embedding <-> \"[3.6]\" limit 5"),
+  AssertIR(Parse("select a from b order by embedding <-> [3.6] limit 5"),
            "select a from b where embedding vector_search 5 [3.600000]");
-  AssertIR(Parse("select a from b order by embedding <-> @vec limit 5", {{"vec", "[3.6,7.8]"}}),
-           "select a from b where embedding vector_search 5 [3.600000, 7.800000]");
 }

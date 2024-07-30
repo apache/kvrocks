@@ -126,7 +126,7 @@ TEST(RedisQueryParserTest, Vector) {
 
   binary_vector = "\\x40\\x59\\x0b";
   ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", binary_vector}}).Msg(),
-            "Data size is not a multiple of the target type size");
+            "data size is not a multiple of the target type size");
   binary_vector = "";
   ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", binary_vector}}).Msg(), "empty vector is invalid");
 }

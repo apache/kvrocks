@@ -106,7 +106,8 @@ struct TreeTransformer {
     return result;
   }
 
-  static StatusOr<std::vector<char>> Binary2Chars(std::string_view str) {
+  template <typename T>
+  static StatusOr<std::vector<T>> Binary2Vector(std::string_view str) {
     std::vector<char> data;
     size_t i = 0;
 
@@ -129,29 +130,20 @@ struct TreeTransformer {
       }
     }
 
-    if (i != str.size()) {
-      return {Status::NotOK, "input string does not align with expected length"};
+    if (data.size() % sizeof(double) != 0) {
+      return {Status::NotOK, "data size is not a multiple of the target type size"};
     }
 
-    return data;
-  }
+    std::vector<T> values;
+    values.reserve(data.size() / sizeof(double));
 
-  template <typename T>
-  StatusOr<std::vector<T>> CharsToVector(const std::vector<char>& data) {
-    if (data.size() % sizeof(T) != 0) {
-      return {Status::NotOK, "Data size is not a multiple of the target type size"};
-    }
-
-    std::vector<T> converted_data;
-    converted_data.reserve(data.size() / sizeof(T));
-
-    for (size_t i = 0; i < data.size(); i += sizeof(T)) {
+    for (size_t j = 0; j < data.size(); j += sizeof(T)) {
       T value;
-      std::memcpy(&value, &data[i], sizeof(T));
-      converted_data.push_back(value);
+      std::memcpy(&value, &data[j], sizeof(T));
+      values.push_back(value);
     }
 
-    return converted_data;
+    return values;
   }
 };
 

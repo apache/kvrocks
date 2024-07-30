@@ -205,29 +205,3 @@ StatusOr<T> ParseFloat(const std::string &str) {
 
   return result;
 }
-
-// ParseFloatArray parses a string to an array of floating-point number
-// e.g. ParseFloatArray("1,2,3") -> {1.0, 2.0, 3.0}
-template <typename T = double>
-StatusOr<std::vector<T>> ParseFloatArray(const std::string &str) {
-  std::vector<T> result;
-  const char *current = str.c_str();
-  const char *end = current + str.size();
-
-  while (current < end) {
-    auto [value, next_pos] = GET_OR_RET(TryParseFloat<T>(current));
-
-    result.push_back(value);
-
-    if (next_pos < end && *next_pos == ',') {
-      next_pos++;
-    }
-    current = next_pos;
-
-    while (current < end && std::isspace(*current)) {
-      current++;
-    }
-  }
-
-  return result;
-}

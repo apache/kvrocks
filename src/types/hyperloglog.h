@@ -21,6 +21,7 @@
 #pragma once
 
 #include <cstdint>
+#include <nonstd/span.hpp>
 #include <vector>
 
 #include "redis_bitmap.h"
@@ -33,8 +34,7 @@ constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow
 
 constexpr size_t kHyperLogLogSegmentBytes = 768;
 constexpr size_t kHyperLogLogSegmentRegisters = 1024;
-
-constexpr uint32_t kHyperLogLogRegisterCountPerSegment = redis::kBitmapSegmentBits / 8;
+constexpr uint32_t kHyperLogLogRegisterCountPerSegment = kHyperLogLogSegmentBytes / 8;
 
 constexpr uint32_t kHyperLogLogSegmentCount = kHyperLogLogRegisterCount / kHyperLogLogRegisterCountPerSegment;
 constexpr uint32_t kHyperLogLogRegisterBits = 6;
@@ -56,7 +56,20 @@ struct DenseHllResult {
 
 DenseHllResult ExtractDenseHllResult(uint64_t hash);
 
-uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index);
-void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val);
-uint64_t HllCount(const std::vector<uint8_t> &registers);
-void HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &registers);
+/**
+ * Store the value of the register at position 'index' into variable 'val'.
+ * 'registers' is an array of unsigned bytes.
+ */
+uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t register_index);
+/**
+ * Set the value of the register at position 'index' to 'val'.
+ * 'registers' is an array of unsigned bytes.
+ */
+void HllDenseSetRegister(uint8_t *registers, uint32_t register_index, uint8_t val);
+/**
+ * Estimate the cardinality of the HyperLogLog data structure.
+ *
+ * @param registers The HyperLogLog data structure. The element should be either empty
+ *                  or a kHyperLogLogSegmentBytes sized array.
+ */
+uint64_t HllDenseEstimate(const std::vector<nonstd::span<const uint8_t>> &registers);

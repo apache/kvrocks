@@ -38,7 +38,8 @@ class HyperLogLog : public Database {
   rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperLogLogMetadata *metadata);
   rocksdb::Status getSubKey(Database::GetOptions get_options, const Slice &ns_key, uint32_t segment_index,
                             std::string *segment);
-  rocksdb::Status getRegisters(const Slice &user_key, std::vector<uint8_t> *registers);
+  /// Using multi-get to acquire the register_segments
+  rocksdb::Status getRegisters(const Slice &user_key, std::vector<rocksdb::PinnableSlice> *register_segments);
 };
 
 }  // namespace redis

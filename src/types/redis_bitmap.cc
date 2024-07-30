@@ -661,11 +661,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
 class Bitmap::SegmentCacheStore {
  public:
   SegmentCacheStore(engine::Storage *storage, rocksdb::ColumnFamilyHandle *metadata_cf_handle,
-                    std::string namespace_key, Metadata *metadata)
+                    std::string namespace_key, const Metadata &bitmap_metadata)
       : storage_(storage),
         metadata_cf_handle_(metadata_cf_handle),
         ns_key_(std::move(namespace_key)),
-        metadata_(metadata) {}
+        metadata_(bitmap_metadata) {}
   // Get a read-only segment by given index
   rocksdb::Status Get(uint32_t index, const std::string **cache) {
     std::string *res = nullptr;
@@ -685,15 +685,15 @@ class Bitmap::SegmentCacheStore {
     for (auto &[index, content] : cache_) {
       if (content.first) {
         std::string sub_key =
-            InternalKey(ns_key_, getSegmentSubKey(index), metadata_->version, storage_->IsSlotIdEncoded()).Encode();
+            InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
         batch->Put(sub_key, content.second);
         used_size = std::max(used_size, static_cast<uint64_t>(index) * kBitmapSegmentBytes + content.second.size());
       }
     }
-    if (used_size > metadata_->size) {
-      metadata_->size = used_size;
+    if (used_size > metadata_.size) {
+      metadata_.size = used_size;
       std::string bytes;
-      metadata_->Encode(&bytes);
+      metadata_.Encode(&bytes);
       batch->Put(metadata_cf_handle_, ns_key_, bytes);
     }
   }
@@ -706,7 +706,7 @@ class Bitmap::SegmentCacheStore {
     if (no_cache) {
       is_dirty = false;
       std::string sub_key =
-          InternalKey(ns_key_, getSegmentSubKey(index), metadata_->version, storage_->IsSlotIdEncoded()).Encode();
+          InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
       rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), sub_key, &str);
       if (!s.ok() && !s.IsNotFound()) {
         return s;
@@ -723,7 +723,7 @@ class Bitmap::SegmentCacheStore {
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string ns_key_;
-  Metadata *metadata_;
+  Metadata metadata_;
   // Segment index -> [is_dirty, segment_cache_string]
   std::unordered_map<uint32_t, std::pair<bool, std::string>> cache_;
 };
@@ -848,7 +848,7 @@ rocksdb::Status Bitmap::bitfield(const Slice &user_key, const std::vector<Bitfie
 
   // We firstly do the bitfield operation by fetching segments into memory.
   // Use SegmentCacheStore to record dirty segments. (if not read-only mode)
-  SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, &metadata);
+  SegmentCacheStore cache(storage_, metadata_cf_handle_, ns_key, metadata);
   runBitfieldOperationsWithCache<ReadOnly>(cache, ops, rets);
 
   if constexpr (!ReadOnly) {

@@ -55,11 +55,9 @@
 
 #include "vendor/murmurhash2.h"
 
-/* Store the value of the register at position 'index' into variable 'val'.
- * 'registers' is an array of unsigned bytes. */
-uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index) {
-  uint32_t byte = (index * kHyperLogLogRegisterBits) / 8;
-  uint8_t fb = (index * kHyperLogLogRegisterBits) & 7;
+uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t register_index) {
+  uint32_t byte = (register_index * kHyperLogLogRegisterBits) / 8;
+  uint8_t fb = (register_index * kHyperLogLogRegisterBits) & 7;
   uint8_t fb8 = 8 - fb;
   uint8_t b0 = registers[byte];
   uint8_t b1 = 0;
@@ -69,11 +67,9 @@ uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index) {
   return ((b0 >> fb) | (b1 << fb8)) & kHyperLogLogRegisterMax;
 }
 
-/* Set the value of the register at position 'index' to 'val'.
- * 'registers' is an array of unsigned bytes. */
-void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val) {
-  uint32_t byte = index * kHyperLogLogRegisterBits / 8;
-  uint8_t fb = index * kHyperLogLogRegisterBits & 7;
+void HllDenseSetRegister(uint8_t *registers, uint32_t register_index, uint8_t val) {
+  uint32_t byte = register_index * kHyperLogLogRegisterBits / 8;
+  uint8_t fb = register_index * kHyperLogLogRegisterBits & 7;
   uint8_t fb8 = 8 - fb;
   uint8_t v = val;
   registers[byte] &= ~(kHyperLogLogRegisterMax << fb);
@@ -106,15 +102,17 @@ DenseHllResult ExtractDenseHllResult(uint64_t hash) {
   return DenseHllResult{index, ctz};
 }
 
-/* Compute the register histogram in the dense representation. */
-void HllDenseRegHisto(const uint8_t *registers, int *reghisto) {
+/*
+ * Compute the register histogram in the dense representation.
+ */
+void HllDenseRegHisto(nonstd::span<const uint8_t> registers, int *reghisto) {
   /* Redis default is to use 16384 registers 6 bits each. The code works
    * with other values by modifying the defines, but for our target value
    * we take a faster path with unrolled loops. */
-  auto r = registers;
+  const uint8_t *r = registers.data();
   unsigned long r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0,
                 r12 = 0, r13 = 0, r14 = 0, r15 = 0;
-  for (auto j = 0; j < 1024; j++) {
+  for (size_t j = 0; j < kHyperLogLogSegmentRegisters / 16; j++) {
     /* Handle 16 registers per iteration. */
     r0 = r[0] & kHyperLogLogRegisterMax;
     r1 = (r[0] >> 6 | r[1] << 2) & kHyperLogLogRegisterMax;
@@ -196,9 +194,8 @@ double HllTau(double x) {
 
 /* Return the approximated cardinality of the set based on the harmonic
  * mean of the registers values. */
-uint64_t HllCount(const std::vector<uint8_t> &registers) {
-  double m = kHyperLogLogRegisterCount;
-  double e = NAN;
+uint64_t HllDenseEstimate(const std::vector<nonstd::span<const uint8_t>> &registers) {
+  constexpr double m = kHyperLogLogRegisterCount;
   int j = 0;
   /* Note that reghisto size could be just kHyperLogLogHashBitCount+2, because kHyperLogLogHashBitCount+1 is
    * the maximum frequency of the "000...1" sequence the hash function is
@@ -208,20 +205,25 @@ uint64_t HllCount(const std::vector<uint8_t> &registers) {
   int reghisto[64] = {0};
 
   /* Compute register histogram */
-  HllDenseRegHisto(registers.data(), reghisto);
+  for (const auto &r : registers) {
+    if (r.empty()) {
+      // Empty segment
+      reghisto[0] += kHyperLogLogSegmentRegisters;
+    } else {
+      HllDenseRegHisto(r, reghisto);
+    }
+  }
 
   /* Estimate cardinality from register histogram. See:
    * "New cardinality estimation algorithms for HyperLogLog sketches"
    * Otmar Ertl, arXiv:1702.01284 */
-  double z = m * HllTau((m - reghisto[kHyperLogLogHashBitCount + 1]) / (double)m);
+  double z = m * HllTau((m - reghisto[kHyperLogLogHashBitCount + 1]) / m);
   for (j = kHyperLogLogHashBitCount; j >= 1; --j) {
     z += reghisto[j];
     z *= 0.5;
   }
-  z += m * HllSigma(reghisto[0] / (double)m);
-  e = static_cast<double>(llroundl(kHyperLogLogAlpha * m * m / z));
-
-  return (uint64_t)e;
+  z += m * HllSigma(reghisto[0] / m);
+  return static_cast<int64_t>(llroundl(kHyperLogLogAlpha * m * m / z));
 }
 
 /* Merge by computing MAX(registers_max[i],registers[i]) the HyperLogLog 'registers'

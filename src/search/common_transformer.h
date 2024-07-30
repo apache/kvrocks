@@ -108,39 +108,19 @@ struct TreeTransformer {
 
   template <typename T = double>
   static StatusOr<std::vector<T>> Binary2Vector(std::string_view str) {
-    std::vector<char> data;
-    size_t i = 0;
-
-    auto hex_char_to_binary = [](char c) -> StatusOr<char> {
-      if (c >= '0' && c <= '9') return c - '0';
-      if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-      if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-      return {Status::NotOK, "invalid hexadecimal character"};
-    };
-
-    while (i + 3 < str.size()) {
-      if (str[i] == '\\' && str[i + 1] == 'x') {
-        auto high = GET_OR_RET(hex_char_to_binary(str[i + 2]));
-        auto low = GET_OR_RET(hex_char_to_binary(str[i + 3]));
-        data.push_back(static_cast<char>((high << 4) | low));
-        i += 4;
-      } else {
-        data.push_back(str[i]);
-        i++;
-      }
-    }
-
-    if (data.size() % sizeof(T) != 0) {
+    if (str.size() % sizeof(T) != 0) {
       return {Status::NotOK, "data size is not a multiple of the target type size"};
     }
 
     std::vector<T> values;
-    values.reserve(data.size() / sizeof(T));
+    const size_t type_size = sizeof(T);
+    values.reserve(str.size() / type_size);
 
-    for (size_t j = 0; j < data.size(); j += sizeof(T)) {
+    while (!str.empty()) {
       T value;
-      std::memcpy(&value, &data[j], sizeof(T));
+      memcpy(&value, str.data(), type_size);
       values.push_back(value);
+      str.remove_prefix(type_size);
     }
 
     return values;

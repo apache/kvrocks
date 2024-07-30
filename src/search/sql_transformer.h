@@ -39,11 +39,11 @@ namespace ir = kqir;
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
     Rule,
-    parse_tree::store_content::on<Boolean, Number, StringL, Param, Identifier, NumericCompareOp, VectorCompareOp,
-                                  AscOrDesc, UnsignedInteger>,
-    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorLiteral, VectorCompareExpr, VectorRangeExpr,
-                                   NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr, FromExpr, WhereClause, OrderByClause,
-                                   OrderByExpr, LimitClause, SearchStmt>>;
+    parse_tree::store_content::on<Boolean, Number, StringL, Param, Identifier, NumericCompareOp, AscOrDesc,
+                                  UnsignedInteger>,
+    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorCompareOp, VectorLiteral, VectorCompareExpr,
+                                   VectorRangeExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr, FromExpr,
+                                   WhereClause, OrderByClause, OrderByExpr, LimitClause, SearchStmt>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -185,8 +185,6 @@ struct Transformer : ir::TreeTransformer {
       if (Is<VectorCompareExpr>(order_by_expr->children[0])) {
         const auto& vector_compare_expr = order_by_expr->children[0];
         CHECK(vector_compare_expr->children.size() == 3);
-
-        // TODO(Beihao): Handle distance metric operator
         auto field = std::make_unique<FieldRef>(vector_compare_expr->children[0]->string());
         return Node::Create<SortByClause>(
             std::move(field), Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_compare_expr->children[2]))));
@@ -196,7 +194,6 @@ struct Transformer : ir::TreeTransformer {
         if (order_by_expr->children.size() == 2 && order_by_expr->children[1]->string_view() == "desc") {
           order = SortByClause::Order::DESC;
         }
-
         return Node::Create<SortByClause>(order, std::move(field));
       }
     } else if (Is<SearchStmt>(node)) {  // root node

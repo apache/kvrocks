@@ -158,6 +158,7 @@ TEST(SQLParserTest, Vector) {
   AssertSyntaxError(Parse("select a from b where [3,1,2] <-> embedding < 5"));
   AssertSyntaxError(Parse("select a from b where embedding <-> [] < 5"));
   AssertSyntaxError(Parse("select a from b order by embedding <-> @vec limit 5", {{"vec", "[3.6,7.8]"}}));
+  AssertSyntaxError(Parse("select a from b where embedding <#> [3,1,2] < 5"));
   ASSERT_EQ(Parse("select a from b order by embedding <-> [1,2,3]").Msg(), "invalid knn search clause without limit");
 
   AssertIR(Parse("select a from b where embedding <-> [3,1,2] < 5"),

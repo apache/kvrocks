@@ -685,7 +685,7 @@ class Bitmap::SegmentCacheStore {
     for (auto &[index, content] : cache_) {
       if (content.first) {
         std::string sub_key =
-            InternalKey(ns_key_, getSegmentSubKey(index), metadata_.leversion, storage_->IsSlotIdEncoded()).Encode();
+            InternalKey(ns_key_, getSegmentSubKey(index), metadata_.version, storage_->IsSlotIdEncoded()).Encode();
         batch->Put(sub_key, content.second);
         used_size = std::max(used_size, static_cast<uint64_t>(index) * kBitmapSegmentBytes + content.second.size());
       }

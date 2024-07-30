@@ -57,9 +57,25 @@ class CommandPfAdd final : public Commander {
 /// Complexity: O(1) with a very small average constant time when called with a single key.
 ///              O(N) with N being the number of keys, and much bigger constant times,
 ///              when called with multiple keys.
-class CommandPfCount final : public Commander {};
+///
+/// TODO(mwish): Currently we don't supports merge, so only one key is supported.
+class CommandPfCount final : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
+    uint64_t ret{};
+    auto s = hll.Count(args_[0], &ret);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (s.IsNotFound()) {
+      ret = 0;
+    }
+    *output = redis::Integer(ret);
+    return Status::OK();
+  }
+};
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandPfAdd>("pfadd", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandPfCount>("pfcount", -2, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandPfCount>("pfcount", 2, "read-only", 1, 1, 1), );
 
 }  // namespace redis

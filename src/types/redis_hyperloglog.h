@@ -30,7 +30,8 @@ class HyperLogLog : public Database {
   explicit HyperLogLog(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Add(const Slice &user_key, const std::vector<uint64_t> &element_hashes, uint64_t *ret);
   rocksdb::Status Count(const Slice &user_key, uint64_t *ret);
-  rocksdb::Status Merge(const std::vector<Slice> &user_keys);
+  // TODO(mwish): Supports merge operation and related commands
+  // rocksdb::Status Merge(const std::vector<Slice> &user_keys);
 
   static uint64_t HllHash(std::string_view);
 

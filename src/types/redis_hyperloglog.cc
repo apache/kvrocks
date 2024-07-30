@@ -51,9 +51,8 @@ class HllSegmentCache {
   ///
   /// If the segment in not in the cache and storage, it will be initialized with
   /// string(kHyperLogLogSegmentBytes, 0) and return OK.
-  rocksdb::Status Get(uint32_t segment_index,
-                      const std::function<rocksdb::Status(uint32_t, std::string *)> &get_segment,
-                      SegmentEntry **entry) {
+  template <typename GetSegmentFn>
+  rocksdb::Status Get(uint32_t segment_index, const GetSegmentFn &get_segment, SegmentEntry **entry) {
     auto iter = segments.find(segment_index);
     if (iter == segments.end()) {
       std::string segment_data;

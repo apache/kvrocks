@@ -33,7 +33,7 @@
 
 #include <stdint.h>
 
-#if !define(USE_ALIGNED_ACCESS)
+#ifndef USE_ALIGNED_ACCESS
 #if defined(__sparc__) || defined(__arm__)
 #define USE_ALIGNED_ACCESS
 #endif

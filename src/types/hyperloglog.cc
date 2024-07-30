@@ -230,17 +230,3 @@ uint64_t HllDenseEstimate(const std::vector<nonstd::span<const uint8_t>> &regist
   z += m * HllSigma(reghisto[0] / m);
   return static_cast<int64_t>(llroundl(kHyperLogLogAlpha * m * m / z));
 }
-
-/* Merge by computing MAX(registers_max[i],registers[i]) the HyperLogLog 'registers'
- * with an array of uint8_t kHyperLogLogRegisterCount registers pointed by 'registers_max'. */
-void HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &registers) {
-  uint8_t val = 0, max_val = 0;
-
-  for (uint32_t i = 0; i < kHyperLogLogRegisterCount; i++) {
-    val = HllDenseGetRegister(registers.data(), i);
-    max_val = HllDenseGetRegister(registers_max->data(), i);
-    if (val > max_val) {
-      HllDenseSetRegister(registers_max->data(), i, val);
-    }
-  }
-}

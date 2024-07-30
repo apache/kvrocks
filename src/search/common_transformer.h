@@ -106,7 +106,7 @@ struct TreeTransformer {
     return result;
   }
 
-  template <typename T>
+  template <typename T = double>
   static StatusOr<std::vector<T>> Binary2Vector(std::string_view str) {
     std::vector<char> data;
     size_t i = 0;
@@ -130,12 +130,12 @@ struct TreeTransformer {
       }
     }
 
-    if (data.size() % sizeof(double) != 0) {
+    if (data.size() % sizeof(T) != 0) {
       return {Status::NotOK, "data size is not a multiple of the target type size"};
     }
 
     std::vector<T> values;
-    values.reserve(data.size() / sizeof(double));
+    values.reserve(data.size() / sizeof(T));
 
     for (size_t j = 0; j < data.size(); j += sizeof(T)) {
       T value;

@@ -38,9 +38,6 @@ enum BitOpFlags {
 
 namespace redis {
 
-constexpr uint32_t kBitmapSegmentBits = 1024 * 8;
-constexpr uint32_t kBitmapSegmentBytes = 1024;
-
 // We use least-significant bit (LSB) numbering (also known as bit-endianness).
 // This means that within a group of 8 bits, we read right-to-left.
 // This is different from applying "bit" commands to string, which uses MSB.
@@ -83,77 +80,6 @@ class Bitmap : public Database {
   static rocksdb::Status runBitfieldOperationsWithCache(SegmentCacheStore &cache,
                                                         const std::vector<BitfieldOperation> &ops,
                                                         std::vector<std::optional<BitfieldValue>> *rets);
-};
-
-// SegmentCacheStore is used to read segments from storage.
-class Bitmap::SegmentCacheStore {
- public:
-  SegmentCacheStore(engine::Storage *storage, rocksdb::ColumnFamilyHandle *metadata_cf_handle,
-                    std::string namespace_key, Metadata *metadata)
-      : storage_(storage),
-        metadata_cf_handle_(metadata_cf_handle),
-        ns_key_(std::move(namespace_key)),
-        metadata_(metadata) {}
-  // Get a read-only segment by given index
-  rocksdb::Status Get(uint32_t index, const std::string **cache) {
-    std::string *res = nullptr;
-    auto s = get(index, /*set_dirty=*/false, &res);
-    if (s.ok()) {
-      *cache = res;
-    }
-    return s;
-  }
-
-  // Get a segment by given index, and mark it dirty.
-  rocksdb::Status GetMut(uint32_t index, std::string **cache) { return get(index, /*set_dirty=*/true, cache); }
-
-  // Add all dirty segments into write batch.
-  void BatchForFlush(ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch) {
-    uint64_t used_size = 0;
-    for (auto &[index, content] : cache_) {
-      if (content.first) {
-        std::string sub_key =
-            InternalKey(ns_key_, getSegmentSubKey(index), metadata_->version, storage_->IsSlotIdEncoded()).Encode();
-        batch->Put(sub_key, content.second);
-        used_size = std::max(used_size, static_cast<uint64_t>(index) * kBitmapSegmentBytes + content.second.size());
-      }
-    }
-    if (used_size > metadata_->size) {
-      metadata_->size = used_size;
-      std::string bytes;
-      metadata_->Encode(&bytes);
-      batch->Put(metadata_cf_handle_, ns_key_, bytes);
-    }
-  }
-
- private:
-  rocksdb::Status get(uint32_t index, bool set_dirty, std::string **cache) {
-    auto [seg_itor, no_cache] = cache_.try_emplace(index);
-    auto &[is_dirty, str] = seg_itor->second;
-
-    if (no_cache) {
-      is_dirty = false;
-      std::string sub_key =
-          InternalKey(ns_key_, getSegmentSubKey(index), metadata_->version, storage_->IsSlotIdEncoded()).Encode();
-      rocksdb::Status s = storage_->Get(rocksdb::ReadOptions(), sub_key, &str);
-      if (!s.ok() && !s.IsNotFound()) {
-        return s;
-      }
-    }
-
-    is_dirty |= set_dirty;
-    *cache = &str;
-    return rocksdb::Status::OK();
-  }
-
-  static std::string getSegmentSubKey(uint32_t index) { return std::to_string(index * kBitmapSegmentBytes); }
-
-  engine::Storage *storage_;
-  rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
-  std::string ns_key_;
-  Metadata *metadata_;
-  // Segment index -> [is_dirty, segment_cache_string]
-  std::unordered_map<uint32_t, std::pair<bool, std::string>> cache_;
 };
 
 }  // namespace redis

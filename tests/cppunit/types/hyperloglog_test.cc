@@ -58,7 +58,7 @@ TEST_F(RedisHyperLogLogTest, PFADD) {
   ASSERT_TRUE(hll_->Add("hll", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 0);
   // PFADD works with empty string
   ASSERT_TRUE(hll_->Add("hll", computeHashes({""}), &ret).ok() && ret == 1);
-  // PFADD works with similiar hash, which is likely to be in the same bucket
+  // PFADD works with similar hash, which is likely to be in the same bucket
   ASSERT_TRUE(hll_->Add("hll", {1, 2, 3, 2, 1}, &ret).ok() && ret == 1);
   ASSERT_TRUE(hll_->Count("hll", &ret).ok());
   ASSERT_EQ(7, ret);

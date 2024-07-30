@@ -656,7 +656,6 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
   return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-
 // SegmentCacheStore is used to read segments from storage.
 class Bitmap::SegmentCacheStore {
  public:

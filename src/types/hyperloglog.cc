@@ -101,7 +101,7 @@ DenseHllResult ExtractDenseHllResult(uint64_t hash) {
    * there are high probabilities to find a 1 after a few iterations. */
   uint32_t index = hash & kHyperLogLogRegisterCountMask; /* Register index. */
   DCHECK_LT(index, kHyperLogLogRegisterCount);
-  hash >>= kHyperLogLogRegisterCountPow;             /* Remove bits used to address the register. */
+  hash >>= kHyperLogLogRegisterCountPow; /* Remove bits used to address the register. */
   hash |= (static_cast<uint64_t>(1U) << kHyperLogLogHashBitCount);
   uint8_t ctz = __builtin_ctzll(hash) + 1;
   return DenseHllResult{index, ctz};

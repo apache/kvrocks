@@ -49,7 +49,7 @@ enum RedisType : uint8_t {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
-  kRedisHyperLogLog = 12,
+  kRedisHyperLogLog = 11,
 };
 
 struct RedisTypes {

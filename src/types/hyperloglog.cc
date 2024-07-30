@@ -82,6 +82,11 @@ void HllDenseSetRegister(uint8_t *registers, uint32_t register_index, uint8_t va
 
 /* ========================= HyperLogLog algorithm  ========================= */
 
+// Reference:
+// https://github.com/valkey-io/valkey/blob/14e09e981e0039edbf8c41a208a258c18624cbb7/src/hyperloglog.c#L457
+//
+// Given a string element to add to the HyperLogLog, returns the length of the pattern 000..1 of the element
+// hash. As a side effect 'regp' is *set to the register index this element hashes to
 DenseHllResult ExtractDenseHllResult(uint64_t hash) {
   /* Count the number of zeroes starting from bit kHyperLogLogRegisterCount
    * (that is a power of two corresponding to the first bit we don't use
@@ -98,7 +103,7 @@ DenseHllResult ExtractDenseHllResult(uint64_t hash) {
   DCHECK_LT(index, kHyperLogLogRegisterCount);
   hash >>= kHyperLogLogRegisterCountPow;             /* Remove bits used to address the register. */
   hash |= (static_cast<uint64_t>(1U) << kHyperLogLogHashBitCount);
-  uint8_t ctz = __builtin_ctzll(hash);
+  uint8_t ctz = __builtin_ctzll(hash) + 1;
   return DenseHllResult{index, ctz};
 }
 

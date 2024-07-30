@@ -51,12 +51,17 @@ TEST_F(RedisHyperLogLogTest, PFADD) {
   ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 0);
   // PFADD returns 1 when at least 1 reg was modified
   ASSERT_TRUE(hll_->Add("hll", computeHashes({"a", "b", "c"}), &ret).ok());
-  ASSERT_TRUE(ret == 1);
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 3);
+  ASSERT_EQ(1, ret);
+  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(3, ret);
   // PFADD returns 0 when no reg was modified
   ASSERT_TRUE(hll_->Add("hll", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 0);
   // PFADD works with empty string
   ASSERT_TRUE(hll_->Add("hll", computeHashes({""}), &ret).ok() && ret == 1);
+  // PFADD works with similiar hash, which is likely to be in the same bucket
+  ASSERT_TRUE(hll_->Add("hll", {1, 2, 3, 2, 1}, &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(7, ret);
 }
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_returns_approximated_cardinality_of_set) {

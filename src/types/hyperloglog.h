@@ -34,16 +34,13 @@ constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow
 
 constexpr size_t kHyperLogLogSegmentBytes = 768;
 constexpr size_t kHyperLogLogSegmentRegisters = 1024;
-constexpr uint32_t kHyperLogLogRegisterCountPerSegment = kHyperLogLogSegmentBytes / 8;
 
-constexpr uint32_t kHyperLogLogSegmentCount = kHyperLogLogRegisterCount / kHyperLogLogRegisterCountPerSegment;
+constexpr uint32_t kHyperLogLogSegmentCount = kHyperLogLogRegisterCount / kHyperLogLogSegmentRegisters;
 constexpr uint32_t kHyperLogLogRegisterBits = 6;
 constexpr uint32_t kHyperLogLogRegisterCountMask = kHyperLogLogRegisterCount - 1; /* Mask to index register. */
 constexpr uint32_t kHyperLogLogRegisterMax = ((1 << kHyperLogLogRegisterBits) - 1);
 /* constant for 0.5/ln(2) */
 constexpr double kHyperLogLogAlpha = 0.721347520444481703680;
-constexpr uint32_t kHyperLogLogRegisterBytesPerSegment =
-    (kHyperLogLogRegisterCountPerSegment * kHyperLogLogRegisterBits) / 8;
 constexpr uint32_t kHyperLogLogRegisterBytes = (kHyperLogLogRegisterCount * kHyperLogLogRegisterBits + 7) / 8;
 // Copied from redis
 // https://github.com/valkey-io/valkey/blob/14e09e981e0039edbf8c41a208a258c18624cbb7/src/hyperloglog.c#L472

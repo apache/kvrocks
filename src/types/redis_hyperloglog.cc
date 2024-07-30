@@ -50,7 +50,7 @@ class HllSegmentCache {
   /// Get the segment from cache or storage.
   ///
   /// If the segment in not in the cache and storage, it will be initialized with
-  /// string(kHyperLogLogRegisterBytesPerSegment, 0) and return OK.
+  /// string(kHyperLogLogSegmentBytes, 0) and return OK.
   rocksdb::Status Get(uint32_t segment_index,
                       const std::function<rocksdb::Status(uint32_t, std::string *)> &get_segment,
                       SegmentEntry **entry) {
@@ -62,7 +62,7 @@ class HllSegmentCache {
         if (s.IsNotFound()) {
           iter = segments.emplace(segment_index, SegmentEntry{std::move(segment_data), false}).first;
           // Initialize the segment with 0
-          iter->second.data.resize(kHyperLogLogRegisterBytesPerSegment, 0);
+          iter->second.data.resize(kHyperLogLogSegmentBytes, 0);
           *entry = &iter->second;
           return rocksdb::Status::OK();
         }
@@ -70,10 +70,9 @@ class HllSegmentCache {
       }
       iter = segments.emplace(segment_index, SegmentEntry{std::move(segment_data), false}).first;
     }
-    if (iter->second.data.size() != kHyperLogLogRegisterBytesPerSegment) {
-      return rocksdb::Status::Corruption(
-          "invalid segment size: expect=" + std::to_string(kHyperLogLogRegisterBytesPerSegment) +
-          ", actual=" + std::to_string(iter->second.data.size()));
+    if (iter->second.data.size() != kHyperLogLogSegmentBytes) {
+      return rocksdb::Status::Corruption("invalid segment size: expect=" + std::to_string(kHyperLogLogSegmentBytes) +
+                                         ", actual=" + std::to_string(iter->second.data.size()));
     }
     *entry = &iter->second;
     return rocksdb::Status::OK();
@@ -96,7 +95,7 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
-  HyperLogLogMetadata metadata;
+  HyperLogLogMetadata metadata{};
   rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
@@ -107,9 +106,8 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
   HllSegmentCache cache;
   for (uint64_t element_hash : element_hashes) {
     DenseHllResult dense_hll_result = ExtractDenseHllResult(element_hash);
-    uint32_t segment_index = dense_hll_result.register_index / kHyperLogLogRegisterCountPerSegment;
-    uint32_t register_index_in_segment = dense_hll_result.register_index % kHyperLogLogRegisterCountPerSegment;
-
+    uint32_t segment_index = dense_hll_result.register_index / kHyperLogLogSegmentRegisters;
+    uint32_t register_index_in_segment = dense_hll_result.register_index % kHyperLogLogSegmentRegisters;
     HllSegmentCache::SegmentEntry *entry{nullptr};
     s = cache.Get(
         segment_index,
@@ -117,12 +115,12 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
           std::string sub_key =
               InternalKey(ns_key, std::to_string(segment_index), metadata.version, storage_->IsSlotIdEncoded())
                   .Encode();
-          return storage_->Get(rocksdb::ReadOptions(), metadata_cf_handle_, sub_key, segment);
+          return storage_->Get(rocksdb::ReadOptions(), sub_key, segment);
         },
         &entry);
     if (!s.ok()) return s;
     DCHECK(entry != nullptr);
-    DCHECK_EQ(kHyperLogLogRegisterBytesPerSegment, entry->data.size());
+    DCHECK_EQ(kHyperLogLogSegmentBytes, entry->data.size());
     auto *segment_data = reinterpret_cast<uint8_t *>(entry->data.data());
     uint8_t old_count = HllDenseGetRegister(segment_data, register_index_in_segment);
     if (dense_hll_result.hll_trailing_zero > old_count) {
@@ -131,18 +129,22 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
       *ret = 1;
     }
   }
+  // Nothing changed, no need to flush the segments
+  if (*ret == 0) return rocksdb::Status::OK();
+
   // Flush dirty segments
-  bool has_dirty_segment{false};
-  for (const auto &[segment_index, entry] : cache.segments) {
+  // Release memory after batch is written
+  for (auto &[segment_index, entry] : cache.segments) {
     if (entry.dirty) {
       std::string sub_key =
           InternalKey(ns_key, std::to_string(segment_index), metadata.version, storage_->IsSlotIdEncoded()).Encode();
       batch->Put(sub_key, entry.data);
-      has_dirty_segment = true;
+      entry.data.clear();
     }
   }
+  cache.segments.clear();
   // Update metadata
-  if (has_dirty_segment) {
+  {
     metadata.encode_type = HyperLogLogMetadata::EncodeType::DENSE;
     std::string bytes;
     metadata.Encode(&bytes);
@@ -152,12 +154,13 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
 }
 
 rocksdb::Status HyperLogLog::Count(const Slice &user_key, uint64_t *ret) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
   *ret = 0;
   std::vector<rocksdb::PinnableSlice> registers;
   {
     LatestSnapShot ss(storage_);
     Database::GetOptions get_options(ss.GetSnapShot());
-    auto s = getRegisters(get_options, user_key, &registers);
+    auto s = getRegisters(get_options, ns_key, &registers);
     if (!s.ok()) return s;
   }
   DCHECK_EQ(kHyperLogLogSegmentCount, registers.size());
@@ -177,10 +180,8 @@ rocksdb::Status HyperLogLog::Count(const Slice &user_key, uint64_t *ret) {
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status HyperLogLog::getRegisters(Database::GetOptions get_options, const Slice &user_key,
+rocksdb::Status HyperLogLog::getRegisters(Database::GetOptions get_options, const Slice &ns_key,
                                           std::vector<rocksdb::PinnableSlice> *register_segments) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
   HyperLogLogMetadata metadata;
   rocksdb::Status s = GetMetadata(get_options, ns_key, &metadata);
   if (!s.ok()) {

@@ -37,7 +37,7 @@ class HyperLogLog : public Database {
  private:
   rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperLogLogMetadata *metadata);
   /// Using multi-get to acquire the register_segments
-  rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &user_key,
+  rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &ns_key,
                                std::vector<rocksdb::PinnableSlice> *register_segments);
 };
 

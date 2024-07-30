@@ -24,6 +24,8 @@
 
 #include "search/executors/filter_executor.h"
 #include "search/executors/full_index_scan_executor.h"
+#include "search/executors/hnsw_vector_field_knn_scan_executor.h"
+#include "search/executors/hnsw_vector_field_range_scan_executor.h"
 #include "search/executors/limit_executor.h"
 #include "search/executors/merge_executor.h"
 #include "search/executors/mock_executor.h"
@@ -84,6 +86,14 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
+    if (auto v = dynamic_cast<HnswVectorFieldKnnScan *>(op)) {
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<HnswVectorFieldRangeScan *>(op)) {
+      return Visit(v);
+    }
+
     if (auto v = dynamic_cast<Mock *>(op)) {
       return Visit(v);
     }
@@ -128,6 +138,12 @@ struct ExecutorContextVisitor {
   void Visit(NumericFieldScan *op) { ctx->nodes[op] = std::make_unique<NumericFieldScanExecutor>(ctx, op); }
 
   void Visit(TagFieldScan *op) { ctx->nodes[op] = std::make_unique<TagFieldScanExecutor>(ctx, op); }
+
+  void Visit(HnswVectorFieldKnnScan *op) { ctx->nodes[op] = std::make_unique<HnswVectorFieldKnnScanExecutor>(ctx, op); }
+
+  void Visit(HnswVectorFieldRangeScan *op) {
+    ctx->nodes[op] = std::make_unique<HnswVectorFieldRangeScanExecutor>(ctx, op);
+  }
 
   void Visit(Mock *op) { ctx->nodes[op] = std::make_unique<MockExecutor>(ctx, op); }
 };

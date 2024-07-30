@@ -27,7 +27,6 @@
 #include <string>
 
 #include "parse_util.h"
-#include "server/redis_request.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
@@ -566,7 +565,7 @@ rocksdb::Status String::LCS(engine::Context &ctx, const std::string &user_key1, 
   // Allocate the LCS table.
   uint64_t dp_size = (alen + 1) * (blen + 1);
   uint64_t bulk_size = dp_size * sizeof(uint32_t);
-  if (bulk_size > PROTO_BULK_MAX_SIZE || bulk_size / dp_size != sizeof(uint32_t)) {
+  if (bulk_size > storage_->GetConfig()->proto_max_bulk_len || bulk_size / dp_size != sizeof(uint32_t)) {
     return rocksdb::Status::Aborted("Insufficient memory, transient memory for LCS exceeds proto-max-bulk-len");
   }
   std::vector<uint32_t> dp(dp_size, 0);

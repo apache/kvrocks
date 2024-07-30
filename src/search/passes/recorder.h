@@ -18,28 +18,24 @@
  *
  */
 
-#include "parse_util.h"
+#pragma once
 
-#include <limits>
+#include <memory>
 
-#include "bit_util.h"
+#include "search/ir.h"
+#include "search/ir_pass.h"
 
-StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
-  auto [num, rest] = GET_OR_RET(TryParseInt<std::uint64_t>(v.c_str(), 10));
+namespace kqir {
 
-  if (*rest == 0) {
-    return num;
-  } else if (util::EqualICase(rest, "k")) {
-    return util::CheckedShiftLeft(num, 10);
-  } else if (util::EqualICase(rest, "m")) {
-    return util::CheckedShiftLeft(num, 20);
-  } else if (util::EqualICase(rest, "g")) {
-    return util::CheckedShiftLeft(num, 30);
-  } else if (util::EqualICase(rest, "t")) {
-    return util::CheckedShiftLeft(num, 40);
-  } else if (util::EqualICase(rest, "p")) {
-    return util::CheckedShiftLeft(num, 50);
+struct Recorder : Pass {
+  std::vector<std::unique_ptr<Node>> &results;
+
+  explicit Recorder(std::vector<std::unique_ptr<Node>> &results) : results(results) {}
+
+  std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) override {
+    results.push_back(node->Clone());
+    return node;
   }
+};
 
-  return {Status::NotOK, "encounter unexpected unit"};
-}
+}  // namespace kqir

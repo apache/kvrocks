@@ -49,7 +49,6 @@ enum RedisType : uint8_t {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
-  kRedisSearch = 11,
   kRedisHyperLogLog = 12,
 };
 
@@ -92,9 +91,9 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none",      "string", "hash",       "list",   "set",
-                                                 "zset",      "bitmap", "sortedint",  "stream", "MBbloom--",
-                                                 "ReJSON-RL", "search", "hyperloglog"};
+const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",      "list",
+                                                 "set",    "zset",      "bitmap",    "sortedint",
+                                                 "stream", "MBbloom--", "ReJSON-RL", "hyperloglog"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -312,21 +311,6 @@ class JsonMetadata : public Metadata {
   JsonStorageFormat format = JsonStorageFormat::JSON;
 
   explicit JsonMetadata(bool generate_version = true) : Metadata(kRedisJson, generate_version) {}
-
-  void Encode(std::string *dst) const override;
-  rocksdb::Status Decode(Slice *input) override;
-};
-
-enum class SearchOnDataType : uint8_t {
-  HASH = kRedisHash,
-  JSON = kRedisJson,
-};
-
-class SearchMetadata : public Metadata {
- public:
-  SearchOnDataType on_data_type;
-
-  explicit SearchMetadata(bool generate_version = true) : Metadata(kRedisSearch, generate_version) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

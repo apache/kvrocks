@@ -490,19 +490,25 @@ rocksdb::Status SearchMetadata::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
-void HyperloglogMetadata::Encode(std::string *dst) const {
+void HyperLogLogMetadata::Encode(std::string *dst) const {
   Metadata::Encode(dst);
   PutFixed8(dst, static_cast<uint8_t>(encode_type_));
 }
 
-rocksdb::Status HyperloglogMetadata::Decode(Slice *input) {
+rocksdb::Status HyperLogLogMetadata::Decode(Slice *input) {
   if (auto s = Metadata::Decode(input); !s.ok()) {
     return s;
   }
 
-  if (!GetFixed8(input, reinterpret_cast<uint8_t *>(&encode_type_))) {
+  uint8_t encoded_type = 0;
+  if (!GetFixed8(input, &encoded_type)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
+  // Check validity of encode type
+  if (encoded_type > 0) {
+    return rocksdb::Status::InvalidArgument(fmt::format("Invalid encode type {}", encoded_type));
+  }
+  encode_type_ = static_cast<EncodeType>(encoded_type);
 
   return rocksdb::Status::OK();
 }

@@ -18,31 +18,45 @@
  *
  */
 
+#pragma once
+
 #include <cstdint>
 #include <vector>
 
 #include "redis_bitmap.h"
 
-constexpr uint32_t kHyperLogLogRegisterCountPow = 14; /* The greater is Pow, the smaller the error. */
-constexpr uint32_t kHyperLogLogHashBitCount =
-    64 - kHyperLogLogRegisterCountPow; /* The number of bits of the hash value used for determining the number of
-                                                                                     leading zeros. */
+/* The greater is Pow, the smaller the error. */
+constexpr uint32_t kHyperLogLogRegisterCountPow = 14;
+/* The number of bits of the hash value used for determining the number of leading zeros. */
+constexpr uint32_t kHyperLogLogHashBitCount = 50;
 constexpr uint32_t kHyperLogLogRegisterCount = 1 << kHyperLogLogRegisterCountPow; /* With Pow=14, 16384 registers. */
 
-// NOTICE: adapt to the requirements of use Bitmap::SegmentCacheStore
+constexpr size_t kHyperLogLogSegmentBytes = 768;
+constexpr size_t kHyperLogLogSegmentRegisters = 1024;
+
 constexpr uint32_t kHyperLogLogRegisterCountPerSegment = redis::kBitmapSegmentBits / 8;
 
 constexpr uint32_t kHyperLogLogSegmentCount = kHyperLogLogRegisterCount / kHyperLogLogRegisterCountPerSegment;
-constexpr uint32_t kHyperLogLogBits = 6;
+constexpr uint32_t kHyperLogLogRegisterBits = 6;
 constexpr uint32_t kHyperLogLogRegisterCountMask = kHyperLogLogRegisterCount - 1; /* Mask to index register. */
-constexpr uint32_t kHyperLogLogRegisterMax = ((1 << kHyperLogLogBits) - 1);
-constexpr double kHyperLogLogAlphaInf = 0.721347520444481703680; /* constant for 0.5/ln(2) */
-constexpr uint32_t kHyperLogLogRegisterBytesPerSegment = kHyperLogLogRegisterCountPerSegment * kHyperLogLogBits / 8;
-constexpr uint32_t kHyperLogLogRegisterBytes = (kHyperLogLogRegisterCount * kHyperLogLogBits + 7) / 8;
+constexpr uint32_t kHyperLogLogRegisterMax = ((1 << kHyperLogLogRegisterBits) - 1);
+/* constant for 0.5/ln(2) */
+constexpr double kHyperLogLogAlpha = 0.721347520444481703680;
+constexpr uint32_t kHyperLogLogRegisterBytesPerSegment =
+    (kHyperLogLogRegisterCountPerSegment * kHyperLogLogRegisterBits) / 8;
+constexpr uint32_t kHyperLogLogRegisterBytes = (kHyperLogLogRegisterCount * kHyperLogLogRegisterBits + 7) / 8;
+// Copied from redis
+// https://github.com/valkey-io/valkey/blob/14e09e981e0039edbf8c41a208a258c18624cbb7/src/hyperloglog.c#L472
 constexpr uint32_t kHyperLogLogHashSeed = 0xadc83b19;
+
+struct DenseHllResult {
+  uint32_t register_index;
+  uint8_t hll_trailing_zero;
+};
+
+DenseHllResult ExtractDenseHllResult(uint64_t hash);
 
 uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index);
 void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val);
-uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index);
 uint64_t HllCount(const std::vector<uint8_t> &registers);
 void HllMerge(std::vector<uint8_t> *registers_max, const std::vector<uint8_t> &registers);

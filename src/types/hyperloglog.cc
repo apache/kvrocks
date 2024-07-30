@@ -53,17 +53,17 @@
 
 #include "hyperloglog.h"
 
-#include "murmurhash2.h"
+#include "vendor/murmurhash2.h"
 
 /* Store the value of the register at position 'index' into variable 'val'.
  * 'registers' is an array of unsigned bytes. */
 uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index) {
-  uint32_t byte = index * kHyperLogLogBits / 8;
-  uint8_t fb = index * kHyperLogLogBits & 7;
+  uint32_t byte = (index * kHyperLogLogRegisterBits) / 8;
+  uint8_t fb = (index * kHyperLogLogRegisterBits) & 7;
   uint8_t fb8 = 8 - fb;
   uint8_t b0 = registers[byte];
   uint8_t b1 = 0;
-  if (fb > 8 - kHyperLogLogBits) {
+  if (fb > 8 - kHyperLogLogRegisterBits) {
     b1 = registers[byte + 1];
   }
   return ((b0 >> fb) | (b1 << fb8)) & kHyperLogLogRegisterMax;
@@ -72,13 +72,13 @@ uint8_t HllDenseGetRegister(const uint8_t *registers, uint32_t index) {
 /* Set the value of the register at position 'index' to 'val'.
  * 'registers' is an array of unsigned bytes. */
 void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val) {
-  uint32_t byte = index * kHyperLogLogBits / 8;
-  uint8_t fb = index * kHyperLogLogBits & 7;
+  uint32_t byte = index * kHyperLogLogRegisterBits / 8;
+  uint8_t fb = index * kHyperLogLogRegisterBits & 7;
   uint8_t fb8 = 8 - fb;
   uint8_t v = val;
   registers[byte] &= ~(kHyperLogLogRegisterMax << fb);
   registers[byte] |= v << fb;
-  if (fb > 8 - kHyperLogLogBits) {
+  if (fb > 8 - kHyperLogLogRegisterBits) {
     registers[byte + 1] &= ~(kHyperLogLogRegisterMax >> fb8);
     registers[byte + 1] |= v >> fb8;
   }
@@ -86,14 +86,7 @@ void HllDenseSetRegister(uint8_t *registers, uint32_t index, uint8_t val) {
 
 /* ========================= HyperLogLog algorithm  ========================= */
 
-/* Given a string element to add to the HyperLogLog, returns the length
- * of the pattern 000..1 of the element hash. As a side effect 'register_index' is
- * set which the element hashes to. */
-uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index) {
-  int elesize = static_cast<int>(element.size());
-  uint64_t hash = 0, bit = 0, index = 0;
-  int count = 0;
-
+DenseHllResult ExtractDenseHllResult(uint64_t hash) {
   /* Count the number of zeroes starting from bit kHyperLogLogRegisterCount
    * (that is a power of two corresponding to the first bit we don't use
    * as index). The max run can be 64-kHyperLogLogRegisterCountPow+1 = kHyperLogLogHashBitCount+1 bits.
@@ -105,19 +98,12 @@ uint8_t HllPatLen(const std::vector<uint8_t> &element, uint32_t *register_index)
    *
    * This may sound like inefficient, but actually in the average case
    * there are high probabilities to find a 1 after a few iterations. */
-  hash = MurmurHash64A(element.data(), elesize, kHyperLogLogHashSeed);
-  index = hash & kHyperLogLogRegisterCountMask;      /* Register index. */
+  uint32_t index = hash & kHyperLogLogRegisterCountMask; /* Register index. */
+  DCHECK_LT(index, kHyperLogLogRegisterCount);
   hash >>= kHyperLogLogRegisterCountPow;             /* Remove bits used to address the register. */
-  hash |= ((uint64_t)1 << kHyperLogLogHashBitCount); /* Make sure the loop terminates
-                                     and count will be <= kHyperLogLogHashBitCount+1. */
-  bit = 1;
-  count = 1; /* Initialized to 1 since we count the "00000...1" pattern. */
-  while ((hash & bit) == 0) {
-    count++;
-    bit <<= 1;
-  }
-  *register_index = (int)index;
-  return count;
+  hash |= (static_cast<uint64_t>(1U) << kHyperLogLogHashBitCount);
+  uint8_t ctz = __builtin_ctzll(hash);
+  return DenseHllResult{index, ctz};
 }
 
 /* Compute the register histogram in the dense representation. */
@@ -233,7 +219,7 @@ uint64_t HllCount(const std::vector<uint8_t> &registers) {
     z *= 0.5;
   }
   z += m * HllSigma(reghisto[0] / (double)m);
-  e = static_cast<double>(llroundl(kHyperLogLogAlphaInf * m * m / z));
+  e = static_cast<double>(llroundl(kHyperLogLogAlpha * m * m / z));
 
   return (uint64_t)e;
 }

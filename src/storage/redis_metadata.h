@@ -332,20 +332,23 @@ class SearchMetadata : public Metadata {
   rocksdb::Status Decode(Slice *input) override;
 };
 
-class HyperloglogMetadata : public Metadata {
+class HyperLogLogMetadata : public Metadata {
  public:
   enum class EncodeType : uint8_t {
-    DENSE = 0,   // dense encoding implement as sub keys to store registers by segment in data column family.
-    SPARSE = 1,  // TODO sparse encoding implement as a compressed string to store registers in metadata column family.
+    // Redis-style dense encoding implement as bitmap like sub keys to
+    // store registers by segment in data column family.
+    // The registers are stored in 6-bit format and each segment contains
+    // 768 registers.
+    DENSE = 0,
+    // TODO: sparse encoding
+    // SPARSE = 1,
   };
 
-  explicit HyperloglogMetadata(bool generate_version = true) : Metadata(kRedisHyperLogLog, generate_version) {}
+  explicit HyperLogLogMetadata(bool generate_version = true) : Metadata(kRedisHyperLogLog, generate_version) {}
 
   void Encode(std::string *dst) const override;
-  using Metadata::Decode;
   rocksdb::Status Decode(Slice *input) override;
 
  private:
-  // TODO optimize for converting storage encoding automatically
   EncodeType encode_type_ = EncodeType::DENSE;
 };

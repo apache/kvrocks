@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "hyperloglog.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -29,12 +28,16 @@ namespace redis {
 class HyperLogLog : public Database {
  public:
   explicit HyperLogLog(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Add(const Slice &user_key, const std::vector<Slice> &elements, uint64_t *ret);
+  rocksdb::Status Add(const Slice &user_key, const std::vector<uint64_t> &element_hashes, uint64_t *ret);
   rocksdb::Status Count(const Slice &user_key, uint64_t *ret);
   rocksdb::Status Merge(const std::vector<Slice> &user_keys);
 
+  static uint64_t HllHash(std::string_view);
+
  private:
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperloglogMetadata *metadata);
+  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperLogLogMetadata *metadata);
+  rocksdb::Status getSubKey(Database::GetOptions get_options, const Slice &ns_key, uint32_t segment_index,
+                            std::string *segment);
   rocksdb::Status getRegisters(const Slice &user_key, std::vector<uint8_t> *registers);
 };
 

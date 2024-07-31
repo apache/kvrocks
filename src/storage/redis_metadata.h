@@ -49,6 +49,7 @@ enum RedisType : uint8_t {
   kRedisStream = 8,
   kRedisBloomFilter = 9,
   kRedisJson = 10,
+  kRedisHyperLogLog = 11,
 };
 
 struct RedisTypes {
@@ -90,8 +91,9 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",   "list",      "set",      "zset",
-                                                 "bitmap", "sortedint", "stream", "MBbloom--", "ReJSON-RL"};
+const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",      "list",
+                                                 "set",    "zset",      "bitmap",    "sortedint",
+                                                 "stream", "MBbloom--", "ReJSON-RL", "hyperloglog"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -312,4 +314,24 @@ class JsonMetadata : public Metadata {
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;
+};
+
+class HyperLogLogMetadata : public Metadata {
+ public:
+  enum class EncodeType : uint8_t {
+    // Redis-style dense encoding implement as bitmap like sub keys to
+    // store registers by segment in data column family.
+    // The registers are stored in 6-bit format and each segment contains
+    // 768 registers.
+    DENSE = 0,
+    // TODO(mwish): sparse encoding
+    // SPARSE = 1,
+  };
+
+  explicit HyperLogLogMetadata(bool generate_version = true) : Metadata(kRedisHyperLogLog, generate_version) {}
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
+
+  EncodeType encode_type = EncodeType::DENSE;
 };

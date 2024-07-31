@@ -37,18 +37,19 @@ class HyperLogLog : public Database {
   static uint64_t HllHash(std::string_view);
 
  private:
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HyperLogLogMetadata *metadata);
+  [[nodiscard]] rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key,
+                                            HyperLogLogMetadata *metadata);
 
-  rocksdb::Status mergeUserKeys(Database::GetOptions get_options, const std::vector<Slice> &user_keys,
-                                std::vector<std::string> *register_segments);
+  [[nodiscard]] rocksdb::Status mergeUserKeys(Database::GetOptions get_options, const std::vector<Slice> &user_keys,
+                                              std::vector<std::string> *register_segments);
   /// Using multi-get to acquire the register_segments
   ///
   /// If the metadata is not found, register_segments will be initialized with 16 empty slices.
-  rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &ns_key,
-                               std::vector<rocksdb::PinnableSlice> *register_segments);
+  [[nodiscard]] rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &ns_key,
+                                             std::vector<rocksdb::PinnableSlice> *register_segments);
   /// Same with getRegisters, but the result is stored in a vector of strings.
-  rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &ns_key,
-                               std::vector<std::string> *register_segments);
+  [[nodiscard]] rocksdb::Status getRegisters(Database::GetOptions get_options, const Slice &ns_key,
+                                             std::vector<std::string> *register_segments);
 };
 
 }  // namespace redis

@@ -174,8 +174,8 @@ void HllMerge(std::vector<std::string> *dest_registers, const std::vector<nonstd
     uint8_t *dest_segment_data = reinterpret_cast<uint8_t *>(dest_segment->data());
     for (size_t register_idx = 0; register_idx < kHyperLogLogSegmentRegisters; register_idx++) {
       uint8_t val = HllDenseGetRegister(src_segment.data(), register_idx);
-      uint8_t max_val = HllDenseGetRegister(dest_segment_data, register_idx);
-      if (val > max_val) {
+      uint8_t previous_val = HllDenseGetRegister(dest_segment_data, register_idx);
+      if (val > previous_val) {
         HllDenseSetRegister(dest_segment_data, register_idx, val);
       }
     }

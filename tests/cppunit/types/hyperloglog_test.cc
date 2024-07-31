@@ -32,6 +32,22 @@ class RedisHyperLogLogTest : public TestBase {
   }
   ~RedisHyperLogLogTest() override = default;
 
+  void SetUp() override {
+    TestBase::SetUp();
+    [[maybe_unused]] auto s = hll_->Del("hll");
+    for (int x = 1; x <= 3; x++) {
+      s = hll_->Del("hll" + std::to_string(x));
+    }
+  }
+
+  void TearDown() override {
+    TestBase::SetUp();
+    [[maybe_unused]] auto s = hll_->Del("hll");
+    for (int x = 1; x <= 3; x++) {
+      s = hll_->Del("hll" + std::to_string(x));
+    }
+  }
+
   std::unique_ptr<redis::HyperLogLog> hll_;
 
   static std::vector<uint64_t> computeHashes(const std::vector<std::string_view> &elements) {
@@ -88,6 +104,33 @@ TEST_F(RedisHyperLogLogTest, PFMERGE_results_on_the_cardinality_of_union_of_sets
   ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
   // pf count hll is 5
   ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(5, ret);
+}
+
+TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple) {
+  uint64_t ret = 0;
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(0, ret);
+  // pf add hll1 a b c
+  ASSERT_TRUE(hll_->Add("hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Count("hll1", &ret).ok());
+  ASSERT_EQ(3, ret);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(3, ret);
+  // pf add hll2 b c d
+  ASSERT_TRUE(hll_->Add("hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(4, ret);
+  // pf add hll3 c d e
+  ASSERT_TRUE(hll_->Add("hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(5, ret);
+  // pf merge hll hll1 hll2 hll3
+  ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
+  // pf count hll is 5
+  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(5, ret);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3", "hll"}, &ret).ok());
   ASSERT_EQ(5, ret);
 }
 

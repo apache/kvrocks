@@ -190,7 +190,9 @@ rocksdb::Status HyperLogLog::Count(const Slice &user_key, uint64_t *ret) {
 rocksdb::Status HyperLogLog::mergeUserKeys(Database::GetOptions get_options, const std::vector<Slice> &user_keys,
                                            std::vector<std::string> *register_segments) {
   DCHECK_GE(user_keys.size(), static_cast<size_t>(1));
-  rocksdb::Status s = getRegisters(get_options, user_keys[0], register_segments);
+
+  std::string first_ns_key = AppendNamespacePrefix(user_keys[0]);
+  rocksdb::Status s = getRegisters(get_options, first_ns_key, register_segments);
   if (!s.ok()) return s;
   // The set of keys that have been seen so far
   std::unordered_set<std::string_view> seend_user_keys;
@@ -220,7 +222,8 @@ rocksdb::Status HyperLogLog::CountMultiple(const std::vector<Slice> &user_key, u
   // Using same snapshot for all get operations
   LatestSnapShot ss(storage_);
   Database::GetOptions get_options(ss.GetSnapShot());
-  mergeUserKeys(get_options, user_key, &register_segments);
+  auto s = mergeUserKeys(get_options, user_key, &register_segments);
+  if (!s.ok()) return s;
   std::vector<nonstd::span<const uint8_t>> register_segment_span = TransformToSpan(register_segments);
   *ret = HllDenseEstimate(register_segment_span);
   return rocksdb::Status::OK();
@@ -246,7 +249,7 @@ rocksdb::Status HyperLogLog::Merge(const Slice &dest_user_key, const std::vector
     for (const auto &source_user_key : source_user_keys) {
       all_user_keys.push_back(source_user_key);
     }
-    s = mergeUserKeys(get_options, source_user_keys, &registers);
+    s = mergeUserKeys(get_options, all_user_keys, &registers);
   }
 
   auto batch = storage_->GetWriteBatchBase();

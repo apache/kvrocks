@@ -157,6 +157,31 @@ void HllDenseRegHisto(nonstd::span<const uint8_t> registers, int *reghisto) {
   }
 }
 
+void HllMerge(std::vector<std::string> *dest_registers, const std::vector<nonstd::span<const uint8_t>> &registers) {
+  for (size_t segment_id = 0; segment_id < kHyperLogLogSegmentCount; segment_id++) {
+    std::string *dest_segment = &dest_registers->at(segment_id);
+    nonstd::span<const uint8_t> src_segment = registers[segment_id];
+    if (src_segment.empty()) {
+      continue;
+    }
+    if (dest_segment->empty()) {
+      dest_segment->resize(src_segment.size());
+      memcpy(dest_segment->data(), src_segment.data(), src_segment.size());
+      continue;
+    }
+    // Do physical merge
+    // NOLINTNEXTLINE
+    uint8_t *dest_segment_data = reinterpret_cast<uint8_t *>(dest_segment->data());
+    for (size_t register_idx = 0; register_idx < kHyperLogLogSegmentRegisters; register_idx++) {
+      uint8_t val = HllDenseGetRegister(src_segment.data(), register_idx);
+      uint8_t max_val = HllDenseGetRegister(dest_segment_data, register_idx);
+      if (val > max_val) {
+        HllDenseSetRegister(dest_segment_data, register_idx, val);
+      }
+    }
+  }
+}
+
 /* ========================= HyperLogLog Count ==============================
  * This is the core of the algorithm where the approximated count is computed.
  * The function uses the lower level HllDenseRegHisto()

@@ -75,7 +75,29 @@ class CommandPfCount final : public Commander {
   }
 };
 
+/// PFMERGE destkey [sourcekey [sourcekey ...]]
+///
+/// complexity: O(N) to merge N HyperLogLogs, but with high constant times.
+class CommandPfMerge final : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
+    std::vector<std::string> keys(args_.begin() + 1, args_.end());
+    std::vector<Slice> dest_keys;
+    dest_keys.reserve(args_.size() - 1);
+    for (size_t i = 1; i < args_.size(); i++) {
+      dest_keys.emplace_back(args_[i]);
+    }
+    auto s = hll.Merge(args_[0], dest_keys);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandPfAdd>("pfadd", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandPfCount>("pfcount", 2, "read-only", 1, 1, 1), );
+                        MakeCmdAttr<CommandPfCount>("pfcount", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandPfMerge>("pfmerge", -2, "write", 1, 1, 1), );
 
 }  // namespace redis

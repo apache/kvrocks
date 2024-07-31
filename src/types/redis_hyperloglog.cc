@@ -179,6 +179,81 @@ rocksdb::Status HyperLogLog::Count(const Slice &user_key, uint64_t *ret) {
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status HyperLogLog::Merge(const Slice &dest_user_key, const std::vector<Slice> &source_user_keys) {
+  if (source_user_keys.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  std::string dest_key = AppendNamespacePrefix(dest_user_key);
+  // Using same snapshot for all get operations
+  LatestSnapShot ss(storage_);
+  Database::GetOptions get_options(ss.GetSnapShot());
+  std::vector<rocksdb::PinnableSlice> registers_slice;
+  HyperLogLogMetadata metadata;
+  rocksdb::Status s = GetMetadata(get_options, dest_user_key, &metadata);
+  if (!s.ok() && !s.IsNotFound()) return s;
+  s = getRegisters(get_options, dest_key, &registers_slice);
+  std::vector<std::string> registers;
+  registers.reserve(kHyperLogLogSegmentCount);
+  for (const auto &register_segment : registers_slice) {
+    registers.emplace_back(register_segment.data(), register_segment.size());
+  }
+  registers_slice.clear();
+  if (!s.ok()) return s;
+  // The set of keys that have been seen so far
+  std::unordered_set<std::string_view> seend_user_keys;
+  seend_user_keys.emplace(dest_user_key.ToStringView());
+
+  for (const auto &source_user_key : source_user_keys) {
+    if (!seend_user_keys.emplace(source_user_key.ToStringView()).second) {
+      // Skip duplicate keys
+      continue;
+    }
+    std::string source_key = AppendNamespacePrefix(source_user_key);
+    std::vector<rocksdb::PinnableSlice> source_registers;
+    s = getRegisters(get_options, source_key, &source_registers);
+    if (!s.ok()) return s;
+    DCHECK_EQ(kHyperLogLogSegmentCount, source_registers.size());
+    DCHECK_EQ(kHyperLogLogSegmentCount, registers.size());
+    std::vector<nonstd::span<const uint8_t>> source_register_span;
+    source_register_span.reserve(kHyperLogLogSegmentCount);
+    for (const auto &source_register_segment : source_registers) {
+      if (source_register_segment.empty()) {
+        // Empty segment
+        source_register_span.emplace_back();
+        continue;
+      }
+      // NOLINTNEXTLINE
+      const uint8_t *segment_data_ptr = reinterpret_cast<const uint8_t *>(source_register_segment.data());
+      source_register_span.emplace_back(segment_data_ptr, source_register_segment.size());
+    }
+    HllMerge(&registers, source_register_span);
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisHyperLogLog);
+  batch->PutLogData(log_data.Encode());
+  for (uint32_t i = 0; i < kHyperLogLogSegmentCount; i++) {
+    if (registers[i].empty()) {
+      continue;
+    }
+    std::string sub_key =
+        InternalKey(dest_key, std::to_string(i), metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    batch->Put(sub_key, registers[i]);
+    // Release memory after batch is written
+    registers[i].clear();
+  }
+  // Metadata
+  {
+    metadata.encode_type = HyperLogLogMetadata::EncodeType::DENSE;
+    std::string bytes;
+    metadata.Encode(&bytes);
+    batch->Put(metadata_cf_handle_, dest_key, bytes);
+  }
+
+  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status HyperLogLog::getRegisters(Database::GetOptions get_options, const Slice &ns_key,
                                           std::vector<rocksdb::PinnableSlice> *register_segments) {
   HyperLogLogMetadata metadata;

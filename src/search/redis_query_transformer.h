@@ -168,9 +168,9 @@ struct Transformer : ir::TreeTransformer {
       const auto& knn_search = node->children[2];
       CHECK(knn_search->children.size() == 4);
 
-      return std::make_unique<VectorSearchExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
-                                                GET_OR_RET(number_or_param(knn_search->children[1])),
-                                                GET_OR_RET(Transform2Vector(knn_search->children[3])));
+      return std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
+                                             GET_OR_RET(number_or_param(knn_search->children[1])),
+                                             GET_OR_RET(Transform2Vector(knn_search->children[3])));
 
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;

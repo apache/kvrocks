@@ -254,7 +254,7 @@ struct VectorRangeExpr : BoolAtomExpr {
 
   std::string_view Name() const override { return "VectorRangeExpr"; }
   std::string Dump() const override {
-    return fmt::format("{} vector_range {} {}", field->Dump(), range->Dump(), vector->Dump());
+    return fmt::format("{} <-> {} < {}", field->Dump(), vector->Dump(), range->Dump());
   }
 
   std::unique_ptr<Node> Clone() const override {
@@ -264,25 +264,25 @@ struct VectorRangeExpr : BoolAtomExpr {
   }
 };
 
-struct VectorSearchExpr : BoolAtomExpr {
+struct VectorKnnExpr : BoolAtomExpr {
   // TODO: Support pre-filter for hybrid query
   std::unique_ptr<FieldRef> field;
   std::unique_ptr<NumericLiteral> k;
   std::unique_ptr<VectorLiteral> vector;
 
-  VectorSearchExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<NumericLiteral> &&k,
-                   std::unique_ptr<VectorLiteral> &&vector)
+  VectorKnnExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<NumericLiteral> &&k,
+                std::unique_ptr<VectorLiteral> &&vector)
       : field(std::move(field)), k(std::move(k)), vector(std::move(vector)) {}
 
-  std::string_view Name() const override { return "VectorSearchExpr"; }
+  std::string_view Name() const override { return "VectorKnnExpr"; }
   std::string Dump() const override {
-    return fmt::format("{} vector_search {} {}", field->Dump(), k->Dump(), vector->Dump());
+    return fmt::format("{} <-> {} knn {}", field->Dump(), vector->Dump(), k->Dump());
   }
 
   std::unique_ptr<Node> Clone() const override {
-    return std::make_unique<VectorRangeExpr>(Node::MustAs<FieldRef>(field->Clone()),
-                                             Node::MustAs<NumericLiteral>(k->Clone()),
-                                             Node::MustAs<VectorLiteral>(vector->Clone()));
+    return std::make_unique<VectorKnnExpr>(Node::MustAs<FieldRef>(field->Clone()),
+                                           Node::MustAs<NumericLiteral>(k->Clone()),
+                                           Node::MustAs<VectorLiteral>(vector->Clone()));
   }
 };
 
@@ -408,7 +408,7 @@ struct SortByClause : Node {
       : field(std::move(field)), vector(std::move(vector)) {}
 
   static constexpr const char *OrderToString(Order order) { return order == ASC ? "asc" : "desc"; }
-  bool IsKnn() const { return vector != nullptr; }
+  bool IsVectorField() const { return vector != nullptr; }
 
   std::string_view Name() const override { return "SortByClause"; }
   std::string Dump() const override { return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order)); }
@@ -421,9 +421,9 @@ struct SortByClause : Node {
     return std::make_unique<SortByClause>(order, Node::MustAs<FieldRef>(field->Clone()));
   }
 
-  std::unique_ptr<FieldRef> GetFieldRef() { return std::move(field); }
+  std::unique_ptr<FieldRef> TakeFieldRef() { return std::move(field); }
 
-  std::unique_ptr<VectorLiteral> GetVectorLiteral() { return std::move(vector); }
+  std::unique_ptr<VectorLiteral> TakeVectorLiteral() { return std::move(vector); }
 };
 
 struct SelectClause : Node {

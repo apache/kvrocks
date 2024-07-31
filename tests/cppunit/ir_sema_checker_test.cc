@@ -80,6 +80,7 @@ TEST(SemaCheckerTest, Simple) {
               "vector should be of size `3` for field `f4`");
     ASSERT_EQ(checker.Check(Parse("select f4 from ia where f4 <-> [3.6,4.7,5.6] < -5")->get()).Msg(),
               "range cannot be a negative number for l2 distance metric");
+    ASSERT_EQ(checker.Check(Parse("select f4 from ia order by f4 limit 5")->get()).Msg(), "field `f4` is not sortable");
   }
 
   {

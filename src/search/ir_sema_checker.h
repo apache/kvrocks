@@ -97,7 +97,7 @@ struct SemaChecker {
       } else {
         v->field->info = &iter->second;
       }
-    } else if (auto v = dynamic_cast<VectorSearchExpr *>(node)) {
+    } else if (auto v = dynamic_cast<VectorKnnExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {

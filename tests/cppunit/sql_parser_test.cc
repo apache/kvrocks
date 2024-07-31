@@ -162,9 +162,9 @@ TEST(SQLParserTest, Vector) {
   ASSERT_EQ(Parse("select a from b order by embedding <-> [1,2,3]").Msg(), "invalid knn search clause without limit");
 
   AssertIR(Parse("select a from b where embedding <-> [3,1,2] < 5"),
-           "select a from b where embedding vector_range 5 [3.000000, 1.000000, 2.000000]");
+           "select a from b where embedding <-> [3.000000, 1.000000, 2.000000] < 5");
   AssertIR(Parse("select a from b where embedding <-> [0.5,0.5] < 10 and c > 100"),
-           "select a from b where (and embedding vector_range 10 [0.500000, 0.500000], c > 100)");
+           "select a from b where (and embedding <-> [0.500000, 0.500000] < 10, c > 100)");
   AssertIR(Parse("select a from b order by embedding <-> [3.6] limit 5"),
-           "select a from b where embedding vector_search 5 [3.600000]");
+           "select a from b where embedding <-> [3.600000] knn 5");
 }

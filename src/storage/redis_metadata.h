@@ -333,6 +333,5 @@ class HyperLogLogMetadata : public Metadata {
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;
 
- public:
   EncodeType encode_type = EncodeType::DENSE;
 };

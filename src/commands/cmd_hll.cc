@@ -59,7 +59,7 @@ class CommandPfCount final : public Commander {
     uint64_t ret{};
     rocksdb::Status s;
     if (args_.size() > 1) {
-      std::vector<Slice> keys(args_.begin() + 1, args_.end());
+      std::vector<Slice> keys(args_.begin(), args_.end());
       s = hll.CountMultiple(keys, &ret);
     } else {
       s = hll.Count(args_[0], &ret);
@@ -82,12 +82,12 @@ class CommandPfMerge final : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
     std::vector<std::string> keys(args_.begin() + 1, args_.end());
-    std::vector<Slice> dest_keys;
-    dest_keys.reserve(args_.size() - 1);
+    std::vector<Slice> src_user_keys;
+    src_user_keys.reserve(args_.size() - 1);
     for (size_t i = 1; i < args_.size(); i++) {
-      dest_keys.emplace_back(args_[i]);
+      src_user_keys.emplace_back(args_[i]);
     }
-    auto s = hll.Merge(args_[0], dest_keys);
+    auto s = hll.Merge(/*dest_user_key=*/args_[0], src_user_keys);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

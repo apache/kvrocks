@@ -550,57 +550,6 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
           memset(frag_res.get(), 0, frag_maxlen);
         }
 
-        /* Fast path: as far as we have data for all the input bitmaps we
-         * can take a fast path that performs much better than the
-         * vanilla algorithm. On ARM we skip the fast path since it will
-         * result in GCC compiling the code using multiple-words load/store
-         * operations that are not supported even in ARM >= v6. */
-#ifndef USE_ALIGNED_ACCESS
-        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
-          auto *lres = reinterpret_cast<uint64_t *>(frag_res.get());
-          const uint64_t *lp[16];
-          for (uint64_t i = 0; i < frag_numkeys; i++) {
-            lp[i] = reinterpret_cast<const uint64_t *>(fragments[i].data());
-          }
-          memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
-          auto apply_fast_path_op = [&](auto op) {
-            // Note: kBitOpNot cannot use this op, it only applying
-            // to kBitOpAnd, kBitOpOr, kBitOpXor.
-            DCHECK(op_flag != kBitOpNot);
-            while (frag_minlen >= sizeof(uint64_t) * 4) {
-              for (uint64_t i = 1; i < frag_numkeys; i++) {
-                op(lres[0], lp[i][0]);
-                op(lres[1], lp[i][1]);
-                op(lres[2], lp[i][2]);
-                op(lres[3], lp[i][3]);
-                lp[i] += 4;
-              }
-              lres += 4;
-              j += sizeof(uint64_t) * 4;
-              frag_minlen -= sizeof(uint64_t) * 4;
-            }
-          };
-
-          if (op_flag == kBitOpAnd) {
-            apply_fast_path_op([](uint64_t &a, uint64_t b) { a &= b; });
-          } else if (op_flag == kBitOpOr) {
-            apply_fast_path_op([](uint64_t &a, uint64_t b) { a |= b; });
-          } else if (op_flag == kBitOpXor) {
-            apply_fast_path_op([](uint64_t &a, uint64_t b) { a ^= b; });
-          } else if (op_flag == kBitOpNot) {
-            while (frag_minlen >= sizeof(uint64_t) * 4) {
-              lres[0] = ~lres[0];
-              lres[1] = ~lres[1];
-              lres[2] = ~lres[2];
-              lres[3] = ~lres[3];
-              lres += 4;
-              j += sizeof(uint64_t) * 4;
-              frag_minlen -= sizeof(uint64_t) * 4;
-            }
-          }
-        }
-#endif
-
         uint8_t output = 0, byte = 0;
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];

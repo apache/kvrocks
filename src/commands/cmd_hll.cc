@@ -24,12 +24,8 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
-#include "commands/error_constants.h"
-#include "error_constants.h"
-#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
-#include "storage/redis_metadata.h"
 
 namespace redis {
 
@@ -57,13 +53,17 @@ class CommandPfAdd final : public Commander {
 /// Complexity: O(1) with a very small average constant time when called with a single key.
 ///              O(N) with N being the number of keys, and much bigger constant times,
 ///              when called with multiple keys.
-///
-/// TODO(mwish): Currently we don't supports merge, so only one key is supported.
 class CommandPfCount final : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
     uint64_t ret{};
-    auto s = hll.Count(args_[0], &ret);
+    rocksdb::Status s;
+    if (args_.size() > 1) {
+      std::vector<Slice> keys(args_.begin() + 1, args_.end());
+      s = hll.CountMultiple(keys, &ret);
+    } else {
+      s = hll.Count(args_[0], &ret);
+    }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -97,7 +97,7 @@ class CommandPfMerge final : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandPfAdd>("pfadd", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandPfCount>("pfcount", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandPfCount>("pfcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPfMerge>("pfmerge", -2, "write", 1, 1, 1), );
 
 }  // namespace redis

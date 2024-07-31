@@ -220,18 +220,6 @@ struct Transformer : ir::TreeTransformer {
         query_expr = std::make_unique<BoolLiteral>(true);
       }
 
-      if (sort_by && sort_by->IsVectorField()) {
-        if (!limit) {
-          return {Status::NotOK, "invalid knn search clause without limit"};
-        }
-        CHECK(limit->Offset() == 0);
-        query_expr = std::make_unique<VectorKnnExpr>(std::move(sort_by->TakeFieldRef()),
-                                                     std::make_unique<NumericLiteral>(limit->Count()),
-                                                     std::move(sort_by->TakeVectorLiteral()));
-        sort_by.reset();
-        limit.reset();
-      }
-
       return Node::Create<ir::SearchExpr>(std::move(index), std::move(query_expr), std::move(limit), std::move(sort_by),
                                           std::move(select));
     } else if (IsRoot(node)) {

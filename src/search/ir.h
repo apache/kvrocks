@@ -411,7 +411,12 @@ struct SortByClause : Node {
   bool IsVectorField() const { return vector != nullptr; }
 
   std::string_view Name() const override { return "SortByClause"; }
-  std::string Dump() const override { return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order)); }
+  std::string Dump() const override {
+    if (!IsVectorField()) {
+      return fmt::format("sortby {}, {}", field->Dump(), OrderToString(order));
+    }
+    return fmt::format("sortby {} <-> {}", field->Dump(), vector->Dump());
+  }
   std::string Content() const override { return OrderToString(order); }
 
   NodeIterator ChildBegin() override { return NodeIterator(field.get()); };

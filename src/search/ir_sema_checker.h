@@ -50,6 +50,9 @@ struct SemaChecker {
         GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
+        if (v->sort_by && v->sort_by->IsVectorField() && !v->limit) {
+          return {Status::NotOK, "invalid knn search clause without limit"};
+        }
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};
       }
@@ -60,8 +63,21 @@ struct SemaChecker {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else if (!iter->second.IsSortable()) {
         return {Status::NotOK, fmt::format("field `{}` is not sortable", v->field->name)};
+      } else if (auto meta = iter->second.MetadataAs<redis::HnswVectorFieldMetadata>();
+                 (meta != nullptr) != v->IsVectorField()) {
+        std::string not_str = meta ? "" : "not ";
+        return {Status::NotOK,
+                fmt::format("field `{}` is {}a vector field according to metadata and does {}expect a vector parameter",
+                            v->field->name, not_str, not_str)};
       } else {
         v->field->info = &iter->second;
+        if (v->IsVectorField()) {
+          auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+          if (v->vector->values.size() != meta->dim) {
+            return {Status::NotOK,
+                    fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+          }
+        }
       }
     } else if (auto v = dynamic_cast<AndExpr *>(node)) {
       for (const auto &n : v->inners) {
@@ -96,20 +112,6 @@ struct SemaChecker {
         return {Status::NotOK, fmt::format("field `{}` is not a numeric field", v->field->name)};
       } else {
         v->field->info = &iter->second;
-      }
-    } else if (auto v = dynamic_cast<VectorKnnExpr *>(node)) {
-      if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
-        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
-      } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {
-        return {Status::NotOK, fmt::format("field `{}` is not a vector field", v->field->name)};
-      } else {
-        v->field->info = &iter->second;
-
-        auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
-        if (v->vector->values.size() != meta->dim) {
-          return {Status::NotOK,
-                  fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
-        }
       }
     } else if (auto v = dynamic_cast<VectorRangeExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {

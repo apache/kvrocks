@@ -578,11 +578,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
                 op(lres_u64[1], lp_data[1]);
                 op(lres_u64[2], lp_data[2]);
                 op(lres_u64[3], lp_data[3]);
-                lp[i] += 4;
+                lp[i] += 4 * sizeof(uint64_t);
               }
               // memcpy back to lres
               memcpy(lres, &lres_u64, sizeof(lres_u64));
-              lres += 4;
+              lres += 4 * sizeof(uint64_t);
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;
             }
@@ -603,7 +603,7 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
               lres_u64[2] = ~lres_u64[2];
               lres_u64[3] = ~lres_u64[3];
               memcpy(lres, &lres_u64, sizeof(lres_u64));
-              lres += 4;
+              lres += 4 * sizeof(uint64_t);
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;
             }

@@ -549,7 +549,61 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
         } else {
           memset(frag_res.get(), 0, frag_maxlen);
         }
+        /* Fast path: as far as we have data for all the input bitmaps we
+         * can take a fast path that performs much better than the
+         * vanilla algorithm.
+         * We hope the compiler will generate a better code for memcpy
+         * rather than keep this fast path only in ARM machine.
+         */
+        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
+          uint8_t *lres = frag_res.get();
+          const uint8_t *lp[16];
+          for (uint64_t i = 0; i < frag_numkeys; i++) {
+            lp[i] = reinterpret_cast<const uint8_t *>(fragments[i].data());
+          }
+          memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
+          auto apply_fast_path_op = [&](auto op) {
+            // Note: kBitOpNot cannot use this op, it only applying
+            // to kBitOpAnd, kBitOpOr, kBitOpXor.
+            DCHECK(op_flag != kBitOpNot);
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              uint64_t lres_u64[4];
+              uint64_t lp_u64[4];
+              memcpy(lres_u64, lres, sizeof(lres_u64));
+              memcpy(lp_u64, lp[0], sizeof(lp_u64));
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                op(lres, lp[i]);
+                op(lres + 8, lp[i] + 8);
+                op(lres + 8 * 2, lp[i] + 8 * 2);
+                op(lres + 8 * 3, lp[i] + 8 * 3);
+                lp[i] += 4;
+              }
+              // memcpy back to lres
+              memcpy(lres, lres_u64, sizeof(lres_u64));
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          };
 
+          if (op_flag == kBitOpAnd) {
+            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a &= b; });
+          } else if (op_flag == kBitOpOr) {
+            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a |= b; });
+          } else if (op_flag == kBitOpXor) {
+            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a ^= b; });
+          } else if (op_flag == kBitOpNot) {
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              lres[0] = ~lres[0];
+              lres[1] = ~lres[1];
+              lres[2] = ~lres[2];
+              lres[3] = ~lres[3];
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          }
+        }
         uint8_t output = 0, byte = 0;
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];

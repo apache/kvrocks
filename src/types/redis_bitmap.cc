@@ -587,11 +587,11 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
           };
 
           if (op_flag == kBitOpAnd) {
-            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a &= b; });
+            apply_fast_path_op([](uint64_t &a, uint64_t b) { a &= b; });
           } else if (op_flag == kBitOpOr) {
-            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a |= b; });
+            apply_fast_path_op([](uint64_t &a, uint64_t b) { a |= b; });
           } else if (op_flag == kBitOpXor) {
-            apply_fast_path_op([](uint64_t &a, const uint64_t &b) { a ^= b; });
+            apply_fast_path_op([](uint64_t &a, uint64_t b) { a ^= b; });
           } else if (op_flag == kBitOpNot) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               lres[0] = ~lres[0];

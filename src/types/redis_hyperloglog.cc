@@ -235,6 +235,7 @@ rocksdb::Status HyperLogLog::Merge(const Slice &dest_user_key, const std::vector
   }
 
   std::string dest_key = AppendNamespacePrefix(dest_user_key);
+  LockGuard guard(storage_->GetLockManager(), dest_key);
   // Using same snapshot for all get operations
   LatestSnapShot ss(storage_);
   Database::GetOptions get_options(ss.GetSnapShot());

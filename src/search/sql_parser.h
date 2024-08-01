@@ -89,7 +89,8 @@ struct Limit : string<'l', 'i', 'm', 'i', 't'> {};
 
 struct WhereClause : seq<Where, QueryExpr> {};
 struct AscOrDesc : sor<Asc, Desc> {};
-struct OrderByExpr : sor<WSPad<VectorCompareExpr>, seq<WSPad<Identifier>, opt<WSPad<AscOrDesc>>>> {};
+struct SortableFieldExpr : seq<WSPad<Identifier>, opt<AscOrDesc>> {};
+struct OrderByExpr : sor<WSPad<VectorCompareExpr>, WSPad<SortableFieldExpr>> {};
 struct OrderByClause : seq<OrderBy, OrderByExpr> {};
 struct LimitClause : seq<Limit, opt<seq<WSPad<UnsignedInteger>, one<','>>>, WSPad<UnsignedInteger>> {};
 

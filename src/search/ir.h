@@ -276,7 +276,7 @@ struct VectorKnnExpr : BoolAtomExpr {
 
   std::string_view Name() const override { return "VectorKnnExpr"; }
   std::string Dump() const override {
-    return fmt::format("{} <-> {} knn {}", field->Dump(), vector->Dump(), k->Dump());
+    return fmt::format("KNN k={}, {} <-> {}", k->Dump(), field->Dump(), vector->Dump());
   }
 
   std::unique_ptr<Node> Clone() const override {
@@ -425,10 +425,6 @@ struct SortByClause : Node {
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<SortByClause>(order, Node::MustAs<FieldRef>(field->Clone()));
   }
-
-  std::unique_ptr<FieldRef> TakeFieldRef() { return std::move(field); }
-
-  std::unique_ptr<VectorLiteral> TakeVectorLiteral() { return std::move(vector); }
 };
 
 struct SelectClause : Node {

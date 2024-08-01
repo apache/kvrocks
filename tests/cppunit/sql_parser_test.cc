@@ -159,6 +159,7 @@ TEST(SQLParserTest, Vector) {
   AssertSyntaxError(Parse("select a from b where embedding <-> [] < 5"));
   AssertSyntaxError(Parse("select a from b order by embedding <-> @vec limit 5", {{"vec", "[3.6,7.8]"}}));
   AssertSyntaxError(Parse("select a from b where embedding <#> [3,1,2] < 5"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> [3,1,2] desc limit 5"));
 
   AssertIR(Parse("select a from b where embedding <-> [3,1,2] < 5"),
            "select a from b where embedding <-> [3.000000, 1.000000, 2.000000] < 5");

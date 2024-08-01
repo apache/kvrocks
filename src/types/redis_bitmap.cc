@@ -557,6 +557,8 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
          */
         if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
           uint8_t *lres = frag_res.get();
+          // lp points to the start of each fragment and would be advanced
+          // to frag_minlen.
           const uint8_t *lp[16];
           for (uint64_t i = 0; i < frag_numkeys; i++) {
             lp[i] = reinterpret_cast<const uint8_t *>(fragments[i].data());
@@ -568,18 +570,18 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
             DCHECK(op_flag != kBitOpNot);
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               uint64_t lres_u64[4];
-              uint64_t lp_u64[4];
               memcpy(lres_u64, lres, sizeof(lres_u64));
-              memcpy(lp_u64, lp[0], sizeof(lp_u64));
               for (uint64_t i = 1; i < frag_numkeys; i++) {
-                op(lres, lp[i]);
-                op(lres + 8, lp[i] + 8);
-                op(lres + 8 * 2, lp[i] + 8 * 2);
-                op(lres + 8 * 3, lp[i] + 8 * 3);
+                uint64_t lp_data[4];
+                memcpy(lp_data, lp[i], sizeof(lp_data));
+                op(lres_u64[0], lp_data[0]);
+                op(lres_u64[1], lp_data[1]);
+                op(lres_u64[2], lp_data[2]);
+                op(lres_u64[3], lp_data[3]);
                 lp[i] += 4;
               }
               // memcpy back to lres
-              memcpy(lres, lres_u64, sizeof(lres_u64));
+              memcpy(lres, &lres_u64, sizeof(lres_u64));
               lres += 4;
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;
@@ -594,10 +596,13 @@ rocksdb::Status Bitmap::BitOp(BitOpFlags op_flag, const std::string &op_name, co
             apply_fast_path_op([](uint64_t &a, uint64_t b) { a ^= b; });
           } else if (op_flag == kBitOpNot) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
-              lres[0] = ~lres[0];
-              lres[1] = ~lres[1];
-              lres[2] = ~lres[2];
-              lres[3] = ~lres[3];
+              uint64_t lres_u64[4];
+              memcpy(lres_u64, lres, sizeof(lres_u64));
+              lres_u64[0] = ~lres_u64[0];
+              lres_u64[1] = ~lres_u64[1];
+              lres_u64[2] = ~lres_u64[2];
+              lres_u64[3] = ~lres_u64[3];
+              memcpy(lres, &lres_u64, sizeof(lres_u64));
               lres += 4;
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;

@@ -77,13 +77,10 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
 }
 
 Worker::~Worker() {
-  // std::vector<redis::Connection *> conns;
-  // conns.reserve(conns_.size() + monitor_conns_.size());
   {
     std::lock_guard<std::mutex> guard(conns_mu_);
     for (const auto &iter : conns_) {
       if (ConnMap::accessor accessor; conns_.find(accessor, iter.first)) {
-        // conns.emplace_back(accessor->second);
         accessor->second->Close();
       }
     }
@@ -93,14 +90,10 @@ Worker::~Worker() {
     std::lock_guard<std::mutex> guard(conns_mu_);
     for (const auto &iter : monitor_conns_) {
       if (ConnMap::accessor accessor; monitor_conns_.find(accessor, iter.first)) {
-        // conns.emplace_back(accessor->second);
         accessor->second->Close();
       }
     }
   }
-  // for (const auto &iter : conns) {
-  //   iter->Close();
-  // }
 
   timer_.reset();
   if (rate_limit_group_) {
@@ -477,9 +470,9 @@ void Worker::BecomeMonitorConn(redis::Connection *conn) {
 }
 
 void Worker::QuitMonitorConn(redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(conns_mu_);
   if (ConnMap::accessor accessor; monitor_conns_.find(accessor, conn->GetFD())) {
     {
-      std::lock_guard<std::mutex> guard(conns_mu_);
       monitor_conns_.erase(accessor);
       accessor.release();
     }

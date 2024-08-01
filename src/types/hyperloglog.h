@@ -70,3 +70,9 @@ void HllDenseSetRegister(uint8_t *registers, uint32_t register_index, uint8_t va
  *                  or a kHyperLogLogSegmentBytes sized array.
  */
 uint64_t HllDenseEstimate(const std::vector<nonstd::span<const uint8_t>> &registers);
+
+/**
+ * Merge by computing MAX(registers_max[i],registers[i]) the HyperLogLog 'registers'
+ * with an array of uint8_t kHyperLogLogRegisterCount registers pointed by 'dest_registers'.
+ */
+void HllMerge(std::vector<std::string> *dest_registers, const std::vector<nonstd::span<const uint8_t>> &registers);

@@ -32,6 +32,22 @@ class RedisHyperLogLogTest : public TestBase {
   }
   ~RedisHyperLogLogTest() override = default;
 
+  void SetUp() override {
+    TestBase::SetUp();
+    [[maybe_unused]] auto s = hll_->Del("hll");
+    for (int x = 1; x <= 3; x++) {
+      s = hll_->Del("hll" + std::to_string(x));
+    }
+  }
+
+  void TearDown() override {
+    TestBase::SetUp();
+    [[maybe_unused]] auto s = hll_->Del("hll");
+    for (int x = 1; x <= 3; x++) {
+      s = hll_->Del("hll" + std::to_string(x));
+    }
+  }
+
   std::unique_ptr<redis::HyperLogLog> hll_;
 
   static std::vector<uint64_t> computeHashes(const std::vector<std::string_view> &elements) {
@@ -74,4 +90,87 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_returns_approximated_cardinality_of_set) {
   ASSERT_TRUE(hll_->Add("hll", computeHashes({"6", "7", "8", "8", "9", "10"}), &ret).ok() && ret == 1);
   // pf count is 10
   ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 10);
+}
+
+TEST_F(RedisHyperLogLogTest, PFMERGE_results_on_the_cardinality_of_union_of_sets) {
+  uint64_t ret = 0;
+  // pf add hll1 a b c
+  ASSERT_TRUE(hll_->Add("hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
+  // pf add hll2 b c d
+  ASSERT_TRUE(hll_->Add("hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
+  // pf add hll3 c d e
+  ASSERT_TRUE(hll_->Add("hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
+  // pf merge hll hll1 hll2 hll3
+  ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
+  // pf count hll is 5
+  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(5, ret);
+}
+
+TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple) {
+  uint64_t ret = 0;
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(0, ret);
+  // pf add hll1 a b c
+  ASSERT_TRUE(hll_->Add("hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Count("hll1", &ret).ok());
+  ASSERT_EQ(3, ret);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(3, ret);
+  // pf add hll2 b c d
+  ASSERT_TRUE(hll_->Add("hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(4, ret);
+  // pf add hll3 c d e
+  ASSERT_TRUE(hll_->Add("hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_EQ(5, ret);
+  // pf merge hll hll1 hll2 hll3
+  ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
+  // pf count hll is 5
+  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_EQ(5, ret);
+  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3", "hll"}, &ret).ok());
+  ASSERT_EQ(5, ret);
+}
+
+TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_union_1) {
+  for (int x = 1; x < 1000; x++) {
+    uint64_t ret = 0;
+    ASSERT_TRUE(hll_->Add("hll0", computeHashes({"foo-" + std::to_string(x)}), &ret).ok());
+    ASSERT_TRUE(hll_->Add("hll1", computeHashes({"bar-" + std::to_string(x)}), &ret).ok());
+    ASSERT_TRUE(hll_->Add("hll2", computeHashes({"zap-" + std::to_string(x)}), &ret).ok());
+    std::vector<uint64_t> cards(3);
+    ASSERT_TRUE(hll_->Count("hll0", &cards[0]).ok());
+    ASSERT_TRUE(hll_->Count("hll1", &cards[1]).ok());
+    ASSERT_TRUE(hll_->Count("hll2", &cards[2]).ok());
+    auto card = static_cast<double>(cards[0] + cards[1] + cards[2]);
+    double realcard = x * 3;
+    // assert the ABS of 'card' and 'realcart' is within 5% of the cardinality
+    double left = std::abs(card - realcard);
+    double right = card / 100 * 5;
+    ASSERT_LT(left, right) << "left : " << left << ", right: " << right;
+  }
+}
+
+TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_union_2) {
+  std::srand(time(nullptr));
+  std::vector<int> realcard_vec;
+  for (auto i = 1; i < 1000; i++) {
+    for (auto j = 0; j < 3; j++) {
+      uint64_t ret = 0;
+      int rint = std::rand() % 20000;
+      ASSERT_TRUE(hll_->Add("hll" + std::to_string(j), computeHashes({std::to_string(rint)}), &ret).ok());
+      realcard_vec.push_back(rint);
+    }
+  }
+  std::vector<uint64_t> cards(3);
+  ASSERT_TRUE(hll_->Count("hll0", &cards[0]).ok());
+  ASSERT_TRUE(hll_->Count("hll1", &cards[1]).ok());
+  ASSERT_TRUE(hll_->Count("hll2", &cards[2]).ok());
+  auto card = static_cast<double>(cards[0] + cards[1] + cards[2]);
+  auto realcard = static_cast<double>(realcard_vec.size());
+  double left = std::abs(card - realcard);
+  double right = card / 100 * 5;
+  ASSERT_LT(left, right) << "left : " << left << ", right: " << right;
 }

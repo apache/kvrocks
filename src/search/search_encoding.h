@@ -373,6 +373,8 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
 
   HnswVectorFieldMetadata() : IndexFieldMetadata(IndexFieldType::VECTOR) {}
 
+  bool IsSortable() const override { return true; }
+
   void Encode(std::string *dst) const override {
     IndexFieldMetadata::Encode(dst);
     PutFixed8(dst, uint8_t(vector_type));

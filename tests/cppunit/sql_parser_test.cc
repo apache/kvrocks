@@ -146,3 +146,25 @@ TEST(SQLParserTest, Params) {
            "select a from b where (and c hastag \"hello\", d = 3)");
   ASSERT_EQ(Parse("select a from b where c hastag @y", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
 }
+
+TEST(SQLParserTest, Vector) {
+  AssertSyntaxError(Parse("select a from b where embedding <-> [3,1,2]"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [3,1,2] <"));
+  AssertSyntaxError(Parse("select a from b where embedding [3,1,2] < 3"));
+  AssertSyntaxError(Parse("select a from b where embedding <> [3,1,2] < 4"));
+  AssertSyntaxError(Parse("select a from b where embedding <- [3,1,2] < 3"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> [1,2,3] < 3"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [1,2,3] limit 5"));
+  AssertSyntaxError(Parse("select a from b where [3,1,2] <-> embedding < 5"));
+  AssertSyntaxError(Parse("select a from b where embedding <-> [] < 5"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> @vec limit 5", {{"vec", "[3.6,7.8]"}}));
+  AssertSyntaxError(Parse("select a from b where embedding <#> [3,1,2] < 5"));
+  AssertSyntaxError(Parse("select a from b order by embedding <-> [3,1,2] desc limit 5"));
+
+  AssertIR(Parse("select a from b where embedding <-> [3,1,2] < 5"),
+           "select a from b where embedding <-> [3.000000, 1.000000, 2.000000] < 5");
+  AssertIR(Parse("select a from b where embedding <-> [0.5,0.5] < 10 and c > 100"),
+           "select a from b where (and embedding <-> [0.500000, 0.500000] < 10, c > 100)");
+  AssertIR(Parse("select a from b order by embedding <-> [3.6] limit 5"),
+           "select a from b where true sortby embedding <-> [3.600000] limit 0, 5");
+}

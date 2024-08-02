@@ -35,10 +35,10 @@ namespace redis_query {
 namespace ir = kqir;
 
 template <typename Rule>
-using TreeSelector =
-    parse_tree::selector<Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
-                         parse_tree::remove_content::on<TagList, NumericRange, ExclusiveNumber, FieldQuery, NotExpr,
-                                                        AndExpr, OrExpr, Wildcard>>;
+using TreeSelector = parse_tree::selector<
+    Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
+    parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
+                                   OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -53,7 +53,31 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 struct Transformer : ir::TreeTransformer {
   explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
 
+  StatusOr<std::unique_ptr<VectorLiteral>> Transform2Vector(const TreeNode& node) {
+    std::string vector_str = GET_OR_RET(GetParam(node));
+
+    std::vector<double> values = GET_OR_RET(Binary2Vector<double>(vector_str));
+    if (values.empty()) {
+      return {Status::NotOK, "empty vector is invalid"};
+    }
+    return std::make_unique<ir::VectorLiteral>(std::move(values));
+  };
+
   auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
+    auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+      if (Is<Number>(node)) {
+        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+      } else if (Is<Param>(node)) {
+        auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
+                                  .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+
+        return std::make_unique<ir::NumericLiteral>(val);
+      } else {
+        return {Status::NotOK,
+                fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
+      }
+    };
+
     if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
     } else if (Is<Wildcard>(node)) {
@@ -88,25 +112,11 @@ struct Transformer : ir::TreeTransformer {
         } else {
           return std::make_unique<ir::OrExpr>(std::move(exprs));
         }
-      } else {  // NumericRange
+      } else if (Is<NumericRange>(query)) {
         std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
         const auto& lhs = query->children[0];
         const auto& rhs = query->children[1];
-
-        auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
-          if (Is<Number>(node)) {
-            return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
-          } else if (Is<Param>(node)) {
-            auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
-                                      .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
-
-            return std::make_unique<ir::NumericLiteral>(val);
-          } else {
-            return {Status::NotOK,
-                    fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
-          }
-        };
 
         if (Is<ExclusiveNumber>(lhs)) {
           exprs.push_back(std::make_unique<NumericCompareExpr>(NumericCompareExpr::GT,
@@ -141,11 +151,27 @@ struct Transformer : ir::TreeTransformer {
         } else {
           return std::make_unique<ir::AndExpr>(std::move(exprs));
         }
+      } else if (Is<VectorRange>(query)) {
+        return std::make_unique<VectorRangeExpr>(std::make_unique<FieldRef>(field),
+                                                 GET_OR_RET(number_or_param(query->children[1])),
+                                                 GET_OR_RET(Transform2Vector(query->children[2])));
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
       return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+    } else if (Is<PrefilterExpr>(node)) {
+      CHECK(node->children.size() == 3);
+
+      // TODO(Beihao): Support Hybrid Query
+      // const auto& prefilter = node->children[0];
+      const auto& knn_search = node->children[2];
+      CHECK(knn_search->children.size() == 4);
+
+      return std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
+                                             GET_OR_RET(number_or_param(knn_search->children[1])),
+                                             GET_OR_RET(Transform2Vector(knn_search->children[3])));
+
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 

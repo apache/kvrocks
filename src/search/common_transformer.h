@@ -105,6 +105,26 @@ struct TreeTransformer {
 
     return result;
   }
+
+  template <typename T = double>
+  static StatusOr<std::vector<T>> Binary2Vector(std::string_view str) {
+    if (str.size() % sizeof(T) != 0) {
+      return {Status::NotOK, "data size is not a multiple of the target type size"};
+    }
+
+    std::vector<T> values;
+    const size_t type_size = sizeof(T);
+    values.reserve(str.size() / type_size);
+
+    while (!str.empty()) {
+      T value;
+      memcpy(&value, str.data(), type_size);
+      values.push_back(value);
+      str.remove_prefix(type_size);
+    }
+
+    return values;
+  }
 };
 
 }  // namespace kqir

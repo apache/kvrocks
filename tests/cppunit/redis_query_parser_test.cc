@@ -101,3 +101,36 @@ TEST(RedisQueryParserTest, Params) {
   AssertIR(Parse("@c:{$y} @d:[$zzz inf]", {{"y", "hello"}, {"zzz", "3"}}), "(and c hastag \"hello\", d >= 3)");
   ASSERT_EQ(Parse("@c:{$y}", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
 }
+
+TEST(RedisQueryParserTest, Vector) {
+  std::vector<double> vec = {1, 2, 3};
+  std::string vec_str(reinterpret_cast<const char*>(vec.data()), vec.size() * sizeof(double));
+
+  AssertSyntaxError(Parse("@field:[RANGE 10 $vector]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE 10 not_param"));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector 10]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("* =>[knn 5 @field $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("* =>[KNN 5 @field not_param]"));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", vec_str}}));
+
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}),
+           "field <-> [1.000000, 2.000000, 3.000000] < 10");
+  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
+           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
+  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
+           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
+  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}),
+           "KNN k=8, vec_embedding <-> [1.000000, 2.000000, 3.000000]");
+  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}),
+           "KNN k=5, vector <-> [1.000000, 2.000000, 3.000000]");
+
+  vec_str = vec_str.substr(0, 3);
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(),
+            "data size is not a multiple of the target type size");
+  vec_str = "";
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(), "empty vector is invalid");
+}

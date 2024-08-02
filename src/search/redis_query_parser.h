@@ -30,6 +30,11 @@ namespace redis_query {
 
 using namespace peg;
 
+struct VectorRangeToken : string<'V', 'E', 'C', 'T', 'O', 'R', '_', 'R', 'A', 'N', 'G', 'E'> {};
+struct KnnToken : string<'K', 'N', 'N'> {};
+struct ArrowOp : string<'=', '>'> {};
+struct Wildcard : one<'*'> {};
+
 struct Field : seq<one<'@'>, Identifier> {};
 
 struct Param : seq<one<'$'>, Identifier> {};
@@ -44,9 +49,10 @@ struct ExclusiveNumber : seq<one<'('>, NumberOrParam> {};
 struct NumericRangePart : sor<Inf, ExclusiveNumber, NumberOrParam> {};
 struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangePart>, one<']'>> {};
 
-struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<TagList, NumericRange>>> {};
+struct KnnSearch : seq<one<'['>, WSPad<KnnToken>, WSPad<NumberOrParam>, WSPad<Field>, WSPad<Param>, one<']'>> {};
+struct VectorRange : seq<one<'['>, WSPad<VectorRangeToken>, WSPad<NumberOrParam>, WSPad<Param>, one<']'>> {};
 
-struct Wildcard : one<'*'> {};
+struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<VectorRange, TagList, NumericRange>>> {};
 
 struct QueryExpr;
 
@@ -64,7 +70,11 @@ struct AndExprP : sor<AndExpr, BooleanExpr> {};
 struct OrExpr : seq<AndExprP, plus<seq<one<'|'>, AndExprP>>> {};
 struct OrExprP : sor<OrExpr, AndExprP> {};
 
-struct QueryExpr : seq<OrExprP> {};
+struct PrefilterExpr : seq<WSPad<BooleanExpr>, ArrowOp, WSPad<KnnSearch>> {};
+
+struct QueryP : sor<PrefilterExpr, OrExprP> {};
+
+struct QueryExpr : seq<QueryP> {};
 
 }  // namespace redis_query
 

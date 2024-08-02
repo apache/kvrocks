@@ -236,21 +236,24 @@ rocksdb::Status HyperLogLog::Merge(const Slice &dest_user_key, const std::vector
 
   std::string dest_key = AppendNamespacePrefix(dest_user_key);
   LockGuard guard(storage_->GetLockManager(), dest_key);
-  // Using same snapshot for all get operations
-  LatestSnapShot ss(storage_);
-  Database::GetOptions get_options(ss.GetSnapShot());
-  HyperLogLogMetadata metadata;
-  rocksdb::Status s = GetMetadata(get_options, dest_user_key, &metadata);
-  if (!s.ok() && !s.IsNotFound()) return s;
   std::vector<std::string> registers;
+  HyperLogLogMetadata metadata;
   {
-    std::vector<Slice> all_user_keys;
-    all_user_keys.reserve(source_user_keys.size() + 1);
-    all_user_keys.push_back(dest_user_key);
-    for (const auto &source_user_key : source_user_keys) {
-      all_user_keys.push_back(source_user_key);
+    // Using same snapshot for all get operations and release it after
+    // finishing the merge operation
+    LatestSnapShot ss(storage_);
+    Database::GetOptions get_options(ss.GetSnapShot());
+    rocksdb::Status s = GetMetadata(get_options, dest_user_key, &metadata);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    {
+      std::vector<Slice> all_user_keys;
+      all_user_keys.reserve(source_user_keys.size() + 1);
+      all_user_keys.push_back(dest_user_key);
+      for (const auto &source_user_key : source_user_keys) {
+        all_user_keys.push_back(source_user_key);
+      }
+      s = mergeUserKeys(get_options, all_user_keys, &registers);
     }
-    s = mergeUserKeys(get_options, all_user_keys, &registers);
   }
 
   auto batch = storage_->GetWriteBatchBase();

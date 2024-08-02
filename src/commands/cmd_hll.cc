@@ -81,12 +81,8 @@ class CommandPfCount final : public Commander {
 class CommandPfMerge final : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
-    std::vector<std::string> keys(args_.begin() + 1, args_.end());
-    std::vector<Slice> src_user_keys;
-    src_user_keys.reserve(args_.size() - 1);
-    for (size_t i = 1; i < args_.size(); i++) {
-      src_user_keys.emplace_back(args_[i]);
-    }
+    DCHECK_GT(args_.size(), 0);
+    std::vector<Slice> src_user_keys(args_.begin() + 1, args_.end());
     auto s = hll.Merge(/*dest_user_key=*/args_[0], src_user_keys);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};

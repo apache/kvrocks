@@ -490,7 +490,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    engine::Context ctx(srv_->storage);
+    auto no_txn_ctx = engine::Context::NoTransactionContext(srv_->storage);
     // TODO: transaction support for index recording
     std::vector<GlobalIndexer::RecordResult> index_records;
     if (!srv_->index_mgr.index_map.empty() && IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) &&
@@ -499,7 +499,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
           [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
             key_range.ForEachKey(
                 [&, this](const std::string &key) {
-                  auto res = srv_->indexer.Record(ctx, key, ns_);
+                  auto res = srv_->indexer.Record(no_txn_ctx, key, ns_);
                   if (res.IsOK()) {
                     index_records.push_back(*res);
                   } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
@@ -516,7 +516,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // TODO: transaction support for index updating
     for (const auto &record : index_records) {
-      auto s = GlobalIndexer::Update(ctx, record);
+      auto s = GlobalIndexer::Update(no_txn_ctx, record);
       if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
         LOG(WARNING) << "index updating failed for key: " << record.key;
       }

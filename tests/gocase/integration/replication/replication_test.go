@@ -105,6 +105,7 @@ func TestReplicationWithHostname(t *testing.T) {
 	t.Run("Set instance A as slave of B with localhost, for issue #1182", func(t *testing.T) {
 		require.NoError(t, rdbA.SlaveOf(context.Background(), "localhost", fmt.Sprintf("%d", srvB.Port())).Err())
 		util.SlaveOf(t, rdbA, srvB)
+		// TODO: debug/fix
 		util.WaitForSync(t, rdbA)
 		ctx := context.Background()
 
@@ -132,6 +133,7 @@ func TestReplicationLoading(t *testing.T) {
 		require.NoError(t, rdbA.ConfigSet(ctx, "slave-empty-db-before-fullsync", "yes").Err())
 		require.NoError(t, rdbA.ConfigSet(ctx, "fullsync-recv-file-delay", "2").Err())
 		util.SlaveOf(t, rdbA, srvB)
+		// TODO: debug/fix
 		// Become loading state in 5 second
 		require.Eventually(t, func() bool {
 			return util.FindInfoEntry(rdbA, "loading") == "1"
@@ -181,6 +183,7 @@ func TestReplicationBasics(t *testing.T) {
 		util.SlaveOf(t, slaveClient, master)
 		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
 	})
+	// TODO: debug/fix
 	util.WaitForSync(t, slaveClient)
 	t.Run("Sync should have transferred keys from master", func(t *testing.T) {
 		require.Equal(t, masterClient.Get(ctx, "mykey"), slaveClient.Get(ctx, "mykey"))

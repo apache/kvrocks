@@ -101,7 +101,7 @@ func TestSearch(t *testing.T) {
 		}
 
 		res = rdb.Do(ctx, "FT.SEARCHSQL", `select * from testidx1 where a hastag "z" and b < 30`)
-		fmt.Println(res);
+		fmt.Println(res)
 		verify(t, res)
 		res = rdb.Do(ctx, "FT.SEARCH", "testidx1", `@a:{z} @b:[-inf (30]`)
 		verify(t, res)

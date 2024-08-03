@@ -616,8 +616,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
 
 std::vector<rocksdb::Status> Json::readMulti(engine::Context &ctx, const std::vector<Slice> &ns_keys,
                                              std::vector<JsonValue> &values) {
-  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
 
   std::vector<rocksdb::Status> statuses(ns_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(ns_keys.size());
@@ -636,10 +635,9 @@ std::vector<rocksdb::Status> Json::readMulti(engine::Context &ctx, const std::ve
   return statuses;
 }
 
-rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string &path, std::vector<size_t> *results) {
+rocksdb::Status Json::DebugMemory(engine::Context &ctx, const std::string &user_key, const std::string &path,
+                                  std::vector<size_t> *results) {
   auto ns_key = AppendNamespacePrefix(user_key);
-  // TODO: ctx?
-  engine::Context ctx(storage_);
   JsonMetadata metadata;
   if (path == "$") {
     std::string bytes;
@@ -658,13 +656,11 @@ rocksdb::Status Json::DebugMemory(const std::string &user_key, const std::string
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Json::Resp(const std::string &user_key, const std::string &path, std::vector<std::string> *results,
-                           RESP resp) {
+rocksdb::Status Json::Resp(engine::Context &ctx, const std::string &user_key, const std::string &path,
+                           std::vector<std::string> *results, RESP resp) {
   auto ns_key = AppendNamespacePrefix(user_key);
   JsonMetadata metadata;
   JsonValue json_val;
-  // TODO: ctx?
-  engine::Context ctx(storage_);
   auto s = read(ctx, ns_key, &metadata, &json_val);
   if (!s.ok()) return s;
 

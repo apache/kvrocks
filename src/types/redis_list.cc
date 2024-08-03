@@ -121,7 +121,6 @@ rocksdb::Status List::PopMulti(engine::Context &ctx, const rocksdb::Slice &user_
     PutFixed64(&buf, index);
     std::string sub_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     std::string elem;
-    // TODO: ctx?
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &elem);
     if (!s.ok()) {
       // FIXME: should be always exists??
@@ -185,14 +184,13 @@ rocksdb::Status List::Rem(engine::Context &ctx, const Slice &user_key, int count
 
   bool reversed = count < 0;
   std::vector<uint64_t> to_delete_indexes;
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix);
        !reversed ? iter->Next() : iter->Prev()) {
     if (iter->value() == elem) {
@@ -273,12 +271,11 @@ rocksdb::Status List::Insert(engine::Context &ctx, const Slice &user_key, const 
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     if (iter->value() == pivot) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -374,12 +371,11 @@ rocksdb::Status List::Range(engine::Context &ctx, const Slice &user_key, int sta
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(start_key); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     Slice sub_key = ikey.GetSubKey();
@@ -417,8 +413,7 @@ rocksdb::Status List::Pos(engine::Context &ctx, const Slice &user_key, const Sli
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix);
@@ -429,7 +424,7 @@ rocksdb::Status List::Pos(engine::Context &ctx, const Slice &user_key, const Sli
   int64_t count = spec.count.value_or(-1);
   int64_t offset = 0, matches = 0;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   iter->Seek(start_key);
   while (iter->Valid() && iter->key().starts_with(prefix) && (max_len == 0 || offset < max_len)) {
     if (iter->value() == elem) {

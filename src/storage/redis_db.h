@@ -183,22 +183,6 @@ class Database {
                                                 const std::string &subst);
 };
 
-// TODO: remove?
-// current: search, script
-class LatestSnapShot {
- public:
-  explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
-  ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
-  const rocksdb::Snapshot *GetSnapShot() const { return snapshot_; }
-
-  LatestSnapShot(const LatestSnapShot &) = delete;
-  LatestSnapShot &operator=(const LatestSnapShot &) = delete;
-
- private:
-  engine::Storage *storage_ = nullptr;
-  const rocksdb::Snapshot *snapshot_ = nullptr;
-};
-
 class SubKeyScanner : public redis::Database {
  public:
   explicit SubKeyScanner(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}

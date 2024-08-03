@@ -114,7 +114,7 @@ class DBIteratorTest : public TestBase {
 };
 
 TEST_F(DBIteratorTest, AllKeys) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   std::vector<std::string> live_keys = {"a",        "b",        "d",      "hash-1", "set-1",  "zset-1",     "list-1",
                                         "stream-1", "bitmap-1", "json-1", "json-2", "json-3", "sortedint-1"};
   std::reverse(live_keys.begin(), live_keys.end());
@@ -128,7 +128,7 @@ TEST_F(DBIteratorTest, AllKeys) {
 }
 
 TEST_F(DBIteratorTest, BasicString) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
 
   std::vector<std::string> expected_keys = {"a", "b", "d"};
   std::reverse(expected_keys.begin(), expected_keys.end());
@@ -150,7 +150,7 @@ TEST_F(DBIteratorTest, BasicString) {
 }
 
 TEST_F(DBIteratorTest, BasicHash) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns1", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisHash, iter.Type());
@@ -173,7 +173,7 @@ TEST_F(DBIteratorTest, BasicHash) {
 }
 
 TEST_F(DBIteratorTest, BasicSet) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns2", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisSet, iter.Type());
@@ -196,7 +196,7 @@ TEST_F(DBIteratorTest, BasicSet) {
 }
 
 TEST_F(DBIteratorTest, BasicZSet) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns3", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisZSet, iter.Type());
@@ -219,7 +219,7 @@ TEST_F(DBIteratorTest, BasicZSet) {
 }
 
 TEST_F(DBIteratorTest, BasicList) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns4", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisList, iter.Type());
@@ -242,7 +242,7 @@ TEST_F(DBIteratorTest, BasicList) {
 }
 
 TEST_F(DBIteratorTest, BasicStream) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns5", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisStream, iter.Type());
@@ -268,7 +268,7 @@ TEST_F(DBIteratorTest, BasicStream) {
 }
 
 TEST_F(DBIteratorTest, BasicBitmap) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns6", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
     ASSERT_EQ(kRedisBitmap, iter.Type());
@@ -290,7 +290,7 @@ TEST_F(DBIteratorTest, BasicBitmap) {
 }
 
 TEST_F(DBIteratorTest, BasicJSON) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
 
   std::vector<std::string> expected_keys = {"json-1", "json-2", "json-3"};
   std::reverse(expected_keys.begin(), expected_keys.end());
@@ -312,7 +312,7 @@ TEST_F(DBIteratorTest, BasicJSON) {
 }
 
 TEST_F(DBIteratorTest, BasicSortedInt) {
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions());
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
 
   auto prefix = ComposeNamespaceKey("test_ns8", "", storage_->IsSlotIdEncoded());
   for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
@@ -357,7 +357,7 @@ TEST_F(SlotIteratorTest, LiveKeys) {
       same_slot_keys.insert(key);
     }
   }
-  engine::DBIterator iter(*ctx_, storage_.get(), rocksdb::ReadOptions(), slot_id);
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions(), slot_id);
   int count = 0;
   for (iter.Seek(); iter.Valid(); iter.Next()) {
     auto [_, user_key] = iter.UserKey();

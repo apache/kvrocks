@@ -53,7 +53,6 @@ bool Namespace::IsAllowModify() const {
 
 Status Namespace::loadFromDB(std::map<std::string, std::string>* db_tokens) const {
   std::string value;
-  // TODO: ctx?
   engine::Context ctx(storage_);
   auto s = storage_->Get(ctx, ctx.GetReadOptions(), cf_, kNamespaceDBKey, &value);
   if (!s.ok()) {
@@ -74,7 +73,6 @@ Status Namespace::LoadAndRewrite() {
   if (config->cluster_enabled) return Status::OK();
 
   std::map<std::string, std::string> db_tokens;
-  // TODO: ctx?
   auto s = loadFromDB(&db_tokens);
   if (!s.IsOK()) return s;
 

@@ -259,7 +259,7 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
   }
 
   uint64_t ttl_sum = 0;
-  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
@@ -317,7 +317,7 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
   std::string ns_prefix;
   std::string user_key;
 
-  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
 
   std::string ns_cursor = AppendNamespacePrefix(cursor);
   if (storage_->IsSlotIdEncoded()) {
@@ -436,7 +436,7 @@ rocksdb::Status Database::FlushDB(engine::Context &ctx) {
 }
 
 rocksdb::Status Database::FlushAll(engine::Context &ctx) {
-  auto iter = util::UniqueIterator(ctx, storage_, ctx.GetReadOptions(), metadata_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
   iter->SeekToFirst();
   if (!iter->Valid()) {
     return rocksdb::Status::OK();
@@ -543,8 +543,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, ctx.DefaultScanOptions());
   std::string match_prefix_key =
       InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
@@ -665,7 +664,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   WriteBatchLogData log_data(type);
   batch->PutLogData(log_data.Encode());
 
-  engine::DBIterator iter(ctx, storage_, ctx.GetReadOptions());
+  engine::DBIterator iter(ctx, ctx.GetReadOptions());
   iter.Seek(key);
 
   if (delete_old) {

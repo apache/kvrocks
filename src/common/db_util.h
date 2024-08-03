@@ -34,13 +34,12 @@ struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
   using BaseType = std::unique_ptr<rocksdb::Iterator>;
 
   explicit UniqueIterator(rocksdb::Iterator* iter) : BaseType(iter) {}
-  UniqueIterator(engine::Context& ctx, engine::Storage* storage, const rocksdb::ReadOptions& options,
-                 rocksdb::ColumnFamilyHandle* column_family)
-      : BaseType(storage->NewIterator(ctx, options, column_family)) {}
-  UniqueIterator(engine::Context& ctx, engine::Storage* storage, const rocksdb::ReadOptions& options, ColumnFamilyID cf)
-      : BaseType(storage->NewIterator(ctx, options, storage->GetCFHandle(cf))) {}
-  UniqueIterator(engine::Context& ctx, engine::Storage* storage, const rocksdb::ReadOptions& options)
-      : BaseType(storage->NewIterator(ctx, options)) {}
+  UniqueIterator(engine::Context& ctx, const rocksdb::ReadOptions& options, rocksdb::ColumnFamilyHandle* column_family)
+      : BaseType(ctx.storage->NewIterator(ctx, options, column_family)) {}
+  UniqueIterator(engine::Context& ctx, const rocksdb::ReadOptions& options, ColumnFamilyID cf)
+      : BaseType(ctx.storage->NewIterator(ctx, options, ctx.storage->GetCFHandle(cf))) {}
+  UniqueIterator(engine::Context& ctx, const rocksdb::ReadOptions& options)
+      : BaseType(ctx.storage->NewIterator(ctx, options)) {}
 };
 
 namespace details {

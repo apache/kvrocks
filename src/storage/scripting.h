@@ -26,7 +26,10 @@
 #include "lua.hpp"
 #include "server/redis_connection.h"
 #include "status.h"
-#include "storage.h"
+
+namespace engine {
+struct Context;
+}
 
 inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
 inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";

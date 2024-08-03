@@ -164,8 +164,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
     return s;
   }
 
-  rocksdb::ReadOptions read_options = storage_->DefaultMultiGetOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
   std::vector<rocksdb::Slice> keys;
 
   keys.reserve(fields.size());
@@ -299,14 +298,13 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   if (!spec.reversed) {
     iter->Seek(start_key);
   } else {
@@ -354,12 +352,11 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     if (type == HashFetchType::kOnlyKey) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());

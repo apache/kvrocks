@@ -77,7 +77,7 @@ TEST_F(IndexerTest, HashTag) {
   auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
 
   {
-    auto s = indexer.Record("no_exist", ns);
+    auto s = indexer.Record(*ctx_, "no_exist", ns);
     ASSERT_TRUE(s.Is<Status::NoPrefixMatched>());
   }
 
@@ -85,82 +85,80 @@ TEST_F(IndexerTest, HashTag) {
   auto idxname = "hashtest";
 
   {
-    engine::Context ctx(storage_.get());
-    auto s = indexer.Record(key1, ns);
+    auto s = indexer.Record(*ctx_, key1, ns);
     ASSERT_EQ(s.Msg(), Status::ok_msg);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_TRUE(s->fields.empty());
 
     uint64_t cnt = 0;
-    db.Set(ctx, key1, "x", "food,kitChen,Beauty", &cnt);
+    db.Set(*ctx_, key1, "x", "food,kitChen,Beauty", &cnt);
     ASSERT_EQ(cnt, 1);
 
-    auto s2 = indexer.Update(*s);
+    auto s2 = indexer.Update(*ctx_, *s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
 
   {
-    engine::Context ctx(storage_.get());
-    auto s = indexer.Record(key1, ns);
+    auto s = indexer.Record(*ctx_, key1, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_EQ(s->fields.size(), 1);
     ASSERT_EQ(s->fields["x"], T("food,kitChen,Beauty"));
 
     uint64_t cnt = 0;
-    auto s_set = db.Set(ctx, key1, "x", "Clothing,FOOD,sport", &cnt);
+    auto s_set = db.Set(*ctx_, key1, "x", "Clothing,FOOD,sport", &cnt);
     ASSERT_EQ(cnt, 0);
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s);
+    auto s2 = indexer.Update(*ctx_, *s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("clothing", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("sport", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
 
     key = redis::SearchKey(ns, idxname, "x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }
@@ -170,7 +168,7 @@ TEST_F(IndexerTest, JsonTag) {
   auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
 
   {
-    auto s = indexer.Record("no_exist", ns);
+    auto s = indexer.Record(*ctx_, "no_exist", ns);
     ASSERT_TRUE(s.Is<Status::NoPrefixMatched>());
   }
 
@@ -178,79 +176,77 @@ TEST_F(IndexerTest, JsonTag) {
   auto idxname = "jsontest";
 
   {
-    auto s = indexer.Record(key1, ns);
+    auto s = indexer.Record(*ctx_, key1, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_TRUE(s->fields.empty());
 
-    engine::Context ctx(storage_.get());
-    auto s_set = db.Set(ctx, key1, "$", R"({"x": "food,kitChen,Beauty"})");
+    auto s_set = db.Set(*ctx_, key1, "$", R"({"x": "food,kitChen,Beauty"})");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s);
+    auto s2 = indexer.Update(*ctx_, *s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
 
   {
-    auto s = indexer.Record(key1, ns);
+    auto s = indexer.Record(*ctx_, key1, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_EQ(s->fields.size(), 1);
     ASSERT_EQ(s->fields["$.x"], T("food,kitChen,Beauty"));
 
-    engine::Context ctx(storage_.get());
-    auto s_set = db.Set(ctx, key1, "$.x", "\"Clothing,FOOD,sport\"");
+    auto s_set = db.Set(*ctx_, key1, "$.x", "\"Clothing,FOOD,sport\"");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s);
+    auto s2 = indexer.Update(*ctx_, *s);
     ASSERT_TRUE(s2);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("clothing", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("sport", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.IsNotFound());
   }
 }
@@ -263,29 +259,28 @@ TEST_F(IndexerTest, JsonTagBuildIndex) {
   auto idxname = "jsontest";
 
   {
-    engine::Context ctx(storage_.get());
-    auto s_set = db.Set(ctx, key1, "$", R"({"x": "food,kitChen,Beauty"})");
+    auto s_set = db.Set(*ctx_, key1, "$", R"({"x": "food,kitChen,Beauty"})");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.updater_list[1].Build();
+    auto s2 = indexer.updater_list[1].Build(*ctx_);
     ASSERT_EQ(s2.Msg(), Status::ok_msg);
 
     auto key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("food", key1);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("kitchen", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
 
     key = redis::SearchKey(ns, idxname, "$.x").ConstructTagFieldData("beauty", key1);
 
-    s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, key, &val);
+    s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, key, &val);
     ASSERT_TRUE(s3.ok());
     ASSERT_EQ(val, "");
   }
@@ -296,7 +291,7 @@ TEST_F(IndexerTest, JsonHnswVector) {
   auto cfhandler = storage_->GetCFHandle(ColumnFamilyID::Search);
 
   {
-    auto s = indexer.Record("no_exist", ns);
+    auto s = indexer.Record(*ctx_, "no_exist", ns);
     ASSERT_TRUE(s.Is<Status::NoPrefixMatched>());
   }
 
@@ -304,22 +299,21 @@ TEST_F(IndexerTest, JsonHnswVector) {
   auto idxname = "jsontest";
 
   {
-    auto s = indexer.Record(key3, ns);
+    auto s = indexer.Record(*ctx_, key3, ns);
     ASSERT_TRUE(s);
     ASSERT_EQ(s->updater.info->name, idxname);
     ASSERT_TRUE(s->fields.empty());
 
-    engine::Context ctx(storage_.get());
-    auto s_set = db.Set(ctx, key3, "$", R"({"z": [1,2,3]})");
+    auto s_set = db.Set(*ctx_, key3, "$", R"({"z": [1,2,3]})");
     ASSERT_TRUE(s_set.ok());
 
-    auto s2 = indexer.Update(*s);
+    auto s2 = indexer.Update(*ctx_, *s);
     EXPECT_EQ(s2.Msg(), Status::ok_msg);
 
     auto search_key = redis::SearchKey(ns, idxname, "$.z").ConstructHnswNode(0, key3);
 
     std::string val;
-    auto s3 = storage_->Get(ctx, storage_->DefaultMultiGetOptions(), cfhandler, search_key, &val);
+    auto s3 = storage_->Get(*ctx_, ctx_->DefaultMultiGetOptions(), cfhandler, search_key, &val);
     ASSERT_TRUE(s3.ok());
 
     redis::HnswNodeFieldMetadata node_meta;

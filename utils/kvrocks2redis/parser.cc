@@ -94,9 +94,8 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   read_options.iterate_upper_bound = &upper_bound;
 
   std::string output;
-  // TODO: ctx
-  engine::Context ctx(storage_);
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto no_txn_ctx = engine::Context::NoTransactionContext(storage_);
+  auto iter = util::UniqueIterator(no_txn_ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(prefix_key)) {
       break;

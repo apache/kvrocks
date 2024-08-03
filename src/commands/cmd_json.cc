@@ -676,7 +676,8 @@ class CommandJsonDebug : public Commander {
     }
 
     std::vector<std::size_t> results;
-    auto s = json.DebugMemory(args_[2], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.DebugMemory(ctx, args_[2], path, &results);
 
     if (s.IsNotFound()) {
       if (args_.size() == 3) {
@@ -705,7 +706,8 @@ class CommandJsonResp : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
     std::vector<std::string> results;
-    auto s = json.Resp(args_[1], path, &results, conn->GetProtocolVersion());
+    engine::Context ctx(svr->storage);
+    auto s = json.Resp(ctx, args_[1], path, &results, conn->GetProtocolVersion());
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();

@@ -873,7 +873,6 @@ class CommandCompact : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string begin_key, end_key;
     auto ns = conn->GetNamespace();
-    // TODO: ctx?
     if (ns != kDefaultNamespace) {
       begin_key = ComposeNamespaceKey(ns, "", false);
       end_key = util::StringNext(begin_key);

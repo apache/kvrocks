@@ -171,14 +171,13 @@ rocksdb::Status ZSet::Pop(engine::Context &ctx, const Slice &user_key, int count
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in RangeByScore()
   if (!min && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -240,15 +239,14 @@ rocksdb::Status ZSet::RangeByRank(engine::Context &ctx, const Slice &user_key, c
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
   int removed_subkey = 0;
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
   auto batch = storage_->GetWriteBatchBase();
-  auto iter = util::UniqueIterator(ctx, storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in RangeByScore()
   if (spec.reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -345,16 +343,14 @@ rocksdb::Status ZSet::RangeByScore(engine::Context &ctx, const Slice &user_key, 
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
   int pos = 0;
-  auto iter = util::UniqueIterator(ctx, storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -429,16 +425,14 @@ rocksdb::Status ZSet::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
   int pos = 0;
-  auto iter = util::UniqueIterator(ctx, storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   batch->PutLogData(log_data.Encode());
@@ -556,8 +550,7 @@ rocksdb::Status ZSet::Rank(engine::Context &ctx, const Slice &user_key, const Sl
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   std::string score_bytes;
   std::string member_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(ctx, read_options, member_key, &score_bytes);
@@ -579,7 +572,7 @@ rocksdb::Status ZSet::Rank(engine::Context &ctx, const Slice &user_key, const Sl
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
   iter->Seek(start_key);
   // see comment in RangeByScore()
   if (reversed && (!iter->Valid() || !iter->key().starts_with(prefix_key))) {
@@ -834,13 +827,11 @@ rocksdb::Status ZSet::MGet(engine::Context &ctx, const Slice &user_key, const st
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ctx.snapshot;
   std::string score_bytes;
   for (const auto &member : members) {
     std::string member_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     score_bytes.clear();
-    s = storage_->Get(ctx, read_options, member_key, &score_bytes);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), member_key, &score_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       continue;
@@ -864,15 +855,14 @@ rocksdb::Status ZSet::GetAllMemberScores(engine::Context &ctx, const Slice &user
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
 
   rocksdb::Slice upper_bound(next_version_prefix_key);
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto iter = util::UniqueIterator(ctx, storage_, read_options, score_cf_handle_);
+  auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
 
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());

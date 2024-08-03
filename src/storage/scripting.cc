@@ -438,13 +438,12 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
   end_key.back()++;
 
   engine::Context ctx(srv->storage);
-  rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
   auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto iter = util::UniqueIterator(ctx, srv->storage, read_options, cf);
+  auto iter = util::UniqueIterator(ctx, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice lib = iter->key();
@@ -478,13 +477,12 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
   end_key.back()++;
 
   engine::Context ctx(srv->storage);
-  rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  read_options.snapshot = ctx.snapshot;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
   auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto iter = util::UniqueIterator(ctx, srv->storage, read_options, cf);
+  auto iter = util::UniqueIterator(ctx, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice func = iter->key();

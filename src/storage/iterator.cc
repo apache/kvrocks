@@ -25,8 +25,8 @@
 #include "db_util.h"
 
 namespace engine {
-DBIterator::DBIterator(engine::Context &ctx, Storage *storage, rocksdb::ReadOptions read_options, int slot)
-    : storage_(storage),
+DBIterator::DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot)
+    : storage_(ctx.storage),
       read_options_(std::move(read_options)),
       slot_(slot),
       metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
@@ -110,13 +110,13 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator(engine::Context &c
     return nullptr;
   }
 
-  auto prefix = InternalKey(Key(), "", metadata_.version, storage_->IsSlotIdEncoded()).Encode();
-  return std::make_unique<SubKeyIterator>(ctx, storage_, read_options_, type, std::move(prefix));
+  auto prefix = InternalKey(Key(), "", metadata_.version, ctx.storage->IsSlotIdEncoded()).Encode();
+  return std::make_unique<SubKeyIterator>(ctx, read_options_, type, std::move(prefix));
 }
 
-SubKeyIterator::SubKeyIterator(engine::Context &ctx, Storage *storage, rocksdb::ReadOptions read_options,
-                               RedisType type, std::string prefix)
-    : storage_(storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
+SubKeyIterator::SubKeyIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, RedisType type,
+                               std::string prefix)
+    : storage_(ctx.storage), read_options_(std::move(read_options)), type_(type), prefix_(std::move(prefix)) {
   if (type_ == kRedisStream) {
     cf_handle_ = storage_->GetCFHandle(ColumnFamilyID::Stream);
   } else {

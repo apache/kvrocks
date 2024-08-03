@@ -383,10 +383,24 @@ struct Context {
   const rocksdb::Snapshot *snapshot = nullptr;
   std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
 
-  /// GetReadOptions returns a ReadOptions whose snapshot is specified by Context
-  [[nodiscard]] rocksdb::ReadOptions GetReadOptions() const;
-  void SetLatestSnapshot();
+  bool is_txn_mode = true;
 
+  /// NoTransactionContext returns a Context with a is_txn_mode of false
+  static Context NoTransactionContext(engine::Storage *storage) { return Context(storage, false); }
+
+  /// GetReadOptions returns a default ReadOptions, and if is_txn_mode = true, then its snapshot is specified by the
+  /// Context
+  [[nodiscard]] rocksdb::ReadOptions GetReadOptions() const;
+  /// DefaultScanOptions returns a DefaultScanOptions, and if is_txn_mode = true, then its snapshot is specified by the
+  /// Context. Otherwise it is the same as Storage::DefaultScanOptions
+  [[nodiscard]] rocksdb::ReadOptions DefaultScanOptions() const;
+  /// DefaultMultiGetOptions returns a DefaultMultiGetOptions, and if is_txn_mode = true, then its snapshot is specified
+  /// by the Context. Otherwise it is the same as Storage::DefaultMultiGetOptions
+  [[nodiscard]] rocksdb::ReadOptions DefaultMultiGetOptions() const;
+
+  void ResetLatestSnapshot();
+
+  /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
   explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
   ~Context() {
     if (storage && storage->GetDB()) {
@@ -410,6 +424,10 @@ struct Context {
     ctx.storage = nullptr;
     ctx.snapshot = nullptr;
   }
+
+ private:
+  /// It is only used by NonTransactionContext
+  explicit Context(engine::Storage *storage, bool txn_mode) : storage(storage), is_txn_mode(txn_mode) {}
 };
 
 }  // namespace engine

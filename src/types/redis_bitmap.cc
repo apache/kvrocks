@@ -654,7 +654,6 @@ class Bitmap::SegmentCacheStore {
         metadata_cf_handle_(metadata_cf_handle),
         ns_key_(std::move(namespace_key)),
         metadata_(bitmap_metadata) {}
-
   // Get a read-only segment by given index
   rocksdb::Status Get(engine::Context &ctx, uint32_t index, const std::string **cache) {
     std::string *res = nullptr;

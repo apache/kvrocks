@@ -36,7 +36,7 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
-    Rule, parse_tree::store_content::on<Number, StringL, Param, Identifier, Inf>,
+    Rule, parse_tree::store_content::on<Number, UnsignedInteger, StringL, Param, Identifier, Inf>,
     parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
                                    OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>>;
 
@@ -168,9 +168,15 @@ struct Transformer : ir::TreeTransformer {
       const auto& knn_search = node->children[2];
       CHECK(knn_search->children.size() == 4);
 
+      size_t k = 0;
+      if (Is<UnsignedInteger>(knn_search->children[1])) {
+        k = *ParseInt(knn_search->children[1]->string());
+      } else {
+        k = *ParseInt(GET_OR_RET(GetParam(node)));
+      }
+
       return std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
-                                             GET_OR_RET(number_or_param(knn_search->children[1])),
-                                             GET_OR_RET(Transform2Vector(knn_search->children[3])));
+                                             GET_OR_RET(Transform2Vector(knn_search->children[3])), k);
 
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;

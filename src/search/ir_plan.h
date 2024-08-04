@@ -99,7 +99,7 @@ struct TagFieldScan : FieldScan {
 
 struct HnswVectorFieldKnnScan : FieldScan {
   kqir::NumericArray vector;
-  uint16_t k;
+  uint32_t k;
 
   HnswVectorFieldKnnScan(std::unique_ptr<FieldRef> field, kqir::NumericArray vector, uint16_t k)
       : FieldScan(std::move(field)), vector(std::move(vector)), k(k) {}

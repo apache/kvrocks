@@ -111,6 +111,15 @@ TEST(IRPassTest, Manager) {
             "select * from a where (and x <= 1, y >= 2, z != 3)");
 }
 
+TEST(IRPassTest, TransferSortByToKnnExpr) {
+  TransferSortByToKnnExpr tsbtke;
+
+  ASSERT_EQ(tsbtke.Transform(*Parse("select a from b order by embedding <-> [3.6] limit 5"))->Dump(),
+            "select a from b where KNN k=5, embedding <-> [3.600000]");
+  ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where c = 1 order by embedding <-> [3,1,2] limit 5"))->Dump(),
+            "select a from b where (and c = 1, KNN k=5, embedding <-> [3.000000, 1.000000, 2.000000])");
+}
+
 TEST(IRPassTest, LowerToPlan) {
   LowerToPlan ltp;
 
@@ -123,6 +132,8 @@ TEST(IRPassTest, LowerToPlan) {
             "project a: (sort d, asc: (filter c = 1: full-scan b))");
   ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 limit 1"))->Dump(),
             "project a: (limit 0, 1: (filter c = 1: full-scan b))");
+  ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 and d = 2 order by e limit 1"))->Dump(),
+            "project a: (limit 0, 1: (sort e, asc: (filter (and c = 1, d = 2): full-scan b)))");
   ASSERT_EQ(ltp.Transform(*Parse("select a from b where c = 1 order by d limit 1"))->Dump(),
             "project a: (limit 0, 1: (sort d, asc: (filter c = 1: full-scan b)))");
 }
@@ -176,12 +187,28 @@ static IndexMap MakeIndexMap() {
   auto f4 = FieldInfo("n2", std::make_unique<redis::NumericFieldMetadata>());
   auto f5 = FieldInfo("n3", std::make_unique<redis::NumericFieldMetadata>());
   f5.metadata->noindex = true;
+
+  auto hnsw_field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+  hnsw_field_meta->vector_type = redis::VectorType::FLOAT64;
+  hnsw_field_meta->dim = 3;
+  hnsw_field_meta->distance_metric = redis::DistanceMetric::L2;
+  auto f6 = FieldInfo("v1", std::move(hnsw_field_meta));
+
+  hnsw_field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+  hnsw_field_meta->vector_type = redis::VectorType::FLOAT64;
+  hnsw_field_meta->dim = 3;
+  hnsw_field_meta->distance_metric = redis::DistanceMetric::L2;
+  auto f7 = FieldInfo("v2", std::move(hnsw_field_meta));
+  f7.metadata->noindex = true;
+
   auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "");
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));
   ia->Add(std::move(f4));
   ia->Add(std::move(f5));
+  ia->Add(std::move(f6));
+  ia->Add(std::move(f7));
 
   IndexMap res;
   res.Insert(std::move(ia));
@@ -238,6 +265,26 @@ TEST(IRPassTest, IndexSelection) {
       "project *: (filter t2 hastag \"a\": tag-scan t1, a)");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where t2 hastag \"a\""))->Dump(),
             "project *: (filter t2 hastag \"a\": full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where v1 <-> [3,1,2] < 5"))->Dump(),
+            "project *: hnsw-vector-range-scan v1, [3.000000, 1.000000, 2.000000], 5");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by v1 <-> [3,1,2] limit 5"))->Dump(),
+            "project *: hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 5");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where v2 <-> [3,1,2] < 5"))->Dump(),
+            "project *: (filter v2 <-> [3.000000, 1.000000, 2.000000] < 5: full-scan ia)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and v1 <-> [3,1,2] < 5"))->Dump(),
+            "project *: (filter n1 >= 1: hnsw-vector-range-scan v1, [3.000000, 1.000000, 2.000000], 5)");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where v1 <-> [3,1,2] < 5 and t1 hastag \"a\""))->Dump(),
+      "project *: (filter t1 hastag \"a\": hnsw-vector-range-scan v1, [3.000000, 1.000000, 2.000000], 5)");
+  ASSERT_EQ(
+      PassManager::Execute(passes, ParseS(sc, "select * from ia where t1 hastag \"a\" order by v1 <-> [3,1,2] limit 5"))
+          ->Dump(),
+      "project *: (filter t1 hastag \"a\": hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 5)");
+  ASSERT_EQ(PassManager::Execute(
+                passes, ParseS(sc, "select * from ia where v1 <-> [3,1,2] < 2 order by v1 <-> [3,1,2] limit 5"))
+                ->Dump(),
+            "project *: (filter v1 <-> [3.000000, 1.000000, 2.000000] < 2: hnsw-vector-knn-scan v1, [3.000000, "
+            "1.000000, 2.000000], 5)");
 
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 2 or n1 < 1"))->Dump(),
             "project *: (merge numeric-scan n1, [-inf, 1), asc, numeric-scan n1, [2, inf), asc)");

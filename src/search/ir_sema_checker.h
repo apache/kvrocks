@@ -129,9 +129,6 @@ struct SemaChecker {
           return {Status::NotOK,
                   fmt::format("field `{}` is marked as NOINDEX and cannot be used for KNN search", v->field->name)};
         }
-        if (v->k->val <= 0) {
-          return {Status::NotOK, fmt::format("KNN search parameter `k` must be greater than 0")};
-        }
         auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
         if (v->vector->values.size() != meta->dim) {
           return {Status::NotOK,

@@ -43,13 +43,14 @@ struct Tag : sor<Identifier, StringL, Param> {};
 struct TagList : seq<one<'{'>, WSPad<Tag>, star<seq<one<'|'>, WSPad<Tag>>>, one<'}'>> {};
 
 struct NumberOrParam : sor<Number, Param> {};
+struct UintOrParam : sor<UnsignedInteger, Param> {};
 
 struct Inf : seq<opt<one<'+', '-'>>, string<'i', 'n', 'f'>> {};
 struct ExclusiveNumber : seq<one<'('>, NumberOrParam> {};
 struct NumericRangePart : sor<Inf, ExclusiveNumber, NumberOrParam> {};
 struct NumericRange : seq<one<'['>, WSPad<NumericRangePart>, WSPad<NumericRangePart>, one<']'>> {};
 
-struct KnnSearch : seq<one<'['>, WSPad<KnnToken>, WSPad<NumberOrParam>, WSPad<Field>, WSPad<Param>, one<']'>> {};
+struct KnnSearch : seq<one<'['>, WSPad<KnnToken>, WSPad<UintOrParam>, WSPad<Field>, WSPad<Param>, one<']'>> {};
 struct VectorRange : seq<one<'['>, WSPad<VectorRangeToken>, WSPad<NumberOrParam>, WSPad<Param>, one<']'>> {};
 
 struct FieldQuery : seq<WSPad<Field>, one<':'>, WSPad<sor<VectorRange, TagList, NumericRange>>> {};

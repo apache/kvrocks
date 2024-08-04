@@ -405,8 +405,12 @@ struct Context {
   void ResetLatestSnapshot();
 
   /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
-  explicit Context(engine::Storage *storage) : storage(storage), snapshot(storage->GetDB()->GetSnapshot()) {}
+  explicit Context(engine::Storage *storage) : storage(storage) {
+    auto guard = storage->ReadLockGuard();
+    snapshot = storage->GetDB()->GetSnapshot();
+  }
   ~Context() {
+    auto guard = storage->WriteLockGuard();
     if (storage && storage->GetDB()) {
       storage->GetDB()->ReleaseSnapshot(snapshot);
     }

@@ -1277,6 +1277,7 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
 }
 
 void Context::ResetLatestSnapshot() {
+  auto guard = storage->WriteLockGuard();
   if (snapshot) {
     storage->GetDB()->ReleaseSnapshot(snapshot);
   }

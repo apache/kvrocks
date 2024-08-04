@@ -50,6 +50,9 @@ struct SemaChecker {
         GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
+        if (v->sort_by && v->sort_by->IsVectorField() && !v->limit) {
+          return {Status::NotOK, "expect a LIMIT clause for vector field to construct a KNN search"};
+        }
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};
       }
@@ -60,8 +63,25 @@ struct SemaChecker {
         return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else if (!iter->second.IsSortable()) {
         return {Status::NotOK, fmt::format("field `{}` is not sortable", v->field->name)};
+      } else if (auto is_vector = iter->second.MetadataAs<redis::HnswVectorFieldMetadata>() != nullptr;
+                 is_vector != v->IsVectorField()) {
+        std::string not_str = is_vector ? "" : "not ";
+        return {Status::NotOK,
+                fmt::format("field `{}` is {}a vector field according to metadata and does {}expect a vector parameter",
+                            v->field->name, not_str, not_str)};
       } else {
         v->field->info = &iter->second;
+        if (v->IsVectorField()) {
+          auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+          if (!v->field->info->HasIndex()) {
+            return {Status::NotOK,
+                    fmt::format("field `{}` is marked as NOINDEX and cannot be used for KNN search", v->field->name)};
+          }
+          if (v->vector->values.size() != meta->dim) {
+            return {Status::NotOK,
+                    fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+          }
+        }
       }
     } else if (auto v = dynamic_cast<AndExpr *>(node)) {
       for (const auto &n : v->inners) {
@@ -96,6 +116,49 @@ struct SemaChecker {
         return {Status::NotOK, fmt::format("field `{}` is not a numeric field", v->field->name)};
       } else {
         v->field->info = &iter->second;
+      }
+    } else if (auto v = dynamic_cast<VectorKnnExpr *>(node)) {
+      if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {
+        return {Status::NotOK, fmt::format("field `{}` is not a vector field", v->field->name)};
+      } else {
+        v->field->info = &iter->second;
+
+        if (!v->field->info->HasIndex()) {
+          return {Status::NotOK,
+                  fmt::format("field `{}` is marked as NOINDEX and cannot be used for KNN search", v->field->name)};
+        }
+        if (v->k->val <= 0) {
+          return {Status::NotOK, fmt::format("KNN search parameter `k` must be greater than 0")};
+        }
+        auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+        if (v->vector->values.size() != meta->dim) {
+          return {Status::NotOK,
+                  fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+        }
+      }
+    } else if (auto v = dynamic_cast<VectorRangeExpr *>(node)) {
+      if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
+      } else if (!iter->second.MetadataAs<redis::HnswVectorFieldMetadata>()) {
+        return {Status::NotOK, fmt::format("field `{}` is not a vector field", v->field->name)};
+      } else {
+        v->field->info = &iter->second;
+
+        auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+        if (meta->distance_metric == redis::DistanceMetric::L2 && v->range->val < 0) {
+          return {Status::NotOK, "range cannot be a negative number for l2 distance metric"};
+        }
+
+        if (meta->distance_metric == redis::DistanceMetric::COSINE && (v->range->val < 0 || v->range->val > 2)) {
+          return {Status::NotOK, "range has to be between 0 and 2 for cosine distance metric"};
+        }
+
+        if (v->vector->values.size() != meta->dim) {
+          return {Status::NotOK,
+                  fmt::format("vector should be of size `{}` for field `{}`", meta->dim, v->field->name)};
+        }
       }
     } else if (auto v = dynamic_cast<SelectClause *>(node)) {
       for (const auto &n : v->fields) {

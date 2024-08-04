@@ -60,9 +60,9 @@ class CommandPfCount final : public Commander {
     uint64_t ret{};
     rocksdb::Status s;
     // The first argument is the command name, so we need to skip it.
-    DCHECK_GE(args_.size(), 1);
+    DCHECK_GE(args_.size(), 2);
     if (args_.size() > 2) {
-      std::vector<Slice> keys(args_.begin() + 2, args_.end());
+      std::vector<Slice> keys(args_.begin() + 1, args_.end());
       s = hll.CountMultiple(keys, &ret);
     } else {
       s = hll.Count(args_[1], &ret);

@@ -21,6 +21,7 @@ package hyperloglog
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -97,5 +98,119 @@ func TestHyperLogLog(t *testing.T) {
 		card, err = rdb.PFCount(ctx, "hll").Result()
 		require.NoError(t, err)
 		require.EqualValues(t, 5, card)
+	})
+
+	t.Run("multiple count", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "hll").Err())
+		// Delete hll1, hll2, hll3
+		for i := 0; i < 3; i++ {
+			require.NoError(t, rdb.Do(ctx, "DEL", fmt.Sprintf("hll%d", i)).Err())
+		}
+
+		addCnt, err := rdb.PFAdd(ctx, "hll", "a", "b", "c", "d").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		addCnt, err = rdb.PFAdd(ctx, "hll1", "a", "b", "c", "d").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		card, err := rdb.PFCount(ctx, "hll", "hll1").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 4, card)
+
+		// Order doesn't matter
+		card, err = rdb.PFCount(ctx, "hll1", "hll").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 4, card)
+
+		// Count non-exist key
+		card, err = rdb.PFCount(ctx, "hll1", "hll2", "hll3").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 4, card)
+
+		addCnt, err = rdb.PFAdd(ctx, "hll2", "1", "2", "3").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		card, err = rdb.PFCount(ctx, "hll", "hll1", "hll2").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 7, card)
+
+		// add with overlap
+		addCnt, err = rdb.PFAdd(ctx, "hll3", "a", "3", "5").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		card, err = rdb.PFCount(ctx, "hll", "hll1", "hll2", "hll3").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, card)
+	})
+
+	t.Run("basic merge", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "hll").Err())
+		// Delete hll1, hll2, hll3, hll4
+		for i := 0; i < 4; i++ {
+			require.NoError(t, rdb.Do(ctx, "DEL", fmt.Sprintf("hll%d", i)).Err())
+		}
+
+		addCnt, err := rdb.PFAdd(ctx, "hll", "a", "b", "c", "d").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		// Empty merge
+		mergeCmd, err := rdb.PFMerge(ctx, "hll").Result()
+		require.NoError(t, err)
+		// mergeCmd result is always "OK"
+		require.EqualValues(t, "OK", mergeCmd)
+
+		// Count the merged key
+		card, err := rdb.PFCount(ctx, "hll").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 4, card)
+
+		// Merge to hll1
+		mergeCmd, err = rdb.PFMerge(ctx, "hll1", "hll").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "OK", mergeCmd)
+
+		// Count the merged key
+		card, err = rdb.PFCount(ctx, "hll1").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 4, card)
+
+		// Add more elements to hll2
+		addCnt, err = rdb.PFAdd(ctx, "hll2", "e", "f", "g").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		card, err = rdb.PFCount(ctx, "hll2").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 3, card)
+
+		// merge to hll3
+		mergeCmd, err = rdb.PFMerge(ctx, "hll3", "hll", "hll1", "hll2").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "OK", mergeCmd)
+
+		// Count the merged key
+		card, err = rdb.PFCount(ctx, "hll3").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 7, card)
+
+		// Add more elements to hll4
+		addCnt, err = rdb.PFAdd(ctx, "hll4", "h", "i", "j").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, addCnt)
+
+		// Merge all to existing hll4
+		mergeCmd, err = rdb.PFMerge(ctx, "hll4", "hll", "hll1", "hll2", "hll3").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "OK", mergeCmd)
+
+		// Count the merged key
+		card, err = rdb.PFCount(ctx, "hll4").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 10, card)
 	})
 }

@@ -407,7 +407,7 @@ struct Context {
   /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
   explicit Context(engine::Storage *storage) : storage(storage) {
     auto guard = storage->ReadLockGuard();
-    snapshot = storage->GetDB()->GetSnapshot();
+    snapshot = storage->GetDB()->GetSnapshot(); // NOLINT
   }
   ~Context() {
     auto guard = storage->WriteLockGuard();

@@ -86,13 +86,16 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   redis::Connection *removeConnection(int fd);
+  std::vector<int> getConnFds() const;
 
   event_base *base_;
   UniqueEvent timer_;
   std::thread::id tid_;
   std::vector<evconnlistener *> listen_events_;
-  mutable std::mutex conns_mu_;  // refer to https://github.com/oneapi-src/oneTBB/issues/183, traverse and erase should
-                                 // be protected by mutex
+
+  // must use tbb::parallel_for or tbb::parallel_reduce to traverse
+  // refer:
+  // https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L1033-L1051
   ConnMap conns_;
   ConnMap monitor_conns_;
   int last_iter_conn_fd_ = 0;  // fd of last processed connection in previous cron

@@ -115,7 +115,9 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
   LockGuard guard(storage_->GetLockManager(), ns_key);
   HyperLogLogMetadata metadata{};
   rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
-  if (!s.ok() && !s.IsNotFound()) return s;
+  if (!s.ok() && !s.IsNotFound()) {
+    return s;
+  }
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHyperLogLog);
@@ -148,7 +150,9 @@ rocksdb::Status HyperLogLog::Add(const Slice &user_key, const std::vector<uint64
     }
   }
   // Nothing changed, no need to flush the segments
-  if (*ret == 0) return rocksdb::Status::OK();
+  if (*ret == 0) {
+    return rocksdb::Status::OK();
+  }
 
   // Flush dirty segments
   // Release memory after batch is written
@@ -179,7 +183,9 @@ rocksdb::Status HyperLogLog::Count(const Slice &user_key, uint64_t *ret) {
     LatestSnapShot ss(storage_);
     Database::GetOptions get_options(ss.GetSnapShot());
     auto s = getRegisters(get_options, ns_key, &registers);
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      return s;
+    }
   }
   DCHECK_EQ(kHyperLogLogSegmentCount, registers.size());
   std::vector<nonstd::span<const uint8_t>> register_segments = TransformToSpan(registers);

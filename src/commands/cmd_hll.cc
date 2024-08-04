@@ -41,7 +41,8 @@ class CommandPfAdd final : public Commander {
       hashes[i - 2] = redis::HyperLogLog::HllHash(args_[i]);
     }
     uint64_t ret{};
-    auto s = hll.Add(args_[1], hashes, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = hll.Add(ctx, args_[1], hashes, &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -61,11 +62,12 @@ class CommandPfCount final : public Commander {
     rocksdb::Status s;
     // The first argument is the command name, so we need to skip it.
     DCHECK_GE(args_.size(), 2);
+    engine::Context ctx(srv->storage);
     if (args_.size() > 2) {
       std::vector<Slice> keys(args_.begin() + 1, args_.end());
-      s = hll.CountMultiple(keys, &ret);
+      s = hll.CountMultiple(ctx, keys, &ret);
     } else {
-      s = hll.Count(args_[1], &ret);
+      s = hll.Count(ctx, args_[1], &ret);
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -86,7 +88,8 @@ class CommandPfMerge final : public Commander {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
     DCHECK_GT(args_.size(), 1);
     std::vector<Slice> src_user_keys(args_.begin() + 2, args_.end());
-    auto s = hll.Merge(/*dest_user_key=*/args_[1], src_user_keys);
+    engine::Context ctx(srv->storage);
+    auto s = hll.Merge(ctx, /*dest_user_key=*/args_[1], src_user_keys);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

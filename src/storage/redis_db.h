@@ -74,15 +74,6 @@ class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
-  struct GetOptions {
-    // If snapshot is not nullptr, read from the specified snapshot,
-    // otherwise read from the "latest" snapshot.
-    const rocksdb::Snapshot *snapshot = nullptr;
-
-    GetOptions() = default;
-    explicit GetOptions(const rocksdb::Snapshot *ss) : snapshot(ss) {}
-  };
-
   explicit Database(engine::Storage *storage, std::string ns = "");
   /// Parsing metadata with type of `types` from bytes, the metadata is a base class of all metadata.
   /// When parsing, the bytes will be consumed.

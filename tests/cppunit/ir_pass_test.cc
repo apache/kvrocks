@@ -118,6 +118,16 @@ TEST(IRPassTest, TransferSortByToKnnExpr) {
             "select a from b where KNN k=5, embedding <-> [3.600000]");
   ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where c = 1 order by embedding <-> [3,1,2] limit 5"))->Dump(),
             "select a from b where (and c = 1, KNN k=5, embedding <-> [3.000000, 1.000000, 2.000000])");
+  ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where false order by embedding <-> [3,1,2] limit 5"))->Dump(),
+            "select a from b where false");
+  ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where true order by embedding <-> [3,1,2] limit 5"))->Dump(),
+            "select a from b where KNN k=5, embedding <-> [3.000000, 1.000000, 2.000000]");
+  ASSERT_EQ(tsbtke
+                .Transform(*Parse(
+                    "select a from b where a > 1 or (b < 3 and c hastag \"\") order by embedding <-> [3,1,2] limit 5"))
+                ->Dump(),
+            "select a from b where (and (or a > 1, (and b < 3, c hastag \"\")), KNN k=5, embedding <-> [3.000000, "
+            "1.000000, 2.000000])");
 }
 
 TEST(IRPassTest, LowerToPlan) {
@@ -285,6 +295,12 @@ TEST(IRPassTest, IndexSelection) {
                 ->Dump(),
             "project *: (filter v1 <-> [3.000000, 1.000000, 2.000000] < 2: hnsw-vector-knn-scan v1, [3.000000, "
             "1.000000, 2.000000], 5)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc,
+                                                "select * from ia where t1 hastag \"b\" and n1 >= 1 and v1 <-> [3,1,2] "
+                                                "< 2 order by v1 <-> [3,1,2] limit 5"))
+                ->Dump(),
+            "project *: (filter (and t1 hastag \"b\", v1 <-> [3.000000, 1.000000, 2.000000] < 2, n1 >= 1): "
+            "hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 5)");
 
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 2 or n1 < 1"))->Dump(),
             "project *: (merge numeric-scan n1, [-inf, 1), asc, numeric-scan n1, [2, inf), asc)");

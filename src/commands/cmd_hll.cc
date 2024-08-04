@@ -35,12 +35,13 @@ class CommandPfAdd final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
-    std::vector<uint64_t> hashes(args_.size() - 1);
-    for (size_t i = 1; i < args_.size(); i++) {
-      hashes[i - 1] = redis::HyperLogLog::HllHash(args_[i]);
+    DCHECK_GE(args_.size(), 2);
+    std::vector<uint64_t> hashes(args_.size() - 2);
+    for (size_t i = 2; i < args_.size(); i++) {
+      hashes[i - 2] = redis::HyperLogLog::HllHash(args_[i]);
     }
     uint64_t ret{};
-    auto s = hll.Add(args_[0], hashes, &ret);
+    auto s = hll.Add(args_[1], hashes, &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -58,11 +59,13 @@ class CommandPfCount final : public Commander {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
     uint64_t ret{};
     rocksdb::Status s;
-    if (args_.size() > 1) {
-      std::vector<Slice> keys(args_.begin(), args_.end());
+    // The first argument is the command name, so we need to skip it.
+    DCHECK_GE(args_.size(), 2);
+    if (args_.size() > 2) {
+      std::vector<Slice> keys(args_.begin() + 1, args_.end());
       s = hll.CountMultiple(keys, &ret);
     } else {
-      s = hll.Count(args_[0], &ret);
+      s = hll.Count(args_[1], &ret);
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -81,13 +84,9 @@ class CommandPfCount final : public Commander {
 class CommandPfMerge final : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
-    std::vector<std::string> keys(args_.begin() + 1, args_.end());
-    std::vector<Slice> src_user_keys;
-    src_user_keys.reserve(args_.size() - 1);
-    for (size_t i = 1; i < args_.size(); i++) {
-      src_user_keys.emplace_back(args_[i]);
-    }
-    auto s = hll.Merge(/*dest_user_key=*/args_[0], src_user_keys);
+    DCHECK_GT(args_.size(), 1);
+    std::vector<Slice> src_user_keys(args_.begin() + 2, args_.end());
+    auto s = hll.Merge(/*dest_user_key=*/args_[1], src_user_keys);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

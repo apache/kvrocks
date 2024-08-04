@@ -165,11 +165,11 @@ void HllMerge(std::vector<std::string> *dest_registers, const std::vector<nonstd
       continue;
     }
     if (dest_segment->empty()) {
-      dest_segment->resize(src_segment.size());
-      memcpy(dest_segment->data(), src_segment.data(), src_segment.size());
+      DCHECK_EQ(kHyperLogLogSegmentBytes, src_segment.size());
+      *dest_segment = std::string(src_segment.begin(), src_segment.end());
       continue;
     }
-    // Do physical merge
+    // Do physical merge for this segment.
     // NOLINTNEXTLINE
     uint8_t *dest_segment_data = reinterpret_cast<uint8_t *>(dest_segment->data());
     for (size_t register_idx = 0; register_idx < kHyperLogLogSegmentRegisters; register_idx++) {

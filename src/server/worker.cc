@@ -23,7 +23,6 @@
 #include <event2/util.h>
 #include <glog/logging.h>
 
-#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -506,7 +505,7 @@ void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &respon
   tbb::parallel_for(monitor_conns_.range(), [conn, response](const ConnMap::range_type &range) {
     for (auto &it : range) {
       const auto &value = it.second;
-      if (conn == value) continue;
+      if (conn == value) continue;  // skip the monitor command
       if (conn->GetNamespace() == value->GetNamespace() || value->GetNamespace() == kDefaultNamespace) {
         value->Reply(response);
       }
@@ -559,14 +558,12 @@ void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string 
 void Worker::KickoutIdleClients(int timeout) {
   std::vector<std::pair<int, uint64_t>> to_be_killed_conns;
 
-  std::set<int> fds;
-  for (const auto key : getConnFds()) {
-    fds.emplace(key);
-  }
-
-  if (fds.empty()) {
+  auto fd_list = getConnFds();
+  if (fd_list.empty()) {
     return;
   }
+
+  std::set<int> fds(fd_list.cbegin(), fd_list.cend());
 
   int iterations = std::min(static_cast<int>(conns_.size()), 50);
   auto iter = fds.upper_bound(last_iter_conn_fd_);

@@ -163,8 +163,6 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<PrefilterExpr>(node)) {
       CHECK(node->children.size() == 3);
 
-      // TODO(Beihao): Support Hybrid Query
-      // const auto& prefilter = node->children[0];
       const auto& knn_search = node->children[2];
       CHECK(knn_search->children.size() == 4);
 
@@ -175,9 +173,14 @@ struct Transformer : ir::TreeTransformer {
         k = *ParseInt(GET_OR_RET(GetParam(node)));
       }
 
-      return std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
-                                             GET_OR_RET(Transform2Vector(knn_search->children[3])), k);
+      auto knn_expr = std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
+                                                      GET_OR_RET(Transform2Vector(knn_search->children[3])), k);
 
+      std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
+      exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+      exprs.push_back(std::move(knn_expr));
+
+      return Node::Create<ir::AndExpr>(std::move(exprs));
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 

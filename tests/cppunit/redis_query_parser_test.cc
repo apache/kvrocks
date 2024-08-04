@@ -121,13 +121,13 @@ TEST(RedisQueryParserTest, Vector) {
   AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}),
            "field <-> [1.000000, 2.000000, 3.000000] < 10");
   AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
-           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
+           "(and true, KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000])");
   AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
-           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
+           "(and true, KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000])");
   AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}),
-           "KNN k=8, vec_embedding <-> [1.000000, 2.000000, 3.000000]");
+           "(and (and a >= 1, a <= 2), KNN k=8, vec_embedding <-> [1.000000, 2.000000, 3.000000])");
   AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}),
-           "KNN k=5, vector <-> [1.000000, 2.000000, 3.000000]");
+           "(and true, KNN k=5, vector <-> [1.000000, 2.000000, 3.000000])");
 
   vec_str = vec_str.substr(0, 3);
   ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(),

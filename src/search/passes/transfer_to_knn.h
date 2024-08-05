@@ -32,27 +32,15 @@ struct TransferSortByToKnnExpr : Visitor {
   std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
     node = Node::MustAs<SearchExpr>(Visitor::Visit(std::move(node)));
 
+    // TODO: allow hybrid query
     if (node->sort_by && node->sort_by->IsVectorField() && node->limit) {
-      std::vector<std::unique_ptr<QueryExpr>> exprs;
-      auto knn_expr = std::make_unique<VectorKnnExpr>(Node::MustAs<FieldRef>(node->sort_by->TakeFieldRef()),
-                                                      Node::MustAs<VectorLiteral>(node->sort_by->TakeVectorLiteral()),
-                                                      node->limit->Count());
-      if (auto b = Node::As<BoolLiteral>(std::move(node->query_expr))) {
-        if (b->val) exprs.push_back(std::move(knn_expr));
-      } else {
-        exprs.push_back(std::move(node->query_expr));
-        exprs.push_back(std::move(knn_expr));
+      if (auto b = dynamic_cast<BoolLiteral*>(node->query_expr.get()); b && b->val) {
+        node->query_expr = std::make_unique<VectorKnnExpr>(
+            Node::MustAs<FieldRef>(node->sort_by->TakeFieldRef()),
+            Node::MustAs<VectorLiteral>(node->sort_by->TakeVectorLiteral()), node->limit->Count());
+        node->sort_by.reset();
+        node->limit.reset();
       }
-
-      if (exprs.empty()) {
-        node->query_expr = std::make_unique<BoolLiteral>(false);
-      } else if (exprs.size() == 1) {
-        node->query_expr = std::move(exprs[0]);
-      } else {
-        node->query_expr = std::make_unique<AndExpr>(std::move(exprs));
-      }
-      node->sort_by.reset();
-      node->limit.reset();
     }
 
     return node;

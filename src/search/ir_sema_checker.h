@@ -50,8 +50,14 @@ struct SemaChecker {
         GET_OR_RET(Check(v->query_expr.get()));
         if (v->limit) GET_OR_RET(Check(v->limit.get()));
         if (v->sort_by) GET_OR_RET(Check(v->sort_by.get()));
-        if (v->sort_by && v->sort_by->IsVectorField() && !v->limit) {
-          return {Status::NotOK, "expect a LIMIT clause for vector field to construct a KNN search"};
+        if (v->sort_by && v->sort_by->IsVectorField()) {
+          if (!v->limit) {
+            return {Status::NotOK, "expect a LIMIT clause for vector field to construct a KNN search"};
+          }
+          // TODO: allow hybrid query
+          if (auto b = dynamic_cast<BoolLiteral *>(v->query_expr.get()); b == nullptr) {
+            return {Status::NotOK, "KNN search cannot be combined with other query expressions"};
+          }
         }
       } else {
         return {Status::NotOK, fmt::format("index `{}` not found", index_name)};

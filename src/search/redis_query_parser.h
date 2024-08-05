@@ -71,7 +71,7 @@ struct AndExprP : sor<AndExpr, BooleanExpr> {};
 struct OrExpr : seq<AndExprP, plus<seq<one<'|'>, AndExprP>>> {};
 struct OrExprP : sor<OrExpr, AndExprP> {};
 
-struct PrefilterExpr : seq<WSPad<OrExprP>, ArrowOp, WSPad<KnnSearch>> {};
+struct PrefilterExpr : seq<WSPad<Wildcard>, ArrowOp, WSPad<KnnSearch>> {};
 
 struct QueryP : sor<PrefilterExpr, OrExprP> {};
 

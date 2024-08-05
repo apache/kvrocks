@@ -161,6 +161,7 @@ struct Transformer : ir::TreeTransformer {
 
       return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
     } else if (Is<PrefilterExpr>(node)) {
+      // TODO: allow hybrid query
       CHECK(node->children.size() == 3);
 
       const auto& knn_search = node->children[2];
@@ -173,14 +174,8 @@ struct Transformer : ir::TreeTransformer {
         k = *ParseInt(GET_OR_RET(GetParam(node)));
       }
 
-      auto knn_expr = std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
-                                                      GET_OR_RET(Transform2Vector(knn_search->children[3])), k);
-
-      std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
-      exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
-      exprs.push_back(std::move(knn_expr));
-
-      return Node::Create<ir::AndExpr>(std::move(exprs));
+      return std::make_unique<VectorKnnExpr>(std::make_unique<FieldRef>(knn_search->children[2]->string()),
+                                             GET_OR_RET(Transform2Vector(knn_search->children[3])), k);
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 

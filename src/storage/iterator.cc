@@ -28,6 +28,7 @@ namespace engine {
 DBIterator::DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot)
     : storage_(ctx.storage),
       read_options_(std::move(read_options)),
+      ctx_(&ctx),
       slot_(slot),
       metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
   metadata_iter_ = util::UniqueIterator(storage_->NewIterator(ctx, read_options_, metadata_cf_handle_));
@@ -100,7 +101,7 @@ void DBIterator::Seek(const std::string &target) {
   nextUntilValid();
 }
 
-std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator(engine::Context &ctx) const {
+std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
   if (!Valid()) {
     return nullptr;
   }
@@ -110,8 +111,8 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator(engine::Context &c
     return nullptr;
   }
 
-  auto prefix = InternalKey(Key(), "", metadata_.version, ctx.storage->IsSlotIdEncoded()).Encode();
-  return std::make_unique<SubKeyIterator>(ctx, read_options_, type, std::move(prefix));
+  auto prefix = InternalKey(Key(), "", metadata_.version, ctx_->storage->IsSlotIdEncoded()).Encode();
+  return std::make_unique<SubKeyIterator>(*ctx_, read_options_, type, std::move(prefix));
 }
 
 SubKeyIterator::SubKeyIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, RedisType type,

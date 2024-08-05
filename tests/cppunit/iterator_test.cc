@@ -143,7 +143,7 @@ TEST_F(DBIteratorTest, BasicString) {
     ASSERT_EQ(expected_keys.back(), key.ToString());
     expected_keys.pop_back();
     // Make sure there is no subkey iterator
-    ASSERT_TRUE(!iter.GetSubKeyIterator(*ctx_));
+    ASSERT_TRUE(!iter.GetSubKeyIterator());
   }
   // Make sure all keys are iterated except the expired one: "c"
   ASSERT_TRUE(expected_keys.empty());
@@ -157,7 +157,7 @@ TEST_F(DBIteratorTest, BasicHash) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns1", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_keys = {"f0", "f1", "f2", "f3"};
     std::reverse(expected_keys.begin(), expected_keys.end());
@@ -180,7 +180,7 @@ TEST_F(DBIteratorTest, BasicSet) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns2", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_keys = {"e0", "e1", "e2"};
     std::reverse(expected_keys.begin(), expected_keys.end());
@@ -203,7 +203,7 @@ TEST_F(DBIteratorTest, BasicZSet) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns3", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_members = {"z0", "z1", "z2"};
     std::reverse(expected_members.begin(), expected_members.end());
@@ -226,7 +226,7 @@ TEST_F(DBIteratorTest, BasicList) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns4", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_values = {"l0", "l1", "l2"};
     std::reverse(expected_values.begin(), expected_values.end());
@@ -249,7 +249,7 @@ TEST_F(DBIteratorTest, BasicStream) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns5", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_values = {"x0", "x1", "x2"};
     std::reverse(expected_values.begin(), expected_values.end());
@@ -275,7 +275,7 @@ TEST_F(DBIteratorTest, BasicBitmap) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns6", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<std::string> expected_values = {"\x1", "\x1", "\x1"};
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
@@ -305,7 +305,7 @@ TEST_F(DBIteratorTest, BasicJSON) {
     ASSERT_EQ(expected_keys.back(), key.ToString());
     expected_keys.pop_back();
     // Make sure there is no subkey iterator
-    ASSERT_TRUE(!iter.GetSubKeyIterator(*ctx_));
+    ASSERT_TRUE(!iter.GetSubKeyIterator());
   }
   // Make sure all keys are iterated except the expired one: "json-4"
   ASSERT_TRUE(expected_keys.empty());
@@ -320,7 +320,7 @@ TEST_F(DBIteratorTest, BasicSortedInt) {
     auto [ns, key] = iter.UserKey();
     ASSERT_EQ("test_ns8", ns.ToString());
 
-    auto subkey_iter = iter.GetSubKeyIterator(*ctx_);
+    auto subkey_iter = iter.GetSubKeyIterator();
     ASSERT_TRUE(subkey_iter);
     std::vector<uint64_t> expected_keys = {1, 2, 3};
     std::reverse(expected_keys.begin(), expected_keys.end());

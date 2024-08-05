@@ -673,7 +673,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   // copy metadata
   batch->Put(metadata_cf_handle_, new_key, iter.Value());
 
-  auto subkey_iter = iter.GetSubKeyIterator(ctx);
+  auto subkey_iter = iter.GetSubKeyIterator();
 
   if (subkey_iter != nullptr) {
     auto zset_score_cf = type == kRedisZSet ? storage_->GetCFHandle(ColumnFamilyID::SecondarySubkey) : nullptr;

@@ -66,13 +66,14 @@ class DBIterator {
   Slice Value() const;
   RedisType Type() const;
   void Reset();
-  std::unique_ptr<SubKeyIterator> GetSubKeyIterator(engine::Context &ctx) const;
+  std::unique_ptr<SubKeyIterator> GetSubKeyIterator() const;
 
  private:
   void nextUntilValid();
 
   Storage *storage_;
   rocksdb::ReadOptions read_options_;
+  Context *ctx_;
   int slot_ = -1;
   Metadata metadata_ = Metadata(kRedisNone, false);
 

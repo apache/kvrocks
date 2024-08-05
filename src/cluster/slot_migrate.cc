@@ -1260,7 +1260,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), iter.Key(), iter.Value()));
 
-    auto subkey_iter = iter.GetSubKeyIterator(no_txn_ctx);
+    auto subkey_iter = iter.GetSubKeyIterator();
     if (!subkey_iter) {
       continue;
     }

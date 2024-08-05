@@ -33,56 +33,77 @@ class WriteBatchIndexerTest : public TestBase {
 
 TEST_F(WriteBatchIndexerTest, PutDelete) {
   rocksdb::WriteBatch batch;
-  batch.Put("key0", "value0");
+  auto s = batch.Put("key0", "value0");
+  EXPECT_TRUE(s.ok()) << s.ToString();
   for (int i = 1; i < 4; ++i) {
     std::string key = "key" + std::to_string(i);
     std::string value = "value" + std::to_string(i);
-    batch.Put(storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), key, value);
+    s = batch.Put(storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), key, value);
+    EXPECT_TRUE(s.ok()) << s.ToString();
   }
 
   rocksdb::WriteBatchWithIndex dest_batch;
   WriteBatchIndexer handle(storage_.get(), &dest_batch);
-  batch.Iterate(&handle);
+  s = batch.Iterate(&handle);
+  EXPECT_TRUE(s.ok()) << s.ToString();
 
   rocksdb::Options options;
   std::string value;
   for (int i = 0; i < 4; i++) {
     std::string key = "key" + std::to_string(i);
     std::string expect_value = "value" + std::to_string(i);
-    dest_batch.GetFromBatch(options, key, &value);
+    s = dest_batch.GetFromBatch(options, key, &value);
+    EXPECT_TRUE(s.ok()) << s.ToString();
     EXPECT_EQ(expect_value, value);
   }
 
-  storage_->GetDB()->Write(rocksdb::WriteOptions(), dest_batch.GetWriteBatch());
+  s = storage_->GetDB()->Write(rocksdb::WriteOptions(), dest_batch.GetWriteBatch());
+  EXPECT_TRUE(s.ok()) << s.ToString();
 
   batch.Clear();
   dest_batch.Clear();
-  batch.Delete("key0");
-  batch.DeleteRange(storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), "key1", "key3");
+  s = batch.Delete("key0");
+  EXPECT_TRUE(s.ok()) << s.ToString();
 
-  batch.Iterate(&handle);
+  s = batch.DeleteRange(storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), "key1", "key3");
+  EXPECT_TRUE(s.ok()) << s.ToString();
+
+  s = batch.Iterate(&handle);
+  EXPECT_TRUE(s.ok()) << s.ToString();
+
   for (int i = 0; i < 3; i++) {
     std::string key = "key" + std::to_string(i);
-    dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), key, &value);
+    s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), key, &value);
+    // In RocksDB the value is reset, but not in Speedb
+    if (s.IsNotFound()) value = "";
     EXPECT_EQ("", value);
   }
 
-  dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key3", &value);
+  s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key3", &value);
+  EXPECT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ("value3", value);
 }
 
 TEST_F(WriteBatchIndexerTest, SingleDelete) {
-  storage_->GetDB()->Put(rocksdb::WriteOptions(), storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), "key", "value");
+  auto s = storage_->GetDB()->Put(rocksdb::WriteOptions(), "key", "value");
+  EXPECT_TRUE(s.ok()) << s.ToString();
+
   std::string value;
-  storage_->GetDB()->Get(rocksdb::ReadOptions(), storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), "key", &value);
+  s = storage_->GetDB()->Get(rocksdb::ReadOptions(), "key", &value);
+  EXPECT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ("value", value);
 
   rocksdb::WriteBatch batch;
   rocksdb::WriteBatchWithIndex dest_batch;
-  batch.SingleDelete("key");
-  WriteBatchIndexer handle(storage_.get(), &dest_batch);
-  batch.Iterate(&handle);
+  s = batch.SingleDelete("key");
+  EXPECT_TRUE(s.ok()) << s.ToString();
 
-  dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
+  WriteBatchIndexer handle(storage_.get(), &dest_batch);
+  s = batch.Iterate(&handle);
+  EXPECT_TRUE(s.ok()) << s.ToString();
+
+  s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
+  // In RocksDB the value is reset, but not in Speedb
+  if (s.IsNotFound()) value = "";
   EXPECT_EQ("", value);
 }

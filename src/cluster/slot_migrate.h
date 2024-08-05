@@ -35,18 +35,25 @@
 #include <vector>
 
 #include "batch_sender.h"
-#include "config.h"
 #include "encoding.h"
 #include "parse_util.h"
-#include "redis_slot.h"
 #include "server/server.h"
 #include "slot_import.h"
-#include "stats/stats.h"
 #include "status.h"
 #include "storage/redis_db.h"
 #include "unique_fd.h"
 
-enum class MigrationType { kRedisCommand = 0, kRawKeyValue };
+enum class MigrationType {
+  /// Use Redis commands to migrate data.
+  /// It will trying to extract commands from existing data and log, then replay
+  /// them on the destination node.
+  kRedisCommand = 0,
+  /// Using raw key-value and "APPLYBATCH" command in kvrocks to migrate data.
+  ///
+  /// If downstream is not compatible with raw key-value, this migration type will
+  /// auto switch to kRedisCommand.
+  kRawKeyValue
+};
 
 enum class MigrationState { kNone = 0, kStarted, kSuccess, kFailed };
 
@@ -111,7 +118,7 @@ class SlotMigrator : public redis::Database {
  private:
   void loop();
   void runMigrationProcess();
-  bool isTerminated() { return thread_state_ == ThreadState::Terminated; }
+  bool isTerminated() const { return thread_state_ == ThreadState::Terminated; }
   Status startMigration();
   Status sendSnapshot();
   Status syncWAL();
@@ -158,11 +165,11 @@ class SlotMigrator : public redis::Database {
   enum class ParserState { ArrayLen, BulkLen, BulkData, ArrayData, OneRspEnd };
   enum class ThreadState { Uninitialized, Running, Terminated };
 
-  static const int kDefaultMaxPipelineSize = 16;
-  static const int kDefaultMaxMigrationSpeed = 4096;
-  static const int kDefaultSequenceGapLimit = 10000;
-  static const int kMaxItemsInCommand = 16;  // number of items in every write command of complex keys
-  static const int kMaxLoopTimes = 10;
+  static constexpr int kDefaultMaxPipelineSize = 16;
+  static constexpr int kDefaultMaxMigrationSpeed = 4096;
+  static constexpr int kDefaultSequenceGapLimit = 10000;
+  static constexpr int kMaxItemsInCommand = 16;  // number of items in every write command of complex keys
+  static constexpr int kMaxLoopTimes = 10;
 
   Server *srv_;
 
@@ -183,7 +190,7 @@ class SlotMigrator : public redis::Database {
   std::thread t_;
   std::mutex job_mutex_;
   std::condition_variable job_cv_;
-  std::unique_ptr<SlotMigrationJob> migration_job_;
+  std::unique_ptr<SlotMigrationJob> migration_job_;  // GUARDED_BY(job_mutex_)
 
   std::string dst_node_;
   std::string dst_ip_;

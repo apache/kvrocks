@@ -28,18 +28,18 @@
 
 namespace kqir {
 
-struct TransferSortByToKnnExpr : Visitor {
+struct SortByWithLimitToKnnExpr : Visitor {
   std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
     node = Node::MustAs<SearchExpr>(Visitor::Visit(std::move(node)));
 
     // TODO: allow hybrid query
     if (node->sort_by && node->sort_by->IsVectorField() && node->limit) {
       if (auto b = dynamic_cast<BoolLiteral*>(node->query_expr.get()); b && b->val) {
-        node->query_expr = std::make_unique<VectorKnnExpr>(
-            Node::MustAs<FieldRef>(node->sort_by->TakeFieldRef()),
-            Node::MustAs<VectorLiteral>(node->sort_by->TakeVectorLiteral()), node->limit->Count());
+        node->query_expr =
+            std::make_unique<VectorKnnExpr>(Node::MustAs<FieldRef>(node->sort_by->TakeFieldRef()),
+                                            Node::MustAs<VectorLiteral>(node->sort_by->TakeVectorLiteral()),
+                                            node->limit->Offset() + node->limit->Count());
         node->sort_by.reset();
-        node->limit.reset();
       }
     }
 

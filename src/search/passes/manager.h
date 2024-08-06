@@ -35,7 +35,7 @@
 #include "search/passes/simplify_and_or_expr.h"
 #include "search/passes/simplify_boolean.h"
 #include "search/passes/sort_limit_fuse.h"
-#include "search/passes/transfer_to_knn.h"
+#include "search/passes/sort_limit_to_knn.h"
 #include "type_util.h"
 
 namespace kqir {
@@ -88,7 +88,7 @@ struct PassManager {
 
   static PassSequence ExprPasses() {
     return Create(SimplifyAndOrExpr{}, PushDownNotExpr{}, SimplifyBoolean{}, SimplifyAndOrExpr{},
-                  TransferSortByToKnnExpr{}, SimplifyAndOrExpr{});
+                  SortByWithLimitToKnnExpr{}, SimplifyAndOrExpr{});
   }
   static PassSequence NumericPasses() { return Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{}); }
   static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }

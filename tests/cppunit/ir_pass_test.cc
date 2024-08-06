@@ -111,15 +111,17 @@ TEST(IRPassTest, Manager) {
             "select * from a where (and x <= 1, y >= 2, z != 3)");
 }
 
-TEST(IRPassTest, TransferSortByToKnnExpr) {
-  TransferSortByToKnnExpr tsbtke;
+TEST(IRPassTest, SortByWithLimitToKnnExpr) {
+  SortByWithLimitToKnnExpr tsbtke;
 
   ASSERT_EQ(tsbtke.Transform(*Parse("select a from b order by embedding <-> [3.6] limit 5"))->Dump(),
-            "select a from b where KNN k=5, embedding <-> [3.600000]");
+            "select a from b where KNN k=5, embedding <-> [3.600000] limit 0, 5");
   ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where false order by embedding <-> [3,1,2] limit 5"))->Dump(),
             "select a from b where false sortby embedding <-> [3.000000, 1.000000, 2.000000] limit 0, 5");
   ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where true order by embedding <-> [3,1,2] limit 5"))->Dump(),
-            "select a from b where KNN k=5, embedding <-> [3.000000, 1.000000, 2.000000]");
+            "select a from b where KNN k=5, embedding <-> [3.000000, 1.000000, 2.000000] limit 0, 5");
+  ASSERT_EQ(tsbtke.Transform(*Parse("select a from b where true order by embedding <-> [3,1,2] limit 3, 5"))->Dump(),
+            "select a from b where KNN k=8, embedding <-> [3.000000, 1.000000, 2.000000] limit 3, 5");
 }
 
 TEST(IRPassTest, LowerToPlan) {
@@ -272,7 +274,9 @@ TEST(IRPassTest, IndexSelection) {
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where v1 <-> [3,1,2] < 5"))->Dump(),
             "project *: hnsw-vector-range-scan v1, [3.000000, 1.000000, 2.000000], 5");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by v1 <-> [3,1,2] limit 5"))->Dump(),
-            "project *: hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 5");
+            "project *: (limit 0, 5: hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 5)");
+  ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia order by v1 <-> [3,1,2] limit 2, 7"))->Dump(),
+            "project *: (limit 2, 7: hnsw-vector-knn-scan v1, [3.000000, 1.000000, 2.000000], 9)");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where v2 <-> [3,1,2] < 5"))->Dump(),
             "project *: (filter v2 <-> [3.000000, 1.000000, 2.000000] < 5: full-scan ia)");
   ASSERT_EQ(PassManager::Execute(passes, ParseS(sc, "select * from ia where n1 >= 1 and v1 <-> [3,1,2] < 5"))->Dump(),

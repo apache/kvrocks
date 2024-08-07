@@ -265,24 +265,19 @@ struct VectorRangeExpr : BoolAtomExpr {
 };
 
 struct VectorKnnExpr : BoolAtomExpr {
-  // TODO: Support pre-filter for hybrid query
   std::unique_ptr<FieldRef> field;
-  std::unique_ptr<NumericLiteral> k;
   std::unique_ptr<VectorLiteral> vector;
+  size_t k;
 
-  VectorKnnExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<NumericLiteral> &&k,
-                std::unique_ptr<VectorLiteral> &&vector)
-      : field(std::move(field)), k(std::move(k)), vector(std::move(vector)) {}
+  VectorKnnExpr(std::unique_ptr<FieldRef> &&field, std::unique_ptr<VectorLiteral> &&vector, size_t k)
+      : field(std::move(field)), vector(std::move(vector)), k(k) {}
 
   std::string_view Name() const override { return "VectorKnnExpr"; }
-  std::string Dump() const override {
-    return fmt::format("KNN k={}, {} <-> {}", k->Dump(), field->Dump(), vector->Dump());
-  }
+  std::string Dump() const override { return fmt::format("KNN k={}, {} <-> {}", k, field->Dump(), vector->Dump()); }
 
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<VectorKnnExpr>(Node::MustAs<FieldRef>(field->Clone()),
-                                           Node::MustAs<NumericLiteral>(k->Clone()),
-                                           Node::MustAs<VectorLiteral>(vector->Clone()));
+                                           Node::MustAs<VectorLiteral>(vector->Clone()), k);
   }
 };
 
@@ -425,6 +420,10 @@ struct SortByClause : Node {
   std::unique_ptr<Node> Clone() const override {
     return std::make_unique<SortByClause>(order, Node::MustAs<FieldRef>(field->Clone()));
   }
+
+  std::unique_ptr<FieldRef> TakeFieldRef() { return std::move(field); }
+
+  std::unique_ptr<VectorLiteral> TakeVectorLiteral() { return std::move(vector); }
 };
 
 struct SelectClause : Node {

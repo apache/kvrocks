@@ -100,6 +100,13 @@ TEST(SemaCheckerTest, Simple) {
               "expect a LIMIT clause for vector field to construct a KNN search");
     ASSERT_EQ(checker.Check(Parse("select f5 from ia order by f5 <-> [3.6,4.7,5.6] limit 5")->get()).Msg(),
               "field `f5` is marked as NOINDEX and cannot be used for KNN search");
+    ASSERT_EQ(checker.Check(Parse("select f5 from ia where f2 = 1 order by f4 <-> [3.6,4.7,5.6] limit 5")->get()).Msg(),
+              "KNN search cannot be combined with other query expressions");
+    ASSERT_EQ(checker.Check(Parse("select f5 from ia where true order by f4 <-> [3.6,4.7,5.6] limit 5")->get()).Msg(),
+              "ok");
+    ASSERT_EQ(checker.Check(Parse("select f5 from ia where false order by f4 <-> [3.6,4.7,5.6] limit 5")->get()).Msg(),
+              "ok");
+    ASSERT_EQ(checker.Check(Parse("select f5 from ia where f2 = 1 and f5 <-> [3.6,4.7,5.6] < 1")->get()).Msg(), "ok");
     ASSERT_EQ(checker.Check(Parse("select f5 from ia where f5 <-> [3.6,4.7,5.6] < 5")->get()).Msg(),
               "range has to be between 0 and 2 for cosine distance metric");
     ASSERT_EQ(checker.Check(Parse("select f5 from ia where f5 <-> [3.6,4.7,5.6] < 0.5")->get()).Msg(), "ok");

@@ -118,7 +118,6 @@ struct Transformer : ir::TreeTransformer {
         return {Status::NotOK, "the left and right side of numeric comparison should be an identifier and a number"};
       }
     } else if (Is<VectorRangeExpr>(node)) {
-      // TODO(Beihao): Handle distance metrics for operator
       CHECK(node->children.size() == 2);
       const auto& vector_comp_expr = node->children[0];
       CHECK(vector_comp_expr->children.size() == 3);

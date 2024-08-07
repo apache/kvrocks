@@ -23,6 +23,7 @@
 #include <variant>
 
 #include "parse_util.h"
+#include "search/hnsw_indexer.h"
 #include "search/ir.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
@@ -42,6 +43,9 @@ struct QueryExprEvaluator {
       return Visit(v);
     }
     if (auto v = dynamic_cast<NotExpr *>(e)) {
+      return Visit(v);
+    }
+    if (auto v = dynamic_cast<VectorRangeExpr *>(e)) {
       return Visit(v);
     }
     if (auto v = dynamic_cast<NumericCompareExpr *>(e)) {
@@ -111,6 +115,24 @@ struct QueryExprEvaluator {
         CHECK(false) << "unreachable";
         __builtin_unreachable();
     }
+  }
+
+  StatusOr<bool> Visit(VectorRangeExpr *v) const {
+    auto val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
+
+    CHECK(val.Is<kqir::NumericArray>());
+    auto l_values = val.Get<kqir::NumericArray>();
+    auto r_values = v->vector->values;
+    auto meta = v->field->info->MetadataAs<redis::HnswVectorFieldMetadata>();
+
+    redis::VectorItem left, right;
+    GET_OR_RET(redis::VectorItem::Create({}, l_values, meta, &left));
+    GET_OR_RET(redis::VectorItem::Create({}, r_values, meta, &right));
+
+    auto dist = GET_OR_RET(redis::ComputeSimilarity(left, right));
+    auto effective_range = v->range->val * (1 + meta->epsilon);
+
+    return (dist >= -abs(effective_range) && dist <= abs(effective_range));
   }
 };
 

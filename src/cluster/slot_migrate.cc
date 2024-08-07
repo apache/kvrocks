@@ -34,10 +34,10 @@
 #include "time_util.h"
 #include "types/redis_stream_base.h"
 
-const char *errFailedToSendCommands = "failed to send commands to restore a key";
-const char *errMigrationTaskCanceled = "key migration stopped due to a task cancellation";
-const char *errFailedToSetImportStatus = "failed to set import status on destination node";
-const char *errUnsupportedMigrationType = "unsupported migration type";
+constexpr std::string_view errFailedToSendCommands = "failed to send commands to restore a key";
+constexpr std::string_view errMigrationTaskCanceled = "key migration stopped due to a task cancellation";
+constexpr std::string_view errFailedToSetImportStatus = "failed to set import status on destination node";
+constexpr std::string_view errUnsupportedMigrationType = "unsupported migration type";
 
 static std::map<RedisType, std::string> type_to_cmd = {
     {kRedisString, "set"}, {kRedisList, "rpush"},    {kRedisHash, "hmset"},      {kRedisSet, "sadd"},
@@ -318,7 +318,7 @@ Status SlotMigrator::sendSnapshot() {
   } else if (migration_type_ == MigrationType::kRawKeyValue) {
     return sendSnapshotByRawKV();
   }
-  return {Status::NotOK, errUnsupportedMigrationType};
+  return {Status::NotOK, std::string(errUnsupportedMigrationType)};
 }
 
 Status SlotMigrator::syncWAL() {
@@ -327,7 +327,7 @@ Status SlotMigrator::syncWAL() {
   } else if (migration_type_ == MigrationType::kRawKeyValue) {
     return syncWALByRawKV();
   }
-  return {Status::NotOK, errUnsupportedMigrationType};
+  return {Status::NotOK, std::string(errUnsupportedMigrationType)};
 }
 
 Status SlotMigrator::sendSnapshotByCmd() {
@@ -337,7 +337,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
   std::string restore_cmds;
   SlotRange slot_range = slot_range_;
 
-  LOG(INFO) << "[migrate] Start migrating snapshot of slot(s)" << slot_range.String();
+  LOG(INFO) << "[migrate] Start migrating snapshot of slot(s): " << slot_range.String();
 
   // Construct key prefix to iterate the keys belong to the target slot
   std::string prefix = ComposeSlotKeyPrefix(namespace_, slot_range.start);
@@ -351,12 +351,12 @@ Status SlotMigrator::sendSnapshotByCmd() {
   auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
 
   // Seek to the beginning of keys start with 'prefix' and iterate all these keys
-  auto current_slot = slot_range.start;
+  int current_slot = slot_range.start;
   for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
     // The migrating task has to be stopped, if server role is changed from master to slave
     // or flush command (flushdb or flushall) is executed
     if (stop_migration_) {
-      return {Status::NotOK, errMigrationTaskCanceled};
+      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
     }
 
     // Iteration is out of range
@@ -366,7 +366,7 @@ Status SlotMigrator::sendSnapshotByCmd() {
     }
 
     // Get user key
-    auto [_, user_key] = ExtractNamespaceKey(iter->key(), true);
+    auto [_, user_key] = ExtractNamespaceKey(iter->key(), /*slot_id_encoded=*/true);
 
     // Add key's constructed commands to restore_cmds, send pipeline or not according to task's max_pipeline_size
     auto result = migrateOneKey(user_key, iter->value(), &restore_cmds);
@@ -429,7 +429,7 @@ Status SlotMigrator::syncWALByCmd() {
 
 Status SlotMigrator::finishSuccessfulMigration() {
   if (stop_migration_) {
-    return {Status::NotOK, errMigrationTaskCanceled};
+    return {Status::NotOK, std::string(errMigrationTaskCanceled)};
   }
 
   // Set import status on the destination node to SUCCESS
@@ -723,6 +723,12 @@ StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &k
       }
       break;
     }
+    case kRedisHyperLogLog: {
+      // HyperLogLog migration by cmd is not supported,
+      // since it's hard to restore the same key structure for HyperLogLog
+      // commands.
+      break;
+    }
     default:
       break;
   }
@@ -752,7 +758,17 @@ Status SlotMigrator::migrateSimpleKey(const rocksdb::Slice &key, const Metadata 
 
 Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds) {
   std::string cmd;
-  cmd = type_to_cmd[metadata.Type()];
+  {
+    auto iter = type_to_cmd.find(metadata.Type());
+    if (iter != type_to_cmd.end()) {
+      cmd = iter->second;
+    } else {
+      if (metadata.Type() > RedisTypeNames.size()) {
+        return {Status::NotOK, "unknown key type: " + std::to_string(metadata.Type())};
+      }
+      return {Status::NotOK, "unsupported complex key type: " + RedisTypeNames[metadata.Type()]};
+    }
+  }
 
   std::vector<std::string> user_cmd = {cmd, key.ToString()};
   // Construct key prefix to iterate values of the complex type user key
@@ -769,7 +785,7 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
 
   for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
     if (stop_migration_) {
-      return {Status::NotOK, errMigrationTaskCanceled};
+      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
     }
 
     if (!iter->key().starts_with(prefix_subkey)) {
@@ -809,6 +825,9 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
       }
       case kRedisList: {
         user_cmd.emplace_back(iter->value().ToString());
+        break;
+      }
+      case kRedisHyperLogLog: {
         break;
       }
       default:
@@ -878,7 +897,7 @@ Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metad
 
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
     if (stop_migration_) {
-      return {Status::NotOK, errMigrationTaskCanceled};
+      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
     }
 
     if (!iter->key().starts_with(prefix_key)) {
@@ -964,7 +983,7 @@ Status SlotMigrator::migrateBitmapKey(const InternalKey &inkey, std::unique_ptr<
 
 Status SlotMigrator::sendCmdsPipelineIfNeed(std::string *commands, bool need) {
   if (stop_migration_) {
-    return {Status::NotOK, errMigrationTaskCanceled};
+    return {Status::NotOK, std::string(errMigrationTaskCanceled)};
   }
 
   // Check pipeline

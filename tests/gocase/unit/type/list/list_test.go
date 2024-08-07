@@ -324,6 +324,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			createList("blist", []string{"a", "b", large, "c", "d"})
+			// TODO: Remove time.Sleep after fix issue #2473
 			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
 			time.Sleep(100 * time.Millisecond)

@@ -115,16 +115,22 @@ TEST(RedisQueryParserTest, Vector) {
   AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
   AssertSyntaxError(Parse("[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}));
   AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("* =>[KNN -1 @vector $BLOB]", {{"BLOB", vec_str}}));
   AssertSyntaxError(Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", vec_str}}));
+  AssertSyntaxError(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x|y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x|y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x}|@b:[1 inf] | @c:{y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x}|@b:[1 inf] | @field:[VECTOR_RANGE 10 $vector]) => [KNN 8 @vec_embedding $blob]",
+                          {{"blob", vec_str}, {"vector", vec_str}}));
 
   AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}),
            "field <-> [1.000000, 2.000000, 3.000000] < 10");
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]| @b:[1 inf]", {{"vector", vec_str}}),
+           "(or field <-> [1.000000, 2.000000, 3.000000] < 10, b >= 1)");
   AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
            "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
-  AssertIR(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
-           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
-  AssertIR(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}),
-           "KNN k=8, vec_embedding <-> [1.000000, 2.000000, 3.000000]");
   AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}),
            "KNN k=5, vector <-> [1.000000, 2.000000, 3.000000]");
 

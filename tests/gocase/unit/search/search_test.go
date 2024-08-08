@@ -51,8 +51,8 @@ func TestSearch(t *testing.T) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("FT.CREATE", func(t *testing.T) {
-		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx1", "ON", "JSON", "PREFIX", "1", "test1:", "SCHEMA", "a", "TAG", "b", "NUMERIC", 
-										"c", "VECTOR", "HNSW", "6", "TYPE", "FLOAT64", "DIM", "3", "DISTANCE_METRIC", "L2").Err())
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx1", "ON", "JSON", "PREFIX", "1", "test1:", "SCHEMA", "a", "TAG", "b", "NUMERIC",
+			"c", "VECTOR", "HNSW", "6", "TYPE", "FLOAT64", "DIM", "3", "DISTANCE_METRIC", "L2").Err())
 
 		verify := func(t *testing.T) {
 			require.Equal(t, []interface{}{"testidx1"}, rdb.Do(ctx, "FT._LIST").Val())

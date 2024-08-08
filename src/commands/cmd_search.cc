@@ -201,8 +201,8 @@ class CommandFTCreate : public Commander {
     bool dim_set;
     bool distance_metric_set;
 
-    HnswIndexCreationState(uint8_t num_attrs)
-        : num_attributes(num_attrs), type_set(false), dim_set(false), distance_metric_set(false) {}
+    explicit HnswIndexCreationState(uint8_t num_attributes)
+        : num_attributes(num_attributes), type_set(false), dim_set(false), distance_metric_set(false) {}
 
     Status Validate() const {
       if (!type_set) {

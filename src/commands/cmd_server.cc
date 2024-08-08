@@ -1301,7 +1301,7 @@ class CommandPollUpdates : public Commander {
       next_sequence = batch.sequence + batch.writeBatchPtr->Count() - 1;
     }
 
-    *output = conn->Map(std::map<std::string, std::string>{
+    *output = conn->Map({
         {redis::BulkString("latest_sequence"), redis::Integer(srv->storage->LatestSeqNumber())},
         {redis::BulkString("updates"), std::move(updates)},
         {redis::BulkString("next_sequence"), redis::Integer(next_sequence)},

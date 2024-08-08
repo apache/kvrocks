@@ -85,12 +85,27 @@ class CommandFTCreate : public Commander {
         }
 
         std::unique_ptr<redis::IndexFieldMetadata> field_meta;
+        std::unique_ptr<HnswIndexCreationState> hnsw_state;
         if (parser.EatEqICase("TAG")) {
           field_meta = std::make_unique<redis::TagFieldMetadata>();
         } else if (parser.EatEqICase("NUMERIC")) {
           field_meta = std::make_unique<redis::NumericFieldMetadata>();
+        } else if (parser.EatEqICase("VECTOR")) {
+          if (parser.EatEqICase("HNSW")) {
+            field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+            auto num_attributes = GET_OR_RET(parser.TakeInt<uint8_t>());
+            if (num_attributes < 6) {
+              return {Status::NotOK, errInvalidNumOfAttributes};
+            }
+            if (num_attributes % 2 != 0) {
+              return {Status::NotOK, "number of attributes must be multiple of 2"};
+            }
+            hnsw_state = std::make_unique<HnswIndexCreationState>(num_attributes);
+          } else {
+            return {Status::RedisParseErr, "only support HNSW algorithm for vector field"};
+          }
         } else {
-          return {Status::RedisParseErr, "expect field type TAG or NUMERIC"};
+          return {Status::RedisParseErr, "expect field type TAG, NUMERIC or VECTOR"};
         }
 
         while (parser.Good()) {
@@ -110,9 +125,49 @@ class CommandFTCreate : public Commander {
             } else {
               break;
             }
+          } else if (auto vector = dynamic_cast<redis::HnswVectorFieldMetadata *>(field_meta.get())) {
+            if (hnsw_state->num_attributes <= 0) break;
+
+            if (parser.EatEqICase("TYPE")) {
+              if (parser.EatEqICase("FLOAT64")) {
+                vector->vector_type = VectorType::FLOAT64;
+              } else {
+                return {Status::RedisParseErr, "unsupported vector type"};
+              }
+              hnsw_state->type_set = true;
+            } else if (parser.EatEqICase("DIM")) {
+              vector->dim = GET_OR_RET(parser.TakeInt<uint16_t>());
+              hnsw_state->dim_set = true;
+            } else if (parser.EatEqICase("DISTANCE_METRIC")) {
+              if (parser.EatEqICase("L2")) {
+                vector->distance_metric = DistanceMetric::L2;
+              } else if (parser.EatEqICase("IP")) {
+                vector->distance_metric = DistanceMetric::IP;
+              } else if (parser.EatEqICase("COSINE")) {
+                vector->distance_metric = DistanceMetric::COSINE;
+              } else {
+                return {Status::RedisParseErr, "unsupported distance metric"};
+              }
+              hnsw_state->distance_metric_set = true;
+            } else if (parser.EatEqICase("M")) {
+              vector->m = GET_OR_RET(parser.TakeInt<uint16_t>());
+            } else if (parser.EatEqICase("EF_CONSTRUCTION")) {
+              vector->ef_construction = GET_OR_RET(parser.TakeInt<uint32_t>());
+            } else if (parser.EatEqICase("EF_RUNTIME")) {
+              vector->ef_runtime = GET_OR_RET(parser.TakeInt<uint32_t>());
+            } else if (parser.EatEqICase("EPSILON")) {
+              vector->epsilon = GET_OR_RET(parser.TakeFloat<double>());
+            } else {
+              break;
+            }
+            hnsw_state->num_attributes -= 2;
           } else {
             break;
           }
+        }
+
+        if (auto vector_meta [[maybe_unused]] = dynamic_cast<redis::HnswVectorFieldMetadata *>(field_meta.get())) {
+          GET_OR_RET(hnsw_state->Validate());
         }
 
         kqir::FieldInfo field_info(field_name, std::move(field_meta));
@@ -140,6 +195,28 @@ class CommandFTCreate : public Commander {
   };
 
  private:
+  struct HnswIndexCreationState {
+    uint8_t num_attributes;
+    bool type_set;
+    bool dim_set;
+    bool distance_metric_set;
+
+    HnswIndexCreationState(uint8_t num_attrs)
+        : num_attributes(num_attrs), type_set(false), dim_set(false), distance_metric_set(false) {}
+
+    Status Validate() const {
+      if (!type_set) {
+        return {Status::RedisParseErr, "VECTOR field requires TYPE to be set"};
+      }
+      if (!dim_set) {
+        return {Status::RedisParseErr, "VECTOR field requires DIM to be set"};
+      }
+      if (!distance_metric_set) {
+        return {Status::RedisParseErr, "VECTOR field requires DISTANCE_METRIC to be set"};
+      }
+      return Status::OK();
+    }
+  };
   std::unique_ptr<kqir::IndexInfo> index_info_;
 };
 

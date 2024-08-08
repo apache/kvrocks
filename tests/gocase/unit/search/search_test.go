@@ -101,36 +101,24 @@ func TestSearch(t *testing.T) {
 			require.Equal(t, 3, len(res.Val().([]interface{})))
 			require.Equal(t, int64(1), res.Val().([]interface{})[0])
 			require.Equal(t, "test1:k2", res.Val().([]interface{})[1])
+
 			fields := res.Val().([]interface{})[2].([]interface{})
-			if fields[0] == "a" {
-				require.Equal(t, "x,z", fields[1])
-				if fields[2] == "c" {
-					require.Equal(t, "12.000000, 13.000000, 14.000000", fields[3])
-					require.Equal(t, "b", fields[4])
-					require.Equal(t, "22", fields[5])
-				} else if fields[2] == "b" {
-					require.Equal(t, "22", fields[3])
-					require.Equal(t, "c", fields[4])
-					require.Equal(t, "12.000000, 13.000000, 14.000000", fields[5])
-				} else {
-					require.Fail(t, "not started with c or b")
-				}
-			} else if fields[0] == "b" {
-				require.Equal(t, "22", fields[1])
-				if fields[2] == "c" {
-					require.Equal(t, "12.000000, 13.000000, 14.000000", fields[3])
-					require.Equal(t, "a", fields[4])
-					require.Equal(t, "x,z", fields[5])
-				} else if fields[2] == "a" {
-					require.Equal(t, "x,z", fields[3])
-					require.Equal(t, "c", fields[4])
-					require.Equal(t, "12.000000, 13.000000, 14.000000", fields[5])
-				} else {
-					require.Fail(t, "not started with a or c")
-				}
-			} else {
-				require.Fail(t, "not started with a or b")
+			fieldMap := make(map[string]string)
+			for i := 0; i < len(fields); i += 2 {
+				fieldMap[fields[i].(string)] = fields[i+1].(string)
 			}
+
+			_, aExists := fieldMap["a"]
+			_, bExists := fieldMap["b"]
+			_, cExists := fieldMap["c"]
+
+			require.True(t, aExists, "'a' should exist in the result")
+			require.True(t, bExists, "'b' should exist in the result")
+			require.True(t, cExists, "'c' should exist in the result")
+
+			require.Equal(t, "x,z", fieldMap["a"])
+			require.Equal(t, "22", fieldMap["b"])
+			require.Equal(t, "12.000000, 13.000000, 14.000000", fieldMap["c"])
 		}
 
 		res = rdb.Do(ctx, "FT.SEARCHSQL", `select * from testidx1 where a hastag "z" and b < 30`)

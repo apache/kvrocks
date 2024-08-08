@@ -1291,24 +1291,21 @@ class CommandPollUpdates : public Commander {
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    uint64_t next_sequence = sequence_;
     // sequence + 1 is for excluding the current sequence to avoid getting duplicate updates
     auto batches = GET_OR_RET(srv->PollUpdates(sequence_ + 1, max_, is_strict_));
-
-    *output = redis::MultiLen(8);
-    *output += redis::BulkString("latest_sequence");
-    *output += redis::Integer(srv->storage->LatestSeqNumber());
-    *output += redis::BulkString("format");
-    *output += redis::BulkString("RAW");
-    *output += redis::BulkString("updates");
-    *output += redis::MultiLen(batches.size());
-    uint64_t next_sequence = sequence_;
+    std::string updates = redis::MultiLen(batches.size());
     for (const auto &batch : batches) {
-      *output += redis::BulkString(util::StringToHex(batch.writeBatchPtr->Data()));
+      updates += redis::BulkString(util::StringToHex(batch.writeBatchPtr->Data()));
       // It might contain more than one sequence in a batch
       next_sequence = batch.sequence + batch.writeBatchPtr->Count() - 1;
     }
-    *output += redis::BulkString("next_sequence");
-    *output += redis::Integer(next_sequence);
+
+    *output = conn->Map(std::map<std::string, std::string>{
+        {redis::BulkString("latest_sequence"), redis::Integer(srv->storage->LatestSeqNumber())},
+        {redis::BulkString("updates"), std::move(updates)},
+        {redis::BulkString("next_sequence"), redis::Integer(next_sequence)},
+    });
     return Status::OK();
   }
 

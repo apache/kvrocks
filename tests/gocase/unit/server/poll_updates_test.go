@@ -37,29 +37,29 @@ type PollUpdatesResult struct {
 }
 
 func sliceToPollUpdatesResult(t *testing.T, slice []interface{}) *PollUpdatesResult {
-	require.Len(t, slice, 8)
+	itemCount := 6
+	require.Len(t, slice, itemCount)
+	var latestSeq, nextSeq int64
 
-	require.Equal(t, "latest_sequence", slice[0])
-	latestSeq, ok := slice[1].(int64)
-	require.True(t, ok)
-
-	require.Equal(t, "format", slice[2])
-	require.Equal(t, "RAW", slice[3])
-	require.Equal(t, "updates", slice[4])
 	updates := make([]string, 0)
-	if slice[5] != nil {
-		fields, ok := slice[5].([]interface{})
-		require.True(t, ok)
-		for _, field := range fields {
-			str, ok := field.(string)
-			require.True(t, ok)
-			updates = append(updates, str)
+	for i := 0; i < itemCount; i += 2 {
+		key := slice[i].(string)
+		switch key {
+		case "latest_sequence":
+			latestSeq = slice[i+1].(int64)
+		case "next_sequence":
+			nextSeq = slice[i+1].(int64)
+		case "updates":
+			fields := slice[i+1].([]interface{})
+			for _, field := range fields {
+				str, ok := field.(string)
+				require.True(t, ok)
+				updates = append(updates, str)
+			}
+		default:
+			require.Fail(t, fmt.Sprintf("unknown key: %s", key))
 		}
 	}
-
-	require.Equal(t, "next_sequence", slice[6])
-	nextSeq, ok := slice[7].(int64)
-	require.True(t, ok)
 
 	return &PollUpdatesResult{
 		LatestSeq: latestSeq,

@@ -689,7 +689,8 @@ class CommandLCS : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(
-    MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1), MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
+    String, MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),

@@ -404,7 +404,7 @@ class CommandBitfield : public Commander {
   bool read_only_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Bit, MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),

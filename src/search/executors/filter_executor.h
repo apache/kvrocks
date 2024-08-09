@@ -118,7 +118,7 @@ struct QueryExprEvaluator {
   }
 
   StatusOr<bool> Visit(VectorRangeExpr *v) const {
-    auto val = GET_OR_RET(ctx->Retrieve(row, v->field->info));
+    auto val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, v->field->info));
 
     CHECK(val.Is<kqir::NumericArray>());
     auto l_values = val.Get<kqir::NumericArray>();

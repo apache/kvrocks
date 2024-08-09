@@ -570,10 +570,6 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   uint64_t total_claimed_count = 0;
   for (iter->SeekToFirst(); iter->Valid() && count > 0 && attempts > 0; iter->Next()) {
-    if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamPelEntry) {
-      // Compatible with Speedb special cases
-      continue;
-    }
     std::string tmp_group_name;
     StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
 

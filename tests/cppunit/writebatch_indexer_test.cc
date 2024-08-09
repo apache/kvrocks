@@ -74,9 +74,7 @@ TEST_F(WriteBatchIndexerTest, PutDelete) {
   for (int i = 0; i < 3; i++) {
     std::string key = "key" + std::to_string(i);
     s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), key, &value);
-    // In RocksDB the value is reset, but not in Speedb
-    if (s.IsNotFound()) value = "";
-    EXPECT_EQ("", value);
+    EXPECT_TRUE(s.IsNotFound());
   }
 
   s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key3", &value);
@@ -103,7 +101,5 @@ TEST_F(WriteBatchIndexerTest, SingleDelete) {
   EXPECT_TRUE(s.ok()) << s.ToString();
 
   s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
-  // In RocksDB the value is reset, but not in Speedb
-  if (s.IsNotFound()) value = "";
-  EXPECT_EQ("", value);
+  EXPECT_TRUE(s.IsNotFound());
 }

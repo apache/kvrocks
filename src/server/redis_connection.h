@@ -96,6 +96,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string MapOfBulkStrings(const std::vector<std::string> &elems) const {
     return redis::MapOfBulkStrings(protocol_version_, elems);
   }
+  std::string Map(const std::map<std::string, std::string> &map) const { return redis::Map(protocol_version_, map); }
   template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   std::string HeaderOfAttribute(T len) const {
     return redis::HeaderOfAttribute(len);

@@ -22,6 +22,7 @@
 
 #include <event2/buffer.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,7 @@ template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfMap(RESP ver, T len) {
   return ver == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
 }
+std::string Map(RESP ver, const std::map<std::string, std::string> &map);
 std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems);
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfAttribute(T len) {

@@ -124,4 +124,13 @@ std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
   return result;
 }
 
+std::string Map(RESP ver, const std::map<std::string, std::string> &map) {
+  std::string result = HeaderOfMap(ver, map.size());
+  for (const auto &pair : map) {
+    result += pair.first;
+    result += pair.second;
+  }
+  return result;
+}
+
 }  // namespace redis

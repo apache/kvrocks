@@ -1559,6 +1559,36 @@ int64_t Server::GetLastScanTime(const std::string &ns) const {
   return 0;
 }
 
+StatusOr<std::vector<rocksdb::BatchResult>> Server::PollUpdates(uint64_t next_sequence, int64_t count,
+                                                                bool is_strict) const {
+  std::vector<rocksdb::BatchResult> batches;
+  auto latest_sequence = storage->LatestSeqNumber();
+  if (next_sequence == latest_sequence + 1) {
+    // return empty result if there is no new updates
+    return batches;
+  } else if (next_sequence > latest_sequence + 1) {
+    return {Status::NotOK, "next sequence is out of range"};
+  }
+
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  if (auto s = storage->GetWALIter(next_sequence, &iter); !s.IsOK()) return s;
+  if (!iter) {
+    return Status{Status::NotOK, "unable to get WAL iterator"};
+  }
+
+  for (int64_t i = 0; i < count && iter->Valid() && iter->status().ok(); ++i, iter->Next()) {
+    // The first batch should have the same sequence number as the next sequence number
+    // if it requires strictly matched.
+    auto batch = iter->GetBatch();
+    if (i == 0 && is_strict && batch.sequence != next_sequence) {
+      return {Status::NotOK,
+              fmt::format("mismatched sequence number, expected {} but got {}", next_sequence, batch.sequence)};
+    }
+    batches.emplace_back(std::move(batch));
+  }
+  return batches;
+}
+
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration,
                                       const redis::Connection *conn) {
   int64_t threshold = config_->slowlog_log_slower_than;

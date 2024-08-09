@@ -93,6 +93,7 @@ static auto FieldI(const std::string& f) -> const FieldInfo* { return &IndexI()-
 
 static auto N(double n) { return MakeValue<Numeric>(n); }
 static auto T(const std::string& v) { return MakeValue<StringArray>(util::Split(v, ",")); }
+static auto V(const std::vector<double>& vals) { return MakeValue<NumericArray>(vals); }
 
 TEST(PlanExecutorTest, TopNSort) {
   std::vector<ExecutorNode::RowType> data{
@@ -199,6 +200,41 @@ TEST(PlanExecutorTest, Filter) {
     ASSERT_EQ(NextRow(ctx).key, "c");
     ASSERT_EQ(NextRow(ctx).key, "d");
     ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  data = {{"a", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()}, {"b", {{FieldI("f4"), V({9, 10, 11})}}, IndexI()},
+          {"c", {{FieldI("f4"), V({4, 5, 6})}}, IndexI()}, {"d", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()},
+          {"e", {{FieldI("f4"), V({2, 3, 4})}}, IndexI()}, {"f", {{FieldI("f4"), V({12, 13, 14})}}, IndexI()},
+          {"g", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()}};
+  {
+    auto field = std::make_unique<FieldRef>("f4", FieldI("f4"));
+    std::vector<double> vector = {11, 12, 13};
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        std::make_unique<VectorRangeExpr>(field->CloneAs<FieldRef>(), std::make_unique<NumericLiteral>(4),
+                                          std::make_unique<VectorLiteral>(std::move(vector))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    auto field = std::make_unique<FieldRef>("f4", FieldI("f4"));
+    std::vector<double> vector = {2, 3, 4};
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        std::make_unique<VectorRangeExpr>(field->CloneAs<FieldRef>(), std::make_unique<NumericLiteral>(5),
+                                          std::make_unique<VectorLiteral>(std::move(vector))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(NextRow(ctx).key, "d");
+    ASSERT_EQ(NextRow(ctx).key, "e");
+    ASSERT_EQ(NextRow(ctx).key, "g");
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }

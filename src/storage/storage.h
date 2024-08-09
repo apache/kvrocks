@@ -48,7 +48,6 @@
 
 enum class StorageEngineType : uint16_t {
   RocksDB,
-  Speedb,
 };
 
 inline constexpr StorageEngineType STORAGE_ENGINE_TYPE = StorageEngineType::KVROCKS_STORAGE_ENGINE;

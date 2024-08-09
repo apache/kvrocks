@@ -54,7 +54,6 @@ TEST(Compact, Filter) {
   auto status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
   // Compact twice to workaround issue fixed by: https://github.com/facebook/rocksdb/pull/11468
-  // before rocksdb/speedb 8.1.1. This line can be removed after speedb upgraded above 8.1.1.
   status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
 

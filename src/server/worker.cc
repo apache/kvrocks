@@ -78,28 +78,14 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
 }
 
 Worker::~Worker() {
-  auto collect_conns_fn = [](ConnMap &conns) {
-    return parallel_reduce(
-        conns.range(), std::vector<redis::Connection *>{},
-        [](const ConnMap::range_type &range, std::vector<redis::Connection *> &&result) {
-          std::transform(range.begin(), range.end(), std::back_inserter(result),
-                         [](const auto &it) { return it.second; });
-          return result;
-        },
-        [](const std::vector<redis::Connection *> &lhs, const std::vector<redis::Connection *> &rhs) {
-          std::vector<redis::Connection *> result = lhs;
-          result.insert(result.end(), rhs.begin(), rhs.end());
-          return result;
-        });
-  };
-  auto conns = collect_conns_fn(conns_);
-  auto monitor_conns = collect_conns_fn(monitor_conns_);
+  std::vector<redis::Connection *> conns;
+  conns.reserve(conns_.size() + monitor_conns_.size());
+
+  std::transform(conns_.cbegin(), conns_.cend(), std::back_inserter(conns), [](const auto &it) { return it.second; });
+  std::transform(monitor_conns_.cbegin(), monitor_conns_.cend(), std::back_inserter(conns),
+                 [](const auto &it) { return it.second; });
 
   for (auto conn : conns) {
-    conn->Close();
-  }
-
-  for (auto conn : monitor_conns) {
     conn->Close();
   }
 

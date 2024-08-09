@@ -38,6 +38,8 @@
 #include <openssl/ssl.h>
 #endif
 
+#include <oneapi/tbb/parallel_for.h>
+#include <oneapi/tbb/parallel_reduce.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -47,8 +49,6 @@
 #include <list>
 #include <utility>
 
-#include "oneapi/tbb/parallel_for.h"
-#include "oneapi/tbb/parallel_reduce.h"
 #include "redis_connection.h"
 #include "redis_request.h"
 #include "server.h"
@@ -415,14 +415,14 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
       bufferevent_remove_from_rate_limit_group(accessor->second->GetBufferEvent());
     }
 
-    delete accessor->second;
     conns_.erase(accessor);
+    delete accessor->second;
 
     srv->DecrClientNum();
   }
   if (ConnMap::accessor accessor; monitor_conns_.find(accessor, fd)) {
-    delete accessor->second;
     monitor_conns_.erase(accessor);
+    delete accessor->second;
     srv->DecrClientNum();
     srv->DecrMonitorClientNum();
   }

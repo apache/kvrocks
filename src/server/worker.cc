@@ -81,9 +81,12 @@ Worker::~Worker() {
   std::vector<redis::Connection *> conns;
   conns.reserve(conns_.size() + monitor_conns_.size());
 
-  std::transform(conns_.cbegin(), conns_.cend(), std::back_inserter(conns), [](const auto &it) { return it.second; });
-  std::transform(monitor_conns_.cbegin(), monitor_conns_.cend(), std::back_inserter(conns),
-                 [](const auto &it) { return it.second; });
+  for (const auto &[fd, conn] : conns_) {
+    conns.emplace_back(conn);
+  }
+  for (const auto &[fd, conn] : monitor_conns_) {
+    conns.emplace_back(conn);
+  }
 
   for (auto conn : conns) {
     conn->Close();

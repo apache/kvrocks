@@ -67,6 +67,31 @@ enum CommandFlags : uint64_t {
   kCmdNoDBSizeCheck = 1ULL << 12,  // "no-dbsize-check" flag
 };
 
+enum class CommandCategory : uint8_t {
+  Unknown = 0,
+  Bit,
+  BloomFilter,
+  Cluster,
+  Function,
+  Geo,
+  Hash,
+  HLL,
+  JSON,
+  Key,
+  List,
+  Pubsub,
+  Replication,
+  Script,
+  Search,
+  Server,
+  Set,
+  SortedInt,
+  Stream,
+  String,
+  Txn,
+  ZSet,
+};
+
 class Commander {
  public:
   void SetAttributes(const CommandAttributes *attributes) { attributes_ = attributes; }
@@ -130,8 +155,8 @@ struct CommandAttributes {
   // negative number -n means number of arguments is equal to or large than n
   int arity;
 
-  // space-separated flag strings to initialize flags
-  std::string description;
+  // category of this command, e.g. key, string, hash
+  CommandCategory category;
 
   // bitmap of enum CommandFlags
   uint64_t flags;
@@ -226,10 +251,10 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
 
 template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step, const AdditionalFlagGen &flag_gen = {}) {
+                 int key_step = 1, const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {first_key, last_key, key_step},
@@ -250,7 +275,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                  const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {-1, 0, 0},
@@ -266,7 +291,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                  const CommandKeyRangeVecGen &vec_gen, const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {-2, 0, 0},
@@ -278,7 +303,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
 }
 
 struct RegisterToCommandTable {
-  RegisterToCommandTable(std::initializer_list<CommandAttributes> list);
+  RegisterToCommandTable(CommandCategory category, std::initializer_list<CommandAttributes> list);
 };
 
 struct CommandTable {
@@ -316,7 +341,8 @@ struct CommandTable {
 #define KVROCKS_CONCAT2(a, b) KVROCKS_CONCAT(a, b)  // NOLINT
 
 // NOLINTNEXTLINE
-#define REDIS_REGISTER_COMMANDS(...) \
-  static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__){__VA_ARGS__};
+#define REDIS_REGISTER_COMMANDS(cat, ...)                                                                   \
+  static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__)(CommandCategory::cat, \
+                                                                                      {__VA_ARGS__});
 
 }  // namespace redis

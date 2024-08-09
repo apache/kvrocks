@@ -429,7 +429,7 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hset", -4, "write", 1, 1, 1),

@@ -249,7 +249,7 @@ class CommandSortedintRevRangeByValue : public CommandSortedintRangeByValue {
   CommandSortedintRevRangeByValue() : CommandSortedintRangeByValue(true) {}
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSortedintAdd>("siadd", -3, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(SortedInt, MakeCmdAttr<CommandSortedintAdd>("siadd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSortedintRem>("sirem", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandSortedintCard>("sicard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSortedintExists>("siexists", -3, "read-only", 1, 1, 1),

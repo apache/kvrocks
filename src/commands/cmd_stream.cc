@@ -1838,7 +1838,7 @@ class CommandXSetId : public Commander {
   std::optional<uint64_t> entries_added_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Stream, MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),

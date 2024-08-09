@@ -848,7 +848,7 @@ class CommandLPos : public Commander {
   PosSpec spec_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
+REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandBLMPop>("blmpop", -5, "write no-script", CommandBLMPop::keyRangeGen),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),

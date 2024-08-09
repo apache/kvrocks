@@ -24,6 +24,7 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/util.h>
+#include <oneapi/tbb/concurrent_hash_map.h>
 
 #include <cstdint>
 #include <cstring>
@@ -37,7 +38,6 @@
 #include <vector>
 
 #include "event_util.h"
-#include "oneapi/tbb/concurrent_hash_map.h"
 #include "redis_connection.h"
 #include "storage/storage.h"
 

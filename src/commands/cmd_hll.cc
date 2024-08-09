@@ -95,7 +95,7 @@ class CommandPfMerge final : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandPfAdd>("pfadd", -2, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(HLL, MakeCmdAttr<CommandPfAdd>("pfadd", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandPfCount>("pfcount", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPfMerge>("pfmerge", -2, "write", 1, -1, 1), );
 

@@ -700,7 +700,7 @@ class CommandGeoRadiusByMemberReadonly : public CommandGeoRadiusByMember {
   CommandGeoRadiusByMemberReadonly() = default;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Geo, MakeCmdAttr<CommandGeoAdd>("geoadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandGeoDist>("geodist", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoHash>("geohash", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandGeoPos>("geopos", -3, "read-only", 1, 1, 1),

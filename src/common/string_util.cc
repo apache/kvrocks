@@ -367,9 +367,7 @@ std::string EscapeString(std::string_view s) {
         if (isprint(ch)) {
           str += ch;
         } else {
-          char buffer[16];
-          snprintf(buffer, sizeof(buffer), "\\x%02x", ch);
-          str += buffer;
+          str += fmt::format("\\x{:02x}", (unsigned char)ch);
         }
     }
   }

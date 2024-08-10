@@ -233,12 +233,7 @@ class EnumField : public ConfigField {
       }
     }
 
-    auto acceptable_values =
-        std::accumulate(enums_.begin(), enums_.end(), std::string{}, [this](const std::string &res, const EnumItem &e) {
-          if (&e != &enums_.back()) return res + "'" + e.name + "', ";
-
-          return res + "'" + e.name + "'";
-        });
+    auto acceptable_values = util::StringJoin(enums_, [](const auto &e) { return fmt::format("'{}'", e.name); });
     return {Status::NotOK, fmt::format("invalid enum option, acceptable values are {}", acceptable_values)};
   }
 

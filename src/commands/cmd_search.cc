@@ -49,14 +49,14 @@ class CommandFTCreate : public Commander {
     }
 
     index_info_ = std::make_unique<kqir::IndexInfo>(index_name, redis::IndexMetadata{}, "");
-    auto data_type = IndexOnDataType(0);
+    index_info_->metadata.on_data_type = IndexOnDataType::HASH;
 
     while (parser.Good()) {
       if (parser.EatEqICase("ON")) {
         if (parser.EatEqICase("HASH")) {
-          data_type = IndexOnDataType::HASH;
+          index_info_->metadata.on_data_type = IndexOnDataType::HASH;
         } else if (parser.EatEqICase("JSON")) {
-          data_type = IndexOnDataType::JSON;
+          index_info_->metadata.on_data_type = IndexOnDataType::JSON;
         } else {
           return {Status::RedisParseErr, "expect HASH or JSON after ON"};
         }
@@ -69,12 +69,6 @@ class CommandFTCreate : public Commander {
       } else {
         break;
       }
-    }
-
-    if (int(data_type) == 0) {
-      return {Status::RedisParseErr, "expect ON HASH | JSON"};
-    } else {
-      index_info_->metadata.on_data_type = data_type;
     }
 
     if (parser.EatEqICase("SCHEMA")) {

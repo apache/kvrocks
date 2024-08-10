@@ -28,6 +28,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"
 #include "string_util.h"
@@ -382,7 +383,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error({Status::NotOK, "unknown command " + cmd_tokens.front()}));
+      Reply(redis::Error(
+          {Status::NotOK,
+           fmt::format("unknown command `{}`, with args beginning with: {}", cmd_tokens.front(),
+                       util::StringJoin(nonstd::span(cmd_tokens.begin() + 1, cmd_tokens.end()),
+                                        [](const auto &v) -> decltype(auto) { return fmt::format("`{}`", v); }))}));
       continue;
     }
     auto current_cmd = std::move(*cmd_s);

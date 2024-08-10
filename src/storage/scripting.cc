@@ -399,6 +399,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
   script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
   if (!lua_isnil(lua, -1)) {
+    // It should be ensured that the conversion is successful
     auto function_flags = lua_tointeger(lua, -1);
     script_run_ctx.flags |= function_flags;
   }
@@ -646,6 +647,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   current_script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, funcname + 2).c_str());
   if (!lua_isnil(lua, -1)) {
+    // It should be ensured that the conversion is successful
     auto script_flags = lua_tointeger(lua, -1);
     current_script_run_ctx.flags |= script_flags;
   }
@@ -1488,17 +1490,14 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
     std::copy(sha->begin(), sha->end(), funcname + 2);
   }
 
-  if (luaL_loadbuffer(lua, body.c_str(), body.size(), "@user_script")) {
-    std::string err_msg = lua_tostring(lua, -1);
-    lua_pop(lua, 1);
-    return {Status::NotOK, "Error while compiling new script: " + err_msg};
-  }
-  lua_setglobal(lua, funcname);
-
+  std::string_view lua_code(body);
   // Cache the flags of the current script
   ScriptFlags script_flags = 0;
   if (auto pos = body.find('\n'); pos != std::string::npos) {
-    auto first_line = body.substr(0, pos);
+    std::string_view first_line(body.data(), pos);
+    if (first_line.substr(0, 2) == "#!") {
+      lua_code = lua_code.substr(pos + 1);
+    }
     script_flags = GET_OR_RET(ExtractFlagsFromShebang(first_line));
   } else {
     // scripts without #! can run commands that access keys belonging to different cluster hash slots
@@ -1506,6 +1505,13 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
   }
   lua_pushinteger(lua, static_cast<lua_Integer>(script_flags));
   lua_setglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, *sha).c_str());
+
+  if (luaL_loadbuffer(lua, lua_code.data(), lua_code.size(), "@user_script")) {
+    std::string err_msg = lua_tostring(lua, -1);
+    lua_pop(lua, 1);
+    return {Status::NotOK, "Error while compiling new script: " + err_msg};
+  }
+  lua_setglobal(lua, funcname);
 
   // would store lua function into propagate column family and propagate those scripts to slaves
   return need_to_store ? srv->ScriptSet(*sha, body) : Status::OK();

@@ -1759,7 +1759,8 @@ rocksdb::Status Stream::GetPendingEntries(StreamPendingOptions &options, StreamG
     }
 
     if (options.with_count) {
-      ext_results.push_back({entry_id, pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, consumer_name});
+      ext_results.push_back(
+          {entry_id, {pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, consumer_name}});
       ext_result_count++;
       continue;
     }

@@ -253,6 +253,7 @@ class Server {
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   int64_t GetLastScanTime(const std::string &ns) const;
+  StatusOr<std::vector<rocksdb::BatchResult>> PollUpdates(uint64_t next_sequence, int64_t count, bool is_strict) const;
 
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);

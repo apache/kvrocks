@@ -22,5 +22,4 @@ if(zstd_SOURCE_DIR)
 
   add_library(zstd::zstd ALIAS zstd) # rocksdb use it
   install(TARGETS zstd EXPORT RocksDBTargets) # export for install(...)
-  install(TARGETS zstd EXPORT SpeedbTargets) # export for install(...)
 endif()

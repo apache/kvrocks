@@ -200,10 +200,6 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu GCC with speedb enabled
-            os: ubuntu-22.04
-            compiler: gcc
-            with_speedb: -DENABLE_SPEEDB=ON
 
     runs-on: ${{ matrix.os }}
     env:
@@ -269,7 +265,7 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ matrix.with_speedb }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
@@ -426,6 +422,12 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+          - name: Rocky Linux 8
+            image: rockylinux:8
+            compiler: gcc
+          - name: Rocky Linux 9
+            image: rockylinux:9
+            compiler: gcc
 
     runs-on: ubuntu-22.04
     container:
@@ -446,6 +448,30 @@ jobs:
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Rocky Linux 8
+        if: ${{ startsWith(matrix.image, 'rockylinux:8') }}
+        run: |
+          dnf install -y epel-release
+          dnf config-manager --set-enabled powertools
+          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
+          update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
+          update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Rocky Linux 9
+        if: ${{ startsWith(matrix.image, 'rockylinux:9') }}
+        run: |
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
+          update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
+          update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

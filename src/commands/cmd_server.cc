@@ -1265,7 +1265,62 @@ class CommandDump : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
+class CommandPollUpdates : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    sequence_ = GET_OR_RET(parser.TakeInt<uint64_t>());
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("MAX")) {
+        max_ = GET_OR_RET(parser.TakeInt<int64_t>(NumericRange<int64_t>{1, 1000}));
+      } else if (parser.EatEqICase("STRICT")) {
+        is_strict_ = true;
+      } else if (parser.EatEqICase("FORMAT")) {
+        auto format = GET_OR_RET(parser.TakeStr());
+        if (util::EqualICase(format, "RAW")) {
+          format_ = Format::Raw;
+        } else {
+          return {Status::RedisParseErr, "invalid FORMAT option, only support RAW"};
+        }
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    uint64_t next_sequence = sequence_;
+    // sequence + 1 is for excluding the current sequence to avoid getting duplicate updates
+    auto batches = GET_OR_RET(srv->PollUpdates(sequence_ + 1, max_, is_strict_));
+    std::string updates = redis::MultiLen(batches.size());
+    for (const auto &batch : batches) {
+      updates += redis::BulkString(util::StringToHex(batch.writeBatchPtr->Data()));
+      // It might contain more than one sequence in a batch
+      next_sequence = batch.sequence + batch.writeBatchPtr->Count() - 1;
+    }
+
+    *output = conn->Map({
+        {redis::BulkString("latest_sequence"), redis::Integer(srv->storage->LatestSeqNumber())},
+        {redis::BulkString("updates"), std::move(updates)},
+        {redis::BulkString("next_sequence"), redis::Integer(next_sequence)},
+    });
+    return Status::OK();
+  }
+
+ private:
+  enum class Format {
+    Raw,
+  };
+
+  uint64_t sequence_ = -1;
+  bool is_strict_ = false;
+  int64_t max_ = 16;
+  Format format_ = Format::Raw;
+};
+
+REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", 0, 0, 0),
@@ -1302,5 +1357,6 @@ REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loadin
                         MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive", 0, 0, 0),
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading multi no-script pub-sub", 0, 0, 0),
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandDump>("dump", 2, "read-only", 0, 0, 0), )
+                        MakeCmdAttr<CommandDump>("dump", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only", 0, 0, 0), )
 }  // namespace redis

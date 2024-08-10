@@ -399,9 +399,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
   script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
   if (!lua_isnil(lua, -1)) {
-    int isnum = false;
-    auto function_flags = lua_tointegerx(lua, -1, &isnum);
-    if (!isnum) return {Status::NotOK, "Invalid function flags"};
+    auto function_flags = lua_tointeger(lua, -1);
     script_run_ctx.flags |= function_flags;
   }
   lua_pop(lua, 1);
@@ -648,9 +646,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   current_script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, funcname + 2).c_str());
   if (!lua_isnil(lua, -1)) {
-    int isnum = false;
-    auto script_flags = lua_tointegerx(lua, -1, &isnum);
-    if (!isnum) return {Status::NotOK, "Invalid Script flags"};
+    auto script_flags = lua_tointeger(lua, -1);
     current_script_run_ctx.flags |= script_flags;
   }
   lua_pop(lua, 1);

@@ -454,7 +454,7 @@ class CommandSScan : public CommandSubkeyScanBase {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Set, MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSRem>("srem", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),

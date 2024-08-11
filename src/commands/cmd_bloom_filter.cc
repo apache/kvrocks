@@ -395,7 +395,7 @@ class CommandBFCard : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(BloomFilter, MakeCmdAttr<CommandBFReserve>("bf.reserve", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFAdd>("bf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFMAdd>("bf.madd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBFInsert>("bf.insert", -4, "write", 1, 1, 1),

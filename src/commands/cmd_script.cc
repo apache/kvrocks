@@ -123,12 +123,11 @@ uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &arg
   return flags;
 }
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script",
-                                                   GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script",
-                                                      GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
+REDIS_REGISTER_COMMANDS(
+    Script, MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
 
 }  // namespace redis

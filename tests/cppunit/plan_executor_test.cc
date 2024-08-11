@@ -42,6 +42,13 @@ static IndexMap MakeIndexMap() {
   auto f1 = FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>());
   auto f2 = FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>());
   auto f3 = FieldInfo("f3", std::make_unique<redis::NumericFieldMetadata>());
+
+  auto hnsw_field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+  hnsw_field_meta->vector_type = redis::VectorType::FLOAT64;
+  hnsw_field_meta->dim = 3;
+  hnsw_field_meta->distance_metric = redis::DistanceMetric::L2;
+  auto f4 = FieldInfo("f4", std::move(hnsw_field_meta));
+
   auto ia = std::make_unique<IndexInfo>("ia", redis::IndexMetadata(), "search_ns");
   ia->metadata.on_data_type = redis::IndexOnDataType::JSON;
   ia->prefixes.prefixes.emplace_back("test2:");
@@ -49,6 +56,7 @@ static IndexMap MakeIndexMap() {
   ia->Add(std::move(f1));
   ia->Add(std::move(f2));
   ia->Add(std::move(f3));
+  ia->Add(std::move(f4));
 
   IndexMap res;
   res.Insert(std::move(ia));
@@ -85,6 +93,7 @@ static auto FieldI(const std::string& f) -> const FieldInfo* { return &IndexI()-
 
 static auto N(double n) { return MakeValue<Numeric>(n); }
 static auto T(const std::string& v) { return MakeValue<StringArray>(util::Split(v, ",")); }
+static auto V(const std::vector<double>& vals) { return MakeValue<NumericArray>(vals); }
 
 TEST(PlanExecutorTest, TopNSort) {
   std::vector<ExecutorNode::RowType> data{
@@ -191,6 +200,41 @@ TEST(PlanExecutorTest, Filter) {
     ASSERT_EQ(NextRow(ctx).key, "c");
     ASSERT_EQ(NextRow(ctx).key, "d");
     ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  data = {{"a", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()}, {"b", {{FieldI("f4"), V({9, 10, 11})}}, IndexI()},
+          {"c", {{FieldI("f4"), V({4, 5, 6})}}, IndexI()}, {"d", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()},
+          {"e", {{FieldI("f4"), V({2, 3, 4})}}, IndexI()}, {"f", {{FieldI("f4"), V({12, 13, 14})}}, IndexI()},
+          {"g", {{FieldI("f4"), V({1, 2, 3})}}, IndexI()}};
+  {
+    auto field = std::make_unique<FieldRef>("f4", FieldI("f4"));
+    std::vector<double> vector = {11, 12, 13};
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        std::make_unique<VectorRangeExpr>(field->CloneAs<FieldRef>(), std::make_unique<NumericLiteral>(4),
+                                          std::make_unique<VectorLiteral>(std::move(vector))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "b");
+    ASSERT_EQ(NextRow(ctx).key, "f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    auto field = std::make_unique<FieldRef>("f4", FieldI("f4"));
+    std::vector<double> vector = {2, 3, 4};
+    auto op = std::make_unique<Filter>(
+        std::make_unique<Mock>(data),
+        std::make_unique<VectorRangeExpr>(field->CloneAs<FieldRef>(), std::make_unique<NumericLiteral>(5),
+                                          std::make_unique<VectorLiteral>(std::move(vector))));
+
+    auto ctx = ExecutorContext(op.get());
+    ASSERT_EQ(NextRow(ctx).key, "a");
+    ASSERT_EQ(NextRow(ctx).key, "c");
+    ASSERT_EQ(NextRow(ctx).key, "d");
+    ASSERT_EQ(NextRow(ctx).key, "e");
+    ASSERT_EQ(NextRow(ctx).key, "g");
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }
@@ -414,6 +458,96 @@ TEST_F(PlanExecutorTestC, TagFieldScan) {
     ASSERT_EQ(NextRow(ctx).key, "test2:b");
     ASSERT_EQ(NextRow(ctx).key, "test2:d");
     ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+}
+
+TEST_F(PlanExecutorTestC, HnswVectorFieldScans) {
+  redis::GlobalIndexer indexer(storage_.get());
+  indexer.Add(redis::IndexUpdater(IndexI()));
+
+  {
+    auto updates = ScopedUpdates(indexer,
+                                 {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g",
+                                  "test2:h", "test2:i", "test2:j", "test2:k", "test2:l", "test2:m", "test2:n"},
+                                 "search_ns");
+    json_->Set("test2:a", "$", "{\"f4\": [1,2,3]}");
+    json_->Set("test2:b", "$", "{\"f4\": [4,5,6]}");
+    json_->Set("test2:c", "$", "{\"f4\": [7,8,9]}");
+    json_->Set("test2:d", "$", "{\"f4\": [10,11,12]}");
+    json_->Set("test2:e", "$", "{\"f4\": [13,14,15]}");
+    json_->Set("test2:f", "$", "{\"f4\": [23,24,25]}");
+    json_->Set("test2:g", "$", "{\"f4\": [26,27,28]}");
+    json_->Set("test2:h", "$", "{\"f4\": [77,78,79]}");
+    json_->Set("test2:i", "$", "{\"f4\": [80,81,82]}");
+    json_->Set("test2:j", "$", "{\"f4\": [83,84,85]}");
+    json_->Set("test2:k", "$", "{\"f4\": [86,87,88]}");
+    json_->Set("test2:l", "$", "{\"f4\": [89,90,91]}");
+    json_->Set("test2:m", "$", "{\"f4\": [1026,1027,1028]}");
+    json_->Set("test2:n", "$", "{\"f4\": [2226,2227,2228]}");
+  }
+
+  {
+    std::vector<double> target_vector = {14, 15, 16};
+    auto op =
+        std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 5);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(NextRow(ctx).key, "test2:d");
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    std::vector<double> target_vector = {24, 25, 26};
+    auto op =
+        std::make_unique<HnswVectorFieldKnnScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), target_vector, 3);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:g");
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    std::vector<double> query_vector = {11, 12, 13};
+    auto op =
+        std::make_unique<HnswVectorFieldRangeScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), query_vector, 25);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:d");
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
+    ASSERT_EQ(NextRow(ctx).key, "test2:a");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(ctx.Next().GetValue(), exe_end);
+  }
+
+  {
+    std::vector<double> query_vector = {12, 13, 14};
+    auto op =
+        std::make_unique<HnswVectorFieldRangeScan>(std::make_unique<FieldRef>("f4", FieldI("f4")), query_vector, 5000);
+
+    auto ctx = ExecutorContext(op.get(), storage_.get());
+    ASSERT_EQ(NextRow(ctx).key, "test2:e");
+    ASSERT_EQ(NextRow(ctx).key, "test2:d");
+    ASSERT_EQ(NextRow(ctx).key, "test2:c");
+    ASSERT_EQ(NextRow(ctx).key, "test2:b");
+    ASSERT_EQ(NextRow(ctx).key, "test2:a");
+    ASSERT_EQ(NextRow(ctx).key, "test2:f");
+    ASSERT_EQ(NextRow(ctx).key, "test2:g");
+    ASSERT_EQ(NextRow(ctx).key, "test2:h");
+    ASSERT_EQ(NextRow(ctx).key, "test2:i");
+    ASSERT_EQ(NextRow(ctx).key, "test2:j");
+    ASSERT_EQ(NextRow(ctx).key, "test2:k");
+    ASSERT_EQ(NextRow(ctx).key, "test2:l");
+    ASSERT_EQ(NextRow(ctx).key, "test2:m");
+    ASSERT_EQ(NextRow(ctx).key, "test2:n");
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
 }

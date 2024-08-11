@@ -24,6 +24,7 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "search/common_transformer.h"
 #include "search/index_info.h"
 #include "search/ir.h"
 #include "search/ir_dot_dumper.h"
@@ -48,14 +49,14 @@ class CommandFTCreate : public Commander {
     }
 
     index_info_ = std::make_unique<kqir::IndexInfo>(index_name, redis::IndexMetadata{}, "");
-    auto data_type = IndexOnDataType(0);
+    index_info_->metadata.on_data_type = IndexOnDataType::HASH;
 
     while (parser.Good()) {
       if (parser.EatEqICase("ON")) {
         if (parser.EatEqICase("HASH")) {
-          data_type = IndexOnDataType::HASH;
+          index_info_->metadata.on_data_type = IndexOnDataType::HASH;
         } else if (parser.EatEqICase("JSON")) {
-          data_type = IndexOnDataType::JSON;
+          index_info_->metadata.on_data_type = IndexOnDataType::JSON;
         } else {
           return {Status::RedisParseErr, "expect HASH or JSON after ON"};
         }
@@ -70,12 +71,6 @@ class CommandFTCreate : public Commander {
       }
     }
 
-    if (int(data_type) == 0) {
-      return {Status::RedisParseErr, "expect ON HASH | JSON"};
-    } else {
-      index_info_->metadata.on_data_type = data_type;
-    }
-
     if (parser.EatEqICase("SCHEMA")) {
       while (parser.Good()) {
         auto field_name = GET_OR_RET(parser.TakeStr());
@@ -84,12 +79,27 @@ class CommandFTCreate : public Commander {
         }
 
         std::unique_ptr<redis::IndexFieldMetadata> field_meta;
+        std::unique_ptr<HnswIndexCreationState> hnsw_state;
         if (parser.EatEqICase("TAG")) {
           field_meta = std::make_unique<redis::TagFieldMetadata>();
         } else if (parser.EatEqICase("NUMERIC")) {
           field_meta = std::make_unique<redis::NumericFieldMetadata>();
+        } else if (parser.EatEqICase("VECTOR")) {
+          if (parser.EatEqICase("HNSW")) {
+            field_meta = std::make_unique<redis::HnswVectorFieldMetadata>();
+            auto num_attributes = GET_OR_RET(parser.TakeInt<uint8_t>());
+            if (num_attributes < 6) {
+              return {Status::NotOK, errInvalidNumOfAttributes};
+            }
+            if (num_attributes % 2 != 0) {
+              return {Status::NotOK, "number of attributes must be multiple of 2"};
+            }
+            hnsw_state = std::make_unique<HnswIndexCreationState>(num_attributes);
+          } else {
+            return {Status::RedisParseErr, "only support HNSW algorithm for vector field"};
+          }
         } else {
-          return {Status::RedisParseErr, "expect field type TAG or NUMERIC"};
+          return {Status::RedisParseErr, "expect field type TAG, NUMERIC or VECTOR"};
         }
 
         while (parser.Good()) {
@@ -109,9 +119,49 @@ class CommandFTCreate : public Commander {
             } else {
               break;
             }
+          } else if (auto vector = dynamic_cast<redis::HnswVectorFieldMetadata *>(field_meta.get())) {
+            if (hnsw_state->num_attributes <= 0) break;
+
+            if (parser.EatEqICase("TYPE")) {
+              if (parser.EatEqICase("FLOAT64")) {
+                vector->vector_type = VectorType::FLOAT64;
+              } else {
+                return {Status::RedisParseErr, "unsupported vector type"};
+              }
+              hnsw_state->type_set = true;
+            } else if (parser.EatEqICase("DIM")) {
+              vector->dim = GET_OR_RET(parser.TakeInt<uint16_t>());
+              hnsw_state->dim_set = true;
+            } else if (parser.EatEqICase("DISTANCE_METRIC")) {
+              if (parser.EatEqICase("L2")) {
+                vector->distance_metric = DistanceMetric::L2;
+              } else if (parser.EatEqICase("IP")) {
+                vector->distance_metric = DistanceMetric::IP;
+              } else if (parser.EatEqICase("COSINE")) {
+                vector->distance_metric = DistanceMetric::COSINE;
+              } else {
+                return {Status::RedisParseErr, "unsupported distance metric"};
+              }
+              hnsw_state->distance_metric_set = true;
+            } else if (parser.EatEqICase("M")) {
+              vector->m = GET_OR_RET(parser.TakeInt<uint16_t>());
+            } else if (parser.EatEqICase("EF_CONSTRUCTION")) {
+              vector->ef_construction = GET_OR_RET(parser.TakeInt<uint32_t>());
+            } else if (parser.EatEqICase("EF_RUNTIME")) {
+              vector->ef_runtime = GET_OR_RET(parser.TakeInt<uint32_t>());
+            } else if (parser.EatEqICase("EPSILON")) {
+              vector->epsilon = GET_OR_RET(parser.TakeFloat<double>());
+            } else {
+              break;
+            }
+            hnsw_state->num_attributes -= 2;
           } else {
             break;
           }
+        }
+
+        if (auto vector_meta [[maybe_unused]] = dynamic_cast<redis::HnswVectorFieldMetadata *>(field_meta.get())) {
+          GET_OR_RET(hnsw_state->Validate());
         }
 
         kqir::FieldInfo field_info(field_name, std::move(field_meta));
@@ -139,6 +189,28 @@ class CommandFTCreate : public Commander {
   };
 
  private:
+  struct HnswIndexCreationState {
+    uint8_t num_attributes;
+    bool type_set;
+    bool dim_set;
+    bool distance_metric_set;
+
+    explicit HnswIndexCreationState(uint8_t num_attributes)
+        : num_attributes(num_attributes), type_set(false), dim_set(false), distance_metric_set(false) {}
+
+    Status Validate() const {
+      if (!type_set) {
+        return {Status::RedisParseErr, "VECTOR field requires TYPE to be set"};
+      }
+      if (!dim_set) {
+        return {Status::RedisParseErr, "VECTOR field requires DIM to be set"};
+      }
+      if (!distance_metric_set) {
+        return {Status::RedisParseErr, "VECTOR field requires DISTANCE_METRIC to be set"};
+      }
+      return Status::OK();
+    }
+  };
   std::unique_ptr<kqir::IndexInfo> index_info_;
 };
 
@@ -155,31 +227,56 @@ static void DumpQueryResult(const std::vector<kqir::ExecutorContext::RowType> &r
   }
 }
 
+using CommandParserWithNode = std::pair<CommandParserFromConst<std::vector<std::string>>, std::unique_ptr<kqir::Node>>;
+
+static StatusOr<CommandParserWithNode> ParseSQLQuery(const std::vector<std::string> &args) {
+  CommandParser parser(args, 1);
+
+  auto sql = GET_OR_RET(parser.TakeStr());
+
+  kqir::ParamMap param_map;
+  if (parser.EatEqICase("PARAMS")) {
+    auto nargs = GET_OR_RET(parser.TakeInt<size_t>());
+    if (nargs % 2 != 0) {
+      return {Status::NotOK, "nargs of PARAMS must be multiple of 2"};
+    }
+
+    for (size_t i = 0; i < nargs / 2; ++i) {
+      auto key = GET_OR_RET(parser.TakeStr());
+      auto val = GET_OR_RET(parser.TakeStr());
+
+      param_map.emplace(key, val);
+    }
+  }
+
+  auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.searchsql"), param_map));
+  return std::make_pair(parser, std::move(ir));
+}
+
 class CommandFTExplainSQL : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() == 3) {
-      if (util::EqualICase(args[2], "simple")) {
+    auto [parser, ir] = GET_OR_RET(ParseSQLQuery(args_));
+    ir_ = std::move(ir);
+
+    if (parser.Good()) {
+      if (parser.EatEqICase("simple")) {
         format_ = SIMPLE;
-      } else if (util::EqualICase(args[2], "dot")) {
+      } else if (parser.EatEqICase("dot")) {
         format_ = DOT_GRAPH;
       } else {
         return {Status::NotOK, "output format should be SIMPLE or DOT"};
       }
     }
 
-    if (args.size() > 3) {
-      return {Status::NotOK, "more arguments than expected"};
+    if (parser.Good()) {
+      return {Status::NotOK, "unexpected arguments in the end"};
     }
 
     return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    const auto &sql = args_[1];
-
-    auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.explainsql")));
-
-    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir), conn->GetNamespace()));
+    auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
 
     if (format_ == SIMPLE) {
       output->append(BulkString(plan->Dump()));
@@ -195,20 +292,30 @@ class CommandFTExplainSQL : public Commander {
   };
 
   enum OutputFormat { SIMPLE, DOT_GRAPH } format_ = SIMPLE;
+  std::unique_ptr<kqir::Node> ir_;
 };
 
 class CommandFTSearchSQL : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    auto [parser, ir] = GET_OR_RET(ParseSQLQuery(args));
+    ir_ = std::move(ir);
+
+    if (parser.Good()) {
+      return {Status::NotOK, "unexpected arguments in the end"};
+    }
+
+    return Status::OK();
+  }
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    const auto &sql = args_[1];
-
-    auto ir = GET_OR_RET(kqir::sql::ParseToIR(kqir::peg::string_input(sql, "ft.searchsql")));
-
-    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir), conn->GetNamespace()));
+    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
 
     DumpQueryResult(results, output);
 
     return Status::OK();
   };
+
+ private:
+  std::unique_ptr<kqir::Node> ir_;
 };
 
 static StatusOr<std::unique_ptr<kqir::Node>> ParseRediSearchQuery(const std::vector<std::string> &args) {
@@ -218,12 +325,12 @@ static StatusOr<std::unique_ptr<kqir::Node>> ParseRediSearchQuery(const std::vec
   auto query_str = GET_OR_RET(parser.TakeStr());
 
   auto index_ref = std::make_unique<kqir::IndexRef>(index_name);
-  auto query = kqir::Node::MustAs<kqir::QueryExpr>(
-      GET_OR_RET(kqir::redis_query::ParseToIR(kqir::peg::string_input(query_str, "ft.search"))));
 
   auto select = std::make_unique<kqir::SelectClause>(std::vector<std::unique_ptr<kqir::FieldRef>>{});
   std::unique_ptr<kqir::SortByClause> sort_by;
   std::unique_ptr<kqir::LimitClause> limit;
+
+  kqir::ParamMap param_map;
   while (parser.Good()) {
     if (parser.EatEqICase("RETURNS")) {
       auto count = GET_OR_RET(parser.TakeInt<size_t>());
@@ -247,10 +354,25 @@ static StatusOr<std::unique_ptr<kqir::Node>> ParseRediSearchQuery(const std::vec
       auto count = GET_OR_RET(parser.TakeInt<size_t>());
 
       limit = std::make_unique<kqir::LimitClause>(offset, count);
+    } else if (parser.EatEqICase("PARAMS")) {
+      auto nargs = GET_OR_RET(parser.TakeInt<size_t>());
+      if (nargs % 2 != 0) {
+        return {Status::NotOK, "nargs of PARAMS must be multiple of 2"};
+      }
+
+      for (size_t i = 0; i < nargs / 2; ++i) {
+        auto key = GET_OR_RET(parser.TakeStr());
+        auto val = GET_OR_RET(parser.TakeStr());
+
+        param_map.emplace(key, val);
+      }
     } else {
       return parser.InvalidSyntax();
     }
   }
+
+  auto query = kqir::Node::MustAs<kqir::QueryExpr>(
+      GET_OR_RET(kqir::redis_query::ParseToIR(kqir::peg::string_input(query_str, "ft.search"), param_map)));
 
   return std::make_unique<kqir::SearchExpr>(std::move(index_ref), std::move(query), std::move(limit),
                                             std::move(sort_by), std::move(select));
@@ -358,8 +480,9 @@ class CommandFTDrop : public Commander {
   };
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", 2, "read-only", 0, 0, 0),
+REDIS_REGISTER_COMMANDS(Search,
+                        MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),

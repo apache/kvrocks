@@ -612,7 +612,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		for i := 0; i < 20; i++ {
 			var args [3]int64
 			for j := 0; j < 3; j++ {
-				rand.Seed(time.Now().UnixNano())
+				rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 				args[j] = rand.Int63n(20) - 10
 			}
 			if args[2] == 0 {

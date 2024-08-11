@@ -415,14 +415,17 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
       bufferevent_remove_from_rate_limit_group(accessor->second->GetBufferEvent());
     }
 
-    conns_.erase(accessor);
+    // refer to https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L826 and
+    // https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L826, erase will
+    // release the accessor, so we should access the value before erase action.
     delete accessor->second;
+    conns_.erase(accessor);
 
     srv->DecrClientNum();
   }
   if (ConnMap::accessor accessor; monitor_conns_.find(accessor, fd)) {
-    monitor_conns_.erase(accessor);
     delete accessor->second;
+    monitor_conns_.erase(accessor);
     srv->DecrClientNum();
     srv->DecrMonitorClientNum();
   }

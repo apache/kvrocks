@@ -22,6 +22,8 @@
 
 #include <event2/util.h>
 #include <glog/logging.h>
+#include <oneapi/tbb/parallel_for.h>
+#include <oneapi/tbb/parallel_reduce.h>
 
 #include <stdexcept>
 #include <string>
@@ -38,8 +40,6 @@
 #include <openssl/ssl.h>
 #endif
 
-#include <oneapi/tbb/parallel_for.h>
-#include <oneapi/tbb/parallel_reduce.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -451,13 +451,11 @@ Status Worker::Reply(int fd, const std::string &reply) {
 void Worker::BecomeMonitorConn(redis::Connection *conn) {
   if (ConnMap::accessor accessor; conns_.find(accessor, conn->GetFD())) {
     conns_.erase(accessor);
-    accessor.release();
-
-    if (ConnMap::accessor accessor; monitor_conns_.find(accessor, conn->GetFD())) {
-      accessor->second = conn;
-    } else {
-      monitor_conns_.insert(accessor, std::make_pair(conn->GetFD(), conn));
-    }
+  }
+  if (ConnMap::accessor accessor; monitor_conns_.find(accessor, conn->GetFD())) {
+    accessor->second = conn;
+  } else {
+    monitor_conns_.insert(accessor, std::make_pair(conn->GetFD(), conn));
   }
   srv->IncrMonitorClientNum();
   conn->EnableFlag(redis::Connection::kMonitor);
@@ -494,7 +492,7 @@ void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &respon
 std::string Worker::GetClientsStr() {
   return tbb::parallel_reduce(
       conns_.range(), std::string{},
-      [](const ConnMap::range_type &range, std::string &&result) {
+      [](const ConnMap::range_type &range, std::string result) {
         for (auto &it : range) {
           result.append(it.second->ToString());
         }

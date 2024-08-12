@@ -81,15 +81,14 @@ Worker::~Worker() {
   std::vector<redis::Connection *> conns;
   conns.reserve(conns_.size() + monitor_conns_.size());
 
-  for (const auto &[fd, conn] : conns_) {
-    conns.emplace_back(conn);
+  for (const auto &iter : conns_) {
+    conns.emplace_back(iter.second);
   }
-  for (const auto &[fd, conn] : monitor_conns_) {
-    conns.emplace_back(conn);
+  for (const auto &iter : monitor_conns_) {
+    conns.emplace_back(iter.second);
   }
-
-  for (auto conn : conns) {
-    conn->Close();
+  for (const auto &iter : conns) {
+    iter->Close();
   }
 
   timer_.reset();

@@ -74,6 +74,9 @@ func TestSearch(t *testing.T) {
 
 		srv.Restart()
 		verify(t)
+
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx2", "SCHEMA", "x", "NUMERIC").Err())
+		require.NoError(t, rdb.Do(ctx, "FT.DROPINDEX", "testidx2").Err())
 	})
 
 	t.Run("FT.SEARCH", func(t *testing.T) {

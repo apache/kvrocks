@@ -418,7 +418,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     lua_pop(lua, 2);
   }
 
-  SaveOnRegistry<void>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, nullptr);
+  RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
    * full cycle performed by Lua, which adds too latency.
@@ -681,7 +681,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
   lua_setglobal(lua, "KEYS");
   lua_pushnil(lua);
   lua_setglobal(lua, "ARGV");
-  SaveOnRegistry<void>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, nullptr);
+  RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
    * full cycle performed by Lua, which adds too latency.
@@ -1628,6 +1628,12 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
   lua_pop(lua, 1);
 
   return GetFlagsFromStrings(flags_content);
+}
+
+void RemoveFromRegistry(lua_State *lua, const char *name) {
+  lua_pushstring(lua, name);
+  lua_pushnil(lua);
+  lua_settable(lua, LUA_REGISTRYINDEX);
 }
 
 }  // namespace lua

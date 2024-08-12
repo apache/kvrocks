@@ -185,4 +185,6 @@ T *GetFromRegistry(lua_State *lua, const char *name) {
   return ptr;
 }
 
+void RemoveFromRegistry(lua_State *lua, const char *name);
+
 }  // namespace lua

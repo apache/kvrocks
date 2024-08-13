@@ -619,6 +619,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              rocksdb::PinnableSlice *value) {
   if (ctx.is_txn_mode) {
+    DCHECK_NOTNULL(options.snapshot);
     DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
@@ -651,6 +652,7 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
 rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   if (ctx.is_txn_mode) {
+    DCHECK_NOTNULL(options.snapshot);
     DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   auto iter = db_->NewIterator(options, column_family);
@@ -666,6 +668,7 @@ void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options
                        rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
                        rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
   if (ctx.is_txn_mode) {
+    DCHECK_NOTNULL(options.snapshot);
     DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
@@ -702,7 +705,7 @@ rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOpt
     if (ctx.batch == nullptr) {
       ctx.batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
     }
-    WriteBatchIndexer handle(this, ctx.batch.get());
+    WriteBatchIndexer handle(ctx);
     auto s = updates->Iterate(&handle);
     if (!s.ok()) return s;
   }

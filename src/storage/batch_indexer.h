@@ -29,11 +29,17 @@
 
 #include "storage.h"
 
-// WriteBatchIndexer traverses the operations in WriteBatch and append to the specified WriteBatchWithIndex
+// WriteBatchIndexer traverses the operations in WriteBatch and appends to the specified WriteBatchWithIndex
 class WriteBatchIndexer : public rocksdb::WriteBatch::Handler {
  public:
-  explicit WriteBatchIndexer(engine::Storage* storage, rocksdb::WriteBatchWithIndex* dest_batch)
-      : storage_(storage), dest_batch_(dest_batch) {}
+  explicit WriteBatchIndexer(engine::Storage* storage, rocksdb::WriteBatchWithIndex* dest_batch,
+                             const rocksdb::Snapshot* snapshot)
+      : storage_(storage), dest_batch_(dest_batch), snapshot_(snapshot) {
+    DCHECK_NOTNULL(storage);
+    DCHECK_NOTNULL(dest_batch);
+    DCHECK_NOTNULL(snapshot);
+  }
+  explicit WriteBatchIndexer(engine::Context& ctx) : WriteBatchIndexer(ctx.storage, ctx.batch.get(), ctx.snapshot) {}
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice& key, const rocksdb::Slice& value) override {
     return dest_batch_->Put(storage_->GetCFHandle(static_cast<ColumnFamilyID>(column_family_id)), key, value);
   }
@@ -54,12 +60,15 @@ class WriteBatchIndexer : public rocksdb::WriteBatch::Handler {
 
   rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice& begin_key,
                                 const rocksdb::Slice& end_key) override {
-    // The latest snapshot (default ReadOptions) needs to be used here.
-    // If an old snapshot is used here and writebatchwithindex is still being built,
-    // the newly added keys after the snapshot may not be obtained.
-    rocksdb::ReadOptions read_options;
+    rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
+    read_options.iterate_lower_bound = &begin_key;
+    read_options.iterate_upper_bound = &end_key;
+    read_options.snapshot = snapshot_;
+
     auto cf_handle = storage_->GetCFHandle(static_cast<ColumnFamilyID>(column_family_id));
-    std::unique_ptr<rocksdb::Iterator> it(storage_->GetDB()->NewIterator(read_options, cf_handle));
+
+    auto iter = storage_->GetDB()->NewIterator(read_options, cf_handle);
+    std::unique_ptr<rocksdb::Iterator> it(dest_batch_->NewIteratorWithBase(cf_handle, iter, &read_options));
     for (it->Seek(begin_key); it->Valid() && it->key().compare(end_key) < 0; it->Next()) {
       auto s = dest_batch_->Delete(cf_handle, it->key());
       if (!s.ok()) {
@@ -80,4 +89,5 @@ class WriteBatchIndexer : public rocksdb::WriteBatch::Handler {
  private:
   engine::Storage* storage_;
   rocksdb::WriteBatchWithIndex* dest_batch_;
+  const rocksdb::Snapshot* snapshot_;
 };

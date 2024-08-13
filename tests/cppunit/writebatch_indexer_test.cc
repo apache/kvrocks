@@ -42,9 +42,9 @@ TEST_F(WriteBatchIndexerTest, PutDelete) {
     EXPECT_TRUE(s.ok()) << s.ToString();
   }
 
-  rocksdb::WriteBatchWithIndex dest_batch;
-  WriteBatchIndexer handle(storage_.get(), &dest_batch);
-  s = batch.Iterate(&handle);
+  ctx_->batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  WriteBatchIndexer handle1(*ctx_);
+  s = batch.Iterate(&handle1);
   EXPECT_TRUE(s.ok()) << s.ToString();
 
   rocksdb::Options options;
@@ -52,32 +52,33 @@ TEST_F(WriteBatchIndexerTest, PutDelete) {
   for (int i = 0; i < 4; i++) {
     std::string key = "key" + std::to_string(i);
     std::string expect_value = "value" + std::to_string(i);
-    s = dest_batch.GetFromBatch(options, key, &value);
+    s = ctx_->batch->GetFromBatch(options, key, &value);
     EXPECT_TRUE(s.ok()) << s.ToString();
     EXPECT_EQ(expect_value, value);
   }
 
-  s = storage_->GetDB()->Write(rocksdb::WriteOptions(), dest_batch.GetWriteBatch());
+  s = storage_->GetDB()->Write(rocksdb::WriteOptions(), ctx_->batch->GetWriteBatch());
   EXPECT_TRUE(s.ok()) << s.ToString();
 
   batch.Clear();
-  dest_batch.Clear();
   s = batch.Delete("key0");
   EXPECT_TRUE(s.ok()) << s.ToString();
 
   s = batch.DeleteRange(storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), "key1", "key3");
   EXPECT_TRUE(s.ok()) << s.ToString();
 
-  s = batch.Iterate(&handle);
+  WriteBatchIndexer handle2(*ctx_);
+  s = batch.Iterate(&handle2);
+  s = batch.Iterate(&handle2);
   EXPECT_TRUE(s.ok()) << s.ToString();
 
   for (int i = 0; i < 3; i++) {
     std::string key = "key" + std::to_string(i);
-    s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), key, &value);
+    s = ctx_->batch->GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), key, &value);
     EXPECT_TRUE(s.IsNotFound());
   }
 
-  s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key3", &value);
+  s = ctx_->batch->GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key3", &value);
   EXPECT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ("value3", value);
 }
@@ -92,14 +93,14 @@ TEST_F(WriteBatchIndexerTest, SingleDelete) {
   EXPECT_EQ("value", value);
 
   rocksdb::WriteBatch batch;
-  rocksdb::WriteBatchWithIndex dest_batch;
   s = batch.SingleDelete("key");
   EXPECT_TRUE(s.ok()) << s.ToString();
 
-  WriteBatchIndexer handle(storage_.get(), &dest_batch);
+  ctx_->batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  WriteBatchIndexer handle(*ctx_);
   s = batch.Iterate(&handle);
   EXPECT_TRUE(s.ok()) << s.ToString();
 
-  s = dest_batch.GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
+  s = ctx_->batch->GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
   EXPECT_TRUE(s.IsNotFound());
 }

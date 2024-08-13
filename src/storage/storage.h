@@ -380,12 +380,15 @@ class Storage {
 /// Context does not provide thread safety guarantees and is generally only passed as a parameter between APIs.
 struct Context {
   engine::Storage *storage = nullptr;
-  /// Snapshot should be specified instead of nullptr when used,
+  /// If is_txn_mode is true, snapshot should be specified instead of nullptr when used,
   /// and should be consistent with snapshot in ReadOptions to avoid ambiguity.
-  /// Normally it will be fixed to the latest Snapshot when the Context is constructed
+  /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
+  /// If is_txn_mode is false, the snapshot is nullptr.
   const rocksdb::Snapshot *snapshot = nullptr;
   std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
 
+  /// is_txn_mode is used to determine whether the current Context is in transactional mode,
+  /// if it is not transactional mode, then Context is equivalent to a Storage
   bool is_txn_mode = true;
 
   /// NoTransactionContext returns a Context with a is_txn_mode of false

@@ -74,7 +74,7 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
-  lua_ = lua::CreateState(srv, true);
+  lua_ = lua::CreateState(srv);
 }
 
 Worker::~Worker() {

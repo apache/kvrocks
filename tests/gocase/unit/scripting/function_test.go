@@ -22,6 +22,7 @@ package scripting
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -116,13 +117,13 @@ var testFunctions = func(t *testing.T, enabledRESP3 string) {
 
 	t.Run("FUNCTION LOAD errors", func(t *testing.T) {
 		code := strings.Join(strings.Split(luaMylib1, "\n")[1:], "\n")
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err(), ".*Shebang statement.*")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err(), "ERR Missing library meta")
 
 		code2 := "#!lua\n" + code
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), ".*Expect library name.*")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library name was not given")
 
 		code2 = "#!lua name=$$$\n" + code
-		util.ErrorRegexp(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), ".*valid library name.*")
+		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library names can only contain letters, numbers, or underscores(_) and must be at least one character long")
 	})
 
 	t.Run("FUNCTION LOAD and FCALL mylib1", func(t *testing.T) {
@@ -275,5 +276,271 @@ var testFunctions = func(t *testing.T, enabledRESP3 string) {
 		require.EqualValues(t, ListLibResult{
 			Name: "mylib3", Engine: "lua", Functions: []interface{}{"myget", "myset"},
 		}, decodeListLibResult(t, r))
+	})
+}
+
+func TestFunctionScriptFlags(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Function extract-libname-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname flags=no-writes
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua flags=no-writes name=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname name=mylibname2
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "Redundant library name in script shebang")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!errorenine name=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!luaname=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unexpected engine in script shebang:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua xxxname=mylibname
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mylibname key=value
+		redis.register_function('extract_libname_error_func', function(keys, args) end)`)
+		util.ErrorRegexp(t, r.Err(), "ERR Unknown lua shebang option:*")
+	})
+
+	t.Run("Function extract-flags-error", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 'invalid-flag' })`)
+		require.Error(t, r.Err(), "ERR Error while running new function lib: Unknown flag given: invalid-flag")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 'no-writes', 'invalid-flag' })`)
+		require.Error(t, r.Err(), "ERR Error while running new function lib: Unknown flag given: invalid-flag")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { {} }`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, { 123 }`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=myflags
+		redis.register_function('extract_flags_error_func', function(keys, args) end, 'no-writes'`)
+		require.Error(t, r.Err(), "ERR Expects a valid flags argument to register_function, e.g. flags={ 'no-writes' })")
+	})
+
+	t.Run("no-writes", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=nowriteslib
+		redis.register_function('default_flag_func', function(keys, args) return redis.call("set", keys[1], args[1]) end)
+		redis.register_function('no_writes_func', function(keys, args) return redis.call("set", keys[1], args[1]) end, { 'no-writes' })`)
+		require.NoError(t, r.Err())
+
+		r = rdb.Do(ctx, "FCALL", "default_flag_func", 1, "k1", "v1")
+		require.NoError(t, r.Err())
+		r = rdb.Do(ctx, "FCALL", "no_writes_func", 1, "k2", "v2")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+
+		r = rdb.Do(ctx, "FCALL_RO", "default_flag_func", 1, "k1", "v1")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+		r = rdb.Do(ctx, "FCALL_RO", "no_writes_func", 1, "k2", "v2")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+	})
+
+	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+	defer func() { srv0.Close() }()
+	id0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODEID", id0).Err())
+
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	srv1Alive := true
+	defer func() {
+		if srv1Alive {
+			srv1.Close()
+		}
+	}()
+
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-10000\n", id0, srv0.Host(), srv0.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master - 10001-16383", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	// Node0: bar-slot = 5061, test-slot = 6918
+	// Node1: foo-slot = 12182
+	// Different slots of different nodes are not affected by allow-cross-slot-keys,
+	// and different slots of the same node can be allowed
+	require.NoError(t, rdb0.Set(ctx, "bar", "bar_value", 0).Err())
+	require.NoError(t, rdb0.Set(ctx, "test", "test_value", 0).Err())
+	require.NoError(t, rdb1.Set(ctx, "foo", "foo_value", 0).Err())
+
+	t.Run("no-cluster", func(t *testing.T) {
+		r := rdb0.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=noclusterlib
+		redis.register_function('default_flag_func', function(keys) return redis.call('get', keys[1]) end)
+		redis.register_function('no_cluster_func', function(keys) return redis.call('get', keys[1]) end, { 'no-cluster' })`)
+		require.NoError(t, r.Err())
+
+		require.NoError(t, rdb0.Do(ctx, "FCALL", "default_flag_func", 1, "bar").Err())
+
+		r = rdb0.Do(ctx, "FCALL", "no_cluster_func", 1, "bar")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Can not run script on cluster, 'no-cluster' flag is set")
+
+		// Only valid in cluster mode
+		require.NoError(t, rdb.Set(ctx, "bar", "rdb_bar_value", 0).Err())
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=noclusterlib
+		redis.register_function('no_cluster_func', function(keys) return redis.call('get', keys[1]) end, { 'no-cluster' })`)
+		require.NoError(t, r.Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "no_cluster_func", 1, "bar").Err())
+	})
+
+	t.Run("allow-cross-slot-keys", func(t *testing.T) {
+		r := rdb0.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=crossslotlib
+		redis.register_function('default_flag_func_1', 
+		function() 
+			redis.call('get', 'bar')
+			return redis.call('get', 'test') 
+		end
+		)
+
+		redis.register_function('default_flag_func_2', 
+		function() 
+			redis.call('get', 'bar')
+			return redis.call('get', 'foo') 
+		end
+		)
+
+		redis.register_function('default_flag_func_3', 
+		function(keys) 
+			redis.call('get', keys[1])
+			return redis.call('get', keys[2]) 
+		end
+		)
+
+		redis.register_function(
+		'allow_cross_slot_keys_func_1', 
+		function() 
+			redis.call('get', 'bar')
+			return redis.call('get', 'test') 
+		end,
+		{ 'allow-cross-slot-keys' })
+		 
+		redis.register_function(
+		'allow_cross_slot_keys_func_2', 
+		function() 
+			redis.call('get', 'bar')
+			return redis.call('get', 'foo') 
+		end,
+		{ 'allow-cross-slot-keys' })
+		 
+		redis.register_function(
+		'allow_cross_slot_keys_func_3', 
+		function(keys) 
+			redis.call('get', key[1])
+			return redis.call('get', key[2]) 
+		end,
+		{ 'allow-cross-slot-keys' })
+		
+		`)
+		require.NoError(t, r.Err())
+
+		r = rdb0.Do(ctx, "FCALL", "default_flag_func_1", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access keys that do not hash to the same slot")
+
+		r = rdb0.Do(ctx, "FCALL", "default_flag_func_2", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
+
+		r = rdb0.Do(ctx, "FCALL", "default_flag_func_3", 2, "bar", "test")
+		require.EqualError(t, r.Err(), "CROSSSLOT Attempted to access keys that don't hash to the same slot")
+
+		r = rdb0.Do(ctx, "FCALL", "allow_cross_slot_keys_func_1", 0)
+		require.NoError(t, r.Err())
+
+		r = rdb0.Do(ctx, "FCALL", "allow_cross_slot_keys_func_2", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
+
+		// Pre-declared keys are not affected by allow-cross-slot-keys
+		r = rdb0.Do(ctx, "FCALL", "allow_cross_slot_keys_func_3", 2, "bar", "test")
+		require.EqualError(t, r.Err(), "CROSSSLOT Attempted to access keys that don't hash to the same slot")
+	})
+
+	t.Run("mixed-use", func(t *testing.T) {
+		r := rdb0.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mixeduselib
+		redis.register_function('no_write_cluster_func_1', function()  redis.call('get', 'bar') end, { 'no-writes', 'no-cluster' })
+		
+		redis.register_function('no_write_allow_cross_func_1', 
+		function() redis.call('get', 'bar'); return redis.call('get', 'test'); end, 
+		{ 'no-writes', 'allow-cross-slot-keys' })
+
+		redis.register_function('no_write_allow_cross_func_2', 
+		function() redis.call('set', 'bar'); return redis.call('set', 'test'); end, 
+		{ 'no-writes', 'allow-cross-slot-keys' })
+
+		redis.register_function('no_write_allow_cross_func_3', 
+		function() redis.call('get', 'bar'); return redis.call('get', 'foo'); end, 
+		{ 'no-writes', 'allow-cross-slot-keys' })
+		`)
+		require.NoError(t, r.Err())
+
+		r = rdb0.Do(ctx, "FCALL", "no_write_cluster_func_1", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Can not run script on cluster, 'no-cluster' flag is set")
+
+		// no-cluster Only valid in cluster mode
+		r = rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=mixeduselib2
+		redis.register_function('no_write_cluster_func_2', 
+		function()  return redis.call('set', 'bar', 'bar_value') end, 
+		{ 'no-writes', 'no-cluster' }
+		 )
+
+		redis.register_function('no_write_cluster_func_3', 
+		function()  return redis.call('get', 'bar') end, 
+		{ 'no-writes', 'no-cluster' }
+		 )
+		`)
+		require.NoError(t, r.Err())
+
+		r = rdb.Do(ctx, "FCALL", "no_write_cluster_func_2", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+
+		require.NoError(t, rdb.Set(ctx, "bar", "bar_value_rdb", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "no_write_cluster_func_3", 0).Err())
+
+		require.NoError(t, rdb0.Do(ctx, "FCALL", "no_write_allow_cross_func_1", 0).Err())
+		r = rdb0.Do(ctx, "FCALL", "no_write_allow_cross_func_2", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+		r = rdb0.Do(ctx, "FCALL", "no_write_allow_cross_func_3", 0)
+		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
 	})
 }

@@ -35,6 +35,7 @@
 #include "redis_slot.h"
 #include "server/redis_connection.h"
 #include "status.h"
+#include "storage/scripting.h"
 
 class ClusterNode {
  public:
@@ -83,7 +84,7 @@ class Cluster {
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot) const;
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                         redis::Connection *conn);
+                         redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx = nullptr);
   Status SetMasterSlaveRepl();
   Status MigrateSlotRange(const SlotRange &slot_range, const std::string &dst_node_id,
                           SyncMigrateContext *blocking_ctx = nullptr);

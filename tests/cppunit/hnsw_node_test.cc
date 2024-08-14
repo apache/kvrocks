@@ -60,17 +60,17 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   auto s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  auto decoded_metadata1 = node1.DecodeMetadata(ctx, search_key, storage_.get());
+  auto decoded_metadata1 = node1.DecodeMetadata(ctx, search_key);
   ASSERT_TRUE(decoded_metadata1.IsOK());
   ASSERT_EQ(decoded_metadata1.GetValue().num_neighbours, 0);
   ASSERT_EQ(decoded_metadata1.GetValue().vector, std::vector<double>({1, 2, 3}));
 
-  auto decoded_metadata2 = node2.DecodeMetadata(ctx, search_key, storage_.get());
+  auto decoded_metadata2 = node2.DecodeMetadata(ctx, search_key);
   ASSERT_TRUE(decoded_metadata2.IsOK());
   ASSERT_EQ(decoded_metadata2.GetValue().num_neighbours, 0);
   ASSERT_EQ(decoded_metadata2.GetValue().vector, std::vector<double>({4, 5, 6}));
 
-  auto decoded_metadata3 = node3.DecodeMetadata(ctx, search_key, storage_.get());
+  auto decoded_metadata3 = node3.DecodeMetadata(ctx, search_key);
   ASSERT_TRUE(decoded_metadata3.IsOK());
   ASSERT_EQ(decoded_metadata3.GetValue().num_neighbours, 0);
   ASSERT_EQ(decoded_metadata3.GetValue().vector, std::vector<double>({7, 8, 9}));
@@ -89,17 +89,17 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  node1.DecodeNeighbours(ctx, search_key, storage_.get());
+  node1.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node1.neighbours.size(), 1);
   EXPECT_EQ(node1.neighbours[0], "node2");
 
-  node2.DecodeNeighbours(ctx, search_key, storage_.get());
+  node2.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node2.neighbours.size(), 2);
   std::unordered_set<std::string> expected_neighbours = {"node1", "node3"};
   std::unordered_set<std::string> actual_neighbours(node2.neighbours.begin(), node2.neighbours.end());
   EXPECT_EQ(actual_neighbours, expected_neighbours);
 
-  node3.DecodeNeighbours(ctx, search_key, storage_.get());
+  node3.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node3.neighbours.size(), 1);
   EXPECT_EQ(node3.neighbours[0], "node2");
 }
@@ -128,40 +128,40 @@ TEST_F(NodeTest, ModifyNeighbours) {
 
   // Add Edges
   auto batch2 = storage_->GetWriteBatchBase();
-  auto s1 = node1.AddNeighbour(ctx, "node2", search_key, storage_.get(), batch2.Get());
+  auto s1 = node1.AddNeighbour(ctx, "node2", search_key, batch2.Get());
   ASSERT_TRUE(s1.IsOK());
-  auto s2 = node2.AddNeighbour(ctx, "node1", search_key, storage_.get(), batch2.Get());
+  auto s2 = node2.AddNeighbour(ctx, "node1", search_key, batch2.Get());
   ASSERT_TRUE(s2.IsOK());
-  auto s3 = node2.AddNeighbour(ctx, "node3", search_key, storage_.get(), batch2.Get());
+  auto s3 = node2.AddNeighbour(ctx, "node3", search_key, batch2.Get());
   ASSERT_TRUE(s3.IsOK());
-  auto s4 = node3.AddNeighbour(ctx, "node2", search_key, storage_.get(), batch2.Get());
+  auto s4 = node3.AddNeighbour(ctx, "node2", search_key, batch2.Get());
   ASSERT_TRUE(s4.IsOK());
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch2->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  node1.DecodeNeighbours(ctx, search_key, storage_.get());
+  node1.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node1.neighbours.size(), 1);
   EXPECT_EQ(node1.neighbours[0], "node2");
 
-  node2.DecodeNeighbours(ctx, search_key, storage_.get());
+  node2.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node2.neighbours.size(), 2);
   std::unordered_set<std::string> expected_neighbours = {"node1", "node3"};
   std::unordered_set<std::string> actual_neighbours(node2.neighbours.begin(), node2.neighbours.end());
   EXPECT_EQ(actual_neighbours, expected_neighbours);
 
-  node3.DecodeNeighbours(ctx, search_key, storage_.get());
+  node3.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node3.neighbours.size(), 1);
   EXPECT_EQ(node3.neighbours[0], "node2");
 
   // Remove Edges
   auto batch3 = storage_->GetWriteBatchBase();
-  auto s5 = node2.RemoveNeighbour(ctx, "node3", search_key, storage_.get(), batch3.Get());
+  auto s5 = node2.RemoveNeighbour(ctx, "node3", search_key, batch3.Get());
   ASSERT_TRUE(s5.IsOK());
 
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch3->GetWriteBatch());
   ASSERT_TRUE(s.ok());
 
-  node2.DecodeNeighbours(ctx, search_key, storage_.get());
+  node2.DecodeNeighbours(ctx, search_key);
   EXPECT_EQ(node2.neighbours.size(), 1);
   EXPECT_EQ(node2.neighbours[0], "node1");
 }

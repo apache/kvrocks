@@ -188,7 +188,7 @@ TEST_P(RedisBitmapTest, BitPosClearBit) {
 
     bitmap_->SetBit(*ctx_, key_, i, true, &old_bit);
     EXPECT_FALSE(old_bit);
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
   auto s = bitmap_->Del(*ctx_, key_);
 }
@@ -204,7 +204,7 @@ TEST_P(RedisBitmapTest, BitPosSetBit) {
   for (size_t i = 0; i < sizeof(start_indexes) / sizeof(start_indexes[0]); i++) {
     bitmap_->BitPos(*ctx_, key_, true, start_indexes[i], -1, true, &pos, /*bit_index=*/false);
     EXPECT_EQ(pos, offsets[i]);
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
   auto s = bitmap_->Del(*ctx_, key_);
 }
@@ -346,7 +346,7 @@ TEST_P(RedisBitmapTest, SignedBitfieldTest) {
     EXPECT_EQ(1, rets.size());
     EXPECT_EQ(i - 1, rets[0].value());
     rets.clear();
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
   auto s = bitmap_->Del(*ctx_, key_);
 }
@@ -452,7 +452,7 @@ TEST_P(RedisBitmapTest, SignedBitfieldSatSetTest) {
     EXPECT_EQ(1, rets.size());
     EXPECT_EQ(max, rets[0].value());
     rets.clear();
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
 
   auto s = bitmap_->Del(*ctx_, key_);
@@ -490,7 +490,7 @@ TEST_P(RedisBitmapTest, UnsignedBitfieldSatSetTest) {
     EXPECT_EQ(1, rets.size());
     EXPECT_EQ(max, rets[0].value());
     rets.clear();
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
 
   auto s = bitmap_->Del(*ctx_, key_);
@@ -527,7 +527,7 @@ TEST_P(RedisBitmapTest, SignedBitfieldFailSetTest) {
     EXPECT_EQ(1, rets.size());
     EXPECT_FALSE(rets[0].has_value());
     rets.clear();
-    ctx_->ResetLatestSnapshot();
+    ctx_->RefreshLatestSnapshot();
   }
 
   auto s = bitmap_->Del(*ctx_, key_);

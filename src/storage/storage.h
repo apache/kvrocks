@@ -372,7 +372,7 @@ class Storage {
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
 };
 
-/// Context passes fixed snapshot and batche between APIs
+/// Context passes fixed snapshot and batch between APIs
 ///
 /// Limitations: Performing a large number of writes on the same Context may reduce performance.
 /// Please choose to use the same Context or create a new Context based on the actual situation.
@@ -404,7 +404,7 @@ struct Context {
   /// by the Context. Otherwise it is the same as Storage::DefaultMultiGetOptions
   [[nodiscard]] rocksdb::ReadOptions DefaultMultiGetOptions() const;
 
-  void ResetLatestSnapshot();
+  void RefreshLatestSnapshot();
 
   /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
   explicit Context(engine::Storage *storage) : storage(storage) {
@@ -414,7 +414,7 @@ struct Context {
   ~Context() {
     if (storage) {
       auto guard = storage->WriteLockGuard();
-      if (storage->GetDB()) {
+      if (storage->GetDB() && snapshot) {
         storage->GetDB()->ReleaseSnapshot(snapshot);
       }
     }

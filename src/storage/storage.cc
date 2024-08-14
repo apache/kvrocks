@@ -596,11 +596,14 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
 rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              std::string *value) {
-  DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+  if (ctx.is_txn_mode) {
+    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_EQ(ctx.snapshot->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+  }
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     s = txn_write_batch_->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
-  } else if (ctx.batch) {
+  } else if (ctx.batch && ctx.is_txn_mode) {
     s = ctx.batch->GetFromBatchAndDB(db_.get(), options, column_family, key, value);
   } else {
     s = db_->Get(options, column_family, key, value);
@@ -1279,13 +1282,15 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
   return read_options;
 }
 
-void Context::ResetLatestSnapshot() {
+void Context::RefreshLatestSnapshot() {
   auto guard = storage->WriteLockGuard();
   if (snapshot) {
     storage->GetDB()->ReleaseSnapshot(snapshot);
   }
   snapshot = storage->GetDB()->GetSnapshot();
-  batch->Clear();
+  if (batch) {
+    batch->Clear();
+  }
 }
 
 }  // namespace engine

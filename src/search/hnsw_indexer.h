@@ -41,17 +41,16 @@ struct HnswNode {
 
   HnswNode(NodeKey key, uint16_t level);
 
-  StatusOr<HnswNodeFieldMetadata> DecodeMetadata(engine::Context& ctx, const SearchKey& search_key,
-                                                 engine::Storage* storage) const;
+  StatusOr<HnswNodeFieldMetadata> DecodeMetadata(engine::Context& ctx, const SearchKey& search_key) const;
   void PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
                    rocksdb::WriteBatchBase* batch) const;
-  void DecodeNeighbours(engine::Context& ctx, const SearchKey& search_key, engine::Storage* storage);
+  void DecodeNeighbours(engine::Context& ctx, const SearchKey& search_key);
 
   // For testing purpose
   Status AddNeighbour(engine::Context& ctx, const NodeKey& neighbour_key, const SearchKey& search_key,
-                      engine::Storage* storage, rocksdb::WriteBatchBase* batch) const;
+                      rocksdb::WriteBatchBase* batch) const;
   Status RemoveNeighbour(engine::Context& ctx, const NodeKey& neighbour_key, const SearchKey& search_key,
-                         engine::Storage* storage, rocksdb::WriteBatchBase* batch) const;
+                         rocksdb::WriteBatchBase* batch) const;
   friend struct HnswIndex;
 };
 
@@ -98,7 +97,6 @@ struct HnswIndex {
   static StatusOr<std::vector<VectorItem>> DecodeNodesToVectorItems(engine::Context& ctx,
                                                                     const std::vector<NodeKey>& node_key,
                                                                     uint16_t level, const SearchKey& search_key,
-                                                                    engine::Storage* storage,
                                                                     const HnswVectorFieldMetadata* metadata);
   uint16_t RandomizeLayer();
   StatusOr<NodeKey> DefaultEntryPoint(engine::Context& ctx, uint16_t level) const;

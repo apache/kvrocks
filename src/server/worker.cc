@@ -415,7 +415,7 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
     }
 
     // refer to https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L826 and
-    // https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L826, erase will
+    // https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L1418, erase will
     // release the accessor, so we should access the value before erase action.
     delete accessor->second;
     conns_.erase(accessor);
@@ -596,8 +596,7 @@ std::map<int, redis::Connection *> Worker::GetConnections() const {
   std::map<int, redis::Connection *> result;
   result = tbb::parallel_reduce(
       conns_.range(), result,
-      [](const ConnMap::const_range_type &range, std::map<int, redis::Connection *> &&tmp_result) {
-        // std::map<int, redis::Connection *> tmp_result;
+      [](const ConnMap::const_range_type &range, std::map<int, redis::Connection *> tmp_result) {
         for (auto &it : range) {
           tmp_result.emplace(it.first, it.second);
         }

@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -52,10 +53,12 @@ struct FieldInfo {
 
 struct IndexInfo {
   using FieldMap = std::map<std::string, FieldInfo>;
+  using MutexMap = std::map<std::string, std::mutex>;
 
   std::string name;
   redis::IndexMetadata metadata;
   FieldMap fields;
+  mutable MutexMap field_mutexes;
   redis::IndexPrefixes prefixes;
   std::string ns;
 
@@ -63,10 +66,15 @@ struct IndexInfo {
       : name(std::move(name)), metadata(std::move(metadata)), ns(std::move(ns)) {}
 
   void Add(FieldInfo &&field) {
-    const auto &name = field.name;
+    auto name = field.name;
     field.index = this;
     fields.emplace(name, std::move(field));
+    field_mutexes.emplace(std::piecewise_construct, std::make_tuple(name), std::make_tuple());
   }
+
+  void LockField(const std::string &field_name) const { field_mutexes.at(field_name).lock(); }
+
+  void UnLockField(const std::string &field_name) const { field_mutexes.at(field_name).unlock(); }
 };
 
 struct IndexMap : std::map<std::string, std::unique_ptr<IndexInfo>> {

@@ -198,7 +198,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string last_cmd_;
   int64_t create_time_;
   int64_t last_interaction_;
-  int64_t reply_mode_ = kReplyModeOn;
 
   bufferevent *bev_;
   Request req_;

@@ -1797,8 +1797,8 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
 }
 
 void Server::PauseCommands(uint64_t type, uint64_t timeout_ms) {
-  pause_type_ = type;
-  pause_end_timestamp_ms_ = util::GetTimeStampMS() + timeout_ms;
+  pause_type_ = (int64_t)type;
+  pause_end_timestamp_ms_ = (int64_t)(util::GetTimeStampMS() + timeout_ms);
 }
 
 // AdjustOpenFilesLimit only try best to raise the max open files according to

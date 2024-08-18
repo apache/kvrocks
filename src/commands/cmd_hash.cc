@@ -292,20 +292,6 @@ class CommandHVals : public Commander {
 
 class CommandHGetAll : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    CommandParser parser(args, 2);
-    std::string_view slow_flag;
-    while (parser.Good()) {
-      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
-        slow_ = true;
-      } else {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-    }
-    return Commander::Parse(args);
-  }
-
-  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
     std::vector<FieldValue> field_values;
@@ -323,9 +309,6 @@ class CommandHGetAll : public Commander {
 
     return Status::OK();
   }
-
- private:
-  bool slow_ = false;
 };
 
 class CommandHRangeByLex : public Commander {

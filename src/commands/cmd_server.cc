@@ -563,8 +563,8 @@ class CommandClient : public Commander {
       conn->DisableFlag(redis::Connection::Flag::kReplyModeOff);
       conn->DisableFlag(redis::Connection::Flag::kReplyModeSkip);
       conn->DisableFlag(redis::Connection::Flag::kReplyModeSkipNext);
-      if (pause_type_ != 0) {
-        conn->EnableFlag((redis::Connection::Flag)pause_type_);
+      if (reply_type_ != 0) {
+        conn->EnableFlag((redis::Connection::Flag)reply_type_);
       }
       return Status::OK();
     }

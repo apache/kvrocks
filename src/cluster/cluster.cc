@@ -824,7 +824,7 @@ bool Cluster::IsWriteForbiddenSlot(int slot) const {
 }
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                                redis::Connection *conn) {
+                                redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx) {
   std::vector<int> keys_indexes;
 
   // No keys
@@ -847,6 +847,21 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   if (slots_nodes_[slot] == nullptr) {
     return {Status::RedisClusterDown, "Hash slot not served"};
+  }
+
+  bool cross_slot_ok = false;
+  if (script_run_ctx) {
+    if (script_run_ctx->current_slot != -1 && script_run_ctx->current_slot != slot) {
+      if (getNodeIDBySlot(script_run_ctx->current_slot) != getNodeIDBySlot(slot)) {
+        return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+      }
+      if (!(script_run_ctx->flags & lua::ScriptFlagType::kScriptAllowCrossSlotKeys)) {
+        return {Status::RedisCrossSlot, "Script attempted to access keys that do not hash to the same slot"};
+      }
+    }
+
+    script_run_ctx->current_slot = slot;
+    cross_slot_ok = true;
   }
 
   if (myself_ && myself_ == slots_nodes_[slot]) {
@@ -887,7 +902,11 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     return Status::OK();  // My master is serving this slot
   }
 
-  return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+  if (!cross_slot_ok) {
+    return {Status::RedisMoved, fmt::format("{} {}:{}", slot, slots_nodes_[slot]->host, slots_nodes_[slot]->port)};
+  }
+
+  return Status::OK();
 }
 
 // Only HARD mode is meaningful to the Kvrocks cluster,

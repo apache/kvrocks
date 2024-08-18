@@ -477,6 +477,7 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
+
     if ((subcommand_ == "pause")) {
       if (args.size() != 3 && args.size() != 4) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -495,8 +496,34 @@ class CommandClient : public Commander {
           return {Status::RedisParseErr, errInvalidSyntax};
         }
       }
+
+      return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL|PAUSE ip:port|GETNAME|SETNAME|timeout"};
+
+    if (subcommand_ == "reply") {
+      if (args.size() != 2 && args.size() != 3) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+
+      if (args.size() == 2) {
+        reply_type_ = 0;
+      } else {
+        if (!strcasecmp(args[2].c_str(), "on")) {
+          reply_type_ = 0;
+        } else if (!strcasecmp(args[2].c_str(), "off")) {
+          reply_type_ = Connection::Flag::kReplyModeOff;
+        } else if (!strcasecmp(args[2].c_str(), "skip")) {
+          reply_type_ = Connection::Flag::kReplyModeSkipNext;
+        } else {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      }
+
+      return Status::OK();
+    }
+
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL|PAUSE|REPLY ip:port|GETNAME|SETNAME|timeout"};
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -532,6 +559,14 @@ class CommandClient : public Commander {
     } else if (subcommand_ == "pause") {
       srv->PauseCommands(pause_type_, pause_timeout_ms_);
       return Status::OK();
+    } else if (subcommand_ == "reply") {
+      conn->DisableFlag(redis::Connection::Flag::kReplyModeOff);
+      conn->DisableFlag(redis::Connection::Flag::kReplyModeSkip);
+      conn->DisableFlag(redis::Connection::Flag::kReplyModeSkipNext);
+      if (reply_type_ != 0) {
+        conn->EnableFlag((redis::Connection::Flag)reply_type_);
+      }
+      return Status::OK();
     }
 
     return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME"};
@@ -545,6 +580,7 @@ class CommandClient : public Commander {
   int64_t kill_type_ = 0;
   int64_t pause_type_ = 0;
   int64_t pause_timeout_ms_ = 0;
+  int64_t reply_type_ = 0;
   uint64_t id_ = 0;
   bool new_format_ = true;
 };

@@ -368,9 +368,15 @@ static bool IsCmdForIndexing(const CommandAttributes *attr) {
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
+  if (srv_->GetCommandPauseType() == kPauseAll) {
+    return;
+  }
+
   const Config *config = srv_->GetConfig();
   std::string reply;
   std::string password = config->requirepass;
+
+  std::vector<CommandTokens> commands_to_push_back;
 
   while (!to_process_cmds->empty()) {
     CommandTokens cmd_tokens = std::move(to_process_cmds->front());
@@ -395,6 +401,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
+
+    // Pause the processing of only the write commands, and push them back
+    // to a list that adds them back to the queue to process them when we unpause
+    if (srv_->GetCommandPauseType() == kPauseWrite && (cmd_flags & kCmdWrite)) {
+      commands_to_push_back.push_back(cmd_tokens);
+      continue;
+    }
 
     if (GetNamespace().empty()) {
       if (!password.empty()) {
@@ -548,6 +561,10 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (!reply.empty()) Reply(reply);
     reply.clear();
+  }
+
+  for (const auto &cmd_tokens : commands_to_push_back) {
+    to_process_cmds->emplace_back(cmd_tokens);
   }
 }
 

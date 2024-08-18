@@ -1311,6 +1311,15 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
   *info = string_stream.str();
 }
 
+int64_t Server::GetCommandPauseType() {
+  // Stop pausing command if the timeout has reached
+  if (pause_end_timestamp_ms_ <= util::GetTimeStampMS()) {
+    pause_type_ = kPauseNone;
+  }
+
+  return pause_type_;
+}
+
 std::string Server::GetRocksDBStatsJson() const {
   jsoncons::json stats_json;
 
@@ -1785,6 +1794,11 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   }
 
   return Status::OK();
+}
+
+void Server::PauseCommands(uint64_t type, uint64_t timeout_ms) {
+  pause_type_ = type;
+  pause_end_timestamp_ms_ = util::GetTimeStampMS() + timeout_ms;
 }
 
 // AdjustOpenFilesLimit only try best to raise the max open files according to

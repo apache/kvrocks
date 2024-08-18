@@ -835,10 +835,23 @@ class CommandScan : public CommandScanBase {
     return redis::Array(list);
   }
 
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    std::string_view slow_flag;
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  // // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis_db(srv->storage, conn->GetNamespace());
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeBase);
-
     std::vector<std::string> keys;
     std::string end_key;
     auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_);
@@ -848,6 +861,9 @@ class CommandScan : public CommandScanBase {
     *output = GenerateOutput(srv, conn, keys, end_key);
     return Status::OK();
   }
+
+ private:
+  bool slow_ = false;
 };
 
 class CommandRandomKey : public Commander {

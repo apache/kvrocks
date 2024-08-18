@@ -465,10 +465,21 @@ class CommandLRem : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
+    std::string_view slow_flag;
+
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
     count_ = *parse_result;
     return Commander::Parse(args);
   }
 
+  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint64_t ret = 0;
     redis::List list_db(srv->storage, conn->GetNamespace());
@@ -483,6 +494,7 @@ class CommandLRem : public Commander {
 
  private:
   int count_ = 0;
+  bool slow_ = 0;
 };
 
 class CommandLInsert : public Commander {
@@ -495,9 +507,20 @@ class CommandLInsert : public Commander {
     } else {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
+
+    CommandParser parser(args, 5);
+    std::string_view slow_flag;
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
     return Commander::Parse(args);
   }
 
+  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int ret = 0;
     redis::List list_db(srv->storage, conn->GetNamespace());
@@ -512,6 +535,7 @@ class CommandLInsert : public Commander {
 
  private:
   bool before_ = false;
+  bool slow_ = false;
 };
 
 class CommandLRange : public Commander {
@@ -525,6 +549,16 @@ class CommandLRange : public Commander {
 
     start_ = *parse_start;
     stop_ = *parse_stop;
+    std::string_view slow_flag;
+
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
     return Commander::Parse(args);
   }
 
@@ -542,6 +576,7 @@ class CommandLRange : public Commander {
 
  private:
   int start_ = 0, stop_ = 0;
+  bool slow_ = false;
 };
 
 class CommandLLen : public Commander {
@@ -633,10 +668,20 @@ class CommandLTrim : public Commander {
 
     start_ = *parse_start;
     stop_ = *parse_stop;
+    std::string_view slow_flag;
 
+    CommandParser parser(args, 4);
+    while (parser.Good()) {
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
     return Commander::Parse(args);
   }
 
+  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::List list_db(srv->storage, conn->GetNamespace());
     auto s = list_db.Trim(args_[1], start_, stop_);
@@ -651,6 +696,7 @@ class CommandLTrim : public Commander {
  private:
   int start_ = 0;
   int stop_ = 0;
+  bool slow_ = false;
 };
 
 class CommandRPopLPUSH : public Commander {
@@ -852,7 +898,7 @@ REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-s
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write no-script", 1, -2, 1),
                         MakeCmdAttr<CommandBLMPop>("blmpop", -5, "write no-script", CommandBLMPop::keyRangeGen),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandLInsert>("linsert", 5, "write slow", 1, 1, 1),
+                        MakeCmdAttr<CommandLInsert>("linsert", 5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLLen>("llen", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLMove>("lmove", 5, "write", 1, 2, 1),
                         MakeCmdAttr<CommandBLMove>("blmove", 6, "write", 1, 2, 1),
@@ -860,10 +906,10 @@ REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-s
                         MakeCmdAttr<CommandLPos>("lpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLRange>("lrange", 4, "read-only slow", 1, 1, 1),
-                        MakeCmdAttr<CommandLRem>("lrem", 4, "write no-dbsize-check slow", 1, 1, 1),
+                        MakeCmdAttr<CommandLRange>("lrange", -4, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandLRem>("lrem", -4, "write no-dbsize-check slow", 1, 1, 1),
                         MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLTrim>("ltrim", 4, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandLTrim>("ltrim", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandLMPop>("lmpop", -4, "write", CommandLMPop::keyRangeGen),
                         MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),

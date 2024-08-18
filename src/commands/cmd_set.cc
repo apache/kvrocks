@@ -236,6 +236,31 @@ class CommandSMove : public Commander {
 
 class CommandSDiff : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    size_t i = 1;
+    std::string_view slow_flag;
+
+    // Can use args[i][0] == '-' to check for flags in future
+    while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
+      i++;
+    }
+
+    if (i < args.size()) {
+      CommandParser parser(args, i);
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (slow_) {
+      args_.resize(i);
+    }
+    return Commander::Parse(args);
+  }
+
+  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
     for (size_t i = 1; i < args_.size(); i++) {
@@ -252,10 +277,38 @@ class CommandSDiff : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
+ private:
+  bool slow_ = false;
 };
 
 class CommandSUnion : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    size_t i = 1;
+    std::string_view slow_flag;
+
+    // Can use args[i][0] == '-' to check for flags in future
+    while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
+      i++;
+    }
+
+    if (i < args.size()) {
+      CommandParser parser(args, i);
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (slow_) {
+      args_.resize(i);
+    }
+    return Commander::Parse(args);
+  }
+
+  // TODO: handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
     for (size_t i = 1; i < args_.size(); i++) {
@@ -272,10 +325,38 @@ class CommandSUnion : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
+ private:
+  bool slow_ = false;
 };
 
 class CommandSInter : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    size_t i = 1;
+    std::string_view slow_flag;
+
+    // Can use args[i][0] == '-' to check for flags in future
+    while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
+      i++;
+    }
+
+    if (i < args.size()) {
+      CommandParser parser(args, i);
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
+        slow_ = true;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (slow_) {
+      args_.resize(i);
+    }
+    return Commander::Parse(args);
+  }
+
+  // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
     for (size_t i = 1; i < args_.size(); i++) {
@@ -292,6 +373,9 @@ class CommandSInter : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
+ private:
+  bool slow_ = false;
 };
 
 /*

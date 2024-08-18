@@ -242,7 +242,7 @@ class CommandSDiff : public Commander {
 
     // Can use args[i][0] == '-' to check for flags in future
     while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
-        i++;
+      i++;
     }
 
     if (i < args.size()) {
@@ -259,7 +259,7 @@ class CommandSDiff : public Commander {
     }
     return Commander::Parse(args);
   }
-  
+
   // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
@@ -277,6 +277,7 @@ class CommandSDiff : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
  private:
   bool slow_ = false;
 };
@@ -289,7 +290,7 @@ class CommandSUnion : public Commander {
 
     // Can use args[i][0] == '-' to check for flags in future
     while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
-        i++;
+      i++;
     }
 
     if (i < args.size()) {
@@ -324,6 +325,7 @@ class CommandSUnion : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
  private:
   bool slow_ = false;
 };
@@ -336,7 +338,7 @@ class CommandSInter : public Commander {
 
     // Can use args[i][0] == '-' to check for flags in future
     while (i < args.size() && !util::EqualICase(args[i], "SLOW")) {
-        i++;
+      i++;
     }
 
     if (i < args.size()) {
@@ -353,7 +355,7 @@ class CommandSInter : public Commander {
     }
     return Commander::Parse(args);
   }
-  
+
   // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::vector<Slice> keys;
@@ -371,6 +373,7 @@ class CommandSInter : public Commander {
     *output = conn->SetOfBulkStrings(members);
     return Status::OK();
   }
+
  private:
   bool slow_ = false;
 };

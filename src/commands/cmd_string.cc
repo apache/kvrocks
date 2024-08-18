@@ -74,7 +74,7 @@ class CommandGetEx : public Commander {
         return parser.InvalidSyntax();
       }
     }
-    return Status::OK();  
+    return Status::OK();
   }
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {

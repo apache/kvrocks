@@ -466,7 +466,7 @@ class CommandLRem : public Commander {
     }
 
     std::string_view slow_flag;
-  
+
     CommandParser parser(args, 4);
     while (parser.Good()) {
       if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
@@ -478,7 +478,7 @@ class CommandLRem : public Commander {
     count_ = *parse_result;
     return Commander::Parse(args);
   }
-  
+
   // TODO: Handle slow flag
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint64_t ret = 0;
@@ -507,7 +507,7 @@ class CommandLInsert : public Commander {
     } else {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
-    
+
     CommandParser parser(args, 5);
     std::string_view slow_flag;
     while (parser.Good()) {
@@ -553,7 +553,7 @@ class CommandLRange : public Commander {
 
     CommandParser parser(args, 4);
     while (parser.Good()) {
-      if (parser.EatEqICaseFlag("SLOW", slow_flag)) { 
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
         slow_ = true;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -672,7 +672,7 @@ class CommandLTrim : public Commander {
 
     CommandParser parser(args, 4);
     while (parser.Good()) {
-      if (parser.EatEqICaseFlag("SLOW", slow_flag)) { 
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
         slow_ = true;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};

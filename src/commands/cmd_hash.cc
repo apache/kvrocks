@@ -296,7 +296,7 @@ class CommandHGetAll : public Commander {
     CommandParser parser(args, 2);
     std::string_view slow_flag;
     while (parser.Good()) {
-      if (parser.EatEqICaseFlag("SLOW", slow_flag)) { 
+      if (parser.EatEqICaseFlag("SLOW", slow_flag)) {
         slow_ = true;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};

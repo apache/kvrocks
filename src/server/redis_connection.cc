@@ -130,6 +130,17 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
+  // Do not send replies for both SKIP and OFF modes
+  if (IsFlagEnabled(Flag::kReplyModeOff) || IsFlagEnabled(Flag::kReplyModeSkip)) {
+    return;
+  }
+
+  // Skip starting from the next reply for SKIP mode
+  if (IsFlagEnabled(Flag::kReplyModeSkipNext)) {
+    DisableFlag(Flag::kReplyModeSkipNext);
+    EnableFlag(Flag::kReplyModeSkip);
+  }
+
   owner_->srv->stats.IncrOutboundBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
 }

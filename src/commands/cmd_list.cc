@@ -494,7 +494,6 @@ class CommandLInsert : public Commander {
     } else {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
-
     return Commander::Parse(args);
   }
 

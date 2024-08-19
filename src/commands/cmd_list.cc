@@ -633,6 +633,7 @@ class CommandLTrim : public Commander {
 
     start_ = *parse_start;
     stop_ = *parse_stop;
+    
     return Commander::Parse(args);
   }
 

@@ -449,10 +449,10 @@ REDIS_REGISTER_COMMANDS(Set, MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1,
                         MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only slow", 1, -1, 1),
                         MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only slow", 1, -1, 1),
                         MakeCmdAttr<CommandSInter>("sinter", -2, "read-only slow", 1, -1, 1),
-                        MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only", CommandSInterCard::Range),
-                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only slow", CommandSInterCard::Range),
+                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write slow", 1, -1, 1),
                         MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1), )
 
 }  // namespace redis

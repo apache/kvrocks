@@ -838,6 +838,7 @@ class CommandScan : public CommandScanBase {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis_db(srv->storage, conn->GetNamespace());
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeBase);
+  
     std::vector<std::string> keys;
     std::string end_key;
     auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_);

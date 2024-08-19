@@ -367,7 +367,6 @@ static bool IsCmdForIndexing(const CommandAttributes *attr) {
           attr->category == CommandCategory::Key);
 }
 
-// TODO: Handle slow flag
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;

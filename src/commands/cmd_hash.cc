@@ -440,9 +440,9 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHMGet>("hmget", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hmset", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHVals>("hvals", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandHVals>("hvals", 2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only", 1, 1, 1), )

@@ -65,6 +65,7 @@ enum CommandFlags : uint64_t {
   kCmdROScript = 1ULL << 10,       // "ro-script" flag for read-only script commands
   kCmdCluster = 1ULL << 11,        // "cluster" flag
   kCmdNoDBSizeCheck = 1ULL << 12,  // "no-dbsize-check" flag
+  kCmdSlow = 1ULL << 13,           // "slow" flag
 };
 
 enum class CommandCategory : uint8_t {
@@ -238,6 +239,8 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
       flags |= kCmdCluster;
     else if (flag == "no-dbsize-check")
       flags |= kCmdNoDBSizeCheck;
+    else if (flag == "slow")
+      flags |= kCmdSlow;
     else {
       std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
                                cmd_name)

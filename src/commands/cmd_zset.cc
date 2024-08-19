@@ -1516,9 +1516,9 @@ REDIS_REGISTER_COMMANDS(ZSet, MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1
                         MakeCmdAttr<CommandZCard>("zcard", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZCount>("zcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZIncrBy>("zincrby", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write", CommandZInterStore::Range),
-                        MakeCmdAttr<CommandZInter>("zinter", -3, "read-only", CommandZInter::Range),
-                        MakeCmdAttr<CommandZInterCard>("zintercard", -3, "read-only", CommandZInterCard::Range),
+                        MakeCmdAttr<CommandZInterStore>("zinterstore", -4, "write slow", CommandZInterStore::Range),
+                        MakeCmdAttr<CommandZInter>("zinter", -3, "read-only slow", CommandZInter::Range),
+                        MakeCmdAttr<CommandZInterCard>("zintercard", -3, "read-only slow", CommandZInterCard::Range),
                         MakeCmdAttr<CommandZLexCount>("zlexcount", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMax>("zpopmax", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandZPopMin>("zpopmin", -2, "write", 1, 1, 1),
@@ -1542,10 +1542,10 @@ REDIS_REGISTER_COMMANDS(ZSet, MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1
                         MakeCmdAttr<CommandZScore>("zscore", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZMScore>("zmscore", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZScan>("zscan", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write", CommandZUnionStore::Range),
-                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only", CommandZUnion::Range),
+                        MakeCmdAttr<CommandZUnionStore>("zunionstore", -4, "write slow", CommandZUnionStore::Range),
+                        MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only slow", CommandZUnion::Range),
                         MakeCmdAttr<CommandZRandMember>("zrandmember", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandZDiff>("zdiff", -3, "read-only", CommandZDiff::Range),
-                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -3, "read-only", CommandZDiffStore::Range), )
+                        MakeCmdAttr<CommandZDiff>("zdiff", -3, "read-only slow", CommandZDiff::Range),
+                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -3, "read-only slow", CommandZDiffStore::Range), )
 
 }  // namespace redis

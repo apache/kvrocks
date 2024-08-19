@@ -495,7 +495,6 @@ class CommandLInsert : public Commander {
     } else {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
-
     return Commander::Parse(args);
   }
 
@@ -861,7 +860,7 @@ REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-s
                         MakeCmdAttr<CommandLPos>("lpos", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLPush>("lpush", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLPushX>("lpushx", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLRange>("lrange", 4, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandLRange>("lrange", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLRem>("lrem", 4, "write no-dbsize-check slow", 1, 1, 1),
                         MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandLTrim>("ltrim", 4, "write no-dbsize-check", 1, 1, 1),

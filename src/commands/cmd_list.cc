@@ -633,7 +633,7 @@ class CommandLTrim : public Commander {
 
     start_ = *parse_start;
     stop_ = *parse_stop;
-    
+
     return Commander::Parse(args);
   }
 
@@ -863,7 +863,7 @@ REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write no-s
                         MakeCmdAttr<CommandLRange>("lrange", 4, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandLRem>("lrem", 4, "write no-dbsize-check slow", 1, 1, 1),
                         MakeCmdAttr<CommandLSet>("lset", 4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandLTrim>("ltrim", -4, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandLTrim>("ltrim", 4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandLMPop>("lmpop", -4, "write", CommandLMPop::keyRangeGen),
                         MakeCmdAttr<CommandRPop>("rpop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandRPopLPUSH>("rpoplpush", 3, "write", 1, 2, 1),

@@ -464,6 +464,7 @@ class CommandLRem : public Commander {
     if (!parse_result) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
+
     count_ = *parse_result;
     return Commander::Parse(args);
   }

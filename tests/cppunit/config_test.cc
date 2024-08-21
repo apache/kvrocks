@@ -67,7 +67,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_write_buffer_number", "1"},
       {"rocksdb.target_file_size_base", "100"},
       {"rocksdb.max_background_compactions", "-1"},
-      {"rocksdb.max_sub_compactions", "3"},
+      {"rocksdb.max_subcompactions", "3"},
       {"rocksdb.delayed_write_rate", "1234"},
       {"rocksdb.stats_dump_period_sec", "600"},
       {"rocksdb.compaction_readahead_size", "1024"},

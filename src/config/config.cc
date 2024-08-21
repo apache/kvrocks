@@ -206,7 +206,7 @@ Config::Config() {
       {"rocksdb.target_file_size_base", false, new IntField(&rocks_db.target_file_size_base, 128, 1, 1024)},
       {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, 2, -1, 32)},
       {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},
-      {"rocksdb.max_sub_compactions", false, new IntField(&rocks_db.max_sub_compactions, 2, 0, 16)},
+      {"rocksdb.max_subcompactions", false, new IntField(&rocks_db.max_subcompactions, 2, 0, 16)},
       {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db.delayed_write_rate, 0, 0, INT64_MAX)},
       {"rocksdb.wal_ttl_seconds", true, new IntField(&rocks_db.wal_ttl_seconds, 3 * 3600, 0, INT_MAX)},
       {"rocksdb.wal_size_limit_mb", true, new IntField(&rocks_db.wal_size_limit_mb, 16384, 0, INT_MAX)},
@@ -680,6 +680,7 @@ void Config::initFieldCallback() {
           {"rocksdb.delayed_write_rate", set_db_option_cb},
           {"rocksdb.max_background_compactions", set_db_option_cb},
           {"rocksdb.max_background_flushes", set_db_option_cb},
+          {"rocksdb.max_subcompactions", set_db_option_cb},
           {"rocksdb.compaction_readahead_size", set_db_option_cb},
           {"rocksdb.max_background_jobs", set_db_option_cb},
 

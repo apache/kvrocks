@@ -35,7 +35,6 @@ namespace kqir {
 
 struct NumericFieldScanExecutor : ExecutorNode {
   NumericFieldScan *scan;
-  redis::LatestSnapShot ss;
   util::UniqueIterator iter{nullptr};
 
   IndexInfo *index;
@@ -44,7 +43,6 @@ struct NumericFieldScanExecutor : ExecutorNode {
   NumericFieldScanExecutor(ExecutorContext *ctx, NumericFieldScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
-        ss(ctx->storage),
         index(scan->field->info->index),
         search_key(index->ns, index->name, scan->field->name) {}
 
@@ -77,10 +75,8 @@ struct NumericFieldScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!iter) {
-      rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
-      read_options.snapshot = ss.GetSnapShot();
-
-      iter = util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Search));
+      iter = util::UniqueIterator(ctx->db_ctx, ctx->db_ctx.DefaultScanOptions(),
+                                  ctx->storage->GetCFHandle(ColumnFamilyID::Search));
       if (scan->order == SortByClause::ASC) {
         iter->Seek(IndexKey(scan->range.l));
       } else {

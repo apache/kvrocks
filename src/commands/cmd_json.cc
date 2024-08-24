@@ -57,8 +57,8 @@ class CommandJsonSet : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Json json(srv->storage, conn->GetNamespace());
-
-    auto s = json.Set(args_[1], args_[2], args_[3]);
+    engine::Context ctx(srv->storage);
+    auto s = json.Set(ctx, args_[1], args_[2], args_[3]);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::SimpleString("OK");
@@ -106,7 +106,8 @@ class CommandJsonGet : public Commander {
     redis::Json json(srv->storage, conn->GetNamespace());
 
     JsonValue result;
-    auto s = json.Get(args_[1], paths_, &result);
+    engine::Context ctx(srv->storage);
+    auto s = json.Get(ctx, args_[1], paths_, &result);
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
@@ -131,7 +132,8 @@ class CommandJsonInfo : public Commander {
     redis::Json json(srv->storage, conn->GetNamespace());
 
     auto storage_format = JsonStorageFormat::JSON;
-    auto s = json.Info(args_[1], &storage_format);
+    engine::Context ctx(srv->storage);
+    auto s = json.Info(ctx, args_[1], &storage_format);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     auto format_str = storage_format == JsonStorageFormat::JSON   ? "json"
@@ -149,7 +151,8 @@ class CommandJsonArrAppend : public Commander {
 
     Optionals<size_t> results;
 
-    auto s = json.ArrAppend(args_[1], args_[2], {args_.begin() + 3, args_.end()}, &results);
+    engine::Context ctx(srv->storage);
+    auto s = json.ArrAppend(ctx, args_[1], args_[2], {args_.begin() + 3, args_.end()}, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = OptionalsToString(conn, results);
@@ -175,7 +178,8 @@ class CommandJsonArrInsert : public Commander {
     Optionals<uint64_t> results;
     auto parse_result = ParseInt<int>(args_[3], 10);
 
-    auto s = json.ArrInsert(args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &results);
+    engine::Context ctx(srv->storage);
+    auto s = json.ArrInsert(ctx, args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &results);
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
@@ -203,7 +207,8 @@ class CommandJsonType : public Commander {
     } else if (args_.size() > 3) {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
-    auto s = json.Type(args_[1], path, &types);
+    engine::Context ctx(srv->storage);
+    auto s = json.Type(ctx, args_[1], path, &types);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -224,7 +229,8 @@ class CommandJsonObjkeys : public Commander {
 
     // If path not specified set it to $
     std::string path = (args_.size() > 2) ? args_[2] : "$";
-    auto s = json.ObjKeys(args_[1], path, &results);
+    engine::Context ctx(srv->storage);
+    auto s = json.ObjKeys(ctx, args_[1], path, &results);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -253,7 +259,8 @@ class CommandJsonClear : public Commander {
 
     // If path not specified set it to $
     std::string path = (args_.size() > 2) ? args_[2] : "$";
-    auto s = json.Clear(args_[1], path, &result);
+    engine::Context ctx(svr->storage);
+    auto s = json.Clear(ctx, args_[1], path, &result);
 
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -274,7 +281,8 @@ class CommandJsonToggle : public Commander {
 
     std::string path = (args_.size() > 2) ? args_[2] : "$";
     Optionals<bool> results;
-    auto s = json.Toggle(args_[1], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.Toggle(ctx, args_[1], path, &results);
     if (!s.ok() && !s.IsNotFound()) return {Status::RedisExecErr, s.ToString()};
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -299,7 +307,8 @@ class CommandJsonArrLen : public Commander {
     }
 
     Optionals<uint64_t> results;
-    auto s = json.ArrLen(args_[1], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.ArrLen(ctx, args_[1], path, &results);
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
@@ -320,8 +329,8 @@ class CommandJsonMerge : public Commander {
     std::string path = args_[2];
     std::string value = args_[3];
     bool result = false;
-
-    auto s = json.Merge(key, path, value, result);
+    engine::Context ctx(svr->storage);
+    auto s = json.Merge(ctx, key, path, value, result);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -355,8 +364,8 @@ class CommandJsonArrPop : public Commander {
     redis::Json json(srv->storage, conn->GetNamespace());
 
     Optionals<JsonValue> results;
-
-    auto s = json.ArrPop(args_[1], path_, index_, &results);
+    engine::Context ctx(srv->storage);
+    auto s = json.ArrPop(ctx, args_[1], path_, index_, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::MultiLen(results.size());
@@ -389,7 +398,8 @@ class CommandJsonObjLen : public Commander {
     }
 
     Optionals<uint64_t> results;
-    auto s = json.ObjLen(args_[1], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.ObjLen(ctx, args_[1], path, &results);
     if (s.IsNotFound()) {
       if (args_.size() == 2) {
         *output = conn->NilString();
@@ -420,7 +430,8 @@ class CommandJsonArrTrim : public Commander {
 
     Optionals<uint64_t> results;
 
-    auto s = json.ArrTrim(args_[1], path_, start_, stop_, &results);
+    engine::Context ctx(srv->storage);
+    auto s = json.ArrTrim(ctx, args_[1], path_, start_, stop_, &results);
 
     if (s.IsNotFound()) {
       return {Status::RedisExecErr, "could not perform this operation on a key that doesn't exist"};
@@ -460,7 +471,8 @@ class CommanderJsonArrIndex : public Commander {
 
     Optionals<ssize_t> results;
 
-    auto s = json.ArrIndex(args_[1], args_[2], args_[3], start_, end_, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.ArrIndex(ctx, args_[1], args_[2], args_[3], start_, end_, &results);
 
     if (s.IsNotFound()) {
       *output = conn->NilString();
@@ -489,7 +501,8 @@ class CommandJsonDel : public Commander {
     } else if (args_.size() > 3) {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
-    auto s = json.Del(args_[1], path, &result);
+    engine::Context ctx(svr->storage);
+    auto s = json.Del(ctx, args_[1], path, &result);
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
@@ -506,7 +519,8 @@ class CommandJsonNumIncrBy : public Commander {
     redis::Json json(svr->storage, conn->GetNamespace());
 
     JsonValue result = JsonValue::FromString("[]").GetValue();
-    auto s = json.NumIncrBy(args_[1], args_[2], args_[3], &result);
+    engine::Context ctx(svr->storage);
+    auto s = json.NumIncrBy(ctx, args_[1], args_[2], args_[3], &result);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -523,7 +537,8 @@ class CommandJsonNumMultBy : public Commander {
     redis::Json json(svr->storage, conn->GetNamespace());
 
     JsonValue result = JsonValue::FromString("[]").GetValue();
-    auto s = json.NumMultBy(args_[1], args_[2], args_[3], &result);
+    engine::Context ctx(svr->storage);
+    auto s = json.NumMultBy(ctx, args_[1], args_[2], args_[3], &result);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -548,7 +563,8 @@ class CommandJsonStrAppend : public Commander {
     }
 
     Optionals<uint64_t> results;
-    auto s = json.StrAppend(args_[1], path, args_[3], &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.StrAppend(ctx, args_[1], path, args_[3], &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = OptionalsToString(conn, results);
@@ -569,7 +585,8 @@ class CommandJsonStrLen : public Commander {
     }
 
     Optionals<uint64_t> results;
-    auto s = json.StrLen(args_[1], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.StrLen(ctx, args_[1], path, &results);
     if (s.IsNotFound()) {
       if (args_.size() == 2) {
         *output = conn->NilString();
@@ -598,7 +615,8 @@ class CommandJsonMGet : public Commander {
     }
 
     std::vector<JsonValue> json_values;
-    auto statuses = json.MGet(user_keys, path, json_values);
+    engine::Context ctx(svr->storage);
+    auto statuses = json.MGet(ctx, user_keys, path, json_values);
 
     std::vector<std::string> values;
     values.resize(user_keys.size());
@@ -632,7 +650,8 @@ class CommandJsonMSet : public Commander {
       values.emplace_back(args_[i * 3 + 3]);
     }
 
-    if (auto s = json.MSet(user_keys, paths, values); !s.ok()) return {Status::RedisExecErr, s.ToString()};
+    engine::Context ctx(svr->storage);
+    if (auto s = json.MSet(ctx, user_keys, paths, values); !s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -657,7 +676,8 @@ class CommandJsonDebug : public Commander {
     }
 
     std::vector<std::size_t> results;
-    auto s = json.DebugMemory(args_[2], path, &results);
+    engine::Context ctx(svr->storage);
+    auto s = json.DebugMemory(ctx, args_[2], path, &results);
 
     if (s.IsNotFound()) {
       if (args_.size() == 3) {
@@ -686,7 +706,8 @@ class CommandJsonResp : public Commander {
       return {Status::RedisExecErr, "The number of arguments is more than expected"};
     }
     std::vector<std::string> results;
-    auto s = json.Resp(args_[1], path, &results, conn->GetProtocolVersion());
+    engine::Context ctx(svr->storage);
+    auto s = json.Resp(ctx, args_[1], path, &results, conn->GetProtocolVersion());
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();

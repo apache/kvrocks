@@ -39,11 +39,13 @@ TEST(Storage, CreateBackup) {
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK());
 
+  auto ctx = engine::Context(storage.get());
+
   constexpr int cnt = 10;
   for (int i = 0; i < cnt; i++) {
     rocksdb::WriteBatch batch;
     batch.Put("k", "v");
-    ASSERT_TRUE(storage->Write(rocksdb::WriteOptions(), &batch).ok());
+    ASSERT_TRUE(storage->Write(ctx, rocksdb::WriteOptions(), &batch).ok());
   }
   uint64_t sequence_number = 0;
   s = storage->CreateBackup(&sequence_number);

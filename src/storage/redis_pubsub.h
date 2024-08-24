@@ -31,7 +31,7 @@ class PubSub : public Database {
  public:
   explicit PubSub(engine::Storage *storage)
       : Database(storage), pubsub_cf_handle_(storage->GetCFHandle(ColumnFamilyID::PubSub)) {}
-  rocksdb::Status Publish(const Slice &channel, const Slice &value);
+  rocksdb::Status Publish(engine::Context &ctx, const Slice &channel, const Slice &value);
 
  private:
   rocksdb::ColumnFamilyHandle *pubsub_cf_handle_;

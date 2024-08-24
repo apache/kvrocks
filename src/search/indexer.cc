@@ -304,19 +304,23 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
     return {Status::NotOK, "No such field to do index updating"};
   }
 
+  info->LockField(field);
+
   auto *metadata = iter->second.metadata.get();
   SearchKey search_key(info->ns, info->name, field);
+  Status status;
   if (auto tag = dynamic_cast<TagFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
+    status = UpdateTagIndex(key, original, current, search_key, tag);
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateNumericIndex(key, original, current, search_key, numeric));
+    status = UpdateNumericIndex(key, original, current, search_key, numeric);
   } else if (auto vector = dynamic_cast<HnswVectorFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateHnswVectorIndex(key, original, current, search_key, vector));
+    status = UpdateHnswVectorIndex(key, original, current, search_key, vector);
   } else {
-    return {Status::NotOK, "Unexpected field type"};
+    status = {Status::NotOK, "Unexpected field type"};
   }
 
-  return Status::OK();
+  info->UnLockField(field);
+  return status;
 }
 
 Status IndexUpdater::Update(const FieldValues &original, std::string_view key) const {

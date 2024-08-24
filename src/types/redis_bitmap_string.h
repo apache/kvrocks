@@ -35,13 +35,14 @@ class BitmapString : public Database {
  public:
   BitmapString(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   static rocksdb::Status GetBit(const std::string &raw_value, uint32_t bit_offset, bool *bit);
-  rocksdb::Status SetBit(const Slice &ns_key, std::string *raw_value, uint32_t bit_offset, bool new_bit, bool *old_bit);
+  rocksdb::Status SetBit(engine::Context &ctx, const Slice &ns_key, std::string *raw_value, uint32_t bit_offset,
+                         bool new_bit, bool *old_bit);
   static rocksdb::Status BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit_index,
                                   uint32_t *cnt);
   static rocksdb::Status BitPos(const std::string &raw_value, bool bit, int64_t start, int64_t stop, bool stop_given,
                                 int64_t *pos, bool is_bit_index);
-  rocksdb::Status Bitfield(const Slice &ns_key, std::string *raw_value, const std::vector<BitfieldOperation> &ops,
-                           std::vector<std::optional<BitfieldValue>> *rets);
+  rocksdb::Status Bitfield(engine::Context &ctx, const Slice &ns_key, std::string *raw_value,
+                           const std::vector<BitfieldOperation> &ops, std::vector<std::optional<BitfieldValue>> *rets);
   static rocksdb::Status BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
                                           const std::vector<BitfieldOperation> &ops,
                                           std::vector<std::optional<BitfieldValue>> *rets);

@@ -30,12 +30,11 @@ namespace kqir {
 
 struct FullIndexScanExecutor : ExecutorNode {
   FullIndexScan *scan;
-  redis::LatestSnapShot ss;
   util::UniqueIterator iter{nullptr};
   const std::string *prefix_iter;
 
   FullIndexScanExecutor(ExecutorContext *ctx, FullIndexScan *scan)
-      : ExecutorNode(ctx), scan(scan), ss(ctx->storage), prefix_iter(scan->index->info->prefixes.begin()) {}
+      : ExecutorNode(ctx), scan(scan), prefix_iter(scan->index->info->prefixes.begin()) {}
 
   std::string NSKey(const std::string &user_key) {
     return ComposeNamespaceKey(scan->index->info->ns, user_key, ctx->storage->IsSlotIdEncoded());
@@ -48,9 +47,8 @@ struct FullIndexScanExecutor : ExecutorNode {
 
     auto ns_key = NSKey(*prefix_iter);
     if (!iter) {
-      rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
-      read_options.snapshot = ss.GetSnapShot();
-      iter = util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Metadata));
+      iter = util::UniqueIterator(ctx->db_ctx, ctx->db_ctx.DefaultScanOptions(),
+                                  ctx->storage->GetCFHandle(ColumnFamilyID::Metadata));
       iter->Seek(ns_key);
     }
 

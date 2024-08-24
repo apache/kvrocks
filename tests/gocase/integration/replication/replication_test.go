@@ -181,7 +181,6 @@ func TestReplicationBasics(t *testing.T) {
 		util.SlaveOf(t, slaveClient, master)
 		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
 	})
-
 	util.WaitForSync(t, slaveClient)
 	t.Run("Sync should have transferred keys from master", func(t *testing.T) {
 		require.Equal(t, masterClient.Get(ctx, "mykey"), slaveClient.Get(ctx, "mykey"))

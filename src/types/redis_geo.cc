@@ -24,7 +24,8 @@
 
 namespace redis {
 
-rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, uint64_t *added_cnt) {
+rocksdb::Status Geo::Add(engine::Context &ctx, const Slice &user_key, std::vector<GeoPoint> *geo_points,
+                         uint64_t *added_cnt) {
   std::vector<MemberScore> member_scores;
   for (const auto &geo_point : *geo_points) {
     /* Turn the coordinates into the score of the element. */
@@ -33,12 +34,13 @@ rocksdb::Status Geo::Add(const Slice &user_key, std::vector<GeoPoint> *geo_point
     GeoHashFix52Bits bits = GeoHashHelper::Align52Bits(hash);
     member_scores.emplace_back(MemberScore{geo_point.member, static_cast<double>(bits)});
   }
-  return ZSet::Add(user_key, ZAddFlags::Default(), &member_scores, added_cnt);
+  return ZSet::Add(ctx, user_key, ZAddFlags::Default(), &member_scores, added_cnt);
 }
 
-rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist) {
+rocksdb::Status Geo::Dist(engine::Context &ctx, const Slice &user_key, const Slice &member_1, const Slice &member_2,
+                          double *dist) {
   std::map<std::string, GeoPoint> geo_points;
-  auto s = MGet(user_key, {member_1, member_2}, &geo_points);
+  auto s = MGet(ctx, user_key, {member_1, member_2}, &geo_points);
   if (!s.ok()) return s;
 
   for (const auto &member : {member_1, member_2}) {
@@ -53,10 +55,10 @@ rocksdb::Status Geo::Dist(const Slice &user_key, const Slice &member_1, const Sl
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &members,
+rocksdb::Status Geo::Hash(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                           std::vector<std::string> *geo_hashes) {
   std::map<std::string, GeoPoint> geo_points;
-  auto s = MGet(user_key, members, &geo_points);
+  auto s = MGet(ctx, user_key, members, &geo_points);
   if (!s.ok()) return s;
 
   for (const auto &member : members) {
@@ -71,14 +73,14 @@ rocksdb::Status Geo::Hash(const Slice &user_key, const std::vector<Slice> &membe
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::Pos(const Slice &user_key, const std::vector<Slice> &members,
+rocksdb::Status Geo::Pos(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                          std::map<std::string, GeoPoint> *geo_points) {
-  return MGet(user_key, members, geo_points);
+  return MGet(ctx, user_key, members, geo_points);
 }
 
-rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double latitude, double radius_meters, int count,
-                            DistanceSort sort, const std::string &store_key, bool store_distance,
-                            double unit_conversion, std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::Radius(engine::Context &ctx, const Slice &user_key, double longitude, double latitude,
+                            double radius_meters, int count, DistanceSort sort, const std::string &store_key,
+                            bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
   GeoShape geo_shape;
   geo_shape.type = kGeoShapeTypeCircular;
   geo_shape.xy[0] = longitude;
@@ -87,37 +89,38 @@ rocksdb::Status Geo::Radius(const Slice &user_key, double longitude, double lati
   geo_shape.conversion = 1;
 
   std::string dummy_member;
-  return SearchStore(user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance,
+  return SearchStore(ctx, user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance,
                      unit_conversion, geo_points);
 }
 
-rocksdb::Status Geo::RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,
-                                    DistanceSort sort, const std::string &store_key, bool store_distance,
-                                    double unit_conversion, std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::RadiusByMember(engine::Context &ctx, const Slice &user_key, const Slice &member,
+                                    double radius_meters, int count, DistanceSort sort, const std::string &store_key,
+                                    bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
   GeoPoint geo_point;
-  auto s = Get(user_key, member, &geo_point);
+  auto s = Get(ctx, user_key, member, &geo_point);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  return Radius(user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
+  return Radius(ctx, user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
                 store_distance, unit_conversion, geo_points);
 }
 
-rocksdb::Status Geo::Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
-                            int count, DistanceSort sort, bool store_distance, double unit_conversion,
-                            std::vector<GeoPoint> *geo_points) {
-  return SearchStore(user_key, geo_shape, point_type, member, count, sort, "", store_distance, unit_conversion,
+rocksdb::Status Geo::Search(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
+                            std::string &member, int count, DistanceSort sort, bool store_distance,
+                            double unit_conversion, std::vector<GeoPoint> *geo_points) {
+  return SearchStore(ctx, user_key, geo_shape, point_type, member, count, sort, "", store_distance, unit_conversion,
                      geo_points);
 }
 
-rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
-                                 std::string &member, int count, DistanceSort sort, const std::string &store_key,
-                                 bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
+rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape,
+                                 OriginPointType point_type, std::string &member, int count, DistanceSort sort,
+                                 const std::string &store_key, bool store_distance, double unit_conversion,
+                                 std::vector<GeoPoint> *geo_points) {
   if (point_type == kMember) {
     GeoPoint geo_point;
-    auto s = Get(user_key, member, &geo_point);
+    auto s = Get(ctx, user_key, member, &geo_point);
     // store key is not empty, try to remove it before returning.
     if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
-      auto del_s = ZSet::Del(store_key);
+      auto del_s = ZSet::Del(ctx, store_key);
       if (!del_s.ok()) return del_s;
     }
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -128,10 +131,10 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
-  rocksdb::Status s = ZSet::GetMetadata(GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = ZSet::GetMetadata(ctx, ns_key, &metadata);
   // store key is not empty, try to remove it before returning.
   if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
-    auto del_s = ZSet::Del(store_key);
+    auto del_s = ZSet::Del(ctx, store_key);
     if (!del_s.ok()) return del_s;
   }
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
@@ -140,13 +143,13 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
   GeoHashRadius georadius = GeoHashHelper::GetAreasByShapeWGS84(geo_shape);
 
   // Get zset for all matching points
-  membersOfAllNeighbors(user_key, georadius, geo_shape, geo_points);
+  membersOfAllNeighbors(ctx, user_key, georadius, geo_shape, geo_points);
 
   // if no matching results, give empty reply
   if (geo_points->empty()) {
     // store key is not empty, try to remove it before returning.
     if (!store_key.empty()) {
-      auto del_s = ZSet::Del(store_key);
+      auto del_s = ZSet::Del(ctx, store_key);
       if (!del_s.ok()) return del_s;
     }
     return rocksdb::Status::OK();
@@ -164,7 +167,7 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
     auto result_length = static_cast<int64_t>(geo_points->size());
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
-      auto s = ZSet::Del(user_key);
+      auto s = ZSet::Del(ctx, user_key);
       if (!s.ok()) return s;
     } else {
       std::vector<MemberScore> member_scores;
@@ -175,15 +178,15 @@ rocksdb::Status Geo::SearchStore(const Slice &user_key, GeoShape geo_shape, Orig
         double score = store_distance ? geo_point.dist / unit_conversion : geo_point.score;
         member_scores.emplace_back(MemberScore{geo_point.member, score});
       }
-      ZSet::Overwrite(store_key, member_scores);
+      ZSet::Overwrite(ctx, store_key, member_scores);
     }
   }
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point) {
+rocksdb::Status Geo::Get(engine::Context &ctx, const Slice &user_key, const Slice &member, GeoPoint *geo_point) {
   std::map<std::string, GeoPoint> geo_points;
-  auto s = MGet(user_key, {member}, &geo_points);
+  auto s = MGet(ctx, user_key, {member}, &geo_points);
   if (!s.ok()) return s;
 
   auto iter = geo_points.find(member.ToString());
@@ -194,10 +197,10 @@ rocksdb::Status Geo::Get(const Slice &user_key, const Slice &member, GeoPoint *g
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Geo::MGet(const Slice &user_key, const std::vector<Slice> &members,
+rocksdb::Status Geo::MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                           std::map<std::string, GeoPoint> *geo_points) {
   std::map<std::string, double> member_scores;
-  auto s = ZSet::MGet(user_key, members, &member_scores);
+  auto s = ZSet::MGet(ctx, user_key, members, &member_scores);
   if (!s.ok()) return s;
 
   for (const auto &member : members) {
@@ -253,7 +256,7 @@ int Geo::decodeGeoHash(double bits, double *xy) {
 }
 
 /* Search all eight neighbors + self geohash box */
-int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, const GeoShape &geo_shape,
+int Geo::membersOfAllNeighbors(engine::Context &ctx, const Slice &user_key, GeoHashRadius n, const GeoShape &geo_shape,
                                std::vector<GeoPoint> *geo_points) {
   GeoHashBits neighbors[9];
   unsigned int last_processed = 0;
@@ -284,7 +287,7 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, const Geo
         neighbors[i].step == neighbors[last_processed].step) {
       continue;
     }
-    count += membersOfGeoHashBox(user_key, neighbors[i], geo_points, geo_shape);
+    count += membersOfGeoHashBox(ctx, user_key, neighbors[i], geo_points, geo_shape);
     last_processed = i;
   }
   return count;
@@ -293,12 +296,12 @@ int Geo::membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, const Geo
 /* Obtain all members between the min/max of this geohash bounding box.
  * Populate a GeoArray of GeoPoints by calling getPointsInRange().
  * Return the number of points added to the array. */
-int Geo::membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points,
-                             const GeoShape &geo_shape) {
+int Geo::membersOfGeoHashBox(engine::Context &ctx, const Slice &user_key, GeoHashBits hash,
+                             std::vector<GeoPoint> *geo_points, const GeoShape &geo_shape) {
   GeoHashFix52Bits min = 0, max = 0;
 
   scoresOfGeoHashBox(hash, &min, &max);
-  return getPointsInRange(user_key, static_cast<double>(min), static_cast<double>(max), geo_shape, geo_points);
+  return getPointsInRange(ctx, user_key, static_cast<double>(min), static_cast<double>(max), geo_shape, geo_points);
 }
 
 /* Compute the sorted set scores min (inclusive), max (exclusive) we should
@@ -342,8 +345,8 @@ void Geo::scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix
  * using multiple queries to the sorted set, that we later need to sort
  * via qsort. Similarly we need to be able to reject points outside the search
  * radius area ASAP in order to allocate and process more points than needed. */
-int Geo::getPointsInRange(const Slice &user_key, double min, double max, const GeoShape &geo_shape,
-                          std::vector<GeoPoint> *geo_points) {
+int Geo::getPointsInRange(engine::Context &ctx, const Slice &user_key, double min, double max,
+                          const GeoShape &geo_shape, std::vector<GeoPoint> *geo_points) {
   /* include min in range; exclude max in range */
   /* That's: min <= val < max */
   RangeScoreSpec spec;
@@ -352,7 +355,7 @@ int Geo::getPointsInRange(const Slice &user_key, double min, double max, const G
   spec.maxex = true;
   uint64_t size = 0;
   std::vector<MemberScore> member_scores;
-  rocksdb::Status s = ZSet::RangeByScore(user_key, spec, &member_scores, &size);
+  rocksdb::Status s = ZSet::RangeByScore(ctx, user_key, spec, &member_scores, &size);
   if (!s.ok()) return 0;
 
   for (const auto &member_score : member_scores) {

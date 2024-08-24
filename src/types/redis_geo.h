@@ -59,36 +59,40 @@ namespace redis {
 class Geo : public ZSet {
  public:
   explicit Geo(engine::Storage *storage, const std::string &ns) : ZSet(storage, ns) {}
-  rocksdb::Status Add(const Slice &user_key, std::vector<GeoPoint> *geo_points, uint64_t *added_cnt);
-  rocksdb::Status Dist(const Slice &user_key, const Slice &member_1, const Slice &member_2, double *dist);
-  rocksdb::Status Hash(const Slice &user_key, const std::vector<Slice> &members, std::vector<std::string> *geo_hashes);
-  rocksdb::Status Pos(const Slice &user_key, const std::vector<Slice> &members,
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, std::vector<GeoPoint> *geo_points,
+                      uint64_t *added_cnt);
+  rocksdb::Status Dist(engine::Context &ctx, const Slice &user_key, const Slice &member_1, const Slice &member_2,
+                       double *dist);
+  rocksdb::Status Hash(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                       std::vector<std::string> *geo_hashes);
+  rocksdb::Status Pos(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                       std::map<std::string, GeoPoint> *geo_points);
-  rocksdb::Status Radius(const Slice &user_key, double longitude, double latitude, double radius_meters, int count,
-                         DistanceSort sort, const std::string &store_key, bool store_distance, double unit_conversion,
-                         std::vector<GeoPoint> *geo_points);
-  rocksdb::Status RadiusByMember(const Slice &user_key, const Slice &member, double radius_meters, int count,
-                                 DistanceSort sort, const std::string &store_key, bool store_distance,
+  rocksdb::Status Radius(engine::Context &ctx, const Slice &user_key, double longitude, double latitude,
+                         double radius_meters, int count, DistanceSort sort, const std::string &store_key,
+                         bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
+  rocksdb::Status RadiusByMember(engine::Context &ctx, const Slice &user_key, const Slice &member, double radius_meters,
+                                 int count, DistanceSort sort, const std::string &store_key, bool store_distance,
                                  double unit_conversion, std::vector<GeoPoint> *geo_points);
-  rocksdb::Status Search(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type, std::string &member,
-                         int count, DistanceSort sort, bool store_distance, double unit_conversion,
+  rocksdb::Status Search(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
+                         std::string &member, int count, DistanceSort sort, bool store_distance, double unit_conversion,
                          std::vector<GeoPoint> *geo_points);
-  rocksdb::Status SearchStore(const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
-                              std::string &member, int count, DistanceSort sort, const std::string &store_key,
-                              bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
-  rocksdb::Status Get(const Slice &user_key, const Slice &member, GeoPoint *geo_point);
-  rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members,
+  rocksdb::Status SearchStore(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape,
+                              OriginPointType point_type, std::string &member, int count, DistanceSort sort,
+                              const std::string &store_key, bool store_distance, double unit_conversion,
+                              std::vector<GeoPoint> *geo_points);
+  rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &member, GeoPoint *geo_point);
+  rocksdb::Status MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                        std::map<std::string, GeoPoint> *geo_points);
   static std::string EncodeGeoHash(double longitude, double latitude);
 
  private:
   static int decodeGeoHash(double bits, double *xy);
-  int membersOfAllNeighbors(const Slice &user_key, GeoHashRadius n, const GeoShape &geo_shape,
+  int membersOfAllNeighbors(engine::Context &ctx, const Slice &user_key, GeoHashRadius n, const GeoShape &geo_shape,
                             std::vector<GeoPoint> *geo_points);
-  int membersOfGeoHashBox(const Slice &user_key, GeoHashBits hash, std::vector<GeoPoint> *geo_points,
-                          const GeoShape &geo_shape);
+  int membersOfGeoHashBox(engine::Context &ctx, const Slice &user_key, GeoHashBits hash,
+                          std::vector<GeoPoint> *geo_points, const GeoShape &geo_shape);
   static void scoresOfGeoHashBox(GeoHashBits hash, GeoHashFix52Bits *min, GeoHashFix52Bits *max);
-  int getPointsInRange(const Slice &user_key, double min, double max, const GeoShape &geo_shape,
+  int getPointsInRange(engine::Context &ctx, const Slice &user_key, double min, double max, const GeoShape &geo_shape,
                        std::vector<GeoPoint> *geo_points);
   static bool appendIfWithinRadius(std::vector<GeoPoint> *geo_points, double lon, double lat, double radius,
                                    double score, const std::string &member);

@@ -116,6 +116,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
   //  3. Update the map of slots to nodes.
   // remember: The atomicity of the process is based on
   // the transactionality of ClearKeysOfSlotRange().
+  engine::Context ctx(srv_->storage);
   for (auto [s_start, s_end] : slot_ranges) {
     for (int slot = s_start; slot <= s_end; slot++) {
       std::shared_ptr<ClusterNode> old_node = slots_nodes_[slot];
@@ -129,7 +130,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       if (old_node == myself_ && old_node != to_assign_node) {
         // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
-          auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, SlotRange::GetPoint(slot));
+          auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
             LOG(ERROR) << "failed to clear data of migrated slot: " << s.ToString();
           }
@@ -212,9 +213,10 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   // Clear data of migrated slots
   if (!migrated_slots_.empty()) {
+    engine::Context ctx(srv_->storage);
     for (const auto &[slot, _] : migrated_slots_) {
       if (slots_nodes_[slot] != myself_) {
-        auto s = srv_->slot_migrator->ClearKeysOfSlotRange(kDefaultNamespace, SlotRange::GetPoint(slot));
+        auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
         if (!s.ok()) {
           LOG(ERROR) << "failed to clear data of migrated slots: " << s.ToString();
         }

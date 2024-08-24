@@ -35,7 +35,6 @@ namespace kqir {
 
 struct TagFieldScanExecutor : ExecutorNode {
   TagFieldScan *scan;
-  redis::LatestSnapShot ss;
   util::UniqueIterator iter{nullptr};
 
   IndexInfo *index;
@@ -45,7 +44,6 @@ struct TagFieldScanExecutor : ExecutorNode {
   TagFieldScanExecutor(ExecutorContext *ctx, TagFieldScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
-        ss(ctx->storage),
         index(scan->field->info->index),
         index_key(redis::SearchKey(index->ns, index->name, scan->field->name).ConstructTagFieldData(scan->tag, {})),
         case_sensitive(scan->field->info->MetadataAs<redis::TagFieldMetadata>()->case_sensitive) {}
@@ -78,10 +76,8 @@ struct TagFieldScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!iter) {
-      rocksdb::ReadOptions read_options = ctx->storage->DefaultScanOptions();
-      read_options.snapshot = ss.GetSnapShot();
-
-      iter = util::UniqueIterator(ctx->storage, read_options, ctx->storage->GetCFHandle(ColumnFamilyID::Search));
+      iter = util::UniqueIterator(ctx->db_ctx, ctx->db_ctx.DefaultScanOptions(),
+                                  ctx->storage->GetCFHandle(ColumnFamilyID::Search));
       iter->Seek(index_key);
     }
 

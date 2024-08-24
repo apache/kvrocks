@@ -41,7 +41,8 @@ class CommandGet : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.Get(args_[1], &value);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.Get(ctx, args_[1], &value);
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
     // to the `max-bitmap-to-string-mb` configuration.
@@ -49,7 +50,7 @@ class CommandGet : public Commander {
       Config *config = srv->GetConfig();
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-      s = bitmap_db.GetString(args_[1], max_btos_size, &value);
+      s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -79,8 +80,9 @@ class CommandGetEx : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string value;
+    engine::Context ctx(srv->storage);
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.GetEx(args_[1], &value, expire_);
+    auto s = string_db.GetEx(ctx, args_[1], &value, expire_);
 
     // The IsInvalidArgument error means the key type maybe a bitmap
     // which we need to fall back to the bitmap's GetString according
@@ -89,9 +91,9 @@ class CommandGetEx : public Commander {
       Config *config = srv->GetConfig();
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-      s = bitmap_db.GetString(args_[1], max_btos_size, &value);
+      s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
       if (s.ok() && expire_) {
-        s = bitmap_db.Expire(args_[1], expire_.value());
+        s = bitmap_db.Expire(ctx, args_[1], expire_.value());
       }
     }
     if (!s.ok() && !s.IsNotFound()) {
@@ -111,7 +113,8 @@ class CommandStrlen : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.Get(args_[1], &value);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.Get(ctx, args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -130,7 +133,8 @@ class CommandGetSet : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
     std::optional<std::string> old_value;
-    auto s = string_db.GetSet(args_[1], args_[2], old_value);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.GetSet(ctx, args_[1], args_[2], old_value);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -149,7 +153,8 @@ class CommandGetDel : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
     std::string value;
-    auto s = string_db.GetDel(args_[1], &value);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.GetDel(ctx, args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -180,7 +185,8 @@ class CommandGetRange : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.Get(args_[1], &value);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.Get(ctx, args_[1], &value);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -227,7 +233,8 @@ class CommandSetRange : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetRange(args_[1], offset_, args_[3], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.SetRange(ctx, args_[1], offset_, args_[3], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -250,7 +257,8 @@ class CommandMGet : public Commander {
     }
     std::vector<std::string> values;
     // always return OK
-    auto statuses = string_db.MGet(keys, &values);
+    engine::Context ctx(srv->storage);
+    auto statuses = string_db.MGet(ctx, keys, &values);
     *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }
@@ -261,7 +269,8 @@ class CommandAppend : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.Append(args_[1], args_[2], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.Append(ctx, args_[1], args_[2], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -299,7 +308,8 @@ class CommandSet : public Commander {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
 
-    rocksdb::Status s = string_db.Set(args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_}, ret);
+    engine::Context ctx(srv->storage);
+    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -345,7 +355,8 @@ class CommandSetEX : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetEX(args_[1], args_[3], expire_);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.SetEX(ctx, args_[1], args_[3], expire_);
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -371,7 +382,8 @@ class CommandPSetEX : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetEX(args_[1], args_[3], expire_);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.SetEX(ctx, args_[1], args_[3], expire_);
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -396,8 +408,8 @@ class CommandMSet : public Commander {
     for (size_t i = 1; i < args_.size(); i += 2) {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
-
-    auto s = string_db.MSet(kvs, 0);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.MSet(ctx, kvs, 0);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -412,7 +424,8 @@ class CommandSetNX : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     bool ret = false;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.SetNX(args_[1], args_[2], 0, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.SetNX(ctx, args_[1], args_[2], 0, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -440,7 +453,8 @@ class CommandMSetNX : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSetNX(kvs, 0, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.MSetNX(ctx, kvs, 0, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -455,7 +469,8 @@ class CommandIncr : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.IncrBy(args_[1], 1, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.IncrBy(ctx, args_[1], 1, &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
@@ -468,7 +483,8 @@ class CommandDecr : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.IncrBy(args_[1], -1, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.IncrBy(ctx, args_[1], -1, &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
@@ -491,7 +507,8 @@ class CommandIncrBy : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.IncrBy(args_[1], increment_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.IncrBy(ctx, args_[1], increment_, &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
@@ -517,7 +534,8 @@ class CommandIncrByFloat : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     double ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.IncrByFloat(args_[1], increment_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.IncrByFloat(ctx, args_[1], increment_, &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::BulkString(util::Float2String(ret));
@@ -549,7 +567,8 @@ class CommandDecrBy : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t ret = 0;
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.IncrBy(args_[1], -1 * increment_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.IncrBy(ctx, args_[1], -1 * increment_, &ret);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(ret);
@@ -578,7 +597,8 @@ class CommandCAS : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
     int ret = 0;
-    auto s = string_db.CAS(args_[1], args_[2], args_[3], expire_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.CAS(ctx, args_[1], args_[2], args_[3], expire_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -596,7 +616,8 @@ class CommandCAD : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
     int ret = 0;
-    auto s = string_db.CAD(args_[1], args_[2], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.CAD(ctx, args_[1], args_[2], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -649,7 +670,8 @@ class CommandLCS : public Commander {
     redis::String string_db(srv->storage, conn->GetNamespace());
 
     StringLCSResult rst;
-    auto s = string_db.LCS(args_[1], args_[2], {type_, min_match_len_}, &rst);
+    engine::Context ctx(srv->storage);
+    auto s = string_db.LCS(ctx, args_[1], args_[2], {type_, min_match_len_}, &rst);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

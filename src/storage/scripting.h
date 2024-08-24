@@ -27,6 +27,10 @@
 #include "server/redis_connection.h"
 #include "status.h"
 
+namespace engine {
+struct Context;
+}
+
 inline constexpr const char REDIS_LUA_FUNC_SHA_PREFIX[] = "f_";
 inline constexpr const char REDIS_LUA_FUNC_SHA_FLAGS[] = "f_{}_flags_";
 inline constexpr const char REDIS_LUA_REGISTER_FUNC_PREFIX[] = "__redis_registered_";
@@ -74,7 +78,7 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
                     std::string *output);
 Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output);
 Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::string &libname, std::string *output);
-Status FunctionDelete(Server *srv, const std::string &name);
+Status FunctionDelete(engine::Context &ctx, Server *srv, const std::string &name);
 bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage = true,
                         bool read_only = false);
 

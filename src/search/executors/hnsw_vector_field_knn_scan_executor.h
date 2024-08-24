@@ -37,7 +37,6 @@ namespace kqir {
 // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   HnswVectorFieldKnnScan *scan;
-  redis::LatestSnapShot ss;
   bool initialized = false;
 
   IndexInfo *index;
@@ -50,7 +49,6 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
   HnswVectorFieldKnnScanExecutor(ExecutorContext *ctx, HnswVectorFieldKnnScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
-        ss(ctx->storage),
         index(scan->field->info->index),
         search_key(index->ns, index->name, scan->field->name),
         field_metadata(*(scan->field->info->MetadataAs<redis::HnswVectorFieldMetadata>())),
@@ -58,7 +56,7 @@ struct HnswVectorFieldKnnScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, scan->k));
+      row_keys = GET_OR_RET(hnsw_index.KnnSearch(ctx->db_ctx, scan->vector, scan->k));
       row_keys_iter = row_keys.begin();
       initialized = true;
     }

@@ -309,16 +309,16 @@ class PlanExecutorTestC : public TestBase {
 };
 
 TEST_F(PlanExecutorTestC, FullIndexScan) {
-  json_->Set("test1:a", "$", "{}");
-  json_->Set("test1:b", "$", "{}");
-  json_->Set("test2:c", "$", "{\"f3\": 6}");
-  json_->Set("test3:d", "$", "{}");
-  json_->Set("test4:e", "$", "{\"f3\": 7}");
-  json_->Set("test4:f", "$", "{\"f3\": 2}");
-  json_->Set("test4:g", "$", "{\"f3\": 8}");
-  json_->Set("test5:h", "$", "{}");
-  json_->Set("test5:i", "$", "{}");
-  json_->Set("test5:g", "$", "{}");
+  json_->Set(*ctx_, "test1:a", "$", "{}");
+  json_->Set(*ctx_, "test1:b", "$", "{}");
+  json_->Set(*ctx_, "test2:c", "$", "{\"f3\": 6}");
+  json_->Set(*ctx_, "test3:d", "$", "{}");
+  json_->Set(*ctx_, "test4:e", "$", "{\"f3\": 7}");
+  json_->Set(*ctx_, "test4:f", "$", "{\"f3\": 2}");
+  json_->Set(*ctx_, "test4:g", "$", "{\"f3\": 8}");
+  json_->Set(*ctx_, "test5:h", "$", "{}");
+  json_->Set(*ctx_, "test5:i", "$", "{}");
+  json_->Set(*ctx_, "test5:g", "$", "{}");
 
   {
     auto op = std::make_unique<FullIndexScan>(std::make_unique<IndexRef>("ia", IndexI()));
@@ -346,18 +346,19 @@ TEST_F(PlanExecutorTestC, FullIndexScan) {
 }
 
 struct ScopedUpdate {
+  engine::Context* db_ctx;
   redis::GlobalIndexer::RecordResult rr;
   std::string_view key;
   std::string ns;
 
-  static auto Create(redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns) {
-    auto s = indexer.Record(key, ns);
+  static auto Create(engine::Context& ctx, redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns) {
+    auto s = indexer.Record(ctx, key, ns);
     EXPECT_EQ(s.Msg(), Status::ok_msg);
     return *s;
   }
 
-  ScopedUpdate(redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns)
-      : rr(Create(indexer, key, ns)), key(key), ns(ns) {}
+  ScopedUpdate(engine::Context* ctx, redis::GlobalIndexer& indexer, std::string_view key, const std::string& ns)
+      : db_ctx(ctx), rr(Create(*ctx, indexer, key, ns)), key(key), ns(ns) {}
 
   ScopedUpdate(const ScopedUpdate&) = delete;
   ScopedUpdate(ScopedUpdate&&) = delete;
@@ -365,19 +366,19 @@ struct ScopedUpdate {
   ScopedUpdate& operator=(ScopedUpdate&&) = delete;
 
   ~ScopedUpdate() {
-    auto s = redis::GlobalIndexer::Update(rr);
+    auto s = redis::GlobalIndexer::Update(*db_ctx, rr);
     EXPECT_EQ(s.Msg(), Status::ok_msg);
   }
 };
 
-std::vector<std::unique_ptr<ScopedUpdate>> ScopedUpdates(redis::GlobalIndexer& indexer,
+std::vector<std::unique_ptr<ScopedUpdate>> ScopedUpdates(engine::Context& ctx, redis::GlobalIndexer& indexer,
                                                          const std::vector<std::string_view>& keys,
                                                          const std::string& ns) {
   std::vector<std::unique_ptr<ScopedUpdate>> sus;
 
   sus.reserve(keys.size());
   for (auto key : keys) {
-    sus.emplace_back(std::make_unique<ScopedUpdate>(indexer, key, ns));
+    sus.emplace_back(std::make_unique<ScopedUpdate>(&ctx, indexer, key, ns));
   }
 
   return sus;
@@ -388,15 +389,16 @@ TEST_F(PlanExecutorTestC, NumericFieldScan) {
   indexer.Add(redis::IndexUpdater(IndexI()));
 
   {
-    auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
-                                 "search_ns");
-    json_->Set("test2:a", "$", "{\"f2\": 6}");
-    json_->Set("test2:b", "$", "{\"f2\": 3}");
-    json_->Set("test2:c", "$", "{\"f2\": 8}");
-    json_->Set("test2:d", "$", "{\"f2\": 14}");
-    json_->Set("test2:e", "$", "{\"f2\": 1}");
-    json_->Set("test2:f", "$", "{\"f2\": 3}");
-    json_->Set("test2:g", "$", "{\"f2\": 9}");
+    engine::Context ctx(storage_.get());
+    auto updates = ScopedUpdates(
+        *ctx_, indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"}, "search_ns");
+    json_->Set(*ctx_, "test2:a", "$", "{\"f2\": 6}");
+    json_->Set(*ctx_, "test2:b", "$", "{\"f2\": 3}");
+    json_->Set(*ctx_, "test2:c", "$", "{\"f2\": 8}");
+    json_->Set(*ctx_, "test2:d", "$", "{\"f2\": 14}");
+    json_->Set(*ctx_, "test2:e", "$", "{\"f2\": 1}");
+    json_->Set(*ctx_, "test2:f", "$", "{\"f2\": 3}");
+    json_->Set(*ctx_, "test2:g", "$", "{\"f2\": 9}");
   }
 
   {
@@ -429,15 +431,16 @@ TEST_F(PlanExecutorTestC, TagFieldScan) {
   indexer.Add(redis::IndexUpdater(IndexI()));
 
   {
-    auto updates = ScopedUpdates(indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"},
-                                 "search_ns");
-    json_->Set("test2:a", "$", "{\"f1\": \"c,cpp,java\"}");
-    json_->Set("test2:b", "$", "{\"f1\": \"python,c\"}");
-    json_->Set("test2:c", "$", "{\"f1\": \"java,scala\"}");
-    json_->Set("test2:d", "$", "{\"f1\": \"rust,python,perl\"}");
-    json_->Set("test2:e", "$", "{\"f1\": \"python,cpp\"}");
-    json_->Set("test2:f", "$", "{\"f1\": \"c,cpp\"}");
-    json_->Set("test2:g", "$", "{\"f1\": \"cpp,rust\"}");
+    engine::Context ctx(storage_.get());
+    auto updates = ScopedUpdates(
+        *ctx_, indexer, {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g"}, "search_ns");
+    json_->Set(*ctx_, "test2:a", "$", "{\"f1\": \"c,cpp,java\"}");
+    json_->Set(*ctx_, "test2:b", "$", "{\"f1\": \"python,c\"}");
+    json_->Set(*ctx_, "test2:c", "$", "{\"f1\": \"java,scala\"}");
+    json_->Set(*ctx_, "test2:d", "$", "{\"f1\": \"rust,python,perl\"}");
+    json_->Set(*ctx_, "test2:e", "$", "{\"f1\": \"python,cpp\"}");
+    json_->Set(*ctx_, "test2:f", "$", "{\"f1\": \"c,cpp\"}");
+    json_->Set(*ctx_, "test2:g", "$", "{\"f1\": \"cpp,rust\"}");
   }
 
   {
@@ -467,24 +470,24 @@ TEST_F(PlanExecutorTestC, HnswVectorFieldScans) {
   indexer.Add(redis::IndexUpdater(IndexI()));
 
   {
-    auto updates = ScopedUpdates(indexer,
+    auto updates = ScopedUpdates(*ctx_, indexer,
                                  {"test2:a", "test2:b", "test2:c", "test2:d", "test2:e", "test2:f", "test2:g",
                                   "test2:h", "test2:i", "test2:j", "test2:k", "test2:l", "test2:m", "test2:n"},
                                  "search_ns");
-    json_->Set("test2:a", "$", "{\"f4\": [1,2,3]}");
-    json_->Set("test2:b", "$", "{\"f4\": [4,5,6]}");
-    json_->Set("test2:c", "$", "{\"f4\": [7,8,9]}");
-    json_->Set("test2:d", "$", "{\"f4\": [10,11,12]}");
-    json_->Set("test2:e", "$", "{\"f4\": [13,14,15]}");
-    json_->Set("test2:f", "$", "{\"f4\": [23,24,25]}");
-    json_->Set("test2:g", "$", "{\"f4\": [26,27,28]}");
-    json_->Set("test2:h", "$", "{\"f4\": [77,78,79]}");
-    json_->Set("test2:i", "$", "{\"f4\": [80,81,82]}");
-    json_->Set("test2:j", "$", "{\"f4\": [83,84,85]}");
-    json_->Set("test2:k", "$", "{\"f4\": [86,87,88]}");
-    json_->Set("test2:l", "$", "{\"f4\": [89,90,91]}");
-    json_->Set("test2:m", "$", "{\"f4\": [1026,1027,1028]}");
-    json_->Set("test2:n", "$", "{\"f4\": [2226,2227,2228]}");
+    json_->Set(*ctx_, "test2:a", "$", "{\"f4\": [1,2,3]}");
+    json_->Set(*ctx_, "test2:b", "$", "{\"f4\": [4,5,6]}");
+    json_->Set(*ctx_, "test2:c", "$", "{\"f4\": [7,8,9]}");
+    json_->Set(*ctx_, "test2:d", "$", "{\"f4\": [10,11,12]}");
+    json_->Set(*ctx_, "test2:e", "$", "{\"f4\": [13,14,15]}");
+    json_->Set(*ctx_, "test2:f", "$", "{\"f4\": [23,24,25]}");
+    json_->Set(*ctx_, "test2:g", "$", "{\"f4\": [26,27,28]}");
+    json_->Set(*ctx_, "test2:h", "$", "{\"f4\": [77,78,79]}");
+    json_->Set(*ctx_, "test2:i", "$", "{\"f4\": [80,81,82]}");
+    json_->Set(*ctx_, "test2:j", "$", "{\"f4\": [83,84,85]}");
+    json_->Set(*ctx_, "test2:k", "$", "{\"f4\": [86,87,88]}");
+    json_->Set(*ctx_, "test2:l", "$", "{\"f4\": [89,90,91]}");
+    json_->Set(*ctx_, "test2:m", "$", "{\"f4\": [1026,1027,1028]}");
+    json_->Set(*ctx_, "test2:n", "$", "{\"f4\": [2226,2227,2228]}");
   }
 
   {

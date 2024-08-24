@@ -37,7 +37,6 @@ namespace kqir {
 // TODO(Beihao): Add DB context to improve consistency and isolation - see #2332
 struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
   HnswVectorFieldRangeScan *scan;
-  redis::LatestSnapShot ss;
   bool initialized = false;
 
   IndexInfo *index;
@@ -51,7 +50,6 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
   HnswVectorFieldRangeScanExecutor(ExecutorContext *ctx, HnswVectorFieldRangeScan *scan)
       : ExecutorNode(ctx),
         scan(scan),
-        ss(ctx->storage),
         index(scan->field->info->index),
         search_key(index->ns, index->name, scan->field->name),
         field_metadata(*(scan->field->info->MetadataAs<redis::HnswVectorFieldMetadata>())),
@@ -59,7 +57,7 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      row_keys = GET_OR_RET(hnsw_index.KnnSearch(scan->vector, field_metadata.ef_runtime));
+      row_keys = GET_OR_RET(hnsw_index.KnnSearch(ctx->db_ctx, scan->vector, field_metadata.ef_runtime));
       row_keys_iter = row_keys.begin();
       initialized = true;
     }
@@ -67,7 +65,7 @@ struct HnswVectorFieldRangeScanExecutor : ExecutorNode {
     auto effective_range = scan->range * (1 + field_metadata.epsilon);
     if (row_keys_iter == row_keys.end() || row_keys_iter->first > abs(effective_range) ||
         row_keys_iter->first < -abs(effective_range)) {
-      row_keys = GET_OR_RET(hnsw_index.ExpandSearchScope(scan->vector, std::move(row_keys), visited));
+      row_keys = GET_OR_RET(hnsw_index.ExpandSearchScope(ctx->db_ctx, scan->vector, std::move(row_keys), visited));
       if (row_keys.empty()) return end;
       row_keys_iter = row_keys.begin();
     }

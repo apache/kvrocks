@@ -1254,7 +1254,8 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   read_options.snapshot = slot_snapshot_;
   rocksdb::Slice prefix_slice(prefix);
   read_options.iterate_lower_bound = &prefix_slice;
-  engine::DBIterator iter(storage_, read_options);
+  auto no_txn_ctx = engine::Context::NoTransactionContext(storage_);
+  engine::DBIterator iter(no_txn_ctx, read_options);
 
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 

@@ -95,41 +95,49 @@ class ZSet : public SubKeyScanner {
   using Members = std::vector<std::string>;
   using MemberScores = std::vector<MemberScore>;
 
-  rocksdb::Status Add(const Slice &user_key, ZAddFlags flags, MemberScores *mscores, uint64_t *added_cnt);
-  rocksdb::Status Card(const Slice &user_key, uint64_t *size);
-  rocksdb::Status IncrBy(const Slice &user_key, const Slice &member, double increment, double *score);
-  rocksdb::Status Rank(const Slice &user_key, const Slice &member, bool reversed, int *member_rank,
-                       double *member_score);
-  rocksdb::Status Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt);
-  rocksdb::Status Pop(const Slice &user_key, int count, bool min, MemberScores *mscores);
-  rocksdb::Status Score(const Slice &user_key, const Slice &member, double *score);
-  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, ZAddFlags flags, MemberScores *mscores,
+                      uint64_t *added_cnt);
+  rocksdb::Status Card(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &member, double increment,
+                         double *score);
+  rocksdb::Status Rank(engine::Context &ctx, const Slice &user_key, const Slice &member, bool reversed,
+                       int *member_rank, double *member_score);
+  rocksdb::Status Remove(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                         uint64_t *removed_cnt);
+  rocksdb::Status Pop(engine::Context &ctx, const Slice &user_key, int count, bool min, MemberScores *mscores);
+  rocksdb::Status Score(engine::Context &ctx, const Slice &user_key, const Slice &member, double *score);
+  rocksdb::Status Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &member_prefix, std::vector<std::string> *members,
                        std::vector<double> *scores = nullptr);
-  rocksdb::Status Overwrite(const Slice &user_key, const MemberScores &mscores);
-  rocksdb::Status InterStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
+  rocksdb::Status Overwrite(engine::Context &ctx, const Slice &user_key, const MemberScores &mscores);
+  rocksdb::Status InterStore(engine::Context &ctx, const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
-  rocksdb::Status Inter(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
-                        std::vector<MemberScore> *members);
-  rocksdb::Status InterCard(const std::vector<std::string> &user_keys, uint64_t limit, uint64_t *inter_cnt);
-  rocksdb::Status UnionStore(const Slice &dst, const std::vector<KeyWeight> &keys_weights,
+  rocksdb::Status Inter(engine::Context &ctx, const std::vector<KeyWeight> &keys_weights,
+                        AggregateMethod aggregate_method, std::vector<MemberScore> *members);
+  rocksdb::Status InterCard(engine::Context &ctx, const std::vector<std::string> &user_keys, uint64_t limit,
+                            uint64_t *inter_cnt);
+  rocksdb::Status UnionStore(engine::Context &ctx, const Slice &dst, const std::vector<KeyWeight> &keys_weights,
                              AggregateMethod aggregate_method, uint64_t *saved_cnt);
-  rocksdb::Status Union(const std::vector<KeyWeight> &keys_weights, AggregateMethod aggregate_method,
-                        std::vector<MemberScore> *members);
-  rocksdb::Status Diff(const std::vector<Slice> &keys, MemberScores *members);
-  rocksdb::Status DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *stored_count);
-  rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &members, std::map<std::string, double> *scores);
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ZSetMetadata *metadata);
+  rocksdb::Status Union(engine::Context &ctx, const std::vector<KeyWeight> &keys_weights,
+                        AggregateMethod aggregate_method, std::vector<MemberScore> *members);
+  rocksdb::Status Diff(engine::Context &ctx, const std::vector<Slice> &keys, MemberScores *members);
+  rocksdb::Status DiffStore(engine::Context &ctx, const Slice &dst, const std::vector<Slice> &keys,
+                            uint64_t *stored_count);
+  rocksdb::Status MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                       std::map<std::string, double> *scores);
+  rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, ZSetMetadata *metadata);
 
-  rocksdb::Status Count(const Slice &user_key, const RangeScoreSpec &spec, uint64_t *size);
-  rocksdb::Status RangeByRank(const Slice &user_key, const RangeRankSpec &spec, MemberScores *mscores,
-                              uint64_t *removed_cnt);
-  rocksdb::Status RangeByScore(const Slice &user_key, const RangeScoreSpec &spec, MemberScores *mscores,
-                               uint64_t *removed_cnt);
-  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, MemberScores *mscores,
-                             uint64_t *removed_cnt);
-  rocksdb::Status GetAllMemberScores(const Slice &user_key, std::vector<MemberScore> *member_scores);
-  rocksdb::Status RandMember(const Slice &user_key, int64_t command_count, std::vector<MemberScore> *member_scores);
+  rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const RangeScoreSpec &spec, uint64_t *size);
+  rocksdb::Status RangeByRank(engine::Context &ctx, const Slice &user_key, const RangeRankSpec &spec,
+                              MemberScores *mscores, uint64_t *removed_cnt);
+  rocksdb::Status RangeByScore(engine::Context &ctx, const Slice &user_key, const RangeScoreSpec &spec,
+                               MemberScores *mscores, uint64_t *removed_cnt);
+  rocksdb::Status RangeByLex(engine::Context &ctx, const Slice &user_key, const RangeLexSpec &spec,
+                             MemberScores *mscores, uint64_t *removed_cnt);
+  rocksdb::Status GetAllMemberScores(engine::Context &ctx, const Slice &user_key,
+                                     std::vector<MemberScore> *member_scores);
+  rocksdb::Status RandMember(engine::Context &ctx, const Slice &user_key, int64_t command_count,
+                             std::vector<MemberScore> *member_scores);
 
  private:
   rocksdb::ColumnFamilyHandle *score_cf_handle_;

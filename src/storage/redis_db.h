@@ -74,15 +74,6 @@ class Database {
  public:
   static constexpr uint64_t RANDOM_KEY_SCAN_LIMIT = 60;
 
-  struct GetOptions {
-    // If snapshot is not nullptr, read from the specified snapshot,
-    // otherwise read from the "latest" snapshot.
-    const rocksdb::Snapshot *snapshot = nullptr;
-
-    GetOptions() = default;
-    explicit GetOptions(const rocksdb::Snapshot *ss) : snapshot(ss) {}
-  };
-
   explicit Database(engine::Storage *storage, std::string ns = "");
   /// Parsing metadata with type of `types` from bytes, the metadata is a base class of all metadata.
   /// When parsing, the bytes will be consumed.
@@ -94,7 +85,7 @@ class Database {
   /// \param types The candidate types of the metadata.
   /// \param ns_key The key with namespace of the metadata.
   /// \param metadata The output metadata.
-  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+  [[nodiscard]] rocksdb::Status GetMetadata(engine::Context &ctx, RedisTypes types, const Slice &ns_key,
                                             Metadata *metadata);
   /// GetMetadata is a helper function to get metadata from the database. It will read the "raw metadata"
   /// from underlying storage, and then parse the raw metadata to the specified metadata type.
@@ -108,7 +99,7 @@ class Database {
   /// \param raw_value Holding the raw metadata.
   /// \param metadata The output metadata.
   /// \param rest The rest of the bytes after parsing the metadata.
-  [[nodiscard]] rocksdb::Status GetMetadata(GetOptions options, RedisTypes types, const Slice &ns_key,
+  [[nodiscard]] rocksdb::Status GetMetadata(engine::Context &ctx, RedisTypes types, const Slice &ns_key,
                                             std::string *raw_value, Metadata *metadata, Slice *rest);
   /// GetRawMetadata is a helper function to get the "raw metadata" from the database without parsing
   /// it to the specified metadata type.
@@ -116,32 +107,33 @@ class Database {
   /// \param options The read options, including whether uses a snapshot during reading the metadata.
   /// \param ns_key The key with namespace of the metadata.
   /// \param bytes The output raw metadata.
-  [[nodiscard]] rocksdb::Status GetRawMetadata(GetOptions options, const Slice &ns_key, std::string *bytes);
-  [[nodiscard]] rocksdb::Status Expire(const Slice &user_key, uint64_t timestamp);
-  [[nodiscard]] rocksdb::Status Del(const Slice &user_key);
-  [[nodiscard]] rocksdb::Status MDel(const std::vector<Slice> &keys, uint64_t *deleted_cnt);
-  [[nodiscard]] rocksdb::Status Exists(const std::vector<Slice> &keys, int *ret);
-  [[nodiscard]] rocksdb::Status TTL(const Slice &user_key, int64_t *ttl);
-  [[nodiscard]] rocksdb::Status GetExpireTime(const Slice &user_key, uint64_t *timestamp);
-  [[nodiscard]] rocksdb::Status Type(const Slice &key, RedisType *type);
-  [[nodiscard]] rocksdb::Status Dump(const Slice &user_key, std::vector<std::string> *infos);
-  [[nodiscard]] rocksdb::Status FlushDB();
-  [[nodiscard]] rocksdb::Status FlushAll();
-  [[nodiscard]] rocksdb::Status GetKeyNumStats(const std::string &prefix, KeyNumStats *stats);
-  [[nodiscard]] rocksdb::Status Keys(const std::string &prefix, std::vector<std::string> *keys = nullptr,
-                                     KeyNumStats *stats = nullptr);
-  [[nodiscard]] rocksdb::Status Scan(const std::string &cursor, uint64_t limit, const std::string &prefix,
-                                     std::vector<std::string> *keys, std::string *end_cursor = nullptr,
-                                     RedisType type = kRedisNone);
-  [[nodiscard]] rocksdb::Status RandomKey(const std::string &cursor, std::string *key);
+  [[nodiscard]] rocksdb::Status GetRawMetadata(engine::Context &ctx, const Slice &ns_key, std::string *bytes);
+  [[nodiscard]] rocksdb::Status Expire(engine::Context &ctx, const Slice &user_key, uint64_t timestamp);
+  [[nodiscard]] rocksdb::Status Del(engine::Context &ctx, const Slice &user_key);
+  [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt);
+  [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl);
+  [[nodiscard]] rocksdb::Status GetExpireTime(engine::Context &ctx, const Slice &user_key, uint64_t *timestamp);
+  [[nodiscard]] rocksdb::Status Type(engine::Context &ctx, const Slice &key, RedisType *type);
+  [[nodiscard]] rocksdb::Status Dump(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *infos);
+  [[nodiscard]] rocksdb::Status FlushDB(engine::Context &ctx);
+  [[nodiscard]] rocksdb::Status FlushAll(engine::Context &ctx);
+  [[nodiscard]] rocksdb::Status GetKeyNumStats(engine::Context &ctx, const std::string &prefix, KeyNumStats *stats);
+  [[nodiscard]] rocksdb::Status Keys(engine::Context &ctx, const std::string &prefix,
+                                     std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
+  [[nodiscard]] rocksdb::Status Scan(engine::Context &ctx, const std::string &cursor, uint64_t limit,
+                                     const std::string &prefix, std::vector<std::string> *keys,
+                                     std::string *end_cursor = nullptr, RedisType type = kRedisNone);
+  [[nodiscard]] rocksdb::Status RandomKey(engine::Context &ctx, const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
-  [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(const rocksdb::Slice &ns, const SlotRange &slot_range);
-  [[nodiscard]] rocksdb::Status KeyExist(const std::string &key);
+  [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns,
+                                                     const SlotRange &slot_range);
+  [[nodiscard]] rocksdb::Status KeyExist(engine::Context &ctx, const std::string &key);
 
   // Copy <key,value> to <new_key,value> (already an internal key)
   enum class CopyResult { KEY_NOT_EXIST, KEY_ALREADY_EXIST, DONE };
-  [[nodiscard]] rocksdb::Status Copy(const std::string &key, const std::string &new_key, bool nx, bool delete_old,
-                                     CopyResult *res);
+  [[nodiscard]] rocksdb::Status Copy(engine::Context &ctx, const std::string &key, const std::string &new_key, bool nx,
+                                     bool delete_old, CopyResult *res);
   enum class SortResult { UNKNOWN_TYPE, DOUBLE_CONVERT_ERROR, LIMIT_EXCEEDED, DONE };
   /// Sort sorts keys of the specified type according to SortArgument
   ///
@@ -151,20 +143,19 @@ class Database {
   /// \param elems contain the sorted results
   /// \param res represents the sorted result type.
   /// When status is not ok, `res` should not been checked, otherwise it should be checked whether `res` is `DONE`
-  [[nodiscard]] rocksdb::Status Sort(RedisType type, const std::string &key, const SortArgument &args,
-                                     std::vector<std::optional<std::string>> *elems, SortResult *res);
+  [[nodiscard]] rocksdb::Status Sort(engine::Context &ctx, RedisType type, const std::string &key,
+                                     const SortArgument &args, std::vector<std::optional<std::string>> *elems,
+                                     SortResult *res);
 
  protected:
   engine::Storage *storage_;
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_;
   std::string namespace_;
 
-  friend class LatestSnapShot;
-
  private:
   // Already internal keys
-  [[nodiscard]] rocksdb::Status existsInternal(const std::vector<std::string> &keys, int *ret);
-  [[nodiscard]] rocksdb::Status typeInternal(const Slice &key, RedisType *type);
+  [[nodiscard]] rocksdb::Status existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status typeInternal(engine::Context &ctx, const Slice &key, RedisType *type);
 
   /// lookupKeyByPattern is a helper function of `Sort` to support `GET` and `BY` fields.
   ///
@@ -179,27 +170,15 @@ class Database {
   ///   3) If 'pattern' equals "#", the function simply returns 'subst' itself so
   ///      that the SORT command can be used like: SORT key GET # to retrieve
   ///      the Set/List elements directly.
-  std::optional<std::string> lookupKeyByPattern(const std::string &pattern, const std::string &subst);
-};
-class LatestSnapShot {
- public:
-  explicit LatestSnapShot(engine::Storage *storage) : storage_(storage), snapshot_(storage_->GetDB()->GetSnapshot()) {}
-  ~LatestSnapShot() { storage_->GetDB()->ReleaseSnapshot(snapshot_); }
-  const rocksdb::Snapshot *GetSnapShot() const { return snapshot_; }
-
-  LatestSnapShot(const LatestSnapShot &) = delete;
-  LatestSnapShot &operator=(const LatestSnapShot &) = delete;
-
- private:
-  engine::Storage *storage_ = nullptr;
-  const rocksdb::Snapshot *snapshot_ = nullptr;
+  std::optional<std::string> lookupKeyByPattern(engine::Context &ctx, const std::string &pattern,
+                                                const std::string &subst);
 };
 
 class SubKeyScanner : public redis::Database {
  public:
   explicit SubKeyScanner(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Scan(RedisType type, const Slice &user_key, const std::string &cursor, uint64_t limit,
-                       const std::string &subkey_prefix, std::vector<std::string> *keys,
+  rocksdb::Status Scan(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
+                       uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
 };
 

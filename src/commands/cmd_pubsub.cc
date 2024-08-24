@@ -33,8 +33,8 @@ class CommandPublish : public Commander {
       // Replication relies on WAL seq; increasing the seq on a replica will break the replication process,
       // hence the compromise solution
       redis::PubSub pubsub_db(srv->storage);
-
-      auto s = pubsub_db.Publish(args_[1], args_[2]);
+      engine::Context ctx(srv->storage);
+      auto s = pubsub_db.Publish(ctx, args_[1], args_[2]);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
       }
@@ -52,12 +52,12 @@ class CommandMPublish : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int total_receivers = 0;
-
+    engine::Context ctx(srv->storage);
     for (size_t i = 2; i < args_.size(); i++) {
       if (!srv->IsSlave()) {
         redis::PubSub pubsub_db(srv->storage);
 
-        auto s = pubsub_db.Publish(args_[1], args_[i]);
+        auto s = pubsub_db.Publish(ctx, args_[1], args_[i]);
         if (!s.ok()) {
           return {Status::RedisExecErr, s.ToString()};
         }

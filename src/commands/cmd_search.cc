@@ -181,8 +181,8 @@ class CommandFTCreate : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     index_info_->ns = conn->GetNamespace();
-
-    GET_OR_RET(srv->index_mgr.Create(std::move(index_info_)));
+    engine::Context ctx(srv->storage);
+    GET_OR_RET(srv->index_mgr.Create(ctx, std::move(index_info_)));
 
     output->append(redis::SimpleString("OK"));
     return Status::OK();

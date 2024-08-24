@@ -40,7 +40,16 @@ class ClusterTest : public TestBase {
 
 TEST_F(ClusterTest, CluseterSetNodes) {
   Status s;
-  Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
+
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 3002);
 
   const std::string invalid_fields =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
@@ -160,7 +169,16 @@ TEST_F(ClusterTest, CluseterGetSlotInfo) {
       "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
       "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
       "master - 5461-10922";
-  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
+
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, 1, false);
   ASSERT_TRUE(s.IsOK());
 
@@ -184,7 +202,16 @@ TEST_F(ClusterTest, TestDumpAndLoadClusterNodesInfo) {
       "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
       "master - 5461-10922\n"
       "17ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30003 master - 10923-16383";
-  Cluster cluster(nullptr, {"127.0.0.1"}, 30002);
+
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
   Status s = cluster.SetClusterNodes(nodes, version, false);
   ASSERT_TRUE(s.IsOK());
 
@@ -217,7 +244,16 @@ TEST_F(ClusterTest, TestDumpAndLoadClusterNodesInfo) {
 
 TEST_F(ClusterTest, ClusterParseSlotRanges) {
   Status s;
-  Cluster cluster(nullptr, {"127.0.0.1"}, 3002);
+
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 3002);
   const std::string node_id = "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1";
   int64_t version = 1;
 

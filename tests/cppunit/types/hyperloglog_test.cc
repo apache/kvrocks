@@ -34,17 +34,17 @@ class RedisHyperLogLogTest : public TestBase {
 
   void SetUp() override {
     TestBase::SetUp();
-    [[maybe_unused]] auto s = hll_->Del("hll");
+    [[maybe_unused]] auto s = hll_->Del(*ctx_, "hll");
     for (int x = 1; x <= 3; x++) {
-      s = hll_->Del("hll" + std::to_string(x));
+      s = hll_->Del(*ctx_, "hll" + std::to_string(x));
     }
   }
 
   void TearDown() override {
     TestBase::SetUp();
-    [[maybe_unused]] auto s = hll_->Del("hll");
+    [[maybe_unused]] auto s = hll_->Del(*ctx_, "hll");
     for (int x = 1; x <= 3; x++) {
-      s = hll_->Del("hll" + std::to_string(x));
+      s = hll_->Del(*ctx_, "hll" + std::to_string(x));
     }
   }
 
@@ -62,88 +62,88 @@ class RedisHyperLogLogTest : public TestBase {
 
 TEST_F(RedisHyperLogLogTest, PFADD) {
   uint64_t ret = 0;
-  ASSERT_TRUE(hll_->Add("hll", {}, &ret).ok() && ret == 0);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", {}, &ret).ok() && ret == 0);
   // Approximated cardinality after creation is zero
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 0);
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok() && ret == 0);
   // PFADD returns 1 when at least 1 reg was modified
-  ASSERT_TRUE(hll_->Add("hll", computeHashes({"a", "b", "c"}), &ret).ok());
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", computeHashes({"a", "b", "c"}), &ret).ok());
   ASSERT_EQ(1, ret);
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok());
   ASSERT_EQ(3, ret);
   // PFADD returns 0 when no reg was modified
-  ASSERT_TRUE(hll_->Add("hll", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 0);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 0);
   // PFADD works with empty string
-  ASSERT_TRUE(hll_->Add("hll", computeHashes({""}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", computeHashes({""}), &ret).ok() && ret == 1);
   // PFADD works with similar hash, which is likely to be in the same bucket
-  ASSERT_TRUE(hll_->Add("hll", {1, 2, 3, 2, 1}, &ret).ok() && ret == 1);
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", {1, 2, 3, 2, 1}, &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok());
   ASSERT_EQ(7, ret);
 }
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_returns_approximated_cardinality_of_set) {
   uint64_t ret = 0;
   // pf add "1" to "5"
-  ASSERT_TRUE(hll_->Add("hll", computeHashes({"1", "2", "3", "4", "5"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", computeHashes({"1", "2", "3", "4", "5"}), &ret).ok() && ret == 1);
   // pf count is 5
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 5);
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok() && ret == 5);
   // pf add "6" to "10"
-  ASSERT_TRUE(hll_->Add("hll", computeHashes({"6", "7", "8", "8", "9", "10"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll", computeHashes({"6", "7", "8", "8", "9", "10"}), &ret).ok() && ret == 1);
   // pf count is 10
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok() && ret == 10);
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok() && ret == 10);
 }
 
 TEST_F(RedisHyperLogLogTest, PFMERGE_results_on_the_cardinality_of_union_of_sets) {
   uint64_t ret = 0;
   // pf add hll1 a b c
-  ASSERT_TRUE(hll_->Add("hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
   // pf add hll2 b c d
-  ASSERT_TRUE(hll_->Add("hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
   // pf add hll3 c d e
-  ASSERT_TRUE(hll_->Add("hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
   // pf merge hll hll1 hll2 hll3
-  ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
+  ASSERT_TRUE(hll_->Merge(*ctx_, "hll", {"hll1", "hll2", "hll3"}).ok());
   // pf count hll is 5
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok());
   ASSERT_EQ(5, ret);
 }
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple) {
   uint64_t ret = 0;
-  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_TRUE(hll_->CountMultiple(*ctx_, {"hll1", "hll2", "hll3"}, &ret).ok());
   ASSERT_EQ(0, ret);
   // pf add hll1 a b c
-  ASSERT_TRUE(hll_->Add("hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
-  ASSERT_TRUE(hll_->Count("hll1", &ret).ok());
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll1", computeHashes({"a", "b", "c"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll1", &ret).ok());
   ASSERT_EQ(3, ret);
-  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_TRUE(hll_->CountMultiple(*ctx_, {"hll1", "hll2", "hll3"}, &ret).ok());
   ASSERT_EQ(3, ret);
   // pf add hll2 b c d
-  ASSERT_TRUE(hll_->Add("hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
-  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll2", computeHashes({"b", "c", "d"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple(*ctx_, {"hll1", "hll2", "hll3"}, &ret).ok());
   ASSERT_EQ(4, ret);
   // pf add hll3 c d e
-  ASSERT_TRUE(hll_->Add("hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
-  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3"}, &ret).ok());
+  ASSERT_TRUE(hll_->Add(*ctx_, "hll3", computeHashes({"c", "d", "e"}), &ret).ok() && ret == 1);
+  ASSERT_TRUE(hll_->CountMultiple(*ctx_, {"hll1", "hll2", "hll3"}, &ret).ok());
   ASSERT_EQ(5, ret);
   // pf merge hll hll1 hll2 hll3
-  ASSERT_TRUE(hll_->Merge("hll", {"hll1", "hll2", "hll3"}).ok());
+  ASSERT_TRUE(hll_->Merge(*ctx_, "hll", {"hll1", "hll2", "hll3"}).ok());
   // pf count hll is 5
-  ASSERT_TRUE(hll_->Count("hll", &ret).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll", &ret).ok());
   ASSERT_EQ(5, ret);
-  ASSERT_TRUE(hll_->CountMultiple({"hll1", "hll2", "hll3", "hll"}, &ret).ok());
+  ASSERT_TRUE(hll_->CountMultiple(*ctx_, {"hll1", "hll2", "hll3", "hll"}, &ret).ok());
   ASSERT_EQ(5, ret);
 }
 
 TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_union_1) {
   for (int x = 1; x < 1000; x++) {
     uint64_t ret = 0;
-    ASSERT_TRUE(hll_->Add("hll0", computeHashes({"foo-" + std::to_string(x)}), &ret).ok());
-    ASSERT_TRUE(hll_->Add("hll1", computeHashes({"bar-" + std::to_string(x)}), &ret).ok());
-    ASSERT_TRUE(hll_->Add("hll2", computeHashes({"zap-" + std::to_string(x)}), &ret).ok());
+    ASSERT_TRUE(hll_->Add(*ctx_, "hll0", computeHashes({"foo-" + std::to_string(x)}), &ret).ok());
+    ASSERT_TRUE(hll_->Add(*ctx_, "hll1", computeHashes({"bar-" + std::to_string(x)}), &ret).ok());
+    ASSERT_TRUE(hll_->Add(*ctx_, "hll2", computeHashes({"zap-" + std::to_string(x)}), &ret).ok());
     std::vector<uint64_t> cards(3);
-    ASSERT_TRUE(hll_->Count("hll0", &cards[0]).ok());
-    ASSERT_TRUE(hll_->Count("hll1", &cards[1]).ok());
-    ASSERT_TRUE(hll_->Count("hll2", &cards[2]).ok());
+    ASSERT_TRUE(hll_->Count(*ctx_, "hll0", &cards[0]).ok());
+    ASSERT_TRUE(hll_->Count(*ctx_, "hll1", &cards[1]).ok());
+    ASSERT_TRUE(hll_->Count(*ctx_, "hll2", &cards[2]).ok());
     auto card = static_cast<double>(cards[0] + cards[1] + cards[2]);
     double realcard = x * 3;
     // assert the ABS of 'card' and 'realcart' is within 5% of the cardinality
@@ -160,14 +160,14 @@ TEST_F(RedisHyperLogLogTest, PFCOUNT_multiple_keys_merge_returns_cardinality_of_
     for (auto j = 0; j < 3; j++) {
       uint64_t ret = 0;
       int rint = std::rand() % 20000;
-      ASSERT_TRUE(hll_->Add("hll" + std::to_string(j), computeHashes({std::to_string(rint)}), &ret).ok());
+      ASSERT_TRUE(hll_->Add(*ctx_, "hll" + std::to_string(j), computeHashes({std::to_string(rint)}), &ret).ok());
       realcard_vec.push_back(rint);
     }
   }
   std::vector<uint64_t> cards(3);
-  ASSERT_TRUE(hll_->Count("hll0", &cards[0]).ok());
-  ASSERT_TRUE(hll_->Count("hll1", &cards[1]).ok());
-  ASSERT_TRUE(hll_->Count("hll2", &cards[2]).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll0", &cards[0]).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll1", &cards[1]).ok());
+  ASSERT_TRUE(hll_->Count(*ctx_, "hll2", &cards[2]).ok());
   auto card = static_cast<double>(cards[0] + cards[1] + cards[2]);
   auto realcard = static_cast<double>(realcard_vec.size());
   double left = std::abs(card - realcard);

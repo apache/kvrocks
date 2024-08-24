@@ -46,38 +46,40 @@ class Bitmap : public Database {
   class SegmentCacheStore;
 
   Bitmap(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status GetBit(const Slice &user_key, uint32_t bit_offset, bool *bit);
-  rocksdb::Status GetString(const Slice &user_key, uint32_t max_btos_size, std::string *value);
-  rocksdb::Status SetBit(const Slice &user_key, uint32_t bit_offset, bool new_bit, bool *old_bit);
-  rocksdb::Status BitCount(const Slice &user_key, int64_t start, int64_t stop, bool is_bit_index, uint32_t *cnt);
-  rocksdb::Status BitPos(const Slice &user_key, bool bit, int64_t start, int64_t stop, bool stop_given, int64_t *pos,
-                         bool is_bit_index);
-  rocksdb::Status BitOp(BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
+  rocksdb::Status GetBit(engine::Context &ctx, const Slice &user_key, uint32_t bit_offset, bool *bit);
+  rocksdb::Status GetString(engine::Context &ctx, const Slice &user_key, uint32_t max_btos_size, std::string *value);
+  rocksdb::Status SetBit(engine::Context &ctx, const Slice &user_key, uint32_t bit_offset, bool new_bit, bool *old_bit);
+  rocksdb::Status BitCount(engine::Context &ctx, const Slice &user_key, int64_t start, int64_t stop, bool is_bit_index,
+                           uint32_t *cnt);
+  rocksdb::Status BitPos(engine::Context &ctx, const Slice &user_key, bool bit, int64_t start, int64_t stop,
+                         bool stop_given, int64_t *pos, bool is_bit_index);
+  rocksdb::Status BitOp(engine::Context &ctx, BitOpFlags op_flag, const std::string &op_name, const Slice &user_key,
                         const std::vector<Slice> &op_keys, int64_t *len);
-  rocksdb::Status Bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+  rocksdb::Status Bitfield(engine::Context &ctx, const Slice &user_key, const std::vector<BitfieldOperation> &ops,
                            std::vector<std::optional<BitfieldValue>> *rets) {
-    return bitfield<false>(user_key, ops, rets);
+    return bitfield<false>(ctx, user_key, ops, rets);
   }
   // read-only version for Bitfield(), if there is a write operation in ops, the function will return with failed
   // status.
-  rocksdb::Status BitfieldReadOnly(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+  rocksdb::Status BitfieldReadOnly(engine::Context &ctx, const Slice &user_key,
+                                   const std::vector<BitfieldOperation> &ops,
                                    std::vector<std::optional<BitfieldValue>> *rets) {
-    return bitfield<true>(user_key, ops, rets);
+    return bitfield<true>(ctx, user_key, ops, rets);
   }
   static bool GetBitFromValueAndOffset(std::string_view value, uint32_t bit_offset);
   static bool IsEmptySegment(const Slice &segment);
 
  private:
   template <bool ReadOnly>
-  rocksdb::Status bitfield(const Slice &user_key, const std::vector<BitfieldOperation> &ops,
+  rocksdb::Status bitfield(engine::Context &ctx, const Slice &user_key, const std::vector<BitfieldOperation> &ops,
                            std::vector<std::optional<BitfieldValue>> *rets);
   static bool bitfieldWriteAheadLog(const ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                     const std::vector<BitfieldOperation> &ops);
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, BitmapMetadata *metadata,
+  rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, BitmapMetadata *metadata,
                               std::string *raw_value);
 
   template <bool ReadOnly>
-  static rocksdb::Status runBitfieldOperationsWithCache(SegmentCacheStore &cache,
+  static rocksdb::Status runBitfieldOperationsWithCache(engine::Context &ctx, SegmentCacheStore &cache,
                                                         const std::vector<BitfieldOperation> &ops,
                                                         std::vector<std::optional<BitfieldValue>> *rets);
 };

@@ -45,27 +45,32 @@ class Hash : public SubKeyScanner {
  public:
   Hash(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
-  rocksdb::Status Size(const Slice &user_key, uint64_t *size);
-  rocksdb::Status Get(const Slice &user_key, const Slice &field, std::string *value);
-  rocksdb::Status Set(const Slice &user_key, const Slice &field, const Slice &value, uint64_t *added_cnt);
-  rocksdb::Status Delete(const Slice &user_key, const std::vector<Slice> &fields, uint64_t *deleted_cnt);
-  rocksdb::Status IncrBy(const Slice &user_key, const Slice &field, int64_t increment, int64_t *new_value);
-  rocksdb::Status IncrByFloat(const Slice &user_key, const Slice &field, double increment, double *new_value);
-  rocksdb::Status MSet(const Slice &user_key, const std::vector<FieldValue> &field_values, bool nx,
-                       uint64_t *added_cnt);
-  rocksdb::Status RangeByLex(const Slice &user_key, const RangeLexSpec &spec, std::vector<FieldValue> *field_values);
-  rocksdb::Status MGet(const Slice &user_key, const std::vector<Slice> &fields, std::vector<std::string> *values,
-                       std::vector<rocksdb::Status> *statuses);
-  rocksdb::Status GetAll(const Slice &user_key, std::vector<FieldValue> *field_values,
+  rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value);
+  rocksdb::Status Set(engine::Context &ctx, const Slice &user_key, const Slice &field, const Slice &value,
+                      uint64_t *added_cnt);
+  rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                         uint64_t *deleted_cnt);
+  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
+                         int64_t *new_value);
+  rocksdb::Status IncrByFloat(engine::Context &ctx, const Slice &user_key, const Slice &field, double increment,
+                              double *new_value);
+  rocksdb::Status MSet(engine::Context &ctx, const Slice &user_key, const std::vector<FieldValue> &field_values,
+                       bool nx, uint64_t *added_cnt);
+  rocksdb::Status RangeByLex(engine::Context &ctx, const Slice &user_key, const RangeLexSpec &spec,
+                             std::vector<FieldValue> *field_values);
+  rocksdb::Status MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                       std::vector<std::string> *values, std::vector<rocksdb::Status> *statuses);
+  rocksdb::Status GetAll(engine::Context &ctx, const Slice &user_key, std::vector<FieldValue> *field_values,
                          HashFetchType type = HashFetchType::kAll);
-  rocksdb::Status Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+  rocksdb::Status Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                        const std::string &field_prefix, std::vector<std::string> *fields,
                        std::vector<std::string> *values = nullptr);
-  rocksdb::Status RandField(const Slice &user_key, int64_t command_count, std::vector<FieldValue> *field_values,
-                            HashFetchType type = HashFetchType::kOnlyKey);
+  rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
+                            std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
 
  private:
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, HashMetadata *metadata);
+  rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
 
   friend struct FieldValueRetriever;
 };

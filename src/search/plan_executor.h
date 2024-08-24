@@ -77,6 +77,7 @@ struct ExecutorContext {
   std::map<PlanOperator *, std::unique_ptr<ExecutorNode>> nodes;
   PlanOperator *root;
   engine::Storage *storage;
+  engine::Context db_ctx;
 
   using Result = ExecutorNode::Result;
   using RowType = ExecutorNode::RowType;
@@ -97,7 +98,7 @@ struct ExecutorContext {
   ExecutorNode *Get(const std::unique_ptr<PlanOperator> &op) { return Get(op.get()); }
 
   StatusOr<Result> Next() { return Get(root)->Next(); }
-  StatusOr<ValueType> Retrieve(RowType &row, const FieldInfo *field);
+  StatusOr<ValueType> Retrieve(engine::Context &ctx, RowType &row, const FieldInfo *field) const;
 };
 
 }  // namespace kqir

@@ -150,17 +150,19 @@ struct ExecutorContextVisitor {
 
 }  // namespace details
 
-ExecutorContext::ExecutorContext(PlanOperator *op) : root(op) {
+ExecutorContext::ExecutorContext(PlanOperator *op) : root(op), db_ctx(engine::Context::NoTransactionContext(nullptr)) {
   details::ExecutorContextVisitor visitor{this};
   visitor.Transform(root);
 }
 
-ExecutorContext::ExecutorContext(PlanOperator *op, engine::Storage *storage) : root(op), storage(storage) {
+ExecutorContext::ExecutorContext(PlanOperator *op, engine::Storage *storage)
+    : root(op), storage(storage), db_ctx(storage) {
   details::ExecutorContextVisitor visitor{this};
   visitor.Transform(root);
 }
 
-auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr<ValueType> {  // NOLINT
+auto ExecutorContext::Retrieve(engine::Context &ctx, RowType &row, const FieldInfo *field) const
+    -> StatusOr<ValueType> {  // NOLINT
   if (auto iter = row.fields.find(field); iter != row.fields.end()) {
     return iter->second;
   }
@@ -168,7 +170,7 @@ auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr
   auto retriever = GET_OR_RET(
       redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns));
 
-  auto s = retriever.Retrieve(field->name, field->metadata.get());
+  auto s = retriever.Retrieve(ctx, field->name, field->metadata.get());
   if (!s) return s;
 
   row.fields.emplace(field, *s);

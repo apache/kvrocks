@@ -415,7 +415,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Pause the processing of only the write commands, and push them back
     // to a list that adds them back to the queue to process them when we unpause
-    if (srv_->GetCommandPauseType() == kPauseWrite && (cmd_flags & kCmdWrite)) {
+    if (!(this->GetClientType() == kTypeSlave) && srv_->GetCommandPauseType() == kPauseWrite &&
+        (cmd_flags & kCmdWrite)) {
       commands_to_push_back.push_back(cmd_tokens);
       continue;
     }

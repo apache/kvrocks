@@ -349,8 +349,8 @@ class Server {
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
-  std::int64_t pause_type_ = kPauseNone;
-  std::int64_t pause_end_timestamp_ms_ = 0;
+  std::atomic<int64_t> pause_type_{kPauseNone};
+  std::atomic<int64_t> pause_end_timestamp_ms_{0};
 
   std::atomic<lua_State *> lua_;
 

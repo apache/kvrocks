@@ -41,43 +41,43 @@ TEST_F(RedisBloomChainTest, Reserve) {
   double error_rate = 0.02;
   uint16_t expansion = 0;
 
-  auto s = sb_chain_->Reserve(key_, capacity, error_rate, expansion);
+  auto s = sb_chain_->Reserve(*ctx_, key_, capacity, error_rate, expansion);
   EXPECT_TRUE(s.ok());
 
   // return false because the key is already exists;
-  s = sb_chain_->Reserve(key_, capacity, error_rate, expansion);
+  s = sb_chain_->Reserve(*ctx_, key_, capacity, error_rate, expansion);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "Invalid argument: the key already exists");
 
-  s = sb_chain_->Del(key_);
+  s = sb_chain_->Del(*ctx_, key_);
 }
 
 TEST_F(RedisBloomChainTest, BasicAddAndTest) {
   redis::BloomFilterAddResult ret = redis::BloomFilterAddResult::kOk;
   bool exist = false;
 
-  auto s = sb_chain_->Exists("no_exist_key", "test_item", &exist);
+  auto s = sb_chain_->Exists(*ctx_, "no_exist_key", "test_item", &exist);
   EXPECT_EQ(exist, 0);
-  s = sb_chain_->Del("no_exist_key");
+  s = sb_chain_->Del(*ctx_, "no_exist_key");
 
   std::string insert_items[] = {"item1", "item2", "item3", "item101", "item202", "303"};
   for (const auto& insert_item : insert_items) {
-    s = sb_chain_->Add(key_, insert_item, &ret);
+    s = sb_chain_->Add(*ctx_, key_, insert_item, &ret);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(ret, redis::BloomFilterAddResult::kOk);
   }
 
   for (const auto& insert_item : insert_items) {
-    s = sb_chain_->Exists(key_, insert_item, &exist);
+    s = sb_chain_->Exists(*ctx_, key_, insert_item, &exist);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(exist, true);
   }
 
   std::string no_insert_items[] = {"item303", "item404", "1", "2", "3"};
   for (const auto& no_insert_item : no_insert_items) {
-    s = sb_chain_->Exists(key_, no_insert_item, &exist);
+    s = sb_chain_->Exists(*ctx_, key_, no_insert_item, &exist);
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(exist, false);
   }
-  s = sb_chain_->Del(key_);
+  s = sb_chain_->Del(*ctx_, key_);
 }

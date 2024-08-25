@@ -38,7 +38,8 @@ class CommandSAdd : public Commander {
 
     uint64_t ret = 0;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.Add(args_[1], members, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Add(ctx, args_[1], members, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -58,7 +59,8 @@ class CommandSRem : public Commander {
 
     uint64_t ret = 0;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.Remove(args_[1], members, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Remove(ctx, args_[1], members, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -73,7 +75,8 @@ class CommandSCard : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     uint64_t ret = 0;
-    auto s = set_db.Card(args_[1], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Card(ctx, args_[1], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -88,7 +91,8 @@ class CommandSMembers : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     std::vector<std::string> members;
-    auto s = set_db.Members(args_[1], &members);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Members(ctx, args_[1], &members);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -103,7 +107,8 @@ class CommandSIsMember : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     bool ret = false;
-    auto s = set_db.IsMember(args_[1], args_[2], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.IsMember(ctx, args_[1], args_[2], &ret);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -123,7 +128,8 @@ class CommandSMIsMember : public Commander {
     }
 
     std::vector<int> exists;
-    auto s = set_db.MIsMember(args_[1], members, &exists);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.MIsMember(ctx, args_[1], members, &exists);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -165,7 +171,8 @@ class CommandSPop : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     std::vector<std::string> members;
-    auto s = set_db.Take(args_[1], &members, count_, true);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Take(ctx, args_[1], &members, count_, true);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -207,7 +214,8 @@ class CommandSRandMember : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     std::vector<std::string> members;
-    auto s = set_db.Take(args_[1], &members, count_, false);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Take(ctx, args_[1], &members, count_, false);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -224,7 +232,8 @@ class CommandSMove : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     bool ret = false;
-    auto s = set_db.Move(args_[1], args_[2], args_[3], &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Move(ctx, args_[1], args_[2], args_[3], &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -244,7 +253,8 @@ class CommandSDiff : public Commander {
 
     std::vector<std::string> members;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.Diff(keys, &members);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Diff(ctx, keys, &members);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -264,7 +274,8 @@ class CommandSUnion : public Commander {
 
     std::vector<std::string> members;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.Union(keys, &members);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Union(ctx, keys, &members);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -284,7 +295,8 @@ class CommandSInter : public Commander {
 
     std::vector<std::string> members;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.Inter(keys, &members);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Inter(ctx, keys, &members);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -341,7 +353,8 @@ class CommandSInterCard : public Commander {
 
     redis::Set set_db(srv->storage, conn->GetNamespace());
     uint64_t ret = 0;
-    auto s = set_db.InterCard(keys, limit_, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.InterCard(ctx, keys, limit_, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -370,7 +383,8 @@ class CommandSDiffStore : public Commander {
 
     uint64_t ret = 0;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.DiffStore(args_[1], keys, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.DiffStore(ctx, args_[1], keys, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -390,7 +404,8 @@ class CommandSUnionStore : public Commander {
 
     uint64_t ret = 0;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.UnionStore(args_[1], keys, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.UnionStore(ctx, args_[1], keys, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -410,7 +425,8 @@ class CommandSInterStore : public Commander {
 
     uint64_t ret = 0;
     redis::Set set_db(srv->storage, conn->GetNamespace());
-    auto s = set_db.InterStore(args_[1], keys, &ret);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.InterStore(ctx, args_[1], keys, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -427,7 +443,8 @@ class CommandSScan : public CommandSubkeyScanBase {
     redis::Set set_db(srv->storage, conn->GetNamespace());
     std::vector<std::string> members;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeSet);
-    auto s = set_db.Scan(key_, key_name, limit_, prefix_, &members);
+    engine::Context ctx(srv->storage);
+    auto s = set_db.Scan(ctx, key_, key_name, limit_, prefix_, &members);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -440,19 +457,19 @@ class CommandSScan : public CommandSubkeyScanBase {
 REDIS_REGISTER_COMMANDS(Set, MakeCmdAttr<CommandSAdd>("sadd", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSRem>("srem", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandSCard>("scard", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandSMembers>("smembers", 2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandSIsMember>("sismember", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSMIsMember>("smismember", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSPop>("spop", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSRandMember>("srandmember", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSMove>("smove", 4, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandSInter>("sinter", -2, "read-only", 1, -1, 1),
-                        MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only", CommandSInterCard::Range),
-                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write", 1, -1, 1),
-                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write", 1, -1, 1),
+                        MakeCmdAttr<CommandSDiff>("sdiff", -2, "read-only slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSUnion>("sunion", -2, "read-only slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSInter>("sinter", -2, "read-only slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterCard>("sintercard", -3, "read-only slow", CommandSInterCard::Range),
+                        MakeCmdAttr<CommandSDiffStore>("sdiffstore", -3, "write slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSUnionStore>("sunionstore", -3, "write slow", 1, -1, 1),
+                        MakeCmdAttr<CommandSInterStore>("sinterstore", -3, "write slow", 1, -1, 1),
                         MakeCmdAttr<CommandSScan>("sscan", -3, "read-only", 1, 1, 1), )
 
 }  // namespace redis

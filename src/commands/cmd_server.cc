@@ -18,9 +18,6 @@
  *
  */
 
-#include <rocksdb/iostats_context.h>
-#include <rocksdb/perf_context.h>
-
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -120,16 +117,16 @@ class CommandKeys : public Commander {
     std::string prefix = args_[1];
     std::vector<std::string> keys;
     redis::Database redis(srv->storage, conn->GetNamespace());
-
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
     if (prefix == "*") {
-      s = redis.Keys(std::string(), &keys);
+      s = redis.Keys(ctx, std::string(), &keys);
     } else {
       if (prefix[prefix.size() - 1] != '*') {
         return {Status::RedisExecErr, "only keys prefix match was supported"};
       }
 
-      s = redis.Keys(prefix.substr(0, prefix.size() - 1), &keys);
+      s = redis.Keys(ctx, prefix.substr(0, prefix.size() - 1), &keys);
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -149,7 +146,8 @@ class CommandFlushDB : public Commander {
       }
     }
     redis::Database redis(srv->storage, conn->GetNamespace());
-    auto s = redis.FlushDB();
+    engine::Context ctx(srv->storage);
+    auto s = redis.FlushDB(ctx);
     LOG(WARNING) << "DB keys in namespace: " << conn->GetNamespace() << " was flushed, addr: " << conn->GetAddr();
     if (s.ok()) {
       *output = redis::SimpleString("OK");
@@ -175,7 +173,8 @@ class CommandFlushAll : public Commander {
     }
 
     redis::Database redis(srv->storage, conn->GetNamespace());
-    auto s = redis.FlushAll();
+    engine::Context ctx(srv->storage);
+    auto s = redis.FlushAll(ctx);
     if (s.ok()) {
       LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
       *output = redis::SimpleString("OK");
@@ -273,11 +272,12 @@ class CommandDisk : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     RedisType type = kRedisNone;
     redis::Disk disk_db(srv->storage, conn->GetNamespace());
-    auto s = disk_db.Type(args_[2], &type);
+    engine::Context ctx(srv->storage);
+    auto s = disk_db.Type(ctx, args_[2], &type);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     uint64_t result = 0;
-    s = disk_db.GetKeySize(args_[2], type, &result);
+    s = disk_db.GetKeySize(ctx, args_[2], type, &result);
     if (!s.ok()) {
       // Redis returns the Nil string when the key does not exist
       if (s.IsNotFound()) {
@@ -912,7 +912,8 @@ class CommandScan : public CommandScanBase {
 
     std::vector<std::string> keys;
     std::string end_key;
-    auto s = redis_db.Scan(key_name, limit_, prefix_, &keys, &end_key, type_);
+    engine::Context ctx(srv->storage);
+    auto s = redis_db.Scan(ctx, key_name, limit_, prefix_, &keys, &end_key, type_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -927,7 +928,8 @@ class CommandRandomKey : public Commander {
     std::string key;
     auto cursor = srv->GetLastRandomKeyCursor();
     redis::Database redis(srv->storage, conn->GetNamespace());
-    auto s = redis.RandomKey(cursor, &key);
+    engine::Context ctx(srv->storage);
+    auto s = redis.RandomKey(ctx, cursor, &key);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -942,7 +944,6 @@ class CommandCompact : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     std::string begin_key, end_key;
     auto ns = conn->GetNamespace();
-
     if (ns != kDefaultNamespace) {
       begin_key = ComposeNamespaceKey(ns, "", false);
       end_key = util::StringNext(begin_key);
@@ -1141,9 +1142,10 @@ class CommandRestore : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     rocksdb::Status db_status;
     redis::Database redis(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     if (!replace_) {
       int count = 0;
-      db_status = redis.Exists({args_[1]}, &count);
+      db_status = redis.Exists(ctx, {args_[1]}, &count);
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
@@ -1151,7 +1153,7 @@ class CommandRestore : public Commander {
         return {Status::RedisExecErr, "target key name already exists."};
       }
     } else {
-      db_status = redis.Del(args_[1]);
+      db_status = redis.Del(ctx, args_[1]);
       if (!db_status.ok() && !db_status.IsNotFound()) {
         return {Status::RedisExecErr, db_status.ToString()};
       }
@@ -1168,7 +1170,7 @@ class CommandRestore : public Commander {
 
     auto stream_ptr = std::make_unique<RdbStringStream>(args_[3]);
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
-    auto s = rdb.Restore(args_[1], args_[3], ttl_ms_);
+    auto s = rdb.Restore(ctx, args_[1], args_[3], ttl_ms_);
     if (!s.IsOK()) return s;
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -1211,12 +1213,13 @@ class CommandRdb : public Commander {
     }
 
     redis::Database redis(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
 
     auto stream_ptr = std::make_unique<RdbFileStream>(path_);
     GET_OR_RET(stream_ptr->Open());
 
     RDB rdb(srv->storage, conn->GetNamespace(), std::move(stream_ptr));
-    GET_OR_RET(rdb.LoadRdb(db_index_, overwrite_exist_key_));
+    GET_OR_RET(rdb.LoadRdb(ctx, db_index_, overwrite_exist_key_));
 
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -1308,7 +1311,8 @@ class CommandDump : public Commander {
     std::string &key = args_[1];
     redis::Database redis(srv->storage, conn->GetNamespace());
     int count = 0;
-    db_status = redis.Exists({key}, &count);
+    engine::Context ctx(srv->storage);
+    db_status = redis.Exists(ctx, {key}, &count);
     if (!db_status.ok()) {
       if (db_status.IsNotFound()) {
         *output = conn->NilString();
@@ -1322,7 +1326,7 @@ class CommandDump : public Commander {
     }
 
     RedisType type = kRedisNone;
-    db_status = redis.Type(key, &type);
+    db_status = redis.Type(ctx, key, &type);
     if (!db_status.ok()) return {Status::RedisExecErr, db_status.ToString()};
 
     std::string result;

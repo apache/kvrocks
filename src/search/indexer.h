@@ -64,7 +64,7 @@ struct FieldValueRetriever {
 
   explicit FieldValueRetriever(JsonValue json) : db(std::in_place_type<JsonData>, std::move(json)) {}
 
-  StatusOr<kqir::Value> Retrieve(std::string_view field, const redis::IndexFieldMetadata *type);
+  StatusOr<kqir::Value> Retrieve(engine::Context &ctx, std::string_view field, const redis::IndexFieldMetadata *type);
 
   static StatusOr<kqir::Value> ParseFromJson(const jsoncons::json &value, const redis::IndexFieldMetadata *type);
   static StatusOr<kqir::Value> ParseFromHash(const std::string &value, const redis::IndexFieldMetadata *type);
@@ -78,19 +78,21 @@ struct IndexUpdater {
 
   explicit IndexUpdater(const kqir::IndexInfo *info) : info(info) {}
 
-  StatusOr<FieldValues> Record(std::string_view key) const;
-  Status UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
+  StatusOr<FieldValues> Record(engine::Context &ctx, std::string_view key) const;
+  Status UpdateIndex(engine::Context &ctx, const std::string &field, std::string_view key, const kqir::Value &original,
                      const kqir::Value &current) const;
-  Status Update(const FieldValues &original, std::string_view key) const;
+  Status Update(engine::Context &ctx, const FieldValues &original, std::string_view key) const;
 
-  Status Build() const;
+  Status Build(engine::Context &ctx) const;
 
-  Status UpdateTagIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
-                        const SearchKey &search_key, const TagFieldMetadata *tag) const;
-  Status UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
-                            const SearchKey &search_key, const NumericFieldMetadata *num) const;
-  Status UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
-                               const SearchKey &search_key, HnswVectorFieldMetadata *vector) const;
+  Status UpdateTagIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                        const kqir::Value &current, const SearchKey &search_key, const TagFieldMetadata *tag) const;
+  Status UpdateNumericIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                            const kqir::Value &current, const SearchKey &search_key,
+                            const NumericFieldMetadata *num) const;
+  Status UpdateHnswVectorIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                               const kqir::Value &current, const SearchKey &search_key,
+                               HnswVectorFieldMetadata *vector) const;
 };
 
 struct GlobalIndexer {
@@ -111,8 +113,8 @@ struct GlobalIndexer {
   void Add(IndexUpdater updater);
   void Remove(const kqir::IndexInfo *index);
 
-  StatusOr<RecordResult> Record(std::string_view key, const std::string &ns);
-  static Status Update(const RecordResult &original);
+  StatusOr<RecordResult> Record(engine::Context &ctx, std::string_view key, const std::string &ns);
+  static Status Update(engine::Context &ctx, const RecordResult &original);
 };
 
 }  // namespace redis

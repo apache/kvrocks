@@ -29,7 +29,7 @@ namespace engine {
 
 class SubKeyIterator {
  public:
-  explicit SubKeyIterator(Storage *storage, rocksdb::ReadOptions read_options, RedisType type, std::string prefix);
+  explicit SubKeyIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, RedisType type, std::string prefix);
   ~SubKeyIterator() = default;
   bool Valid() const;
   void Seek();
@@ -53,7 +53,7 @@ class SubKeyIterator {
 
 class DBIterator {
  public:
-  explicit DBIterator(Storage *storage, rocksdb::ReadOptions read_options, int slot = -1);
+  explicit DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot = -1);
   ~DBIterator() = default;
 
   bool Valid() const;
@@ -73,6 +73,7 @@ class DBIterator {
 
   Storage *storage_;
   rocksdb::ReadOptions read_options_;
+  Context *ctx_;
   int slot_ = -1;
   Metadata metadata_ = Metadata(kRedisNone, false);
 

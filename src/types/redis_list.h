@@ -41,25 +41,34 @@ namespace redis {
 class List : public Database {
  public:
   explicit List(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Size(const Slice &user_key, uint64_t *size);
-  rocksdb::Status Trim(const Slice &user_key, int start, int stop);
-  rocksdb::Status Set(const Slice &user_key, int index, Slice elem);
-  rocksdb::Status Insert(const Slice &user_key, const Slice &pivot, const Slice &elem, bool before, int *new_size);
-  rocksdb::Status Pop(const Slice &user_key, bool left, std::string *elem);
-  rocksdb::Status PopMulti(const Slice &user_key, bool left, uint32_t count, std::vector<std::string> *elems);
-  rocksdb::Status Rem(const Slice &user_key, int count, const Slice &elem, uint64_t *removed_cnt);
-  rocksdb::Status Index(const Slice &user_key, int index, std::string *elem);
-  rocksdb::Status LMove(const Slice &src, const Slice &dst, bool src_left, bool dst_left, std::string *elem);
-  rocksdb::Status Push(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);
-  rocksdb::Status PushX(const Slice &user_key, const std::vector<Slice> &elems, bool left, uint64_t *new_size);
-  rocksdb::Status Range(const Slice &user_key, int start, int stop, std::vector<std::string> *elems);
-  rocksdb::Status Pos(const Slice &user_key, const Slice &elem, const PosSpec &spec, std::vector<int64_t> *indexes);
+  rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status Trim(engine::Context &ctx, const Slice &user_key, int start, int stop);
+  rocksdb::Status Set(engine::Context &ctx, const Slice &user_key, int index, Slice elem);
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const Slice &pivot, const Slice &elem,
+                         bool before, int *new_size);
+  rocksdb::Status Pop(engine::Context &ctx, const Slice &user_key, bool left, std::string *elem);
+  rocksdb::Status PopMulti(engine::Context &ctx, const Slice &user_key, bool left, uint32_t count,
+                           std::vector<std::string> *elems);
+  rocksdb::Status Rem(engine::Context &ctx, const Slice &user_key, int count, const Slice &elem, uint64_t *removed_cnt);
+  rocksdb::Status Index(engine::Context &ctx, const Slice &user_key, int index, std::string *elem);
+  rocksdb::Status LMove(engine::Context &ctx, const Slice &src, const Slice &dst, bool src_left, bool dst_left,
+                        std::string *elem);
+  rocksdb::Status Push(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &elems, bool left,
+                       uint64_t *new_size);
+  rocksdb::Status PushX(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &elems, bool left,
+                        uint64_t *new_size);
+  rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, int start, int stop,
+                        std::vector<std::string> *elems);
+  rocksdb::Status Pos(engine::Context &ctx, const Slice &user_key, const Slice &elem, const PosSpec &spec,
+                      std::vector<int64_t> *indexes);
 
  private:
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, ListMetadata *metadata);
-  rocksdb::Status push(const Slice &user_key, const std::vector<Slice> &elems, bool create_if_missing, bool left,
-                       uint64_t *new_size);
-  rocksdb::Status lmoveOnSingleList(const Slice &src, bool src_left, bool dst_left, std::string *elem);
-  rocksdb::Status lmoveOnTwoLists(const Slice &src, const Slice &dst, bool src_left, bool dst_left, std::string *elem);
+  rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, ListMetadata *metadata);
+  rocksdb::Status push(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &elems,
+                       bool create_if_missing, bool left, uint64_t *new_size);
+  rocksdb::Status lmoveOnSingleList(engine::Context &ctx, const Slice &src, bool src_left, bool dst_left,
+                                    std::string *elem);
+  rocksdb::Status lmoveOnTwoLists(engine::Context &ctx, const Slice &src, const Slice &dst, bool src_left,
+                                  bool dst_left, std::string *elem);
 };
 }  // namespace redis

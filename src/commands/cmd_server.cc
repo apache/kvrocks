@@ -500,6 +500,14 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
+    if ((subcommand_ == "unpause")) {
+      if (args.size() != 2) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+
+      return Status::OK();
+    }
+
     if (subcommand_ == "reply") {
       if (args.size() != 2 && args.size() != 3) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -558,6 +566,9 @@ class CommandClient : public Commander {
       return Status::OK();
     } else if (subcommand_ == "pause") {
       srv->PauseCommands(pause_type_, pause_timeout_ms_);
+      return Status::OK();
+    } else if (subcommand_ == "unpause") {
+      srv->UnpauseCommands();
       return Status::OK();
     } else if (subcommand_ == "reply") {
       conn->DisableFlag(redis::Connection::Flag::kReplyModeOff);

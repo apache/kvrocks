@@ -292,6 +292,7 @@ class Server {
   Status ExecPropagatedCommand(const std::vector<std::string> &tokens);
   Status ExecPropagateScriptCommand(const std::vector<std::string> &tokens);
   void PauseCommands(uint64_t type, uint64_t timeout_ms);
+  void UnpauseCommands();
 
   void SetCurrentConnection(redis::Connection *conn) { curr_connection_ = conn; }
   redis::Connection *GetCurrentConnection() { return curr_connection_; }

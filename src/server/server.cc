@@ -1314,7 +1314,7 @@ void Server::GetInfo(const std::string &ns, const std::string &section, std::str
 int64_t Server::GetCommandPauseType() {
   // Stop pausing command if the timeout has reached
   if (pause_end_timestamp_ms_ <= util::GetTimeStampMS()) {
-    pause_type_ = kPauseNone;
+    UnpauseCommands();
   }
 
   return pause_type_;
@@ -1800,6 +1800,8 @@ void Server::PauseCommands(uint64_t type, uint64_t timeout_ms) {
   pause_type_ = (int64_t)type;
   pause_end_timestamp_ms_ = (int64_t)(util::GetTimeStampMS() + timeout_ms);
 }
+
+void Server::UnpauseCommands() { pause_type_ = kPauseNone; }
 
 // AdjustOpenFilesLimit only try best to raise the max open files according to
 // the max clients and RocksDB open file configuration. It also reserves a number

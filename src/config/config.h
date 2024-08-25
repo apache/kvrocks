@@ -169,7 +169,7 @@ struct Config {
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
   // transactional mode engine::Context
-  bool txn_context_enabled = false;
+  bool txn_context_enabled = true;
 
   struct RocksDB {
     int block_size;

@@ -37,11 +37,13 @@ namespace redis {
 
 StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, std::string_view key,
                                                           engine::Storage *storage, const std::string &ns) {
+  engine::Context ctx(storage);
   if (type == IndexOnDataType::HASH) {
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-    auto s = db.GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+
+    auto s = db.GetMetadata(ctx, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == IndexOnDataType::JSON) {
@@ -49,7 +51,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     std::string ns_key = db.AppendNamespacePrefix(key);
     JsonMetadata metadata(false);
     JsonValue value;
-    auto s = db.read(ns_key, &metadata, &value);
+    auto s = db.read(ctx, ns_key, &metadata, &value);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
@@ -121,17 +123,14 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(const std::string &valu
   }
 }
 
-StatusOr<kqir::Value> FieldValueRetriever::Retrieve(std::string_view field, const redis::IndexFieldMetadata *type) {
+StatusOr<kqir::Value> FieldValueRetriever::Retrieve(engine::Context &ctx, std::string_view field,
+                                                    const redis::IndexFieldMetadata *type) {
   if (std::holds_alternative<HashData>(db)) {
     auto &[hash, metadata, key] = std::get<HashData>(db);
     std::string ns_key = hash.AppendNamespacePrefix(key);
-
-    LatestSnapShot ss(hash.storage_);
-    rocksdb::ReadOptions read_options;
-    read_options.snapshot = ss.GetSnapShot();
     std::string sub_key = InternalKey(ns_key, field, metadata.version, hash.storage_->IsSlotIdEncoded()).Encode();
     std::string value;
-    auto s = hash.storage_->Get(read_options, sub_key, &value);
+    auto s = hash.storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.IsNotFound()) return {Status::NotFound, s.ToString()};
     if (!s.ok()) return {Status::NotOK, s.ToString()};
 
@@ -151,12 +150,12 @@ StatusOr<kqir::Value> FieldValueRetriever::Retrieve(std::string_view field, cons
   }
 }
 
-StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key) const {
+StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(engine::Context &ctx, std::string_view key) const {
   const auto &ns = info->ns;
   Database db(indexer->storage, ns);
 
   RedisType type = kRedisNone;
-  auto s = db.Type(key, &type);
+  auto s = db.Type(ctx, key, &type);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   // key not exist
@@ -175,7 +174,7 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key) c
       continue;
     }
 
-    auto s = retriever.Retrieve(field, i.metadata.get());
+    auto s = retriever.Retrieve(ctx, field, i.metadata.get());
     if (s.Is<Status::NotFound>()) continue;
     if (!s) return s;
 
@@ -185,8 +184,9 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(std::string_view key) c
   return values;
 }
 
-Status IndexUpdater::UpdateTagIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
-                                    const SearchKey &search_key, const TagFieldMetadata *tag) const {
+Status IndexUpdater::UpdateTagIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                                    const kqir::Value &current, const SearchKey &search_key,
+                                    const TagFieldMetadata *tag) const {
   CHECK(original.IsNull() || original.Is<kqir::StringArray>());
   CHECK(current.IsNull() || current.Is<kqir::StringArray>());
   auto original_tags = original.IsNull() ? std::vector<std::string>() : original.Get<kqir::StringArray>();
@@ -235,13 +235,14 @@ Status IndexUpdater::UpdateTagIndex(std::string_view key, const kqir::Value &ori
     batch->Put(cf_handle, index_key, Slice());
   }
 
-  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value &original, const kqir::Value &current,
-                                        const SearchKey &search_key, const NumericFieldMetadata *num) const {
+Status IndexUpdater::UpdateNumericIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                                        const kqir::Value &current, const SearchKey &search_key,
+                                        const NumericFieldMetadata *num) const {
   CHECK(original.IsNull() || original.Is<kqir::Numeric>());
   CHECK(current.IsNull() || current.Is<kqir::Numeric>());
 
@@ -260,13 +261,12 @@ Status IndexUpdater::UpdateNumericIndex(std::string_view key, const kqir::Value 
 
     batch->Put(cf_handle, index_key, Slice());
   }
-
-  auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Value &original,
+Status IndexUpdater::UpdateHnswVectorIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
                                            const kqir::Value &current, const SearchKey &search_key,
                                            HnswVectorFieldMetadata *vector) const {
   CHECK(original.IsNull() || original.Is<kqir::NumericArray>());
@@ -277,23 +277,23 @@ Status IndexUpdater::UpdateHnswVectorIndex(std::string_view key, const kqir::Val
 
   if (!original.IsNull()) {
     auto batch = storage->GetWriteBatchBase();
-    GET_OR_RET(hnsw.DeleteVectorEntry(key, batch));
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    GET_OR_RET(hnsw.DeleteVectorEntry(ctx, key, batch));
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
   if (!current.IsNull()) {
     auto batch = storage->GetWriteBatchBase();
-    GET_OR_RET(hnsw.InsertVectorEntry(key, current.Get<kqir::NumericArray>(), batch));
-    auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    GET_OR_RET(hnsw.InsertVectorEntry(ctx, key, current.Get<kqir::NumericArray>(), batch));
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
   return Status::OK();
 }
 
-Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key, const kqir::Value &original,
-                                 const kqir::Value &current) const {
+Status IndexUpdater::UpdateIndex(engine::Context &ctx, const std::string &field, std::string_view key,
+                                 const kqir::Value &original, const kqir::Value &current) const {
   if (original == current) {
     // the value of this field is unchanged, no need to update
     return Status::OK();
@@ -307,11 +307,11 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   auto *metadata = iter->second.metadata.get();
   SearchKey search_key(info->ns, info->name, field);
   if (auto tag = dynamic_cast<TagFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateTagIndex(key, original, current, search_key, tag));
+    GET_OR_RET(UpdateTagIndex(ctx, key, original, current, search_key, tag));
   } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateNumericIndex(key, original, current, search_key, numeric));
+    GET_OR_RET(UpdateNumericIndex(ctx, key, original, current, search_key, numeric));
   } else if (auto vector = dynamic_cast<HnswVectorFieldMetadata *>(metadata)) {
-    GET_OR_RET(UpdateHnswVectorIndex(key, original, current, search_key, vector));
+    GET_OR_RET(UpdateHnswVectorIndex(ctx, key, original, current, search_key, vector));
   } else {
     return {Status::NotOK, "Unexpected field type"};
   }
@@ -319,8 +319,8 @@ Status IndexUpdater::UpdateIndex(const std::string &field, std::string_view key,
   return Status::OK();
 }
 
-Status IndexUpdater::Update(const FieldValues &original, std::string_view key) const {
-  auto current = GET_OR_RET(Record(key));
+Status IndexUpdater::Update(engine::Context &ctx, const FieldValues &original, std::string_view key) const {
+  auto current = GET_OR_RET(Record(ctx, key));
 
   for (const auto &[field, i] : info->fields) {
     if (i.metadata->noindex) {
@@ -336,15 +336,15 @@ Status IndexUpdater::Update(const FieldValues &original, std::string_view key) c
       current_val = it->second;
     }
 
-    GET_OR_RET(UpdateIndex(field, key, original_val, current_val));
+    GET_OR_RET(UpdateIndex(ctx, field, key, original_val, current_val));
   }
 
   return Status::OK();
 }
 
-Status IndexUpdater::Build() const {
+Status IndexUpdater::Build(engine::Context &ctx) const {
   auto storage = indexer->storage;
-  util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Metadata);
+  util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
 
   for (const auto &prefix : info->prefixes) {
     auto ns_key = ComposeNamespaceKey(info->ns, prefix, storage->IsSlotIdEncoded());
@@ -355,7 +355,7 @@ Status IndexUpdater::Build() const {
 
       auto [_, key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
 
-      auto s = Update({}, key.ToStringView());
+      auto s = Update(ctx, {}, key.ToStringView());
       if (s.Is<Status::TypeMismatched>()) continue;
       if (!s.OK()) return s;
     }
@@ -390,7 +390,8 @@ void GlobalIndexer::Remove(const kqir::IndexInfo *index) {
                      updater_list.end());
 }
 
-StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key, const std::string &ns) {
+StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(engine::Context &ctx, std::string_view key,
+                                                            const std::string &ns) {
   if (updater_list.empty()) {
     return Status::NoPrefixMatched;
   }
@@ -398,14 +399,14 @@ StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(std::string_view key
   auto iter = prefix_map.longest_prefix(ComposeNamespaceKey(ns, key, false));
   if (iter != prefix_map.end()) {
     auto updater = iter.value();
-    return RecordResult{updater, std::string(key.begin(), key.end()), GET_OR_RET(updater.Record(key))};
+    return RecordResult{updater, std::string(key.begin(), key.end()), GET_OR_RET(updater.Record(ctx, key))};
   }
 
   return {Status::NoPrefixMatched};
 }
 
-Status GlobalIndexer::Update(const RecordResult &original) {
-  return original.updater.Update(original.fields, original.key);
+Status GlobalIndexer::Update(engine::Context &ctx, const RecordResult &original) {
+  return original.updater.Update(ctx, original.fields, original.key);
 }
 
 }  // namespace redis

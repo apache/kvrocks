@@ -40,17 +40,21 @@ namespace redis {
 class Sortedint : public Database {
  public:
   explicit Sortedint(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Card(const Slice &user_key, uint64_t *size);
-  rocksdb::Status MExist(const Slice &user_key, const std::vector<uint64_t> &ids, std::vector<int> *exists);
-  rocksdb::Status Add(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *added_cnt);
-  rocksdb::Status Remove(const Slice &user_key, const std::vector<uint64_t> &ids, uint64_t *removed_cnt);
-  rocksdb::Status Range(const Slice &user_key, uint64_t cursor_id, uint64_t page, uint64_t limit, bool reversed,
-                        std::vector<uint64_t> *ids);
-  rocksdb::Status RangeByValue(const Slice &user_key, SortedintRangeSpec spec, std::vector<uint64_t> *ids, int *size);
+  rocksdb::Status Card(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status MExist(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                         std::vector<int> *exists);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                      uint64_t *added_cnt);
+  rocksdb::Status Remove(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &ids,
+                         uint64_t *removed_cnt);
+  rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, uint64_t cursor_id, uint64_t page, uint64_t limit,
+                        bool reversed, std::vector<uint64_t> *ids);
+  rocksdb::Status RangeByValue(engine::Context &ctx, const Slice &user_key, SortedintRangeSpec spec,
+                               std::vector<uint64_t> *ids, int *size);
   static Status ParseRangeSpec(const std::string &min, const std::string &max, SortedintRangeSpec *spec);
 
  private:
-  rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key, SortedintMetadata *metadata);
+  rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, SortedintMetadata *metadata);
 };
 
 }  // namespace redis

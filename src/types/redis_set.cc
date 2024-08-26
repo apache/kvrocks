@@ -29,12 +29,12 @@
 
 namespace redis {
 
-rocksdb::Status Set::GetMetadata(Database::GetOptions get_options, const Slice &ns_key, SetMetadata *metadata) {
-  return Database::GetMetadata(get_options, {kRedisSet}, ns_key, metadata);
+rocksdb::Status Set::GetMetadata(engine::Context &ctx, const Slice &ns_key, SetMetadata *metadata) {
+  return Database::GetMetadata(ctx, {kRedisSet}, ns_key, metadata);
 }
 
 // Make sure members are uniq before use Overwrite
-rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &members) {
+rocksdb::Status Set::Overwrite(engine::Context &ctx, Slice user_key, const std::vector<std::string> &members) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -50,17 +50,18 @@ rocksdb::Status Set::Overwrite(Slice user_key, const std::vector<std::string> &m
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &members, uint64_t *added_cnt) {
+rocksdb::Status Set::Add(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                         uint64_t *added_cnt) {
   *added_cnt = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata;
-  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
@@ -73,7 +74,7 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
       continue;
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.ok()) continue;
     batch->Put(sub_key, Slice());
     *added_cnt += 1;
@@ -84,17 +85,18 @@ rocksdb::Status Set::Add(const Slice &user_key, const std::vector<Slice> &member
     metadata.Encode(&bytes);
     batch->Put(metadata_cf_handle_, ns_key, bytes);
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &members, uint64_t *removed_cnt) {
+rocksdb::Status Set::Remove(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                            uint64_t *removed_cnt) {
   *removed_cnt = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -107,7 +109,7 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
       continue;
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(rocksdb::ReadOptions(), sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok()) continue;
     batch->Delete(sub_key);
     *removed_cnt += 1;
@@ -122,40 +124,38 @@ rocksdb::Status Set::Remove(const Slice &user_key, const std::vector<Slice> &mem
       batch->Delete(metadata_cf_handle_, ns_key);
     }
   }
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Set::Card(const Slice &user_key, uint64_t *size) {
+rocksdb::Status Set::Card(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
   *size = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   *size = metadata.size;
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *members) {
+rocksdb::Status Set::Members(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *members) {
   members->clear();
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  LatestSnapShot ss(storage_);
 
-  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
   std::string next_version_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = ss.GetSnapShot();
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(next_version_prefix);
   read_options.iterate_upper_bound = &upper_bound;
 
-  auto iter = util::UniqueIterator(storage_, read_options);
+  auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     members->emplace_back(ikey.GetSubKey().ToString());
@@ -163,31 +163,28 @@ rocksdb::Status Set::Members(const Slice &user_key, std::vector<std::string> *me
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::IsMember(const Slice &user_key, const Slice &member, bool *flag) {
+rocksdb::Status Set::IsMember(engine::Context &ctx, const Slice &user_key, const Slice &member, bool *flag) {
   std::vector<int> exists;
-  rocksdb::Status s = MIsMember(user_key, {member}, &exists);
+  rocksdb::Status s = MIsMember(ctx, user_key, {member}, &exists);
   if (!s.ok()) return s;
   *flag = exists[0];
   return s;
 }
 
-rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &members, std::vector<int> *exists) {
+rocksdb::Status Set::MIsMember(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
+                               std::vector<int> *exists) {
   exists->clear();
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata(false);
-  LatestSnapShot ss(storage_);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{ss.GetSnapShot()}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  rocksdb::ReadOptions read_options;
-
-  read_options.snapshot = ss.GetSnapShot();
   std::string value;
   for (const auto &member : members) {
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    s = storage_->Get(read_options, sub_key, &value);
+    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.IsNotFound()) {
       exists->emplace_back(0);
@@ -198,7 +195,8 @@ rocksdb::Status Set::MIsMember(const Slice &user_key, const std::vector<Slice> &
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *members, int count, bool pop) {
+rocksdb::Status Set::Take(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *members, int count,
+                          bool pop) {
   members->clear();
   bool unique = true;
   if (count == 0) return rocksdb::Status::OK();
@@ -214,7 +212,7 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   if (pop) lock_guard.emplace(storage_->GetLockManager(), ns_key);
 
   SetMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(Database::GetOptions{}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   ObserverOrUniquePtr<rocksdb::WriteBatchBase> batch = storage_->GetWriteBatchBase();
@@ -224,7 +222,8 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   }
   members->clear();
   s = ExtractRandMemberFromSet<std::string>(
-      unique, count, [this, user_key](std::vector<std::string> *samples) { return this->Members(user_key, samples); },
+      unique, count,
+      [this, user_key, &ctx](std::vector<std::string> *samples) { return this->Members(ctx, user_key, samples); },
       members);
   if (!s.ok()) {
     return s;
@@ -241,12 +240,12 @@ rocksdb::Status Set::Take(const Slice &user_key, std::vector<std::string> *membe
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &member, bool *flag) {
+rocksdb::Status Set::Move(engine::Context &ctx, const Slice &src, const Slice &dst, const Slice &member, bool *flag) {
   RedisType type = kRedisNone;
-  rocksdb::Status s = Type(dst, &type);
+  rocksdb::Status s = Type(ctx, dst, &type);
   if (!s.ok()) return s;
   if (type != kRedisNone && type != kRedisSet) {
     return rocksdb::Status::InvalidArgument(kErrMsgWrongType);
@@ -254,19 +253,19 @@ rocksdb::Status Set::Move(const Slice &src, const Slice &dst, const Slice &membe
 
   uint64_t ret = 0;
   std::vector<Slice> members{member};
-  s = Remove(src, members, &ret);
+  s = Remove(ctx, src, members, &ret);
   *flag = (ret != 0);
   if (!s.ok() || !*flag) {
     return s;
   }
-  s = Add(dst, members, &ret);
+  s = Add(ctx, dst, members, &ret);
   *flag = (ret != 0);
   return s;
 }
 
-rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, uint64_t limit,
+rocksdb::Status Set::Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                           const std::string &member_prefix, std::vector<std::string> *members) {
-  return SubKeyScanner::Scan(kRedisSet, user_key, cursor, limit, member_prefix, members);
+  return SubKeyScanner::Scan(ctx, kRedisSet, user_key, cursor, limit, member_prefix, members);
 }
 
 /*
@@ -277,7 +276,7 @@ rocksdb::Status Set::Scan(const Slice &user_key, const std::string &cursor, uint
  * key3 = {a,c,e}
  * DIFF key1 key2 key3 = {b,d}
  */
-rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Diff(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
@@ -288,13 +287,13 @@ rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::strin
 
   members->clear();
   std::vector<std::string> source_members;
-  auto s = Members(keys[0], &source_members);
+  auto s = Members(ctx, keys[0], &source_members);
   if (!s.ok()) return s;
 
   std::map<std::string, bool> exclude_members;
   std::vector<std::string> target_members;
   for (size_t i = 1; i < keys.size(); i++) {
-    s = Members(keys[i], &target_members);
+    s = Members(ctx, keys[i], &target_members);
     if (!s.ok()) return s;
     for (const auto &member : target_members) {
       exclude_members[member] = true;
@@ -316,7 +315,7 @@ rocksdb::Status Set::Diff(const std::vector<Slice> &keys, std::vector<std::strin
  * key3 = {a,c,e}
  * UNION key1 key2 key3 = {a,b,c,d,e}
  */
-rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Union(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
@@ -330,7 +329,7 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
   std::map<std::string, bool> union_members;
   std::vector<std::string> target_members;
   for (const auto &key : keys) {
-    auto s = Members(key, &target_members);
+    auto s = Members(ctx, key, &target_members);
     if (!s.ok()) return s;
     for (const auto &member : target_members) {
       union_members[member] = true;
@@ -350,7 +349,7 @@ rocksdb::Status Set::Union(const std::vector<Slice> &keys, std::vector<std::stri
  * key3 = {a,c,e}
  * INTER key1 key2 key3 = {c}
  */
-rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::string> *members) {
+rocksdb::Status Set::Inter(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members) {
   std::vector<std::string> lock_keys;
   lock_keys.reserve(keys.size());
   for (const auto key : keys) {
@@ -363,13 +362,13 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
 
   std::map<std::string, size_t> member_counters;
   std::vector<std::string> target_members;
-  auto s = Members(keys[0], &target_members);
+  auto s = Members(ctx, keys[0], &target_members);
   if (!s.ok() || target_members.empty()) return s;
   for (const auto &member : target_members) {
     member_counters[member] = 1;
   }
   for (size_t i = 1; i < keys.size(); i++) {
-    s = Members(keys[i], &target_members);
+    s = Members(ctx, keys[i], &target_members);
     if (!s.ok() || target_members.empty()) return s;
     for (const auto &member : target_members) {
       if (member_counters.find(member) == member_counters.end()) continue;
@@ -384,13 +383,14 @@ rocksdb::Status Set::Inter(const std::vector<Slice> &keys, std::vector<std::stri
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, uint64_t *cardinality) {
+rocksdb::Status Set::InterCard(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t limit,
+                               uint64_t *cardinality) {
   *cardinality = 0;
 
   std::map<std::string, size_t> member_counters;
   std::vector<std::string> target_members;
 
-  auto s = Members(keys[0], &target_members);
+  auto s = Members(ctx, keys[0], &target_members);
   if (!s.ok() || target_members.empty()) return s;
   for (const auto &member : target_members) {
     member_counters[member] = 1;
@@ -407,7 +407,7 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
 
   bool limit_reached = false;
   for (size_t i = 1; i < keys_size; i++) {
-    s = Members(keys[i], &target_members);
+    s = Members(ctx, keys[i], &target_members);
     if (!s.ok() || target_members.empty()) {
       return s;
     }
@@ -430,30 +430,33 @@ rocksdb::Status Set::InterCard(const std::vector<Slice> &keys, uint64_t limit, u
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Set::DiffStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
+rocksdb::Status Set::DiffStore(engine::Context &ctx, const Slice &dst, const std::vector<Slice> &keys,
+                               uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<std::string> members;
-  auto s = Diff(keys, &members);
+  auto s = Diff(ctx, keys, &members);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
-  return Overwrite(dst, members);
+  return Overwrite(ctx, dst, members);
 }
 
-rocksdb::Status Set::UnionStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *save_cnt) {
+rocksdb::Status Set::UnionStore(engine::Context &ctx, const Slice &dst, const std::vector<Slice> &keys,
+                                uint64_t *save_cnt) {
   *save_cnt = 0;
   std::vector<std::string> members;
-  auto s = Union(keys, &members);
+  auto s = Union(ctx, keys, &members);
   if (!s.ok()) return s;
   *save_cnt = members.size();
-  return Overwrite(dst, members);
+  return Overwrite(ctx, dst, members);
 }
 
-rocksdb::Status Set::InterStore(const Slice &dst, const std::vector<Slice> &keys, uint64_t *saved_cnt) {
+rocksdb::Status Set::InterStore(engine::Context &ctx, const Slice &dst, const std::vector<Slice> &keys,
+                                uint64_t *saved_cnt) {
   *saved_cnt = 0;
   std::vector<std::string> members;
-  auto s = Inter(keys, &members);
+  auto s = Inter(ctx, keys, &members);
   if (!s.ok()) return s;
   *saved_cnt = members.size();
-  return Overwrite(dst, members);
+  return Overwrite(ctx, dst, members);
 }
 }  // namespace redis

@@ -28,7 +28,6 @@ namespace kqir {
 
 struct ProjectionExecutor : ExecutorNode {
   Projection *proj;
-
   ProjectionExecutor(ExecutorContext *ctx, Projection *proj) : ExecutorNode(ctx), proj(proj) {}
 
   StatusOr<Result> Next() override {
@@ -39,13 +38,13 @@ struct ProjectionExecutor : ExecutorNode {
     auto &row = std::get<RowType>(v);
     if (proj->select->fields.empty()) {
       for (const auto &field : row.index->fields) {
-        GET_OR_RET(ctx->Retrieve(row, &field.second));
+        GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, &field.second));
       }
     } else {
       std::map<const FieldInfo *, ValueType> res;
 
       for (const auto &field : proj->select->fields) {
-        auto r = GET_OR_RET(ctx->Retrieve(row, field->info));
+        auto r = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, field->info));
         res.emplace(field->info, std::move(r));
       }
 

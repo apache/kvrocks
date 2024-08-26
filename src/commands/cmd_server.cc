@@ -187,7 +187,7 @@ class CommandFlushAll : public Commander {
 
 class CommandPing : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       *output = redis::SimpleString("PONG");
     } else if (args_.size() == 2) {
@@ -201,7 +201,7 @@ class CommandPing : public Commander {
 
 class CommandSelect : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -296,7 +296,7 @@ class CommandMemory : public CommandDisk {};
 
 class CommandRole : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     srv->GetRoleInfo(output);
     return Status::OK();
   }
@@ -343,7 +343,7 @@ class CommandPerfLog : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     auto perf_log = srv->GetPerfLog();
     if (subcommand_ == "len") {
       *output = redis::Integer(static_cast<int64_t>(perf_log->Size()));
@@ -380,7 +380,7 @@ class CommandSlowlog : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     auto slowlog = srv->GetSlowLog();
     if (subcommand_ == "reset") {
       slowlog->Reset();
@@ -527,7 +527,7 @@ class CommandClient : public Commander {
 
 class CommandMonitor : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     conn->Owner()->BecomeMonitorConn(conn);
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -536,7 +536,7 @@ class CommandMonitor : public Commander {
 
 class CommandShutdown : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     if (!conn->IsAdmin()) {
       return {Status::RedisExecErr, errAdminPermissionRequired};
     }
@@ -551,7 +551,7 @@ class CommandShutdown : public Commander {
 
 class CommandQuit : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     conn->EnableFlag(redis::Connection::kCloseAfterReply);
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -652,7 +652,7 @@ class CommandDebug : public Commander {
 
 class CommandCommand : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       CommandTable::GetAllCommandsInfo(output);
     } else {
@@ -697,7 +697,7 @@ class CommandCommand : public Commander {
 
 class CommandEcho : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     *output = redis::BulkString(args_[1]);
     return Status::OK();
   }
@@ -705,7 +705,7 @@ class CommandEcho : public Commander {
 
 class CommandTime : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     uint64_t now = util::GetTimeStampUS();
     uint64_t s = now / 1000 / 1000;         // unix time in seconds.
     uint64_t us = now - (s * 1000 * 1000);  // microseconds.
@@ -820,8 +820,8 @@ class CommandScan : public CommandScanBase {
  public:
   CommandScan() : CommandScanBase() {}
 
-  static std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
-                                    const std::string &end_cursor) {
+  static std::string GenerateOutput(Server *srv, [[maybe_unused]] const Connection *conn,
+                                    const std::vector<std::string> &keys, const std::string &end_cursor) {
     std::vector<std::string> list;
     if (!end_cursor.empty()) {
       list.emplace_back(
@@ -1011,7 +1011,7 @@ class CommandSlaveOf : public Commander {
 
 class CommandStats : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     std::string stats_json = srv->GetRocksDBStatsJson();
     *output = redis::BulkString(stats_json);
     return Status::OK();
@@ -1210,7 +1210,7 @@ class CommandApplyBatch : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+  Status Execute(Server *svr, [[maybe_unused]] Connection *conn, std::string *output) override {
     size_t size = raw_batch_.size();
     auto options = svr->storage->DefaultWriteOptions();
     options.low_pri = low_pri_;

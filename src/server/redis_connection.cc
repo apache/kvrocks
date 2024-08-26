@@ -80,7 +80,7 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(struct bufferevent *bev) {
+void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   is_running_ = true;
   MakeScopeExit([this] { is_running_ = false; });
 
@@ -99,7 +99,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   }
 }
 
-void Connection::OnWrite(bufferevent *bev) {
+void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
   if (IsFlagEnabled(kCloseAfterReply) || IsFlagEnabled(kCloseAsync)) {
     Close();
   }

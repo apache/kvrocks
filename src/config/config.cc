@@ -389,7 +389,7 @@ void Config::initFieldCallback() {
     return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_levels);
   };
 #ifdef ENABLE_OPENSSL
-  auto set_tls_option = [](Server *srv, const std::string &k, const std::string &v) {
+  auto set_tls_option = [](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     auto new_ctx = CreateSSLContext(srv->GetConfig());
     if (!new_ctx) {

@@ -254,7 +254,7 @@ static StatusOr<CommandParserWithNode> ParseSQLQuery(const std::vector<std::stri
 }
 
 class CommandFTExplainSQL : public Commander {
-  Status Parse(const std::vector<std::string> &args) override {
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
     auto [parser, ir] = GET_OR_RET(ParseSQLQuery(args_));
     ir_ = std::move(ir);
 

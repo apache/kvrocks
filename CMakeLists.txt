@@ -239,6 +239,7 @@ add_library(kvrocks_objs OBJECT ${KVROCKS_SRCS})
 target_include_directories(kvrocks_objs PUBLIC src src/common src/vendor ${PROJECT_BINARY_DIR} ${Backtrace_INCLUDE_DIR})
 target_compile_features(kvrocks_objs PUBLIC cxx_std_17)
 target_compile_options(kvrocks_objs PUBLIC -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
+target_compile_options(kvrocks_objs PUBLIC -Werror=unused-parameter)
 target_compile_options(kvrocks_objs PUBLIC -Werror=unused-result)
 
 # disable unused-variable check on GCC < 8 due to the structure bindings

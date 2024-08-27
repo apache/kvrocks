@@ -353,7 +353,7 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       conn->SetImporting();
       myself_->importing_slot_range = slot_range;
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range](int fd) {
+      conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range]([[maybe_unused]] int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
           LOG(ERROR) << fmt::format("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());

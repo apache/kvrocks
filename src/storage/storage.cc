@@ -933,14 +933,17 @@ std::string Storage::GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq) {
   // An extractor to extract update from raw writebatch
   class ReplIdExtractor : public rocksdb::WriteBatch::Handler {
    public:
-    rocksdb::Status PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) override {
+    rocksdb::Status PutCF([[maybe_unused]] uint32_t column_family_id, [[maybe_unused]] const Slice &key,
+                          [[maybe_unused]] const Slice &value) override {
       return rocksdb::Status::OK();
     }
-    rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+    rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id,
+                             [[maybe_unused]] const rocksdb::Slice &key) override {
       return rocksdb::Status::OK();
     }
-    rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice &begin_key,
-                                  const rocksdb::Slice &end_key) override {
+    rocksdb::Status DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
+                                  [[maybe_unused]] const rocksdb::Slice &begin_key,
+                                  [[maybe_unused]] const rocksdb::Slice &end_key) override {
       return rocksdb::Status::OK();
     }
 

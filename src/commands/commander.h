@@ -99,8 +99,9 @@ class Commander {
   const CommandAttributes *GetAttributes() const { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   virtual Status Parse() { return Parse(args_); }
-  virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
-  virtual Status Execute(Server *srv, Connection *conn, std::string *output) {
+  virtual Status Parse([[maybe_unused]] const std::vector<std::string> &args) { return Status::OK(); }
+  virtual Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn,
+                         [[maybe_unused]] std::string *output) {
     return {Status::RedisExecErr, errNotImplemented};
   }
 
@@ -114,7 +115,7 @@ class Commander {
 class CommanderWithParseMove : Commander {
  public:
   Status Parse() override { return ParseMove(std::move(args_)); }
-  virtual Status ParseMove(std::vector<std::string> &&args) { return Status::OK(); }
+  virtual Status ParseMove([[maybe_unused]] std::vector<std::string> &&args) { return Status::OK(); }
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;

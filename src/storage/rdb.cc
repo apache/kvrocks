@@ -401,7 +401,7 @@ StatusOr<int> RDB::loadRdbType() {
   return type;
 }
 
-StatusOr<RedisObjValue> RDB::loadRdbObject(int type, const std::string &key) {
+StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std::string &key) {
   if (type == RDBTypeString) {
     auto value = GET_OR_RET(LoadStringObject());
     return value;

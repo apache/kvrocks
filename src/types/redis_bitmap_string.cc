@@ -263,7 +263,7 @@ rocksdb::Status BitmapString::Bitfield(engine::Context &ctx, const Slice &ns_key
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
+rocksdb::Status BitmapString::BitfieldReadOnly([[maybe_unused]] const Slice &ns_key, const std::string &raw_value,
                                                const std::vector<BitfieldOperation> &ops,
                                                std::vector<std::optional<BitfieldValue>> *rets) {
   std::string_view string_value = raw_value;

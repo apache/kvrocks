@@ -186,7 +186,7 @@ class CommandReplConf : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     if (port_ != 0) {
       conn->SetListeningPort(port_);
     }
@@ -204,9 +204,9 @@ class CommandReplConf : public Commander {
 
 class CommandFetchMeta : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override { return Status::OK(); }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetAnnounceIP();
 
@@ -262,7 +262,7 @@ class CommandFetchFile : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     std::vector<std::string> files = util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
@@ -332,9 +332,9 @@ class CommandFetchFile : public Commander {
 
 class CommandDBName : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override { return Status::OK(); }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     conn->Reply(srv->storage->GetName() + CRLF);
     return Status::OK();
   }

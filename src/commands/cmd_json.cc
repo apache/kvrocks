@@ -348,7 +348,7 @@ class CommandJsonMerge : public Commander {
 
 class CommandJsonArrPop : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
     path_ = (args_.size() > 2) ? args_[2] : "$";
 
     if (args_.size() == 4) {
@@ -417,7 +417,7 @@ class CommandJsonObjLen : public Commander {
 
 class CommandJsonArrTrim : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
     path_ = args_[2];
     start_ = GET_OR_RET(ParseInt<int64_t>(args_[3], 10));
     stop_ = GET_OR_RET(ParseInt<int64_t>(args_[4], 10));

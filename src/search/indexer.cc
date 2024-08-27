@@ -242,7 +242,7 @@ Status IndexUpdater::UpdateTagIndex(engine::Context &ctx, std::string_view key, 
 
 Status IndexUpdater::UpdateNumericIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
                                         const kqir::Value &current, const SearchKey &search_key,
-                                        const NumericFieldMetadata *num) const {
+                                        [[maybe_unused]] const NumericFieldMetadata *num) const {
   CHECK(original.IsNull() || original.Is<kqir::Numeric>());
   CHECK(current.IsNull() || current.Is<kqir::Numeric>());
 

@@ -80,7 +80,7 @@ bool CompactOnExpiredCollector::NeedCompact() const {
 }
 
 rocksdb::TablePropertiesCollector *CompactOnExpiredTableCollectorFactory::CreateTablePropertiesCollector(
-    rocksdb::TablePropertiesCollectorFactory::Context context) {
+    [[maybe_unused]] rocksdb::TablePropertiesCollectorFactory::Context context) {
   return new CompactOnExpiredCollector(cf_name_, trigger_threshold_);
 }
 

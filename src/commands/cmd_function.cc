@@ -85,7 +85,7 @@ struct CommandFunction : Commander {
 
 template <bool read_only = false>
 struct CommandFCall : Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
     if (numkeys > int64_t(args_.size() - 3)) {
       return {Status::NotOK, "Number of keys can't be greater than number of args"};

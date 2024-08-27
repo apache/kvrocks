@@ -282,7 +282,7 @@ int RedisRegisterFunction(lua_State *lua) {
 }
 
 Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
-                    std::string *lib_name, bool read_only) {
+                    [[maybe_unused]] std::string *lib_name, bool read_only) {
   std::string first_line, lua_code;
   if (auto pos = script.find('\n'); pos != std::string::npos) {
     first_line = script.substr(0, pos);

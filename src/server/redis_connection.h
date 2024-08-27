@@ -51,6 +51,7 @@ class Connection : public EvbufCallbackBase<Connection> {
     kReplyModeOff = 1 << 11,
     kReplyModeSkip = 1 << 12,
     kReplyModeSkipNext = 1 << 13,
+    kPaused = 1 << 14
   };
 
   explicit Connection(bufferevent *bev, Worker *owner);

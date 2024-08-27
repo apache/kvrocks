@@ -65,8 +65,8 @@ class ConfigField {
   virtual std::string ToString() const = 0;
   virtual std::string ToStringForRewrite() const { return ToString(); }
   virtual Status Set(const std::string &v) = 0;
-  virtual Status ToNumber(int64_t *n) const { return {Status::NotOK, "not supported"}; }
-  virtual Status ToBool(bool *b) const { return {Status::NotOK, "not supported"}; }
+  virtual Status ToNumber([[maybe_unused]] int64_t *n) const { return {Status::NotOK, "not supported"}; }
+  virtual Status ToBool([[maybe_unused]] bool *b) const { return {Status::NotOK, "not supported"}; }
 
   ConfigType GetConfigType() const { return config_type; }
   bool IsMultiConfig() const { return config_type == ConfigType::MultiConfig; }

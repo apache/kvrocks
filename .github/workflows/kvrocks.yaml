@@ -428,6 +428,9 @@ jobs:
           - name: Rocky Linux 9
             image: rockylinux:9
             compiler: gcc
+          - name: Debian 12
+            image: debian:12
+            compiler: gcc
 
     runs-on: ubuntu-22.04
     container:
@@ -472,6 +475,13 @@ jobs:
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Debian 12
+        if: ${{ startsWith(matrix.image, 'debian') }}
+        run: |
+          apt update
+          apt install -y bash build-essential cmake curl git libssl-dev libtool python3 python3-pip wget
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

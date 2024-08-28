@@ -864,7 +864,8 @@ Status Storage::BeginTxn() {
   // The EXEC command is exclusive and shouldn't have multi transaction at the same time,
   // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
-  txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>();
+  txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>(rocksdb::BytewiseComparator() /*default backup_index_comparator */,
+                                                     0 /* default reserved_bytes*/, GetWriteBatchMaxBytes());
   return Status::OK();
 }
 
@@ -887,7 +888,8 @@ ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
   if (is_txn_mode_) {
     return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(txn_write_batch_.get(), ObserverOrUnique::Observer);
   }
-  return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(new rocksdb::WriteBatch(), ObserverOrUnique::Unique);
+  return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(
+      new rocksdb::WriteBatch(0 /*reserved_bytes*/, GetWriteBatchMaxBytes()), ObserverOrUnique::Unique);
 }
 
 Status Storage::WriteToPropagateCF(engine::Context &ctx, const std::string &key, const std::string &value) {

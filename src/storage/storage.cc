@@ -719,7 +719,10 @@ rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOpt
 rocksdb::Status Storage::Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                 rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key) {
   auto batch = GetWriteBatchBase();
-  batch->Delete(cf_handle, key);
+  auto s = batch->Delete(cf_handle, key);
+  if (!s.ok()) {
+    return s;
+  }
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
@@ -864,7 +867,8 @@ Status Storage::BeginTxn() {
   // The EXEC command is exclusive and shouldn't have multi transaction at the same time,
   // so it's fine to reset the global write batch without any lock.
   is_txn_mode_ = true;
-  txn_write_batch_ = std::make_unique<rocksdb::WriteBatchWithIndex>(rocksdb::BytewiseComparator() /*default backup_index_comparator */,
+  txn_write_batch_ =
+      std::make_unique<rocksdb::WriteBatchWithIndex>(rocksdb::BytewiseComparator() /*default backup_index_comparator */,
                                                      0 /* default reserved_bytes*/, GetWriteBatchMaxBytes());
   return Status::OK();
 }
@@ -898,8 +902,8 @@ Status Storage::WriteToPropagateCF(engine::Context &ctx, const std::string &key,
   }
   auto batch = GetWriteBatchBase();
   auto cf = GetCFHandle(ColumnFamilyID::Propagate);
-  batch->Put(cf, key, value);
-  auto s = Write(ctx, default_write_opts_, batch->GetWriteBatch());
+  auto s = batch->Put(cf, key, value);
+  s = Write(ctx, default_write_opts_, batch->GetWriteBatch());
   if (!s.ok()) {
     return {Status::NotOK, s.ToString()};
   }

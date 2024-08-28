@@ -253,7 +253,7 @@ Config::Config() {
       {"rocksdb.write_options.low_pri", true, new YesNoField(&rocks_db.write_options.low_pri, false)},
       {"rocksdb.write_options.memtable_insert_hint_per_batch", true,
        new YesNoField(&rocks_db.write_options.memtable_insert_hint_per_batch, false)},
-      {"rocksdb.write_options.write_batch_max_bytes", true,
+      {"rocksdb.write_options.write_batch_max_bytes", false,
        new IntField(&rocks_db.write_options.write_batch_max_bytes, 0, 0, INT_MAX)},
 
       /* rocksdb read options */

@@ -540,6 +540,7 @@ jobs:
         run: apt install -y python3-redis
 
       - name: Run kvrocks2redis Test
+        shell: bash
         run: |
           $HOME/local/bin/redis-server --daemonize yes
           mkdir -p kvrocks2redis-ci-data

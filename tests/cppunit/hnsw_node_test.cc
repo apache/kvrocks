@@ -85,14 +85,14 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   auto edge3 = search_key.ConstructHnswEdge(layer, "node2", "node3");
   auto edge4 = search_key.ConstructHnswEdge(layer, "node3", "node2");
 
-  s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge1, Slice());
-  ASSERT_TRUE(s.IsOK());
-  s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge2, Slice());
-  ASSERT_TRUE(s.IsOK());
-  s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge3, Slice());
-  ASSERT_TRUE(s.IsOK());
-  s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge4, Slice());
-  ASSERT_TRUE(s.IsOK());
+  s1 = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge1, Slice());
+  ASSERT_TRUE(s1.ok());
+  s1 = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge2, Slice());
+  ASSERT_TRUE(s1.ok());
+  s1 = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge3, Slice());
+  ASSERT_TRUE(s1.ok());
+  s1 = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Search), edge4, Slice());
+  ASSERT_TRUE(s1.ok());
   s1 = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   ASSERT_TRUE(s1.ok());
 

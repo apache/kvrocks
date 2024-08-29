@@ -52,7 +52,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
-  if (!s.ok() && !s.IsNotFound()) return s;
+  if (!s.ok()) return s;
   std::unordered_set<std::string_view> added_member_keys;
   for (auto it = mscores->rbegin(); it != mscores->rend(); ++it) {
     if (!added_member_keys.insert(it->member).second) {
@@ -85,16 +85,16 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
           std::string old_score_key =
               InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
           s = batch->Delete(score_cf_handle_, old_score_key);
-          if (!s.ok() && !s.IsNotFound()) return s;
+          if (!s.ok()) return s;
           std::string new_score_bytes;
           PutDouble(&new_score_bytes, it->score);
           s = batch->Put(member_key, new_score_bytes);
-          if (!s.ok() && !s.IsNotFound()) return s;
+          if (!s.ok()) return s;
           new_score_bytes.append(it->member);
           std::string new_score_key =
               InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
           s = batch->Put(score_cf_handle_, new_score_key, Slice());
-          if (!s.ok() && !s.IsNotFound()) return s;
+          if (!s.ok()) return s;
           changed++;
         }
         continue;
@@ -106,11 +106,11 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
     std::string score_bytes;
     PutDouble(&score_bytes, it->score);
     s = batch->Put(member_key, score_bytes);
-    if (!s.ok() && !s.IsNotFound()) return s;
+    if (!s.ok()) return s;
     score_bytes.append(it->member);
     std::string score_key = InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = batch->Put(score_cf_handle_, score_key, Slice());
-    if (!s.ok() && !s.IsNotFound()) return s;
+    if (!s.ok()) return s;
     added++;
   }
   if (added > 0) {
@@ -119,7 +119,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
-    if (!s.ok() && !s.IsNotFound()) return s;
+    if (!s.ok()) return s;
   }
   if (flags.HasCH()) {
     *added_cnt += changed;

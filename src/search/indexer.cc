@@ -226,18 +226,18 @@ Status IndexUpdater::UpdateTagIndex(engine::Context &ctx, std::string_view key, 
   for (const auto &tag : tags_to_delete) {
     auto index_key = search_key.ConstructTagFieldData(tag, key);
 
-    auto rocker_status = batch->Delete(cf_handle, index_key);
-    if (!rocker_status.ok()) {
-      return {Status::NotOK, rocker_status.ToString()};
+    auto s = batch->Delete(cf_handle, index_key);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
     }
   }
 
   for (const auto &tag : tags_to_add) {
     auto index_key = search_key.ConstructTagFieldData(tag, key);
 
-    auto rocker_status = batch->Put(cf_handle, index_key, Slice());
-    if (!rocker_status.ok()) {
-      return {Status::NotOK, rocker_status.ToString()};
+    auto s = batch->Put(cf_handle, index_key, Slice());
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
     }
   }
 

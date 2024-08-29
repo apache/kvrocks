@@ -1677,7 +1677,6 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
   }
 
   return rocksdb::Status::OK();
-  ;
 }
 
 rocksdb::Status Stream::SetId(engine::Context &ctx, const Slice &stream_name, const StreamEntryID &last_generated_id,

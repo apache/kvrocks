@@ -64,6 +64,7 @@ func TestNetworkLimits(t *testing.T) {
 	})
 }
 
+<<<<<<< HEAD
 func getEvictedClients(rdb *redis.Client, ctx context.Context) (int, error) {
 	info, err := rdb.Info(ctx, "stats").Result()
 	if err != nil {
@@ -81,6 +82,8 @@ func getEvictedClients(rdb *redis.Client, ctx context.Context) (int, error) {
 	}
 	return 0, fmt.Errorf("evicted_clients not found")
 }
+=======
+>>>>>>> 3ce53f66 (feat: support maxmemory-clients)
 
 func TestMaxMemoryClientsLimits(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{

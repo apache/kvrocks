@@ -219,6 +219,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool importing_ = false;
   RESP protocol_version_ = RESP::v2;
   std::string output_buffer_;
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3ce53f66 (feat: support maxmemory-clients)
 };
 
 }  // namespace redis

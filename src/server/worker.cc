@@ -339,6 +339,7 @@ redis::Connection *Worker::removeConnection(int fd) {
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
     conn = iter->second;
+    conn->GetOutputBuffer().clear();
     conns_.erase(iter);
     srv->DecrClientNum();
   }
@@ -551,6 +552,16 @@ void Worker::KickoutIdleClients(int timeout) {
   for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
   }
+}
+
+size_t Worker::GetConnectionsMemoryUsed() {
+  size_t mem = 0;
+  std::lock_guard<std::mutex> guard(conns_mu_);
+
+  for (auto &it : conns_) {
+    mem += it.second->GetConnectionMemoryUsed();
+  }
+  return mem;
 }
 
 void WorkerThread::Start() {

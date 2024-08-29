@@ -58,3 +58,38 @@ func TestNetworkLimits(t *testing.T) {
 		require.Fail(t, "maxclients doesn't work refusing connections")
 	})
 }
+
+
+func TestMaxMemoryClientsLimits(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"maxmemory-clients": "10m",
+	})
+	defer srv.Close()
+
+	t.Run("check if maxmemory-clients works well", func(t *testing.T) {
+		var clean []func()
+		defer func() {
+			for _, f := range clean {
+				f()
+			}
+		}()
+
+		ctx := context.Background()
+		rdbA := srv.NewClient()
+		defer rdbA.Close()
+		elem := strings.Repeat("a", 10240)
+		for i := 0; i < 1024; i++ {
+			require.NoError(t, rdbA.RPush(ctx, "test_max_memory_clients", elem).Err())
+		}
+
+		rdbB := srv.NewClient()
+		defer rdbB.Close()
+		require.NoError(t, rdbB.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
+
+		time.Sleep(25 * time.Second)
+
+		r, err := getEvictedClients(rdbA, ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, r)
+	})
+}

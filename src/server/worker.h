@@ -76,6 +76,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
 
   lua_State *Lua() { return lua_; }
   std::map<int, redis::Connection *> GetConnections() const { return conns_; }
+  std::mutex &GetConnectionsMutex() { return conns_mu_; }
+  size_t GetConnectionsMemoryUsed();
   Server *srv;
 
  private:

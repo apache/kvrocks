@@ -180,6 +180,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::set<std::string> watched_keys;
   std::atomic<bool> watched_keys_modified = false;
 
+  inline std::string &GetOutputBuffer() { return output_buffer_; }
+  size_t GetConnectionMemoryUsed() const;
+
  private:
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
@@ -213,6 +216,8 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   bool importing_ = false;
   RESP protocol_version_ = RESP::v2;
+  std::string output_buffer_;
+
 };
 
 }  // namespace redis

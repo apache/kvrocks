@@ -168,6 +168,8 @@ struct Config {
   int json_max_nesting_depth = 1024;
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
+  uint64_t max_memory_clients = 0;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;

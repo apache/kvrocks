@@ -193,6 +193,7 @@ Config::Config() {
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
+      {"hash-field-expiration", false, new YesNoField(&hash_field_expiration, false)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,

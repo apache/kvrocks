@@ -168,6 +168,9 @@ struct Config {
   int json_max_nesting_depth = 1024;
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
+  // whether to enable hash field expiration feature
+  bool hash_field_expiration = false;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;

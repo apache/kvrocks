@@ -101,7 +101,21 @@ rocksdb::Status Database::GetMetadata(engine::Context &ctx, RedisTypes types, co
   auto s = GetRawMetadata(ctx, ns_key, raw_value);
   *rest = *raw_value;
   if (!s.ok()) return s;
-  return ParseMetadata(types, rest, metadata);
+
+  s = ParseMetadata(types, rest, metadata);
+  if (!s.ok()) return s;
+
+  // if type is hash, we still need to check if the all of fields expired.
+  if (metadata->Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    s = hash_metadata.Decode(*raw_value);
+    if (!s.ok()) return s;
+    redis::Hash hash_db(storage_, namespace_);
+    if (!hash_db.ExistValidField(ctx, ns_key, hash_metadata)) {
+      return rocksdb::Status::NotFound("no element found");
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Database::GetRawMetadata(engine::Context &ctx, const Slice &ns_key, std::string *bytes) {
@@ -124,6 +138,15 @@ rocksdb::Status Database::Expire(engine::Context &ctx, const Slice &user_key, ui
   }
   if (!metadata.IsEmptyableType() && metadata.size == 0) {
     return rocksdb::Status::NotFound("no elements");
+  }
+  if (metadata.Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    s = hash_metadata.Decode(value);
+    if (!s.ok()) return s;
+    redis::Hash hash_db(storage_, namespace_);
+    if (!hash_db.ExistValidField(ctx, ns_key, hash_metadata)) {
+      return rocksdb::Status::NotFound("no element found");
+    }
   }
   if (metadata.expire == timestamp) return rocksdb::Status::OK();
 
@@ -195,7 +218,20 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     if (metadata.Expired()) continue;
 
     batch->Delete(metadata_cf_handle_, lock_keys[i]);
-    *deleted_cnt += 1;
+
+    // if delete a hash object that all of fields expired,
+    // so this hash object should be treated as empty and should not affect the deleted_cnt.
+    if (metadata.Type() == kRedisHash) {
+      HashMetadata hash_metadata(false);
+      s = hash_metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
+      if (!s.ok()) continue;
+      redis::Hash hash_db(storage_, namespace_);
+      if (hash_db.ExistValidField(ctx, slice_keys[i], hash_metadata)) {
+        *deleted_cnt += 1;
+      }
+    } else {
+      *deleted_cnt += 1;
+    }
   }
 
   if (*deleted_cnt == 0) return rocksdb::Status::OK();
@@ -273,6 +309,17 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
       if (metadata.Expired()) {
         if (stats) stats->n_expired++;
         continue;
+      }
+      // if a hash object that all of fields was expired,
+      // so the key should not be returned.
+      if (metadata.Type() == kRedisHash) {
+        HashMetadata hash_metadata(false);
+        s = hash_metadata.Decode(iter->value());
+        if (!s.ok()) continue;
+        redis::Hash hash_db(storage_, namespace_);
+        if (!hash_db.ExistValidField(ctx, iter->key(), hash_metadata)) {
+          continue;
+        }
       }
       if (stats) {
         int64_t ttl = metadata.TTL();
@@ -355,6 +402,19 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
       if (type != kRedisNone && type != metadata.Type()) continue;
 
       if (metadata.Expired()) continue;
+
+      // if a hash object that all of fields was expired,
+      // so the key should not be returned.
+      if (metadata.Type() == kRedisHash) {
+        HashMetadata hash_metadata(false);
+        s = hash_metadata.Decode(iter->value());
+        if (!s.ok()) continue;
+        redis::Hash hash_db(storage_, namespace_);
+        if (!hash_db.ExistValidField(ctx, iter->key(), hash_metadata)) {
+          continue;
+        }
+      }
+
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
       keys->emplace_back(user_key);
       cnt++;
@@ -540,8 +600,26 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);
+  std::string raw_value;
+  Slice rest;
+
   rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
   if (!s.ok()) return s;
+
+  // for hash type, we should filter expired field if encoding is with_ttl
+  bool is_encoding_field_ttl = false;
+  if (metadata.Type() == kRedisHash && !rest.empty()) {
+    HashSubkeyEncoding field_encoding = HashSubkeyEncoding::VALUE_ONLY;
+    if (!GetFixed8(&rest, reinterpret_cast<uint8_t *>(&field_encoding))) {
+      return rocksdb::Status::InvalidArgument();
+    }
+    if (uint8_t(field_encoding) > 1) {
+      return rocksdb::Status::InvalidArgument("unexpected subkey encoding version");
+    }
+    if (field_encoding == HashSubkeyEncoding::VALUE_WITH_TTL) {
+      is_encoding_field_ttl = true;
+    }
+  }
 
   auto iter = util::UniqueIterator(ctx, ctx.DefaultScanOptions());
   std::string match_prefix_key =
@@ -553,6 +631,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   } else {
     start_key = match_prefix_key;
   }
+  auto now = util::GetTimeStampMS();
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     if (!cursor.empty() && iter->key() == start_key) {
       // if cursor is not empty, then we need to skip start_key
@@ -563,9 +642,19 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       break;
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    auto value = iter->value().ToString();
+    if (is_encoding_field_ttl) {
+      uint64_t expire = 0;
+      rocksdb::Slice data(value.data(), value.size());
+      GetFixed64(&data, &expire);
+      if (expire != 0 && expire <= now) {
+        continue;
+      }
+      value = data.ToString();
+    }
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
-      values->emplace_back(iter->value().ToString());
+      values->emplace_back(value);
     }
     cnt++;
     if (limit > 0 && cnt >= limit) {
@@ -625,7 +714,7 @@ rocksdb::Status Database::typeInternal(engine::Context &ctx, const Slice &key, R
 
   Metadata metadata(kRedisNone, false);
   s = metadata.Decode(value);
-  if (!s.ok()) return s;
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   if (metadata.Expired()) {
     *type = kRedisNone;
   } else {

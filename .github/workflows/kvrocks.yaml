@@ -428,6 +428,9 @@ jobs:
           - name: Rocky Linux 9
             image: rockylinux:9
             compiler: gcc
+          - name: Debian 12
+            image: debian:12
+            compiler: gcc
 
     runs-on: ubuntu-22.04
     container:
@@ -474,6 +477,13 @@ jobs:
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
+      - name: Setup Debian 12
+        if: ${{ startsWith(matrix.image, 'debian') }}
+        run: |
+          apt update
+          apt install -y bash build-essential cmake curl git libssl-dev libtool python3 python3-pip wget
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
       - name: Cache redis
         id: cache-redis
         uses: actions/cache@v3
@@ -492,6 +502,7 @@ jobs:
 
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
+        shell: bash
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
           tar -xzvf redis-6.2.14.tar.gz
@@ -520,11 +531,16 @@ jobs:
           GOCASE_RUN_ARGS=""
           ./x.py test go build $GOCASE_RUN_ARGS
 
-      - name: Install redis-py
-        if: ${{ !startsWith(matrix.image, 'archlinux') }}  # already installed
+      - name: Install redis-py for openSUSE and Rocky
+        if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') }}
         run: pip3 install redis==4.3.6
 
+      - name: Install redis-py for Debian
+        if: ${{ startsWith(matrix.image, 'debian') }}
+        run: apt install -y python3-redis
+
       - name: Run kvrocks2redis Test
+        shell: bash
         run: |
           $HOME/local/bin/redis-server --daemonize yes
           mkdir -p kvrocks2redis-ci-data

@@ -168,6 +168,9 @@ struct Config {
   int json_max_nesting_depth = 1024;
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
+  // Enable transactional mode in engine::Context
+  bool txn_context_enabled = false;
+
   uint64_t max_memory_clients = 0;
 
   struct RocksDB {

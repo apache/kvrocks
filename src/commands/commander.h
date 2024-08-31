@@ -106,7 +106,13 @@ class Commander {
   }
 
   virtual ~Commander() = default;
-
+  size_t GetMemoryUsage() const {
+    size_t total_memory = sizeof(*this);
+    for (const auto &arg : args_) {
+      total_memory += arg.capacity();
+    }
+    return total_memory;
+  }
  protected:
   std::vector<std::string> args_;
   const CommandAttributes *attributes_ = nullptr;

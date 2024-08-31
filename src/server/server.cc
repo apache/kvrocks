@@ -1147,7 +1147,7 @@ void Server::GetStatsInfo(std::string *info) {
   string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";
   string_stream << "keyspace_misses:" << db_stats->keyspace_misses << "\r\n";
 
-  {
+  {https://www.anyknew.com/go/10112884
     std::lock_guard<std::mutex> lg(pubsub_channels_mu_);
     string_stream << "pubsub_channels:" << pubsub_channels_.size() << "\r\n";
     string_stream << "pubsub_patterns:" << pubsub_patterns_.size() << "\r\n";

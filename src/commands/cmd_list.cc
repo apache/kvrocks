@@ -684,7 +684,7 @@ class CommandRPopLPUSH : public Commander {
 
 class CommandLMove : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
     auto arg_val = util::ToLower(args_[3]);
     if (arg_val != "left" && arg_val != "right") {
       return {Status::RedisParseErr, errInvalidSyntax};

@@ -396,8 +396,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
-                                                   const Slice &end_key) {
+rocksdb::Status WriteBatchExtractor::DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
+                                                   [[maybe_unused]] const Slice &begin_key,
+                                                   [[maybe_unused]] const Slice &end_key) {
   // Do nothing with DeleteRange operations
   return rocksdb::Status::OK();
 }

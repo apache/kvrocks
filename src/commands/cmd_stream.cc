@@ -424,7 +424,8 @@ class CommandAutoClaim : public Commander {
   }
 
  private:
-  Status sendResults(Connection *conn, const StreamAutoClaimResult &result, std::string *output) const {
+  Status sendResults([[maybe_unused]] Connection *conn, const StreamAutoClaimResult &result,
+                     std::string *output) const {
     output->append(redis::MultiLen(3));
     output->append(redis::BulkString(result.next_claim_id));
     output->append(redis::MultiLen(result.entries.size()));
@@ -893,7 +894,8 @@ class CommandXPending : public Commander {
     return SendResults(conn, output, results);
   }
 
-  static Status SendResults(Connection *conn, std::string *output, StreamGetPendingEntryResult &results) {
+  static Status SendResults([[maybe_unused]] Connection *conn, std::string *output,
+                            StreamGetPendingEntryResult &results) {
     output->append(redis::MultiLen(3 + results.consumer_infos.size()));
     output->append(redis::Integer(results.pending_number));
     output->append(redis::BulkString(results.first_entry_id.ToString()));
@@ -908,7 +910,8 @@ class CommandXPending : public Commander {
     return Status::OK();
   }
 
-  static Status SendExtResults(Connection *conn, std::string *output, std::vector<StreamNACK> &ext_results) {
+  static Status SendExtResults([[maybe_unused]] Connection *conn, std::string *output,
+                               std::vector<StreamNACK> &ext_results) {
     output->append(redis::MultiLen(ext_results.size()));
     for (const auto &entry : ext_results) {
       output->append(redis::MultiLen(4));
@@ -1265,7 +1268,8 @@ class CommandXRead : public Commander,
     return Status::OK();
   }
 
-  Status BlockingRead(const engine::Context &ctx, Server *srv, Connection *conn, redis::Stream *stream_db) {
+  Status BlockingRead([[maybe_unused]] const engine::Context &ctx, Server *srv, Connection *conn,
+                      redis::Stream *stream_db) {
     if (!with_count_) {
       with_count_ = true;
       count_ = blocked_default_count_;
@@ -1380,7 +1384,7 @@ class CommandXRead : public Commander,
     conn_->OnEvent(bev, events);
   }
 
-  void TimerCB(int, int16_t events) {
+  void TimerCB(int, [[maybe_unused]] int16_t events) {
     conn_->Reply(conn_->NilString());
 
     timer_.reset();
@@ -1570,7 +1574,7 @@ class CommandXReadGroup : public Commander,
     return Status::OK();
   }
 
-  Status BlockingRead(Server *srv, Connection *conn, redis::Stream *stream_db) {
+  Status BlockingRead(Server *srv, Connection *conn, [[maybe_unused]] redis::Stream *stream_db) {
     if (!with_count_) {
       with_count_ = true;
       count_ = blocked_default_count_;
@@ -1673,7 +1677,7 @@ class CommandXReadGroup : public Commander,
     conn_->OnEvent(bev, events);
   }
 
-  void TimerCB(int, int16_t events) {
+  void TimerCB(int, [[maybe_unused]] int16_t events) {
     conn_->Reply(conn_->NilString());
 
     timer_.reset();

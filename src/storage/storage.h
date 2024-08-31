@@ -388,7 +388,8 @@ struct Context {
   std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
 
   /// is_txn_mode is used to determine whether the current Context is in transactional mode,
-  /// if it is not transactional mode, then Context is equivalent to a Storage
+  /// if it is not transactional mode, then Context is equivalent to a Storage.
+  /// If the configuration of txn-context-enabled is no, it is false.
   bool is_txn_mode = true;
 
   /// NoTransactionContext returns a Context with a is_txn_mode of false
@@ -409,6 +410,10 @@ struct Context {
   /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
   explicit Context(engine::Storage *storage) : storage(storage) {
     auto guard = storage->ReadLockGuard();
+    if (!storage->GetConfig()->txn_context_enabled) {
+      is_txn_mode = false;
+      return;
+    }
     snapshot = storage->GetDB()->GetSnapshot();  // NOLINT
   }
   ~Context() {

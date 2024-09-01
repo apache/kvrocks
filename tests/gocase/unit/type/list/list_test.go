@@ -42,9 +42,7 @@ var largeValue = map[string]string{
 }
 
 func TestLTRIM(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
-		"list-max-ziplist-size": "4",
-	})
+	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -87,9 +85,7 @@ func TestLTRIM(t *testing.T) {
 }
 
 func TestZipList(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
-		"list-max-ziplist-size": "16",
-	})
+	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{

@@ -30,7 +30,7 @@
 
 #include "version_util.h"
 
-extern "C" inline void SegvHandler(int sig, siginfo_t *info, void *secret) {
+extern "C" inline void SegvHandler(int sig, [[maybe_unused]] siginfo_t *info, [[maybe_unused]] void *secret) {
   LOG(ERROR) << "Ooops! Apache Kvrocks " << PrintVersion << " got signal: " << strsignal(sig) << " (" << sig << ")";
   auto trace = cpptrace::generate_trace();
   trace.print(LOG(ERROR));

@@ -480,31 +480,37 @@ void Worker::QuitMonitorConn(redis::Connection *conn) {
 }
 
 void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &response) {
-  tbb::parallel_for(monitor_conns_.range(), [conn, response](const ConnMap::range_type &range) {
-    for (auto &it : range) {
-      const auto &value = it.second;
-      if (conn == value) continue;  // skip the monitor command
-      if (conn->GetNamespace() == value->GetNamespace() || value->GetNamespace() == kDefaultNamespace) {
-        value->Reply(response);
+  tbb::task_arena one_thread_arena(tbb::task_arena::constraints{}.set_max_concurrency(1));
+  one_thread_arena.execute([this, conn, response]() {
+    tbb::parallel_for(monitor_conns_.range(), [conn, response](const ConnMap::range_type &range) {
+      for (auto &it : range) {
+        const auto &value = it.second;
+        if (conn == value) continue;  // skip the monitor command
+        if (conn->GetNamespace() == value->GetNamespace() || value->GetNamespace() == kDefaultNamespace) {
+          value->Reply(response);
+        }
       }
-    }
+    });
   });
 }
 
 std::string Worker::GetClientsStr() {
-  return tbb::parallel_reduce(
-      conns_.range(), std::string{},
-      [](const ConnMap::range_type &range, std::string result) {
-        for (auto &it : range) {
-          result.append(it.second->ToString());
-        }
-        return result;
-      },
-      [](const std::string &lhs, const std::string &rhs) {
-        std::string result = lhs;
-        result.append(rhs);
-        return result;
-      });
+  tbb::task_arena one_thread_arena(tbb::task_arena::constraints{}.set_max_concurrency(1));
+  return one_thread_arena.execute([this]() {
+    return tbb::parallel_reduce(
+        conns_.range(), std::string{},
+        [](const ConnMap::range_type &range, std::string result) {
+          for (auto &it : range) {
+            result.append(it.second->ToString());
+          }
+          return result;
+        },
+        [](const std::string &lhs, const std::string &rhs) {
+          std::string result = lhs;
+          result.append(rhs);
+          return result;
+        });
+  });
 }
 
 void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,

@@ -483,14 +483,14 @@ Status RDB::saveRdbObject(engine::Context &ctx, int type, const std::string &key
   } else if (type == RDBTypeHash || type == RDBTypeHashListPack || type == RDBTypeHashZipList ||
              type == RDBTypeHashZipMap) {
     const auto &entries = std::get<std::map<std::string, std::string>>(obj);
-    std::vector<FieldValue> filed_values;
-    filed_values.reserve(entries.size());
+    std::vector<FieldValue> field_values;
+    field_values.reserve(entries.size());
     for (const auto &entry : entries) {
-      filed_values.emplace_back(entry.first, entry.second);
+      field_values.emplace_back(entry.first, entry.second);
     }
     redis::Hash hash_db(storage_, ns_);
     uint64_t count = 0;
-    db_status = hash_db.MSet(ctx, key, filed_values, false /*nx*/, &count);
+    db_status = hash_db.MSet(ctx, key, field_values, false /*nx*/, &count);
   } else if (type == RDBTypeList || type == RDBTypeListZipList || type == RDBTypeListQuickList ||
              type == RDBTypeListQuickList2) {
     const auto &elements = std::get<std::vector<std::string>>(obj);

@@ -151,7 +151,7 @@ Status ZipList::peekOK(size_t n) {
 
 uint32_t ZipList::getEncodedLengthSize(uint32_t len) { return len < ZipListBigLen ? 1 : 5; }
 
-uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, size_t zl_size, unsigned int len) {
+uint32_t ZipList::ZipStorePrevEntryLengthLarge(unsigned char *p, [[maybe_unused]] size_t zl_size, unsigned int len) {
   uint32_t u32 = 0;
   if (p != nullptr) {
     p[0] = ZipListBigLen;
@@ -174,7 +174,7 @@ uint32_t ZipList::ZipStorePrevEntryLength(unsigned char *p, size_t zl_size, unsi
   return ZipStorePrevEntryLengthLarge(p, zl_size, len);
 }
 
-uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsigned int rawlen) {
+uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, [[maybe_unused]] size_t zl_size, unsigned int rawlen) {
   unsigned char len = 1, buf[5];
 
   /* Although encoding is given it may not be set for strings,
@@ -202,20 +202,20 @@ uint32_t ZipList::ZipStoreEntryEncoding(unsigned char *p, size_t zl_size, unsign
   return len;
 }
 
-void ZipList::SetZipListBytes(unsigned char *zl, size_t zl_size, uint32_t value) {
+void ZipList::SetZipListBytes(unsigned char *zl, [[maybe_unused]] size_t zl_size, uint32_t value) {
   assert(zl_size >= sizeof(uint32_t));
   memcpy(zl, &value, sizeof(uint32_t));
 }
-void ZipList::SetZipListTailOffset(unsigned char *zl, size_t zl_size, uint32_t value) {
+void ZipList::SetZipListTailOffset(unsigned char *zl, [[maybe_unused]] size_t zl_size, uint32_t value) {
   assert(zl_size >= sizeof(uint32_t) * 2);
   memcpy(zl + sizeof(uint32_t), &value, sizeof(uint32_t));
 }
-void ZipList::SetZipListLength(unsigned char *zl, size_t zl_size, uint16_t value) {
+void ZipList::SetZipListLength(unsigned char *zl, [[maybe_unused]] size_t zl_size, uint16_t value) {
   assert(zl_size >= sizeof(uint32_t) * 2 + sizeof(uint16_t));
   memcpy(zl + sizeof(uint32_t) * 2, &value, sizeof(uint16_t));
 }
 
-unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl, size_t zl_size) {
+unsigned char *ZipList::GetZipListEntryHead(unsigned char *zl, [[maybe_unused]] size_t zl_size) {
   assert(zl_size >= zlHeaderSize);
   return ((zl) + zlHeaderSize);
 }

@@ -282,7 +282,7 @@ int RedisRegisterFunction(lua_State *lua) {
 }
 
 Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
-                    std::string *lib_name, bool read_only) {
+                    [[maybe_unused]] std::string *lib_name, bool read_only) {
   std::string first_line, lua_code;
   if (auto pos = script.find('\n'); pos != std::string::npos) {
     first_line = script.substr(0, pos);
@@ -300,8 +300,8 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
     if (!replace) {
       return {Status::NotOK, "library already exists, please specify REPLACE to force load"};
     }
-
-    auto s = FunctionDelete(srv, libname);
+    engine::Context ctx(srv->storage);
+    auto s = FunctionDelete(ctx, srv, libname);
     if (!s) return s;
   }
 
@@ -444,14 +444,13 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
   std::string end_key = start_key;
   end_key.back()++;
 
-  rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  redis::LatestSnapShot ss(srv->storage);
-  read_options.snapshot = ss.GetSnapShot();
+  engine::Context ctx(srv->storage);
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
   auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto iter = util::UniqueIterator(srv->storage, read_options, cf);
+  auto iter = util::UniqueIterator(ctx, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice lib = iter->key();
@@ -484,14 +483,13 @@ Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::s
   std::string end_key = start_key;
   end_key.back()++;
 
-  rocksdb::ReadOptions read_options = srv->storage->DefaultScanOptions();
-  redis::LatestSnapShot ss(srv->storage);
-  read_options.snapshot = ss.GetSnapShot();
+  engine::Context ctx(srv->storage);
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
 
   auto *cf = srv->storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto iter = util::UniqueIterator(srv->storage, read_options, cf);
+  auto iter = util::UniqueIterator(ctx, read_options, cf);
   std::vector<std::pair<std::string, std::string>> result;
   for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
     Slice func = iter->key();
@@ -556,7 +554,7 @@ Status FunctionListLib(Server *srv, const redis::Connection *conn, const std::st
   return Status::OK();
 }
 
-Status FunctionDelete(Server *srv, const std::string &name) {
+Status FunctionDelete(engine::Context &ctx, Server *srv, const std::string &name) {
   auto lua = srv->Lua();
 
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
@@ -581,7 +579,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
     lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + func).c_str());
     lua_pushnil(lua);
     lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + func).c_str());
-    auto _ = storage->Delete(rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix + func);
+    auto _ = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix + func);
     lua_pop(lua, 1);
   }
 
@@ -590,7 +588,7 @@ Status FunctionDelete(Server *srv, const std::string &name) {
   lua_setfield(lua, -2, name.c_str());
   lua_pop(lua, 1);
 
-  auto s = storage->Delete(rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix + name);
+  auto s = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix + name);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   return Status::OK();

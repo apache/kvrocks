@@ -197,6 +197,8 @@ class ColumnFamilyConfigs {
   };
 };
 
+struct Context;
+
 class Storage {
  public:
   explicit Storage(Config *config);
@@ -225,32 +227,37 @@ class Storage {
   Status ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch);
   rocksdb::SequenceNumber LatestSeqNumber();
 
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key, std::string *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                     const rocksdb::Slice &key, std::string *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, const rocksdb::Slice &key,
-                                    rocksdb::PinnableSlice *value);
-  [[nodiscard]] rocksdb::Status Get(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                    rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                                    std::string *value);
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                     const rocksdb::Slice &key, rocksdb::PinnableSlice *value);
-  void MultiGet(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family, size_t num_keys,
-                const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
-  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family);
-  rocksdb::Iterator *NewIterator(const rocksdb::ReadOptions &options);
+  [[nodiscard]] rocksdb::Status Get(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                    rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
+                                    rocksdb::PinnableSlice *value);
+  void MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options, rocksdb::ColumnFamilyHandle *column_family,
+                size_t num_keys, const rocksdb::Slice *keys, rocksdb::PinnableSlice *values, rocksdb::Status *statuses);
+  rocksdb::Iterator *NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
+                                 rocksdb::ColumnFamilyHandle *column_family);
+  rocksdb::Iterator *NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options);
 
-  [[nodiscard]] rocksdb::Status Write(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  [[nodiscard]] rocksdb::Status Write(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                      rocksdb::WriteBatch *updates);
   const rocksdb::WriteOptions &DefaultWriteOptions() { return default_write_opts_; }
   rocksdb::ReadOptions DefaultScanOptions() const;
   rocksdb::ReadOptions DefaultMultiGetOptions() const;
-  [[nodiscard]] rocksdb::Status Delete(const rocksdb::WriteOptions &options, rocksdb::ColumnFamilyHandle *cf_handle,
-                                       const rocksdb::Slice &key);
-  [[nodiscard]] rocksdb::Status DeleteRange(const rocksdb::WriteOptions &options,
+  [[nodiscard]] rocksdb::Status Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
+                                       rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key);
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                             rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end);
-  [[nodiscard]] rocksdb::Status DeleteRange(Slice begin, Slice end);
-  [[nodiscard]] rocksdb::Status FlushScripts(const rocksdb::WriteOptions &options,
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, Slice begin, Slice end);
+  [[nodiscard]] rocksdb::Status FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                              rocksdb::ColumnFamilyHandle *cf_handle);
   bool WALHasNewData(rocksdb::SequenceNumber seq) { return seq <= LatestSeqNumber(); }
   Status InWALBoundary(rocksdb::SequenceNumber seq);
-  Status WriteToPropagateCF(const std::string &key, const std::string &value);
+  Status WriteToPropagateCF(engine::Context &ctx, const std::string &key, const std::string &value);
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
@@ -323,7 +330,7 @@ class Storage {
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }
   bool IsDBInRetryableIOError() const { return db_in_retryable_io_error_; }
 
-  Status ShiftReplId();
+  Status ShiftReplId(engine::Context &ctx);
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 
@@ -361,8 +368,83 @@ class Storage {
 
   rocksdb::WriteOptions default_write_opts_ = rocksdb::WriteOptions();
 
-  rocksdb::Status writeToDB(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
+  rocksdb::Status writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
+};
+
+/// Context passes fixed snapshot and batch between APIs
+///
+/// Limitations: Performing a large number of writes on the same Context may reduce performance.
+/// Please choose to use the same Context or create a new Context based on the actual situation.
+///
+/// Context does not provide thread safety guarantees and is generally only passed as a parameter between APIs.
+struct Context {
+  engine::Storage *storage = nullptr;
+  /// If is_txn_mode is true, snapshot should be specified instead of nullptr when used,
+  /// and should be consistent with snapshot in ReadOptions to avoid ambiguity.
+  /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
+  /// If is_txn_mode is false, the snapshot is nullptr.
+  const rocksdb::Snapshot *snapshot = nullptr;
+  std::unique_ptr<rocksdb::WriteBatchWithIndex> batch = nullptr;
+
+  /// is_txn_mode is used to determine whether the current Context is in transactional mode,
+  /// if it is not transactional mode, then Context is equivalent to a Storage.
+  /// If the configuration of txn-context-enabled is no, it is false.
+  bool is_txn_mode = true;
+
+  /// NoTransactionContext returns a Context with a is_txn_mode of false
+  static Context NoTransactionContext(engine::Storage *storage) { return Context(storage, false); }
+
+  /// GetReadOptions returns a default ReadOptions, and if is_txn_mode = true, then its snapshot is specified by the
+  /// Context
+  [[nodiscard]] rocksdb::ReadOptions GetReadOptions() const;
+  /// DefaultScanOptions returns a DefaultScanOptions, and if is_txn_mode = true, then its snapshot is specified by the
+  /// Context. Otherwise it is the same as Storage::DefaultScanOptions
+  [[nodiscard]] rocksdb::ReadOptions DefaultScanOptions() const;
+  /// DefaultMultiGetOptions returns a DefaultMultiGetOptions, and if is_txn_mode = true, then its snapshot is specified
+  /// by the Context. Otherwise it is the same as Storage::DefaultMultiGetOptions
+  [[nodiscard]] rocksdb::ReadOptions DefaultMultiGetOptions() const;
+
+  void RefreshLatestSnapshot();
+
+  /// TODO: Change it to defer getting the context, and the snapshot is pinned after the first read operation
+  explicit Context(engine::Storage *storage) : storage(storage) {
+    auto guard = storage->ReadLockGuard();
+    if (!storage->GetConfig()->txn_context_enabled) {
+      is_txn_mode = false;
+      return;
+    }
+    snapshot = storage->GetDB()->GetSnapshot();  // NOLINT
+  }
+  ~Context() {
+    if (storage) {
+      auto guard = storage->WriteLockGuard();
+      if (storage->GetDB() && snapshot) {
+        storage->GetDB()->ReleaseSnapshot(snapshot);
+      }
+    }
+  }
+  Context(const Context &) = delete;
+  Context &operator=(const Context &) = delete;
+  Context &operator=(Context &&ctx) noexcept {
+    if (this != &ctx) {
+      storage = ctx.storage;
+      snapshot = ctx.snapshot;
+      batch = std::move(ctx.batch);
+
+      ctx.storage = nullptr;
+      ctx.snapshot = nullptr;
+    }
+    return *this;
+  }
+  Context(Context &&ctx) noexcept : storage(ctx.storage), snapshot(ctx.snapshot), batch(std::move(ctx.batch)) {
+    ctx.storage = nullptr;
+    ctx.snapshot = nullptr;
+  }
+
+ private:
+  /// It is only used by NonTransactionContext
+  explicit Context(engine::Storage *storage, bool txn_mode) : storage(storage), is_txn_mode(txn_mode) {}
 };
 
 }  // namespace engine

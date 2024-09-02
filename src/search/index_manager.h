@@ -47,8 +47,8 @@ struct IndexManager {
     if (storage->GetConfig()->cluster_enabled) {
       return Status::OK();
     }
-
-    util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    util::UniqueIterator iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
     auto begin = SearchKey{ns, ""}.ConstructIndexMeta();
 
     for (iter->Seek(begin); iter->Valid(); iter->Next()) {
@@ -75,8 +75,9 @@ struct IndexManager {
 
       auto index_key = SearchKey(ns, index_name.ToStringView());
       std::string prefix_value;
-      if (auto s = storage->Get(storage->DefaultMultiGetOptions(), storage->GetCFHandle(ColumnFamilyID::Search),
-                                index_key.ConstructIndexPrefixes(), &prefix_value);
+      if (auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(),
+                                storage->GetCFHandle(ColumnFamilyID::Search), index_key.ConstructIndexPrefixes(),
+                                &prefix_value);
           !s.ok()) {
         return {Status::NotOK, fmt::format("fail to find index prefixes for index {}: {}", index_name, s.ToString())};
       }
@@ -90,7 +91,7 @@ struct IndexManager {
       auto info = std::make_unique<kqir::IndexInfo>(index_name.ToString(), metadata, ns);
       info->prefixes = prefixes;
 
-      util::UniqueIterator field_iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+      util::UniqueIterator field_iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
       auto field_begin = index_key.ConstructFieldMeta();
 
       for (field_iter->Seek(field_begin); field_iter->Valid(); field_iter->Next()) {
@@ -136,7 +137,7 @@ struct IndexManager {
     return Status::OK();
   }
 
-  Status Create(std::unique_ptr<kqir::IndexInfo> info) {
+  Status Create(engine::Context &ctx, std::unique_ptr<kqir::IndexInfo> info) {
     if (storage->GetConfig()->cluster_enabled) {
       return {Status::NotOK, "currently index cannot work in cluster mode"};
     }
@@ -167,7 +168,7 @@ struct IndexManager {
       batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
     }
 
-    if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+    if (auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
       return {Status::NotOK, fmt::format("failed to write index metadata: {}", s.ToString())};
     }
 
@@ -176,7 +177,7 @@ struct IndexManager {
     index_map.Insert(std::move(info));
 
     for (auto updater : indexer->updater_list) {
-      GET_OR_RET(updater.Build());
+      GET_OR_RET(updater.Build(ctx));
     }
 
     return Status::OK();
@@ -241,7 +242,8 @@ struct IndexManager {
     end = index_key.ConstructAllFieldDataEnd();
     batch->DeleteRange(cf, begin, end);
 
-    if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    if (auto s = storage->Write(no_txn_ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
       return {Status::NotOK, fmt::format("failed to delete index metadata and data: {}", s.ToString())};
     }
 

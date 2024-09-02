@@ -75,7 +75,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
   return err_msg.find(exceeded_quota_str) != std::string::npos;
 }
 
-void EventListener::OnCompactionBegin(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_begin] column family: " << ci.cf_name << ", job_id: " << ci.job_id
             << ", compaction reason: " << rocksdb::GetCompactionReasonString(ci.compaction_reason)
             << ", output compression type: " << CompressType2String(ci.compression)
@@ -85,7 +85,7 @@ void EventListener::OnCompactionBegin(rocksdb::DB *db, const rocksdb::Compaction
             << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no");
 }
 
-void EventListener::OnCompactionCompleted(rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+void EventListener::OnCompactionCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
   LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name << ", job_id: " << ci.job_id
             << ", compaction reason: " << rocksdb::GetCompactionReasonString(ci.compaction_reason)
             << ", output compression type: " << CompressType2String(ci.compression)
@@ -114,12 +114,12 @@ void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo
             << ", elapsed(micro): " << si.stats.elapsed_micros;
 }
 
-void EventListener::OnFlushBegin(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
+void EventListener::OnFlushBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   LOG(INFO) << "[event_listener/flush_begin] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id
             << ", job_id: " << fi.job_id << ", reason: " << rocksdb::GetFlushReasonString(fi.flush_reason);
 }
 
-void EventListener::OnFlushCompleted(rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
+void EventListener::OnFlushCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   storage_->RecordStat(engine::StatType::FlushCount, 1);
   storage_->CheckDBSizeLimit();
   LOG(INFO) << "[event_listener/flush_completed] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id

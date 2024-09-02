@@ -29,7 +29,7 @@ namespace redis {
 
 class CommandMulti : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     if (conn->IsFlagEnabled(Connection::kMultiExec)) {
       return {Status::RedisExecErr, "MULTI calls can not be nested"};
     }

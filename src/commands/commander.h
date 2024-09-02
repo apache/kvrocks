@@ -113,6 +113,7 @@ class Commander {
     }
     return total_memory;
   }
+
  protected:
   std::vector<std::string> args_;
   const CommandAttributes *attributes_ = nullptr;

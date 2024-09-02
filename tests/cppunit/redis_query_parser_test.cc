@@ -21,11 +21,14 @@
 #include <gtest/gtest.h>
 #include <search/redis_query_transformer.h>
 
+#include "search/common_transformer.h"
 #include "tao/pegtl/string_input.hpp"
 
 using namespace kqir::redis_query;
 
-static auto Parse(const std::string& in) { return ParseToIR(string_input(in, "test")); }
+static auto Parse(const std::string& in, const kqir::ParamMap& pm = {}) {
+  return ParseToIR(string_input(in, "test"), pm);
+}
 
 #define AssertSyntaxError(node) ASSERT_EQ(node.Msg(), "invalid syntax");  // NOLINT
 
@@ -89,4 +92,51 @@ TEST(RedisQueryParserTest, Simple) {
   AssertIR(Parse("*"), "true");
   AssertIR(Parse("* *"), "(and true, true)");
   AssertIR(Parse("*|*"), "(or true, true)");
+}
+
+TEST(RedisQueryParserTest, Params) {
+  AssertIR(Parse("@c:[$left ($right]", {{"left", "1"}, {"right", "2"}}), "(and c >= 1, c < 2)");
+  AssertIR(Parse("@c:[($x $x]", {{"x", "2"}}), "(and c > 2, c <= 2)");
+  AssertIR(Parse("@c:{$y}", {{"y", "hello"}}), "c hastag \"hello\"");
+  AssertIR(Parse("@c:{$y} @d:[$zzz inf]", {{"y", "hello"}, {"zzz", "3"}}), "(and c hastag \"hello\", d >= 3)");
+  ASSERT_EQ(Parse("@c:{$y}", {{"z", "hello"}}).Msg(), "parameter with name `y` not found");
+}
+
+TEST(RedisQueryParserTest, Vector) {
+  std::vector<double> vec = {1, 2, 3};
+  std::string vec_str(reinterpret_cast<const char*>(vec.data()), vec.size() * sizeof(double));
+
+  AssertSyntaxError(Parse("@field:[RANGE 10 $vector]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE 10 not_param"));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("@field:[VECTOR_RANGE $vector 10]", {{"vector", vec_str}}));
+  AssertSyntaxError(Parse("* =>[knn 5 @field $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("* =>[KNN 5 @field not_param]"));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("KNN 5 @vector $BLOB", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("* =>[KNN -1 @vector $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("*=>[KNN 5 $vector_blob_param]", {{"vector_blob_param", vec_str}}));
+  AssertSyntaxError(Parse("(*) => [KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}));
+  AssertSyntaxError(Parse("(@a:[1 2]) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x|y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x|y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x}|@b:[1 inf] | @c:{y}) => [KNN 8 @vec_embedding $blob]", {{"blob", vec_str}}));
+  AssertSyntaxError(Parse("(@a:{x}|@b:[1 inf] | @field:[VECTOR_RANGE 10 $vector]) => [KNN 8 @vec_embedding $blob]",
+                          {{"blob", vec_str}, {"vector", vec_str}}));
+
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}),
+           "field <-> [1.000000, 2.000000, 3.000000] < 10");
+  AssertIR(Parse("@field:[VECTOR_RANGE 10 $vector]| @b:[1 inf]", {{"vector", vec_str}}),
+           "(or field <-> [1.000000, 2.000000, 3.000000] < 10, b >= 1)");
+  AssertIR(Parse("*=>[KNN 10 @doc_embedding $BLOB]", {{"BLOB", vec_str}}),
+           "KNN k=10, doc_embedding <-> [1.000000, 2.000000, 3.000000]");
+  AssertIR(Parse("* =>[KNN 5 @vector $BLOB]", {{"BLOB", vec_str}}),
+           "KNN k=5, vector <-> [1.000000, 2.000000, 3.000000]");
+
+  vec_str = vec_str.substr(0, 3);
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(),
+            "data size is not a multiple of the target type size");
+  vec_str = "";
+  ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(), "empty vector is invalid");
 }

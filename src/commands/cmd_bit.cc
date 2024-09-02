@@ -49,7 +49,8 @@ class CommandGetBit : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     bool bit = false;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.GetBit(args_[1], offset_, &bit);
+    engine::Context ctx(srv->storage);
+    auto s = bitmap_db.GetBit(ctx, args_[1], offset_, &bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(bit ? 1 : 0);
@@ -80,7 +81,8 @@ class CommandSetBit : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     bool old_bit = false;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.SetBit(args_[1], offset_, bit_, &old_bit);
+    engine::Context ctx(srv->storage);
+    auto s = bitmap_db.SetBit(ctx, args_[1], offset_, bit_, &old_bit);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(old_bit ? 1 : 0);
@@ -135,7 +137,8 @@ class CommandBitCount : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     uint32_t cnt = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitCount(args_[1], start_, stop_, is_bit_index_, &cnt);
+    engine::Context ctx(srv->storage);
+    auto s = bitmap_db.BitCount(ctx, args_[1], start_, stop_, is_bit_index_, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(cnt);
@@ -194,7 +197,8 @@ class CommandBitPos : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     int64_t pos = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitPos(args_[1], bit_, start_, stop_, stop_given_, &pos, is_bit_index_);
+    engine::Context ctx(srv->storage);
+    auto s = bitmap_db.BitPos(ctx, args_[1], bit_, start_, stop_, stop_given_, &pos, is_bit_index_);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(pos);
@@ -239,7 +243,8 @@ class CommandBitOp : public Commander {
 
     int64_t dest_key_len = 0;
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-    auto s = bitmap_db.BitOp(op_flag_, args_[1], args_[2], op_keys, &dest_key_len);
+    engine::Context ctx(srv->storage);
+    auto s = bitmap_db.BitOp(ctx, op_flag_, args_[1], args_[2], op_keys, &dest_key_len);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::Integer(dest_key_len);
@@ -336,10 +341,11 @@ class CommandBitfield : public Commander {
     redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
     std::vector<std::optional<BitfieldValue>> rets;
     rocksdb::Status s;
+    engine::Context ctx(srv->storage);
     if (read_only_) {
-      s = bitmap_db.BitfieldReadOnly(args_[1], cmds_, &rets);
+      s = bitmap_db.BitfieldReadOnly(ctx, args_[1], cmds_, &rets);
     } else {
-      s = bitmap_db.Bitfield(args_[1], cmds_, &rets);
+      s = bitmap_db.Bitfield(ctx, args_[1], cmds_, &rets);
     }
     std::vector<std::string> str_rets(rets.size());
     for (size_t i = 0; i != rets.size(); ++i) {
@@ -404,7 +410,7 @@ class CommandBitfield : public Commander {
   bool read_only_;
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(Bit, MakeCmdAttr<CommandGetBit>("getbit", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandSetBit>("setbit", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandBitCount>("bitcount", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandBitPos>("bitpos", -3, "read-only", 1, 1, 1),

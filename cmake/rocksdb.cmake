@@ -26,8 +26,8 @@ endif()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(rocksdb
-  facebook/rocksdb v9.0.0
-  MD5=ce5630234491f81fc8d180b327d39ef5
+  facebook/rocksdb v9.5.2
+  MD5=03489fe4e03a7216d8f52e59409f1ca8
 )
 
 FetchContent_GetProperties(jemalloc)

@@ -37,8 +37,8 @@ const char *errEntryIdOutOfRange = "The ID specified in XADD must be greater tha
 const char *errStreamExhaustedEntryID = "The stream has exhausted the last possible ID, unable to add more items";
 
 Status IncrementStreamEntryID(StreamEntryID *id) {
-  if (id->seq == UINT64_MAX) {
-    if (id->ms == UINT64_MAX) {
+  if (id->seq == StreamEntryID::Maximum().seq) {
+    if (id->ms == StreamEntryID::Maximum().ms) {
       // special case where 'id' is the last possible entry ID
       id->ms = 0;
       id->seq = 0;
@@ -146,7 +146,7 @@ Status ParseRangeEnd(const std::string &input, StreamEntryID *id) {
     }
 
     id->ms = *parse_input;
-    id->seq = UINT64_MAX;
+    id->seq = StreamEntryID::Maximum().seq;
   }
 
   return Status::OK();
@@ -179,7 +179,7 @@ Status DecodeRawStreamEntryValue(const std::string &value, std::vector<std::stri
 }
 
 Status FullySpecifiedEntryID::GenerateID(const StreamEntryID &last_id, StreamEntryID *next_id) {
-  if (last_id.ms == UINT64_MAX && last_id.seq == UINT64_MAX) {
+  if (last_id.ms == StreamEntryID::Maximum().ms && last_id.seq == StreamEntryID::Maximum().seq) {
     return {Status::RedisExecErr, errStreamExhaustedEntryID};
   }
 
@@ -216,7 +216,7 @@ Status SpecificTimestampWithAnySequenceNumber::GenerateID(const StreamEntryID &l
   }
 
   if (ms_ == last_id.ms) {
-    if (last_id.seq == UINT64_MAX) {
+    if (last_id.seq == StreamEntryID::Maximum().seq) {
       return {Status::RedisExecErr, errSequenceNumberOverflow};
     }
 

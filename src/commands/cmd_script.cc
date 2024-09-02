@@ -29,10 +29,9 @@ namespace redis {
 template <bool evalsha, bool read_only>
 class CommandEvalImpl : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     if (evalsha && args_[1].size() != 40) {
-      *output = redis::Error(errNoMatchingScript);
-      return Status::OK();
+      return {Status::RedisNoScript, errNoMatchingScript};
     }
 
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
@@ -63,7 +62,7 @@ class CommandScript : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     // There's a little tricky here since the script command was the write type
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
@@ -124,12 +123,11 @@ uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &arg
   return flags;
 }
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script",
-                                                   GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script",
-                                                      GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
+REDIS_REGISTER_COMMANDS(
+    Script, MakeCmdAttr<CommandEval>("eval", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script ro-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script ro-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", 0, 0, 0), )
 
 }  // namespace redis

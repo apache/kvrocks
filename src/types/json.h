@@ -21,6 +21,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <jsoncons/json.hpp>
 #include <jsoncons/json_error.hpp>
@@ -37,7 +38,9 @@
 
 #include "common/string_util.h"
 #include "jsoncons_ext/jsonpath/jsonpath_error.hpp"
+#include "server/redis_reply.h"
 #include "status.h"
+#include "storage/redis_metadata.h"
 
 template <class T>
 using Optionals = std::vector<std::optional<T>>;
@@ -214,6 +217,30 @@ struct JsonValue {
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
     }
+    return results;
+  }
+
+  StatusOr<std::vector<size_t>> GetBytes(std::string_view path, JsonStorageFormat format,
+                                         int max_nesting_depth = std::numeric_limits<int>::max()) const {
+    std::vector<size_t> results;
+    Status s;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
+        if (!s) return;
+        std::string buffer;
+        JsonValue query_value(origin);
+        if (format == JsonStorageFormat::JSON) {
+          s = query_value.Dump(&buffer, max_nesting_depth);
+        } else if (format == JsonStorageFormat::CBOR) {
+          s = query_value.DumpCBOR(&buffer, max_nesting_depth);
+        }
+        results.emplace_back(buffer.size());
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+    if (!s) return s;
+
     return results;
   }
 
@@ -571,28 +598,29 @@ struct JsonValue {
         if (!status.IsOK()) {
           return;
         }
-        if (!origin.is_number()) {
+        // is_number() will return true
+        // if it's actually a string but can convert to a number
+        // so here we should exclude such case
+        if (!origin.is_number() || origin.is_string()) {
           result->value.push_back(jsoncons::json::null());
           return;
         }
-        if (number.value.is_double() || origin.is_double()) {
-          double v = 0;
-          if (op == NumOpEnum::Incr) {
-            v = origin.as_double() + number.value.as_double();
-          } else if (op == NumOpEnum::Mul) {
-            v = origin.as_double() * number.value.as_double();
-          }
-          if (std::isinf(v)) {
-            status = {Status::RedisExecErr, "result is an infinite number"};
-            return;
-          }
-          origin = v;
+        double v = 0;
+        if (op == NumOpEnum::Incr) {
+          v = origin.as_double() + number.value.as_double();
+        } else if (op == NumOpEnum::Mul) {
+          v = origin.as_double() * number.value.as_double();
+        }
+        if (std::isinf(v)) {
+          status = {Status::RedisExecErr, "the result is an infinite number"};
+          return;
+        }
+        double v_int = 0;
+        if (std::modf(v, &v_int) == 0 && double(std::numeric_limits<int64_t>::min()) < v &&
+            v < double(std::numeric_limits<int64_t>::max())) {
+          origin = int64_t(v);
         } else {
-          if (op == NumOpEnum::Incr) {
-            origin = origin.as_integer<int64_t>() + number.value.as_integer<int64_t>();
-          } else if (op == NumOpEnum::Mul) {
-            origin = origin.as_integer<int64_t>() * number.value.as_integer<int64_t>();
-          }
+          origin = v;
         }
         result->value.push_back(origin);
       });
@@ -600,6 +628,51 @@ struct JsonValue {
       return {Status::NotOK, e.what()};
     }
     return status;
+  }
+  static void TransformResp(const jsoncons::json &origin, std::string &json_resp, redis::RESP resp) {
+    if (origin.is_object()) {
+      json_resp += redis::MultiLen(origin.size() * 2 + 1);
+      json_resp += redis::SimpleString("{");
+
+      for (const auto &json_kv : origin.object_range()) {
+        json_resp += redis::BulkString(json_kv.key());
+        TransformResp(json_kv.value(), json_resp, resp);
+      }
+
+    } else if (origin.is_int64() || origin.is_uint64()) {
+      json_resp += redis::Integer(origin.as_integer<int64_t>());
+
+    } else if (origin.is_string() || origin.is_double()) {
+      json_resp += redis::BulkString(origin.as_string());
+    } else if (origin.is_bool()) {
+      json_resp += redis::SimpleString(origin.as_bool() ? "true" : "false");
+
+    } else if (origin.is_null()) {
+      json_resp += redis::NilString(resp);
+
+    } else if (origin.is_array()) {
+      json_resp += redis::MultiLen(origin.size() + 1);
+      json_resp += redis::SimpleString("[");
+
+      for (const auto &json_array_value : origin.array_range()) {
+        TransformResp(json_array_value, json_resp, resp);
+      }
+    }
+  }
+
+  StatusOr<std::vector<std::string>> ConvertToResp(std::string_view path, redis::RESP resp) const {
+    std::vector<std::string> json_resps;
+    try {
+      jsoncons::jsonpath::json_query(value, path, [&](const std::string & /*path*/, const jsoncons::json &origin) {
+        std::string json_resp;
+        TransformResp(origin, json_resp, resp);
+        json_resps.emplace_back(json_resp);
+      });
+    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+      return {Status::NotOK, e.what()};
+    }
+
+    return json_resps;
   }
 
   JsonValue(const JsonValue &) = default;

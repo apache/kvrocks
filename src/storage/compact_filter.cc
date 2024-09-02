@@ -33,8 +33,8 @@ namespace engine {
 
 using rocksdb::Slice;
 
-bool MetadataFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
-                            bool *modified) const {
+bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const Slice &value,
+                            [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
   Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(value);
   auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
@@ -95,8 +95,9 @@ bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &me
          || metadata.ExpireAt(lazy_expired_ts) || ikey.GetVersion() != metadata.version;
 }
 
-rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, const Slice &key, std::string *new_value,
-                                                                  std::string *skip_until) const {
+rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused]] int level, const Slice &key,
+                                                                  [[maybe_unused]] std::string *new_value,
+                                                                  [[maybe_unused]] std::string *skip_until) const {
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
@@ -117,8 +118,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey(int level, con
   return result ? rocksdb::CompactionFilter::Decision::kRemove : rocksdb::CompactionFilter::Decision::kKeep;
 }
 
-bool SubKeyFilter::Filter(int level, const Slice &key, const Slice &value, std::string *new_value,
-                          bool *modified) const {
+bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Slice &value,
+                          [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);

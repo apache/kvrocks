@@ -65,6 +65,32 @@ enum CommandFlags : uint64_t {
   kCmdROScript = 1ULL << 10,       // "ro-script" flag for read-only script commands
   kCmdCluster = 1ULL << 11,        // "cluster" flag
   kCmdNoDBSizeCheck = 1ULL << 12,  // "no-dbsize-check" flag
+  kCmdSlow = 1ULL << 13,           // "slow" flag
+};
+
+enum class CommandCategory : uint8_t {
+  Unknown = 0,
+  Bit,
+  BloomFilter,
+  Cluster,
+  Function,
+  Geo,
+  Hash,
+  HLL,
+  JSON,
+  Key,
+  List,
+  Pubsub,
+  Replication,
+  Script,
+  Search,
+  Server,
+  Set,
+  SortedInt,
+  Stream,
+  String,
+  Txn,
+  ZSet,
 };
 
 class Commander {
@@ -73,8 +99,9 @@ class Commander {
   const CommandAttributes *GetAttributes() const { return attributes_; }
   void SetArgs(const std::vector<std::string> &args) { args_ = args; }
   virtual Status Parse() { return Parse(args_); }
-  virtual Status Parse(const std::vector<std::string> &args) { return Status::OK(); }
-  virtual Status Execute(Server *srv, Connection *conn, std::string *output) {
+  virtual Status Parse([[maybe_unused]] const std::vector<std::string> &args) { return Status::OK(); }
+  virtual Status Execute([[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn,
+                         [[maybe_unused]] std::string *output) {
     return {Status::RedisExecErr, errNotImplemented};
   }
 
@@ -88,7 +115,7 @@ class Commander {
 class CommanderWithParseMove : Commander {
  public:
   Status Parse() override { return ParseMove(std::move(args_)); }
-  virtual Status ParseMove(std::vector<std::string> &&args) { return Status::OK(); }
+  virtual Status ParseMove([[maybe_unused]] std::vector<std::string> &&args) { return Status::OK(); }
 };
 
 using CommanderFactory = std::function<std::unique_ptr<Commander>()>;
@@ -106,6 +133,13 @@ struct CommandKeyRange {
   // step length of key position
   // e.g. key step 2 means "key other key other ..." sequence
   int key_step;
+
+  template <typename F>
+  void ForEachKey(F &&f, const std::vector<std::string> &args) const {
+    for (size_t i = first_key; last_key > 0 ? i <= size_t(last_key) : i <= args.size() + last_key; i += key_step) {
+      std::forward<F>(f)(args[i]);
+    }
+  }
 };
 
 using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::string> &)>;
@@ -123,8 +157,8 @@ struct CommandAttributes {
   // negative number -n means number of arguments is equal to or large than n
   int arity;
 
-  // space-separated flag strings to initialize flags
-  std::string description;
+  // category of this command, e.g. key, string, hash
+  CommandCategory category;
 
   // bitmap of enum CommandFlags
   uint64_t flags;
@@ -152,6 +186,27 @@ struct CommandAttributes {
 
   bool CheckArity(int cmd_size) const {
     return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
+  }
+
+  template <typename F>
+  void ForEachKeyRange(F &&f, const std::vector<std::string> &args) const {
+    if (key_range.first_key > 0) {
+      std::forward<F>(f)(args, key_range);
+    } else if (key_range.first_key == -1) {
+      redis::CommandKeyRange range = key_range_gen(args);
+
+      if (range.first_key > 0) {
+        std::forward<F>(f)(args, range);
+      }
+    } else if (key_range.first_key == -2) {
+      std::vector<redis::CommandKeyRange> vec_range = key_range_vec_gen(args);
+
+      for (const auto &range : vec_range) {
+        if (range.first_key > 0) {
+          std::forward<F>(f)(args, range);
+        }
+      }
+    }
   }
 };
 
@@ -185,6 +240,8 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
       flags |= kCmdCluster;
     else if (flag == "no-dbsize-check")
       flags |= kCmdNoDBSizeCheck;
+    else if (flag == "slow")
+      flags |= kCmdSlow;
     else {
       std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
                                cmd_name)
@@ -198,10 +255,10 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
 
 template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
-                 int key_step, const AdditionalFlagGen &flag_gen = {}) {
+                 int key_step = 1, const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {first_key, last_key, key_step},
@@ -222,7 +279,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                  const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {-1, 0, 0},
@@ -238,7 +295,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                  const CommandKeyRangeVecGen &vec_gen, const AdditionalFlagGen &flag_gen = {}) {
   CommandAttributes attr{name,
                          arity,
-                         description,
+                         CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
                          {-2, 0, 0},
@@ -250,7 +307,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
 }
 
 struct RegisterToCommandTable {
-  RegisterToCommandTable(std::initializer_list<CommandAttributes> list);
+  RegisterToCommandTable(CommandCategory category, std::initializer_list<CommandAttributes> list);
 };
 
 struct CommandTable {
@@ -288,7 +345,8 @@ struct CommandTable {
 #define KVROCKS_CONCAT2(a, b) KVROCKS_CONCAT(a, b)  // NOLINT
 
 // NOLINTNEXTLINE
-#define REDIS_REGISTER_COMMANDS(...) \
-  static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__){__VA_ARGS__};
+#define REDIS_REGISTER_COMMANDS(cat, ...)                                                                   \
+  static RegisterToCommandTable KVROCKS_CONCAT2(register_to_command_table_, __LINE__)(CommandCategory::cat, \
+                                                                                      {__VA_ARGS__});
 
 }  // namespace redis

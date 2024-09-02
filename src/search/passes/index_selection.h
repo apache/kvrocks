@@ -72,7 +72,7 @@ struct IndexSelection : Visitor {
   bool HasGoodOrder() const { return order && order->field->info->HasIndex(); }
 
   std::unique_ptr<PlanOperator> GenerateScanFromOrder() const {
-    if (order->field->info->MetadataAs<redis::SearchNumericFieldMetadata>()) {
+    if (order->field->info->MetadataAs<redis::NumericFieldMetadata>()) {
       return std::make_unique<NumericFieldScan>(order->field->CloneAs<FieldRef>(), Interval::Full(), order->order);
     } else {
       CHECK(false) << "current only numeric field is supported for ordering";
@@ -112,6 +112,12 @@ struct IndexSelection : Visitor {
     if (auto v = dynamic_cast<OrExpr *>(node)) {
       return VisitExpr(v);
     }
+    if (auto v = dynamic_cast<VectorKnnExpr *>(node)) {
+      return VisitExpr(v);
+    }
+    if (auto v = dynamic_cast<VectorRangeExpr *>(node)) {
+      return VisitExpr(v);
+    }
     if (auto v = dynamic_cast<NumericCompareExpr *>(node)) {
       return VisitExpr(v);
     }
@@ -148,6 +154,23 @@ struct IndexSelection : Visitor {
     if (node->field->info->HasIndex() && node->op != NumericCompareExpr::NE) {
       IntervalSet is(node->op, node->num->val);
       return PlanFromInterval(is, node->field.get(), SortByClause::ASC);
+    }
+
+    return MakeFullIndexFilter(node);
+  }
+
+  std::unique_ptr<PlanOperator> VisitExpr(VectorRangeExpr *node) const {
+    if (node->field->info->HasIndex()) {
+      return std::make_unique<HnswVectorFieldRangeScan>(node->field->CloneAs<FieldRef>(), node->vector->values,
+                                                        node->range->val);
+    }
+
+    return MakeFullIndexFilter(node);
+  }
+
+  std::unique_ptr<PlanOperator> VisitExpr(VectorKnnExpr *node) const {
+    if (node->field->info->HasIndex()) {
+      return std::make_unique<HnswVectorFieldKnnScan>(node->field->CloneAs<FieldRef>(), node->vector->values, node->k);
     }
 
     return MakeFullIndexFilter(node);

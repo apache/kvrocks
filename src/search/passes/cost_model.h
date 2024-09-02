@@ -36,6 +36,12 @@ struct CostModel {
     if (auto v = dynamic_cast<const FullIndexScan *>(node)) {
       return Visit(v);
     }
+    if (auto v = dynamic_cast<const HnswVectorFieldKnnScan *>(node)) {
+      return Visit(v);
+    }
+    if (auto v = dynamic_cast<const HnswVectorFieldRangeScan *>(node)) {
+      return Visit(v);
+    }
     if (auto v = dynamic_cast<const NumericFieldScan *>(node)) {
       return Visit(v);
     }
@@ -52,7 +58,7 @@ struct CostModel {
     CHECK(false) << "plan operator type not supported";
   }
 
-  static size_t Visit(const FullIndexScan *node) { return 100; }
+  static size_t Visit([[maybe_unused]] const FullIndexScan *node) { return 100; }
 
   static size_t Visit(const NumericFieldScan *node) {
     if (node->range.r == IntervalSet::NextNum(node->range.l)) {
@@ -72,7 +78,11 @@ struct CostModel {
     return base;
   }
 
-  static size_t Visit(const TagFieldScan *node) { return 10; }
+  static size_t Visit([[maybe_unused]] const TagFieldScan *node) { return 10; }
+
+  static size_t Visit([[maybe_unused]] const HnswVectorFieldKnnScan *node) { return 3; }
+
+  static size_t Visit([[maybe_unused]] const HnswVectorFieldRangeScan *node) { return 4; }
 
   static size_t Visit(const Filter *node) { return Transform(node->source.get()) + 1; }
 

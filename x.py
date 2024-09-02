@@ -19,9 +19,10 @@
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
-from os import makedirs
+import os
 from pathlib import Path
 import re
+import filecmp
 from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, TextIO, Tuple
@@ -92,6 +93,24 @@ def check_version(current: str, required: Tuple[int, int, int], prog_name: Optio
 
     return semver
 
+def prepare() -> None:
+    basedir = Path(__file__).parent.absolute()
+    
+    # Install Git hooks
+    hooks = basedir / "dev" / "hooks"
+    git_hooks = basedir / ".git" / "hooks"
+
+    git_hooks.mkdir(exist_ok=True)
+    for hook in hooks.iterdir():
+        dst = git_hooks / hook.name
+        if dst.exists():
+            if filecmp.cmp(hook, dst, shallow=False):
+                print(f"{hook.name} already installed.")
+                continue
+            raise RuntimeError(f"{dst} already exists; please remove it first")
+        else:
+            dst.symlink_to(hook)
+            print(f"{hook.name} installed at {dst}.")
 
 def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
@@ -106,7 +125,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     cmake_version = output.read().strip()
     check_version(cmake_version, CMAKE_REQUIRE_VERSION, "CMake")
 
-    makedirs(dir, exist_ok=True)
+    os.makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
@@ -246,11 +265,11 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
 
     # 1. Git commit and tag
     git = find_command('git', msg='git is required for source packaging')
-    run(git, 'commit', '-a', '-m', f'[source-release] prepare release apache-kvrocks-{version}')
+    run(git, 'commit', '-a', '-m', f'release: prepare source release apache-kvrocks-{version}')
     if release_candidate_number is None:
-        run(git, 'tag', '-a', f'v{version}', '-m', f'[source-release] copy for tag v{version}')
+        run(git, 'tag', '-a', f'v{version}', '-m', f'release: copy for tag v{version}')
     else:
-        run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'[source-release] copy for tag v{version}-rc{release_candidate_number}')
+        run(git, 'tag', '-a', f'v{version}-rc{release_candidate_number}', '-m', f'release: copy for tag v{version}-rc{release_candidate_number}')
 
     # 2. Create the source tarball
     folder = f'apache-kvrocks-{version}-src'
@@ -414,6 +433,13 @@ if __name__ == '__main__':
     parser_test_go.add_argument('--cli-path', default='redis-cli', help="path of redis-cli to test kvrocks")
     parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
     parser_test_go.set_defaults(func=test_go)
+
+    parser_prepare = subparsers.add_parser(
+        'prepare',
+        description="Prepare scripts such as git hooks",
+        help="Prepare scripts such as git hooks"
+    )
+    parser_prepare.set_defaults(func=prepare)
 
     args = parser.parse_args()
 

@@ -50,9 +50,23 @@ class [[nodiscard]] Status {
     RedisInvalidCmd,
     RedisParseErr,
     RedisExecErr,
+    RedisErrorNoPrefix,
+    RedisNoProto,
+    RedisLoading,
+    RedisMasterDown,
+    RedisNoScript,
+    RedisNoAuth,
+    RedisWrongType,
+    RedisReadOnly,
+    RedisExecAbort,
+    RedisBusyGroup,
+    RedisNoGroup,
+    RedisMoved,
+    RedisCrossSlot,
+    RedisTryAgain,
+    RedisClusterDown,
 
     // Cluster
-    ClusterDown,
     ClusterInvalidInfo,
 
     // Blocking

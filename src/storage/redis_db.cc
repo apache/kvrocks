@@ -259,6 +259,16 @@ rocksdb::Status Database::TTL(engine::Context &ctx, const Slice &user_key, int64
   Metadata metadata(kRedisNone, false);
   s = metadata.Decode(value);
   if (!s.ok()) return s;
+  if (metadata.Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    s = hash_metadata.Decode(value);
+    if (!s.ok()) return s;
+    redis::Hash hash_db(storage_, namespace_);
+    if (!hash_db.ExistValidField(ctx, ns_key, hash_metadata)) {
+      *ttl = -2;
+      return rocksdb::Status::OK();
+    }
+  }
   *ttl = metadata.TTL();
 
   return rocksdb::Status::OK();
@@ -603,7 +613,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   std::string raw_value;
   Slice rest;
 
-  rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &raw_value, &metadata, &rest);
   if (!s.ok()) return s;
 
   // for hash type, we should filter expired field if encoding is with_ttl
@@ -613,7 +623,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
     if (!GetFixed8(&rest, reinterpret_cast<uint8_t *>(&field_encoding))) {
       return rocksdb::Status::InvalidArgument();
     }
-    if (uint8_t(field_encoding) > 1) {
+    if (field_encoding > HashSubkeyEncoding::VALUE_WITH_TTL) {
       return rocksdb::Status::InvalidArgument("unexpected subkey encoding version");
     }
     if (field_encoding == HashSubkeyEncoding::VALUE_WITH_TTL) {
@@ -700,7 +710,17 @@ rocksdb::Status Database::existsInternal(engine::Context &ctx, const std::vector
       Metadata metadata(kRedisNone, false);
       s = metadata.Decode(value);
       if (!s.ok()) return s;
-      if (!metadata.Expired()) *ret += 1;
+      if (metadata.Expired()) continue;
+      if (metadata.Type() == kRedisHash) {
+        HashMetadata hash_metadata(false);
+        s = hash_metadata.Decode(value);
+        if (!s.ok()) return s;
+        redis::Hash hash_db(storage_, namespace_);
+        if (!hash_db.ExistValidField(ctx, key, hash_metadata)) {
+          continue;
+        }
+      }
+      *ret += 1;
     }
   }
   return rocksdb::Status::OK();
@@ -717,6 +737,16 @@ rocksdb::Status Database::typeInternal(engine::Context &ctx, const Slice &key, R
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   if (metadata.Expired()) {
     *type = kRedisNone;
+  } else if (metadata.Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    s = hash_metadata.Decode(value);
+    if (!s.ok()) return s;
+    redis::Hash hash_db(storage_, namespace_);
+    if (hash_db.ExistValidField(ctx, key, hash_metadata)) {
+      *type = metadata.Type();
+    } else {
+      *type = kRedisNone;
+    }
   } else {
     *type = metadata.Type();
   }

@@ -699,6 +699,7 @@ class Bitmap::SegmentCacheStore {
         return s;
       }
     }
+    return rocksdb::Status::OK();
   }
 
  private:
@@ -859,7 +860,10 @@ rocksdb::Status Bitmap::bitfield(engine::Context &ctx, const Slice &user_key, co
     // Write changes into storage.
     auto batch = storage_->GetWriteBatchBase();
     if (bitfieldWriteAheadLog(batch, ops)) {
-      cache.BatchForFlush(batch);
+      auto s = cache.BatchForFlush(batch);
+      if (!s.ok()) {
+        return s;
+      }
       return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     }
   }

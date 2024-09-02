@@ -1359,14 +1359,16 @@ void Server::PrepareRestoreDB() {
   // accessing, data migration task should be stopped before restoring DB
   WaitNoMigrateProcessing();
 
+  // Workers will disallow to run commands which may access DB, so we should
+  // enable this flag to stop workers from running new commands. And wait for
+  // the exclusive guard to be released to guarantee no worker is running.
+  is_loading_ = true;
+
   // To guarantee work threads don't access DB, we should release 'ExclusivityGuard'
   // ASAP to avoid user can't receive responses for long time, because the following
   // 'CloseDB' may cost much time to acquire DB mutex.
   LOG(INFO) << "[server] Waiting workers for finishing executing commands...";
-  {
-    auto exclusivity = WorkExclusivityGuard();
-    is_loading_ = true;
-  }
+  { auto exclusivity = WorkExclusivityGuard(); }
 
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the background, we need to close db, so they don't actually work.

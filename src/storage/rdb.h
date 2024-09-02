@@ -128,7 +128,7 @@ class RDB {
   Status SaveZSetObject(const std::vector<MemberScore> &member_scores);
 
   // Hash
-  Status SaveHashObject(const std::vector<FieldValue> &filed_value);
+  Status SaveHashObject(const std::vector<FieldValue> &field_value);
 
  private:
   engine::Storage *storage_;

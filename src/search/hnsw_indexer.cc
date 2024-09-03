@@ -86,11 +86,7 @@ Status HnswNode::AddNeighbour(engine::Context& ctx, const NodeKey& neighbour_key
   }
   HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(ctx, search_key));
   node_metadata.num_neighbours++;
-  auto s = PutMetadata(&node_metadata, search_key, ctx.storage, batch);
-  if (!s.IsOK()) {
-    return s;
-  }
-  return Status::OK();
+  return PutMetadata(&node_metadata, search_key, ctx.storage, batch);
 }
 
 Status HnswNode::RemoveNeighbour(engine::Context& ctx, const NodeKey& neighbour_key, const SearchKey& search_key,
@@ -103,11 +99,7 @@ Status HnswNode::RemoveNeighbour(engine::Context& ctx, const NodeKey& neighbour_
 
   HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(ctx, search_key));
   node_metadata.num_neighbours--;
-  auto redis_status = PutMetadata(&node_metadata, search_key, ctx.storage, batch);
-  if (!redis_status.IsOK()) {
-    return redis_status;
-  }
-  return Status::OK();
+  return PutMetadata(&node_metadata, search_key, ctx.storage, batch);
 }
 
 Status VectorItem::Create(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata,

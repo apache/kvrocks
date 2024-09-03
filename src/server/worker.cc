@@ -411,7 +411,7 @@ void Worker::FreeConnection(redis::Connection *conn) {
 }
 
 void Worker::FreeConnectionByID(int fd, uint64_t id) {
-  if (ConnMap::accessor accessor; conns_.find(accessor, fd)) {
+  if (ConnMap::accessor accessor; conns_.find(accessor, fd) && accessor->second->GetID() == id) {
     if (rate_limit_group_ != nullptr) {
       bufferevent_remove_from_rate_limit_group(accessor->second->GetBufferEvent());
     }
@@ -424,7 +424,7 @@ void Worker::FreeConnectionByID(int fd, uint64_t id) {
 
     srv->DecrClientNum();
   }
-  if (ConnMap::accessor accessor; monitor_conns_.find(accessor, fd)) {
+  if (ConnMap::accessor accessor; monitor_conns_.find(accessor, fd) && accessor->second->GetID() == id) {
     delete accessor->second;
     monitor_conns_.erase(accessor);
     srv->DecrClientNum();

@@ -29,7 +29,8 @@ namespace redis {
 rocksdb::Status Json::write(engine::Context &ctx, Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
-  batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
 
   auto format = storage_->GetConfig()->json_storage_format;
   metadata->format = format;
@@ -37,19 +38,20 @@ rocksdb::Status Json::write(engine::Context &ctx, Slice ns_key, JsonMetadata *me
   std::string val;
   metadata->Encode(&val);
 
-  Status s;
+  Status redis_status;
   if (format == JsonStorageFormat::JSON) {
-    s = json_val.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
+    redis_status = json_val.Dump(&val, storage_->GetConfig()->json_max_nesting_depth);
   } else if (format == JsonStorageFormat::CBOR) {
-    s = json_val.DumpCBOR(&val, storage_->GetConfig()->json_max_nesting_depth);
+    redis_status = json_val.DumpCBOR(&val, storage_->GetConfig()->json_max_nesting_depth);
   } else {
     return rocksdb::Status::InvalidArgument("JSON storage format not supported");
   }
-  if (!s) {
-    return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + s.Msg());
+  if (!redis_status) {
+    return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + redis_status.Msg());
   }
 
-  batch->Put(metadata_cf_handle_, ns_key, val);
+  s = batch->Put(metadata_cf_handle_, ns_key, val);
+  if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -92,9 +94,11 @@ rocksdb::Status Json::create(engine::Context &ctx, const std::string &ns_key, Js
 rocksdb::Status Json::del(engine::Context &ctx, const Slice &ns_key) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
-  batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
 
-  batch->Delete(metadata_cf_handle_, ns_key);
+  s = batch->Delete(metadata_cf_handle_, ns_key);
+  if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -569,7 +573,8 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
-  batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
 
   for (size_t i = 0; i < user_keys.size(); i++) {
     auto json_res = JsonValue::FromString(values[i], storage_->GetConfig()->json_max_nesting_depth);
@@ -608,7 +613,8 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
       return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + res.Msg());
     }
 
-    batch->Put(metadata_cf_handle_, ns_keys[i], val);
+    s = batch->Put(metadata_cf_handle_, ns_keys[i], val);
+    if (!s.ok()) return s;
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());

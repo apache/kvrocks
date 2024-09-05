@@ -64,7 +64,6 @@ func TestNetworkLimits(t *testing.T) {
 	})
 }
 
-
 func TestWriteBatchLimit(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -148,5 +147,5 @@ func TestMaxMemoryClientsLimits(t *testing.T) {
 		r, err := getEvictedClients(rdbA, ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, r)
-  }
+	})
 }

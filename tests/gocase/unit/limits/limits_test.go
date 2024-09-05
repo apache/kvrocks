@@ -64,6 +64,41 @@ func TestNetworkLimits(t *testing.T) {
 	})
 }
 
+
+func TestWriteBatchLimit(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	t.Run("check if rocksdb.write_options.write_batch_max_bytes works", func(t *testing.T) {
+		ctx := context.Background()
+		rdb := srv.NewClient()
+		defer func() { require.NoError(t, rdb.Close()) }()
+
+		memberScores := []redis.Z{{Member: "kvrocks1", Score: 1}, {Member: "kvrocks2", Score: 2}, {Member: "kvrocks3", Score: 3}}
+		key := "test_zset_key"
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.ZAdd(ctx, key, memberScores...).Err())
+
+		// set write_batch_max_bytes to 10 bytes
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "10").Err())
+		require.EqualError(t, rdb.ZAdd(ctx, key, memberScores...).Err(), "ERR Operation aborted: Memory limit reached")
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+
+		// set write_batch_max_bytes to 1GB
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "1073741824").Err())
+		require.NoError(t, rdb.ZAdd(ctx, key, memberScores...).Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+
+		// reset write_batch_max_bytes
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		require.NoError(t, rdb.ZAdd(ctx, key, memberScores...).Err())
+	})
+}
+
 func getEvictedClients(rdb *redis.Client, ctx context.Context) (int, error) {
 	info, err := rdb.Info(ctx, "stats").Result()
 	if err != nil {
@@ -113,5 +148,5 @@ func TestMaxMemoryClientsLimits(t *testing.T) {
 		r, err := getEvictedClients(rdbA, ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, r)
-	})
+  }
 }

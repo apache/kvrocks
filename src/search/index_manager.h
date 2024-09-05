@@ -153,11 +153,17 @@ struct IndexManager {
 
     std::string meta_val;
     info->metadata.Encode(&meta_val);
-    batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
+    auto s = batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     std::string prefix_val;
     info->prefixes.Encode(&prefix_val);
-    batch->Put(cf, index_key.ConstructIndexPrefixes(), prefix_val);
+    s = batch->Put(cf, index_key.ConstructIndexPrefixes(), prefix_val);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     for (const auto &[_, field_info] : info->fields) {
       SearchKey field_key(info->ns, info->name, field_info.name);
@@ -165,7 +171,10 @@ struct IndexManager {
       std::string field_val;
       field_info.metadata->Encode(&field_val);
 
-      batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
+      s = batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
+      if (!s.ok()) {
+        return {Status::NotOK, s.ToString()};
+      }
     }
 
     if (auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
@@ -231,16 +240,28 @@ struct IndexManager {
 
     auto batch = storage->GetWriteBatchBase();
 
-    batch->Delete(cf, index_key.ConstructIndexMeta());
-    batch->Delete(cf, index_key.ConstructIndexPrefixes());
+    auto s = batch->Delete(cf, index_key.ConstructIndexMeta());
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+    s = batch->Delete(cf, index_key.ConstructIndexPrefixes());
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     auto begin = index_key.ConstructAllFieldMetaBegin();
     auto end = index_key.ConstructAllFieldMetaEnd();
-    batch->DeleteRange(cf, begin, end);
+    s = batch->DeleteRange(cf, begin, end);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     begin = index_key.ConstructAllFieldDataBegin();
     end = index_key.ConstructAllFieldDataEnd();
-    batch->DeleteRange(cf, begin, end);
+    s = batch->DeleteRange(cf, begin, end);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
     if (auto s = storage->Write(no_txn_ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {

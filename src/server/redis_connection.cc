@@ -52,6 +52,7 @@ Connection::Connection(bufferevent *bev, Worker *owner)
   create_time_ = now;
   last_interaction_ = now;
   output_buffer_.clear();
+  slave_output_buffer_.clear();
 }
 
 Connection::~Connection() {
@@ -369,9 +370,9 @@ static bool IsCmdForIndexing(const CommandAttributes *attr) {
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
-  output_buffer_.clear();
+  GetOutputBuffer().clear();
   const Config *config = srv_->GetConfig();
-  std::string &reply = output_buffer_;
+  std::string &reply = GetOutputBuffer();
   std::string password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
@@ -571,6 +572,7 @@ size_t Connection::GetConnectionMemoryUsed() const {
   total_memory += addr_.capacity();
   total_memory += last_cmd_.capacity();
   total_memory += output_buffer_.capacity();
+  total_memory += slave_output_buffer_.capacity();
   total_memory += evbuffer_get_length(Output()) + evbuffer_get_length(Input());
 
   for (const auto &channel : subscribe_channels_) {

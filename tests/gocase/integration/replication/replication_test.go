@@ -539,9 +539,9 @@ func TestFullSyncReplication(t *testing.T) {
 		util.WaitForOffsetSync(t, masterClient, slaveClient, 60*time.Second)
 
 		// Make sure the full sync happened in replication
-		sync_full_count, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_full"))
+		syncFullCount, err := strconv.Atoi(util.FindInfoEntry(masterClient, "sync_full"))
 		require.NoError(t, err)
-		require.Greater(t, sync_full_count, 0)
+		require.Greater(t, syncFullCount, 0)
 
 		got, err := slaveClient.Get(ctx, "key1").Result()
 		require.NoError(t, err)

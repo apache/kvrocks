@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -181,7 +182,7 @@ func TestNamespaceReplicate(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.Equal(t, "OK", r.Val())
 		}
-		util.WaitForOffsetSync(t, slaveRdb, masterRdb)
+		util.WaitForOffsetSync(t, slaveRdb, masterRdb, 5*time.Second)
 
 		// Can read namespaces on master
 		for ns, token := range nsTokens {
@@ -211,7 +212,7 @@ func TestNamespaceReplicate(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.Equal(t, "OK", r.Val())
 		}
-		util.WaitForOffsetSync(t, slaveRdb, masterRdb)
+		util.WaitForOffsetSync(t, slaveRdb, masterRdb, 5*time.Second)
 
 		for ns, token := range nsTokens {
 			r := slaveRdb.Do(ctx, "NAMESPACE", "GET", ns)
@@ -224,7 +225,7 @@ func TestNamespaceReplicate(t *testing.T) {
 			require.NoError(t, r.Err())
 			require.Equal(t, "OK", r.Val())
 		}
-		util.WaitForOffsetSync(t, slaveRdb, masterRdb)
+		util.WaitForOffsetSync(t, slaveRdb, masterRdb, 5*time.Second)
 
 		for ns := range nsTokens {
 			r := slaveRdb.Do(ctx, "NAMESPACE", "GET", ns)

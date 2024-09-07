@@ -133,13 +133,14 @@ func TestMaxMemoryClientsLimits(t *testing.T) {
 		ctx := context.Background()
 		rdbA := srv.NewClient()
 		defer rdbA.Close()
-		elem := strings.Repeat("a", 10240)
-		for i := 0; i < 1024; i++ {
-			require.NoError(t, rdbA.RPush(ctx, "test_max_memory_clients", elem).Err())
-		}
-
 		rdbB := srv.NewClient()
 		defer rdbB.Close()
+
+		elem := strings.Repeat("a", 10240)
+		for i := 0; i < 1024; i++ {
+			require.NoError(t, rdbB.RPush(ctx, "test_max_memory_clients", elem).Err())
+		}
+
 		require.NoError(t, rdbB.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
 
 		time.Sleep(25 * time.Second)

@@ -117,9 +117,7 @@ func getEvictedClients(rdb *redis.Client, ctx context.Context) (int, error) {
 }
 
 func TestMaxMemoryClientsLimits(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
-		"maxmemory-clients": "10m",
-	})
+	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
 	t.Run("check if maxmemory-clients works well", func(t *testing.T) {
@@ -131,21 +129,20 @@ func TestMaxMemoryClientsLimits(t *testing.T) {
 		}()
 
 		ctx := context.Background()
-		rdbA := srv.NewClient()
-		defer rdbA.Close()
-		rdbB := srv.NewClient()
-		defer rdbB.Close()
+		rdb := srv.NewClient()
+		defer rdb.Close()
 
 		elem := strings.Repeat("a", 10240)
 		for i := 0; i < 1024; i++ {
-			require.NoError(t, rdbB.RPush(ctx, "test_max_memory_clients", elem).Err())
+			require.NoError(t, rdb.RPush(ctx, "test_max_memory_clients", elem).Err())
 		}
 
-		require.NoError(t, rdbB.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
-
+		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "10M").Err())
+		require.NoError(t, rdb.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
 		time.Sleep(25 * time.Second)
 
-		r, err := getEvictedClients(rdbA, ctx)
+		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "10M").Err())
+		r, err := getEvictedClients(rdb, ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, r)
 	})

@@ -181,8 +181,8 @@ class CommandFTCreate : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     index_info_->ns = conn->GetNamespace();
-
-    GET_OR_RET(srv->index_mgr.Create(std::move(index_info_)));
+    engine::Context ctx(srv->storage);
+    GET_OR_RET(srv->index_mgr.Create(ctx, std::move(index_info_)));
 
     output->append(redis::SimpleString("OK"));
     return Status::OK();
@@ -254,7 +254,7 @@ static StatusOr<CommandParserWithNode> ParseSQLQuery(const std::vector<std::stri
 }
 
 class CommandFTExplainSQL : public Commander {
-  Status Parse(const std::vector<std::string> &args) override {
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
     auto [parser, ir] = GET_OR_RET(ParseSQLQuery(args_));
     ir_ = std::move(ir);
 

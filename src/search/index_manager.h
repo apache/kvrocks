@@ -47,8 +47,8 @@ struct IndexManager {
     if (storage->GetConfig()->cluster_enabled) {
       return Status::OK();
     }
-
-    util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    util::UniqueIterator iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
     auto begin = SearchKey{ns, ""}.ConstructIndexMeta();
 
     for (iter->Seek(begin); iter->Valid(); iter->Next()) {
@@ -75,8 +75,9 @@ struct IndexManager {
 
       auto index_key = SearchKey(ns, index_name.ToStringView());
       std::string prefix_value;
-      if (auto s = storage->Get(storage->DefaultMultiGetOptions(), storage->GetCFHandle(ColumnFamilyID::Search),
-                                index_key.ConstructIndexPrefixes(), &prefix_value);
+      if (auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(),
+                                storage->GetCFHandle(ColumnFamilyID::Search), index_key.ConstructIndexPrefixes(),
+                                &prefix_value);
           !s.ok()) {
         return {Status::NotOK, fmt::format("fail to find index prefixes for index {}: {}", index_name, s.ToString())};
       }
@@ -90,7 +91,7 @@ struct IndexManager {
       auto info = std::make_unique<kqir::IndexInfo>(index_name.ToString(), metadata, ns);
       info->prefixes = prefixes;
 
-      util::UniqueIterator field_iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+      util::UniqueIterator field_iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
       auto field_begin = index_key.ConstructFieldMeta();
 
       for (field_iter->Seek(field_begin); field_iter->Valid(); field_iter->Next()) {
@@ -136,7 +137,7 @@ struct IndexManager {
     return Status::OK();
   }
 
-  Status Create(std::unique_ptr<kqir::IndexInfo> info) {
+  Status Create(engine::Context &ctx, std::unique_ptr<kqir::IndexInfo> info) {
     if (storage->GetConfig()->cluster_enabled) {
       return {Status::NotOK, "currently index cannot work in cluster mode"};
     }
@@ -152,11 +153,17 @@ struct IndexManager {
 
     std::string meta_val;
     info->metadata.Encode(&meta_val);
-    batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
+    auto s = batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     std::string prefix_val;
     info->prefixes.Encode(&prefix_val);
-    batch->Put(cf, index_key.ConstructIndexPrefixes(), prefix_val);
+    s = batch->Put(cf, index_key.ConstructIndexPrefixes(), prefix_val);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     for (const auto &[_, field_info] : info->fields) {
       SearchKey field_key(info->ns, info->name, field_info.name);
@@ -164,10 +171,13 @@ struct IndexManager {
       std::string field_val;
       field_info.metadata->Encode(&field_val);
 
-      batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
+      s = batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
+      if (!s.ok()) {
+        return {Status::NotOK, s.ToString()};
+      }
     }
 
-    if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+    if (auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
       return {Status::NotOK, fmt::format("failed to write index metadata: {}", s.ToString())};
     }
 
@@ -176,7 +186,7 @@ struct IndexManager {
     index_map.Insert(std::move(info));
 
     for (auto updater : indexer->updater_list) {
-      GET_OR_RET(updater.Build());
+      GET_OR_RET(updater.Build(ctx));
     }
 
     return Status::OK();
@@ -230,18 +240,31 @@ struct IndexManager {
 
     auto batch = storage->GetWriteBatchBase();
 
-    batch->Delete(cf, index_key.ConstructIndexMeta());
-    batch->Delete(cf, index_key.ConstructIndexPrefixes());
+    auto s = batch->Delete(cf, index_key.ConstructIndexMeta());
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+    s = batch->Delete(cf, index_key.ConstructIndexPrefixes());
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     auto begin = index_key.ConstructAllFieldMetaBegin();
     auto end = index_key.ConstructAllFieldMetaEnd();
-    batch->DeleteRange(cf, begin, end);
+    s = batch->DeleteRange(cf, begin, end);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
     begin = index_key.ConstructAllFieldDataBegin();
     end = index_key.ConstructAllFieldDataEnd();
-    batch->DeleteRange(cf, begin, end);
+    s = batch->DeleteRange(cf, begin, end);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
 
-    if (auto s = storage->Write(storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    if (auto s = storage->Write(no_txn_ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
       return {Status::NotOK, fmt::format("failed to delete index metadata and data: {}", s.ToString())};
     }
 

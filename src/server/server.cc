@@ -839,11 +839,6 @@ void Server::cron() {
       cleanupExitedWorkerThreads(false);
     }
 
-    // check if we need to evict connections every 10s
-    if (config_->max_memory_clients > 0 && counter != 0 && counter % 100 == 0) {
-      evictionClients();
-    }
-
     CleanupExitedSlaves();
     recordInstantaneousMetrics();
   }
@@ -2133,42 +2128,4 @@ AuthResult Server::AuthenticateUser(const std::string &user_password, std::strin
   }
   *ns = kDefaultNamespace;
   return AuthResult::IS_ADMIN;
-}
-
-void Server::evictionClients() {
-  size_t mem = 0;
-  for (const auto &t : worker_threads_) {
-    mem += t->GetWorker()->GetConnectionsMemoryUsed();
-  }
-  if (mem < config_->max_memory_clients) {
-    return;
-  }
-
-  std::vector<redis::Connection *> conns;
-  for (const auto &t : worker_threads_) {
-    std::unique_lock<std::mutex> lock(t->GetWorker()->GetConnectionsMutex());
-    auto worker_conns = t->GetWorker()->GetConnections();
-    for (const auto &iter : worker_conns) {
-      conns.push_back(iter.second);
-    }
-  }
-
-  // sort Connections by memory used from high to low
-  std::sort(conns.begin(), conns.end(), [](const redis::Connection *a, const redis::Connection *b) {
-    size_t a_size = a ? a->GetConnectionMemoryUsed() : 0;
-    size_t b_size = b ? b->GetConnectionMemoryUsed() : 0;
-    return a_size < b_size;
-  });
-
-  while (mem > config_->max_memory_clients && conns.size() > 0) {
-    auto *conn = conns.back();
-    conns.pop_back();
-    if (conn == nullptr) {
-      continue;
-    } else {
-      mem -= conn->GetConnectionMemoryUsed();
-      stats.IncrEvictedClients();
-      conn->Close();
-    }
-  }
 }

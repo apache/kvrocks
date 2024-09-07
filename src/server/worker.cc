@@ -56,7 +56,7 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_.reset(NewEvent(base_, -1, EV_PERSIST));
-  timeval tm = {10, 0};
+  timeval tm = {1, 0};
   evtimer_add(timer_.get(), &tm);
 
   uint32_t ports[3] = {config->port, config->tls_port, 0};
@@ -102,8 +102,13 @@ Worker::~Worker() {
 
 void Worker::TimerCB(int, [[maybe_unused]] int16_t events) {
   auto config = srv->GetConfig();
-  if (config->timeout == 0) return;
-  KickoutIdleClients(config->timeout);
+  if (config->timeout != 0) {
+    KickoutIdleClients(config->timeout);
+  }
+
+  if (config->max_memory_clients > 0 && config->workers > 0) {
+    evictionClients(config->max_memory_clients / config->workers);
+  }
 }
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
@@ -564,6 +569,37 @@ size_t Worker::GetConnectionsMemoryUsed() {
   return mem;
 }
 
+void Worker::evictionClients(size_t max_memory) {
+  size_t mem = GetConnectionsMemoryUsed();
+  if (mem < max_memory) {
+    return;
+  }
+  std::vector<redis::Connection *> conns;
+  std::lock_guard<std::mutex> guard(conns_mu_);
+  for (auto &iter : conns_) {
+    conns.push_back(iter.second);
+  }
+
+  // sort Connections by memory used from high to low
+  std::sort(conns.begin(), conns.end(), [](const redis::Connection *a, const redis::Connection *b) {
+    size_t a_size = a ? a->GetConnectionMemoryUsed() : 0;
+    size_t b_size = b ? b->GetConnectionMemoryUsed() : 0;
+    return a_size < b_size;
+  });
+
+  while (mem > max_memory && conns.size() > 0) {
+    auto *conn = conns.back();
+    conns.pop_back();
+    if (conn == nullptr) {
+      continue;
+    } else {
+      mem -= conn->GetConnectionMemoryUsed();
+      srv->stats.IncrEvictedClients();
+      conn->Close();
+    }
+  }
+}
+
 void WorkerThread::Start() {
   auto s = util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
 
@@ -584,3 +620,4 @@ void WorkerThread::Join() {
     LOG(WARNING) << "[worker] " << s.Msg();
   }
 }
+

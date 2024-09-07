@@ -20,12 +20,7 @@
 
 #pragma once
 
-#include <assert.h>
-
-#include <atomic>
-#include <iostream>
 #include <vector>
-
 #include "vendor/murmurhash2.h"
 
 class CMSketch {

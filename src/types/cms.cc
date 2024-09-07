@@ -25,10 +25,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "glog/logging.h"
-
 void CMSketch::CMSDimFromProb(double error, double delta, uint32_t& width, uint32_t& depth) {
-  LOG(INFO) << error << delta;
   width = std::ceil(2 / error);
   depth = std::ceil(std::log10(delta) / std::log10(0.5));
 }

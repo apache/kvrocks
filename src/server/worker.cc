@@ -620,4 +620,3 @@ void WorkerThread::Join() {
     LOG(WARNING) << "[worker] " << s.Msg();
   }
 }
-

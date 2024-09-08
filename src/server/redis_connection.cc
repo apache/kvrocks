@@ -563,7 +563,7 @@ void Connection::ResetMultiExec() {
 }
 
 size_t Connection::GetConnectionMemoryUsed() const {
-  size_t total_memory = sizeof(*this);  // 包含所有成员变量的静态内存大小
+  size_t total_memory = sizeof(*this);
 
   total_memory += name_.capacity();
   total_memory += ns_.capacity();

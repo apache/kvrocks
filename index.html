@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kvrocks Documentation: Unsupported Command - BRPOPLPUSH</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        header {
+            background: #007bff;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2em;
+            font-weight: bold;
+        }
+        header p {
+            margin: 5px 0 0;
+            font-size: 1.2em;
+        }
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: auto;
+            overflow: hidden;
+            padding: 20px;
+        }
+        .content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 1s ease-out;
+        }
+        h2, h3 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+        code {
+            background: #f7f7f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #d63384;
+            border: 1px solid #e9ecef;
+        }
+        pre {
+            background: #f7f7f7;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 1s ease-out;
+        }
+        ul, ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .note {
+            background: #fff3cd;
+            border-left: 5px solid #ffeeba;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .example {
+            background: #e9ecef;
+            border-left: 4px solid #007bff;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            animation: fadeIn 1s ease-out;
+        }
+        .example code {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Kvrocks Documentation</h1>
+            <p>Unsupported Command: BRPOPLPUSH</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="content">
+            <h2>Unsupported Command: BRPOPLPUSH</h2>
+
+            <p><strong>Status:</strong> Not Supported in Kvrocks</p>
+
+            <h3>Summary</h3>
+            <p>
+                The <code>BRPOPLPUSH</code> command is not supported in Kvrocks. In Redis, this command is used for blocking operations on lists, allowing the user to pop an element from the end of one list and push it to the beginning of another list (or the same list) in a single atomic operation. It also supports blocking behavior, where the command waits for an element to become available if the source list is empty.
+            </p>
+            <p>
+                The absence of <code>BRPOPLPUSH</code> in Kvrocks may impact applications that rely on this atomic operation combined with blocking behavior. Understanding alternative approaches or modifying application logic might be necessary to adapt to this limitation.
+            </p>
+
+            <h3>Syntax in Redis</h3>
+            <pre><code>BRPOPLPUSH source_list destination_list timeout</code></pre>
+            <ul>
+                <li><code>source_list</code>: The list from which the element will be popped.</li>
+                <li><code>destination_list</code>: The list to which the element will be pushed.</li>
+                <li><code>timeout</code>: The maximum number of seconds to block if the <code>source_list</code> is empty. If an element is not available within this time frame, the command returns <code>nil</code>.</li>
+            </ul>
+
+            <h3>Function</h3>
+            <p>
+                The <code>BRPOPLPUSH</code> command in Redis performs two operations atomically:
+                <ol>
+                    <li><strong>Pop</strong>: Removes the last element from the <code>source_list</code>.</li>
+                    <li><strong>Push</strong>: Adds this element to the beginning of the <code>destination_list</code>.</li>
+                </ol>
+                If the <code>source_list</code> is empty, the command blocks for up to <code>timeout</code> seconds until an element becomes available. If no element is available after the timeout period, the command returns <code>nil</code>.
+            </p>
+
+            <h3>Why It's Not Supported in Kvrocks</h3>
+            <p>
+                Kvrocks does not support <code>BRPOPLPUSH</code> due to differences in its underlying architecture compared to Redis. The blocking nature of this command and its atomic operations may not fit well with Kvrocks' design, which may prioritize different data structures or operational models.
+            </p>
+            <p>
+                Kvrocks is designed with a different set of priorities and features, which might not include every command found in Redis. Users should consider these differences when migrating or developing applications.
+            </p>
+
+            <h3>Alternative Approaches</h3>
+            <p>
+                Although <code>BRPOPLPUSH</code> is not available in Kvrocks, you can explore the following alternatives:
+                <ol>
+                    <li><strong>Use <code>RPOPLPUSH</code></strong>: If you do not require blocking behavior, consider using <code>RPOPLPUSH</code>. This command performs the pop and push operations atomically but does not block if the <code>source_list</code> is empty.</li>
+                    <li><strong>Client-Side Blocking</strong>: Implement blocking behavior on the client side. This involves checking the <code>source_list</code> periodically and using <code>RPOPLPUSH</code> when an element becomes available. This approach simulates the blocking behavior of <code>BRPOPLPUSH</code> with additional client-side logic.</li>
+                    <li><strong>Custom Solutions</strong>: Develop a custom solution tailored to your application's needs. This might involve using other data structures or patterns supported by Kvrocks to achieve similar results.</li>
+                </ol>
+            </p>
+
+            <h3>Example of Redis Usage</h3>
+            <p>Below are examples of how <code>BRPOPLPUSH</code> can be used in Redis:</p>
+            <div class="example">
+                <p><strong>Basic Usage:</strong></p>
+                <pre><code>BRPOPLPUSH list1 list2 10</code></pre>
+                <p>This command will block for up to 10 seconds if <code>list1</code> is empty. Once an element becomes available, it will be moved from the end of <code>list1</code> to the beginning of <code>list2</code>.</p>
+            </div>
+            <div class="example">
+                <p><strong>Example Scenario:</strong></p>
+                <pre><code>BRPOPLPUSH myQueue processingQueue 5</code></pre>
+                <p>In this example, the command will wait up to 5 seconds for an element to appear in <code>myQueue</code>. Once available, the element will be transferred to the front of <code>processingQueue</code>, which might be used for further processing.</p>
+            </div>
+
+            <div class="note">
+                <strong>Note:</strong> If your application depends on the specific behavior of <code>BRPOPLPUSH</code>, consider refactoring your application logic to adapt to Kvrocks. Explore alternative commands or patterns supported by Kvrocks, and check the Kvrocks documentation for updates or potential new features that might meet your needs.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

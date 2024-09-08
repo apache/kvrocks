@@ -733,6 +733,13 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
       LOG(INFO) << "[replication] Succeeded restoring the backup, fullsync was finish";
       post_fullsync_cb_();
 
+      // It needs to reload namespaces from DB after the full sync is done,
+      // or namespaces are not visible in the replica.
+      s = srv_->GetNamespace()->LoadAndRewrite();
+      if (!s.IsOK()) {
+        LOG(ERROR) << "[replication] Failed to load and rewrite namespace: " << s.Msg();
+      }
+
       // Switch to psync state machine again
       psync_steps_.Start();
       return CBState::QUIT;

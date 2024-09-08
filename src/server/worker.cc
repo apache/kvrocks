@@ -583,9 +583,8 @@ void Worker::evictionClients(size_t max_memory) {
     }
 
     // sort Connections by memory used from high to low
-    std::sort(conns.begin(), conns.end(), [](const ConnWithMem &a, const ConnWithMem &b) {
-      return std::get<2>(a) < std::get<2>(b);
-    });
+    std::sort(conns.begin(), conns.end(),
+              [](const ConnWithMem &a, const ConnWithMem &b) { return std::get<2>(a) < std::get<2>(b); });
   }
 
   while (mem > max_memory && conns.size() > 0) {

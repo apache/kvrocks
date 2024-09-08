@@ -574,12 +574,12 @@ void Worker::evictionClients(size_t max_memory) {
   if (mem < max_memory) {
     return;
   }
-  typedef std::tuple<int, uint64_t, uint64_t> ConnWithMem;
+  using ConnWithMem = std::tuple<int, uint64_t, uint64_t>;
   std::vector<ConnWithMem> conns;
   {
     std::lock_guard<std::mutex> guard(conns_mu_);
     for (auto &iter : conns_) {
-      conns.push_back(std::make_tuple(iter.first, iter.second->GetID(), iter.second->GetConnectionMemoryUsed()));
+      conns.emplace_back(iter.first, iter.second->GetID(), iter.second->GetConnectionMemoryUsed());
     }
 
     // sort Connections by memory used from high to low

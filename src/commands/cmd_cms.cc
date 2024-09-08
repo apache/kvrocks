@@ -36,6 +36,7 @@ class CommandCMSIncrBy final : public Commander {
       return Status::RedisTryAgain;
     }
     redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
     std::unordered_map<std::string, uint64_t> elements;
     for (size_t i = 2; i < args_.size(); i += 2) {
@@ -49,7 +50,7 @@ class CommandCMSIncrBy final : public Commander {
       elements[key] = value;
     }
 
-    s = cms.IncrBy(args_[1], elements);
+    s = cms.IncrBy(ctx, args_[1], elements);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -64,11 +65,12 @@ class CommandCMSInfo final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
     std::unordered_map<std::string, uint64_t> elements;
     std::vector<uint64_t> ret{};
 
-    s = cms.Info(args_[1], &ret);
+    s = cms.Info(ctx, args_[1], &ret);
 
     if (s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -90,11 +92,12 @@ class CommandCMSInitByDim final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
     uint64_t width = std::stoull(args_[2]);
     uint64_t depth = std::stoull(args_[3]);
 
-    s = cms.InitByDim(args_[1], width, depth);
+    s = cms.InitByDim(ctx, args_[1], width, depth);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -109,11 +112,12 @@ class CommandCMSInitByProb final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
     double error = std::stod(args_[2]);
     double delta = std::stod(args_[3]);
 
-    s = cms.InitByProb(args_[1], error, delta);
+    s = cms.InitByProb(ctx, args_[1], error, delta);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -128,6 +132,7 @@ class CommandCMSQuery final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
     rocksdb::Status s;
 
     std::vector<uint32_t> counters{};
@@ -137,7 +142,7 @@ class CommandCMSQuery final : public Commander {
       elements.emplace_back(args_[i]);
     }
 
-    s = cms.Query(args_[1], elements, counters);
+    s = cms.Query(ctx, args_[1], elements, counters);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

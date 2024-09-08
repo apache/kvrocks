@@ -25,16 +25,19 @@
 #include <cstdint>
 #include <vector>
 
-void CMSketch::CMSDimFromProb(double error, double delta, uint32_t& width, uint32_t& depth) {
-  width = std::ceil(2 / error);
-  depth = std::ceil(std::log10(delta) / std::log10(0.5));
+
+CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta) {
+  CMSketchDimensions dims;
+  dims.width = std::ceil(2 / error);
+  dims.depth = std::ceil(std::log10(delta) / std::log10(0.5));
+  return dims;
 }
 
-size_t CMSketch::IncrBy(const char* item, size_t item_len, size_t value) {
+size_t CMSketch::IncrBy(std::string_view item, size_t value) {
   size_t min_count = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint32_t hash = HllMurMurHash64A(item, static_cast<int>(item_len), i);
+    uint64_t hash = HllMurMurHash64A(item.data(), static_cast<int>(item.size()), i);
     size_t loc = (hash % width_) + (i * width_);
     array_[loc] += value;
     if (array_[loc] < value) {
@@ -46,11 +49,11 @@ size_t CMSketch::IncrBy(const char* item, size_t item_len, size_t value) {
   return min_count;
 }
 
-size_t CMSketch::Query(const char* item, size_t item_len) const {
+size_t CMSketch::Query(std::string_view item) const {
   size_t min_count = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint32_t hash = HllMurMurHash64A(item, static_cast<int>(item_len), i);
+    uint64_t hash = HllMurMurHash64A(item.data(), static_cast<int>(item.size()), i);
     min_count = std::min(min_count, static_cast<size_t>(array_[(hash % width_) + (i * width_)]));
   }
   return min_count;

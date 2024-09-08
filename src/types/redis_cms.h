@@ -30,19 +30,19 @@ class CMS : public Database {
  public:
   explicit CMS(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
 
-  rocksdb::Status IncrBy(const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status Info(const Slice &user_key, std::vector<uint64_t> *ret);
-  rocksdb::Status InitByDim(const Slice &user_key, uint32_t width, uint32_t depth);
-  rocksdb::Status InitByProb(const Slice &user_key, double error, double delta);
-  rocksdb::Status Query(const Slice &user_key, const std::vector<std::string> &elements,
+  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
+  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, std::vector<uint64_t> *ret);
+  rocksdb::Status InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth);
+  rocksdb::Status InitByProb(engine::Context &ctx, const Slice &user_key, double error, double delta);
+  rocksdb::Status Query(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
                         std::vector<uint32_t> &counters);
 
  private:
-  [[nodiscard]] rocksdb::Status GetMetadata(Database::GetOptions get_options, const Slice &ns_key,
+  [[nodiscard]] rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key,
                                             CountMinSketchMetadata *metadata);
 
   // TODO (jonathanc-n)
-  [[nodiscard]] rocksdb::Status mergeUserKeys(Database::GetOptions get_options, const std::vector<Slice> &user_keys,
+  [[nodiscard]] rocksdb::Status mergeUserKeys(engine::Context &ctx, const std::vector<Slice> &user_keys,
                                               std::vector<std::string> *register_segments);
 };
 

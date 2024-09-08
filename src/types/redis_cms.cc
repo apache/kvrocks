@@ -26,17 +26,17 @@
 
 namespace redis {
 
-rocksdb::Status CMS::GetMetadata(Database::GetOptions get_options, const Slice &ns_key,
+rocksdb::Status CMS::GetMetadata(engine::Context &ctx, const Slice &ns_key,
                                  CountMinSketchMetadata *metadata) {
-  return Database::GetMetadata(get_options, {kRedisCountMinSketch}, ns_key, metadata);
+  return Database::GetMetadata(ctx, {kRedisCountMinSketch}, ns_key, metadata);
 }
 
-rocksdb::Status CMS::IncrBy(const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements) {
+rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
-  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;
   }
@@ -52,7 +52,7 @@ rocksdb::Status CMS::IncrBy(const Slice &user_key, const std::unordered_map<std:
   }
 
   for (auto &element : elements) {
-    cms.IncrBy(element.first.data(), element.first.size(), element.second);
+    cms.IncrBy(element.first.data(), element.second);
     metadata.counter += element.second;
   }
 
@@ -62,15 +62,15 @@ rocksdb::Status CMS::IncrBy(const Slice &user_key, const std::unordered_map<std:
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status CMS::Info(const Slice &user_key, std::vector<uint64_t> *ret) {
+rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, std::vector<uint64_t> *ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
-  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
   if (!s.ok() || s.IsNotFound()) {
     return rocksdb::Status::NotFound();
@@ -83,13 +83,13 @@ rocksdb::Status CMS::Info(const Slice &user_key, std::vector<uint64_t> *ret) {
   return rocksdb::Status::OK();
 };
 
-rocksdb::Status CMS::InitByDim(const Slice &user_key, uint32_t width, uint32_t depth) {
+rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
 
-  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
   if (!s.IsNotFound()) {
     return s;
@@ -108,16 +108,16 @@ rocksdb::Status CMS::InitByDim(const Slice &user_key, uint32_t width, uint32_t d
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 };
 
-rocksdb::Status CMS::InitByProb(const Slice &user_key, double error, double delta) {
+rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, double error, double delta) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
 
-  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.IsNotFound()) {
     return s;
   }
@@ -125,32 +125,29 @@ rocksdb::Status CMS::InitByProb(const Slice &user_key, double error, double delt
   WriteBatchLogData log_data(kRedisCountMinSketch);
   batch->PutLogData(log_data.Encode());
 
-  CMSketch cms;
-  uint32_t width = 0;
-  uint32_t depth = 0;
-  cms.CMSDimFromProb(error, delta, width, depth);
+  CMSketch cms { 0, 0, 0 };
+  CMSketch::CMSketchDimensions dim = cms.CMSDimFromProb(error, delta);
 
-  metadata.width = width;
-  metadata.depth = depth;
+  metadata.width = dim.width;
+  metadata.depth = dim.depth;
   metadata.counter = 0;
-  metadata.array = std::vector<uint32_t>(width * depth, 0);
-  ;
+  metadata.array = std::vector<uint32_t>(dim.width * dim.depth, 0);
 
   std::string bytes;
   metadata.Encode(&bytes);
   batch->Put(metadata_cf_handle_, ns_key, bytes);
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 };
 
-rocksdb::Status CMS::Query(const Slice &user_key, const std::vector<std::string> &elements,
+rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
                            std::vector<uint32_t> &counters) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
 
-  rocksdb::Status s = GetMetadata(GetOptions(), ns_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
   if (s.IsNotFound()) {
     counters.assign(elements.size(), 0);
@@ -162,7 +159,7 @@ rocksdb::Status CMS::Query(const Slice &user_key, const std::vector<std::string>
   CMSketch cms(metadata.width, metadata.depth, metadata.counter, metadata.array);
 
   for (auto &element : elements) {
-    counters.push_back(cms.Query(element.data(), element.size()));
+    counters.push_back(cms.Query(element.data()));
   }
   return rocksdb::Status::OK();
 };

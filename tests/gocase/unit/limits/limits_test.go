@@ -141,7 +141,7 @@ func TestMaxMemoryClientsLimits(t *testing.T) {
 		require.NoError(t, rdb.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
 		time.Sleep(25 * time.Second)
 
-		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "10M").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "0").Err())
 		r, err := getEvictedClients(rdb, ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, r)

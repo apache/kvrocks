@@ -574,29 +574,26 @@ void Worker::evictionClients(size_t max_memory) {
   if (mem < max_memory) {
     return;
   }
-  std::vector<redis::Connection *> conns;
-  std::lock_guard<std::mutex> guard(conns_mu_);
-  for (auto &iter : conns_) {
-    conns.push_back(iter.second);
+  typedef std::tuple<int, uint64_t, uint64_t> ConnWithMem;
+  std::vector<ConnWithMem> conns;
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    for (auto &iter : conns_) {
+      conns.push_back(std::make_tuple(iter.first, iter.second->GetID(), iter.second->GetConnectionMemoryUsed()));
+    }
+
+    // sort Connections by memory used from high to low
+    std::sort(conns.begin(), conns.end(), [](const ConnWithMem &a, const ConnWithMem &b) {
+      return std::get<2>(a) < std::get<2>(b);
+    });
   }
 
-  // sort Connections by memory used from high to low
-  std::sort(conns.begin(), conns.end(), [](const redis::Connection *a, const redis::Connection *b) {
-    size_t a_size = a ? a->GetConnectionMemoryUsed() : 0;
-    size_t b_size = b ? b->GetConnectionMemoryUsed() : 0;
-    return a_size < b_size;
-  });
-
   while (mem > max_memory && conns.size() > 0) {
-    auto *conn = conns.back();
+    auto conn = conns.back();
     conns.pop_back();
-    if (conn == nullptr) {
-      continue;
-    } else {
-      mem -= conn->GetConnectionMemoryUsed();
-      srv->stats.IncrEvictedClients();
-      conn->Close();
-    }
+    mem -= std::get<2>(conn);
+    srv->stats.IncrEvictedClients();
+    FreeConnectionByID(std::get<0>(conn), std::get<1>(conn));
   }
 }
 

@@ -47,7 +47,7 @@ class MetadataFilterFactory : public rocksdb::CompactionFilterFactory {
   explicit MetadataFilterFactory(engine::Storage *storage) : stor_(storage) {}
   const char *Name() const override { return "MetadataFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(new MetadataFilter(stor_));
   }
 
@@ -78,7 +78,7 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
 
   const char *Name() const override { return "SubKeyFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(new SubKeyFilter(stor_));
   }
 
@@ -89,7 +89,8 @@ class SubKeyFilterFactory : public rocksdb::CompactionFilterFactory {
 class PropagateFilter : public rocksdb::CompactionFilter {
  public:
   const char *Name() const override { return "PropagateFilter"; }
-  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override {
+  bool Filter([[maybe_unused]] int level, const Slice &key, [[maybe_unused]] const Slice &value,
+              [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const override {
     // We propagate Lua commands which don't store data,
     // just in order to implement updating Lua state.
     return key == engine::kPropagateScriptCommand;
@@ -101,7 +102,7 @@ class PropagateFilterFactory : public rocksdb::CompactionFilterFactory {
   PropagateFilterFactory() = default;
   const char *Name() const override { return "PropagateFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(new PropagateFilter());
   }
 };
@@ -109,7 +110,8 @@ class PropagateFilterFactory : public rocksdb::CompactionFilterFactory {
 class PubSubFilter : public rocksdb::CompactionFilter {
  public:
   const char *Name() const override { return "PubSubFilter"; }
-  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override {
+  bool Filter([[maybe_unused]] int level, [[maybe_unused]] const Slice &key, [[maybe_unused]] const Slice &value,
+              [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const override {
     return true;
   }
 };
@@ -119,8 +121,28 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
   PubSubFilterFactory() = default;
   const char *Name() const override { return "PubSubFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
-      const rocksdb::CompactionFilter::Context &context) override {
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
     return std::unique_ptr<rocksdb::CompactionFilter>(new PubSubFilter());
+  }
+};
+
+class SearchFilter : public rocksdb::CompactionFilter {
+ public:
+  const char *Name() const override { return "SearchFilter"; }
+  bool Filter([[maybe_unused]] int level, [[maybe_unused]] const Slice &key, [[maybe_unused]] const Slice &value,
+              [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const override {
+    // TODO: just a dummy one here
+    return false;
+  }
+};
+
+class SearchFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  SearchFilterFactory() = default;
+  const char *Name() const override { return "SearchFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(new SearchFilter());
   }
 };
 

@@ -44,6 +44,8 @@
 #include "commands/commander.h"
 #include "lua.hpp"
 #include "namespace.h"
+#include "search/index_manager.h"
+#include "search/indexer.h"
 #include "server/redis_connection.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
@@ -251,6 +253,7 @@ class Server {
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
   int64_t GetLastScanTime(const std::string &ns) const;
+  StatusOr<std::vector<rocksdb::BatchResult>> PollUpdates(uint64_t next_sequence, int64_t count, bool is_strict) const;
 
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
@@ -312,6 +315,10 @@ class Server {
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
 #endif
+
+  // search
+  redis::GlobalIndexer indexer;
+  redis::IndexManager index_mgr;
 
  private:
   void cron();

@@ -39,6 +39,7 @@
 
 #include "commands/commander.h"
 #include "config.h"
+#include "config/config.h"
 #include "fmt/format.h"
 #include "redis_connection.h"
 #include "storage/compaction_checker.h"
@@ -52,7 +53,12 @@
 #include "worker.h"
 
 Server::Server(engine::Storage *storage, Config *config)
-    : storage(storage), start_time_secs_(util::GetTimeStamp()), config_(config), namespace_(storage) {
+    : storage(storage),
+      indexer(storage),
+      index_mgr(&indexer, storage),
+      start_time_secs_(util::GetTimeStamp()),
+      config_(config),
+      namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
   auto commands = redis::CommandTable::GetOriginal();
   for (const auto &iter : *commands) {
@@ -144,9 +150,17 @@ Status Server::Start() {
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    s = storage->ShiftReplId();
+    engine::Context ctx(storage);
+    s = storage->ShiftReplId(ctx);
     if (!s.IsOK()) {
       return s.Prefixed("failed to shift replication id");
+    }
+  }
+
+  if (!config_->cluster_enabled) {
+    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    for (auto [_, ns] : namespace_.List()) {
+      GET_OR_RET(index_mgr.Load(ns));
     }
   }
 
@@ -191,16 +205,18 @@ Status Server::Start() {
       if (storage->IsClosing()) continue;
 
       if (!is_loading_ && ++counter % 600 == 0  // check every minute
-          && config_->compaction_checker_range.Enabled()) {
-        auto now_hours = util::GetTimeStamp<std::chrono::hours>();
-        if (now_hours >= config_->compaction_checker_range.start &&
-            now_hours <= config_->compaction_checker_range.stop) {
+          && config_->compaction_checker_cron.IsEnabled()) {
+        auto t_now = static_cast<time_t>(util::GetTimeStamp());
+        std::tm now{};
+        localtime_r(&t_now, &now);
+        if (config_->compaction_checker_cron.IsTimeMatch(&now)) {
           const auto &column_family_list = engine::ColumnFamilyConfigs::ListAllColumnFamilies();
           for (auto &column_family : column_family_list) {
             compaction_checker.PickCompactionFilesForCf(column_family);
           }
         }
         // compact once per day
+        auto now_hours = t_now / 3600;
         if (now_hours != 0 && last_compact_date != now_hours / 24) {
           last_compact_date = now_hours / 24;
           compaction_checker.CompactPropagateAndPubSubFiles();
@@ -293,7 +309,8 @@ Status Server::RemoveMaster() {
       replication_thread_->Stop();
       replication_thread_ = nullptr;
     }
-    return storage->ShiftReplId();
+    engine::Context ctx(storage);
+    return storage->ShiftReplId(ctx);
   }
   return Status::OK();
 }
@@ -743,7 +760,7 @@ void Server::cron() {
       std::tm now{};
       localtime_r(&t, &now);
       // disable compaction cron when the compaction checker was enabled
-      if (!config_->compaction_checker_range.Enabled() && config_->compact_cron.IsEnabled() &&
+      if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
         LOG(INFO) << "[server] Schedule to compact the db, result: " << s.Msg();
@@ -1336,14 +1353,16 @@ void Server::PrepareRestoreDB() {
   // accessing, data migration task should be stopped before restoring DB
   WaitNoMigrateProcessing();
 
+  // Workers will disallow to run commands which may access DB, so we should
+  // enable this flag to stop workers from running new commands. And wait for
+  // the exclusive guard to be released to guarantee no worker is running.
+  is_loading_ = true;
+
   // To guarantee work threads don't access DB, we should release 'ExclusivityGuard'
   // ASAP to avoid user can't receive responses for long time, because the following
   // 'CloseDB' may cost much time to acquire DB mutex.
   LOG(INFO) << "[server] Waiting workers for finishing executing commands...";
-  {
-    auto exclusivity = WorkExclusivityGuard();
-    is_loading_ = true;
-  }
+  { auto exclusivity = WorkExclusivityGuard(); }
 
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the background, we need to close db, so they don't actually work.
@@ -1432,7 +1451,8 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     redis::Database db(storage, ns);
 
     KeyNumStats stats;
-    auto s = db.GetKeyNumStats("", &stats);
+    engine::Context ctx(storage);
+    auto s = db.GetKeyNumStats(ctx, "", &stats);
     if (!s.ok()) {
       LOG(ERROR) << "failed to retrieve key num stats: " << s.ToString();
     }
@@ -1539,6 +1559,36 @@ int64_t Server::GetLastScanTime(const std::string &ns) const {
     return iter->second.last_scan_time_secs;
   }
   return 0;
+}
+
+StatusOr<std::vector<rocksdb::BatchResult>> Server::PollUpdates(uint64_t next_sequence, int64_t count,
+                                                                bool is_strict) const {
+  std::vector<rocksdb::BatchResult> batches;
+  auto latest_sequence = storage->LatestSeqNumber();
+  if (next_sequence == latest_sequence + 1) {
+    // return empty result if there is no new updates
+    return batches;
+  } else if (next_sequence > latest_sequence + 1) {
+    return {Status::NotOK, "next sequence is out of range"};
+  }
+
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  if (auto s = storage->GetWALIter(next_sequence, &iter); !s.IsOK()) return s;
+  if (!iter) {
+    return Status{Status::NotOK, "unable to get WAL iterator"};
+  }
+
+  for (int64_t i = 0; i < count && iter->Valid() && iter->status().ok(); ++i, iter->Next()) {
+    // The first batch should have the same sequence number as the next sequence number
+    // if it requires strictly matched.
+    auto batch = iter->GetBatch();
+    if (i == 0 && is_strict && batch.sequence != next_sequence) {
+      return {Status::NotOK,
+              fmt::format("mismatched sequence number, expected {} but got {}", next_sequence, batch.sequence)};
+    }
+    batches.emplace_back(std::move(batch));
+  }
+  return batches;
 }
 
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration,
@@ -1655,7 +1705,8 @@ Status Server::ScriptExists(const std::string &sha) {
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1664,13 +1715,15 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
 
 Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  return storage->WriteToPropagateCF(func_name, body);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, body);
 }
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1680,7 +1733,8 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1689,12 +1743,14 @@ Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
 
 Status Server::FunctionSetCode(const std::string &lib, const std::string &code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  return storage->WriteToPropagateCF(func_name, code);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, code);
 }
 
 Status Server::FunctionSetLib(const std::string &func, const std::string &lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  return storage->WriteToPropagateCF(func_name, lib);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, lib);
 }
 
 void Server::ScriptReset() {
@@ -1704,7 +1760,8 @@ void Server::ScriptReset() {
 
 Status Server::ScriptFlush() {
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  engine::Context ctx(storage);
+  auto s = storage->FlushScripts(ctx, storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
   return Status::OK();
@@ -1720,7 +1777,8 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += redis::BulkString(iter);
   }
-  return storage->WriteToPropagateCF(channel, value);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {

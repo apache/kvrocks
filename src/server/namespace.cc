@@ -51,40 +51,55 @@ bool Namespace::IsAllowModify() const {
   return config->HasConfigFile() || config->repl_namespace_enabled;
 }
 
+Status Namespace::loadFromDB(std::map<std::string, std::string>* db_tokens) const {
+  std::string value;
+  engine::Context ctx(storage_);
+  auto cf = storage_->GetCFHandle(ColumnFamilyID::Propagate);
+  auto s = storage_->Get(ctx, ctx.GetReadOptions(), cf, kNamespaceDBKey, &value);
+  if (!s.ok()) {
+    if (s.IsNotFound()) return Status::OK();
+    return {Status::NotOK, s.ToString()};
+  }
+
+  jsoncons::json j = jsoncons::json::parse(value);
+  for (const auto& iter : j.object_range()) {
+    db_tokens->insert({iter.key(), iter.value().as_string()});
+  }
+  return Status::OK();
+}
+
 Status Namespace::LoadAndRewrite() {
   auto config = storage_->GetConfig();
   // Namespace is NOT allowed in the cluster mode, so we don't need to rewrite here.
   if (config->cluster_enabled) return Status::OK();
 
+  std::map<std::string, std::string> db_tokens;
+  auto s = loadFromDB(&db_tokens);
+  if (!s.IsOK()) return s;
+
+  if (!db_tokens.empty() && !config->repl_namespace_enabled) {
+    return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
+  }
+
+  std::unique_lock<std::shared_mutex> lock(tokens_mu_);
   // Load from the configuration file first
   tokens_ = config->load_tokens;
-
-  // We would like to load namespaces from db even if repl_namespace_enabled is false,
-  // this can avoid missing some namespaces when turn on/off repl_namespace_enabled.
-  std::string value;
-  auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
-  if (!s.ok() && !s.IsNotFound()) {
-    return {Status::NotOK, s.ToString()};
-  }
-  if (s.ok()) {
-    // The namespace db key is existed, so it doesn't allow to switch off repl_namespace_enabled
-    if (!config->repl_namespace_enabled) {
-      return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
-    }
-
-    jsoncons::json j = jsoncons::json::parse(value);
-    for (const auto& iter : j.object_range()) {
-      if (tokens_.find(iter.key()) == tokens_.end()) {
-        // merge the namespace from db
-        tokens_[iter.key()] = iter.value().as<std::string>();
-      }
+  // Merge the tokens from the database if the token is not in the configuration file
+  for (const auto& iter : db_tokens) {
+    if (tokens_.find(iter.first) == tokens_.end()) {
+      tokens_[iter.first] = iter.second;
     }
   }
 
-  return Rewrite();
+  // The following rewrite is to remove namespace/token pairs from the configuration if the namespace replication
+  // is enabled. So we don't need to do that if no tokens are loaded or the namespace replication is disabled.
+  if (config->load_tokens.empty() || !config->repl_namespace_enabled) return Status::OK();
+
+  return Rewrite(tokens_);
 }
 
-StatusOr<std::string> Namespace::Get(const std::string& ns) const {
+StatusOr<std::string> Namespace::Get(const std::string& ns) {
+  std::shared_lock lock(tokens_mu_);
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {
       return iter.first;
@@ -93,7 +108,8 @@ StatusOr<std::string> Namespace::Get(const std::string& ns) const {
   return {Status::NotFound};
 }
 
-StatusOr<std::string> Namespace::GetByToken(const std::string& token) const {
+StatusOr<std::string> Namespace::GetByToken(const std::string& token) {
+  std::shared_lock lock(tokens_mu_);
   auto iter = tokens_.find(token);
   if (iter == tokens_.end()) {
     return {Status::NotFound};
@@ -121,6 +137,7 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
     return {Status::NotOK, kErrInvalidToken};
   }
 
+  std::unique_lock lock(tokens_mu_);
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {  // need to delete the old token first
       tokens_.erase(iter.first);
@@ -129,7 +146,7 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
   }
   tokens_[token] = ns;
 
-  s = Rewrite();
+  s = Rewrite(tokens_);
   if (!s.IsOK()) {
     tokens_.erase(token);
     return s;
@@ -138,17 +155,22 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
 }
 
 Status Namespace::Add(const std::string& ns, const std::string& token) {
-  // duplicate namespace
-  for (const auto& iter : tokens_) {
-    if (iter.second == ns) {
-      if (iter.first == token) return Status::OK();
-      return {Status::NotOK, kErrNamespaceExists};
+  {
+    std::shared_lock lock(tokens_mu_);
+    // duplicate namespace
+    for (const auto& iter : tokens_) {
+      if (iter.second == ns) {
+        if (iter.first == token) return Status::OK();
+        return {Status::NotOK, kErrNamespaceExists};
+      }
+    }
+    // duplicate token
+    if (tokens_.find(token) != tokens_.end()) {
+      return {Status::NotOK, kErrTokenExists};
     }
   }
-  // duplicate token
-  if (tokens_.find(token) != tokens_.end()) {
-    return {Status::NotOK, kErrTokenExists};
-  }
+
+  // we don't need to lock the mutex here because the Set method will lock it
   return Set(ns, token);
 }
 
@@ -160,10 +182,11 @@ Status Namespace::Del(const std::string& ns) {
     return {Status::NotOK, kErrCantModifyNamespace};
   }
 
+  std::unique_lock lock(tokens_mu_);
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {
       tokens_.erase(iter.first);
-      auto s = Rewrite();
+      auto s = Rewrite(tokens_);
       if (!s.IsOK()) {
         tokens_[iter.first] = iter.second;
         return s;
@@ -174,11 +197,11 @@ Status Namespace::Del(const std::string& ns) {
   return {Status::NotOK, kErrNamespaceNotFound};
 }
 
-Status Namespace::Rewrite() {
+Status Namespace::Rewrite(const std::map<std::string, std::string>& tokens) const {
   auto config = storage_->GetConfig();
   // Rewrite the configuration file only if it's running with the configuration file
   if (config->HasConfigFile()) {
-    auto s = config->Rewrite(tokens_);
+    auto s = config->Rewrite(tokens);
     if (!s.IsOK()) {
       return s;
     }
@@ -195,8 +218,9 @@ Status Namespace::Rewrite() {
     return Status::OK();
   }
   jsoncons::json json;
-  for (const auto& iter : tokens_) {
+  for (const auto& iter : tokens) {
     json[iter.first] = iter.second;
   }
-  return storage_->WriteToPropagateCF(kNamespaceDBKey, json.to_string());
+  engine::Context ctx(storage_);
+  return storage_->WriteToPropagateCF(ctx, kNamespaceDBKey, json.to_string());
 }

@@ -399,7 +399,7 @@ func TestClusterMultiple(t *testing.T) {
 		// request replicas a write command, it's wrong
 		require.ErrorContains(t, rdb[3].Set(ctx, util.SlotTable[16383], 16383, 0).Err(), "MOVED")
 		// request a read-only command to node3 that serve slot 16383, that's ok
-		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		util.WaitForOffsetSync(t, rdb[2], rdb[3], 5*time.Second)
 		//the default option is READWRITE, which will redirect both read and write to master
 		require.ErrorContains(t, rdb[3].Get(ctx, util.SlotTable[16383]).Err(), "MOVED")
 
@@ -445,7 +445,7 @@ func TestClusterMultiple(t *testing.T) {
 
 		require.NoError(t, rdb[3].Do(ctx, "READONLY").Err())
 		require.NoError(t, rdb[2].Set(ctx, util.SlotTable[8192], 8192, 0).Err())
-		util.WaitForOffsetSync(t, rdb[2], rdb[3])
+		util.WaitForOffsetSync(t, rdb[2], rdb[3], 5*time.Second)
 		// request node3 that serves slot 8192, that's ok
 		require.Equal(t, "8192", rdb[3].Get(ctx, util.SlotTable[8192]).Val())
 
@@ -511,7 +511,7 @@ func TestClusterReset(t *testing.T) {
 		slotNum := 1
 		require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 0).Val())
 		clusterInfo := rdb1.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "importing_slot: 1")
+		require.Contains(t, clusterInfo, "importing_slot(s): 1")
 		require.Contains(t, clusterInfo, "import_state: start")
 		require.Contains(t, rdb1.ClusterResetHard(ctx).Err(), "Can't reset cluster while importing slot")
 		require.Equal(t, "OK", rdb1.Do(ctx, "cluster", "import", slotNum, 1).Val())
@@ -533,7 +533,7 @@ func TestClusterReset(t *testing.T) {
 
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotNum, id1).Val())
 		clusterInfo := rdb0.ClusterInfo(ctx).Val()
-		require.Contains(t, clusterInfo, "migrating_slot: 2")
+		require.Contains(t, clusterInfo, "migrating_slot(s): 2")
 		require.Contains(t, clusterInfo, "migrating_state: start")
 		require.Contains(t, rdb0.ClusterResetHard(ctx).Err(), "Can't reset cluster while migrating slot")
 

@@ -204,9 +204,9 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Status fetchFiles(int sock_fd, const std::string &dir, const std::vector<std::string> &files,
                     const std::vector<uint32_t> &crcs, const FetchFileCallback &fn, ssl_st *ssl);
   Status parallelFetchFile(const std::string &dir, const std::vector<std::pair<std::string, uint32_t>> &files);
-  static bool isRestoringError(const char *err);
-  static bool isWrongPsyncNum(const char *err);
-  static bool isUnknownOption(const char *err);
+  static bool isRestoringError(std::string_view err);
+  static bool isWrongPsyncNum(std::string_view err);
+  static bool isUnknownOption(std::string_view err);
 
   Status parseWriteBatch(const std::string &batch_string);
 };
@@ -217,11 +217,13 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
 class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
-  rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override {
+  rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id,
+                           [[maybe_unused]] const rocksdb::Slice &key) override {
     return rocksdb::Status::OK();
   }
-  rocksdb::Status DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice &begin_key,
-                                const rocksdb::Slice &end_key) override {
+  rocksdb::Status DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
+                                [[maybe_unused]] const rocksdb::Slice &begin_key,
+                                [[maybe_unused]] const rocksdb::Slice &end_key) override {
     return rocksdb::Status::OK();
   }
   WriteBatchType Type() { return type_; }

@@ -51,7 +51,7 @@ void SyncMigrateContext::OnEvent(bufferevent *bev, int16_t events) {
   conn_->OnEvent(bev, events);
 }
 
-void SyncMigrateContext::TimerCB(int, int16_t events) {
+void SyncMigrateContext::TimerCB(int, [[maybe_unused]] int16_t events) {
   auto &&slot_migrator = srv_->slot_migrator;
 
   conn_->Reply(conn_->NilString());
@@ -68,7 +68,7 @@ void SyncMigrateContext::OnWrite(bufferevent *bev) {
   if (migrate_result_) {
     conn_->Reply(redis::SimpleString("OK"));
   } else {
-    conn_->Reply(redis::Error("ERR " + migrate_result_.Msg()));
+    conn_->Reply(redis::Error(migrate_result_));
   }
 
   timer_.reset();

@@ -24,6 +24,7 @@
 
 #include "ir_plan.h"
 #include "search/index_info.h"
+#include "search/value.h"
 #include "storage/storage.h"
 #include "string_util.h"
 
@@ -33,7 +34,7 @@ struct ExecutorContext;
 
 struct ExecutorNode {
   using KeyType = std::string;
-  using ValueType = std::string;
+  using ValueType = kqir::Value;
   struct RowType {
     KeyType key;
     std::map<const FieldInfo *, ValueType> fields;
@@ -52,8 +53,9 @@ struct ExecutorNode {
       } else {
         os << row.key;
       }
-      return os << " {" << util::StringJoin(row.fields, [](const auto &v) { return v.first->name + ": " + v.second; })
-                << "}";
+      return os << " {" << util::StringJoin(row.fields, [](const auto &v) {
+               return v.first->name + ": " + v.second.ToString();
+             }) << "}";
     }
   };
 
@@ -75,6 +77,7 @@ struct ExecutorContext {
   std::map<PlanOperator *, std::unique_ptr<ExecutorNode>> nodes;
   PlanOperator *root;
   engine::Storage *storage;
+  engine::Context db_ctx;
 
   using Result = ExecutorNode::Result;
   using RowType = ExecutorNode::RowType;
@@ -95,7 +98,7 @@ struct ExecutorContext {
   ExecutorNode *Get(const std::unique_ptr<PlanOperator> &op) { return Get(op.get()); }
 
   StatusOr<Result> Next() { return Get(root)->Next(); }
-  StatusOr<ValueType> Retrieve(RowType &row, const FieldInfo *field);
+  StatusOr<ValueType> Retrieve(engine::Context &ctx, RowType &row, const FieldInfo *field) const;
 };
 
 }  // namespace kqir

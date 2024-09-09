@@ -22,6 +22,7 @@
 #include "error_constants.h"
 #include "io_util.h"
 #include "scope_exit.h"
+#include "server/redis_reply.h"
 #include "server/server.h"
 #include "thread_util.h"
 #include "time_util.h"
@@ -101,7 +102,7 @@ class CommandPSync : public Commander {
     srv->stats.IncrPSyncOKCount();
     s = srv->AddSlave(conn, next_repl_seq_);
     if (!s.IsOK()) {
-      std::string err = "-ERR " + s.Msg() + "\r\n";
+      std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
         LOG(WARNING) << "failed to send error message to the replica: " << s.Msg();
@@ -185,7 +186,7 @@ class CommandReplConf : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     if (port_ != 0) {
       conn->SetListeningPort(port_);
     }
@@ -203,9 +204,9 @@ class CommandReplConf : public Commander {
 
 class CommandFetchMeta : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override { return Status::OK(); }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     int repl_fd = conn->GetFD();
     std::string ip = conn->GetAnnounceIP();
 
@@ -229,7 +230,7 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(srv->storage, &files);
       if (!s.IsOK()) {
-        s = util::SockSend(repl_fd, "-ERR can't create db checkpoint", bev);
+        s = util::SockSend(repl_fd, redis::Error({Status::RedisErrorNoPrefix, "can't create db checkpoint"}), bev);
         if (!s.IsOK()) {
           LOG(WARNING) << "[replication] Failed to send error response: " << s.Msg();
         }
@@ -261,7 +262,7 @@ class CommandFetchFile : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     std::vector<std::string> files = util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
@@ -331,20 +332,19 @@ class CommandFetchFile : public Commander {
 
 class CommandDBName : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override { return Status::OK(); }
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override { return Status::OK(); }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(Server *srv, Connection *conn, [[maybe_unused]] std::string *output) override {
     conn->Reply(srv->storage->GetName() + CRLF);
     return Status::OK();
   }
 };
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only replication no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandPSync>("psync", -2, "read-only replication no-multi no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only replication no-multi no-script", 0,
-                                                      0, 0),
-                        MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only replication no-multi no-script", 0,
-                                                      0, 0),
-                        MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0), )
+REDIS_REGISTER_COMMANDS(
+    Replication, MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only replication no-script", 0, 0, 0),
+    MakeCmdAttr<CommandPSync>("psync", -2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0),
+    MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only replication no-multi", 0, 0, 0), )
 
 }  // namespace redis

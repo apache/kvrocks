@@ -72,7 +72,9 @@ class RdbFileStream : public RdbStream {
 
   Status Open();
   Status Read(char *buf, size_t len) override;
-  Status Write(const char *buf, size_t len) override { return {Status::NotOK, fmt::format("No implement")}; };
+  Status Write([[maybe_unused]] const char *buf, [[maybe_unused]] size_t len) override {
+    return {Status::NotOK, fmt::format("No implement")};
+  };
   StatusOr<uint64_t> GetCheckSum() const override {
     uint64_t crc = check_sum_;
     memrev64ifbe(&crc);

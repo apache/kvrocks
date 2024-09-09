@@ -101,7 +101,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 
 	t.Run("XADD IDs correctly report an error when overflowing", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
-		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551615-18446744073709551615", Values: []string{"a", "b"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "18446744073709551614-18446744073709551615", Values: []string{"a", "b"}}).Err())
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "*", Values: []string{"c", "d"}}).Err(), "ERR")
 	})
 
@@ -286,7 +286,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 	})
 
 	t.Run("XRANGE exclusive ranges", func(t *testing.T) {
-		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551615-18446744073709551614", "18446744073709551615-18446744073709551615"}
+		ids := []string{"0-1", "0-18446744073709551615", "1-0", "42-0", "42-42", "18446744073709551614-18446744073709551614", "18446744073709551614-18446744073709551615"}
 		total := len(ids)
 		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
 		// DEL returns "QUEUED" here, so we use Do to avoid ParseInt.
@@ -306,7 +306,7 @@ var streamTests = func(t *testing.T, enabledRESP3 string) {
 		require.Len(t, rdb.XRange(ctx, "vipstream", "(1-0", "(42-42").Val(), 1)
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(-", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(+").Err(), "ERR")
-		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551615-18446744073709551615", "+").Err(), "ERR")
+		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "(18446744073709551614-18446744073709551615", "+").Err(), "ERR")
 		require.ErrorContains(t, rdb.XRange(ctx, "vipstream", "-", "(0-0").Err(), "ERR")
 	})
 
@@ -889,6 +889,9 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "myStream").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"iTeM", "1", "vAluE", "a"}}).Err())
 		require.NoError(t, rdb.XGroupCreate(ctx, "myStream", "myGroup", "$").Err())
+		// duplicate create group
+		require.EqualError(t, rdb.XGroupCreate(ctx, "myStream", "myGroup", "$").Err(),
+			"BUSYGROUP consumer group name 'myGroup' already exists")
 		result, err := rdb.XGroupDestroy(ctx, "myStream", "myGroup").Result()
 		require.NoError(t, err)
 		require.Equal(t, int64(1), result)
@@ -931,8 +934,12 @@ func TestStreamOffset(t *testing.T) {
 			ID:     "1-0",
 			Values: []string{"data", "a"},
 		}).Err())
+
 		//no such group
-		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
+		expectedError := fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName)
+		require.EqualError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
+		require.EqualError(t, rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
+
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 		require.NoError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
 
@@ -1009,7 +1016,8 @@ func TestStreamOffset(t *testing.T) {
 			Values: []string{"data", "a"},
 		}).Err())
 		//No such group
-		require.Error(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err())
+		require.EqualError(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err(),
+			fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName))
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 
 		require.NoError(t, rdb.XGroupSetID(ctx, streamName, groupName, "0-0").Err())
@@ -1062,6 +1070,41 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, consumer2, r1[1].Name)
 		r1 = rdb.XInfoConsumers(ctx, streamName, group2).Val()
 		require.Equal(t, consumer3, r1[0].Name)
+	})
+
+	t.Run("XINFO after delete pending message and related consumer, for issue #2350", func(t *testing.T) {
+		streamName := "test-stream-2350"
+		groupName := "test-group-2350"
+		consumerName := "test-consumer-2350"
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "*",
+			Values: []string{"testing", "overflow"},
+		}).Err())
+		readRsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		})
+		require.NoError(t, readRsp.Err())
+		require.Len(t, readRsp.Val(), 1)
+		streamRsp := readRsp.Val()[0]
+		require.Len(t, streamRsp.Messages, 1)
+		msgID := streamRsp.Messages[0]
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, msgID.ID).Err())
+		require.NoError(t, rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Err())
+		infoRsp := rdb.XInfoGroups(ctx, streamName)
+		require.NoError(t, infoRsp.Err())
+		infoGroups := infoRsp.Val()
+		require.Len(t, infoGroups, 1)
+		infoGroup := infoGroups[0]
+		require.Equal(t, groupName, infoGroup.Name)
+		require.Equal(t, int64(0), infoGroup.Consumers)
+		require.Equal(t, int64(0), infoGroup.Pending)
+		require.Equal(t, msgID.ID, infoGroup.LastDeliveredID)
 	})
 
 	t.Run("XREAD After XGroupCreate and XGroupCreateConsumer, for issue #2109", func(t *testing.T) {
@@ -1307,6 +1350,17 @@ func TestStreamOffset(t *testing.T) {
 			ID:     "1-0",
 			Values: []string{"field1", "data1"},
 		}).Err())
+
+		// No such group
+		err := rdb.XClaim(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumer1Name,
+			MinIdle:  0,
+			Messages: []string{"1-0"},
+		}).Err()
+		require.EqualError(t, err, fmt.Sprintf("NOGROUP No such key '%s' or consumer group '%s'", streamName, groupName))
+
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
 		r, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
@@ -1464,6 +1518,495 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, claimedIDs, 1, "Expected to claim exactly one message ID")
 		require.Equal(t, "1-0", claimedIDs[0], "Expected claimed message ID to match")
+	})
+
+	t.Run("XAUTOCLAIM can claim PEL items from another consume", func(t *testing.T) {
+
+		streamName := "mystream"
+		groupName := "mygroup"
+		var id1 string
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"a", "1"},
+			})
+			require.NoError(t, rsp.Err())
+			id1 = rsp.Val()
+		}
+		var id2 string
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"b", "2"},
+			})
+			require.NoError(t, rsp.Err())
+			id2 = rsp.Val()
+		}
+		var id3 string
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"c", "3"},
+			})
+			require.NoError(t, rsp.Err())
+			id3 = rsp.Val()
+		}
+		var id4 string
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"d", "4"},
+			})
+			require.NoError(t, rsp.Err())
+			id4 = rsp.Val()
+		}
+
+		// No such group
+		err := rdb.XAutoClaimJustID(ctx, &redis.XAutoClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: "consumer",
+			MinIdle:  10 * time.Millisecond,
+			Start:    "-",
+		}).Err()
+		require.EqualError(t, err, fmt.Sprintf("NOGROUP No such key '%s' or consumer group '%s'", streamName, groupName))
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		consumer1 := "consumer1"
+		consumer2 := "consumer2"
+		{
+			rsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: consumer1,
+				Streams:  []string{streamName, ">"},
+				Count:    1,
+			})
+			require.NoError(t, rsp.Err())
+			require.Len(t, rsp.Val(), 1)
+			require.Len(t, rsp.Val()[0].Messages, 1)
+			require.Equal(t, id1, rsp.Val()[0].Messages[0].ID)
+			require.Len(t, rsp.Val()[0].Messages[0].Values, 1)
+			require.Equal(t, "1", rsp.Val()[0].Messages[0].Values["a"])
+		}
+
+		{
+			time.Sleep(200 * time.Millisecond)
+			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+				Stream:   streamName,
+				Group:    groupName,
+				Consumer: consumer2,
+				MinIdle:  10 * time.Millisecond,
+				Count:    1,
+				Start:    "-",
+			})
+			require.NoError(t, rsp.Err())
+			msgs, start := rsp.Val()
+			require.Equal(t, "0-0", start)
+			require.Len(t, msgs, 1)
+			require.Len(t, msgs[0].Values, 1)
+			require.Equal(t, "1", msgs[0].Values["a"])
+		}
+
+		{
+			rsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: consumer1,
+				Streams:  []string{streamName, ">"},
+				Count:    3,
+			})
+			require.NoError(t, rsp.Err())
+
+			time.Sleep(time.Millisecond * 200)
+			require.NoError(t, rdb.XDel(ctx, streamName, id2).Err())
+		}
+
+		{
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, consumer2, 10, "-", "COUNT", 3)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				id4,
+				[]interface{}{
+					[]interface{}{
+						id1,
+						[]interface{}{"a", "1"},
+					},
+					[]interface{}{
+						id3,
+						[]interface{}{"c", "3"},
+					},
+				},
+				[]interface{}{
+					id2,
+				},
+			}, cmd.Val())
+		}
+
+		{
+			time.Sleep(time.Millisecond * 200)
+			require.NoError(t, rdb.XDel(ctx, streamName, id4).Err())
+			rsp := rdb.XAutoClaimJustID(ctx, &redis.XAutoClaimArgs{
+				Stream:   streamName,
+				Group:    groupName,
+				Consumer: consumer2,
+				MinIdle:  10 * time.Millisecond,
+				Start:    "-",
+			})
+			require.NoError(t, rsp.Err())
+			msgs, start := rsp.Val()
+			require.Equal(t, "0-0", start)
+			require.Len(t, msgs, 2)
+			require.Equal(t, id1, msgs[0])
+			require.Equal(t, id3, msgs[1])
+		}
+	})
+
+	t.Run("XAUTOCLAIM as an iterator", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		var id3, id5 string
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"a", "1"},
+			})
+			require.NoError(t, rsp.Err())
+		}
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"b", "2"},
+			})
+			require.NoError(t, rsp.Err())
+		}
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"c", "3"},
+			})
+			require.NoError(t, rsp.Err())
+			id3 = rsp.Val()
+		}
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"d", "4"},
+			})
+			require.NoError(t, rsp.Err())
+		}
+		{
+			rsp := rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     "*",
+				Values: []string{"e", "5"},
+			})
+			require.NoError(t, rsp.Err())
+			id5 = rsp.Val()
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		consumer1, consumer2 := "consumer1", "consumer2"
+		{
+			rsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: consumer1,
+				Streams:  []string{streamName, ">"},
+				Count:    90,
+			})
+			require.NoError(t, rsp.Err())
+			time.Sleep(200 * time.Millisecond)
+		}
+		{
+			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+				Stream:   streamName,
+				Group:    groupName,
+				Consumer: consumer2,
+				MinIdle:  10 * time.Millisecond,
+				Count:    2,
+				Start:    "-",
+			})
+			require.NoError(t, rsp.Err())
+			msgs, start := rsp.Val()
+			require.Equal(t, id3, start)
+			require.Len(t, msgs, 2)
+			require.Len(t, msgs[0].Values, 1)
+			require.Equal(t, "1", msgs[0].Values["a"])
+		}
+
+		{
+			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+				Stream:   streamName,
+				Group:    groupName,
+				Consumer: consumer2,
+				MinIdle:  10 * time.Millisecond,
+				Start:    id3,
+				Count:    2,
+			})
+			require.NoError(t, rsp.Err())
+			msgs, start := rsp.Val()
+			require.Equal(t, id5, start)
+			require.Len(t, msgs, 2)
+			require.Len(t, msgs[0].Values, 1)
+			require.Equal(t, "3", msgs[0].Values["c"])
+		}
+
+		{
+			rsp := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+				Stream:   streamName,
+				Group:    groupName,
+				Consumer: consumer2,
+				MinIdle:  10 * time.Millisecond,
+				Start:    id5,
+				Count:    1,
+			})
+			require.NoError(t, rsp.Err())
+			msgs, start := rsp.Val()
+			require.Equal(t, "0-0", start)
+			require.Len(t, msgs, 1)
+			require.Len(t, msgs[0].Values, 1)
+			require.Equal(t, "5", msgs[0].Values["e"])
+		}
+	})
+
+	t.Run("XAUTOCLAIM with XDEL", func(t *testing.T) {
+		streamName := "x"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		{
+			rsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: "Alice",
+				Streams:  []string{streamName, ">"},
+			})
+			require.NoError(t, rsp.Err())
+			require.Len(t, rsp.Val(), 1)
+			require.Len(t, rsp.Val()[0].Messages, 3)
+			require.Equal(t, "1-0", rsp.Val()[0].Messages[0].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[0].Values["f"])
+			require.Equal(t, "2-0", rsp.Val()[0].Messages[1].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[1].Values["f"])
+			require.Equal(t, "3-0", rsp.Val()[0].Messages[2].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[2].Values["f"])
+		}
+		{
+			require.NoError(t, rdb.XDel(ctx, streamName, "2-0").Err())
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0")
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"0-0",
+				[]interface{}{
+					[]interface{}{
+						"1-0",
+						[]interface{}{"f", "v"},
+					},
+					[]interface{}{
+						"3-0",
+						[]interface{}{"f", "v"},
+					},
+				},
+				[]interface{}{
+					"2-0",
+				},
+			}, cmd.Val())
+		}
+	})
+
+	t.Run("XAUTOCLAIM with XDEL and count", func(t *testing.T) {
+		streamName := "x"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: map[string]interface{}{"f": "v"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		{
+			rsp := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: "Alice",
+				Streams:  []string{streamName, ">"},
+			})
+			require.NoError(t, rsp.Err())
+			require.Len(t, rsp.Val(), 1)
+			require.Len(t, rsp.Val()[0].Messages, 3)
+			require.Equal(t, "1-0", rsp.Val()[0].Messages[0].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[0].Values["f"])
+			require.Equal(t, "2-0", rsp.Val()[0].Messages[1].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[1].Values["f"])
+			require.Equal(t, "3-0", rsp.Val()[0].Messages[2].ID)
+			require.Equal(t, "v", rsp.Val()[0].Messages[2].Values["f"])
+		}
+		{
+			require.NoError(t, rdb.XDel(ctx, streamName, "1-0").Err())
+			require.NoError(t, rdb.XDel(ctx, streamName, "2-0").Err())
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"2-0",
+				[]interface{}{},
+				[]interface{}{
+					"1-0",
+				},
+			}, cmd.Val())
+		}
+		{
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "2-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"3-0",
+				[]interface{}{},
+				[]interface{}{
+					"2-0",
+				},
+			}, cmd.Val())
+		}
+		{
+			cmd := rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "3-0", "COUNT", 1)
+			require.NoError(t, cmd.Err())
+			require.Equal(t, []interface{}{
+				"0-0",
+				[]interface{}{
+					[]interface{}{
+						"3-0",
+						[]interface{}{"f", "v"},
+					},
+				},
+				[]interface{}{},
+			}, cmd.Val())
+		}
+		// assert_equal [XPENDING x grp - + 10 Alice] {}
+		// add xpending to this test case when it is supported
+	})
+
+	t.Run("XAUTOCLAIM with out of range count", func(t *testing.T) {
+		err := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+			Stream:   "x",
+			Group:    "grp",
+			Consumer: "Bob",
+			MinIdle:  0,
+			Start:    "3-0",
+			Count:    8070450532247928833,
+		}).Err()
+		require.Error(t, err)
+		require.True(t, strings.HasPrefix(err.Error(), "ERR COUNT"))
+	})
+
+	t.Run("XAUTOCLAIM COUNT must be > 0", func(t *testing.T) {
+		cmd := rdb.Do(ctx, "XAUTOCLAIM", "key", "group", "consumer", 1, 1, "COUNT", 0)
+		require.Error(t, cmd.Err())
+		require.Equal(t, "ERR COUNT must be > 0", cmd.Err().Error())
+	})
+
+	t.Run("XPending with different kinds of commands", func(t *testing.T) {
+		streamName := "mystream"
+		groupName := "mygroup"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), r)
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		consumerName := "myconsumer"
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+
+		r1, err1 := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     1,
+			Lower:     "1-0",
+			Higher:    "1-0",
+			Consumers: map[string]int64{"myconsumer": 1},
+		}, r1)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "2-2",
+			Values: []string{"field1", "data1"},
+		}).Err())
+
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    2,
+			NoAck:    false,
+		}).Err())
+
+		r1, err1 = rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     3,
+			Lower:     "1-0",
+			Higher:    "2-2",
+			Consumers: map[string]int64{"myconsumer": 3},
+		}, r1)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "2-0").Err())
+
+		r1, err1 = rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     2,
+			Lower:     "1-0",
+			Higher:    "2-2",
+			Consumers: map[string]int64{"myconsumer": 2},
+		}, r1)
 	})
 }
 

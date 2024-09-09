@@ -43,8 +43,8 @@ rocksdb::Status BitmapString::GetBit(const std::string &raw_value, uint32_t bit_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value, uint32_t bit_offset, bool new_bit,
-                                     bool *old_bit) {
+rocksdb::Status BitmapString::SetBit(engine::Context &ctx, const Slice &ns_key, std::string *raw_value,
+                                     uint32_t bit_offset, bool new_bit, bool *old_bit) {
   size_t header_offset = Metadata::GetOffsetAfterExpire((*raw_value)[0]);
   auto string_value = raw_value->substr(header_offset);
   uint32_t byte_index = bit_offset >> 3;
@@ -59,9 +59,15 @@ rocksdb::Status BitmapString::SetBit(const Slice &ns_key, std::string *raw_value
   raw_value->append(string_value);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  batch->PutLogData(log_data.Encode());
-  batch->Put(metadata_cf_handle_, ns_key, *raw_value);
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) {
+    return s;
+  }
+  s = batch->Put(metadata_cf_handle_, ns_key, *raw_value);
+  if (!s.ok()) {
+    return s;
+  }
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status BitmapString::BitCount(const std::string &raw_value, int64_t start, int64_t stop, bool is_bit_index,
@@ -200,7 +206,7 @@ std::pair<int64_t, int64_t> BitmapString::NormalizeToByteRangeWithPaddingMask(bo
   return {origin_start, origin_end};
 }
 
-rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_value,
+rocksdb::Status BitmapString::Bitfield(engine::Context &ctx, const Slice &ns_key, std::string *raw_value,
                                        const std::vector<BitfieldOperation> &ops,
                                        std::vector<std::optional<BitfieldValue>> *rets) {
   auto header_offset = Metadata::GetOffsetAfterExpire((*raw_value)[0]);
@@ -257,13 +263,19 @@ rocksdb::Status BitmapString::Bitfield(const Slice &ns_key, std::string *raw_val
   raw_value->append(string_value);
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  batch->PutLogData(log_data.Encode());
-  batch->Put(metadata_cf_handle_, ns_key, *raw_value);
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) {
+    return s;
+  }
+  s = batch->Put(metadata_cf_handle_, ns_key, *raw_value);
+  if (!s.ok()) {
+    return s;
+  }
 
-  return storage_->Write(storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status BitmapString::BitfieldReadOnly(const Slice &ns_key, const std::string &raw_value,
+rocksdb::Status BitmapString::BitfieldReadOnly([[maybe_unused]] const Slice &ns_key, const std::string &raw_value,
                                                const std::vector<BitfieldOperation> &ops,
                                                std::vector<std::optional<BitfieldValue>> *rets) {
   std::string_view string_value = raw_value;

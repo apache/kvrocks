@@ -57,9 +57,9 @@ struct TopNSortExecutor : ExecutorNode {
         auto &row = std::get<RowType>(v);
 
         auto get_order = [this](RowType &row) -> StatusOr<double> {
-          auto order_str = GET_OR_RET(ctx->Retrieve(row, sort->order->field->info));
-          auto order = GET_OR_RET(ParseFloat(order_str));
-          return order;
+          auto order_val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, sort->order->field->info));
+          CHECK(order_val.Is<kqir::Numeric>());
+          return order_val.Get<kqir::Numeric>();
         };
 
         if (rows.size() == total) {

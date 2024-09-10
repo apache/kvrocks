@@ -34,7 +34,7 @@ class CommandCMSIncrBy final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     if ((args_.size() - 2) % 2 != 0) {
-      return Status::RedisTryAgain;
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);

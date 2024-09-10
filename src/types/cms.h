@@ -23,6 +23,7 @@
 #include <vector>
 #include <memory>
 
+#include "server/redis_reply.h"
 #include "vendor/murmurhash2.h"
 
 class CMSketch {
@@ -37,6 +38,12 @@ class CMSketch {
       return std::make_unique<CMSketch>(width, depth, 0);
   }
 
+  struct CMSInfo {
+    uint64_t width;
+    uint64_t depth;
+    uint64_t count;
+  };
+
   struct CMSketchDimensions {
     uint32_t width;
     uint32_t depth;
@@ -44,7 +51,7 @@ class CMSketch {
 
   static CMSketchDimensions CMSDimFromProb(double error, double delta);
 
-  size_t IncrBy(std::string_view item, size_t value);
+  size_t IncrBy(std::string_view item, uint32_t value);
 
   size_t Query(std::string_view item) const;
 
@@ -59,6 +66,10 @@ class CMSketch {
   };
 
   int CMSMergeParams(const MergeParams& params);
+
+  size_t GetLocation(uint64_t hash, size_t i) const {
+    return (hash % width_) + (i * width_);
+  }
 
   uint64_t& GetCounter() { return counter_; }
   std::vector<uint32_t>& GetArray() { return array_; }

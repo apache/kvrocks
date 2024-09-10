@@ -33,15 +33,16 @@ CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta
   return dims;
 }
 
-size_t CMSketch::IncrBy(std::string_view item, size_t value) {
+size_t CMSketch::IncrBy(std::string_view item, uint32_t value) {
   size_t min_count = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
     uint64_t hash = HllMurMurHash64A(item.data(), static_cast<int>(item.size()), i);
-    size_t loc = (hash % width_) + (i * width_);
-    array_[loc] += value;
-    if (array_[loc] < value) {
+    size_t loc = GetLocation(hash, i);
+    if (array_[loc] > UINT32_MAX - value) {
       array_[loc] = UINT32_MAX;
+    } else {
+      array_[loc] += value;
     }
     min_count = std::min(min_count, static_cast<size_t>(array_[loc]));
   }

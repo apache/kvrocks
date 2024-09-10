@@ -21,6 +21,7 @@
 #include <types/cms.h>
 #include <types/redis_cms.h>
 
+#include "parse_util.h"
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "server/redis_reply.h"
@@ -41,12 +42,11 @@ class CommandCMSIncrBy final : public Commander {
     std::unordered_map<std::string, uint64_t> elements;
     for (size_t i = 2; i < args_.size(); i += 2) {
       std::string key = args_[i];
-      uint64_t value = 0;
-      try {
-        value = std::stoull(args_[i + 1]);
-      } catch (const std::exception &e) {
-        return Status::InvalidArgument;
+      auto parse_result = ParseInt<uint64_t>(args_[i + 1]);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
       }
+      uint64_t value = *parse_result;
       elements[key] = value;
     }
 
@@ -67,8 +67,7 @@ class CommandCMSInfo final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
     rocksdb::Status s;
-    std::unordered_map<std::string, uint64_t> elements;
-    std::vector<uint64_t> ret{};
+    CMSketch::CMSInfo ret{};
 
     s = cms.Info(ctx, args_[1], &ret);
 
@@ -80,8 +79,11 @@ class CommandCMSInfo final : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Array({redis::BulkString("width"), redis::Integer(ret[0]), redis::BulkString("depth"),
-                            redis::Integer(ret[1]), redis::BulkString("count"), redis::Integer(ret[2])});
+    *output = redis::Array({
+      redis::BulkString("width"), redis::Integer(ret.width), 
+      redis::BulkString("depth"), redis::Integer(ret.depth), 
+      redis::BulkString("count"), redis::Integer(ret.count)
+    });
 
     return Status::OK();
   }
@@ -94,8 +96,17 @@ class CommandCMSInitByDim final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
     rocksdb::Status s;
-    uint64_t width = std::stoull(args_[2]);
-    uint64_t depth = std::stoull(args_[3]);
+    auto width_result = ParseInt<uint32_t>(this->args_[2]);
+    if (!width_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    uint32_t width = *width_result;
+
+    auto depth_result = ParseInt<uint32_t>(this->args_[3]);
+    if (!depth_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    uint32_t depth = *depth_result; 
 
     s = cms.InitByDim(ctx, args_[1], width, depth);
     if (!s.ok()) {
@@ -114,8 +125,18 @@ class CommandCMSInitByProb final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
     rocksdb::Status s;
-    double error = std::stod(args_[2]);
-    double delta = std::stod(args_[3]);
+
+    auto error_result = ParseFloat<double>(args_[2]);
+    if (!error_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    double error = *error_result; 
+
+    auto delta_result = ParseFloat<double>(args_[3]);
+    if (!delta_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    double delta = *delta_result;
 
     s = cms.InitByProb(ctx, args_[1], error, delta);
     if (!s.ok()) {

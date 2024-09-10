@@ -18,7 +18,7 @@
  *
  */
 
-#include "redis_cms.h"
+ #include "redis_cms.h"
 
 #include <stdint.h>
 
@@ -65,7 +65,7 @@ rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key, const s
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, std::vector<uint64_t> *ret) {
+rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, CMSketch::CMSInfo *ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -76,9 +76,9 @@ rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, std::vect
     return rocksdb::Status::NotFound();
   }
 
-  ret->emplace_back(metadata.width);
-  ret->emplace_back(metadata.depth);
-  ret->emplace_back(metadata.counter);
+  ret->width = metadata.width;
+  ret->depth = metadata.depth;
+  ret->count = metadata.counter;
 
   return rocksdb::Status::OK();
 };
@@ -112,6 +112,13 @@ rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint
 };
 
 rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, double error, double delta) {
+  if (error <= 0 || error >= 1) {
+    return rocksdb::Status::InvalidArgument("Error must be between 0 and 1 (exclusive).");
+  }
+  if (delta <= 0 || delta >= 1) {
+    return rocksdb::Status::InvalidArgument("Delta must be between 0 and 1 (exclusive).");
+  }
+
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);

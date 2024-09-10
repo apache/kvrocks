@@ -341,7 +341,7 @@ class CountMinSketchMetadata : public Metadata {
  public:
   uint32_t width;
   uint32_t depth;
-  uint64_t counter;
+  uint64_t counter = 0;
   std::vector<uint32_t> array;
 
   explicit CountMinSketchMetadata(bool generate_version = true) : Metadata(kRedisCountMinSketch, generate_version) {}

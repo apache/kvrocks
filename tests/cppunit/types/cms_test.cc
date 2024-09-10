@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "test_base.h"
+#include "types/cms.h"
 #include "types/redis_cms.h"
 
 class RedisCMSketchTest : public TestBase {
@@ -51,11 +52,11 @@ class RedisCMSketchTest : public TestBase {
 
 TEST_F(RedisCMSketchTest, CMSInitByDim) {
   ASSERT_TRUE(cms_->InitByDim(*ctx_, "cms", 100, 5).ok());
-  std::vector<uint64_t> info;
+  CMSketch::CMSInfo info;
   ASSERT_TRUE(cms_->Info(*ctx_, "cms", &info).ok());
-  ASSERT_EQ(info[0], 100);
-  ASSERT_EQ(info[1], 5);
-  ASSERT_EQ(info[2], 0);
+  ASSERT_EQ(info.width, 100);
+  ASSERT_EQ(info.depth, 5);
+  ASSERT_EQ(info.count, 0);
 }
 
 TEST_F(RedisCMSketchTest, CMSIncrBy) {
@@ -70,9 +71,9 @@ TEST_F(RedisCMSketchTest, CMSIncrBy) {
   ASSERT_EQ(counts[1], 3);
   ASSERT_EQ(counts[2], 1);
 
-  std::vector<uint64_t> info;
+  CMSketch::CMSInfo info;
   ASSERT_TRUE(cms_->Info(*ctx_, "cms", &info).ok());
-  ASSERT_EQ(info[2], 6);
+  ASSERT_EQ(info.count, 6);
 }
 
 TEST_F(RedisCMSketchTest, CMSQuery) {
@@ -92,23 +93,23 @@ TEST_F(RedisCMSketchTest, CMSQuery) {
 TEST_F(RedisCMSketchTest, CMSInfo) {
   ASSERT_TRUE(cms_->InitByDim(*ctx_, "cms", 200, 10).ok());
 
-  std::vector<uint64_t> info;
+  CMSketch::CMSInfo info;
   ASSERT_TRUE(cms_->Info(*ctx_, "cms", &info).ok());
 
-  ASSERT_EQ(info[0], 200);
-  ASSERT_EQ(info[1], 10);
-  ASSERT_EQ(info[2], 0);
+  ASSERT_EQ(info.width, 200);
+  ASSERT_EQ(info.depth, 10);
+  ASSERT_EQ(info.count, 0);
 }
 
 TEST_F(RedisCMSketchTest, CMSInitByProb) {
   ASSERT_TRUE(cms_->InitByProb(*ctx_, "cms", 0.001, 0.1).ok());
 
-  std::vector<uint64_t> info;
+  CMSketch::CMSInfo info;
   ASSERT_TRUE(cms_->Info(*ctx_, "cms", &info).ok());
 
-  ASSERT_EQ(info[0], 2000);
-  ASSERT_EQ(info[1], 4);
-  ASSERT_EQ(info[2], 0);
+  ASSERT_EQ(info.width, 2000);
+  ASSERT_EQ(info.depth, 4);
+  ASSERT_EQ(info.count, 0);
 }
 
 TEST_F(RedisCMSketchTest, CMSMultipleKeys) {

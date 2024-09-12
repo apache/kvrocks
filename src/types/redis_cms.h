@@ -30,7 +30,8 @@ class CMS : public Database {
  public:
   explicit CMS(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
 
-  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
+  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key,
+                         const std::unordered_map<std::string, uint64_t> &elements);
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, CMSketch::CMSInfo *ret);
   rocksdb::Status InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth);
   rocksdb::Status InitByProb(engine::Context &ctx, const Slice &user_key, double error, double delta);

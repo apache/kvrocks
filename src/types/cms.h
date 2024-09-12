@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include "server/redis_reply.h"
 #include "vendor/murmurhash2.h"
@@ -35,7 +35,7 @@ class CMSketch {
         array_(array.empty() ? std::vector<uint32_t>(width * depth, 0) : std::move(array)) {}
 
   static std::unique_ptr<CMSketch> NewCMSketch(uint32_t width, int32_t depth) {
-      return std::make_unique<CMSketch>(width, depth, 0);
+    return std::make_unique<CMSketch>(width, depth, 0);
   }
 
   struct CMSInfo {
@@ -67,9 +67,7 @@ class CMSketch {
 
   int CMSMergeParams(const MergeParams& params);
 
-  size_t GetLocation(uint64_t hash, size_t i) const {
-    return (hash % width_) + (i * width_);
-  }
+  size_t GetLocation(uint64_t hash, size_t i) const { return (hash % width_) + (i * width_); }
 
   uint64_t& GetCounter() { return counter_; }
   std::vector<uint32_t>& GetArray() { return array_; }

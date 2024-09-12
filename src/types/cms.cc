@@ -25,7 +25,6 @@
 #include <cstdint>
 #include <vector>
 
-
 CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta) {
   CMSketchDimensions dims;
   dims.width = std::ceil(2 / error);

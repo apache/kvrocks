@@ -21,9 +21,9 @@
 #include <types/cms.h>
 #include <types/redis_cms.h>
 
-#include "parse_util.h"
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 
@@ -79,11 +79,8 @@ class CommandCMSInfo final : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Array({
-      redis::BulkString("width"), redis::Integer(ret.width), 
-      redis::BulkString("depth"), redis::Integer(ret.depth), 
-      redis::BulkString("count"), redis::Integer(ret.count)
-    });
+    *output = redis::Array({redis::BulkString("width"), redis::Integer(ret.width), redis::BulkString("depth"),
+                            redis::Integer(ret.depth), redis::BulkString("count"), redis::Integer(ret.count)});
 
     return Status::OK();
   }
@@ -106,7 +103,7 @@ class CommandCMSInitByDim final : public Commander {
     if (!depth_result) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
-    uint32_t depth = *depth_result; 
+    uint32_t depth = *depth_result;
 
     s = cms.InitByDim(ctx, args_[1], width, depth);
     if (!s.ok()) {
@@ -130,7 +127,7 @@ class CommandCMSInitByProb final : public Commander {
     if (!error_result) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
-    double error = *error_result; 
+    double error = *error_result;
 
     auto delta_result = ParseFloat<double>(args_[3]);
     if (!delta_result) {

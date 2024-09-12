@@ -18,12 +18,13 @@
  *
  */
 
+#include "types/cms.h"
+
 #include <gtest/gtest.h>
 
 #include <memory>
 
 #include "test_base.h"
-#include "types/cms.h"
 #include "types/redis_cms.h"
 
 class RedisCMSketchTest : public TestBase {

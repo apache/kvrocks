@@ -18,7 +18,7 @@
  *
  */
 
- #include "redis_cms.h"
+#include "redis_cms.h"
 
 #include <stdint.h>
 
@@ -26,12 +26,12 @@
 
 namespace redis {
 
-rocksdb::Status CMS::GetMetadata(engine::Context &ctx, const Slice &ns_key,
-                                 CountMinSketchMetadata *metadata) {
+rocksdb::Status CMS::GetMetadata(engine::Context &ctx, const Slice &ns_key, CountMinSketchMetadata *metadata) {
   return Database::GetMetadata(ctx, {kRedisCountMinSketch}, ns_key, metadata);
 }
 
-rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements) {
+rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
+                            const std::unordered_map<std::string, uint64_t> &elements) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -132,7 +132,7 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
   WriteBatchLogData log_data(kRedisCountMinSketch);
   batch->PutLogData(log_data.Encode());
 
-  CMSketch cms { 0, 0, 0 };
+  CMSketch cms{0, 0, 0};
   CMSketch::CMSketchDimensions dim = cms.CMSDimFromProb(error, delta);
 
   metadata.width = dim.width;

@@ -197,6 +197,11 @@ class CommandClusterX : public Commander {
     if (subcommand_ == "setnodes" && args_.size() >= 4) {
       nodes_str_ = args_[2];
 
+      std::vector<std::string> node_entries = util::Split(nodes_str_, "\n");
+      if (node_entries.size() < 2) {
+        return {Status::RedisParseErr, "Invalid nodes definition (missing newline separators between nodes)"};
+      }
+
       auto parse_result = ParseInt<int64_t>(args[3], 10);
       if (!parse_result) {
         return {Status::RedisParseErr, "Invalid version"};

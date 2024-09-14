@@ -789,8 +789,8 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
   } else if (type == kRedisBitmap) {
     std::string value;
     redis::Bitmap bitmap_db(storage_, ns_);
-    Config* config = storage_->GetConfig();
-    uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB; 
+    Config *config = storage_->GetConfig();
+    uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
     auto s = bitmap_db.GetString(ctx, key, max_btos_size, &value);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};

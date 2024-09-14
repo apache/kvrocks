@@ -29,7 +29,10 @@
 #include "rdb_listpack.h"
 #include "rdb_ziplist.h"
 #include "rdb_zipmap.h"
+#include "storage/redis_metadata.h"
 #include "time_util.h"
+#include "types/redis_bitmap.h"
+#include "types/redis_bitmap_string.h"
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
@@ -402,7 +405,7 @@ StatusOr<int> RDB::loadRdbType() {
 }
 
 StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std::string &key) {
-  if (type == RDBTypeString) {
+  if (type == RDBTypeString || type == RDBTypeBitmap) {
     auto value = GET_OR_RET(LoadStringObject());
     return value;
   } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
@@ -457,7 +460,7 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std:
 Status RDB::saveRdbObject(engine::Context &ctx, int type, const std::string &key, const RedisObjValue &obj,
                           uint64_t ttl_ms) {
   rocksdb::Status db_status;
-  if (type == RDBTypeString) {
+  if (type == RDBTypeString || type == RDBTypeBitmap) {
     const auto &value = std::get<std::string>(obj);
     redis::String string_db(storage_, ns_);
     uint64_t expire_ms = 0;
@@ -728,6 +731,8 @@ Status RDB::SaveObjectType(const RedisType type) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
+  } else if (type == kRedisBitmap) {
+    robj_type = RDBTypeBitmap;
   } else {
     LOG(WARNING) << "Invalid or Not supported object type: " << type;
     return {Status::NotOK, "Invalid or Not supported object type"};
@@ -781,6 +786,16 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
     }
 
     return SaveHashObject(field_values);
+  } else if (type == kRedisBitmap) {
+    std::string value;
+    redis::Bitmap bitmap_db(storage_, ns_);
+    Config* config = storage_->GetConfig();
+    uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB; 
+    auto s = bitmap_db.GetString(ctx, key, max_btos_size, &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return SaveStringObject(value);
   } else {
     LOG(WARNING) << "Invalid or Not supported object type: " << type;
     return {Status::NotOK, "Invalid or Not supported object type"};

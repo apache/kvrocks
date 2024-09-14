@@ -38,7 +38,6 @@ constexpr const int RDBTypeSet = 2;
 constexpr const int RDBTypeZSet = 3;
 constexpr const int RDBTypeHash = 4;
 constexpr const int RDBTypeZSet2 = 5;
-constexpr const int RDBTypeBitmap = 6;
 // NOTE: when adding new Redis object type, update LoadObjectType.
 
 // Redis object encoding
@@ -151,7 +150,7 @@ class RDB {
 
   /*0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
    Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.*/
-  static bool isObjectType(int type) { return (type >= 0 && type <= 6) || (type >= 9 && type <= 21); };
+  static bool isObjectType(int type) { return (type >= 0 && type <= 5) || (type >= 9 && type <= 21); };
   static bool isEmptyRedisObject(const RedisObjValue &value);
   static int rdbEncodeInteger(long long value, unsigned char *enc);
   Status rdbSaveBinaryDoubleValue(double val);

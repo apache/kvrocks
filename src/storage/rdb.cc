@@ -405,7 +405,7 @@ StatusOr<int> RDB::loadRdbType() {
 }
 
 StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std::string &key) {
-  if (type == RDBTypeString || type == RDBTypeBitmap) {
+  if (type == RDBTypeString) {
     auto value = GET_OR_RET(LoadStringObject());
     return value;
   } else if (type == RDBTypeSet || type == RDBTypeSetIntSet || type == RDBTypeSetListPack) {
@@ -460,7 +460,7 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std:
 Status RDB::saveRdbObject(engine::Context &ctx, int type, const std::string &key, const RedisObjValue &obj,
                           uint64_t ttl_ms) {
   rocksdb::Status db_status;
-  if (type == RDBTypeString || type == RDBTypeBitmap) {
+  if (type == RDBTypeString) {
     const auto &value = std::get<std::string>(obj);
     redis::String string_db(storage_, ns_);
     uint64_t expire_ms = 0;
@@ -721,7 +721,7 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
 
 Status RDB::SaveObjectType(const RedisType type) {
   int robj_type = -1;
-  if (type == kRedisString) {
+  if (type == kRedisString || type == kRedisBitmap) {
     robj_type = RDBTypeString;
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
@@ -731,8 +731,6 @@ Status RDB::SaveObjectType(const RedisType type) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
-  } else if (type == kRedisBitmap) {
-    robj_type = RDBTypeBitmap;
   } else {
     LOG(WARNING) << "Invalid or Not supported object type: " << type;
     return {Status::NotOK, "Invalid or Not supported object type"};

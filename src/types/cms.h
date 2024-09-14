@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "server/redis_reply.h"
-#include "vendor/murmurhash2.h"
+#include "xxhash.h"
 
 class CMSketch {
  public:
@@ -33,10 +33,6 @@ class CMSketch {
         depth_(depth),
         counter_(counter),
         array_(array.empty() ? std::vector<uint32_t>(width * depth, 0) : std::move(array)) {}
-
-  static std::unique_ptr<CMSketch> NewCMSketch(uint32_t width, int32_t depth) {
-    return std::make_unique<CMSketch>(width, depth, 0);
-  }
 
   struct CMSInfo {
     uint64_t width;

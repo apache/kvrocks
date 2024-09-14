@@ -36,7 +36,7 @@ size_t CMSketch::IncrBy(std::string_view item, uint32_t value) {
   size_t min_count = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint64_t hash = HllMurMurHash64A(item.data(), static_cast<int>(item.size()), i);
+    uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
     size_t loc = GetLocation(hash, i);
     if (array_[loc] > UINT32_MAX - value) {
       array_[loc] = UINT32_MAX;
@@ -53,8 +53,8 @@ size_t CMSketch::Query(std::string_view item) const {
   size_t min_count = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint64_t hash = HllMurMurHash64A(item.data(), static_cast<int>(item.size()), i);
-    min_count = std::min(min_count, static_cast<size_t>(array_[(hash % width_) + (i * width_)]));
+    uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
+    min_count = std::min(min_count, static_cast<size_t>(array_[GetLocation(hash, i)]));
   }
   return min_count;
 }

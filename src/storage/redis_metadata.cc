@@ -326,11 +326,12 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
   return expire < expired_ts;
 }
 
-bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() == kRedisJson; }
+bool Metadata::IsSingleKVType() const {
+  return Type() == kRedisString || Type() == kRedisJson || Type() == kRedisCountMinSketch;
+}
 
 bool Metadata::IsEmptyableType() const {
-  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisCountMinSketch;
+  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }

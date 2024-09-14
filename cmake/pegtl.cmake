@@ -21,7 +21,7 @@ include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubTarWithMirror(pegtl
   taocpp/PEGTL 3.2.8
-  MD5=5c919edd001ef157b0d25fc9dcc8b3e1
+  MD5=50339029d1bb037909b28c382214033e
 )
 
 FetchContent_MakeAvailableWithArgs(pegtl)

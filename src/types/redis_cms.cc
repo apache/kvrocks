@@ -135,6 +135,16 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
   CMSketch cms{0, 0, 0};
   CMSketch::CMSketchDimensions dim = cms.CMSDimFromProb(error, delta);
 
+  size_t memory_used = dim.width * dim.depth * sizeof(uint32_t);
+  const size_t max_memory = 50 * 1024 * 1024;
+
+  if (memory_used == 0) {
+    return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
+  }
+  if (memory_used > max_memory) {
+    return rocksdb::Status::InvalidArgument("Memory usage exceeds 50MB.");
+  }
+
   metadata.width = dim.width;
   metadata.depth = dim.depth;
   metadata.counter = 0;

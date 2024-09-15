@@ -126,9 +126,21 @@ func TestClusterNodes(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cluster", "nodes", "a").Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodeid", "a").Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a").Err(), "CLUSTER")
-		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a", -1).Err(), "Invalid cluster version")
+		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a", -1).Err(), "Invalid nodes definition")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "07c37dfeb235213a872192d90877d0cd55635b91", 1).Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "a", 1).Err(), "CLUSTER")
+	})
+
+	t.Run("command line simulation with missing newlines", func(t *testing.T) {
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-100\n%s %s %d slave %s",
+			nodeID, srv.Host(), srv.Port(), "07c37dfeb235213a872192d90877d0cd55635b92", srv.Host(), srv.Port()+1, nodeID)
+
+		err := rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err()
+		require.NoError(t, err, "Invalid nodes definition.")
+
+		nodes := rdb.ClusterNodes(ctx).Val()
+		require.Contains(t, nodes, "0-100")
+		require.Contains(t, nodes, "slave")
 	})
 }
 

@@ -198,13 +198,25 @@ class CommandClusterX : public Commander {
       nodes_str_ = args_[2];
 
       std::vector<std::string> node_entries = util::Split(nodes_str_, "\n");
-      if (node_entries.size() < 1 || (node_entries.size() == 1 && node_entries[0].find(' ') == std::string::npos)) {
-        return {Status::RedisParseErr, "Invalid nodes definition."};
+      if (node_entries.size() == 1) {
+        std::regex node_id_regex(R"(\b[a-fA-F0-9]{40}\b)");
+        auto begin = std::sregex_iterator(node_entries[0].begin(), node_entries[0].end(), node_id_regex);
+        auto end = std::sregex_iterator();
+        size_t node_id_count = std::distance(begin, end);
+
+        if (node_id_count > 1) {
+          return {Status::RedisParseErr, "Invalid nodes definition: Missing newline between node entries."};
+        }
+
+        if (node_entries[0].find(' ') == std::string::npos) {
+          return {Status::RedisParseErr, "Invalid nodes definition: Node entry is improperly formatted."};
+        }
       }
 
       for (const auto &entry : node_entries) {
-        if (entry.find(" ") == std::string::npos) {
-          return {Status::RedisParseErr, "Invalid nodes definition."};
+        if (entry.find(' ') == std::string::npos) {
+          return {Status::RedisParseErr,
+                  "Invalid nodes definition: Each node entry must contain fields separated by spaces."};
         }
       }
 

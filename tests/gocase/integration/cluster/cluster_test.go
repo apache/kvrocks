@@ -132,12 +132,21 @@ func TestClusterNodes(t *testing.T) {
 	})
 
 	t.Run("command line simulation with missing newlines", func(t *testing.T) {
-		clusterNodes := fmt.Sprintf("%s %s %d master - 0-100\n%s %s %d slave %s",
-			nodeID, srv.Host(), srv.Port(), "07c37dfeb235213a872192d90877d0cd55635b92", srv.Host(), srv.Port()+1, nodeID)
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-100 %s %s %d slave %s",
+			nodeID, srv.Host(), srv.Port(),
+			"07c37dfeb235213a872192d90877d0cd55635b92", srv.Host(), srv.Port()+1, nodeID)
 
+		// set cluster nodes without newlines
 		err := rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err()
-		require.NoError(t, err, "Invalid nodes definition.")
+		require.ErrorContains(t, err, "Invalid nodes definition: Missing newline between node entries.")
 
+		// add the missing newline to correct the definition
+		clusterNodesWithNewline := fmt.Sprintf("%s %s %d master - 0-100\n%s %s %d slave %s",
+			nodeID, srv.Host(), srv.Port(),
+			"07c37dfeb235213a872192d90877d0cd55635b92", srv.Host(), srv.Port()+1, nodeID)
+
+		err = rdb.Do(ctx, "clusterx", "SETNODES", clusterNodesWithNewline, "2").Err()
+		require.NoError(t, err)
 		nodes := rdb.ClusterNodes(ctx).Val()
 		require.Contains(t, nodes, "0-100")
 		require.Contains(t, nodes, "slave")

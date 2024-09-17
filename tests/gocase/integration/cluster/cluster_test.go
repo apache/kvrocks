@@ -126,7 +126,7 @@ func TestClusterNodes(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cluster", "nodes", "a").Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodeid", "a").Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a").Err(), "CLUSTER")
-		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a", -1).Err(), "Invalid nodes definition")
+		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setnodes", "a", -1).Err(), "ERR Invalid cluster version")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "07c37dfeb235213a872192d90877d0cd55635b91", 1).Err(), "CLUSTER")
 		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "setslot", "16384", "a", 1).Err(), "CLUSTER")
 	})

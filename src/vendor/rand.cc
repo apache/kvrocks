@@ -106,11 +106,6 @@ constexpr void SEED(const T x0, const T x1, const T x2) {
   SET3(x, x0, x1, x2), SET3(a, A0, A1, A2), c = C;
 }
 
-template <typename T>
-constexpr T HiBit(const T x) {
-  return (1L << (2 * N - 1));
-}
-
 static void Next() {
   uint32_t p[2], q[2], r[2], carry0 = 0, carry1 = 0;
 

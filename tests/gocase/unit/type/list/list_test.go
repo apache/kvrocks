@@ -42,9 +42,24 @@ var largeValue = map[string]string{
 }
 
 func TestLTRIM(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
-		"list-max-ziplist-size": "4",
-	})
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testLTRIM(t, configs)
+	}
+}
+
+func testLTRIM(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -87,9 +102,24 @@ func TestLTRIM(t *testing.T) {
 }
 
 func TestZipList(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
-		"list-max-ziplist-size": "16",
-	})
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testZipList(t, configs)
+	}
+}
+
+func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClientWithOption(&redis.Options{
@@ -237,7 +267,29 @@ func TestZipList(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testList(t, configs)
+	}
+}
+
+func testList(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -324,13 +376,22 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			createList("blist", []string{"a", "b", large, "c", "d"})
+			// TODO: Remove time.Sleep after fix issue #2473
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist", "a"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("brpop", "blist", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist", "d"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist", "b"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("brpop", "blist", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist", "c"})
 		})
 
@@ -339,15 +400,23 @@ func TestList(t *testing.T) {
 			defer func() { require.NoError(t, rd.Close()) }()
 			createList("blist1", []string{"a", large, "c"})
 			createList("blist2", []string{"d", large, "f"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist1", "a"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("brpop", "blist1", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist1", "c"})
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 3, rdb.LLen(ctx, "blist2").Val())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist2", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist2", "d"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("brpop", "blist2", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist2", "f"})
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist2").Val())
@@ -358,9 +427,13 @@ func TestList(t *testing.T) {
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1").Err())
 			createList("blist2", []string{"d", large, "f"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blpop", "blist1", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist2", "d"})
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("brpop", "blist1", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustReadStrings(t, []string{"blist2", "f"})
 			require.EqualValues(t, 0, rdb.LLen(ctx, "blist1").Val())
 			require.EqualValues(t, 1, rdb.LLen(ctx, "blist2").Val())
@@ -371,17 +444,25 @@ func TestList(t *testing.T) {
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rdb.Del(ctx, "list1", "list2").Err())
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
 		rd.MustReadStrings(t, []string{"list1", "a"})
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
 		rd.MustReadStrings(t, []string{"list2", "b"})
 		require.NoError(t, rdb.LPush(ctx, "list1", "a").Err())
 		require.NoError(t, rdb.LPush(ctx, "list2", "b").Err())
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list1", "a"})
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("blpop", "list1", "list2", "list2", "list1", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"list2", "b"})
 	})
 
@@ -393,7 +474,6 @@ func TestList(t *testing.T) {
 		require.NoError(t, rd.WriteArgs("blpop", "blist", "0"))
 		time.Sleep(time.Millisecond * 100)
 		require.EqualValues(t, 2, rdb.LPush(ctx, "blist", "foo", "bar").Val())
-		time.Sleep(time.Millisecond * 100)
 		rd.MustReadStrings(t, []string{"blist", "bar"})
 		require.Equal(t, "foo", rdb.LRange(ctx, "blist", 0, -1).Val()[0])
 	})
@@ -403,7 +483,9 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1").Err())
-			require.NoError(t, rd.WriteArgs(popType, "blist1", "1"))
+			time.Sleep(100 * time.Millisecond)
+			require.NoError(t, rd.WriteArgs(popType, "blist1", "0"))
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
 			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
@@ -413,6 +495,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "-1"))
+			time.Sleep(100 * time.Millisecond)
 			rd.MustMatch(t, ".*negative.*")
 		})
 
@@ -432,6 +515,7 @@ func TestList(t *testing.T) {
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
 			require.NoError(t, rdb.Set(ctx, "blist2", "nolist", 0).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rd.MustMatch(t, ".*WRONGTYPE.*")
 		})
@@ -440,6 +524,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
 			rd.MustMatch(t, "")
 		})
@@ -448,12 +533,16 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "4"))
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rdb.RPush(ctx, "blist1", "foo").Err())
 			rd.MustReadStrings(t, []string{"blist1", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist2").Val())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rdb.RPush(ctx, "blist2", "foo").Err())
 			rd.MustReadStrings(t, []string{"blist2", "foo"})
 			require.EqualValues(t, 0, rdb.Exists(ctx, "blist1").Val())
@@ -861,7 +950,9 @@ func TestList(t *testing.T) {
 				require.NoError(t, rdb.Del(ctx, "target_key{t}").Err())
 				require.NoError(t, rdb.RPush(ctx, "target_key{t}", 1).Err())
 				createList("list{t}", []string{"a", "b", "c", "d"})
+				time.Sleep(100 * time.Millisecond)
 				require.NoError(t, rd.WriteArgs("lmove", "list{t}", "target_key{t}", from, to))
+				time.Sleep(100 * time.Millisecond)
 				r, err1 := rd.ReadLine()
 				require.Equal(t, "$1", r)
 				require.NoError(t, err1)
@@ -907,7 +998,9 @@ func TestList(t *testing.T) {
 				require.NoError(t, rdb.Del(ctx, "target_key{t}").Err())
 				require.NoError(t, rdb.RPush(ctx, "target_key{t}", 1).Err())
 				createList("list{t}", []string{"a", "b", "c", "d"})
+				time.Sleep(100 * time.Millisecond)
 				require.NoError(t, rd.WriteArgs("blmove", "list{t}", "target_key{t}", from, to, "1"))
+				time.Sleep(100 * time.Millisecond)
 				r, err1 := rd.ReadLine()
 				require.Equal(t, "$1", r)
 				require.NoError(t, err1)
@@ -933,7 +1026,9 @@ func TestList(t *testing.T) {
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
 		require.NoError(t, rdb.Del(ctx, "blist", "target").Err())
+		time.Sleep(100 * time.Millisecond)
 		require.NoError(t, rd.WriteArgs("blmove", "blist", "target", "left", "right", "0"))
+		time.Sleep(100 * time.Millisecond)
 		require.EqualValues(t, 2, rdb.LPush(ctx, "blist", "foo", "bar").Val())
 		rd.MustRead(t, "$3")
 		require.Equal(t, "bar", rdb.LRange(ctx, "target", 0, -1).Val()[0])
@@ -1341,10 +1436,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "1"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key1, []string{"ONE"})
 			} else {
@@ -1357,10 +1452,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
 			} else {
@@ -1373,10 +1468,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "1", key1, direction, "count", "10"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
 			} else {
@@ -1389,10 +1484,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key1, []string{"ONE", "TWO"})
 			} else {
@@ -1405,10 +1500,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
 			} else {
@@ -1421,12 +1516,11 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
-			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key1, "ONE", "TWO").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
 			} else {
@@ -1440,10 +1534,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction))
 			time.Sleep(time.Millisecond * 100)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key2, []string{"one"})
 			} else {
@@ -1457,6 +1551,7 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction))
 			time.Sleep(time.Millisecond * 1200)
 			rd.MustMatch(t, "")
@@ -1467,10 +1562,10 @@ func TestList(t *testing.T) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
+			time.Sleep(100 * time.Millisecond)
 			require.NoError(t, rd.WriteArgs("blmpop", "0", "2", key1, key2, direction, "count", "2"))
 			time.Sleep(time.Millisecond * 1200)
 			require.NoError(t, rdb.RPush(ctx, key2, "one", "two").Err())
-			time.Sleep(time.Millisecond * 100)
 			if direction == "LEFT" {
 				rd.MustReadStringsWithKey(t, key2, []string{"one", "two"})
 			} else {

@@ -78,7 +78,7 @@ class RDB {
 
   Status VerifyPayloadChecksum(const std::string_view &payload);
   StatusOr<int> LoadObjectType();
-  Status Restore(const std::string &key, std::string_view payload, uint64_t ttl_ms);
+  Status Restore(engine::Context &ctx, const std::string &key, std::string_view payload, uint64_t ttl_ms);
 
   // String
   StatusOr<std::string> LoadStringObject();
@@ -105,7 +105,7 @@ class RDB {
   StatusOr<std::vector<std::string>> LoadListWithQuickList(int type);
 
   // Load rdb
-  Status LoadRdb(uint32_t db_index, bool overwrite_exist_key = true);
+  Status LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exist_key = true);
 
   std::unique_ptr<RdbStream> &GetStream() { return stream_; }
 
@@ -128,7 +128,7 @@ class RDB {
   Status SaveZSetObject(const std::vector<MemberScore> &member_scores);
 
   // Hash
-  Status SaveHashObject(const std::vector<FieldValue> &filed_value);
+  Status SaveHashObject(const std::vector<FieldValue> &field_value);
 
  private:
   engine::Storage *storage_;
@@ -143,7 +143,8 @@ class RDB {
 
   StatusOr<int> loadRdbType();
   StatusOr<RedisObjValue> loadRdbObject(int rdbtype, const std::string &key);
-  Status saveRdbObject(int type, const std::string &key, const RedisObjValue &obj, uint64_t ttl_ms);
+  Status saveRdbObject(engine::Context &ctx, int type, const std::string &key, const RedisObjValue &obj,
+                       uint64_t ttl_ms);
   StatusOr<uint32_t> loadExpiredTimeSeconds();
   StatusOr<uint64_t> loadExpiredTimeMilliseconds(int rdb_version);
 

@@ -73,6 +73,7 @@ enum class CommandCategory : uint8_t {
   Bit,
   BloomFilter,
   Cluster,
+  CuckooFilter,
   Function,
   Geo,
   Hash,

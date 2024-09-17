@@ -329,7 +329,7 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
 bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() == kRedisJson; }
 
 bool Metadata::IsEmptyableType() const {
-  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog;
+  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog || Type() == kRedisCuckooFilter;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -493,5 +493,73 @@ rocksdb::Status HyperLogLogMetadata::Decode(Slice *input) {
   }
   this->encode_type = static_cast<EncodeType>(encoded_type);
 
+  return rocksdb::Status::OK();
+}
+
+void CuckooFilterMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  PutFixed64(dst, capacity);
+  PutFixed16(dst, bucket_size);
+  PutFixed16(dst, max_iterations);
+  PutFixed32(dst, num_buckets);
+  PutFixed16(dst, expansion);
+  PutFixed16(dst, num_filters);
+  PutFixed64(dst, num_items);
+  PutFixed64(dst, num_deletes);
+  for (const auto &filter : filters) {
+    PutFixed16(dst, filter.bucket_size);
+    PutFixed64(dst, filter.num_buckets);
+    dst->append(filter.data.begin(), filter.data.end());
+  }
+}
+
+rocksdb::Status CuckooFilterMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+  if (!GetFixed64(input, &capacity)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed16(input, &bucket_size)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed16(input, &max_iterations)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed32(input, &num_buckets)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed16(input, &expansion)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed16(input, &num_filters)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed64(input, &num_items)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  if (!GetFixed64(input, &num_deletes)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+  
+  filters.resize(num_filters);
+
+  for (size_t i = 0; i < num_filters; ++i) {
+    if (!GetFixed16(input, &filters[i].bucket_size)) {
+      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    }
+    if (!GetFixed64(input, &filters[i].num_buckets)) {
+      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    }
+
+    size_t data_size = filters[i].bucket_size * filters[i].num_buckets;
+    filters[i].data.resize(data_size);
+
+    if (input->size() < data_size) {
+      return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+    }
+    memcpy(filters[i].data.data(), input->data(), data_size);
+    input->remove_prefix(data_size);
+  }
   return rocksdb::Status::OK();
 }

@@ -30,6 +30,7 @@
 
 #include "encoding.h"
 #include "types/redis_stream_base.h"
+#include "types/cuckoo.h"
 
 constexpr bool USE_64BIT_COMMON_FIELD_DEFAULT = METADATA_ENCODING_VERSION != 0;
 
@@ -50,6 +51,7 @@ enum RedisType : uint8_t {
   kRedisBloomFilter = 9,
   kRedisJson = 10,
   kRedisHyperLogLog = 11,
+  kRedisCuckooFilter = 12, 
 };
 
 struct RedisTypes {
@@ -93,7 +95,8 @@ enum RedisCommand {
 
 const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",      "list",
                                                  "set",    "zset",      "bitmap",    "sortedint",
-                                                 "stream", "MBbloom--", "ReJSON-RL", "hyperloglog"};
+                                                 "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", 
+                                                 "cfilter"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -334,4 +337,22 @@ class HyperLogLogMetadata : public Metadata {
   rocksdb::Status Decode(Slice *input) override;
 
   EncodeType encode_type = EncodeType::DENSE;
+};
+
+class CuckooFilterMetadata : public Metadata {
+ public: 
+  uint64_t capacity;
+  uint16_t bucket_size;
+  uint16_t max_iterations;  
+  uint32_t num_buckets;
+  uint16_t expansion;       
+  uint16_t num_filters;     
+  uint64_t num_items;  
+  uint64_t num_deletes; 
+  std::vector<SubCF> filters;
+
+  explicit CuckooFilterMetadata(bool generate_version = true) : Metadata(kRedisCuckooFilter, generate_version) {}
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
 };

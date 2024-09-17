@@ -149,3 +149,21 @@ func TestDump_Set(t *testing.T) {
 	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
 	require.ElementsMatch(t, members, rdb.SMembers(ctx, restoredKey).Val())
 }
+
+func TestDump_Bitset(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "bitsetKey1"
+	require.NoError(t, rdb.SetBit(ctx, key, 1, 1).Err())
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.Equal(t, rdb.Get(ctx, key).Val(), rdb.Get(ctx, restoredKey).Val())
+}

@@ -286,9 +286,10 @@ func TestNamespaceReplicateWithFullSync(t *testing.T) {
 	util.WaitForOffsetSync(t, masterClient, slaveClient, 60*time.Second)
 
 	// Namespaces should be replicated after the full sync
-	token, err := slaveClient.Do(ctx, "NAMESPACE", "GET", "foo").Result()
-	require.NoError(t, err)
-	require.EqualValues(t, "bar", token)
+	require.Eventually(t, func() bool {
+		token, _ := slaveClient.Do(ctx, "NAMESPACE", "GET", "foo").Val().(string)
+		return token == "bar"
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 func TestNamespaceRewrite(t *testing.T) {

@@ -329,7 +329,8 @@ bool Metadata::ExpireAt(uint64_t expired_ts) const {
 bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() == kRedisJson; }
 
 bool Metadata::IsEmptyableType() const {
-  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog || Type() == kRedisCuckooFilter;
+  return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
+         Type() == kRedisCuckooFilter;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -541,7 +542,7 @@ rocksdb::Status CuckooFilterMetadata::Decode(Slice *input) {
   if (!GetFixed64(input, &num_deletes)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
-  
+
   filters.resize(num_filters);
 
   for (size_t i = 0; i < num_filters; ++i) {

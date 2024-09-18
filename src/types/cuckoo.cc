@@ -25,6 +25,8 @@ https://redis.io/docs/about/license/
 
 #include "cuckoo.h"
 
+#include <vendor/murmurhash2.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -33,46 +35,43 @@ https://redis.io/docs/about/license/
 #include <cstring>
 #include <iostream>
 #include <vector>
-#include <vendor/murmurhash2.h>
 
- // Represents an empty fingerprint
+// Represents an empty fingerprint
 
 // Helper Functions
 
 // Check if a number is a power of two
-bool CuckooFilter::isPowerOf2(uint64_t num) {
-    return (num & (num - 1)) == 0 && num != 0;
-}
+bool CuckooFilter::isPowerOf2(uint64_t num) { return (num & (num - 1)) == 0 && num != 0; }
 
 // Get the next power of two for a given number
 uint64_t CuckooFilter::getNextPowerOf2(uint64_t n) {
-    if (n == 0) return 1;
-    n--;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-    n++;
-    return n;
+  if (n == 0) return 1;
+  n--;
+  n |= n >> 1;
+  n |= n >> 2;
+  n |= n >> 4;
+  n |= n >> 8;
+  n |= n >> 16;
+  n |= n >> 32;
+  n++;
+  return n;
 }
 
 // Calculate the alternative hash using MurmurHash2
 uint64_t CuckooFilter::getAltHash(uint8_t fingerprint, uint64_t index) {
-    // Combine fingerprint and index
-    uint64_t combined = (static_cast<uint64_t>(fingerprint) << 32) | index;
-    // Use MurmurHash2 (assuming it returns 64-bit hash)
-    return HllMurMurHash64A(reinterpret_cast<const void*>(&combined), sizeof(combined), 0x9747b28c);
+  // Combine fingerprint and index
+  uint64_t combined = (static_cast<uint64_t>(fingerprint) << 32) | index;
+  // Use MurmurHash2 (assuming it returns 64-bit hash)
+  return HllMurMurHash64A(reinterpret_cast<const void *>(&combined), sizeof(combined), 0x9747b28c);
 }
 
 // Generate lookup parameters: fingerprint, h1, h2
 void CuckooFilter::getLookupParams(uint64_t hash, uint8_t &fingerprint, uint64_t &h1, uint64_t &h2) {
-    // Generate fingerprint using higher bits for better distribution
-    fingerprint = static_cast<uint8_t>((hash >> 16) & 0xFF) + 1; // Ensure non-zero
+  // Generate fingerprint using higher bits for better distribution
+  fingerprint = static_cast<uint8_t>((hash >> 16) & 0xFF) + 1;  // Ensure non-zero
 
-    h1 = hash;
-    h2 = getAltHash(fingerprint, h1);
+  h1 = hash;
+  h2 = getAltHash(fingerprint, h1);
 }
 
 // Constructor
@@ -82,328 +81,329 @@ CuckooFilter::CuckooFilter(uint64_t capacity, uint16_t bucket_size, uint16_t max
     : capacity_(capacity),
       bucket_size_(bucket_size),
       max_iterations_(max_iterations),
-      expansion_(getNextPowerOf2(expansion)), // Ensure expansion factor is power of 2
-      num_buckets_(getNextPowerOf2(num_buckets)), // Ensure num_buckets is power of 2
+      expansion_(getNextPowerOf2(expansion)),      // Ensure expansion factor is power of 2
+      num_buckets_(getNextPowerOf2(num_buckets)),  // Ensure num_buckets is power of 2
       num_filters_(num_filters),
       num_items_(num_items),
       num_deletes_(num_deletes),
-      filters_(filters)
-{
-    // Initialize first filter if necessary
-    if (filters_.empty()) {
-        SubCF initial_filter;
-        initial_filter.bucket_size = bucket_size_;
-        initial_filter.num_buckets = num_buckets_;
-        initial_filter.data.resize(num_buckets_ * bucket_size_, CUCKOO_NULLFP);
-        filters_.push_back(initial_filter);
-        num_filters_ = 1;
-    }
+      filters_(filters) {
+  // Initialize first filter if necessary
+  if (filters_.empty()) {
+    SubCF initial_filter;
+    initial_filter.bucket_size = bucket_size_;
+    initial_filter.num_buckets = num_buckets_;
+    initial_filter.data.resize(num_buckets_ * bucket_size_, CUCKOO_NULLFP);
+    filters_.push_back(initial_filter);
+    num_filters_ = 1;
+  }
 }
 
 // Grow the filter by adding a new SubCF with increased number of buckets
 bool CuckooFilter::grow() {
-    // Calculate new number of buckets using linear growth
-    uint64_t growth = expansion_; // e.g., 2 for doubling
-    if (num_buckets_ > (std::numeric_limits<uint64_t>::max() / growth)) {
-        // Prevent integer overflow
-        return false;
-    }
-    uint64_t new_num_buckets = num_buckets_ * growth;
+  // Calculate new number of buckets using linear growth
+  uint64_t growth = expansion_;  // e.g., 2 for doubling
+  if (num_buckets_ > (std::numeric_limits<uint64_t>::max() / growth)) {
+    // Prevent integer overflow
+    return false;
+  }
+  uint64_t new_num_buckets = num_buckets_ * growth;
 
-    // Initialize the new SubCF
-    SubCF new_filter;
-    new_filter.bucket_size = bucket_size_;
-    new_filter.num_buckets = new_num_buckets;
-    try {
-        new_filter.data.resize(new_num_buckets * bucket_size_, CUCKOO_NULLFP);
-    } catch (const std::bad_alloc&) {
-        return false; // Memory allocation failed
-    }
+  // Initialize the new SubCF
+  SubCF new_filter;
+  new_filter.bucket_size = bucket_size_;
+  new_filter.num_buckets = new_num_buckets;
+  try {
+    new_filter.data.resize(new_num_buckets * bucket_size_, CUCKOO_NULLFP);
+  } catch (const std::bad_alloc &) {
+    return false;  // Memory allocation failed
+  }
 
-    // Add the new filter
-    filters_.push_back(new_filter);
-    num_filters_++;
-    num_buckets_ = new_num_buckets; // Update total number of buckets
-    return true;
+  // Add the new filter
+  filters_.push_back(new_filter);
+  num_filters_++;
+  num_buckets_ = new_num_buckets;  // Update total number of buckets
+  return true;
 }
 
 // Find if a fingerprint exists in a given filter
 bool CuckooFilter::filterFind(const SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const {
-    uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
-    uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
 
-    const uint8_t* bucket1 = &filter.data[index1];
-    const uint8_t* bucket2 = &filter.data[index2];
+  const uint8_t *bucket1 = &filter.data[index1];
+  const uint8_t *bucket2 = &filter.data[index2];
 
-    // Search in both buckets
-    if (std::find(bucket1, bucket1 + bucket_size_, fingerprint) != bucket1 + bucket_size_) {
-        return true;
-    }
-    if (std::find(bucket2, bucket2 + bucket_size_, fingerprint) != bucket2 + bucket_size_) {
-        return true;
-    }
-    return false;
+  // Search in both buckets
+  if (std::find(bucket1, bucket1 + bucket_size_, fingerprint) != bucket1 + bucket_size_) {
+    return true;
+  }
+  if (std::find(bucket2, bucket2 + bucket_size_, fingerprint) != bucket2 + bucket_size_) {
+    return true;
+  }
+  return false;
 }
 
 // Insert a fingerprint into a specific filter
 bool CuckooFilter::filterInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const {
-    uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
-    uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
 
-    uint8_t* bucket1 = &filter.data[index1];
-    uint8_t* bucket2 = &filter.data[index2];
+  uint8_t *bucket1 = &filter.data[index1];
+  uint8_t *bucket2 = &filter.data[index2];
 
-    // Try to insert into the first bucket
-    for (uint16_t i = 0; i < bucket_size_; ++i) {
-        if (bucket1[i] == CUCKOO_NULLFP) {
-            bucket1[i] = fingerprint;
-            return true;
-        }
+  // Try to insert into the first bucket
+  for (uint16_t i = 0; i < bucket_size_; ++i) {
+    if (bucket1[i] == CUCKOO_NULLFP) {
+      bucket1[i] = fingerprint;
+      return true;
     }
+  }
 
-    // Try to insert into the second bucket
-    for (uint16_t i = 0; i < bucket_size_; ++i) {
-        if (bucket2[i] == CUCKOO_NULLFP) {
-            bucket2[i] = fingerprint;
-            return true;
-        }
+  // Try to insert into the second bucket
+  for (uint16_t i = 0; i < bucket_size_; ++i) {
+    if (bucket2[i] == CUCKOO_NULLFP) {
+      bucket2[i] = fingerprint;
+      return true;
     }
+  }
 
-    // No space available
-    return false;
+  // No space available
+  return false;
 }
 
 // Delete a fingerprint from a specific bucket
-bool CuckooFilter::bucketDelete(uint8_t* bucket_start, uint8_t fingerprint) const {
-    for (uint16_t i = 0; i < bucket_size_; ++i) {
-        if (*(bucket_start + i) == fingerprint) {
-            *(bucket_start + i) = CUCKOO_NULLFP; // Mark as deleted
-            return true;
-        }
+bool CuckooFilter::bucketDelete(uint8_t *bucket_start, uint8_t fingerprint) const {
+  for (uint16_t i = 0; i < bucket_size_; ++i) {
+    if (*(bucket_start + i) == fingerprint) {
+      *(bucket_start + i) = CUCKOO_NULLFP;  // Mark as deleted
+      return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // Delete a fingerprint from a specific filter
 bool CuckooFilter::filterDelete(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) {
-    uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
-    uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
+  uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
 
-    uint8_t* bucket1 = &filter.data[index1];
-    uint8_t* bucket2 = &filter.data[index2];
+  uint8_t *bucket1 = &filter.data[index1];
+  uint8_t *bucket2 = &filter.data[index2];
 
-    return (bucketDelete(bucket1, fingerprint) || bucketDelete(bucket2, fingerprint));
+  return (bucketDelete(bucket1, fingerprint) || bucketDelete(bucket2, fingerprint));
 }
 
 // Insert with kickout mechanism
-CuckooFilter::CuckooInsertStatus CuckooFilter::filterKickoutInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1) const {
-    uint16_t counter = 0;
-    uint64_t i = h1 % filter.num_buckets;
+CuckooFilter::CuckooInsertStatus CuckooFilter::filterKickoutInsert(SubCF &filter, uint8_t fingerprint,
+                                                                   uint64_t h1) const {
+  uint16_t counter = 0;
+  uint64_t i = h1 % filter.num_buckets;
 
-    while (counter++ < max_iterations_) {
-        size_t index = i * bucket_size_;
-        // Randomly select a victim slot
-        uint16_t victim_index = rand() % bucket_size_; // You can replace rand() with a better RNG if needed
-        std::swap(fingerprint, filter.data[index + victim_index]);
+  while (counter++ < max_iterations_) {
+    size_t index = i * bucket_size_;
+    // Randomly select a victim slot
+    uint16_t victim_index = rand() % bucket_size_;  // You can replace rand() with a better RNG if needed
+    std::swap(fingerprint, filter.data[index + victim_index]);
 
-        // Calculate the alternative index for the displaced fingerprint
-        i = getAltHash(fingerprint, i) % filter.num_buckets;
+    // Calculate the alternative index for the displaced fingerprint
+    i = getAltHash(fingerprint, i) % filter.num_buckets;
 
-        size_t new_index = i * bucket_size_;
-        // Find an empty slot in the new bucket
-        bool inserted = false;
-        for (uint16_t j = 0; j < bucket_size_; ++j) {
-            if (filter.data[new_index + j] == CUCKOO_NULLFP) {
-                filter.data[new_index + j] = fingerprint;
-                inserted = true;
-                break;
-            }
-        }
-
-        if (inserted) {
-            return CuckooInsertStatus::Inserted;
-        }
+    size_t new_index = i * bucket_size_;
+    // Find an empty slot in the new bucket
+    bool inserted = false;
+    for (uint16_t j = 0; j < bucket_size_; ++j) {
+      if (filter.data[new_index + j] == CUCKOO_NULLFP) {
+        filter.data[new_index + j] = fingerprint;
+        inserted = true;
+        break;
+      }
     }
 
-    // If unable to insert after max_iterations_, return NoSpace
-    return CuckooInsertStatus::NoSpace;
+    if (inserted) {
+      return CuckooInsertStatus::Inserted;
+    }
+  }
+
+  // If unable to insert after max_iterations_, return NoSpace
+  return CuckooInsertStatus::NoSpace;
 }
 
 // Insert a hash into the Cuckoo Filter
 CuckooFilter::CuckooInsertStatus CuckooFilter::Insert(uint64_t hash) {
-    uint8_t fingerprint{};
-    uint64_t h1 {}, h2{};
-    getLookupParams(hash, fingerprint, h1, h2);
+  uint8_t fingerprint{};
+  uint64_t h1{}, h2{};
+  getLookupParams(hash, fingerprint, h1, h2);
 
-    // Attempt to insert into existing filters
-    for (int i = num_filters_ - 1; i >= 0; --i) {
-        if (filterInsert(filters_[i], fingerprint, h1, h2)) {
-            num_items_++;
-            return CuckooInsertStatus::Inserted;
-        }
+  // Attempt to insert into existing filters
+  for (int i = num_filters_ - 1; i >= 0; --i) {
+    if (filterInsert(filters_[i], fingerprint, h1, h2)) {
+      num_items_++;
+      return CuckooInsertStatus::Inserted;
     }
+  }
 
-    // Attempt to kick out and insert into the last filter
-    CuckooInsertStatus status = filterKickoutInsert(filters_.back(), fingerprint, h1);
-    if (status == CuckooInsertStatus::Inserted) {
-        num_items_++;
-        return CuckooInsertStatus::Inserted;
-    }
+  // Attempt to kick out and insert into the last filter
+  CuckooInsertStatus status = filterKickoutInsert(filters_.back(), fingerprint, h1);
+  if (status == CuckooInsertStatus::Inserted) {
+    num_items_++;
+    return CuckooInsertStatus::Inserted;
+  }
 
-    // Grow the filter if possible
-    if (expansion_ == 0 || !grow()) {
-        return CuckooInsertStatus::MemAllocFailed;
-    }
+  // Grow the filter if possible
+  if (expansion_ == 0 || !grow()) {
+    return CuckooInsertStatus::MemAllocFailed;
+  }
 
-    // Retry insertion after growing
-    return Insert(hash);
+  // Retry insertion after growing
+  return Insert(hash);
 }
 
 // Insert a unique hash into the Cuckoo Filter (only if it doesn't already exist)
 CuckooFilter::CuckooInsertStatus CuckooFilter::InsertUnique(uint64_t hash) {
-    if (Contains(hash)) {
-        return CuckooInsertStatus::Exists;
-    }
-    return Insert(hash);
+  if (Contains(hash)) {
+    return CuckooInsertStatus::Exists;
+  }
+  return Insert(hash);
 }
 
 // Check if a hash exists in the Cuckoo Filter
 bool CuckooFilter::Contains(uint64_t hash) const {
-    uint8_t fingerprint{};
-    uint64_t h1 {}, h2{};
-    getLookupParams(hash, fingerprint, h1, h2);
+  uint8_t fingerprint{};
+  uint64_t h1{}, h2{};
+  getLookupParams(hash, fingerprint, h1, h2);
 
-    for (const auto &filter : filters_) {
-        if (filterFind(filter, fingerprint, h1, h2)) {
-            return true;
-        }
+  for (const auto &filter : filters_) {
+    if (filterFind(filter, fingerprint, h1, h2)) {
+      return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // Remove a hash from the Cuckoo Filter
 bool CuckooFilter::Remove(uint64_t hash) {
-    uint8_t fingerprint{};
-    uint64_t h1 {}, h2{};
-    getLookupParams(hash, fingerprint, h1, h2);
+  uint8_t fingerprint{};
+  uint64_t h1{}, h2{};
+  getLookupParams(hash, fingerprint, h1, h2);
 
-    // Iterate from the latest filter to the earliest
-    for (int i = num_filters_ - 1; i >= 0; --i) {
-        if (filterDelete(filters_[i], fingerprint, h1, h2)) {
-            num_items_--;
-            num_deletes_++;
-            // Trigger compaction if necessary
-            if (num_filters_ > 1 && static_cast<double>(num_deletes_) > static_cast<double>(num_items_) * 0.10) {
-                Compact(false);
-            }
-            return true;
-        }
+  // Iterate from the latest filter to the earliest
+  for (int i = num_filters_ - 1; i >= 0; --i) {
+    if (filterDelete(filters_[i], fingerprint, h1, h2)) {
+      num_items_--;
+      num_deletes_++;
+      // Trigger compaction if necessary
+      if (num_filters_ > 1 && static_cast<double>(num_deletes_) > static_cast<double>(num_items_) * 0.10) {
+        Compact(false);
+      }
+      return true;
     }
-    return false;
+  }
+  return false;
 }
 
 // Count the number of occurrences of a hash in the Cuckoo Filter
 uint64_t CuckooFilter::Count(uint64_t hash) const {
-    uint8_t fingerprint{};
-    uint64_t h1 {}, h2{};
-    getLookupParams(hash, fingerprint, h1, h2);
-    uint64_t total = 0;
+  uint8_t fingerprint{};
+  uint64_t h1{}, h2{};
+  getLookupParams(hash, fingerprint, h1, h2);
+  uint64_t total = 0;
 
-    for (const auto &filter : filters_) {
-        uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
-        uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
+  for (const auto &filter : filters_) {
+    uint64_t index1 = (h1 % filter.num_buckets) * filter.bucket_size;
+    uint64_t index2 = (h2 % filter.num_buckets) * filter.bucket_size;
 
-        const uint8_t* bucket1 = &filter.data[index1];
-        const uint8_t* bucket2 = &filter.data[index2];
+    const uint8_t *bucket1 = &filter.data[index1];
+    const uint8_t *bucket2 = &filter.data[index2];
 
-        // Count in both buckets
-        total += std::count(bucket1, bucket1 + bucket_size_, fingerprint);
-        total += std::count(bucket2, bucket2 + bucket_size_, fingerprint);
-    }
+    // Count in both buckets
+    total += std::count(bucket1, bucket1 + bucket_size_, fingerprint);
+    total += std::count(bucket2, bucket2 + bucket_size_, fingerprint);
+  }
 
-    return total;
+  return total;
 }
 
 // Relocate a fingerprint to an older filter
-bool CuckooFilter::relocateSlot(std::vector<uint8_t> &bucket, uint16_t filter_index, uint64_t bucket_index, uint16_t slot_index) {
-    uint8_t fingerprint = bucket[slot_index];
+bool CuckooFilter::relocateSlot(std::vector<uint8_t> &bucket, uint16_t filter_index, uint64_t bucket_index,
+                                uint16_t slot_index) {
+  uint8_t fingerprint = bucket[slot_index];
 
-    if (fingerprint == CUCKOO_NULLFP) {
-        return true; // Nothing to relocate
+  if (fingerprint == CUCKOO_NULLFP) {
+    return true;  // Nothing to relocate
+  }
+
+  uint64_t h1 = bucket_index;
+  uint64_t h2 = getAltHash(fingerprint, h1);
+
+  // Attempt to relocate to older filters
+  for (int i = 0; i < filter_index; ++i) {
+    SubCF &target_filter = filters_[i];
+    uint64_t target_loc1 = (h1 % target_filter.num_buckets) * target_filter.bucket_size;
+    uint64_t target_loc2 = (h2 % target_filter.num_buckets) * target_filter.bucket_size;
+
+    // Attempt to find an empty slot in the first bucket
+    for (uint16_t j = 0; j < bucket_size_; ++j) {
+      if (target_filter.data[target_loc1 + j] == CUCKOO_NULLFP) {
+        target_filter.data[target_loc1 + j] = fingerprint;
+        bucket[slot_index] = CUCKOO_NULLFP;
+        return true;
+      }
     }
 
-    uint64_t h1 = bucket_index;
-    uint64_t h2 = getAltHash(fingerprint, h1);
-
-    // Attempt to relocate to older filters
-    for (int i = 0; i < filter_index; ++i) {
-        SubCF &target_filter = filters_[i];
-        uint64_t target_loc1 = (h1 % target_filter.num_buckets) * target_filter.bucket_size;
-        uint64_t target_loc2 = (h2 % target_filter.num_buckets) * target_filter.bucket_size;
-
-        // Attempt to find an empty slot in the first bucket
-        for (uint16_t j = 0; j < bucket_size_; ++j) {
-            if (target_filter.data[target_loc1 + j] == CUCKOO_NULLFP) {
-                target_filter.data[target_loc1 + j] = fingerprint;
-                bucket[slot_index] = CUCKOO_NULLFP;
-                return true;
-            }
-        }
-
-        // Attempt to find an empty slot in the second bucket
-        for (uint16_t j = 0; j < bucket_size_; ++j) {
-            if (target_filter.data[target_loc2 + j] == CUCKOO_NULLFP) {
-                target_filter.data[target_loc2 + j] = fingerprint;
-                bucket[slot_index] = CUCKOO_NULLFP;
-                return true;
-            }
-        }
+    // Attempt to find an empty slot in the second bucket
+    for (uint16_t j = 0; j < bucket_size_; ++j) {
+      if (target_filter.data[target_loc2 + j] == CUCKOO_NULLFP) {
+        target_filter.data[target_loc2 + j] = fingerprint;
+        bucket[slot_index] = CUCKOO_NULLFP;
+        return true;
+      }
     }
+  }
 
-    // Unable to relocate
-    return false;
+  // Unable to relocate
+  return false;
 }
 
 // Compact a single filter by relocating all its fingerprints to older filters
 bool CuckooFilter::compactSingle(uint16_t filter_index) {
-    if (filter_index >= num_filters_) {
-        return false; // Invalid filter index
+  if (filter_index >= num_filters_) {
+    return false;  // Invalid filter index
+  }
+
+  SubCF &current_filter = filters_[filter_index];
+  bool success = true;
+
+  for (uint64_t bucket_ix = 0; bucket_ix < current_filter.num_buckets; ++bucket_ix) {
+    for (uint16_t slot_ix = 0; slot_ix < bucket_size_; ++slot_ix) {
+      if (!relocateSlot(current_filter.data, filter_index, bucket_ix, slot_ix)) {
+        success = false;
+      }
     }
+  }
 
-    SubCF &current_filter = filters_[filter_index];
-    bool success = true;
+  // Remove the filter if all relocations were successful and it's the latest filter
+  if (success && filter_index == num_filters_ - 1) {
+    filters_.pop_back();
+    num_filters_--;
+  }
 
-    for (uint64_t bucket_ix = 0; bucket_ix < current_filter.num_buckets; ++bucket_ix) {
-        for (uint16_t slot_ix = 0; slot_ix < bucket_size_; ++slot_ix) {
-            if (!relocateSlot(current_filter.data, filter_index, bucket_ix, slot_ix)) {
-                success = false;
-            }
-        }
-    }
-
-    // Remove the filter if all relocations were successful and it's the latest filter
-    if (success && filter_index == num_filters_ - 1) {
-        filters_.pop_back();
-        num_filters_--;
-    }
-
-    return success;
+  return success;
 }
 
 // Compact the Cuckoo Filter by relocating fingerprints from higher filters to lower ones
 void CuckooFilter::Compact(bool cont) {
-    // Iterate from the latest filter downwards
-    for (int i = num_filters_ - 1; i > 0; --i) {
-        if (!compactSingle(i) && !cont) {
-            break; // Stop if compacting failed and not continuing
-        }
+  // Iterate from the latest filter downwards
+  for (int i = num_filters_ - 1; i > 0; --i) {
+    if (!compactSingle(i) && !cont) {
+      break;  // Stop if compacting failed and not continuing
     }
-    num_deletes_ = 0;
+  }
+  num_deletes_ = 0;
 }
 
 bool CuckooFilter::ValidateIntegrity() const {
-    return (bucket_size_ != 0 && bucket_size_ <= 128 && // CF_MAX_BUCKET_SIZE
-            num_buckets_ != 0 && num_buckets_ <= (1ULL << 48) && // CF_MAX_NUM_BUCKETS
-            num_filters_ != 0 && num_filters_ <= 64 && // CF_MAX_NUM_FILTERS
-            max_iterations_ != 0 && isPowerOf2(num_buckets_));
+  return (bucket_size_ != 0 && bucket_size_ <= 128 &&           // CF_MAX_BUCKET_SIZE
+          num_buckets_ != 0 && num_buckets_ <= (1ULL << 48) &&  // CF_MAX_NUM_BUCKETS
+          num_filters_ != 0 && num_filters_ <= 64 &&            // CF_MAX_NUM_FILTERS
+          max_iterations_ != 0 && isPowerOf2(num_buckets_));
 }

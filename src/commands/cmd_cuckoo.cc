@@ -1,4 +1,5 @@
 #include <types/redis_cuckoo.h>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "server/redis_reply.h"
@@ -109,16 +110,13 @@ class CommandCFInfo final : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::Array({
-        redis::BulkString("Size"), redis::Integer(ret.size),
-        redis::BulkString("Number of buckets"), redis::Integer(ret.num_buckets),
-        redis::BulkString("Number of filters"), redis::Integer(ret.num_filters),
-        redis::BulkString("Number of items inserted"), redis::Integer(ret.num_items),
-        redis::BulkString("Number of items deleted"), redis::Integer(ret.num_deletes),
-        redis::BulkString("Bucket size"), redis::Integer(ret.bucket_size),
-        redis::BulkString("Expansion rate"), redis::Integer(ret.expansion),
-        redis::BulkString("Max iterations"), redis::Integer(ret.max_iterations)
-    });
+    *output = redis::Array(
+        {redis::BulkString("Size"), redis::Integer(ret.size), redis::BulkString("Number of buckets"),
+         redis::Integer(ret.num_buckets), redis::BulkString("Number of filters"), redis::Integer(ret.num_filters),
+         redis::BulkString("Number of items inserted"), redis::Integer(ret.num_items),
+         redis::BulkString("Number of items deleted"), redis::Integer(ret.num_deletes),
+         redis::BulkString("Bucket size"), redis::Integer(ret.bucket_size), redis::BulkString("Expansion rate"),
+         redis::Integer(ret.expansion), redis::BulkString("Max iterations"), redis::Integer(ret.max_iterations)});
     return Status::OK();
   }
 };
@@ -137,10 +135,10 @@ class CommandCFInsert final : public Commander {
         if (!parsed_value) {
           return {Status::RedisParseErr, "CAPACITY option requires an integer value"};
         }
-        capacity_ = *parsed_value;
-        if (capacity_ <= 0) {
-          return {Status::RedisParseErr, "CAPACITY must be a positive integer"};
+        if (*parsed_value <= 0) {
+          return {Status::RedisParseErr, "CAPACITY must be greater than zero"};
         } else {
+          capacity_ = *parsed_value;
           capacity_set_ = true;
         }
       } else if (parser.EatEqICase("NOCREATE")) {
@@ -214,10 +212,10 @@ class CommandCFInsertNX final : public Commander {
         if (!parsed_value) {
           return {Status::RedisParseErr, "CAPACITY option requires an integer value"};
         }
-        capacity_ = *parsed_value;
-        if (capacity_ <= 0) {
+        if (*parsed_value <= 0) {
           return {Status::RedisParseErr, "CAPACITY must be a positive integer"};
         } else {
+          capacity_ = *parsed_value;
           capacity_set_ = true;
         }
       } else if (parser.EatEqICase("NOCREATE")) {
@@ -331,10 +329,10 @@ class CommandCFReserve final : public Commander {
     if (!parsed_value) {
       return {Status::RedisParseErr, "CAPACITY option requires an integer value"};
     }
-    capacity_ = *parsed_value;
-    if (capacity_ <= 0) {
+    if (*parsed_value <= 0) {
       return {Status::RedisParseErr, "CAPACITY must be a positive integer"};
     }
+    capacity_ = *parsed_value;
 
     while (parser.Good()) {
       if (parser.EatEqICase("BUCKETSIZE")) {
@@ -345,10 +343,10 @@ class CommandCFReserve final : public Commander {
         if (!bucket_value) {
           return {Status::RedisParseErr, "Invalid BUCKETSIZE value"};
         }
-        bucket_size_ = *bucket_value;
-        if (bucket_size_ <= 0) {
+        if (*bucket_value <= 0) {
           return {Status::RedisParseErr, "BUCKETSIZE must be a positive integer"};
         }
+        bucket_size_ = *bucket_value;
         bucket_size_set_ = true;
 
       } else if (parser.EatEqICase("MAXITERATIONS")) {
@@ -359,10 +357,10 @@ class CommandCFReserve final : public Commander {
         if (!max_iterations_value) {
           return {Status::RedisParseErr, "Invalid MAXITERATIONS value"};
         }
-        max_iterations_ = *max_iterations_value;
-        if (max_iterations_ <= 0) {
+        if (*max_iterations_value <= 0) {
           return {Status::RedisParseErr, "MAXITERATIONS must be a positive integer"};
         }
+        max_iterations_ = *max_iterations_value;
         max_iterations_set_ = true;
 
       } else if (parser.EatEqICase("EXPANSION")) {
@@ -373,10 +371,10 @@ class CommandCFReserve final : public Commander {
         if (!expansion_value) {
           return {Status::RedisParseErr, "Invalid EXPANSION value"};
         }
-        expansion_ = *expansion_value;
-        if (expansion_ <= 0) {
+        if (*expansion_value <= 0) {
           return {Status::RedisParseErr, "EXPANSION must be a positive integer"};
         }
+        expansion_ = *expansion_value;
         expansion_set_ = true;
 
       } else {
@@ -415,18 +413,15 @@ class CommandCFReserve final : public Commander {
   bool expansion_set_ = false;
 };
 
-REDIS_REGISTER_COMMANDS(
-    CuckooFilter,
-    MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 0, 0, 0),
-    MakeCmdAttr<CommandCFAddNX>("cf.addnx", 3, "write", 0, 0, 0),
-    MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 0, 0, 0),
-    MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandCFInfo>("cf.info", 2, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 0, 0, 0),
-    MakeCmdAttr<CommandCFInsertNX>("cf.insertnx", -4, "write", 0, 0, 0),
-    MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 0, 0, 0),
-    MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 0, 0, 0),
-);
+REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCFAddNX>("cf.addnx", 3, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandCFInfo>("cf.info", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCFInsertNX>("cf.insertnx", -4, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 0, 0, 0), );
 
 }  // namespace redis

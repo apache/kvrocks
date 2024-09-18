@@ -47,17 +47,21 @@ class CFilter : public Database {
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
   rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, redis::CuckooFilterInfo *ret);
-  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret, uint64_t capacity, bool no_create);
-  rocksdb::Status InsertNX(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret, uint64_t capacity, bool no_create);
-  rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret);
-  rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations, uint16_t expansion);
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
+                         std::vector<int> *ret, uint64_t capacity, bool no_create);
+  rocksdb::Status InsertNX(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
+                           std::vector<int> *ret, uint64_t capacity, bool no_create);
+  rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
+                          std::vector<int> *ret);
+  rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
+                          uint16_t max_iterations, uint16_t expansion);
 
  private:
   [[nodiscard]] rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, CuckooFilterMetadata *metadata);
   [[nodiscard]] static uint64_t cfMHash(const std::string &str, uint32_t seed) {
-      return HllMurMurHash64A(str.data(), static_cast<int>(str.size()), seed);
+    return HllMurMurHash64A(str.data(), static_cast<int>(str.size()), seed);
   }
   static void updateMetadata(CuckooFilter &cf, CuckooFilterMetadata *metadata);
 };
 
-} // namespace redis
+}  // namespace redis

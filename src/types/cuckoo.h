@@ -25,6 +25,8 @@ https://redis.io/docs/about/license/
 
 #pragma once
 
+#include <vendor/murmurhash2.h>
+
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -32,20 +34,20 @@ https://redis.io/docs/about/license/
 #include <cstring>
 #include <iostream>
 #include <vector>
-#include <vendor/murmurhash2.h>
 
 struct SubCF {
-    uint16_t bucket_size;
-    uint64_t num_buckets;
-    std::vector<uint8_t> data;
+  uint16_t bucket_size;
+  uint64_t num_buckets;
+  std::vector<uint8_t> data;
 };
 
 constexpr uint8_t CUCKOO_NULLFP = 0;
 
 class CuckooFilter {
  public:
-
-  CuckooFilter(uint64_t capacity, uint16_t bucket_size, uint16_t max_iterations, uint16_t expansion, uint64_t num_buckets, uint16_t num_filters, uint64_t num_items, uint64_t num_deletes, const std::vector<SubCF> &filters);
+  CuckooFilter(uint64_t capacity, uint16_t bucket_size, uint16_t max_iterations, uint16_t expansion,
+               uint64_t num_buckets, uint16_t num_filters, uint64_t num_items, uint64_t num_deletes,
+               const std::vector<SubCF> &filters);
 
   ~CuckooFilter() = default;
 
@@ -68,10 +70,10 @@ class CuckooFilter {
  private:
   uint64_t capacity_;
   uint16_t bucket_size_;
-  uint16_t max_iterations_;  
+  uint16_t max_iterations_;
   uint16_t expansion_;
   uint64_t num_buckets_;
-  uint16_t num_filters_;     
+  uint16_t num_filters_;
   uint64_t num_items_;
   uint64_t num_deletes_;
 
@@ -84,7 +86,7 @@ class CuckooFilter {
 
   bool grow();
   bool filterFind(const SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const;
-  bool bucketDelete(uint8_t* bucket_start, uint8_t fingerprint) const;
+  bool bucketDelete(uint8_t *bucket_start, uint8_t fingerprint) const;
   bool filterDelete(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2);
   bool filterInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const;
   CuckooInsertStatus filterKickoutInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1) const;

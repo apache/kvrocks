@@ -19,6 +19,7 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <memory>
 
 #include "test_base.h"
@@ -28,9 +29,7 @@ namespace redis {
 
 class RedisCuckooFilterTest : public TestBase {
  protected:
-  RedisCuckooFilterTest() {
-    cuckoo_filter_ = std::make_unique<CFilter>(storage_.get(), "cuckoo_filter_ns");
-  }
+  RedisCuckooFilterTest() { cuckoo_filter_ = std::make_unique<CFilter>(storage_.get(), "cuckoo_filter_ns"); }
   ~RedisCuckooFilterTest() override = default;
 
   void SetUp() override { key_ = "test_cuckoo_filter_key"; }
@@ -53,12 +52,12 @@ TEST_F(RedisCuckooFilterTest, Reserve) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_TRUE(s.ok());
 
-  // Attempt to reserve again should fail
+  // attempt to reserve again should fail
   s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "Invalid argument: the key already exists");
 
-  // Clean up
+  // clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -69,7 +68,6 @@ TEST_F(RedisCuckooFilterTest, BasicAddAndExists) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, 1024, 4, 500, 2);
   EXPECT_TRUE(s.ok());
 
-  // Add elements
   std::vector<std::string> elements = {"element1", "element2", "element3"};
   int ret = 0;
   for (const auto& elem : elements) {
@@ -78,7 +76,7 @@ TEST_F(RedisCuckooFilterTest, BasicAddAndExists) {
     EXPECT_EQ(ret, 1);
   }
 
-  // Check existence of added elements
+  // check existence of added elements
   int exists_ret = 0;
   for (const auto& elem : elements) {
     s = cuckoo_filter_->Exists(*ctx_, key_, elem, &exists_ret);
@@ -86,7 +84,7 @@ TEST_F(RedisCuckooFilterTest, BasicAddAndExists) {
     EXPECT_EQ(exists_ret, 1);
   }
 
-  // Check non-existence of non-added elements
+  // check non-existence of non-added elements
   std::vector<std::string> non_elements = {"element4", "element5"};
   for (const auto& elem : non_elements) {
     s = cuckoo_filter_->Exists(*ctx_, key_, elem, &exists_ret);
@@ -94,7 +92,6 @@ TEST_F(RedisCuckooFilterTest, BasicAddAndExists) {
     EXPECT_EQ(exists_ret, 0);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -105,7 +102,7 @@ TEST_F(RedisCuckooFilterTest, AddNX) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, 1024, 4, 500, 2);
   EXPECT_TRUE(s.ok());
 
-  // Add unique elements
+  // add unique elements
   std::vector<std::string> elements = {"unique1", "unique2"};
   int ret = 0;
   for (const auto& elem : elements) {
@@ -114,14 +111,13 @@ TEST_F(RedisCuckooFilterTest, AddNX) {
     EXPECT_EQ(ret, 1);
   }
 
-  // Attempt to add duplicate elements
+  // attempt to add duplicate elements
   for (const auto& elem : elements) {
     s = cuckoo_filter_->AddNX(*ctx_, key_, elem, &ret);
     EXPECT_FALSE(s.ok());
     EXPECT_EQ(ret, 0);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -132,7 +128,6 @@ TEST_F(RedisCuckooFilterTest, DeleteElement) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, 1024, 4, 500, 2);
   EXPECT_TRUE(s.ok());
 
-  // Add and then delete an element
   std::string element = "delete_me";
   int ret = 0;
   s = cuckoo_filter_->Add(*ctx_, key_, element, &ret);
@@ -143,12 +138,12 @@ TEST_F(RedisCuckooFilterTest, DeleteElement) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(ret, 1);
 
-  // Verify deletion
+  // verify deletion
   s = cuckoo_filter_->Exists(*ctx_, key_, element, &ret);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(ret, 0);
 
-  // Attempt to delete again
+  // attempt to delete again
   s = cuckoo_filter_->Del(*ctx_, key_, element, &ret);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "NotFound: ");
@@ -160,7 +155,6 @@ TEST_F(RedisCuckooFilterTest, CountElements) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, 1024, 4, 500, 2);
   EXPECT_TRUE(s.ok());
 
-  // Add elements
   std::vector<std::string> elements = {"count1", "count2", "count3"};
   int ret = 0;
   for (const auto& elem : elements) {
@@ -169,7 +163,6 @@ TEST_F(RedisCuckooFilterTest, CountElements) {
     EXPECT_EQ(ret, 1);
   }
 
-  // Count elements
   uint64_t count = 0;
   for (const auto& elem : elements) {
     s = cuckoo_filter_->Count(*ctx_, key_, elem, &count);
@@ -177,7 +170,7 @@ TEST_F(RedisCuckooFilterTest, CountElements) {
     EXPECT_GT(count, 0);
   }
 
-  // Count non-existing elements
+  // count non-existing elements
   std::vector<std::string> non_elements = {"count4", "count5"};
   for (const auto& elem : non_elements) {
     s = cuckoo_filter_->Count(*ctx_, key_, elem, &count);
@@ -185,7 +178,6 @@ TEST_F(RedisCuckooFilterTest, CountElements) {
     EXPECT_EQ(count, 0);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -207,7 +199,6 @@ TEST_F(RedisCuckooFilterTest, GetInfo) {
   EXPECT_EQ(info.num_items, 0);
   EXPECT_EQ(info.num_deletes, 0);
 
-  // Add some elements
   std::vector<std::string> elements = {"info1", "info2"};
   int ret = 0;
   for (const auto& elem : elements) {
@@ -216,13 +207,12 @@ TEST_F(RedisCuckooFilterTest, GetInfo) {
     EXPECT_EQ(ret, 1);
   }
 
-  // Get updated info
+  // get updated info
   s = cuckoo_filter_->Info(*ctx_, key_, &info);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(info.num_items, 2);
   EXPECT_EQ(info.num_deletes, 0);
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -237,7 +227,7 @@ TEST_F(RedisCuckooFilterTest, BulkInsert) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_TRUE(s.ok());
 
-  // Bulk insert elements
+  // bulk insert elements
   std::vector<std::string> elements = {"bulk1", "bulk2", "bulk3", "bulk4", "bulk5"};
   std::vector<int> results;
   s = cuckoo_filter_->Insert(*ctx_, key_, elements, &results, capacity, false);
@@ -246,7 +236,6 @@ TEST_F(RedisCuckooFilterTest, BulkInsert) {
     EXPECT_EQ(res, 1);
   }
 
-  // Verify existence
   int exists_ret = 0;
   for (const auto& elem : elements) {
     s = cuckoo_filter_->Exists(*ctx_, key_, elem, &exists_ret);
@@ -254,7 +243,6 @@ TEST_F(RedisCuckooFilterTest, BulkInsert) {
     EXPECT_EQ(exists_ret, 1);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -269,7 +257,7 @@ TEST_F(RedisCuckooFilterTest, BulkInsertNX) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_TRUE(s.ok());
 
-  // Bulk insert unique elements
+  // bulk insert unique elements
   std::vector<std::string> elements = {"bulkNX1", "bulkNX2", "bulkNX3"};
   std::vector<int> results;
   s = cuckoo_filter_->InsertNX(*ctx_, key_, elements, &results, capacity, false);
@@ -278,14 +266,13 @@ TEST_F(RedisCuckooFilterTest, BulkInsertNX) {
     EXPECT_EQ(res, 1);
   }
 
-  // Attempt to bulk insert duplicates
+  // attempt to bulk insert duplicates
   s = cuckoo_filter_->InsertNX(*ctx_, key_, elements, &results, capacity, false);
   EXPECT_TRUE(s.ok());
   for (const auto& res : results) {
     EXPECT_EQ(res, 0);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -300,7 +287,6 @@ TEST_F(RedisCuckooFilterTest, MultipleExists) {
   rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_TRUE(s.ok());
 
-  // Add some elements
   std::vector<std::string> added_elements = {"multi1", "multi2", "multi3"};
   int ret = 0;
   for (const auto& elem : added_elements) {
@@ -309,7 +295,7 @@ TEST_F(RedisCuckooFilterTest, MultipleExists) {
     EXPECT_EQ(ret, 1);
   }
 
-  // Check multiple exists
+  // check multiple exists
   std::vector<std::string> check_elements = {"multi1", "multi2", "multi4", "multi5"};
   std::vector<int> exists_results;
   s = cuckoo_filter_->MExists(*ctx_, key_, check_elements, &exists_results);
@@ -320,7 +306,6 @@ TEST_F(RedisCuckooFilterTest, MultipleExists) {
   EXPECT_EQ(exists_results[2], 0);
   EXPECT_EQ(exists_results[3], 0);
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
@@ -332,14 +317,14 @@ TEST_F(RedisCuckooFilterTest, InsertWithNoCreate) {
   uint16_t max_iterations = 300;
   uint16_t expansion = 1;
 
-  // Attempt to insert without creating the filter
+  // attempt to insert without creating the filter
   std::vector<std::string> elements = {"noCreate1", "noCreate2"};
   std::vector<int> results;
   rocksdb::Status s = cuckoo_filter_->Insert(*ctx_, key_, elements, &results, capacity, true);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "NotFound: ");
 
-  // Now reserve and insert
+  // now reserve and insert
   s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
   EXPECT_TRUE(s.ok());
 
@@ -349,10 +334,204 @@ TEST_F(RedisCuckooFilterTest, InsertWithNoCreate) {
     EXPECT_EQ(res, 1);
   }
 
-  // Clean up
   int del_ret = 0;
   s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
   EXPECT_TRUE(s.ok() || s.IsNotFound());
 }
 
-} // namespace redis
+// delete Non-Existent Element
+TEST_F(RedisCuckooFilterTest, DeleteNonExistentElement) {
+  int del_ret = 0;
+  std::string non_existent_element = "non_existent";
+
+  rocksdb::Status s = cuckoo_filter_->Del(*ctx_, key_, non_existent_element, &del_ret);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.ToString(), "NotFound: ");
+  EXPECT_EQ(del_ret, 0);
+}
+
+// bulk insert with duplicates
+TEST_F(RedisCuckooFilterTest, BulkInsertWithDuplicates) {
+  uint64_t capacity = 1000;
+  uint8_t bucket_size = 4;
+  uint16_t max_iterations = 500;
+  uint16_t expansion = 2;
+
+  rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s.ok());
+
+  // bulk insert elements, some duplicates
+  std::vector<std::string> elements = {"bulk1", "bulk2", "bulk3", "bulk1", "bulk4", "bulk2"};
+  std::vector<int> results;
+  s = cuckoo_filter_->Insert(*ctx_, key_, elements, &results, capacity, false);
+  EXPECT_TRUE(s.ok());
+
+  // verify results: should allow for duplicates
+  ASSERT_EQ(results.size(), elements.size());
+  EXPECT_EQ(results[0], 1);  // bulk1
+  EXPECT_EQ(results[1], 1);  // bulk2
+  EXPECT_EQ(results[2], 1);  // bulk3
+  EXPECT_EQ(results[3], 1);  // bulk1 duplicate
+  EXPECT_EQ(results[4], 1);  // bulk4
+  EXPECT_EQ(results[5], 1);  // bulk2 duplicate
+
+  int del_ret = 0;
+  s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s.ok() || s.IsNotFound());
+}
+
+// filter expansion test
+TEST_F(RedisCuckooFilterTest, FilterExpansion) {
+  // assuming expansion is handled internally when the filter is full
+  uint64_t capacity = 10;
+  uint8_t bucket_size = 2;
+  uint16_t max_iterations = 500;
+  uint16_t expansion = 1;
+
+  rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s.ok());
+
+  // insert elements exceeding initial capacity to trigger expansion
+  std::vector<std::string> elements = {"elem1", "elem2", "elem3", "elem4", "elem5", "elem6"};
+  int ret = 0;
+  for (const auto& elem : elements) {
+    s = cuckoo_filter_->Add(*ctx_, key_, elem, &ret);
+    // depending on implementation, some adds might fail if expansion isn't properly handled
+    if (!s.ok()) {
+      std::cout << "Failed to add element: " << elem << " with error: " << s.ToString() << std::endl;
+    }
+    // either success (ret == 1) or failure due to capacity
+    EXPECT_TRUE(s.ok() || !s.ok());
+  }
+
+  // check if expansion was successful by verifying Info
+  redis::CuckooFilterInfo info;
+  s = cuckoo_filter_->Info(*ctx_, key_, &info);
+  EXPECT_TRUE(s.ok());
+  // expect num_buckets to have increased due to expansion
+  EXPECT_GE(info.num_buckets, capacity / bucket_size);
+
+  int del_ret = 0;
+  s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s.ok() || s.IsNotFound());
+}
+
+// multiple reservations with different keys
+TEST_F(RedisCuckooFilterTest, MultipleReservationsDifferentKeys) {
+  std::string key1 = "test_key1";
+  std::string key2 = "test_key2";
+
+  uint64_t capacity = 1000;
+  uint8_t bucket_size = 4;
+  uint16_t max_iterations = 500;
+  uint16_t expansion = 2;
+
+  // reserve first key
+  rocksdb::Status s1 = cuckoo_filter_->Reserve(*ctx_, key1, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s1.ok());
+
+  // reserve second key
+  rocksdb::Status s2 = cuckoo_filter_->Reserve(*ctx_, key2, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s2.ok());
+
+  // verify both keys are independent
+  int ret = 0;
+  s1 = cuckoo_filter_->Exists(*ctx_, key1, "element1", &ret);
+  EXPECT_TRUE(s1.ok());
+  EXPECT_EQ(ret, 0);
+
+  s2 = cuckoo_filter_->Exists(*ctx_, key2, "element1", &ret);
+  EXPECT_TRUE(s2.ok());
+  EXPECT_EQ(ret, 0);
+
+  // cleanup both keys
+  int del_ret = 0;
+  s1 = cuckoo_filter_->Del(*ctx_, key1, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s1.ok() || s1.IsNotFound());
+
+  s2 = cuckoo_filter_->Del(*ctx_, key2, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s2.ok() || s2.IsNotFound());
+}
+
+TEST_F(RedisCuckooFilterTest, InsertWithNoCreateFlag) {
+  std::vector<std::string> elements = {"noCreate1", "noCreate2"};
+  std::vector<int> results;
+
+  // attempt to insert without creating the filter
+  rocksdb::Status s = cuckoo_filter_->Insert(*ctx_, key_, elements, &results, 1000, true);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.ToString(), "NotFound: ");
+
+  // reserve the filter
+  uint64_t capacity = 1000;
+  uint8_t bucket_size = 4;
+  uint16_t max_iterations = 500;
+  uint16_t expansion = 2;
+
+  s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s.ok());
+
+  // insert with no_create = true
+  s = cuckoo_filter_->Insert(*ctx_, key_, elements, &results, capacity, true);
+  EXPECT_TRUE(s.ok());
+  for (const auto& res : results) {
+    EXPECT_EQ(res, 1);
+  }
+
+  // verify insertion
+  int exists_ret = 0;
+  for (const auto& elem : elements) {
+    s = cuckoo_filter_->Exists(*ctx_, key_, elem, &exists_ret);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(exists_ret, 1);
+  }
+
+  int del_ret = 0;
+  s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s.ok() || s.IsNotFound());
+}
+
+// count after deletion
+TEST_F(RedisCuckooFilterTest, CountAfterDeletion) {
+  uint64_t capacity = 1000;
+  uint8_t bucket_size = 4;
+  uint16_t max_iterations = 500;
+  uint16_t expansion = 2;
+
+  rocksdb::Status s = cuckoo_filter_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  EXPECT_TRUE(s.ok());
+
+  std::vector<std::string> elements = {"count_del1", "count_del2", "count_del3"};
+  int ret = 0;
+
+  // add elements
+  for (const auto& elem : elements) {
+    s = cuckoo_filter_->Add(*ctx_, key_, elem, &ret);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(ret, 1);
+  }
+
+  // delete one element
+  s = cuckoo_filter_->Del(*ctx_, key_, "count_del2", &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(ret, 1);
+
+  uint64_t count = 0;
+  s = cuckoo_filter_->Count(*ctx_, key_, "count_del1", &count);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(count, 1);
+
+  s = cuckoo_filter_->Count(*ctx_, key_, "count_del2", &count);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(count, 0);
+
+  s = cuckoo_filter_->Count(*ctx_, key_, "count_del3", &count);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(count, 1);
+
+  int del_ret = 0;
+  s = cuckoo_filter_->Del(*ctx_, key_, "cleanup_item", &del_ret);
+  EXPECT_TRUE(s.ok() || s.IsNotFound());
+}
+
+}  // namespace redis

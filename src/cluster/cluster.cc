@@ -716,21 +716,6 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
   }
 
-  if (nodes_info.size() == 1) {
-    std::regex node_id_regex(R"(\b[a-fA-F0-9]{40}\b)");
-    auto begin = std::sregex_iterator(nodes_info[0].begin(), nodes_info[0].end(), node_id_regex);
-    auto end = std::sregex_iterator();
-    size_t node_id_count = std::distance(begin, end);
-
-    if (node_id_count > 1) {
-      return {Status::ClusterInvalidInfo, "Invalid nodes definition: Missing newline between node entries."};
-    }
-
-    if (nodes_info[0].find(' ') == std::string::npos) {
-      return {Status::ClusterInvalidInfo, "Invalid nodes definition: Node entry is improperly formatted."};
-    }
-  }
-
   for (const auto &entry : nodes_info) {
     if (entry.find(' ') == std::string::npos) {
       return {Status::ClusterInvalidInfo,
@@ -798,6 +783,13 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     for (unsigned i = 5; i < fields.size(); i++) {
       std::vector<std::string> ranges = util::Split(fields[i], "-");
       if (ranges.size() == 1) {
+        std::regex node_id_regex(R"(\b[a-fA-F0-9]{40}\b)");
+        auto matches = std::sregex_iterator(nodes_info[0].begin(), nodes_info[0].end(), node_id_regex);
+
+        if (std::distance(matches, std::sregex_iterator()) > 1 || nodes_info[0].find(' ') == std::string::npos) {
+          return {Status::ClusterInvalidInfo, "Invalid nodes definition: Missing newline between node entries."};
+        }
+
         auto parse_start = ParseInt<int>(ranges[0], valid_range, 10);
         if (!parse_start) {
           return {Status::ClusterInvalidInfo, errSlotOutOfRange};

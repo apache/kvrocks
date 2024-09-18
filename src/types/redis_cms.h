@@ -43,6 +43,8 @@ class CMS : public Database {
                                             CountMinSketchMetadata *metadata);
 
   // TODO (jonathanc-n)
+  // [[nodiscard]] rocksdb::Status mergeUserKeys(engine::Context &ctx, const std::vector<Slice> &user_keys,
+  //                                            std::vector<std::string> *register_segments);  
   [[nodiscard]] rocksdb::Status mergeUserKeys(engine::Context &ctx, const std::vector<Slice> &user_keys,
                                               std::vector<std::string> *register_segments);
 };

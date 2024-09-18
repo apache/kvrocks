@@ -32,6 +32,7 @@ https://redis.io/docs/about/license/
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <vendor/murmurhash2.h>
 
 struct SubCF {
     uint16_t bucket_size;
@@ -39,20 +40,14 @@ struct SubCF {
     std::vector<uint8_t> data;
 };
 
+constexpr uint8_t CUCKOO_NULLFP = 0;
+
 class CuckooFilter {
  public:
 
   CuckooFilter(uint64_t capacity, uint16_t bucket_size, uint16_t max_iterations, uint16_t expansion, uint64_t num_buckets, uint16_t num_filters, uint64_t num_items, uint64_t num_deletes, const std::vector<SubCF> &filters);
 
-  ~CuckooFilter();
-
-  CuckooFilter(const CuckooFilter &other);
-  
-  CuckooFilter &operator=(const CuckooFilter &other);
-  
-  CuckooFilter(CuckooFilter &&other) noexcept;
-  
-  CuckooFilter &operator=(CuckooFilter &&other) noexcept;
+  ~CuckooFilter() = default;
 
   enum CuckooInsertStatus { Inserted, NoSpace, MemAllocFailed, Exists };
 
@@ -63,6 +58,12 @@ class CuckooFilter {
   uint64_t Count(uint64_t hash) const;
   void Compact(bool cont = true);
   bool ValidateIntegrity() const;
+  uint64_t GetCapacity() const { return capacity_; }
+  uint64_t GetNumBuckets() const { return num_buckets_; }
+  uint16_t GetNumFilters() const { return num_filters_; }
+  uint64_t GetNumItems() const { return num_items_; }
+  uint64_t GetNumDeletes() const { return num_deletes_; }
+  void GetFilter(std::vector<SubCF> &filter) { filter = std::move(filters_); }
 
  private:
   uint64_t capacity_;
@@ -83,7 +84,7 @@ class CuckooFilter {
 
   bool grow();
   bool filterFind(const SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const;
-  bool bucketDelete(std::vector<uint8_t>::iterator bucket_start, uint8_t fingerprint) const;
+  bool bucketDelete(uint8_t* bucket_start, uint8_t fingerprint) const;
   bool filterDelete(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2);
   bool filterInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1, uint64_t h2) const;
   CuckooInsertStatus filterKickoutInsert(SubCF &filter, uint8_t fingerprint, uint64_t h1) const;

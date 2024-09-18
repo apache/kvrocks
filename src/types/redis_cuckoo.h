@@ -23,6 +23,7 @@
 #include "cuckoo.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+#include "vendor/murmurhash2.h"
 
 namespace redis {
 
@@ -40,21 +41,23 @@ struct CuckooFilterInfo {
 class CFilter : public Database {
  public:
   explicit CFilter(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
-  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, uint64_t element);
-  rocksdb::Status AddNX(engine::Context &ctx, const Slice &user_key, uint64_t element);
-  rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, uint64_t count, uint64_t *ret);
-  rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t element);
-  rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, uint64_t element, bool *ret);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
+  rocksdb::Status AddNX(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
+  rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const std::string &element, uint64_t *ret);
+  rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
+  rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret);
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, redis::CuckooFilterInfo *ret);
-  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status InsertNX(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status LoadChunk(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
-  rocksdb::Status ScanDump(engine::Context &ctx, const Slice &user_key, const std::unordered_map<std::string, uint64_t> &elements);
- 
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret, uint64_t capacity, bool no_create);
+  rocksdb::Status InsertNX(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret, uint64_t capacity, bool no_create);
+  rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements, std::vector<int> *ret);
+  rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations, uint16_t expansion);
+
  private:
   [[nodiscard]] rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, CuckooFilterMetadata *metadata);
+  [[nodiscard]] static uint64_t cfMHash(const std::string &str, uint32_t seed) {
+      return HllMurMurHash64A(str.data(), static_cast<int>(str.size()), seed);
+  }
+  static void updateMetadata(CuckooFilter &cf, CuckooFilterMetadata *metadata);
 };
 
 } // namespace redis

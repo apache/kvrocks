@@ -25,14 +25,10 @@ https://redis.io/docs/about/license/
 
 #pragma once
 
-#include <vendor/murmurhash2.h>
-
 #include <cassert>
-#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <vector>
 
 struct SubCF {

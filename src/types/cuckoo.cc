@@ -28,7 +28,6 @@ https://redis.io/docs/about/license/
 #include <vendor/murmurhash2.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>

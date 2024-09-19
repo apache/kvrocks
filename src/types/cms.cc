@@ -20,6 +20,8 @@
 
 #include "cms.h"
 
+#include <xxhash.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -68,10 +70,12 @@ int CMSketch::Merge(CMSketch* dest, size_t quantity, const std::vector<const CMS
   for (size_t i = 0; i < dest->GetDepth(); ++i) {
     for (size_t j = 0; j < dest->GetWidth(); ++j) {
       int64_t item_count = 0;
+      // Sum the weighted counts from all source CMSes
       for (size_t k = 0; k < quantity; ++k) {
         item_count += static_cast<int64_t>(src[k]->array_[(i * dest->GetWidth()) + j]) * weights[k];
       }
-      dest->GetArray()[(i * dest->GetWidth()) + j] = item_count;
+      // accumulates the weighted sum into the destination CMS's array
+      dest->GetArray()[(i * dest->GetWidth()) + j] += static_cast<uint32_t>(item_count);
     }
   }
 

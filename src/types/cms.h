@@ -24,19 +24,18 @@
 #include <vector>
 
 #include "server/redis_reply.h"
-#include "xxhash.h"
 
 class CMSketch {
  public:
-  explicit CMSketch(uint32_t width, uint32_t depth, uint64_t counter, std::vector<uint32_t> array = {})
+  explicit CMSketch(uint32_t width, uint32_t depth, uint64_t counter, std::vector<uint32_t> array)
       : width_(width),
         depth_(depth),
         counter_(counter),
         array_(array.empty() ? std::vector<uint32_t>(width * depth, 0) : std::move(array)) {}
 
   struct CMSInfo {
-    uint64_t width;
-    uint64_t depth;
+    uint32_t width;
+    uint32_t depth;
     uint64_t count;
   };
 
@@ -75,8 +74,8 @@ class CMSketch {
   uint32_t GetDepth() const { return depth_; }
 
  private:
-  size_t width_;
-  size_t depth_;
+  uint32_t width_;
+  uint32_t depth_;
   uint64_t counter_;
   std::vector<uint32_t> array_;
 

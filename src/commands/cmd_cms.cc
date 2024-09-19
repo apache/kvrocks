@@ -51,6 +51,9 @@ class CommandCMSIncrBy final : public Commander {
     }
 
     s = cms.IncrBy(ctx, args_[1], elements);
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, "Key not found"};
+    }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -145,6 +148,82 @@ class CommandCMSInitByProb final : public Commander {
   }
 };
 
+/// CMS.MERGE destination numKeys source [source ...] [WEIGHTS weight [weight ...]]
+class CommandCMSMerge final : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    destination_ = args[1];  // Change to std::string
+
+    StatusOr<int> num_key_result = parser.TakeInt();
+    if (!num_key_result || *num_key_result <= 0) {
+      return {Status::RedisParseErr, "invalid number of source keys"};
+    }
+    num_keys_ = *num_key_result;
+
+    src_keys_.reserve(num_keys_);
+    for (int i = 0; i < num_keys_; i++) {
+      auto result = parser.TakeStr();
+      if (!result) {
+        return {Status::RedisParseErr, "Error parsing source key"};
+      }
+      src_keys_.emplace_back(std::move(*result));
+    }
+
+    bool weights_found = false;
+    while (parser.Good()) {
+      if (parser.EatEqICase("WEIGHTS")) {
+        if (weights_found) {
+          return {Status::RedisParseErr, "WEIGHTS option cannot be specified multiple times"};
+        }
+        src_weights_.reserve(num_keys_);
+        for (int i = 0; i < num_keys_; i++) {
+          StatusOr<uint32_t> weight_result = parser.TakeInt<uint32_t>();
+          if (!weight_result || *weight_result == 0) {  // Adjust condition if needed
+            return {Status::RedisParseErr, "invalid weight value"};
+          }
+          src_weights_.emplace_back(*weight_result);
+        }
+        weights_found = true;
+      } else {
+        return {Status::RedisParseErr, "Syntax error: unexpected token"};
+      }
+    }
+
+    if (!weights_found) {
+      src_weights_.resize(num_keys_, 1);
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    redis::CMS cms(srv->storage, conn->GetNamespace());
+    engine::Context ctx(srv->storage);
+
+    // Convert std::string to Slice
+    std::vector<Slice> src_keys_slices;
+    src_keys_slices.reserve(src_keys_.size());
+    for (const auto &key : src_keys_) {
+      src_keys_slices.emplace_back(key);
+    }
+
+    rocksdb::Status s = cms.MergeUserKeys(ctx, Slice(destination_), src_keys_slices, src_weights_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  std::string destination_;  // Changed to std::string
+  int num_keys_;
+  std::vector<std::string> src_keys_;  // Changed to std::vector<std::string>
+  std::vector<uint32_t> src_weights_;
+};
+
 /// CMS.QUERY key item [item ...]
 class CommandCMSQuery final : public Commander {
  public:
@@ -182,5 +261,6 @@ REDIS_REGISTER_COMMANDS(CMS, MakeCmdAttr<CommandCMSIncrBy>("cms.incrby", -4, "wr
                         MakeCmdAttr<CommandCMSInfo>("cms.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandCMSInitByDim>("cms.initbydim", 4, "write", 0, 0, 0),
                         MakeCmdAttr<CommandCMSInitByProb>("cms.initbyprob", 4, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandCMSMerge>("cms.merge", -4, "write", 0, 0, 0),
                         MakeCmdAttr<CommandCMSQuery>("cms.query", -3, "read-only", 0, 0, 0), );
 }  // namespace redis

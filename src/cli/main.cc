@@ -27,6 +27,7 @@
 #include <event2/thread.h>
 #include <glog/logging.h>
 
+#include <filesystem>
 #include <iomanip>
 #include <ostream>
 
@@ -34,6 +35,7 @@
 #include "daemon_util.h"
 #include "io_util.h"
 #include "pid_util.h"
+#include "rocksdb/utilities/checkpoint.h"
 #include "scope_exit.h"
 #include "server/server.h"
 #include "signal_util.h"
@@ -46,6 +48,8 @@
 #include "version_util.h"
 
 Server *srv = nullptr;
+std::optional<std::string> checkpoint_location = std::nullopt;
+bool keep_checkpoint = false;
 
 extern "C" void SignalHandler([[maybe_unused]] int sig) {
   if (srv && !srv->IsStopped()) {
@@ -67,6 +71,10 @@ static void PrintUsage(const char *program) {
             << "print version information" << std::endl
             << new_opt << "-h, --help"
             << "print this help message" << std::endl
+            << new_opt << "--use-checkpoint <dir>" 
+            << "create a checkpoint of the supplied database in <dir> and start a read-only server using that checkpoint" << std::endl
+            << new_opt << "--keep-checkpoint"
+            << "keep the checkpoint after the server is stopped" << std::endl
             << new_opt << "--<config-key> <config-value>"
             << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
@@ -84,6 +92,10 @@ static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
     } else if (argv[i] == "-h"sv || argv[i] == "--help"sv) {
       PrintUsage(*argv);
       std::exit(0);
+    } else if (argv[i] == "--use-checkpoint"sv && i + 1 < argc) {
+      checkpoint_location = argv[++i];
+    } else if (argv[i] == "--keep-checkpoint"sv) {
+      keep_checkpoint = true;
     } else if (std::string_view(argv[i], 2) == "--" && std::string_view(argv[i]).size() > 2 && i + 1 < argc) {
       auto key = std::string_view(argv[i] + 2);
       opts.cli_options.emplace_back(key, argv[++i]);
@@ -113,6 +125,32 @@ static void InitGoogleLog(const Config *config) {
     if (config->log_retention_days != -1) {
       google::EnableLogCleaner(config->log_retention_days);
     }
+  }
+}
+
+static void CreateCheckpoint(Config &config, const std::string &checkpoint_location) {
+  // The Storage destructor deletes anything at the checkpoint_dir, so we need to make sure it's empty in case the user
+  // happens to use a checkpoint folder name which matches the default (checkpoint/)
+  const std::string old_checkpoint_dir = std::exchange(config.checkpoint_dir, "");
+  const auto checkpoint_dir_guard =
+      MakeScopeExit([&config, &old_checkpoint_dir] { config.checkpoint_dir = old_checkpoint_dir; });
+
+  engine::Storage storage(&config);
+  if (const auto s = storage.Open(kDBOpenModeForReadOnly); !s.IsOK()) {
+    LOG(ERROR) << "Failed to open: " << s.Msg();
+    throw std::runtime_error("Failed to open DB in read-only mode");
+  }
+
+  rocksdb::Checkpoint *checkpoint = nullptr;
+  if (const auto s = rocksdb::Checkpoint::Create(storage.GetDB(), &checkpoint); !s.ok()) {
+    LOG(ERROR) << "Failed to create checkpoint: " << s.ToString();
+    throw std::runtime_error("Failed to create checkpoint");
+  }
+
+  std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
+  if (const auto s = checkpoint->CreateCheckpoint(checkpoint_location); !s.ok()) {
+    LOG(ERROR) << "Failed to create checkpoint: " << s.ToString();
+    throw std::runtime_error("Failed to create checkpoint");
   }
 }
 
@@ -168,8 +206,23 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
+  const bool read_only = checkpoint_location.has_value();
+  if (read_only) {
+    CreateCheckpoint(config, checkpoint_location.value());
+    LOG(INFO) << "Starting server in read-only mode with checkpoint dir: " << checkpoint_location.value();
+    config.db_dir = checkpoint_location.value();
+  }
+  const auto checkpoint_exit = MakeScopeExit([]() {
+    if (!keep_checkpoint && checkpoint_location.has_value()) {
+      LOG(INFO) << "Removing checkpoint dir: " << checkpoint_location.value();
+      std::filesystem::remove_all(checkpoint_location.value());
+    }
+  });
+
   engine::Storage storage(&config);
-  s = storage.Open();
+  const DBOpenMode open_mode = read_only ? kDBOpenModeForReadOnly : kDBOpenModeDefault;
+  s = storage.Open(open_mode);
+
   if (!s.IsOK()) {
     LOG(ERROR) << "Failed to open: " << s.Msg();
     return 1;

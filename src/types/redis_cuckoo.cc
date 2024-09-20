@@ -39,6 +39,43 @@ void CFilter::updateMetadata(CuckooFilter &cf, CuckooFilterMetadata *metadata) {
   cf.GetFilter(metadata->filters);
 }
 
+void InitializeDefaultCuckooFilterMetadata(CuckooFilterMetadata &metadata) {
+  metadata.capacity = 1024;
+  metadata.bucket_size = 4;
+  metadata.max_iterations = 500;
+  metadata.expansion = 2;
+  metadata.num_buckets = metadata.capacity / metadata.bucket_size;
+  metadata.num_filters = 1;
+  metadata.num_items = 0;
+  metadata.num_deletes = 0;
+  metadata.filters.clear();
+
+  SubCF initial_filter;
+  initial_filter.bucket_size = metadata.bucket_size;
+  initial_filter.num_buckets = metadata.num_buckets;
+  initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
+  metadata.filters.push_back(initial_filter);
+}
+
+void InitializeCuckooFilterMetadata(CuckooFilterMetadata &metadata, uint64_t capacity) {
+  metadata.capacity = capacity;
+  metadata.bucket_size = 4;
+  metadata.max_iterations = 500;
+  metadata.expansion = 2;
+  metadata.num_buckets = metadata.capacity / metadata.bucket_size;
+  metadata.num_filters = 1;
+  metadata.num_items = 0;
+  metadata.num_deletes = 0;
+  metadata.filters.clear();
+
+  SubCF initial_filter;
+  initial_filter.bucket_size = metadata.bucket_size;
+  initial_filter.num_buckets = metadata.num_buckets;
+  initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
+  metadata.filters.push_back(initial_filter);
+}
+
+
 rocksdb::Status CFilter::Add(engine::Context &ctx, const Slice &user_key, const std::string &element, int *ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -50,21 +87,7 @@ rocksdb::Status CFilter::Add(engine::Context &ctx, const Slice &user_key, const 
   }
 
   if (s.IsNotFound()) {
-    metadata.capacity = 1024;
-    metadata.bucket_size = 4;
-    metadata.max_iterations = 500;
-    metadata.expansion = 2;
-    metadata.num_buckets = metadata.capacity / metadata.bucket_size;
-    metadata.num_filters = 1;
-    metadata.num_items = 0;
-    metadata.num_deletes = 0;
-    metadata.filters.clear();
-
-    SubCF initial_filter;
-    initial_filter.bucket_size = metadata.bucket_size;
-    initial_filter.num_buckets = metadata.num_buckets;
-    initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
-    metadata.filters.push_back(initial_filter);
+    InitializeDefaultCuckooFilterMetadata(metadata);
   }
 
   auto batch = storage_->GetWriteBatchBase();
@@ -107,21 +130,7 @@ rocksdb::Status CFilter::AddNX(engine::Context &ctx, const Slice &user_key, cons
   }
 
   if (s.IsNotFound()) {
-    metadata.capacity = 1024;
-    metadata.bucket_size = 4;
-    metadata.max_iterations = 500;
-    metadata.expansion = 2;
-    metadata.num_buckets = metadata.capacity / metadata.bucket_size;
-    metadata.num_filters = 1;
-    metadata.num_items = 0;
-    metadata.num_deletes = 0;
-    metadata.filters.clear();
-
-    SubCF initial_filter;
-    initial_filter.bucket_size = metadata.bucket_size;
-    initial_filter.num_buckets = metadata.num_buckets;
-    initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
-    metadata.filters.push_back(initial_filter);
+    InitializeDefaultCuckooFilterMetadata(metadata);
   }
 
   auto batch = storage_->GetWriteBatchBase();
@@ -285,22 +294,7 @@ rocksdb::Status CFilter::Insert(engine::Context &ctx, const Slice &user_key, con
 
   if (s.IsNotFound()) {
     if (!no_create) {
-      metadata.capacity = capacity;
-      metadata.bucket_size = 4;
-      metadata.max_iterations = 500;
-      metadata.expansion = 2;
-      metadata.num_buckets = metadata.capacity / metadata.bucket_size;
-      metadata.num_filters = 1;
-      metadata.num_items = 0;
-      metadata.num_deletes = 0;
-      metadata.filters.clear();
-
-      // Initialize filters with one SubCF
-      SubCF initial_filter;
-      initial_filter.bucket_size = metadata.bucket_size;
-      initial_filter.num_buckets = metadata.num_buckets;
-      initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
-      metadata.filters.push_back(initial_filter);
+      InitializeCuckooFilterMetadata(metadata, capacity);
     } else {
       return rocksdb::Status::NotFound();
     }
@@ -349,22 +343,7 @@ rocksdb::Status CFilter::InsertNX(engine::Context &ctx, const Slice &user_key, c
 
   if (s.IsNotFound()) {
     if (!no_create) {
-      metadata.capacity = capacity;
-      metadata.bucket_size = 4;
-      metadata.max_iterations = 500;
-      metadata.expansion = 2;
-      metadata.num_buckets = metadata.capacity / metadata.bucket_size;
-      metadata.num_filters = 1;
-      metadata.num_items = 0;
-      metadata.num_deletes = 0;
-      metadata.filters.clear();
-
-      // Initialize filters with one SubCF
-      SubCF initial_filter;
-      initial_filter.bucket_size = metadata.bucket_size;
-      initial_filter.num_buckets = metadata.num_buckets;
-      initial_filter.data.resize(metadata.num_buckets * metadata.bucket_size, CUCKOO_NULLFP);
-      metadata.filters.push_back(initial_filter);
+      InitializeCuckooFilterMetadata(metadata, capacity);
     } else {
       return rocksdb::Status::NotFound();
     }

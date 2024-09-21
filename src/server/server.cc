@@ -281,7 +281,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
-  auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
+  auto s = replication_thread_->Start([this]() { return PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
                                         if (auto s = task_runner_.Start(); !s) {
@@ -1336,17 +1336,10 @@ std::string Server::GetRocksDBStatsJson() const {
 // This function is called by replication thread when finished fetching all files from its master.
 // Before restoring the db from backup or checkpoint, we should
 // guarantee other threads don't access DB and its column families, then close db.
-void Server::PrepareRestoreDB() {
+bool Server::PrepareRestoreDB() {
   // Stop feeding slaves thread
   LOG(INFO) << "[server] Disconnecting slaves...";
   DisconnectSlaves();
-
-  // Stop task runner
-  LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
-  task_runner_.Cancel();
-  if (auto s = task_runner_.Join(); !s) {
-    LOG(WARNING) << "[server] " << s.Msg();
-  }
 
   // If the DB is restored, the object 'db_' will be destroyed, but
   // 'db_' will be accessed in data migration task. To avoid wrong
@@ -1362,12 +1355,27 @@ void Server::PrepareRestoreDB() {
   // ASAP to avoid user can't receive responses for long time, because the following
   // 'CloseDB' may cost much time to acquire DB mutex.
   LOG(INFO) << "[server] Waiting workers for finishing executing commands...";
-  { auto exclusivity = WorkExclusivityGuard(); }
+  while (!works_concurrency_rw_lock_.try_lock()) {
+    if (replication_thread_->IsStopped()) {
+      is_loading_ = false;
+      return false;
+    }
+    usleep(1000);
+  }
+  works_concurrency_rw_lock_.unlock();
+
+  // Stop task runner
+  LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
+  task_runner_.Cancel();
+  if (auto s = task_runner_.Join(); !s) {
+    LOG(WARNING) << "[server] " << s.Msg();
+  }
 
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the background, we need to close db, so they don't actually work.
   LOG(INFO) << "[server] Waiting for closing DB...";
   storage->CloseDB();
+  return true;
 }
 
 void Server::WaitNoMigrateProcessing() {

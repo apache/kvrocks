@@ -716,13 +716,6 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
   }
 
-  for (const auto &entry : nodes_info) {
-    if (entry.find(' ') == std::string::npos) {
-      return {Status::ClusterInvalidInfo,
-              "Invalid nodes definition: Each node entry must contain fields separated by spaces."};
-    }
-  }
-
   nodes->clear();
 
   // Parse all nodes

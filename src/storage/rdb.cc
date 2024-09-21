@@ -157,7 +157,7 @@ StatusOr<std::string> RDB::loadEncodedString() {
     unsigned char buf[4] = {0};
     if (len == RDBEncInt8) {
       auto next = GET_OR_RET(stream_->ReadByte());
-      return std::to_string(static_cast<int>(next));
+      return std::to_string(static_cast<int8_t>(next));
     } else if (len == RDBEncInt16) {
       GET_OR_RET(stream_->Read(reinterpret_cast<char *>(buf), 2));
       auto value = static_cast<uint16_t>(buf[0]) | (static_cast<uint16_t>(buf[1]) << 8);

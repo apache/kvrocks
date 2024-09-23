@@ -57,7 +57,7 @@ rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
   }
 
   for (auto &element : elements) {
-    cms.IncrBy(element.first.data(), element.second);
+    cms.IncrBy(element.first, element.second);
     metadata.counter += element.second;
   }
 
@@ -256,7 +256,7 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
   CMSketch cms(metadata.width, metadata.depth, metadata.counter, metadata.array);
 
   for (auto &element : elements) {
-    counters.push_back(cms.Query(element.data()));
+    counters.push_back(cms.Query(element));
   }
   return rocksdb::Status::OK();
 };

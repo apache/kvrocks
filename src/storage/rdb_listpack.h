@@ -26,7 +26,7 @@
 
 class ListPack {
  public:
-  explicit ListPack(std::string_view input) : input_(input){};
+  explicit ListPack(std::string_view input) : input_(input) {};
   ~ListPack() = default;
 
   StatusOr<uint32_t> Length();

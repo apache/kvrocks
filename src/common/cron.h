@@ -36,7 +36,7 @@ struct CronPattern {
 
   struct Interval {
     int interval;
-  };                                                         // */n
+  };  // */n
   struct Any {};                                             // *
   using Numbers = std::vector<std::variant<Number, Range>>;  // 1,2,3-6,7
 

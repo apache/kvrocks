@@ -161,8 +161,8 @@ ExecutorContext::ExecutorContext(PlanOperator *op, engine::Storage *storage)
   visitor.Transform(root);
 }
 
-auto ExecutorContext::Retrieve(engine::Context &ctx, RowType &row, const FieldInfo *field) const
-    -> StatusOr<ValueType> {  // NOLINT
+auto ExecutorContext::Retrieve(engine::Context &ctx, RowType &row,
+                               const FieldInfo *field) const -> StatusOr<ValueType> {  // NOLINT
   if (auto iter = row.fields.find(field); iter != row.fields.end()) {
     return iter->second;
   }

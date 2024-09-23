@@ -142,9 +142,9 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
 class WALIterator {
  public:
   explicit WALIterator(engine::Storage *storage, const SlotRange &slot_range)
-      : storage_(storage), slot_range_(slot_range), extractor_(slot_range), next_batch_seq_(0){};
+      : storage_(storage), slot_range_(slot_range), extractor_(slot_range), next_batch_seq_(0) {};
   explicit WALIterator(engine::Storage *storage, int slot = -1)
-      : storage_(storage), slot_range_(slot, slot), extractor_(slot), next_batch_seq_(0){};
+      : storage_(storage), slot_range_(slot, slot), extractor_(slot), next_batch_seq_(0) {};
   ~WALIterator() = default;
 
   bool Valid() const;

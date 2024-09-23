@@ -27,7 +27,7 @@
 
 class ZipMap {
  public:
-  explicit ZipMap(std::string_view input) : input_(input){};
+  explicit ZipMap(std::string_view input) : input_(input) {};
   ~ZipMap() = default;
 
   StatusOr<std::pair<std::string, std::string>> Next();

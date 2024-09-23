@@ -161,6 +161,13 @@ func testCMS(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Error(t, res.Err())
 	})
 
+	t.Run("cms.query - Query Non-Existent CMS", func(t *testing.T) {
+		// Attempt to query a CMS that doesn't exist
+		res := rdb.Do(ctx, "cms.query", "nonexistent_cms", "foo")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "ERR NotFound:")
+	})
+
 	// Query for non-existent element
 	t.Run("cms.query - Query Non-Existent Element", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "DEL", "cmsA").Err())
@@ -241,5 +248,46 @@ func testCMS(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		expectedTotal := int64(40)
 		require.Equal(t, expectedTotal, infoMap["count"], "Total count mismatch after merge")
+	})
+
+	t.Run("cms.merge - Merge with Uninitialized Destination CMS", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsA").Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsB").Err())
+
+		// Initialize only the source CMS
+		res := rdb.Do(ctx, "cms.initbydim", "cmsB", "100", "10")
+		require.NoError(t, res.Err())
+		require.Equal(t, "OK", res.Val())
+
+		// Attempt to merge cmsB into cmsA without initializing cmsA
+		res = rdb.Do(ctx, "cms.merge", "cmsA", "1", "cmsB", "WEIGHTS", "1")
+		require.Error(t, res.Err(), "Merging into an uninitialized destination CMS should return an error")
+		require.Contains(t, res.Err().Error(), "Destination CMS does not exist.", "Expected error message to contain 'Destination CMS does not exist.'")
+	})
+
+	t.Run("cms.merge - Merge with Uninitialized Source CMS", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsA").Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsB").Err())
+
+		// Initialize only the destination CMS
+		res := rdb.Do(ctx, "cms.initbydim", "cmsA", "100", "10")
+		require.NoError(t, res.Err())
+		require.Equal(t, "OK", res.Val())
+
+		// Attempt to merge a non-initialized cmsB into cmsA
+		res = rdb.Do(ctx, "cms.merge", "cmsA", "1", "cmsB", "WEIGHTS", "1")
+		require.Error(t, res.Err(), "Merging from an uninitialized source CMS should return an error")
+		require.Contains(t, res.Err().Error(), "Source CMS key not found.", "Expected error message to contain 'Source CMS key not found.'")
+	})
+
+	t.Run("cms.merge - Merge with Both Destination and Source CMS Uninitialized", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsA").Err())
+		require.NoError(t, rdb.Do(ctx, "DEL", "cmsB").Err())
+
+		// Attempt to merge two non-initialized CMSes
+		res := rdb.Do(ctx, "cms.merge", "cmsA", "1", "cmsB", "WEIGHTS", "1")
+		require.Error(t, res.Err(), "Merging with both destination and source CMS uninitialized should return an error")
+		errMsg := res.Err().Error()
+		require.Contains(t, errMsg, "Destination CMS does not exist.")
 	})
 }

@@ -248,7 +248,7 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
 
   if (s.IsNotFound()) {
     counters.assign(elements.size(), 0);
-    return rocksdb::Status::OK();
+    return rocksdb::Status::NotFound();
   } else if (!s.ok()) {
     return s;
   }

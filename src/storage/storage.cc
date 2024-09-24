@@ -482,6 +482,7 @@ Status Storage::RestoreFromCheckpoint() {
   // Clean old backups and checkpoints because server will work on the new db
   PurgeOldBackups(0, 0);
   rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
+  rocksdb::DestroyDB(tmp_dir, rocksdb::Options());
 
   // Maybe there is no database directory
   auto s = env_->CreateDirIfMissing(config_->db_dir);

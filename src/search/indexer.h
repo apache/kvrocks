@@ -83,6 +83,16 @@ struct IndexUpdater {
                      const kqir::Value &current) const;
   Status Update(engine::Context &ctx, const FieldValues &original, std::string_view key) const;
 
+  Status Delete(engine::Context &ctx, std::string_view key) const;
+  Status DeleteTagKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                      const SearchKey &search_key, const TagFieldMetadata *tag) const;
+
+  Status DeleteNumericKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                          const SearchKey &search_key) const;
+
+  Status DeleteHnswVectorKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                             const SearchKey &search_key, HnswVectorFieldMetadata *vector) const;
+
   Status Build(engine::Context &ctx) const;
 
   Status UpdateTagIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
@@ -93,6 +103,7 @@ struct IndexUpdater {
   Status UpdateHnswVectorIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
                                const kqir::Value &current, const SearchKey &search_key,
                                HnswVectorFieldMetadata *vector) const;
+  static Status IsKeyExpired(engine::Context &ctx, std::string_view key, const std::string &ns, bool *expired);
 };
 
 struct GlobalIndexer {
@@ -112,6 +123,7 @@ struct GlobalIndexer {
 
   void Add(IndexUpdater updater);
   void Remove(const kqir::IndexInfo *index);
+  void RemoveKeyFromIndex(engine::Storage *storage, std::string_view key, const std::string &ns);
 
   StatusOr<RecordResult> Record(engine::Context &ctx, std::string_view key, const std::string &ns);
   static Status Update(engine::Context &ctx, const RecordResult &original);

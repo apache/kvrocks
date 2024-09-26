@@ -30,7 +30,23 @@ import (
 )
 
 func TestJson(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testJSON(t, configs)
+	}
+}
+func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -657,6 +673,46 @@ func TestJson(t *testing.T) {
 		require.Equal(t, []interface{}{}, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "not_exists", "$").Val())
 
 	})
+
+	t.Run("JSON.RESP basics", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:2", "$", `{"name":"Wireless earbuds","description":"Wireless Bluetooth in-ear headphones","connection":{"wireless":true,"type":"null"},"price":64.99,"stock":17,"colors":[null,"white"], "max_level":[80, 100, 120]}`).Err())
+		//array object null both  have
+		var result = make([]interface{}, 0)
+		var resultarray1 = make([]interface{}, 0)
+		var resultobject1 = make([]interface{}, 0)
+		var resultarray2 = make([]interface{}, 0)
+		resultobject1 = append(resultobject1, "{", "type", "null", "wireless", "true")
+		resultarray1 = append(resultarray1, "[", nil, "white")
+		resultarray2 = append(resultarray2, "[", int64(80), int64(100), int64(120))
+		result = append(result, "{", "colors", resultarray1, "connection", resultobject1, "description", "Wireless Bluetooth in-ear headphones", "max_level", resultarray2, "name", "Wireless earbuds", "price", "64.99", "stock", int64(17))
+		require.Equal(t, result, rdb.Do(ctx, "JSON.RESP", "item:2").Val())
+		require.Equal(t, []interface{}{result}, rdb.Do(ctx, "JSON.RESP", "item:2", "$").Val())
+
+		//array
+		require.Equal(t, []interface{}{resultarray1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.colors").Val())
+		//object
+		require.Equal(t, []interface{}{resultobject1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection").Val())
+		//string
+		var stringvalue = make([]interface{}, 0)
+		require.Equal(t, append(stringvalue, "Wireless Bluetooth in-ear headphones"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.description").Val())
+		//bool
+		var boolvalue = make([]interface{}, 0)
+		require.Equal(t, append(boolvalue, "true"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection.wireless").Val())
+		//int
+		var intvalue = make([]interface{}, 0)
+		require.Equal(t, append(intvalue, int64(17)), rdb.Do(ctx, "JSON.RESP", "item:2", "$.stock").Val())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:3", "$", `{ "c1": [ { "a2": 1, "b2": "John Doe", "c2": 30, "d2": [ "Developer", "Team Lead" ] }, { "a2": 2, "b2": "Jane Smith", "c2": 25, "d2": [ "Developer" ] } ] }`).Err())
+		require.Equal(t, []interface{}{int64(1), int64(2)}, rdb.Do(ctx, "JSON.RESP", "item:3", "$..a2").Val())
+
+		//key no_exists
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists", "$").Err(), redis.Nil)
+		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists").Err(), redis.Nil)
+
+		//have key no find
+		require.Equal(t, make([]interface{}, 0), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
+
+	})
+
 }
 
 func EqualJSON(t *testing.T, expected string, actual interface{}) {

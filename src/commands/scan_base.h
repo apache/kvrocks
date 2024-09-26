@@ -80,7 +80,7 @@ class CommandScanBase : public Commander {
     }
   }
 
-  std::string GenerateOutput(Server *srv, const Connection *conn, const std::vector<std::string> &keys,
+  std::string GenerateOutput(Server *srv, [[maybe_unused]] const Connection *conn, const std::vector<std::string> &keys,
                              CursorType cursor_type) const {
     std::vector<std::string> list;
     if (keys.size() == static_cast<size_t>(limit_)) {

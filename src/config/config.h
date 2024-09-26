@@ -96,6 +96,7 @@ struct Config {
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
+  uint64_t proto_max_bulk_len = 512 * 1024 * 1024;
   bool daemonize = false;
   SupervisedMode supervised_mode = kSupervisedNone;
   bool slave_readonly = true;
@@ -167,6 +168,9 @@ struct Config {
   int json_max_nesting_depth = 1024;
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
 
+  // Enable transactional mode in engine::Context
+  bool txn_context_enabled = false;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;
@@ -181,7 +185,7 @@ struct Config {
     int max_write_buffer_number;
     int max_background_compactions;
     int max_background_flushes;
-    int max_sub_compactions;
+    int max_subcompactions;
     int stats_dump_period_sec;
     bool enable_pipelined_write;
     int64_t delayed_write_rate;
@@ -214,6 +218,7 @@ struct Config {
       bool no_slowdown;
       bool low_pri;
       bool memtable_insert_hint_per_batch;
+      int write_batch_max_bytes;
     } write_options;
 
     struct ReadOptions {

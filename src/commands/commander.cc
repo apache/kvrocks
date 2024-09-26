@@ -24,8 +24,10 @@
 
 namespace redis {
 
-RegisterToCommandTable::RegisterToCommandTable(std::initializer_list<CommandAttributes> list) {
-  for (const auto &attr : list) {
+RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
+                                               std::initializer_list<CommandAttributes> list) {
+  for (auto attr : list) {
+    attr.category = category;
     CommandTable::redis_command_table.emplace_back(attr);
     CommandTable::original_commands[attr.name] = &CommandTable::redis_command_table.back();
     CommandTable::commands[attr.name] = &CommandTable::redis_command_table.back();

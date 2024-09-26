@@ -150,7 +150,8 @@ Status Server::Start() {
     if (!s.IsOK()) return s;
   } else {
     // Generate new replication id if not a replica
-    s = storage->ShiftReplId();
+    engine::Context ctx(storage);
+    s = storage->ShiftReplId(ctx);
     if (!s.IsOK()) {
       return s.Prefixed("failed to shift replication id");
     }
@@ -280,7 +281,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
-  auto s = replication_thread_->Start([this]() { PrepareRestoreDB(); },
+  auto s = replication_thread_->Start([this]() { return PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;
                                         if (auto s = task_runner_.Start(); !s) {
@@ -308,7 +309,8 @@ Status Server::RemoveMaster() {
       replication_thread_->Stop();
       replication_thread_ = nullptr;
     }
-    return storage->ShiftReplId();
+    engine::Context ctx(storage);
+    return storage->ShiftReplId(ctx);
   }
   return Status::OK();
 }
@@ -1334,10 +1336,33 @@ std::string Server::GetRocksDBStatsJson() const {
 // This function is called by replication thread when finished fetching all files from its master.
 // Before restoring the db from backup or checkpoint, we should
 // guarantee other threads don't access DB and its column families, then close db.
-void Server::PrepareRestoreDB() {
+bool Server::PrepareRestoreDB() {
   // Stop feeding slaves thread
   LOG(INFO) << "[server] Disconnecting slaves...";
   DisconnectSlaves();
+
+  // If the DB is restored, the object 'db_' will be destroyed, but
+  // 'db_' will be accessed in data migration task. To avoid wrong
+  // accessing, data migration task should be stopped before restoring DB
+  WaitNoMigrateProcessing();
+
+  // Workers will disallow to run commands which may access DB, so we should
+  // enable this flag to stop workers from running new commands. And wait for
+  // the exclusive guard to be released to guarantee no worker is running.
+  is_loading_ = true;
+
+  // To guarantee work threads don't access DB, we should release 'ExclusivityGuard'
+  // ASAP to avoid user can't receive responses for long time, because the following
+  // 'CloseDB' may cost much time to acquire DB mutex.
+  LOG(INFO) << "[server] Waiting workers for finishing executing commands...";
+  while (!works_concurrency_rw_lock_.try_lock()) {
+    if (replication_thread_->IsStopped()) {
+      is_loading_ = false;
+      return false;
+    }
+    usleep(1000);
+  }
+  works_concurrency_rw_lock_.unlock();
 
   // Stop task runner
   LOG(INFO) << "[server] Stopping the task runner and clear task queue...";
@@ -1346,24 +1371,11 @@ void Server::PrepareRestoreDB() {
     LOG(WARNING) << "[server] " << s.Msg();
   }
 
-  // If the DB is restored, the object 'db_' will be destroyed, but
-  // 'db_' will be accessed in data migration task. To avoid wrong
-  // accessing, data migration task should be stopped before restoring DB
-  WaitNoMigrateProcessing();
-
-  // To guarantee work threads don't access DB, we should release 'ExclusivityGuard'
-  // ASAP to avoid user can't receive responses for long time, because the following
-  // 'CloseDB' may cost much time to acquire DB mutex.
-  LOG(INFO) << "[server] Waiting workers for finishing executing commands...";
-  {
-    auto exclusivity = WorkExclusivityGuard();
-    is_loading_ = true;
-  }
-
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the background, we need to close db, so they don't actually work.
   LOG(INFO) << "[server] Waiting for closing DB...";
   storage->CloseDB();
+  return true;
 }
 
 void Server::WaitNoMigrateProcessing() {
@@ -1447,7 +1459,8 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     redis::Database db(storage, ns);
 
     KeyNumStats stats;
-    auto s = db.GetKeyNumStats("", &stats);
+    engine::Context ctx(storage);
+    auto s = db.GetKeyNumStats(ctx, "", &stats);
     if (!s.ok()) {
       LOG(ERROR) << "failed to retrieve key num stats: " << s.ToString();
     }
@@ -1554,6 +1567,36 @@ int64_t Server::GetLastScanTime(const std::string &ns) const {
     return iter->second.last_scan_time_secs;
   }
   return 0;
+}
+
+StatusOr<std::vector<rocksdb::BatchResult>> Server::PollUpdates(uint64_t next_sequence, int64_t count,
+                                                                bool is_strict) const {
+  std::vector<rocksdb::BatchResult> batches;
+  auto latest_sequence = storage->LatestSeqNumber();
+  if (next_sequence == latest_sequence + 1) {
+    // return empty result if there is no new updates
+    return batches;
+  } else if (next_sequence > latest_sequence + 1) {
+    return {Status::NotOK, "next sequence is out of range"};
+  }
+
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  if (auto s = storage->GetWALIter(next_sequence, &iter); !s.IsOK()) return s;
+  if (!iter) {
+    return Status{Status::NotOK, "unable to get WAL iterator"};
+  }
+
+  for (int64_t i = 0; i < count && iter->Valid() && iter->status().ok(); ++i, iter->Next()) {
+    // The first batch should have the same sequence number as the next sequence number
+    // if it requires strictly matched.
+    auto batch = iter->GetBatch();
+    if (i == 0 && is_strict && batch.sequence != next_sequence) {
+      return {Status::NotOK,
+              fmt::format("mismatched sequence number, expected {} but got {}", next_sequence, batch.sequence)};
+    }
+    batches.emplace_back(std::move(batch));
+  }
+  return batches;
 }
 
 void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint64_t duration,
@@ -1670,7 +1713,8 @@ Status Server::ScriptExists(const std::string &sha) {
 Status Server::ScriptGet(const std::string &sha, std::string *body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, body);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, body);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1679,13 +1723,15 @@ Status Server::ScriptGet(const std::string &sha, std::string *body) const {
 
 Status Server::ScriptSet(const std::string &sha, const std::string &body) const {
   std::string func_name = engine::kLuaFuncSHAPrefix + sha;
-  return storage->WriteToPropagateCF(func_name, body);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, body);
 }
 
 Status Server::FunctionGetCode(const std::string &lib, std::string *code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, code);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, code);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1695,7 +1741,8 @@ Status Server::FunctionGetCode(const std::string &lib, std::string *code) const 
 Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->Get(rocksdb::ReadOptions(), cf, func_name, lib);
+  engine::Context ctx(storage);
+  auto s = storage->Get(ctx, ctx.GetReadOptions(), cf, func_name, lib);
   if (!s.ok()) {
     return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
   }
@@ -1704,12 +1751,14 @@ Status Server::FunctionGetLib(const std::string &func, std::string *lib) const {
 
 Status Server::FunctionSetCode(const std::string &lib, const std::string &code) const {
   std::string func_name = engine::kLuaLibCodePrefix + lib;
-  return storage->WriteToPropagateCF(func_name, code);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, code);
 }
 
 Status Server::FunctionSetLib(const std::string &func, const std::string &lib) const {
   std::string func_name = engine::kLuaFuncLibPrefix + func;
-  return storage->WriteToPropagateCF(func_name, lib);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, func_name, lib);
 }
 
 void Server::ScriptReset() {
@@ -1719,7 +1768,8 @@ void Server::ScriptReset() {
 
 Status Server::ScriptFlush() {
   auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
-  auto s = storage->FlushScripts(storage->DefaultWriteOptions(), cf);
+  engine::Context ctx(storage);
+  auto s = storage->FlushScripts(ctx, storage->DefaultWriteOptions(), cf);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
   ScriptReset();
   return Status::OK();
@@ -1735,7 +1785,8 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   for (const auto &iter : tokens) {
     value += redis::BulkString(iter);
   }
-  return storage->WriteToPropagateCF(channel, value);
+  engine::Context ctx(storage);
+  return storage->WriteToPropagateCF(ctx, channel, value);
 }
 
 Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {

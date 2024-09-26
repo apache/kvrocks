@@ -38,9 +38,10 @@ func geoDegrad(deg float64) float64 {
 	return deg * math.Atan(1) * 8 / 360
 }
 
-func geoRandomPoint() (float64, float64) {
-	lon := (-180 + rand.Float64()*360)
-	lat := (-70 + rand.Float64()*140)
+func geoRandomPointWithSeed(seed int64) (float64, float64) {
+	r := rand.New(rand.NewSource(seed))
+	lon := (-180 + r.Float64()*360)
+	lat := (-70 + r.Float64()*140)
 	return lon, lat
 }
 
@@ -86,18 +87,30 @@ func compareLists(list1, list2 []string) []string {
 	return result
 }
 
-func TestGeoWithRESP2(t *testing.T) {
-	testGeo(t, "no")
+func TestGeo(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testGeo(t, configs)
+	}
 }
 
-func TestGeoWithRESP3(t *testing.T) {
-	testGeo(t, "yes")
-}
-
-var testGeo = func(t *testing.T, enabledRESP3 string) {
-	srv := util.StartServer(t, map[string]string{
-		"resp3-enabled": enabledRESP3,
-	})
+var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -434,26 +447,26 @@ var testGeo = func(t *testing.T, enabledRESP3 string) {
 	t.Run("GEOADD + GEORANGE randomized test", func(t *testing.T) {
 		for attempt := 0; attempt < 30; attempt++ {
 			var debuginfo string
+			var seed int64
 			if attempt < len(regressionVectors) {
-				rand.Seed(regressionVectors[attempt].seed)
-				debuginfo += "rand seed is " + strconv.FormatInt(regressionVectors[attempt].seed, 10)
+				seed = regressionVectors[attempt].seed
 			} else {
-				tmp := time.Now().UnixNano()
-				rand.Seed(tmp)
-				debuginfo += "rand seed is " + strconv.FormatInt(tmp, 10)
+				seed = time.Now().UnixNano()
 			}
+			debuginfo += "rand seed is " + strconv.FormatInt(seed, 10)
+
 			require.NoError(t, rdb.Del(ctx, "mypoints").Err())
 			var radiusKm int64
-			if util.RandomInt(10) == 0 {
-				radiusKm = util.RandomInt(50000) + 10
+			if util.RandomIntWithSeed(10, seed) == 0 {
+				radiusKm = util.RandomIntWithSeed(50000, seed) + 10
 			} else {
-				radiusKm = util.RandomInt(200) + 10
+				radiusKm = util.RandomIntWithSeed(200, seed) + 10
 			}
 			if attempt < len(regressionVectors) {
 				radiusKm = regressionVectors[attempt].km
 			}
 			radiusM := radiusKm * 1000
-			searchLon, searchLat := geoRandomPoint()
+			searchLon, searchLat := geoRandomPointWithSeed(seed)
 			if attempt < len(regressionVectors) {
 				searchLon = regressionVectors[attempt].lon
 				searchLat = regressionVectors[attempt].lat
@@ -462,7 +475,7 @@ var testGeo = func(t *testing.T, enabledRESP3 string) {
 			var result []string
 			var argvs []*redis.GeoLocation
 			for j := 0; j < 20000; j++ {
-				lon, lat := geoRandomPoint()
+				lon, lat := geoRandomPointWithSeed(seed)
 				argvs = append(argvs, &redis.GeoLocation{Longitude: lon, Latitude: lat, Name: "place:" + strconv.Itoa(j)})
 				distance := geoDistance(lon, lat, searchLon, searchLat)
 				if distance < float64(radiusM) {

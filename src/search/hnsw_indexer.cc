@@ -36,10 +36,11 @@ namespace redis {
 
 HnswNode::HnswNode(NodeKey key, uint16_t level) : key(std::move(key)), level(level) {}
 
-StatusOr<HnswNodeFieldMetadata> HnswNode::DecodeMetadata(const SearchKey& search_key, engine::Storage* storage) const {
+StatusOr<HnswNodeFieldMetadata> HnswNode::DecodeMetadata(engine::Context& ctx, const SearchKey& search_key) const {
   auto node_index_key = search_key.ConstructHnswNode(level, key);
   rocksdb::PinnableSlice value;
-  auto s = storage->Get(rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), node_index_key, &value);
+  auto s = ctx.storage->Get(ctx, ctx.GetReadOptions(), ctx.storage->GetCFHandle(ColumnFamilyID::Search), node_index_key,
+                            &value);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
   HnswNodeFieldMetadata metadata;
@@ -48,17 +49,22 @@ StatusOr<HnswNodeFieldMetadata> HnswNode::DecodeMetadata(const SearchKey& search
   return metadata;
 }
 
-void HnswNode::PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
-                           rocksdb::WriteBatchBase* batch) const {
+Status HnswNode::PutMetadata(HnswNodeFieldMetadata* node_meta, const SearchKey& search_key, engine::Storage* storage,
+                             rocksdb::WriteBatchBase* batch) const {
   std::string updated_metadata;
   node_meta->Encode(&updated_metadata);
-  batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), search_key.ConstructHnswNode(level, key), updated_metadata);
+  auto s = batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), search_key.ConstructHnswNode(level, key),
+                      updated_metadata);
+  if (!s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
 }
 
-void HnswNode::DecodeNeighbours(const SearchKey& search_key, engine::Storage* storage) {
+void HnswNode::DecodeNeighbours(engine::Context& ctx, const SearchKey& search_key) {
   neighbours.clear();
   auto edge_prefix = search_key.ConstructHnswEdgeWithSingleEnd(level, key);
-  util::UniqueIterator iter(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+  util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
   for (iter->Seek(edge_prefix); iter->Valid(); iter->Next()) {
     if (!iter->key().starts_with(edge_prefix)) {
       break;
@@ -71,29 +77,29 @@ void HnswNode::DecodeNeighbours(const SearchKey& search_key, engine::Storage* st
   }
 }
 
-Status HnswNode::AddNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
+Status HnswNode::AddNeighbour(engine::Context& ctx, const NodeKey& neighbour_key, const SearchKey& search_key,
                               rocksdb::WriteBatchBase* batch) const {
   auto edge_index_key = search_key.ConstructHnswEdge(level, key, neighbour_key);
-  batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key, Slice());
-
-  HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(search_key, storage));
+  auto rocket_s = batch->Put(ctx.storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key, Slice());
+  if (!rocket_s.ok()) {
+    return {Status::NotOK, rocket_s.ToString()};
+  }
+  HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(ctx, search_key));
   node_metadata.num_neighbours++;
-  PutMetadata(&node_metadata, search_key, storage, batch);
-  return Status::OK();
+  return PutMetadata(&node_metadata, search_key, ctx.storage, batch);
 }
 
-Status HnswNode::RemoveNeighbour(const NodeKey& neighbour_key, const SearchKey& search_key, engine::Storage* storage,
+Status HnswNode::RemoveNeighbour(engine::Context& ctx, const NodeKey& neighbour_key, const SearchKey& search_key,
                                  rocksdb::WriteBatchBase* batch) const {
   auto edge_index_key = search_key.ConstructHnswEdge(level, key, neighbour_key);
-  auto s = batch->Delete(storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key);
+  auto s = batch->Delete(ctx.storage->GetCFHandle(ColumnFamilyID::Search), edge_index_key);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete edge, {}", s.ToString())};
   }
 
-  HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(search_key, storage));
+  HnswNodeFieldMetadata node_metadata = GET_OR_RET(DecodeMetadata(ctx, search_key));
   node_metadata.num_neighbours--;
-  PutMetadata(&node_metadata, search_key, storage, batch);
-  return Status::OK();
+  return PutMetadata(&node_metadata, search_key, ctx.storage, batch);
 }
 
 Status VectorItem::Create(NodeKey key, const kqir::NumericArray& vector, const HnswVectorFieldMetadata* metadata,
@@ -182,9 +188,9 @@ uint16_t HnswIndex::RandomizeLayer() {
   return static_cast<uint16_t>(std::floor(layer_val));
 }
 
-StatusOr<HnswIndex::NodeKey> HnswIndex::DefaultEntryPoint(uint16_t level) const {
+StatusOr<HnswIndex::NodeKey> HnswIndex::DefaultEntryPoint(engine::Context& ctx, uint16_t level) const {
   auto prefix = search_key.ConstructHnswLevelNodePrefix(level);
-  util::UniqueIterator it(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+  util::UniqueIterator it(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
   it->Seek(prefix);
 
   Slice node_key;
@@ -200,16 +206,16 @@ StatusOr<HnswIndex::NodeKey> HnswIndex::DefaultEntryPoint(uint16_t level) const 
   return {Status::NotFound, fmt::format("No node found in layer {}", level)};
 }
 
-StatusOr<std::vector<VectorItem>> HnswIndex::DecodeNodesToVectorItems(const std::vector<NodeKey>& node_keys,
+StatusOr<std::vector<VectorItem>> HnswIndex::DecodeNodesToVectorItems(engine::Context& ctx,
+                                                                      const std::vector<NodeKey>& node_keys,
                                                                       uint16_t level, const SearchKey& search_key,
-                                                                      engine::Storage* storage,
                                                                       const HnswVectorFieldMetadata* metadata) {
   std::vector<VectorItem> vector_items;
   vector_items.reserve(node_keys.size());
 
   for (const auto& neighbour_key : node_keys) {
     HnswNode neighbour_node(neighbour_key, level);
-    auto neighbour_metadata_status = neighbour_node.DecodeMetadata(search_key, storage);
+    auto neighbour_metadata_status = neighbour_node.DecodeMetadata(ctx, search_key);
     if (!neighbour_metadata_status.IsOK()) {
       continue;  // Skip this neighbour if metadata can't be decoded
     }
@@ -274,18 +280,17 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SelectNeighbors(const VectorItem& v
   return selected_vs;
 }
 
-StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const VectorItem& target_vector,
-                                                         uint32_t ef_runtime,
-                                                         const std::vector<NodeKey>& entry_points) const {
-  std::vector<VectorItem> candidates;
+StatusOr<std::vector<VectorItemWithDistance>> HnswIndex::SearchLayerInternal(
+    engine::Context& ctx, uint16_t level, const VectorItem& target_vector, uint32_t ef_runtime,
+    const std::vector<NodeKey>& entry_points) const {
+  std::vector<VectorItemWithDistance> result;
   std::unordered_set<NodeKey> visited;
-  std::priority_queue<std::pair<double, VectorItem>, std::vector<std::pair<double, VectorItem>>, std::greater<>>
-      explore_heap;
-  std::priority_queue<std::pair<double, VectorItem>> result_heap;
+  std::priority_queue<VectorItemWithDistance, std::vector<VectorItemWithDistance>, std::greater<>> explore_heap;
+  std::priority_queue<VectorItemWithDistance> result_heap;
 
   for (const auto& entry_point_key : entry_points) {
     HnswNode entry_node = HnswNode(entry_point_key, level);
-    auto entry_node_metadata = GET_OR_RET(entry_node.DecodeMetadata(search_key, storage));
+    auto entry_node_metadata = GET_OR_RET(entry_node.DecodeMetadata(ctx, search_key));
 
     VectorItem entry_point_vector;
     GET_OR_RET(
@@ -305,7 +310,7 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
     }
 
     auto current_node = HnswNode(current_vector.key, level);
-    current_node.DecodeNeighbours(search_key, storage);
+    current_node.DecodeNeighbours(ctx, search_key);
 
     for (const auto& neighbour_key : current_node.neighbours) {
       if (visited.find(neighbour_key) != visited.end()) {
@@ -314,7 +319,7 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
       visited.insert(neighbour_key);
 
       auto neighbour_node = HnswNode(neighbour_key, level);
-      auto neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(search_key, storage));
+      auto neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(ctx, search_key));
 
       VectorItem neighbour_node_vector;
       GET_OR_RET(VectorItem::Create(neighbour_key, std::move(neighbour_node_metadata.vector), metadata,
@@ -329,16 +334,29 @@ StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(uint16_t level, const V
     }
   }
 
+  result.resize(result_heap.size());
+  auto idx = result_heap.size() - 1;
   while (!result_heap.empty()) {
-    candidates.push_back(result_heap.top().second);
+    result[idx] = result_heap.top();
     result_heap.pop();
+    idx--;
   }
-
-  std::reverse(candidates.begin(), candidates.end());
-  return candidates;
+  return result;
 }
 
-Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::NumericArray& vector,
+StatusOr<std::vector<VectorItem>> HnswIndex::SearchLayer(engine::Context& ctx, uint16_t level,
+                                                         const VectorItem& target_vector, uint32_t ef_runtime,
+                                                         const std::vector<NodeKey>& entry_points) const {
+  std::vector<VectorItem> result;
+  auto result_with_distance = GET_OR_RET(SearchLayerInternal(ctx, level, target_vector, ef_runtime, entry_points));
+  for (auto& [_, vector_item] : result_with_distance) {
+    result.push_back(std::move(vector_item));
+  }
+  return result;
+}
+
+Status HnswIndex::InsertVectorEntryInternal(engine::Context& ctx, std::string_view key,
+                                            const kqir::NumericArray& vector,
                                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
                                             uint16_t target_level) const {
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
@@ -349,16 +367,17 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
   if (metadata->num_levels != 0) {
     auto level = metadata->num_levels - 1;
 
-    auto default_entry_node = GET_OR_RET(DefaultEntryPoint(level));
+    auto default_entry_node = GET_OR_RET(DefaultEntryPoint(ctx, level));
     std::vector<NodeKey> entry_points{default_entry_node};
 
     for (; level > target_level; level--) {
-      nearest_vec_items = GET_OR_RET(SearchLayer(level, inserted_vector_item, metadata->ef_runtime, entry_points));
+      nearest_vec_items = GET_OR_RET(SearchLayer(ctx, level, inserted_vector_item, metadata->ef_runtime, entry_points));
       entry_points = {nearest_vec_items[0].key};
     }
 
     for (; level >= 0; level--) {
-      nearest_vec_items = GET_OR_RET(SearchLayer(level, inserted_vector_item, metadata->ef_construction, entry_points));
+      nearest_vec_items =
+          GET_OR_RET(SearchLayer(ctx, level, inserted_vector_item, metadata->ef_construction, entry_points));
       auto candidate_vec_items = GET_OR_RET(SelectNeighbors(inserted_vector_item, nearest_vec_items, level));
       auto node = HnswNode(std::string(key), level);
       auto m_max = level == 0 ? 2 * metadata->m : metadata->m;
@@ -383,7 +402,7 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
 
       for (const auto& candidate_vec : candidate_vec_items) {
         auto candidate_node = HnswNode(candidate_vec.key, level);
-        auto candidate_node_metadata = GET_OR_RET(candidate_node.DecodeMetadata(search_key, storage));
+        auto candidate_node_metadata = GET_OR_RET(candidate_node.DecodeMetadata(ctx, search_key));
         uint16_t candidate_node_num_neighbours = candidate_node_metadata.num_neighbours;
 
         if (has_room_for_more_edges(candidate_node_num_neighbours) ||
@@ -394,9 +413,9 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
         }
 
         // Re-evaluate the neighbours for the candidate node
-        candidate_node.DecodeNeighbours(search_key, storage);
+        candidate_node.DecodeNeighbours(ctx, search_key);
         auto candidate_node_neighbour_vec_items =
-            GET_OR_RET(DecodeNodesToVectorItems(candidate_node.neighbours, level, search_key, storage, metadata));
+            GET_OR_RET(DecodeNodesToVectorItems(ctx, candidate_node.neighbours, level, search_key, metadata));
         candidate_node_neighbour_vec_items.push_back(inserted_vector_item);
         auto sorted_neighbours_by_distance =
             GET_OR_RET(SelectNeighbors(candidate_vec, candidate_node_neighbour_vec_items, level));
@@ -430,27 +449,36 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
 
       // Update inserted node metadata
       HnswNodeFieldMetadata node_metadata(static_cast<uint16_t>(connected_edges_set.size()), vector);
-      node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+      auto s = node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+      if (!s.IsOK()) {
+        return s;
+      }
 
       // Update modified nodes metadata
       for (const auto& node_edges : deleted_edges_map) {
         auto& current_node_key = node_edges.first;
         auto current_node = HnswNode(current_node_key, level);
-        auto current_node_metadata = GET_OR_RET(current_node.DecodeMetadata(search_key, storage));
+        auto current_node_metadata = GET_OR_RET(current_node.DecodeMetadata(ctx, search_key));
         auto new_num_neighbours = current_node_metadata.num_neighbours - node_edges.second.size();
         if (connected_edges_set.count(current_node_key) != 0) {
           new_num_neighbours++;
           connected_edges_set.erase(current_node_key);
         }
         current_node_metadata.num_neighbours = new_num_neighbours;
-        current_node.PutMetadata(&current_node_metadata, search_key, storage, batch.Get());
+        s = current_node.PutMetadata(&current_node_metadata, search_key, storage, batch.Get());
+        if (!s.IsOK()) {
+          return s;
+        }
       }
 
       for (const auto& current_node_key : connected_edges_set) {
         auto current_node = HnswNode(current_node_key, level);
-        HnswNodeFieldMetadata current_node_metadata = GET_OR_RET(current_node.DecodeMetadata(search_key, storage));
+        HnswNodeFieldMetadata current_node_metadata = GET_OR_RET(current_node.DecodeMetadata(ctx, search_key));
         current_node_metadata.num_neighbours++;
-        current_node.PutMetadata(&current_node_metadata, search_key, storage, batch.Get());
+        s = current_node.PutMetadata(&current_node_metadata, search_key, storage, batch.Get());
+        if (!s.IsOK()) {
+          return s;
+        }
       }
 
       entry_points.clear();
@@ -461,36 +489,46 @@ Status HnswIndex::InsertVectorEntryInternal(std::string_view key, const kqir::Nu
   } else {
     auto node = HnswNode(std::string(key), 0);
     HnswNodeFieldMetadata node_metadata(0, vector);
-    node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+    auto s = node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+    if (!s.IsOK()) {
+      return s;
+    }
     metadata->num_levels = 1;
   }
 
   while (target_level > metadata->num_levels - 1) {
     auto node = HnswNode(std::string(key), metadata->num_levels);
     HnswNodeFieldMetadata node_metadata(0, vector);
-    node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+    auto s = node.PutMetadata(&node_metadata, search_key, storage, batch.Get());
+    if (!s.IsOK()) {
+      return s;
+    }
     metadata->num_levels++;
   }
 
   std::string encoded_index_metadata;
   metadata->Encode(&encoded_index_metadata);
   auto index_meta_key = search_key.ConstructFieldMeta();
-  batch->Put(cf_handle, index_meta_key, encoded_index_metadata);
+  auto s = batch->Put(cf_handle, index_meta_key, encoded_index_metadata);
+  if (!s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
 
   return Status::OK();
 }
 
-Status HnswIndex::InsertVectorEntry(std::string_view key, const kqir::NumericArray& vector,
+Status HnswIndex::InsertVectorEntry(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
   auto target_level = RandomizeLayer();
-  return InsertVectorEntryInternal(key, vector, batch, target_level);
+  return InsertVectorEntryInternal(ctx, key, vector, batch, target_level);
 }
 
-Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
+Status HnswIndex::DeleteVectorEntry(engine::Context& ctx, std::string_view key,
+                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   std::string node_key(key);
   for (uint16_t level = 0; level < metadata->num_levels; level++) {
     auto node = HnswNode(node_key, level);
-    auto node_metadata_status = node.DecodeMetadata(search_key, storage);
+    auto node_metadata_status = node.DecodeMetadata(ctx, search_key);
     if (!node_metadata_status.IsOK()) {
       break;
     }
@@ -502,19 +540,22 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
       return {Status::NotOK, s.ToString()};
     }
 
-    node.DecodeNeighbours(search_key, storage);
+    node.DecodeNeighbours(ctx, search_key);
     for (const auto& neighbour_key : node.neighbours) {
       GET_OR_RET(RemoveEdge(node_key, neighbour_key, level, batch));
       auto neighbour_node = HnswNode(neighbour_key, level);
-      HnswNodeFieldMetadata neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(search_key, storage));
+      HnswNodeFieldMetadata neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(ctx, search_key));
       neighbour_node_metadata.num_neighbours--;
-      neighbour_node.PutMetadata(&neighbour_node_metadata, search_key, storage, batch.Get());
+      auto s = neighbour_node.PutMetadata(&neighbour_node_metadata, search_key, storage, batch.Get());
+      if (!s.IsOK()) {
+        return s;
+      }
     }
   }
 
   auto has_other_nodes_at_level = [&](uint16_t level, std::string_view skip_key) -> bool {
     auto prefix = search_key.ConstructHnswLevelNodePrefix(level);
-    util::UniqueIterator it(storage, storage->DefaultScanOptions(), ColumnFamilyID::Search);
+    util::UniqueIterator it(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
     it->Seek(prefix);
 
     Slice node_key;
@@ -543,9 +584,82 @@ Status HnswIndex::DeleteVectorEntry(std::string_view key, ObserverOrUniquePtr<ro
   std::string encoded_index_metadata;
   metadata->Encode(&encoded_index_metadata);
   auto index_meta_key = search_key.ConstructFieldMeta();
-  batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key, encoded_index_metadata);
-
+  auto s = batch->Put(storage->GetCFHandle(ColumnFamilyID::Search), index_meta_key, encoded_index_metadata);
+  if (!s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
   return Status::OK();
+}
+
+StatusOr<std::vector<KeyWithDistance>> HnswIndex::KnnSearch(engine::Context& ctx,
+                                                            const kqir::NumericArray& query_vector, uint32_t k) const {
+  VectorItem query_vector_item;
+  GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));
+
+  if (metadata->num_levels == 0) {
+    return {Status::NotFound, fmt::format("No vector found in the HNSW index")};
+  }
+
+  auto level = metadata->num_levels - 1;
+  auto default_entry_node = GET_OR_RET(DefaultEntryPoint(ctx, level));
+  std::vector<NodeKey> entry_points{default_entry_node};
+  std::vector<VectorItem> nearest_vec_items;
+
+  for (; level > 0; level--) {
+    nearest_vec_items = GET_OR_RET(SearchLayer(ctx, level, query_vector_item, metadata->ef_runtime, entry_points));
+    entry_points = {nearest_vec_items[0].key};
+  }
+
+  uint32_t effective_ef = std::max(metadata->ef_runtime, k);  // Ensure ef_runtime is at least k
+  auto nearest_vec_with_distance =
+      GET_OR_RET(SearchLayerInternal(ctx, 0, query_vector_item, effective_ef, entry_points));
+
+  uint32_t result_length = std::min(k, static_cast<uint32_t>(nearest_vec_with_distance.size()));
+  std::vector<KeyWithDistance> nearest_neighbours;
+  for (uint32_t result_idx = 0; result_idx < result_length; result_idx++) {
+    nearest_neighbours.emplace_back(nearest_vec_with_distance[result_idx].first,
+                                    std::move(nearest_vec_with_distance[result_idx].second.key));
+  }
+  return nearest_neighbours;
+}
+
+StatusOr<std::vector<KeyWithDistance>> HnswIndex::ExpandSearchScope(engine::Context& ctx,
+                                                                    const kqir::NumericArray& query_vector,
+                                                                    std::vector<redis::KeyWithDistance>&& initial_keys,
+                                                                    std::unordered_set<std::string>& visited) const {
+  constexpr uint16_t level = 0;
+  VectorItem query_vector_item;
+  GET_OR_RET(VectorItem::Create({}, query_vector, metadata, &query_vector_item));
+  std::vector<KeyWithDistance> result;
+
+  while (!initial_keys.empty()) {
+    auto current_key = initial_keys.front().second;
+    initial_keys.erase(initial_keys.begin());
+
+    auto current_node = HnswNode(current_key, level);
+    current_node.DecodeNeighbours(ctx, search_key);
+
+    for (const auto& neighbour_key : current_node.neighbours) {
+      if (visited.find(neighbour_key) != visited.end()) {
+        continue;
+      }
+      visited.insert(neighbour_key);
+
+      auto neighbour_node = HnswNode(neighbour_key, level);
+      auto neighbour_node_metadata = GET_OR_RET(neighbour_node.DecodeMetadata(ctx, search_key));
+
+      VectorItem neighbour_node_vector;
+      GET_OR_RET(VectorItem::Create(neighbour_key, std::move(neighbour_node_metadata.vector), metadata,
+                                    &neighbour_node_vector));
+
+      auto dist = GET_OR_RET(ComputeSimilarity(query_vector_item, neighbour_node_vector));
+      result.emplace_back(dist, neighbour_key);
+    }
+  }
+  std::sort(result.begin(), result.end(),
+            [](const KeyWithDistance& a, const KeyWithDistance& b) { return a.first < b.first; });
+
+  return result;
 }
 
 }  // namespace redis

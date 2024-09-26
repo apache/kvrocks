@@ -24,6 +24,8 @@
 
 #include "search/executors/filter_executor.h"
 #include "search/executors/full_index_scan_executor.h"
+#include "search/executors/hnsw_vector_field_knn_scan_executor.h"
+#include "search/executors/hnsw_vector_field_range_scan_executor.h"
 #include "search/executors/limit_executor.h"
 #include "search/executors/merge_executor.h"
 #include "search/executors/mock_executor.h"
@@ -84,6 +86,14 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
+    if (auto v = dynamic_cast<HnswVectorFieldKnnScan *>(op)) {
+      return Visit(v);
+    }
+
+    if (auto v = dynamic_cast<HnswVectorFieldRangeScan *>(op)) {
+      return Visit(v);
+    }
+
     if (auto v = dynamic_cast<Mock *>(op)) {
       return Visit(v);
     }
@@ -129,22 +139,30 @@ struct ExecutorContextVisitor {
 
   void Visit(TagFieldScan *op) { ctx->nodes[op] = std::make_unique<TagFieldScanExecutor>(ctx, op); }
 
+  void Visit(HnswVectorFieldKnnScan *op) { ctx->nodes[op] = std::make_unique<HnswVectorFieldKnnScanExecutor>(ctx, op); }
+
+  void Visit(HnswVectorFieldRangeScan *op) {
+    ctx->nodes[op] = std::make_unique<HnswVectorFieldRangeScanExecutor>(ctx, op);
+  }
+
   void Visit(Mock *op) { ctx->nodes[op] = std::make_unique<MockExecutor>(ctx, op); }
 };
 
 }  // namespace details
 
-ExecutorContext::ExecutorContext(PlanOperator *op) : root(op) {
+ExecutorContext::ExecutorContext(PlanOperator *op) : root(op), db_ctx(engine::Context::NoTransactionContext(nullptr)) {
   details::ExecutorContextVisitor visitor{this};
   visitor.Transform(root);
 }
 
-ExecutorContext::ExecutorContext(PlanOperator *op, engine::Storage *storage) : root(op), storage(storage) {
+ExecutorContext::ExecutorContext(PlanOperator *op, engine::Storage *storage)
+    : root(op), storage(storage), db_ctx(storage) {
   details::ExecutorContextVisitor visitor{this};
   visitor.Transform(root);
 }
 
-auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr<ValueType> {  // NOLINT
+auto ExecutorContext::Retrieve(engine::Context &ctx, RowType &row, const FieldInfo *field) const
+    -> StatusOr<ValueType> {  // NOLINT
   if (auto iter = row.fields.find(field); iter != row.fields.end()) {
     return iter->second;
   }
@@ -152,7 +170,7 @@ auto ExecutorContext::Retrieve(RowType &row, const FieldInfo *field) -> StatusOr
   auto retriever = GET_OR_RET(
       redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns));
 
-  auto s = retriever.Retrieve(field->name, field->metadata.get());
+  auto s = retriever.Retrieve(ctx, field->name, field->metadata.get());
   if (!s) return s;
 
   row.fields.emplace(field, *s);

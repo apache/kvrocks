@@ -20,6 +20,14 @@
 
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+
+#include "encoding.h"
+#include "status.h"
+#include "type_util.h"
+
 namespace util {
 
 /* Count number of bits set in the binary array pointed by 's' and long
@@ -145,5 +153,15 @@ inline int64_t RawBitpos(const uint8_t *c, int64_t count, bool bit) {
 }
 
 }  // namespace msb
+
+// num << bit <= MAX  ->  num <= MAX >> bit
+template <typename T, typename U>
+StatusOr<T> CheckedShiftLeft(T num, U bit) {
+  if (num <= std::numeric_limits<T>::max() >> bit) {
+    return num << bit;
+  }
+
+  return {Status::NotOK, "arithmetic overflow"};
+}
 
 }  // namespace util

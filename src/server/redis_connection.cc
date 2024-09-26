@@ -28,6 +28,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"
 #include "string_util.h"
@@ -79,7 +80,7 @@ void Connection::Close() {
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
-void Connection::OnRead(struct bufferevent *bev) {
+void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   is_running_ = true;
   MakeScopeExit([this] { is_running_ = false; });
 
@@ -98,7 +99,7 @@ void Connection::OnRead(struct bufferevent *bev) {
   }
 }
 
-void Connection::OnWrite(bufferevent *bev) {
+void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
   if (IsFlagEnabled(kCloseAfterReply) || IsFlagEnabled(kCloseAsync)) {
     Close();
   }
@@ -360,8 +361,10 @@ Status Connection::ExecuteCommand(const std::string &cmd_name, const std::vector
   return s;
 }
 
-static bool IsHashOrJsonCommand(const std::string &cmd) {
-  return util::HasPrefix(cmd, "h") || util::HasPrefix(cmd, "json.");
+static bool IsCmdForIndexing(const CommandAttributes *attr) {
+  return (attr->flags & redis::kCmdWrite) &&
+         (attr->category == CommandCategory::Hash || attr->category == CommandCategory::JSON ||
+          attr->category == CommandCategory::Key);
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
@@ -380,7 +383,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error({Status::NotOK, "unknown command " + cmd_tokens.front()}));
+      Reply(redis::Error(
+          {Status::NotOK,
+           fmt::format("unknown command `{}`, with args beginning with: {}", cmd_tokens.front(),
+                       util::StringJoin(nonstd::span(cmd_tokens.begin() + 1, cmd_tokens.end()),
+                                        [](const auto &v) -> decltype(auto) { return fmt::format("`{}`", v); }))}));
       continue;
     }
     auto current_cmd = std::move(*cmd_s);
@@ -490,15 +497,15 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
+    auto no_txn_ctx = engine::Context::NoTransactionContext(srv_->storage);
     // TODO: transaction support for index recording
     std::vector<GlobalIndexer::RecordResult> index_records;
-    if (!srv_->index_mgr.index_map.empty() && IsHashOrJsonCommand(cmd_name) && (attributes->flags & redis::kCmdWrite) &&
-        !config->cluster_enabled) {
+    if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(attributes) && !config->cluster_enabled) {
       attributes->ForEachKeyRange(
           [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
             key_range.ForEachKey(
                 [&, this](const std::string &key) {
-                  auto res = srv_->indexer.Record(key, ns_);
+                  auto res = srv_->indexer.Record(no_txn_ctx, key, ns_);
                   if (res.IsOK()) {
                     index_records.push_back(*res);
                   } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
@@ -515,7 +522,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // TODO: transaction support for index updating
     for (const auto &record : index_records) {
-      auto s = GlobalIndexer::Update(record);
+      auto s = GlobalIndexer::Update(no_txn_ctx, record);
       if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
         LOG(WARNING) << "index updating failed for key: " << record.key;
       }

@@ -53,7 +53,9 @@ bool Namespace::IsAllowModify() const {
 
 Status Namespace::loadFromDB(std::map<std::string, std::string>* db_tokens) const {
   std::string value;
-  auto s = storage_->Get(rocksdb::ReadOptions(), cf_, kNamespaceDBKey, &value);
+  engine::Context ctx(storage_);
+  auto cf = storage_->GetCFHandle(ColumnFamilyID::Propagate);
+  auto s = storage_->Get(ctx, ctx.GetReadOptions(), cf, kNamespaceDBKey, &value);
   if (!s.ok()) {
     if (s.IsNotFound()) return Status::OK();
     return {Status::NotOK, s.ToString()};
@@ -219,5 +221,6 @@ Status Namespace::Rewrite(const std::map<std::string, std::string>& tokens) cons
   for (const auto& iter : tokens) {
     json[iter.first] = iter.second;
   }
-  return storage_->WriteToPropagateCF(kNamespaceDBKey, json.to_string());
+  engine::Context ctx(storage_);
+  return storage_->WriteToPropagateCF(ctx, kNamespaceDBKey, json.to_string());
 }

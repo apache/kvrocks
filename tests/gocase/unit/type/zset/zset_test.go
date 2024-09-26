@@ -332,6 +332,8 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
 		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
 		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		// TODO: Remove time.Sleep after fix issue #2473
+		time.Sleep(time.Millisecond * 100)
 		resultz := rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
 		require.Equal(t, redis.Z{Score: 1, Member: "a"}, resultz)
 		resultz = rdb.BZPopMin(ctx, 0, "zseta", "zsetb").Val().Z
@@ -347,7 +349,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("bzpopmin", "zseta", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
 		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
 	})
@@ -359,6 +363,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		rdb.ZAdd(ctx, "zsetb", redis.Z{Score: 1, Member: "d"}, redis.Z{Score: 2, Member: "e"})
 		require.EqualValues(t, 3, rdb.ZCard(ctx, "zseta").Val())
 		require.EqualValues(t, 2, rdb.ZCard(ctx, "zsetb").Val())
+		time.Sleep(time.Millisecond * 100)
 		resultz := rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
 		require.Equal(t, redis.Z{Score: 3, Member: "c"}, resultz)
 		resultz = rdb.BZPopMax(ctx, 0, "zseta", "zsetb").Val().Z
@@ -374,7 +379,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		rd := srv.NewTCPClient()
 		defer func() { require.NoError(t, rd.Close()) }()
+		time.Sleep(time.Millisecond * 100)
 		require.NoError(t, rd.WriteArgs("bzpopmax", "zseta", "0"))
+		time.Sleep(time.Millisecond * 100)
 		rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"})
 		rd.MustReadStrings(t, []string{"zseta", "a", "1"})
 	})
@@ -612,7 +619,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		for i := 0; i < 20; i++ {
 			var args [3]int64
 			for j := 0; j < 3; j++ {
-				rand.Seed(time.Now().UnixNano())
+				rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 				args[j] = rand.Int63n(20) - 10
 			}
 			if args[2] == 0 {
@@ -1900,24 +1907,36 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 	})
 }
 
-func TestZSetWithRESP2(t *testing.T) {
-	testZSet(t, "no")
+func TestZSet(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testZSet(t, configs)
+	}
 }
 
-func TestZSetWithRESP3(t *testing.T) {
-	testZSet(t, "yes")
-}
-
-var testZSet = func(t *testing.T, enabledRESP3 string) {
-	srv := util.StartServer(t, map[string]string{
-		"resp3-enabled": enabledRESP3,
-	})
+var testZSet = func(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	basicTests(t, rdb, ctx, enabledRESP3, "skiplist", srv)
+	basicTests(t, rdb, ctx, configs["resp3-enabled"], "skiplist", srv)
 
 	t.Run("ZUNIONSTORE regression, should not create NaN in scores", func(t *testing.T) {
 		rdb.ZAdd(ctx, "z", redis.Z{Score: math.Inf(-1), Member: "neginf"})

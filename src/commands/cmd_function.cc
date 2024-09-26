@@ -22,6 +22,7 @@
 #include "commands/command_parser.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
+#include "server/server.h"
 #include "storage/scripting.h"
 #include "string_util.h"
 
@@ -30,6 +31,7 @@ namespace redis {
 struct CommandFunction : Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     CommandParser parser(args_, 1);
+    engine::Context ctx(srv->storage);
     if (parser.EatEqICase("load")) {
       bool replace = false;
       if (parser.EatEqICase("replace")) {
@@ -70,8 +72,7 @@ struct CommandFunction : Commander {
       if (!lua::FunctionIsLibExist(conn, libname)) {
         return {Status::NotOK, "no such library"};
       }
-
-      auto s = lua::FunctionDelete(srv, libname);
+      auto s = lua::FunctionDelete(ctx, srv, libname);
       if (!s) return s;
 
       *output = SimpleString("OK");
@@ -84,7 +85,7 @@ struct CommandFunction : Commander {
 
 template <bool read_only = false>
 struct CommandFCall : Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
     int64_t numkeys = GET_OR_RET(ParseInt<int64_t>(args_[2], 10));
     if (numkeys > int64_t(args_.size() - 3)) {
       return {Status::NotOK, "Number of keys can't be greater than number of args"};
@@ -107,10 +108,9 @@ uint64_t GenerateFunctionFlags(uint64_t flags, const std::vector<std::string> &a
   return flags;
 }
 
-REDIS_REGISTER_COMMANDS(MakeCmdAttr<CommandFunction>("function", -2, "exclusive no-script", 0, 0, 0,
-                                                     GenerateFunctionFlags),
-                        MakeCmdAttr<CommandFCall<>>("fcall", -3, "exclusive write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandFCall<true>>("fcall_ro", -3, "read-only ro-script no-script",
-                                                        GetScriptEvalKeyRange));
+REDIS_REGISTER_COMMANDS(
+    Function, MakeCmdAttr<CommandFunction>("function", -2, "exclusive no-script", 0, 0, 0, GenerateFunctionFlags),
+    MakeCmdAttr<CommandFCall<>>("fcall", -3, "exclusive write no-script", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandFCall<true>>("fcall_ro", -3, "read-only ro-script no-script", GetScriptEvalKeyRange));
 
 }  // namespace redis

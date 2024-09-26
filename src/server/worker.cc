@@ -72,7 +72,7 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
       LOG(INFO) << "[worker] Listening on: " << bind << ":" << *port;
     }
   }
-  lua_ = lua::CreateState(srv, true);
+  lua_ = lua::CreateState(srv);
 }
 
 Worker::~Worker() {
@@ -100,13 +100,14 @@ Worker::~Worker() {
   lua::DestroyState(lua_);
 }
 
-void Worker::TimerCB(int, int16_t events) {
+void Worker::TimerCB(int, [[maybe_unused]] int16_t events) {
   auto config = srv->GetConfig();
   if (config->timeout == 0) return;
   KickoutIdleClients(config->timeout);
 }
 
-void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen) {
+void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
+                              [[maybe_unused]] int socklen) {
   int local_port = util::GetLocalPort(fd);  // NOLINT
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from port: " << local_port << " thread #" << tid_;
 
@@ -186,7 +187,8 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sock
   }
 }
 
-void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen) {
+void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
+                                     [[maybe_unused]] int socklen) {
   DLOG(INFO) << "[worker] New connection: fd=" << fd << " from unixsocket: " << srv->GetConfig()->unixsocket
              << " thread #" << tid_;
   event_base *base = evconnlistener_get_base(listener);

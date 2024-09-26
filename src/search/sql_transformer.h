@@ -25,6 +25,7 @@
 #include <variant>
 
 #include "common_transformer.h"
+#include "fmt/format.h"
 #include "ir.h"
 #include "parse_util.h"
 #include "sql_parser.h"
@@ -38,9 +39,11 @@ namespace ir = kqir;
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
     Rule,
-    parse_tree::store_content::on<Boolean, Number, StringL, Identifier, NumericCompareOp, AscOrDesc, UnsignedInteger>,
-    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr,
-                                   FromExpr, WhereClause, OrderByClause, LimitClause, SearchStmt>>;
+    parse_tree::store_content::on<Boolean, Number, StringL, Param, Identifier, NumericCompareOp, AscOrDesc,
+                                  UnsignedInteger>,
+    parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorCompareOp, VectorLiteral, VectorCompareExpr,
+                                   VectorRangeExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr, FromExpr,
+                                   WhereClause, OrderByClause, OrderByExpr, LimitClause, SearchStmt>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
@@ -53,19 +56,50 @@ StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
 }
 
 struct Transformer : ir::TreeTransformer {
-  static auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
+  explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
+
+  auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
+    auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+      if (Is<Number>(node)) {
+        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+      } else if (Is<Param>(node)) {
+        auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
+                                  .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
+
+        return std::make_unique<ir::NumericLiteral>(val);
+      } else {
+        return {Status::NotOK,
+                fmt::format("expected a number or a parameter in numeric comparison but got {}", node->type)};
+      }
+    };
+
     if (Is<Boolean>(node)) {
       return Node::Create<ir::BoolLiteral>(node->string_view() == "true");
     } else if (Is<Number>(node)) {
       return Node::Create<ir::NumericLiteral>(*ParseFloat(node->string()));
     } else if (Is<StringL>(node)) {
       return Node::Create<ir::StringLiteral>(GET_OR_RET(UnescapeString(node->string_view())));
+    } else if (Is<VectorLiteral>(node)) {
+      std::vector<double> values;
+      for (const auto& child : node->children) {
+        values.push_back(*ParseFloat(child->string()));
+      }
+      return Node::Create<ir::VectorLiteral>(std::move(values));
     } else if (Is<HasTagExpr>(node)) {
       CHECK(node->children.size() == 2);
 
-      return Node::Create<ir::TagContainExpr>(
-          std::make_unique<ir::FieldRef>(node->children[0]->string()),
-          Node::MustAs<ir::StringLiteral>(GET_OR_RET(Transform(node->children[1]))));
+      const auto& tag = node->children[1];
+      std::unique_ptr<ir::StringLiteral> res;
+      if (Is<StringL>(tag)) {
+        res = Node::MustAs<ir::StringLiteral>(GET_OR_RET(Transform(tag)));
+      } else if (Is<Param>(tag)) {
+        res = std::make_unique<ir::StringLiteral>(GET_OR_RET(GetParam(tag)));
+      } else {
+        return {Status::NotOK, "encountered invalid tag"};
+      }
+
+      return Node::Create<ir::TagContainExpr>(std::make_unique<ir::FieldRef>(node->children[0]->string()),
+                                              std::move(res));
     } else if (Is<NumericCompareExpr>(node)) {
       CHECK(node->children.size() == 3);
 
@@ -73,16 +107,25 @@ struct Transformer : ir::TreeTransformer {
       const auto& rhs = node->children[2];
 
       auto op = ir::NumericCompareExpr::FromOperator(node->children[1]->string_view()).value();
-      if (Is<Identifier>(lhs) && Is<Number>(rhs)) {
+      if (Is<Identifier>(lhs) && (Is<Number>(rhs) || Is<Param>(rhs))) {
         return Node::Create<ir::NumericCompareExpr>(op, std::make_unique<ir::FieldRef>(lhs->string()),
-                                                    Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(rhs))));
-      } else if (Is<Number>(lhs) && Is<Identifier>(rhs)) {
+                                                    GET_OR_RET(number_or_param(rhs)));
+      } else if ((Is<Number>(lhs) || Is<Param>(lhs)) && Is<Identifier>(rhs)) {
         return Node::Create<ir::NumericCompareExpr>(ir::NumericCompareExpr::Flip(op),
                                                     std::make_unique<ir::FieldRef>(rhs->string()),
-                                                    Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(lhs))));
+                                                    GET_OR_RET(number_or_param(lhs)));
       } else {
         return {Status::NotOK, "the left and right side of numeric comparison should be an identifier and a number"};
       }
+    } else if (Is<VectorRangeExpr>(node)) {
+      CHECK(node->children.size() == 2);
+      const auto& vector_comp_expr = node->children[0];
+      CHECK(vector_comp_expr->children.size() == 3);
+
+      return Node::Create<ir::VectorRangeExpr>(
+          std::make_unique<ir::FieldRef>(vector_comp_expr->children[0]->string()),
+          GET_OR_RET(number_or_param(node->children[1])),
+          Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_comp_expr->children[2]))));
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
@@ -133,17 +176,25 @@ struct Transformer : ir::TreeTransformer {
       }
 
       return Node::Create<ir::LimitClause>(offset, count);
-    }
-    if (Is<OrderByClause>(node)) {
-      CHECK(node->children.size() == 1 || node->children.size() == 2);
+    } else if (Is<OrderByClause>(node)) {
+      CHECK(node->children.size() == 1);
+      const auto& order_by_expr = node->children[0];
+      CHECK(order_by_expr->children.size() == 1 || order_by_expr->children.size() == 2);
 
-      auto field = std::make_unique<FieldRef>(node->children[0]->string());
-      auto order = SortByClause::Order::ASC;
-      if (node->children.size() == 2 && node->children[1]->string_view() == "desc") {
-        order = SortByClause::Order::DESC;
+      if (Is<VectorCompareExpr>(order_by_expr->children[0])) {
+        const auto& vector_compare_expr = order_by_expr->children[0];
+        CHECK(vector_compare_expr->children.size() == 3);
+        auto field = std::make_unique<FieldRef>(vector_compare_expr->children[0]->string());
+        return Node::Create<SortByClause>(
+            std::move(field), Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_compare_expr->children[2]))));
+      } else {
+        auto field = std::make_unique<FieldRef>(order_by_expr->children[0]->string());
+        auto order = SortByClause::Order::ASC;
+        if (order_by_expr->children.size() == 2 && order_by_expr->children[1]->string_view() == "desc") {
+          order = SortByClause::Order::DESC;
+        }
+        return Node::Create<SortByClause>(order, std::move(field));
       }
-
-      return Node::Create<SortByClause>(order, std::move(field));
     } else if (Is<SearchStmt>(node)) {  // root node
       CHECK(node->children.size() >= 2 && node->children.size() <= 5);
 
@@ -182,8 +233,9 @@ struct Transformer : ir::TreeTransformer {
 };
 
 template <typename Input>
-StatusOr<std::unique_ptr<ir::Node>> ParseToIR(Input&& in) {
-  return Transformer::Transform(GET_OR_RET(ParseToTree(std::forward<Input>(in))));
+StatusOr<std::unique_ptr<ir::Node>> ParseToIR(Input&& in, const ParamMap& param_map = {}) {
+  Transformer transformer{param_map};
+  return transformer.Transform(GET_OR_RET(ParseToTree(std::forward<Input>(in))));
 }
 
 }  // namespace sql

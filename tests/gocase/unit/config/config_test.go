@@ -245,3 +245,78 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 		require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
 	})
 }
+
+func TestChangeProtoMaxBulkLen(t *testing.T) {
+	configs := map[string]string{}
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Default value is 512MB
+	vals, err := rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
+	require.NoError(t, err)
+	require.EqualValues(t, "536870912", vals["proto-max-bulk-len"])
+
+	// Change to 2MB
+	require.NoError(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "2097152").Err())
+	vals, err = rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
+	require.NoError(t, err)
+	require.EqualValues(t, "2097152", vals["proto-max-bulk-len"])
+
+	// change to 100MB
+	require.NoError(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "100M").Err())
+	vals, err = rdb.ConfigGet(ctx, "proto-max-bulk-len").Result()
+	require.NoError(t, err)
+	require.EqualValues(t, "104857600", vals["proto-max-bulk-len"])
+
+	// Must be >= 1MB
+	require.Error(t, rdb.ConfigSet(ctx, "proto-max-bulk-len", "1024").Err())
+}
+
+func TestGetConfigTxnContext(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"txn-context-enabled": "yes",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	val := rdb.ConfigGet(ctx, "txn-context-enabled").Val()
+	require.EqualValues(t, "yes", val["txn-context-enabled"])
+
+	// default value "no"
+	srv1 := util.StartServer(t, map[string]string{})
+	defer srv1.Close()
+
+	rdb = srv1.NewClient()
+	val = rdb.ConfigGet(ctx, "txn-context-enabled").Val()
+	require.EqualValues(t, "no", val["txn-context-enabled"])
+}
+
+func TestGenerateConfigsMatrix(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+
+	require.NoError(t, err)
+	require.Equal(t, 4, len(configsMatrix))
+	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "yes"})
+	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "no"})
+	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "yes"})
+	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "no"})
+}

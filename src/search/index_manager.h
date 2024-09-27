@@ -152,6 +152,7 @@ struct IndexManager {
     auto batch = storage->GetWriteBatchBase();
 
     std::string meta_val;
+    LOG(INFO) << meta_val;
     info->metadata.Encode(&meta_val);
     auto s = batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
     if (!s.ok()) {
@@ -169,6 +170,7 @@ struct IndexManager {
       SearchKey field_key(info->ns, info->name, field_info.name);
 
       std::string field_val;
+      LOG(INFO) << field_val;
       field_info.metadata->Encode(&field_val);
 
       s = batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
@@ -185,7 +187,7 @@ struct IndexManager {
     indexer->Add(updater);
     index_map.Insert(std::move(info));
 
-    for (auto updater : indexer->updater_list) {
+    for (auto &updater : indexer->updater_list) {
       GET_OR_RET(updater.Build(ctx));
     }
 
@@ -208,10 +210,15 @@ struct IndexManager {
     return plan_op;
   }
 
-  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
-                                                               const std::string &ns) const {
-    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
 
+  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(engine::Context &ctx, std::unique_ptr<kqir::Node> ir,
+                                                               const std::string &ns) const {
+    for (auto updater : indexer->updater_list) {
+      GET_OR_RET(updater.ScanKeys(ctx));
+    }
+    LOG(INFO) << "searched";
+
+    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
     kqir::ExecutorContext executor_ctx(plan_op.get(), storage);
 
     std::vector<kqir::ExecutorContext::RowType> results;
@@ -219,10 +226,8 @@ struct IndexManager {
     auto iter_res = GET_OR_RET(executor_ctx.Next());
     while (!std::holds_alternative<kqir::ExecutorNode::End>(iter_res)) {
       results.push_back(std::get<kqir::ExecutorContext::RowType>(iter_res));
-
       iter_res = GET_OR_RET(executor_ctx.Next());
     }
-
     return results;
   }
 

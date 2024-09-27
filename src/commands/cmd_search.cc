@@ -307,7 +307,8 @@ class CommandFTSearchSQL : public Commander {
     return Status::OK();
   }
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
+    engine::Context ctx(srv->storage);
+    auto results = GET_OR_RET(srv->index_mgr.Search(ctx, std::move(ir_), conn->GetNamespace()));
 
     DumpQueryResult(results, output);
 
@@ -405,7 +406,8 @@ class CommandFTSearch : public Commander {
 
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     CHECK(ir_);
-    auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
+    engine::Context ctx(srv->storage);
+    auto results = GET_OR_RET(srv->index_mgr.Search(ctx, std::move(ir_), conn->GetNamespace()));
 
     DumpQueryResult(results, output);
 

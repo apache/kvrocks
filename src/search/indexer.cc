@@ -43,20 +43,16 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-    LOG(INFO) << "creating hash metadata" << ns_key;
-
     auto s = db.GetMetadata(ctx, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == IndexOnDataType::JSON) {
     Json db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
-    LOG(INFO) << "creating json metadata" << ns_key;
     JsonMetadata metadata(false);
     JsonValue value;
     auto s = db.read(ctx, ns_key, &metadata, &value);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
-    LOG(INFO) << s.ToString();
     return FieldValueRetriever(value);
   } else {
     assert(false && "unreachable code: unexpected IndexOnDataType");
@@ -171,7 +167,6 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(engine::Context &ctx, s
   }
 
   auto retriever = GET_OR_RET(FieldValueRetriever::Create(info->metadata.on_data_type, key, indexer->storage, ns));
-
   FieldValues values;
   for (const auto &[field, i] : info->fields) {
     if (i.metadata->noindex) {
@@ -395,7 +390,6 @@ Status IndexUpdater::DeleteTagKey(engine::Context &ctx, std::string_view key, co
 
   auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return {Status::NotOK, s.ToString()};
-  LOG(INFO) << "tag deleted successfully";
   return Status::OK();
 }
 
@@ -403,11 +397,6 @@ Status IndexUpdater::DeleteNumericKey(engine::Context &ctx, std::string_view key
                                       const SearchKey &search_key,
                                       [[maybe_unused]] const NumericFieldMetadata *num) const {
   CHECK(original.IsNull() || original.Is<kqir::Numeric>());
-  if (!original.IsNull()) {
-    LOG(INFO) << "null sadge";
-    return Status::OK();
-  }
-  LOG(INFO) << "DELETING NUMERIC KEY VALUE for key: " << key;
 
   auto *storage = indexer->storage;
   auto batch = storage->GetWriteBatchBase();
@@ -422,7 +411,6 @@ Status IndexUpdater::DeleteNumericKey(engine::Context &ctx, std::string_view key
   }
   auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return {Status::NotOK, s.ToString()};
-  LOG(INFO) << "deleted successfully";
   return Status::OK();
 }
 
@@ -441,8 +429,6 @@ Status IndexUpdater::Delete(engine::Context &ctx, std::string_view key) const {
     }
     GET_OR_RET(DeleteKey(ctx, field, key, original_val));
   }
-
-  LOG(INFO) << "Deletion completed successfully for key: " << key;
   return Status::OK();
 }
 
@@ -468,13 +454,11 @@ Status IndexUpdater::DeleteKey(engine::Context &ctx, const std::string &field, s
 
 Status IndexUpdater::IsKeyExpired(engine::Context &ctx, std::string_view key, const std::string &ns, bool *expired) {
   Database db(ctx.storage, ns);
-  LOG(INFO) << "checking if " << key << " exists";
   int exists_result = 0;
   std::vector<Slice> keys = {Slice(key)};
   auto s = db.Exists(ctx, keys, &exists_result);
 
   if (!s.ok() || exists_result == 0) {
-    LOG(INFO) << "expired!";
     *expired = true;
     return Status::OK();
   }
@@ -508,7 +492,6 @@ Status IndexUpdater::Build(engine::Context &ctx) const {
 }
 
 Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
-  LOG(INFO) << "scanning";
   auto storage = indexer->storage;
   util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
 
@@ -523,7 +506,6 @@ Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
       auto [_, key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
 
       bool is_expired = false;
-      LOG(INFO) << "about to check if key is expired: " << key;
       Status s = IsKeyExpired(ctx, key.ToStringView(), info->ns, &is_expired);
       if (!s.IsOK()) {
         return s;
@@ -535,23 +517,18 @@ Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
         }
 
         auto batch = storage->GetWriteBatchBase();
-        auto cf_handle_kv =
-            storage->GetCFHandle(ColumnFamilyID::Metadata);
+        auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Metadata);
 
-        batch->Delete(cf_handle_kv, iter->key());  
+        batch->Delete(cf_handle, iter->key());  
 
         auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
         if (!s.ok()) {
           return {Status::NotOK, s.ToString()};
         }
-
-        LOG(INFO) << "Deleted expired key: " << key;
-
         continue;
       }
     }
 
-    // Check if there were any errors during iteration
     if (auto s = iter->status(); !s.ok()) {
       return {Status::NotOK, s.ToString()};
     }
@@ -560,10 +537,10 @@ Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
   return Status::OK();
 }
 
-void GlobalIndexer::Add(const std::shared_ptr<IndexUpdater> &updater) {
-  updater->indexer = this;
-  for (const auto &prefix : updater->info->prefixes) {
-    prefix_map.insert(ComposeNamespaceKey(updater->info->ns, prefix, false), updater);
+void GlobalIndexer::Add(IndexUpdater updater) {
+  updater.indexer = this;
+  for (const auto &prefix : updater.info->prefixes) {
+    prefix_map.insert(ComposeNamespaceKey(updater.info->ns, prefix, false), updater);
   }
   updater_list.push_back(updater);
 }
@@ -598,7 +575,7 @@ StatusOr<GlobalIndexer::RecordResult> GlobalIndexer::Record(engine::Context &ctx
 }
 
 Status GlobalIndexer::Update(engine::Context &ctx, const RecordResult &original) {
-  return original.updater->Update(ctx, original.fields, original.key);
+  return original.updater.Update(ctx, original.fields, original.key);
 }
 
 }  // namespace redis

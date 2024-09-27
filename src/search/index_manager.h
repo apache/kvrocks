@@ -152,7 +152,6 @@ struct IndexManager {
     auto batch = storage->GetWriteBatchBase();
 
     std::string meta_val;
-    LOG(INFO) << meta_val;
     info->metadata.Encode(&meta_val);
     auto s = batch->Put(cf, index_key.ConstructIndexMeta(), meta_val);
     if (!s.ok()) {
@@ -170,7 +169,6 @@ struct IndexManager {
       SearchKey field_key(info->ns, info->name, field_info.name);
 
       std::string field_val;
-      LOG(INFO) << field_val;
       field_info.metadata->Encode(&field_val);
 
       s = batch->Put(cf, field_key.ConstructFieldMeta(), field_val);
@@ -213,10 +211,9 @@ struct IndexManager {
 
   StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(engine::Context &ctx, std::unique_ptr<kqir::Node> ir,
                                                                const std::string &ns) const {
-    for (auto updater : indexer->updater_list) {
+    for (auto &updater : indexer->updater_list) {
       GET_OR_RET(updater.ScanKeys(ctx));
     }
-    LOG(INFO) << "searched";
 
     auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
     kqir::ExecutorContext executor_ctx(plan_op.get(), storage);

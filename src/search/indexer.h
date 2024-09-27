@@ -108,28 +108,26 @@ struct IndexUpdater {
 };
 
 struct GlobalIndexer {
-    using FieldValues = IndexUpdater::FieldValues;
+  using FieldValues = IndexUpdater::FieldValues;
+  struct RecordResult {
+    IndexUpdater updater;
+    std::string key;
+    FieldValues fields;
+  };
 
-    struct RecordResult {
-        std::shared_ptr<IndexUpdater> updater; 
-        std::string key;
-        FieldValues fields;
-    };
+  tsl::htrie_map<char, IndexUpdater> prefix_map;
+  std::vector<IndexUpdater> updater_list;
 
-    tsl::htrie_map<char, std::shared_ptr<IndexUpdater>> prefix_map;
-    std::vector<std::shared_ptr<IndexUpdater>> updater_list; // Use shared_ptr
+  engine::Storage *storage = nullptr;
 
-    engine::Storage* storage = nullptr;
+  explicit GlobalIndexer(engine::Storage *storage) : storage(storage) {}
 
-    explicit GlobalIndexer(engine::Storage* storage) : storage(storage) {}
+  void Add(IndexUpdater updater);
+  void Remove(const kqir::IndexInfo *index);
+  void RemoveKeyFromIndex(engine::Storage *storage, std::string_view key, const std::string &ns);
 
-    // Update function signatures to accept shared_ptr
-    void Add(const std::shared_ptr<IndexUpdater> &updater);
-    void Remove(const kqir::IndexInfo* index);
-    void RemoveKeyFromIndex(engine::Storage* storage, std::string_view key, const std::string& ns);
-
-    StatusOr<RecordResult> Record(engine::Context& ctx, std::string_view key, const std::string& ns);
-    static Status Update(engine::Context& ctx, const RecordResult& original);
+  StatusOr<RecordResult> Record(engine::Context &ctx, std::string_view key, const std::string &ns);
+  static Status Update(engine::Context &ctx, const RecordResult &original);
 };
 
 }  // namespace redis

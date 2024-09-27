@@ -172,14 +172,13 @@ StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& rig
   }
 }
 
-HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage)
+HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,
+                     std::random_device::result_type seed)
     : search_key(search_key),
       metadata(vector),
       storage(storage),
-      m_level_normalization_factor(1.0 / std::log(metadata->m)) {
-  std::random_device rand_dev;
-  generator = std::mt19937(rand_dev());
-}
+      generator(std::mt19937(seed)),
+      m_level_normalization_factor(1.0 / std::log(metadata->m)) {}
 
 uint16_t HnswIndex::RandomizeLayer() {
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);

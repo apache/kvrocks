@@ -519,7 +519,7 @@ Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
         auto batch = storage->GetWriteBatchBase();
         auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Metadata);
 
-        batch->Delete(cf_handle, iter->key());  
+        batch->Delete(cf_handle, iter->key());
 
         auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
         if (!s.ok()) {

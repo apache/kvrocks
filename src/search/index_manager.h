@@ -208,7 +208,6 @@ struct IndexManager {
     return plan_op;
   }
 
-
   StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(engine::Context &ctx, std::unique_ptr<kqir::Node> ir,
                                                                const std::string &ns) const {
     for (auto &updater : indexer->updater_list) {

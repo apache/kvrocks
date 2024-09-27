@@ -426,6 +426,7 @@ rocksdb::Status Json::Del(engine::Context &ctx, const std::string &user_key, con
   JsonValue json_val;
   JsonMetadata metadata;
   auto s = read(ctx, ns_key, &metadata, &json_val);
+  
   if (!s.ok() && !s.IsNotFound()) return s;
   if (s.IsNotFound()) {
     return rocksdb::Status::OK();

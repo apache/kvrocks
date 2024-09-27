@@ -83,15 +83,16 @@ struct IndexUpdater {
                      const kqir::Value &current) const;
   Status Update(engine::Context &ctx, const FieldValues &original, std::string_view key) const;
 
-
   Status Delete(engine::Context &ctx, std::string_view key) const;
 
-  Status DeleteKey(engine::Context &ctx, const std::string &field, std::string_view key, const kqir::Value &original_val) const;
+  Status DeleteKey(engine::Context &ctx, const std::string &field, std::string_view key,
+                   const kqir::Value &original_val) const;
 
   Status DeleteTagKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
                       const SearchKey &search_key, const TagFieldMetadata *tag) const;
 
-  Status DeleteNumericKey(engine::Context &ctx, std::string_view key, const kqir::Value &original, const SearchKey &search_key, const NumericFieldMetadata *num) const;
+  Status DeleteNumericKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                          const SearchKey &search_key, const NumericFieldMetadata *num) const;
 
   Status Build(engine::Context &ctx) const;
 
@@ -124,7 +125,6 @@ struct GlobalIndexer {
 
   void Add(IndexUpdater updater);
   void Remove(const kqir::IndexInfo *index);
-  void RemoveKeyFromIndex(engine::Storage *storage, std::string_view key, const std::string &ns);
 
   StatusOr<RecordResult> Record(engine::Context &ctx, std::string_view key, const std::string &ns);
   static Status Update(engine::Context &ctx, const RecordResult &original);

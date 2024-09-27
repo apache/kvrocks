@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -168,5 +169,47 @@ func TestSearch(t *testing.T) {
 
 		srv.Restart()
 		verify(t)
+	})
+
+	t.Run("JsonTagWithExpiry", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx", "ON", "JSON", "PREFIX", "1", "test:", "SCHEMA", "a", "TAG", "b", "NUMERIC").Err())
+
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test:k1", "$", `{"a": "x,y", "b": 11}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test:k2", "$", `{"a": "y,z", "b": 22}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test:k3", "$", `{"a": "x,z", "b": 33}`).Err())
+
+		searchQuery := `@a:{z} @b:[-inf (30]`
+		initialSearch := rdb.Do(ctx, "FT.SEARCH", "testidx", searchQuery)
+		require.NoError(t, initialSearch.Err())
+
+		initialResults := initialSearch.Val().([]interface{})
+		require.Equal(t, 3, len(initialResults))
+		require.Equal(t, int64(1), initialResults[0])
+		require.Equal(t, "test:k2", initialResults[1])
+
+		fields := initialResults[2].([]interface{})
+		fieldMap := make(map[string]string)
+		for i := 0; i < len(fields); i += 2 {
+			fieldMap[fields[i].(string)] = fields[i+1].(string)
+		}
+		require.Equal(t, "y,z", fieldMap["a"])
+		require.Equal(t, "22", fieldMap["b"])
+
+		require.NoError(t, rdb.Expire(ctx, "test:k2", 5*time.Second).Err())
+
+		checkSearch := rdb.Do(ctx, "FT.SEARCH", "testidx", searchQuery)
+		require.NoError(t, checkSearch.Err())
+
+		time.Sleep(6 * time.Second)
+
+		finalSearch := rdb.Do(ctx, "FT.SEARCH", "testidx", searchQuery)
+		require.Error(t, finalSearch.Err())
+
+		// verify that the index entry for test:k2 is deleted
+		indexKey := "testidx:a:z:test:k2"
+
+		val, err := rdb.Get(ctx, indexKey).Result()
+		require.ErrorIs(t, err, redis.Nil, "Index entry for expired key2 should be deleted")
+		require.Equal(t, "", val, "Value for expired index key should be empty")
 	})
 }

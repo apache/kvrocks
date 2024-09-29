@@ -227,7 +227,7 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
 rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
                            std::vector<uint32_t> &counters) {
   std::string ns_key = AppendNamespacePrefix(user_key);
-  counters.assign(elements.size(), 0);
+  counters.resize(elements.size(), 0);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
@@ -242,9 +242,10 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
 
   CMSketch cms(metadata.width, metadata.depth, metadata.counter, metadata.array);
 
-  for (auto &element : elements) {
-    counters.push_back(cms.Query(element));
+  for (size_t i = 0; i < elements.size(); ++i) {
+    counters[i] = cms.Query(elements[i]);
   }
+
   return rocksdb::Status::OK();
 };
 

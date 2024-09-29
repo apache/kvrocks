@@ -201,7 +201,6 @@ class CommandCMSMerge final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
 
-
     rocksdb::Status s = cms.MergeUserKeys(ctx, destination_, src_keys_, src_weights_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -242,7 +241,7 @@ class CommandCMSQuery final : public Commander {
     std::vector<std::string> output_values;
     output_values.reserve(counters.size());
     for (const auto &counter : counters) {
-      output_values.push_back(std::to_string(counter));
+      output_values.emplace_back(std::to_string(counter));
     }
 
     *output = redis::ArrayOfBulkStrings(output_values);

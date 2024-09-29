@@ -20,12 +20,12 @@
 
 #include "cms.h"
 
-#include "xxhash.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
+
+#include "xxhash.h"
 
 CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta) {
   CMSketchDimensions dims;

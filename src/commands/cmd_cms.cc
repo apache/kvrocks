@@ -75,7 +75,7 @@ class CommandCMSInfo final : public Commander {
     s = cms.Info(ctx, args_[1], &ret);
 
     if (s.IsNotFound()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return {Status::RedisExecErr, "Key not found"};
     }
 
     if (!s.ok() && !s.IsNotFound()) {
@@ -153,7 +153,7 @@ class CommandCMSMerge final : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 2);
-    destination_ = args[1];  // Change to std::string
+    destination_ = args[1];
 
     StatusOr<int> num_key_result = parser.TakeInt();
     if (!num_key_result || *num_key_result <= 0) {
@@ -179,7 +179,7 @@ class CommandCMSMerge final : public Commander {
         src_weights_.reserve(num_keys_);
         for (int i = 0; i < num_keys_; i++) {
           StatusOr<uint32_t> weight_result = parser.TakeInt<uint32_t>();
-          if (!weight_result || *weight_result == 0) {  // Adjust condition if needed
+          if (!weight_result || *weight_result == 0) {
             return {Status::RedisParseErr, "invalid weight value"};
           }
           src_weights_.emplace_back(*weight_result);
@@ -201,14 +201,7 @@ class CommandCMSMerge final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
 
-    // Convert std::string to Slice
-    std::vector<Slice> src_keys_slices;
-    src_keys_slices.reserve(src_keys_.size());
-    for (const auto &key : src_keys_) {
-      src_keys_slices.emplace_back(key);
-    }
-
-    rocksdb::Status s = cms.MergeUserKeys(ctx, Slice(destination_), src_keys_slices, src_weights_);
+    rocksdb::Status s = cms.MergeUserKeys(ctx, destination_, src_keys_, src_weights_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -218,9 +211,9 @@ class CommandCMSMerge final : public Commander {
   }
 
  private:
-  std::string destination_;  // Changed to std::string
+  Slice destination_;
   int num_keys_;
-  std::vector<std::string> src_keys_;  // Changed to std::vector<std::string>
+  std::vector<Slice> src_keys_;
   std::vector<uint32_t> src_weights_;
 };
 

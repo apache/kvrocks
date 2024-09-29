@@ -50,9 +50,6 @@ class CMSketch {
 
   size_t Query(std::string_view item) const;
 
-  static int Merge(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
-                   const std::vector<long long>& weights);
-
   struct MergeParams {
     CMSketch* dest;
     size_t num_keys;
@@ -60,9 +57,9 @@ class CMSketch {
     std::vector<long long> weights;
   };
 
-  int CMSMergeParams(const MergeParams& params);
+  static Status Merge(const MergeParams& params);
 
-  size_t GetLocation(uint64_t hash, size_t i) const { return (hash % width_) + (i * width_); }
+  size_t GetLocationForHash(uint64_t hash, size_t i) const { return (hash % width_) + (i * width_); }
 
   uint64_t& GetCounter() { return counter_; }
   std::vector<uint32_t>& GetArray() { return array_; }

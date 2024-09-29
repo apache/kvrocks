@@ -39,7 +39,7 @@ size_t CMSketch::IncrBy(std::string_view item, uint32_t value) {
 
   for (size_t i = 0; i < depth_; ++i) {
     uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
-    size_t loc = GetLocation(hash, i);
+    size_t loc = GetLocationForHash(hash, i);
     if (array_[loc] > UINT32_MAX - value) {
       array_[loc] = UINT32_MAX;
     } else {
@@ -56,38 +56,36 @@ size_t CMSketch::Query(std::string_view item) const {
 
   for (size_t i = 0; i < depth_; ++i) {
     uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
-    min_count = std::min(min_count, static_cast<size_t>(array_[GetLocation(hash, i)]));
+    min_count = std::min(min_count, static_cast<size_t>(array_[GetLocationForHash(hash, i)]));
   }
   return min_count;
 }
 
-int CMSketch::Merge(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
-                    const std::vector<long long>& weights) {
-  if (checkOverflow(dest, quantity, src, weights) != 0) {
-    return -1;
+Status CMSketch::Merge(const CMSketch::MergeParams& params) {
+  // Perform overflow check
+  if (checkOverflow(params.dest, params.num_keys, params.cms_array, params.weights) != 0) {
+    return {Status::NotOK, "Overflow error."};
   }
 
-  for (size_t i = 0; i < dest->GetDepth(); ++i) {
-    for (size_t j = 0; j < dest->GetWidth(); ++j) {
+  size_t dest_depth = params.dest->GetDepth();
+  size_t dest_width = params.dest->GetWidth();
+
+  // Merge source CMSes into the destination CMS
+  for (size_t i = 0; i < dest_depth; ++i) {
+    for (size_t j = 0; j < dest_width; ++j) {
       int64_t item_count = 0;
-      // Sum the weighted counts from all source CMSes
-      for (size_t k = 0; k < quantity; ++k) {
-        item_count += static_cast<int64_t>(src[k]->array_[(i * dest->GetWidth()) + j]) * weights[k];
+      for (size_t k = 0; k < params.num_keys; ++k) {
+        item_count += static_cast<int64_t>(params.cms_array[k]->array_[(i * dest_width) + j]) * params.weights[k];
       }
-      // accumulates the weighted sum into the destination CMS's array
-      dest->GetArray()[(i * dest->GetWidth()) + j] += static_cast<uint32_t>(item_count);
+      params.dest->GetArray()[(i * dest_width) + j] += static_cast<uint32_t>(item_count);
     }
   }
 
-  for (size_t i = 0; i < quantity; ++i) {
-    dest->GetCounter() += src[i]->GetCounter() * weights[i];
+  for (size_t i = 0; i < params.num_keys; ++i) {
+    params.dest->GetCounter() += params.cms_array[i]->GetCounter() * params.weights[i];
   }
 
-  return 0;
-}
-
-int CMSMergeParams(const CMSketch::MergeParams& params) {
-  return CMSketch::Merge(params.dest, params.num_keys, params.cms_array, params.weights);
+  return Status::OK();
 }
 
 int CMSketch::checkOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,

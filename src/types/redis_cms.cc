@@ -42,7 +42,7 @@ rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
   if (s.IsNotFound()) {
     return rocksdb::Status::NotFound();
   }
-  if (!s.ok() && !s.IsNotFound()) {
+  if (!s.ok()) {
     return s;
   }
 
@@ -52,11 +52,10 @@ rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
 
   CMSketch cms(metadata.width, metadata.depth, metadata.counter, metadata.array);
 
-  if (elements.empty()) {
-    return rocksdb::Status::OK();
-  }
-
   for (auto &element : elements) {
+    if (element.second > 0 && metadata.counter > std::numeric_limits<uint64_t>::max() - element.second) {
+      return rocksdb::Status::InvalidArgument("Overflow error: IncrBy would result in counter overflow");
+    }
     cms.IncrBy(element.first, element.second);
     metadata.counter += element.second;
   }
@@ -77,7 +76,7 @@ rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, CMSketch:
   CountMinSketchMetadata metadata{};
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
-  if (!s.ok() || s.IsNotFound()) {
+  if (!s.ok()) {
     return rocksdb::Status::NotFound();
   }
 
@@ -95,6 +94,10 @@ rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint
   CountMinSketchMetadata metadata{};
 
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+
+  if (s.ok()) {
+    return rocksdb::Status::InvalidArgument("Key already exists.");
+  }
 
   if (!s.IsNotFound()) {
     return s;
@@ -123,22 +126,11 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
   if (delta <= 0 || delta >= 1) {
     return rocksdb::Status::InvalidArgument("Delta must be between 0 and 1 (exclusive).");
   }
-
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  LockGuard guard(storage_->GetLockManager(), ns_key);
-  CountMinSketchMetadata metadata{};
-
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
-  if (!s.IsNotFound()) {
+  CMSketch::CMSketchDimensions dim = CMSketch::CMSDimFromProb(error, delta);
+  auto s = InitByDim(ctx, user_key, dim.width, dim.depth);
+  if (!s.ok()) {
     return s;
   }
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCountMinSketch);
-  batch->PutLogData(log_data.Encode());
-
-  CMSketch cms{0, 0, 0, {}};
-  CMSketch::CMSketchDimensions dim = cms.CMSDimFromProb(error, delta);
 
   size_t memory_used = dim.width * dim.depth * sizeof(uint32_t);
   const size_t max_memory = 50 * 1024 * 1024;
@@ -149,17 +141,7 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
   if (memory_used > max_memory) {
     return rocksdb::Status::InvalidArgument("Memory usage exceeds 50MB.");
   }
-
-  metadata.width = dim.width;
-  metadata.depth = dim.depth;
-  metadata.counter = 0;
-  metadata.array = std::vector<uint32_t>(dim.width * dim.depth, 0);
-
-  std::string bytes;
-  metadata.Encode(&bytes);
-  batch->Put(metadata_cf_handle_, ns_key, bytes);
-
-  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return rocksdb::Status::OK();
 };
 
 rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &src_keys,
@@ -190,12 +172,11 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
   src_cms_objects.reserve(num_sources);
   std::vector<const CMSketch *> src_cms_pointers;
   src_cms_pointers.reserve(num_sources);
-  std::vector<long long> weights_long;
+  std::vector<int64_t> weights_long;
   weights_long.reserve(num_sources);
 
   for (size_t i = 0; i < num_sources; ++i) {
     std::string src_ns_key = AppendNamespacePrefix(src_keys[i]);
-    LOG(INFO) << "Dest Key: " << dest_ns_key << " | Source Key: " << src_ns_key;
     LockGuard guard(storage_->GetLockManager(), src_ns_key);
 
     CountMinSketchMetadata src_metadata{};
@@ -218,8 +199,14 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
     weights_long.push_back(static_cast<long long>(src_weights[i]));
   }
 
-  int merge_result = CMSketch::Merge(&dest_cms, num_sources, src_cms_pointers, weights_long);
-  if (merge_result != 0) {
+  CMSketch::MergeParams merge_params;
+  merge_params.dest = &dest_cms;
+  merge_params.num_keys = num_sources;
+  merge_params.cms_array = src_cms_pointers;
+  merge_params.weights = weights_long;
+
+  auto merge_result = CMSketch::Merge(merge_params);
+  if (!merge_result.IsOK()) {
     return rocksdb::Status::InvalidArgument("Merge operation failed due to overflow or invalid dimensions.");
   }
 
@@ -240,6 +227,7 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
 rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
                            std::vector<uint32_t> &counters) {
   std::string ns_key = AppendNamespacePrefix(user_key);
+  counters.assign(elements.size(), 0);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
@@ -247,7 +235,6 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
   if (s.IsNotFound()) {
-    counters.assign(elements.size(), 0);
     return rocksdb::Status::NotFound();
   } else if (!s.ok()) {
     return s;

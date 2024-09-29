@@ -61,34 +61,35 @@ size_t CMSketch::Query(std::string_view item) const {
   return min_count;
 }
 
-Status CMSketch::Merge(const CMSketch::MergeParams& params) {
+Status CMSketch::Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSketch*> cms_array,
+                       std::vector<long long> weights) {
   // Perform overflow check
-  if (checkOverflow(params.dest, params.num_keys, params.cms_array, params.weights) != 0) {
+  if (CMSketch::CheckOverflow(dest, num_keys, cms_array, weights) != 0) {
     return {Status::NotOK, "Overflow error."};
   }
 
-  size_t dest_depth = params.dest->GetDepth();
-  size_t dest_width = params.dest->GetWidth();
+  size_t dest_depth = dest->GetDepth();
+  size_t dest_width = dest->GetWidth();
 
   // Merge source CMSes into the destination CMS
   for (size_t i = 0; i < dest_depth; ++i) {
     for (size_t j = 0; j < dest_width; ++j) {
       int64_t item_count = 0;
-      for (size_t k = 0; k < params.num_keys; ++k) {
-        item_count += static_cast<int64_t>(params.cms_array[k]->array_[(i * dest_width) + j]) * params.weights[k];
+      for (size_t k = 0; k < num_keys; ++k) {
+        item_count += static_cast<int64_t>(cms_array[k]->array_[(i * dest_width) + j]) * weights[k];
       }
-      params.dest->GetArray()[(i * dest_width) + j] += static_cast<uint32_t>(item_count);
+      dest->GetArray()[(i * dest_width) + j] += static_cast<uint32_t>(item_count);
     }
   }
 
-  for (size_t i = 0; i < params.num_keys; ++i) {
-    params.dest->GetCounter() += params.cms_array[i]->GetCounter() * params.weights[i];
+  for (size_t i = 0; i < num_keys; ++i) {
+    dest->GetCounter() += cms_array[i]->GetCounter() * weights[i];
   }
 
   return Status::OK();
 }
 
-int CMSketch::checkOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
+int CMSketch::CheckOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
                             const std::vector<long long>& weights) {
   int64_t item_count = 0;
   int64_t cms_count = 0;

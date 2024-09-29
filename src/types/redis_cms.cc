@@ -90,6 +90,16 @@ rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, CMSketch:
 rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
+  size_t memory_used = width * depth * sizeof(uint32_t);
+  const size_t max_memory = 50 * 1024 * 1024;
+
+  if (memory_used == 0) {
+    return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
+  }
+  if (memory_used > max_memory) {
+    return rocksdb::Status::InvalidArgument("Memory usage exceeds 50MB.");
+  }
+
   LockGuard guard(storage_->GetLockManager(), ns_key);
   CountMinSketchMetadata metadata{};
 
@@ -199,13 +209,7 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
     weights_long.push_back(static_cast<long long>(src_weights[i]));
   }
 
-  CMSketch::MergeParams merge_params;
-  merge_params.dest = &dest_cms;
-  merge_params.num_keys = num_sources;
-  merge_params.cms_array = src_cms_pointers;
-  merge_params.weights = weights_long;
-
-  auto merge_result = CMSketch::Merge(merge_params);
+  auto merge_result = CMSketch::Merge(&dest_cms, num_sources, src_cms_pointers, weights_long);
   if (!merge_result.IsOK()) {
     return rocksdb::Status::InvalidArgument("Merge operation failed due to overflow or invalid dimensions.");
   }

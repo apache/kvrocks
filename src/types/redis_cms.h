@@ -36,7 +36,7 @@ class CMS : public Database {
   rocksdb::Status InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth);
   rocksdb::Status InitByProb(engine::Context &ctx, const Slice &user_key, double error, double delta);
   rocksdb::Status Query(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &elements,
-                        std::vector<uint32_t> *counters);
+                        std::vector<uint32_t> &counters);
   rocksdb::Status MergeUserKeys(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &src_keys,
                                 const std::vector<uint32_t> &src_weights);
 

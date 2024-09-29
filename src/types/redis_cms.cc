@@ -77,7 +77,7 @@ rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, CMSketch:
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
 
   if (!s.ok()) {
-    return rocksdb::Status::NotFound();
+    return s;
   }
 
   ret->width = metadata.width;

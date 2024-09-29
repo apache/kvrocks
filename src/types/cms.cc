@@ -20,7 +20,7 @@
 
 #include "cms.h"
 
-#include <xxhash.h>
+#include "xxhash.h"
 
 #include <algorithm>
 #include <cmath>

@@ -201,6 +201,7 @@ class CommandCMSMerge final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
 
+
     rocksdb::Status s = cms.MergeUserKeys(ctx, destination_, src_keys_, src_weights_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

@@ -46,9 +46,13 @@ class CMSketch {
 
   static CMSketchDimensions CMSDimFromProb(double error, double delta);
 
-  size_t IncrBy(std::string_view item, uint32_t value);
+  /// Increment the counter of the given item by the specified increment.
+  ///
+  /// \param item The item to increment. Returns UINT32_MAX if the
+  ///             counter overflows.
+  uint32_t IncrBy(std::string_view item, uint32_t value);
 
-  size_t Query(std::string_view item) const;
+  uint32_t Query(std::string_view item) const;
 
   static Status Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSketch*> cms_array,
                       std::vector<uint32_t> weights);
@@ -66,6 +70,9 @@ class CMSketch {
 
   static int CheckOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
                            const std::vector<uint32_t>& weights);
+
+ private:
+  static uint64_t CountMinSketchHash(std::string_view item, uint64_t seed);
 
  private:
   uint32_t width_;

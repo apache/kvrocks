@@ -30,6 +30,9 @@
 namespace redis {
 
 /// CMS.INCRBY key item increment [item increment ...]
+///
+/// The `key` should be an existing Count-Min Sketch key,
+/// otherwise, the command will return an error.
 class CommandCMSIncrBy final : public Commander {
  public:
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
@@ -39,18 +42,20 @@ class CommandCMSIncrBy final : public Commander {
     redis::CMS cms(srv->storage, conn->GetNamespace());
     engine::Context ctx(srv->storage);
     rocksdb::Status s;
-    std::unordered_map<std::string, uint64_t> elements;
+    // <item, increment> pairs
+    std::vector<redis::CMS::IncrByPair> elements;
+    elements.reserve((args_.size() - 2) / 2);
     for (size_t i = 2; i < args_.size(); i += 2) {
-      std::string key = args_[i];
-      auto parse_result = ParseInt<uint64_t>(args_[i + 1]);
+      std::string_view key = args_[i];
+      auto parse_result = ParseInt<int64_t>(args_[i + 1]);
       if (!parse_result) {
         return {Status::RedisParseErr, errValueNotInteger};
       }
-      uint64_t value = *parse_result;
-      elements[key] = value;
+      int64_t value = *parse_result;
+      elements.emplace_back(redis::CMS::IncrByPair{key, value});
     }
-
-    s = cms.IncrBy(ctx, args_[1], elements);
+    std::vector<uint32_t> counters;
+    s = cms.IncrBy(ctx, args_[1], elements, &counters);
     if (s.IsNotFound()) {
       return {Status::RedisExecErr, "Key not found"};
     }
@@ -58,6 +63,7 @@ class CommandCMSIncrBy final : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
+    // TODO(mwish): adjust the output
     *output = redis::SimpleString("OK");
     return Status::OK();
   }
@@ -78,7 +84,7 @@ class CommandCMSInfo final : public Commander {
       return {Status::RedisExecErr, "Key not found"};
     }
 
-    if (!s.ok() && !s.IsNotFound()) {
+    if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 

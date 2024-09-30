@@ -27,6 +27,10 @@
 
 #include "xxhash.h"
 
+uint64_t CMSketch::CountMinSketchHash(std::string_view item, uint64_t seed) {
+  return XXH64(item.data(), item.size(), seed);
+}
+
 CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta) {
   CMSketchDimensions dims;
   dims.width = std::ceil(2 / error);
@@ -34,29 +38,30 @@ CMSketch::CMSketchDimensions CMSketch::CMSDimFromProb(double error, double delta
   return dims;
 }
 
-size_t CMSketch::IncrBy(std::string_view item, uint32_t value) {
-  size_t min_count = std::numeric_limits<size_t>::max();
+uint32_t CMSketch::IncrBy(std::string_view item, uint32_t value) {
+  uint32_t min_count = std::numeric_limits<uint32_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
+    uint64_t hash = CountMinSketchHash(item, /*seed=*/i);
     size_t loc = GetLocationForHash(hash, i);
-    if (array_[loc] > UINT32_MAX - value) {
-      array_[loc] = UINT32_MAX;
+    // Do overflow check
+    if (array_[loc] > std::numeric_limits<uint32_t>::max() - value) {
+      array_[loc] = std::numeric_limits<uint32_t>::max();
     } else {
       array_[loc] += value;
     }
-    min_count = std::min(min_count, static_cast<size_t>(array_[loc]));
+    min_count = std::min(min_count, array_[loc]);
   }
   counter_ += value;
   return min_count;
 }
 
-size_t CMSketch::Query(std::string_view item) const {
-  size_t min_count = std::numeric_limits<size_t>::max();
+uint32_t CMSketch::Query(std::string_view item) const {
+  uint32_t min_count = std::numeric_limits<uint32_t>::max();
 
   for (size_t i = 0; i < depth_; ++i) {
-    uint64_t hash = XXH32(item.data(), static_cast<int>(item.size()), i);
-    min_count = std::min(min_count, static_cast<size_t>(array_[GetLocationForHash(hash, i)]));
+    uint64_t hash = CountMinSketchHash(item, /*seed=*/i);
+    min_count = std::min(min_count, array_[GetLocationForHash(hash, i)]);
   }
   return min_count;
 }

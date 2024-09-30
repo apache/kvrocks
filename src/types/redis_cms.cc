@@ -31,8 +31,8 @@ rocksdb::Status CMS::GetMetadata(engine::Context &ctx, const Slice &ns_key, Coun
   return Database::GetMetadata(ctx, {kRedisCountMinSketch}, ns_key, metadata);
 }
 
-rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
-                            const std::unordered_map<std::string, uint64_t> &elements) {
+rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key, const std::vector<IncrByPair> &elements,
+                            std::vector<uint32_t> *counters) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -52,12 +52,12 @@ rocksdb::Status CMS::IncrBy(engine::Context &ctx, const Slice &user_key,
 
   CMSketch cms(metadata.width, metadata.depth, metadata.counter, metadata.array);
 
-  for (auto &element : elements) {
-    if (element.second > 0 && metadata.counter > std::numeric_limits<uint64_t>::max() - element.second) {
+  for (const auto &element : elements) {
+    if (element.value > 0 && metadata.counter > std::numeric_limits<int64_t>::max() - element.value) {
       return rocksdb::Status::InvalidArgument("Overflow error: IncrBy would result in counter overflow");
     }
-    cms.IncrBy(element.first, element.second);
-    metadata.counter += element.second;
+    uint32_t local_counter = cms.IncrBy(element.key, element.value);
+    metadata.counter += element.value;
   }
 
   metadata.array = std::move(cms.GetArray());
@@ -83,20 +83,20 @@ rocksdb::Status CMS::Info(engine::Context &ctx, const Slice &user_key, CMSketch:
   ret->width = metadata.width;
   ret->depth = metadata.depth;
   ret->count = metadata.counter;
-
   return rocksdb::Status::OK();
-};
+}
 
 rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint32_t width, uint32_t depth) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   size_t memory_used = width * depth * sizeof(uint32_t);
-  const size_t max_memory = 1 * 1024 * 1024;
+  // We firstly limit the memory usage to 1MB.
+  constexpr size_t kMaxMemory = 1 * 1024 * 1024;
 
   if (memory_used == 0) {
     return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
   }
-  if (memory_used > max_memory) {
+  if (memory_used > kMaxMemory) {
     return rocksdb::Status::InvalidArgument("Memory usage exceeds 1MB.");
   }
 
@@ -137,21 +137,7 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
     return rocksdb::Status::InvalidArgument("Delta must be between 0 and 1 (exclusive).");
   }
   CMSketch::CMSketchDimensions dim = CMSketch::CMSDimFromProb(error, delta);
-  auto s = InitByDim(ctx, user_key, dim.width, dim.depth);
-  if (!s.ok()) {
-    return s;
-  }
-
-  size_t memory_used = dim.width * dim.depth * sizeof(uint32_t);
-  const size_t max_memory = 1 * 1024 * 1024;
-
-  if (memory_used == 0) {
-    return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
-  }
-  if (memory_used > max_memory) {
-    return rocksdb::Status::InvalidArgument("Memory usage exceeds 1MB.");
-  }
-  return rocksdb::Status::OK();
+  return InitByDim(ctx, user_key, dim.width, dim.depth);
 };
 
 rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &src_keys,
@@ -165,14 +151,18 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
   }
 
   std::string dest_ns_key = AppendNamespacePrefix(user_key);
-  LockGuard guard(storage_->GetLockManager(), dest_ns_key);
+  std::vector<std::string> ns_keys{dest_ns_key};
+  for (const auto &src_key : src_keys) {
+    ns_keys.emplace_back(AppendNamespacePrefix(src_key));
+  }
+  MultiLockGuard guard(storage_->GetLockManager(), ns_keys);
 
   CountMinSketchMetadata dest_metadata{};
   rocksdb::Status dest_status = GetMetadata(ctx, dest_ns_key, &dest_metadata);
+  if (dest_status.IsNotFound()) {
+    return rocksdb::Status::InvalidArgument("Destination CMS does not exist.");
+  }
   if (!dest_status.ok()) {
-    if (dest_status.IsNotFound()) {
-      return rocksdb::Status::InvalidArgument("Destination CMS does not exist.");
-    }
     return dest_status;
   }
 
@@ -180,18 +170,15 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
 
   std::vector<CMSketch> src_cms_objects;
   src_cms_objects.reserve(num_sources);
-  std::vector<const CMSketch *> src_cms_pointers;
-  src_cms_pointers.reserve(num_sources);
   std::vector<uint32_t> weights_long;
   weights_long.reserve(num_sources);
 
   for (size_t i = 0; i < num_sources; ++i) {
-    std::string src_ns_key = AppendNamespacePrefix(src_keys[i]);
-    LockGuard guard(storage_->GetLockManager(), src_ns_key);
-
+    const auto &src_ns_key = ns_keys[i + 1];
     CountMinSketchMetadata src_metadata{};
     rocksdb::Status src_status = GetMetadata(ctx, src_ns_key, &src_metadata);
     if (!src_status.ok()) {
+      // TODO(mwish): check the not found syntax here.
       if (src_status.IsNotFound()) {
         return rocksdb::Status::InvalidArgument("Source CMS key not found.");
       }
@@ -204,11 +191,15 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
 
     CMSketch src_cms(src_metadata.width, src_metadata.depth, src_metadata.counter, src_metadata.array);
     src_cms_objects.emplace_back(std::move(src_cms));
-    src_cms_pointers.push_back(&src_cms_objects.back());
 
     weights_long.push_back(static_cast<uint32_t>(src_weights[i]));
   }
-
+  // Initialize the destination CMS with the source CMSes after initializations
+  // since vector might resize and reallocate memory.
+  std::vector<const CMSketch *> src_cms_pointers(num_sources);
+  for (size_t i = 0; i < num_sources; ++i) {
+    src_cms_pointers[i] = &src_cms_objects[i];
+  }
   auto merge_result = CMSketch::Merge(&dest_cms, num_sources, src_cms_pointers, weights_long);
   if (!merge_result.IsOK()) {
     return rocksdb::Status::InvalidArgument("Merge operation failed due to overflow or invalid dimensions.");
@@ -240,7 +231,8 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
 
   if (s.IsNotFound()) {
     return rocksdb::Status::NotFound();
-  } else if (!s.ok()) {
+  }
+  if (!s.ok()) {
     return s;
   }
 
@@ -251,6 +243,6 @@ rocksdb::Status CMS::Query(engine::Context &ctx, const Slice &user_key, const st
   }
 
   return rocksdb::Status::OK();
-};
+}
 
 }  // namespace redis

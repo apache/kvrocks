@@ -2127,6 +2127,27 @@ func TestStreamOffset(t *testing.T) {
 			Higher:    "2-2",
 			Consumers: map[string]int64{"myconsumer": 2},
 		}, r1)
+
+		// Add a second consumer and check that XPENDING still works
+		consumerName2 := "myconsumer2"
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName2,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+
+		r1, err1 = rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err1)
+
+		require.Equal(t, &redis.XPending{
+			Count:     2,
+			Lower:     "1-0",
+			Higher:    "2-2",
+			Consumers: map[string]int64{"myconsumer": 2, "myconsumer2": 0},
+		}, r1)
 	})
 }
 

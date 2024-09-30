@@ -118,9 +118,9 @@ static void InitGoogleLog(const Config *config) {
   }
 }
 
-static Status CreateCheckpoint(Config &config, const std::string &checkpoint_location) {
+static Status CreateSnapshot(Config &config, const std::string &snapshot_location) {
   // The Storage destructor deletes anything at the checkpoint_dir, so we need to make sure it's empty in case the user
-  // happens to use a checkpoint folder name which matches the default (checkpoint/)
+  // happens to use a snapshot name which matches the default (checkpoint/)
   const std::string old_checkpoint_dir = std::exchange(config.checkpoint_dir, "");
   const auto checkpoint_dir_guard =
       MakeScopeExit([&config, &old_checkpoint_dir] { config.checkpoint_dir = old_checkpoint_dir; });
@@ -130,14 +130,14 @@ static Status CreateCheckpoint(Config &config, const std::string &checkpoint_loc
     return {Status::NotOK, fmt::format("failed to open DB in read-only mode: {}", s.Msg())};
   }
 
-  rocksdb::Checkpoint *checkpoint = nullptr;
-  if (const auto s = rocksdb::Checkpoint::Create(storage.GetDB(), &checkpoint); !s.ok()) {
-    return {Status::NotOK, fmt::format("failed to create checkpoint: {}", s.ToString())};
+  rocksdb::Checkpoint *snapshot = nullptr;
+  if (const auto s = rocksdb::Checkpoint::Create(storage.GetDB(), &snapshot); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
   }
 
-  std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  if (const auto s = checkpoint->CreateCheckpoint(checkpoint_location + "/db"); !s.ok()) {
-    return {Status::NotOK, fmt::format("failed to create checkpoint: {}", s.ToString())};
+  std::unique_ptr<rocksdb::Checkpoint> snapshot_guard(snapshot);
+  if (const auto s = snapshot->CreateCheckpoint(snapshot_location + "/db"); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
   }
 
   return Status::OK();
@@ -197,15 +197,15 @@ int main(int argc, char *argv[]) {
 
   const bool use_snapshot = config.snapshot_dir != "";
   if (use_snapshot) {
-    if (const auto s = CreateCheckpoint(config, config.snapshot_dir); !s.IsOK()) {
-      LOG(ERROR) << "Failed to create checkpoint: " << s.Msg();
+    if (const auto s = CreateSnapshot(config, config.snapshot_dir); !s.IsOK()) {
+      LOG(ERROR) << "Failed to create snapshot: " << s.Msg();
       return 1;
     }
     LOG(INFO) << "Starting server in read-only mode with snapshot dir: " << config.snapshot_dir;
     config.db_dir = config.snapshot_dir + "/db";
   }
-  const auto checkpoint_exit = MakeScopeExit([use_snapshot, &config]() {
-    if (use_snapshot && !config.keep_checkpoint) {
+  const auto snapshot_exit = MakeScopeExit([use_snapshot, &config]() {
+    if (use_snapshot && !config.keep_snapshot) {
       LOG(INFO) << "Removing snapshot dir: " << config.snapshot_dir;
       std::filesystem::remove_all(config.snapshot_dir);
     }

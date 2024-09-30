@@ -50,13 +50,6 @@ class CMSketch {
 
   size_t Query(std::string_view item) const;
 
-  struct MergeParams {
-    CMSketch* dest;
-    size_t num_keys;
-    std::vector<const CMSketch*> cms_array;
-    std::vector<uint32_t> weights;
-  };
-
   static Status Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSketch*> cms_array,
                       std::vector<uint32_t> weights);
 

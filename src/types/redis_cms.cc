@@ -91,7 +91,7 @@ rocksdb::Status CMS::InitByDim(engine::Context &ctx, const Slice &user_key, uint
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   size_t memory_used = width * depth * sizeof(uint32_t);
-  const size_t max_memory = 50 * 1024 * 1024;
+  const size_t max_memory = 1 * 1024 * 1024;
 
   if (memory_used == 0) {
     return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
@@ -143,7 +143,7 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
   }
 
   size_t memory_used = dim.width * dim.depth * sizeof(uint32_t);
-  const size_t max_memory = 50 * 1024 * 1024;
+  const size_t max_memory = 1 * 1024 * 1024;
 
   if (memory_used == 0) {
     return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");

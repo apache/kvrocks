@@ -149,7 +149,7 @@ rocksdb::Status CMS::InitByProb(engine::Context &ctx, const Slice &user_key, dou
     return rocksdb::Status::InvalidArgument("Memory usage must be greater than 0.");
   }
   if (memory_used > max_memory) {
-    return rocksdb::Status::InvalidArgument("Memory usage exceeds 50MB.");
+    return rocksdb::Status::InvalidArgument("Memory usage exceeds 1MB.");
   }
   return rocksdb::Status::OK();
 };

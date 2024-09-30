@@ -182,7 +182,7 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
   src_cms_objects.reserve(num_sources);
   std::vector<const CMSketch *> src_cms_pointers;
   src_cms_pointers.reserve(num_sources);
-  std::vector<int64_t> weights_long;
+  std::vector<uint32_t> weights_long;
   weights_long.reserve(num_sources);
 
   for (size_t i = 0; i < num_sources; ++i) {
@@ -206,7 +206,7 @@ rocksdb::Status CMS::MergeUserKeys(engine::Context &ctx, const Slice &user_key, 
     src_cms_objects.emplace_back(std::move(src_cms));
     src_cms_pointers.push_back(&src_cms_objects.back());
 
-    weights_long.push_back(static_cast<long long>(src_weights[i]));
+    weights_long.push_back(static_cast<uint32_t>(src_weights[i]));
   }
 
   auto merge_result = CMSketch::Merge(&dest_cms, num_sources, src_cms_pointers, weights_long);

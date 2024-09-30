@@ -62,7 +62,7 @@ size_t CMSketch::Query(std::string_view item) const {
 }
 
 Status CMSketch::Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSketch*> cms_array,
-                       std::vector<long long> weights) {
+                       std::vector<uint32_t> weights) {
   // Perform overflow check
   if (CMSketch::CheckOverflow(dest, num_keys, cms_array, weights) != 0) {
     return {Status::NotOK, "Overflow error."};
@@ -90,7 +90,7 @@ Status CMSketch::Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSket
 }
 
 int CMSketch::CheckOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
-                            const std::vector<long long>& weights) {
+                            const std::vector<uint32_t>& weights) {
   int64_t item_count = 0;
   int64_t cms_count = 0;
   size_t width = dest->GetWidth();

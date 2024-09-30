@@ -54,11 +54,11 @@ class CMSketch {
     CMSketch* dest;
     size_t num_keys;
     std::vector<const CMSketch*> cms_array;
-    std::vector<long long> weights;
+    std::vector<uint32_t> weights;
   };
 
   static Status Merge(CMSketch* dest, size_t num_keys, std::vector<const CMSketch*> cms_array,
-                      std::vector<long long> weights);
+                      std::vector<uint32_t> weights);
 
   size_t GetLocationForHash(uint64_t hash, size_t i) const { return (hash % width_) + (i * width_); }
 
@@ -72,7 +72,7 @@ class CMSketch {
   uint32_t GetDepth() const { return depth_; }
 
   static int CheckOverflow(CMSketch* dest, size_t quantity, const std::vector<const CMSketch*>& src,
-                           const std::vector<long long>& weights);
+                           const std::vector<uint32_t>& weights);
 
  private:
   uint32_t width_;

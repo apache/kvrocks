@@ -896,7 +896,7 @@ class CommandXPending : public Commander {
 
   static Status SendResults([[maybe_unused]] Connection *conn, std::string *output,
                             StreamGetPendingEntryResult &results) {
-    output->append(redis::MultiLen(3 + results.consumer_infos.size()));
+    output->append(redis::MultiLen(4));
     output->append(redis::Integer(results.pending_number));
     output->append(redis::BulkString(results.first_entry_id.ToString()));
     output->append(redis::BulkString(results.last_entry_id.ToString()));

@@ -92,7 +92,8 @@ struct HnswIndex {
   std::mt19937 generator;
   double m_level_normalization_factor;
 
-  HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage);
+  HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,
+            std::random_device::result_type seed = std::random_device()());
 
   static StatusOr<std::vector<VectorItem>> DecodeNodesToVectorItems(engine::Context& ctx,
                                                                     const std::vector<NodeKey>& node_key,

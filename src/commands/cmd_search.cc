@@ -34,6 +34,7 @@
 #include "search/sql_transformer.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "status.h"
 #include "string_util.h"
 #include "tao/pegtl/string_input.hpp"
 
@@ -480,6 +481,22 @@ class CommandFTDrop : public Commander {
   };
 };
 
+class CommandFTTagVals : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &index_name = args_[1];
+    const auto &tag_name = args_[2];
+    engine::Context ctx(srv->storage);
+    std::unordered_set<std::string> ret{};
+    GET_OR_RET(srv->index_mgr.FieldValues(ctx, index_name, tag_name, conn->GetNamespace(), &ret));
+
+    std::vector<std::string> result_vec(ret.begin(), ret.end());
+
+    *output = conn->SetOfBulkStrings(result_vec);
+
+    return Status::OK();
+  };
+};
+
 REDIS_REGISTER_COMMANDS(Search,
                         MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", -2, "read-only", 0, 0, 0),
@@ -488,6 +505,7 @@ REDIS_REGISTER_COMMANDS(Search,
                         MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));
+                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandFTTagVals>("ft.tagvals", 3, "read-only", 0, 0, 0));
 
 }  // namespace redis

@@ -29,6 +29,7 @@
 #include "search/passes/manager.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
+#include "search/value.h"
 #include "status.h"
 #include "storage/storage.h"
 #include "string_util.h"
@@ -272,6 +273,62 @@ struct IndexManager {
 
     return Status::OK();
   }
-};
 
+  Status FieldValues(engine::Context &ctx, std::string_view index_name, std::string_view input_tag,
+                     const std::string &ns, std::unordered_set<std::string> *ret) {
+    auto iter = index_map.Find(index_name, ns);
+    if (iter == index_map.end()) {
+      return Status::NotOK;
+    }
+    const auto &info = iter->second;
+
+    std::unordered_set<std::string> matching_values;
+    std::string input_tag_str(input_tag);
+
+    auto it = info->fields.find(input_tag_str);
+    if (it == info->fields.end()) {
+      return Status::OK();
+    }
+    const auto &[field_name, field_info] = *it;
+
+    if (!field_info.metadata || field_info.metadata->type != IndexFieldType::TAG) {
+      return Status::OK();
+    }
+
+    util::UniqueIterator col_iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
+
+    for (const auto &prefix : info->prefixes) {
+      auto ns_key = ComposeNamespaceKey(info->ns, prefix, storage->IsSlotIdEncoded());
+
+      for (col_iter->Seek(ns_key); col_iter->Valid(); col_iter->Next()) {
+        if (!col_iter->key().starts_with(ns_key)) {
+          break;
+        }
+
+        auto [_, key] = ExtractNamespaceKey(col_iter->key(), storage->IsSlotIdEncoded());
+
+        auto retriever =
+            FieldValueRetriever::Create(info->metadata.on_data_type, key.ToStringView(), indexer->storage, ns);
+        if (!retriever.IsOK()) {
+          continue;
+        }
+
+        auto result = retriever->Retrieve(ctx, field_name, field_info.metadata.get());
+        if (!result.IsOK()) {
+          continue;
+        }
+
+        const auto &value = *result;
+
+        if (value.Is<kqir::StringArray>()) {
+          matching_values.insert(value.Get<kqir::StringArray>().begin(), value.Get<kqir::StringArray>().end());
+        } else {
+          matching_values.insert(value.ToString());
+        }
+      }
+    }
+    *ret = std::move(matching_values);
+    return Status::OK();
+  }
+};
 }  // namespace redis

@@ -484,10 +484,10 @@ class CommandFTDrop : public Commander {
 class CommandFTTagVals : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     const auto &index_name = args_[1];
-    const auto &tag_name = args_[2];
+    const auto &tag_field_name = args_[2];
     engine::Context ctx(srv->storage);
     std::unordered_set<std::string> ret{};
-    GET_OR_RET(srv->index_mgr.FieldValues(ctx, index_name, tag_name, conn->GetNamespace(), &ret));
+    GET_OR_RET(srv->index_mgr.FieldValues(ctx, index_name, tag_field_name, conn->GetNamespace(), &ret));
 
     std::vector<std::string> result_vec(ret.begin(), ret.end());
 

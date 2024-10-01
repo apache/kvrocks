@@ -303,6 +303,8 @@ struct IndexManager {
     index_key.PutIndex(&field_prefix);
     PutSizedString(&field_prefix, field_name);
 
+    std::string last_tag;
+
     for (index_iter->Seek(field_prefix); index_iter->Valid(); index_iter->Next()) {
       auto key = index_iter->key();
 
@@ -313,10 +315,17 @@ struct IndexManager {
       Slice key_slice = key;
       key_slice.remove_prefix(field_prefix.size());
 
-      Slice field_value_slice;
-      if (!GetSizedString(&key_slice, &field_value_slice)) continue;
+      Slice tag_slice;
+      if (!GetSizedString(&key_slice, &tag_slice)) continue;
 
-      matching_values.insert(field_value_slice.ToString());
+      std::string current_tag = tag_slice.ToString();
+
+      if (current_tag == last_tag) {
+        continue;
+      }
+
+      last_tag = current_tag;
+      matching_values.insert(std::move(current_tag));
     }
 
     if (auto s = index_iter->status(); !s.ok()) {

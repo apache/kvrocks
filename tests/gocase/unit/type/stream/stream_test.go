@@ -2056,9 +2056,11 @@ func TestStreamOffset(t *testing.T) {
 	t.Run("XPending with different kinds of commands", func(t *testing.T) {
 		streamName := "mystream"
 		groupName := "mygroup"
+
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
 		require.NoError(t, err)
+
 		require.Equal(t, int64(0), r)
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
 			Stream: streamName,
@@ -2066,6 +2068,7 @@ func TestStreamOffset(t *testing.T) {
 			Values: []string{"field1", "data1"},
 		}).Err())
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
 		consumerName := "myconsumer"
 		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
@@ -2083,7 +2086,7 @@ func TestStreamOffset(t *testing.T) {
 			Count:     1,
 			Lower:     "1-0",
 			Higher:    "1-0",
-			Consumers: map[string]int64{"myconsumer": 1},
+			Consumers: map[string]int64{consumerName: 1},
 		}, r1)
 
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
@@ -2113,7 +2116,7 @@ func TestStreamOffset(t *testing.T) {
 			Count:     3,
 			Lower:     "1-0",
 			Higher:    "2-2",
-			Consumers: map[string]int64{"myconsumer": 3},
+			Consumers: map[string]int64{consumerName: 3},
 		}, r1)
 
 		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "2-0").Err())
@@ -2125,10 +2128,16 @@ func TestStreamOffset(t *testing.T) {
 			Count:     2,
 			Lower:     "1-0",
 			Higher:    "2-2",
-			Consumers: map[string]int64{"myconsumer": 2},
+			Consumers: map[string]int64{consumerName: 2},
 		}, r1)
 
 		// Add a second consumer and check that XPENDING still works
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "3-0",
+			Values: []string{"field1", "data1"},
+		}).Err())
+
 		consumerName2 := "myconsumer2"
 		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
@@ -2143,10 +2152,10 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err1)
 
 		require.Equal(t, &redis.XPending{
-			Count:     2,
+			Count:     3,
 			Lower:     "1-0",
-			Higher:    "2-2",
-			Consumers: map[string]int64{"myconsumer": 2, "myconsumer2": 0},
+			Higher:    "3-0",
+			Consumers: map[string]int64{consumerName: 2, consumerName2: 1},
 		}, r1)
 	})
 }

@@ -2060,8 +2060,8 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
 		require.NoError(t, err)
-
 		require.Equal(t, int64(0), r)
+
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
 			Stream: streamName,
 			ID:     "1-0",
@@ -2157,6 +2157,48 @@ func TestStreamOffset(t *testing.T) {
 			Higher:    "3-0",
 			Consumers: map[string]int64{consumerName: 2, consumerName2: 1},
 		}, r1)
+	})
+
+	t.Run("XPENDING on a consumer group with no pending messages", func(t *testing.T) {
+		streamName := "stream"
+		groupName := "group"
+		consumerName := "consumer"
+		messageID := "1-0"
+		
+		// Remove any existing data
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.Equal(t, int64(0), r)
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     messageID,
+			Values: []string{"key", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		// Have the consumer claim the message with ID [messageID]
+		err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Err()
+		require.NoError(t, err)
+
+		// Acknowledge the message, so no messages remain pending
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, messageID).Err())
+
+		// Check that XPENDING sets the min and max to nil, matching Redis' behavior
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, &redis.XPending{
+			Count: 0,
+			Lower: "",
+			Higher: "",
+			Consumers: map[string]int64{},
+		}, pending)
 	})
 }
 

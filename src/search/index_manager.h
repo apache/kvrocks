@@ -278,55 +278,51 @@ struct IndexManager {
                      const std::string &ns, std::unordered_set<std::string> *ret) {
     auto iter = index_map.Find(index_name, ns);
     if (iter == index_map.end()) {
-      return Status::NotOK;
+      return {Status::NotOK, fmt::format("Index '{}' not found in namespace '{}'", index_name, ns)};
     }
     const auto &info = iter->second;
 
-    std::unordered_set<std::string> matching_values;
     std::string input_tag_str(input_tag);
-
-    auto it = info->fields.find(input_tag_str);
-    if (it == info->fields.end()) {
+    auto field_it = info->fields.find(input_tag_str);
+    if (field_it == info->fields.end()) {
       return Status::OK();
     }
-    const auto &[field_name, field_info] = *it;
+    const auto &[field_name, field_info] = *field_it;
 
     if (!field_info.metadata || field_info.metadata->type != IndexFieldType::TAG) {
       return Status::OK();
     }
 
-    util::UniqueIterator col_iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
+    std::unordered_set<std::string> matching_values;
+    util::UniqueIterator index_iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
 
-    for (const auto &prefix : info->prefixes) {
-      auto ns_key = ComposeNamespaceKey(info->ns, prefix, storage->IsSlotIdEncoded());
+    auto index_key = SearchKey(ns, index_name, field_name);
+    std::string field_prefix;
+    index_key.PutNamespace(&field_prefix);
+    SearchKey::PutType(&field_prefix, SearchSubkeyType::FIELD);
+    index_key.PutIndex(&field_prefix);
+    PutSizedString(&field_prefix, field_name);
 
-      for (col_iter->Seek(ns_key); col_iter->Valid(); col_iter->Next()) {
-        if (!col_iter->key().starts_with(ns_key)) {
-          break;
-        }
+    for (index_iter->Seek(field_prefix); index_iter->Valid(); index_iter->Next()) {
+      auto key = index_iter->key();
 
-        auto [_, key] = ExtractNamespaceKey(col_iter->key(), storage->IsSlotIdEncoded());
-
-        auto retriever =
-            FieldValueRetriever::Create(info->metadata.on_data_type, key.ToStringView(), indexer->storage, ns);
-        if (!retriever.IsOK()) {
-          continue;
-        }
-
-        auto result = retriever->Retrieve(ctx, field_name, field_info.metadata.get());
-        if (!result.IsOK()) {
-          continue;
-        }
-
-        const auto &value = *result;
-
-        if (value.Is<kqir::StringArray>()) {
-          matching_values.insert(value.Get<kqir::StringArray>().begin(), value.Get<kqir::StringArray>().end());
-        } else {
-          matching_values.insert(value.ToString());
-        }
+      if (!key.starts_with(field_prefix)) {
+        break;
       }
+
+      Slice key_slice = key;
+      key_slice.remove_prefix(field_prefix.size());
+
+      Slice field_value_slice;
+      if (!GetSizedString(&key_slice, &field_value_slice)) continue;
+
+      matching_values.insert(field_value_slice.ToString());
     }
+
+    if (auto s = index_iter->status(); !s.ok()) {
+      return {Status::NotOK, fmt::format("Failed to iterate over index data: {}", s.ToString())};
+    }
+
     *ret = std::move(matching_values);
     return Status::OK();
   }

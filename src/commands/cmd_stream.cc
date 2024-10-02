@@ -31,7 +31,6 @@
 #include "status.h"
 #include "time_util.h"
 #include "types/redis_stream.h"
-#include "types/redis_string.h"
 
 namespace redis {
 

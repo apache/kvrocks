@@ -274,8 +274,8 @@ struct IndexManager {
     return Status::OK();
   }
 
-  Status FieldValues(engine::Context &ctx, std::string_view index_name, std::string_view input_tag,
-                     const std::string &ns, std::unordered_set<std::string> *ret) {
+  StatusOr<std::unordered_set<std::string>> FieldValues(engine::Context &ctx, std::string_view index_name,
+                                                        std::string_view input_tag, const std::string &ns) {
     auto iter = index_map.Find(index_name, ns);
     if (iter == index_map.end()) {
       return {Status::NotOK, fmt::format("Index '{}' not found in namespace '{}'", index_name, ns)};
@@ -332,8 +332,7 @@ struct IndexManager {
       return {Status::NotOK, fmt::format("Failed to iterate over index data: {}", s.ToString())};
     }
 
-    *ret = std::move(matching_values);
-    return Status::OK();
+    return matching_values;
   }
 };
 }  // namespace redis

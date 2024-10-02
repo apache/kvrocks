@@ -43,6 +43,8 @@ func SetBinaryBuffer(buf *bytes.Buffer, vec []float64) error {
 }
 
 func TestSearch(t *testing.T) {
+	t.Skip("search commands is disabled")
+
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 

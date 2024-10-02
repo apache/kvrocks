@@ -480,14 +480,14 @@ class CommandFTDrop : public Commander {
   };
 };
 
-REDIS_REGISTER_COMMANDS(Search,
-                        MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", -2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));
+// REDIS_REGISTER_COMMANDS(Search,
+//                        MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", -2, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
+//                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));
 
 }  // namespace redis

@@ -275,15 +275,15 @@ struct IndexManager {
   }
 
   StatusOr<std::unordered_set<std::string>> FieldValues(engine::Context &ctx, std::string_view index_name,
-                                                        std::string_view input_tag, const std::string &ns) {
+                                                        std::string_view tag_field_name, const std::string &ns) {
     auto iter = index_map.Find(index_name, ns);
     if (iter == index_map.end()) {
       return {Status::NotOK, fmt::format("Index '{}' not found in namespace '{}'", index_name, ns)};
     }
     const auto &info = iter->second;
 
-    std::string input_tag_str(input_tag);
-    auto field_it = info->fields.find(input_tag_str);
+    std::string tag_field_name_str(tag_field_name);
+    auto field_it = info->fields.find(tag_field_name_str);
     if (field_it == info->fields.end()) {
       return Status::OK();
     }

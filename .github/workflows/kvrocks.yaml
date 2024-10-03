@@ -540,6 +540,8 @@ jobs:
         run: apt install -y python3-redis
 
       - name: Run kvrocks2redis Test
+        # FIXME: https://github.com/apache/kvrocks/issues/2574
+        if: ${{ !startsWith(matrix.image, 'archlinux') }}
         shell: bash
         run: |
           $HOME/local/bin/redis-server --daemonize yes

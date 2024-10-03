@@ -505,6 +505,6 @@ REDIS_REGISTER_COMMANDS(Search,
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0),
-                        MakeCmdAttr<CommandFTTagVals>("ft.tagvals", 3, "read-only", 0, 0, 0));
+                        MakeCmdAttr<CommandFTTagVals>("ft.tagvals", 3, "read-only slow", 0, 0, 0));
 
 }  // namespace redis

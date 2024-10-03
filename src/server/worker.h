@@ -24,6 +24,7 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/util.h>
+#include <oneapi/tbb/concurrent_hash_map.h>
 
 #include <cstdint>
 #include <cstring>
@@ -75,22 +76,28 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void TimerCB(int, int16_t events);
 
   lua_State *Lua() { return lua_; }
-  std::map<int, redis::Connection *> GetConnections() const { return conns_; }
+  std::map<int, redis::Connection *> GetConnections() const;
   Server *srv;
 
  private:
+  using ConnMap = tbb::concurrent_hash_map<int, redis::Connection *>;
+
   Status listenTCP(const std::string &host, uint32_t port, int backlog);
   void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   redis::Connection *removeConnection(int fd);
+  std::vector<int> getConnFds() const;
 
   event_base *base_;
   UniqueEvent timer_;
   std::thread::id tid_;
   std::vector<evconnlistener *> listen_events_;
-  std::mutex conns_mu_;
-  std::map<int, redis::Connection *> conns_;
-  std::map<int, redis::Connection *> monitor_conns_;
+
+  // must use tbb::parallel_for or tbb::parallel_reduce to traverse
+  // refer:
+  // https://github.com/oneapi-src/oneTBB/blob/v2021.13.0/include/oneapi/tbb/concurrent_hash_map.h#L1033-L1051
+  ConnMap conns_;
+  ConnMap monitor_conns_;
   int last_iter_conn_fd_ = 0;  // fd of last processed connection in previous cron
 
   struct bufferevent_rate_limit_group *rate_limit_group_ = nullptr;

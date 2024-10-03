@@ -461,6 +461,6 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only", 1, 1, 1), )
+                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1), )
 
 }  // namespace redis

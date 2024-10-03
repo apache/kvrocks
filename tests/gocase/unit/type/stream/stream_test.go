@@ -2164,10 +2164,11 @@ func TestStreamOffset(t *testing.T) {
 		groupName := "group"
 		consumerName := "consumer"
 		messageID := "1-0"
-		
+
 		// Remove any existing data
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		r, err := rdb.XAck(ctx, streamName, groupName, "0-0").Result()
+		require.NoError(t, err)
 		require.Equal(t, int64(0), r)
 
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
@@ -2194,9 +2195,9 @@ func TestStreamOffset(t *testing.T) {
 		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
 		require.NoError(t, err)
 		require.Equal(t, &redis.XPending{
-			Count: 0,
-			Lower: "",
-			Higher: "",
+			Count:     0,
+			Lower:     "",
+			Higher:    "",
 			Consumers: map[string]int64{},
 		}, pending)
 	})

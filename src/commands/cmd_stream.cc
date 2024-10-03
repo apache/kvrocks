@@ -1537,7 +1537,12 @@ class CommandXReadGroup : public Commander,
 
     if (block_ && results.empty()) {
       if (conn->IsInExec()) {
-        *output = redis::MultiLen(-1);
+        output->append(redis::MultiLen(streams_.size()));
+        for (const auto &stream_name : streams_) {
+          output->append(redis::MultiLen(2));
+          output->append(redis::BulkString(stream_name));
+          output->append(redis::MultiLen(0));
+        }
         return Status::OK();  // No blocking in multi-exec
       }
 
@@ -1545,7 +1550,12 @@ class CommandXReadGroup : public Commander,
     }
 
     if (!block_ && results.empty()) {
-      *output = redis::MultiLen(-1);
+      output->append(redis::MultiLen(streams_.size()));
+      for (const auto &stream_name : streams_) {
+        output->append(redis::MultiLen(2));
+        output->append(redis::BulkString(stream_name));
+        output->append(redis::MultiLen(0));
+      }
       return Status::OK();
     }
 

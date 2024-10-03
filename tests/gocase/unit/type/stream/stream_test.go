@@ -1016,6 +1016,36 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, int64(0), ri[0].Pending)
 	})
 
+	t.Run("XREADGROUP with empty streams returns empty arrays", func(t *testing.T) {
+		streamName := "test-stream-empty1"
+		streamName2 := "test-stream-empty2"
+		groupName := "test-group-empty"
+		consumerName := "test-consumer-empty"
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName2, groupName, "0").Err())
+
+		res, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, streamName2, "0", "0"},
+		}).Result()
+		require.NoError(t, err)
+
+		expectedRes := []redis.XStream{
+			{
+				Stream:   streamName,
+				Messages: []redis.XMessage{},
+			},
+			{
+				Stream:   streamName2,
+				Messages: []redis.XMessage{},
+			},
+		}
+
+		require.Equal(t, expectedRes, res)
+	})
+
 	t.Run("XGROUP SETID with different kinds of commands", func(t *testing.T) {
 		streamName := "test-stream"
 		groupName := "test-group"

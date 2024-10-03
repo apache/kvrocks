@@ -1331,7 +1331,7 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", 0, 0, 0),
                         MakeCmdAttr<CommandConfig>("config", -2, "read-only", 0, 0, 0, GenerateConfigFlag),
                         MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandKeys>("keys", 2, "read-only", 0, 0, 0),
+                        MakeCmdAttr<CommandKeys>("keys", 2, "read-only slow", 0, 0, 0),
                         MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check", 0, 0, 0),
                         MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check", 0, 0, 0),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", 0, 0, 0),

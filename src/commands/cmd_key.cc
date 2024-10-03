@@ -572,7 +572,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only", 1, 1, 1))
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
 
 }  // namespace redis

@@ -285,12 +285,12 @@ struct IndexManager {
     std::string tag_field_name_str(tag_field_name);
     auto field_it = info->fields.find(tag_field_name_str);
     if (field_it == info->fields.end()) {
-      return Status::OK();
+      return std::unordered_set<std::string>{};
     }
     const auto &[field_name, field_info] = *field_it;
 
     if (!field_info.metadata || field_info.metadata->type != IndexFieldType::TAG) {
-      return Status::OK();
+      return std::unordered_set<std::string>{};
     }
 
     std::unordered_set<std::string> matching_values;

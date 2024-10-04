@@ -216,6 +216,15 @@ struct SearchKey {
     return dst;
   }
 
+  std::string ConstructAliasKey(std::string_view alias_name) const {
+    std::string dst;
+    PutNamespace(&dst);
+    PutType(&dst, SearchSubkeyType::FIELD_ALIAS);
+    PutIndex(&dst);
+    PutSizedString(&dst, alias_name);
+    return dst;
+  }
+
   std::string ConstructHnswLevelNodePrefix(uint16_t level) const {
     std::string dst;
     PutHnswLevelNodePrefix(&dst, level);

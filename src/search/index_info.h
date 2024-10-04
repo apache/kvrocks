@@ -58,6 +58,7 @@ struct IndexInfo {
   FieldMap fields;
   redis::IndexPrefixes prefixes;
   std::string ns;
+  std::vector<std::string> aliases;
 
   IndexInfo(std::string name, redis::IndexMetadata metadata, std::string ns)
       : name(std::move(name)), metadata(std::move(metadata)), ns(std::move(ns)) {}

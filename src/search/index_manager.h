@@ -91,6 +91,35 @@ struct IndexManager {
       auto info = std::make_unique<kqir::IndexInfo>(index_name.ToString(), metadata, ns);
       info->prefixes = prefixes;
 
+      auto alias_iter = util::UniqueIterator(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
+      auto alias_prefix = index_key.ConstructAliasKey("");
+
+      for (alias_iter->Seek(alias_prefix); alias_iter->Valid(); alias_iter->Next()) {
+        auto key = alias_iter->key();
+
+        uint8_t ns_size = 0;
+        if (!GetFixed8(&key, &ns_size)) break;
+        if (ns_size != ns.size()) break;
+        if (!key.starts_with(ns)) break;
+        key.remove_prefix(ns_size);
+
+        uint8_t subkey_type = 0;
+        if (!GetFixed8(&key, &subkey_type)) break;
+        if (subkey_type != (uint8_t)SearchSubkeyType::FIELD_ALIAS) break;
+
+        Slice alias_name_slice;
+        if (!GetSizedString(&key, &alias_name_slice)) break;
+
+        Slice index_name_slice;
+        if (!GetSizedString(&key, &index_name_slice)) break;
+
+        info->aliases.emplace_back(alias_name_slice.ToStringView());
+      }
+
+      if (auto s = alias_iter->status(); !s.ok()) {
+        return {Status::NotOK, fmt::format("fail to load aliases: {}", s.ToString())};
+      }
+
       util::UniqueIterator field_iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
       auto field_begin = index_key.ConstructFieldMeta();
 
@@ -226,19 +255,28 @@ struct IndexManager {
     return results;
   }
 
-  Status Drop(std::string_view index_name, const std::string &ns) {
+  Status Drop(engine::Context &ctx, std::string_view index_name, const std::string &ns) {
     auto iter = index_map.Find(index_name, ns);
     if (iter == index_map.end()) {
       return {Status::NotOK, "index not found"};
     }
 
     auto info = iter->second.get();
-    indexer->Remove(info);
 
     SearchKey index_key(info->ns, info->name);
     auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
 
     auto batch = storage->GetWriteBatchBase();
+
+    std::vector<std::string> aliases_copy = info->aliases;
+
+    for (const auto &alias_name : aliases_copy) {
+      auto s = DelAlias(ctx, alias_name, ns);
+      if (!s.IsOK()) {
+        return Status::NotOK;
+      }
+    }
+    indexer->Remove(info);
 
     auto s = batch->Delete(cf, index_key.ConstructIndexMeta());
     if (!s.ok()) {
@@ -269,6 +307,137 @@ struct IndexManager {
     }
 
     index_map.erase(iter);
+
+    return Status::OK();
+  }
+
+  Status AddAlias(engine::Context &ctx, std::string_view alias_name, std::string_view index_name,
+                  const std::string &ns) {
+    auto iter = index_map.Find(index_name, ns);
+    if (iter == index_map.end()) {
+      return {Status::NotOK, "Target index not found"};
+    }
+
+    auto info = iter->second.get();
+
+    // Checks if the alias already exists in the index
+    auto it = std::find(info->aliases.begin(), info->aliases.end(), alias_name);
+    if (it != info->aliases.end()) {
+      return {Status::NotOK, fmt::format("Alias already exists inside index")};
+    }
+
+    auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
+    auto batch = storage->GetWriteBatchBase();
+    SearchKey alias_key(ns, "");
+
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+
+    std::string retrieve_index;
+    auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(), cf, alias_key.ConstructAliasKey(alias_name),
+                          &retrieve_index);
+    if (s.ok()) {
+      return {Status::NotOK, fmt::format("Alias already exists")};
+    }
+
+    s = batch->Put(cf, alias_key.ConstructAliasKey(alias_name), std::string(index_name));
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+
+    s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("Failed to add alias metadata: {}", s.ToString())};
+    }
+
+    info->aliases.emplace_back(alias_name);
+
+    return Status::OK();
+  }
+
+  Status DelAlias(engine::Context &ctx, std::string_view alias_name, const std::string &ns) {
+    auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
+    auto batch = storage->GetWriteBatchBase();
+
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+
+    std::string retrieve_index;
+    SearchKey alias_key(ns, "");
+
+    auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(), cf, alias_key.ConstructAliasKey(alias_name),
+                          &retrieve_index);
+    if (!s.ok() || retrieve_index == "") {
+      return {Status::NotOK, fmt::format("Alias does not exist")};
+    }
+    LOG(INFO) << retrieve_index;
+
+    s = batch->Delete(cf, alias_key.ConstructAliasKey(alias_name));
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+
+    s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("Failed to delete alias metadata: {}", s.ToString())};
+    }
+
+    auto iter = index_map.Find(retrieve_index, ns);
+    if (iter == index_map.end()) {
+      return {Status::NotOK, "index not found"};
+    }
+
+    auto info = iter->second.get();
+
+    auto it = std::find(info->aliases.begin(), info->aliases.end(), alias_name);
+    if (it == info->aliases.end()) {
+      return Status::NotOK;
+    }
+    info->aliases.erase(it);
+
+    return Status::OK();
+  }
+
+  Status UpdateAlias(engine::Context &ctx, std::string_view alias_name, std::string_view index_name,
+                     const std::string &ns) {
+    auto iter = index_map.Find(index_name, ns);
+    if (iter == index_map.end()) {
+      return {Status::NotOK, "index not found"};
+    }
+    auto info = iter->second.get();
+    auto it = std::find(info->aliases.begin(), info->aliases.end(), alias_name);
+    if (it != info->aliases.end()) {
+      return {Status::NotOK, fmt::format("Alias already in index.")};
+    }
+
+    auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
+    auto batch = storage->GetWriteBatchBase();
+
+    SearchKey alias_key(ns, "");
+
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+
+    std::string retrieve_index;
+    auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(), cf, alias_key.ConstructAliasKey(alias_name),
+                          &retrieve_index);
+    if (s.ok()) {
+      auto s = DelAlias(ctx, alias_name, ns);
+      if (!s.IsOK()) {
+        return Status::NotOK;
+      }
+    }
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("Alias does not exist")};
+    }
+
+    s = batch->Put(cf, alias_key.ConstructAliasKey(alias_name), std::string(index_name));
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+
+    s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("Failed to update alias metadata: {}", s.ToString())};
+    }
+    info->aliases.emplace_back(alias_name);
 
     return Status::OK();
   }

@@ -156,6 +156,66 @@ func TestSearch(t *testing.T) {
 		verify(t, res)
 	})
 
+	t.Run("FT.ALIASADD", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.ALIASADD", "alias1", "testidx1").Err())
+
+		// Add again
+		res := rdb.Do(ctx, "FT.ALIASADD", "alias1", "testidx1")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias already exists inside index")
+
+		// Add to non-existent index
+		res = rdb.Do(ctx, "FT.ALIASADD", "alias1", "non_existent_index")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Target index not found")
+	})
+
+	t.Run("FT.ALIASDEL", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.ALIASDEL", "alias1").Err())
+
+		// Attempt to delete deleted alias again
+		res := rdb.Do(ctx, "FT.ALIASDEL", "alias1")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias does not exist")
+
+		// Delete non-existent alias
+		res = rdb.Do(ctx, "FT.ALIASDEL", "alias_nonexistent")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias does not exist")
+	})
+
+	t.Run("FT.ALIASUPDATE", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx3", "SCHEMA", "x", "NUMERIC").Err())
+
+		require.NoError(t, rdb.Do(ctx, "FT.ALIASADD", "alias4", "testidx1").Err())
+
+		// Update testidx2 to contain alias4
+		require.NoError(t, rdb.Do(ctx, "FT.ALIASUPDATE", "alias4", "testidx3").Err())
+
+		// Check if updated properly
+		res := rdb.Do(ctx, "FT.ALIASADD", "alias4", "testidx1")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias already exists")
+
+		res = rdb.Do(ctx, "FT.ALIASADD", "alias4", "testidx3")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias already exists inside index")
+
+		// Updating non existent alias
+		res = rdb.Do(ctx, "FT.ALIASUPDATE", "alias_nonexistent", "testidx1")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias does not exist")
+
+		// Check dropindex functionality
+		require.NoError(t, rdb.Do(ctx, "FT.ALIASADD", "alias_drop1", "testidx3").Err())
+
+		require.NoError(t, rdb.Do(ctx, "FT.DROPINDEX", "testidx3").Err())
+
+		res = rdb.Do(ctx, "FT.ALIASDEL", "alias_drop1")
+		require.Error(t, res.Err())
+		require.Contains(t, res.Err().Error(), "Alias does not exist")
+	})
+
 	t.Run("FT.DROPINDEX", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "FT.DROPINDEX", "testidx1").Err())
 

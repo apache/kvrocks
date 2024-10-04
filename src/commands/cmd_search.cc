@@ -471,8 +471,49 @@ class CommandFTList : public Commander {
 class CommandFTDrop : public Commander {
   Status Execute(Server *srv, Connection *conn, std::string *output) override {
     const auto &index_name = args_[1];
+    engine::Context ctx(srv->storage);
 
-    GET_OR_RET(srv->index_mgr.Drop(index_name, conn->GetNamespace()));
+    GET_OR_RET(srv->index_mgr.Drop(ctx, index_name, conn->GetNamespace()));
+
+    output->append(SimpleString("OK"));
+
+    return Status::OK();
+  };
+};
+
+class CommandFTAliasAdd : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &alias_name = args_[1];
+    const auto &index_name = args_[2];
+    engine::Context ctx(srv->storage);
+
+    GET_OR_RET(srv->index_mgr.AddAlias(ctx, alias_name, index_name, conn->GetNamespace()));
+    output->append(SimpleString("OK"));
+
+    return Status::OK();
+  };
+};
+
+class CommandFTAliasDel : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &alias_name = args_[1];
+    engine::Context ctx(srv->storage);
+
+    GET_OR_RET(srv->index_mgr.DelAlias(ctx, alias_name, conn->GetNamespace()));
+
+    output->append(SimpleString("OK"));
+
+    return Status::OK();
+  };
+};
+
+class CommandFTAliasUpdate : public Commander {
+  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+    const auto &alias_name = args_[1];
+    const auto &index_name = args_[2];
+    engine::Context ctx(srv->storage);
+
+    GET_OR_RET(srv->index_mgr.UpdateAlias(ctx, alias_name, index_name, conn->GetNamespace()));
 
     output->append(SimpleString("OK"));
 
@@ -488,6 +529,9 @@ REDIS_REGISTER_COMMANDS(Search,
                         MakeCmdAttr<CommandFTExplain>("ft.explain", -3, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTInfo>("ft.info", 2, "read-only", 0, 0, 0),
                         MakeCmdAttr<CommandFTList>("ft._list", 1, "read-only", 0, 0, 0),
-                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0));
+                        MakeCmdAttr<CommandFTDrop>("ft.dropindex", 2, "write exclusive no-multi no-script", 0, 0, 0),
+                        MakeCmdAttr<CommandFTAliasAdd>("ft.aliasadd", 3, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandFTAliasDel>("ft.aliasdel", 2, "write", 0, 0, 0),
+                        MakeCmdAttr<CommandFTAliasUpdate>("ft.aliasupdate", 3, "write", 0, 0, 0));
 
 }  // namespace redis

@@ -1340,7 +1340,8 @@ rocksdb::Status Stream::GetGroupInfo(engine::Context &ctx, const Slice &stream_n
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  std::string subkey_type_delimiter = std::to_string(UINT64_MAX);
+  std::string subkey_type_delimiter;
+  PutFixed64(&subkey_type_delimiter, UINT64_MAX);
   PutFixed8(&subkey_type_delimiter, (uint8_t)StreamSubkeyType::StreamConsumerGroupMetadata);
   std::string next_version_prefix_key =
       InternalKey(ns_key, subkey_type_delimiter, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
@@ -1355,6 +1356,10 @@ rocksdb::Status Stream::GetGroupInfo(engine::Context &ctx, const Slice &stream_n
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamConsumerGroupMetadata) {
+      continue;
+    }
+
     std::string group_name = groupNameFromInternalKey(iter->key());
     StreamConsumerGroupMetadata cg_metadata = decodeStreamConsumerGroupMetadataValue(iter->value().ToString());
     CheckLagValid(metadata, cg_metadata);
@@ -1390,6 +1395,10 @@ rocksdb::Status Stream::GetConsumerInfo(
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamConsumerMetadata) {
+      continue;
+    }
+
     std::string consumer_name = consumerNameFromInternalKey(iter->key());
     StreamConsumerMetadata c_metadata = decodeStreamConsumerMetadataValue(iter->value().ToString());
     std::pair<std::string, StreamConsumerMetadata> tmp_item(consumer_name, c_metadata);

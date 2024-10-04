@@ -117,14 +117,6 @@ struct TimeSeriesKey {
 
   void PutKey(std::string *dst) const { PutSizedString(dst, key); }
 
-  std::string ConstructMetadataKey() const {
-    std::string dst;
-    PutNamespace(&dst);
-    PutType(&dst);
-    PutKey(&dst);
-    return dst;
-  }
-
   std::string ConstructDataPointKey() const {
     std::string dst;
     PutNamespace(&dst);

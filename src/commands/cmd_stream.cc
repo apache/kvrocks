@@ -896,15 +896,27 @@ class CommandXPending : public Commander {
 
   static Status SendResults([[maybe_unused]] Connection *conn, std::string *output,
                             StreamGetPendingEntryResult &results) {
-    output->append(redis::MultiLen(3 + results.consumer_infos.size()));
-    output->append(redis::Integer(results.pending_number));
-    output->append(redis::BulkString(results.first_entry_id.ToString()));
-    output->append(redis::BulkString(results.last_entry_id.ToString()));
-    output->append(redis::MultiLen(results.consumer_infos.size()));
-    for (const auto &entry : results.consumer_infos) {
-      output->append(redis::MultiLen(2));
-      output->append(redis::BulkString(entry.first));
-      output->append(redis::BulkString(std::to_string(entry.second)));
+    // NOTE: In the case that our stream has no pending elements, Redis will
+    // return NilString for the first and last entry IDs, and a nil array
+    // for the consumer infos. Make this a special case to maintain consistency
+    // with Redis.
+    if (results.pending_number == 0) {
+      output->append(redis::MultiLen(4));
+      output->append(redis::Integer(0));
+      output->append(conn->NilString());
+      output->append(conn->NilString());
+      output->append(conn->NilArray());
+    } else {
+      output->append(redis::MultiLen(4));
+      output->append(redis::Integer(results.pending_number));
+      output->append(redis::BulkString(results.first_entry_id.ToString()));
+      output->append(redis::BulkString(results.last_entry_id.ToString()));
+      output->append(redis::MultiLen(results.consumer_infos.size()));
+      for (const auto &entry : results.consumer_infos) {
+        output->append(redis::MultiLen(2));
+        output->append(redis::BulkString(entry.first));
+        output->append(redis::BulkString(std::to_string(entry.second)));
+      }
     }
 
     return Status::OK();

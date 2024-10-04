@@ -427,24 +427,37 @@ class CommandFTInfo : public Commander {
     }
 
     const auto &info = iter->second;
-    output->append(MultiLen(8));
+    output->append(MultiLen(6));
 
     output->append(redis::SimpleString("index_name"));
     output->append(redis::BulkString(info->name));
 
-    output->append(redis::SimpleString("on_data_type"));
+    output->append(redis::SimpleString("index_definition"));
+    output->append(redis::MultiLen(4));
+    output->append(redis::SimpleString("key_type"));
     output->append(redis::BulkString(RedisTypeNames[(size_t)info->metadata.on_data_type]));
-
     output->append(redis::SimpleString("prefixes"));
     output->append(redis::ArrayOfBulkStrings(info->prefixes.prefixes));
 
     output->append(redis::SimpleString("fields"));
     output->append(MultiLen(info->fields.size()));
     for (const auto &[_, field] : info->fields) {
-      output->append(MultiLen(2));
+      output->append(MultiLen(6));
+      output->append(redis::SimpleString("identifier"));
       output->append(redis::BulkString(field.name));
+      output->append(redis::SimpleString("type"));
       auto type = field.metadata->Type();
       output->append(redis::BulkString(std::string(type.begin(), type.end())));
+      output->append(redis::SimpleString("options"));
+      if (auto tag = field.MetadataAs<TagFieldMetadata>()) {
+        output->append(redis::MultiLen(4));
+        output->append(redis::SimpleString("separator"));
+        output->append(redis::BulkString(std::string(1, tag->separator)));
+        output->append(redis::SimpleString("case_sensitive"));
+        output->append(conn->Bool(tag->case_sensitive));
+      } else {
+        output->append(redis::MultiLen(0));
+      }
     }
 
     return Status::OK();

@@ -154,6 +154,44 @@ func TestSearch(t *testing.T) {
 		verify(t, res)
 	})
 
+	t.Run("FT.TAGVALS with updated index", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test1:k1", "$", `{"a": "x,y", "b": 11, "c": [1, 2, 3]}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test1:k2", "$", `{"a": "x,z", "b": 22, "c": [4, 5, 6]}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test1:k3", "$", `{"a": "y,z", "b": 33, "c": [7, 8, 9]}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "test1:k4", "$", `{"a": "a,b,c", "b": 44, "c": [10, 11, 12]}`).Err())
+
+		// Helper function to verify tag values
+		verifyTagVals := func(t *testing.T, res *redis.Cmd, expected map[string]struct{}) {
+			require.NoError(t, res.Err())
+			values, err := res.Result()
+			require.NoError(t, err)
+			for _, val := range values.([]interface{}) {
+				tag := val.(string)
+				_, exists := expected[tag]
+				require.True(t, exists, "Unexpected tag value: %s", tag)
+				delete(expected, tag)
+			}
+			require.Empty(t, expected, "Missing expected tag values")
+		}
+
+		// Query tag values for the field 'a', which is indexed as a tag field
+		res := rdb.Do(ctx, "FT.TAGVALS", "testidx1", "a")
+		expectedA := map[string]struct{}{
+			"a": {}, "b": {}, "c": {}, "x": {}, "y": {}, "z": {},
+		}
+		verifyTagVals(t, res, expectedA)
+
+		// Querying tag values for the field 'b', which is a numeric field, should return an empty result.
+		res = rdb.Do(ctx, "FT.TAGVALS", "testidx1", "b")
+		expectedB := map[string]struct{}{}
+		verifyTagVals(t, res, expectedB)
+
+		// Querying tag values for the field 'c', which is a vector field, should return an empty result.
+		res = rdb.Do(ctx, "FT.TAGVALS", "testidx1", "c")
+		expectedC := map[string]struct{}{}
+		verifyTagVals(t, res, expectedC)
+	})
+
 	t.Run("FT.DROPINDEX", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "FT.DROPINDEX", "testidx1").Err())
 

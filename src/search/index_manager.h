@@ -29,6 +29,7 @@
 #include "search/passes/manager.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
+#include "search/value.h"
 #include "status.h"
 #include "storage/storage.h"
 #include "string_util.h"
@@ -272,6 +273,66 @@ struct IndexManager {
 
     return Status::OK();
   }
-};
 
+  StatusOr<std::unordered_set<std::string>> FieldValues(engine::Context &ctx, std::string_view index_name,
+                                                        std::string_view tag_field_name, const std::string &ns) {
+    auto iter = index_map.Find(index_name, ns);
+    if (iter == index_map.end()) {
+      return {Status::NotOK, fmt::format("Index '{}' not found in namespace '{}'", index_name, ns)};
+    }
+    const auto &info = iter->second;
+
+    std::string tag_field_name_str(tag_field_name);
+    auto field_it = info->fields.find(tag_field_name_str);
+    if (field_it == info->fields.end()) {
+      return std::unordered_set<std::string>{};
+    }
+    const auto &[field_name, field_info] = *field_it;
+
+    if (!field_info.metadata || field_info.metadata->type != IndexFieldType::TAG) {
+      return std::unordered_set<std::string>{};
+    }
+
+    std::unordered_set<std::string> matching_values;
+    util::UniqueIterator index_iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
+
+    auto index_key = SearchKey(ns, index_name, field_name);
+    std::string field_prefix;
+    index_key.PutNamespace(&field_prefix);
+    SearchKey::PutType(&field_prefix, SearchSubkeyType::FIELD);
+    index_key.PutIndex(&field_prefix);
+    PutSizedString(&field_prefix, field_name);
+
+    std::string last_tag;
+
+    for (index_iter->Seek(field_prefix); index_iter->Valid(); index_iter->Next()) {
+      auto key = index_iter->key();
+
+      if (!key.starts_with(field_prefix)) {
+        break;
+      }
+
+      Slice key_slice = key;
+      key_slice.remove_prefix(field_prefix.size());
+
+      Slice tag_slice;
+      if (!GetSizedString(&key_slice, &tag_slice)) continue;
+
+      std::string current_tag = tag_slice.ToString();
+
+      if (current_tag == last_tag) {
+        continue;
+      }
+
+      last_tag = current_tag;
+      matching_values.insert(std::move(current_tag));
+    }
+
+    if (auto s = index_iter->status(); !s.ok()) {
+      return {Status::NotOK, fmt::format("Failed to iterate over index data: {}", s.ToString())};
+    }
+
+    return matching_values;
+  }
+};
 }  // namespace redis

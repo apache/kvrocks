@@ -2231,6 +2231,44 @@ func TestStreamOffset(t *testing.T) {
 			Consumers: map[string]int64{},
 		}, pending)
 	})
+
+	t.Run("XINFO GROUPS, issue #2568", func(t *testing.T) {
+		streamName := "mystream-2568"
+		groupName := "mygroup-2568"
+		consumerName := "consumer-2568"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		{
+			r, err := rdb.XInfoGroups(ctx, streamName).Result()
+			require.NoError(t, err)
+			require.Equal(t, []redis.XInfoGroup{{
+				Name:            groupName,
+				Consumers:       0,
+				Pending:         0,
+				LastDeliveredID: "0-0",
+			}}, r)
+		}
+		{
+			_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    groupName,
+				Consumer: consumerName,
+				Streams:  []string{streamName, "0"},
+			}).Result()
+			require.NoError(t, err)
+		}
+		{
+			r, err := rdb.XInfoGroups(ctx, streamName).Result()
+			require.NoError(t, err)
+			require.Equal(t, []redis.XInfoGroup{{
+				Name:            groupName,
+				Consumers:       1,
+				Pending:         0,
+				LastDeliveredID: "0-0",
+			}}, r)
+		}
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

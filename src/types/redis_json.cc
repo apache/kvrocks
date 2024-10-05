@@ -19,6 +19,7 @@
  */
 
 #include "redis_json.h"
+#include <unordered_map>
 
 #include "json.h"
 #include "lock_manager.h"
@@ -573,6 +574,9 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
+
+  std::unordered_map<std::string, std::pair<JsonValue, JsonMetadata>> dirty_keys {};
+
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -583,18 +587,27 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
     JsonMetadata metadata;
     JsonValue value;
 
-    if (auto s = read(ctx, ns_keys[i], &metadata, &value); s.IsNotFound()) {
-      if (paths[i] != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
-
-      value = *std::move(json_res);
-    } else {
-      if (!s.ok()) return s;
-
-      JsonValue new_val = *std::move(json_res);
-      auto set_res = value.Set(paths[i], std::move(new_val));
+    if (dirty_keys.count(ns_keys[i])) {
+      value = dirty_keys[ns_keys[i]].first;
+      auto set_res = value.Set(paths[i], *std::move(json_res));
       if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
+    } else {
+      if (auto s = read(ctx, ns_keys[i], &metadata, &value); s.IsNotFound()) {
+        if (paths[i] != "$") return rocksdb::Status::InvalidArgument("new objects must be created at the root");
+        value = *std::move(json_res);
+      } else {
+        if (!s.ok()) return s;
+
+        auto set_res = value.Set(paths[i], *std::move(json_res));
+        if (!set_res) return rocksdb::Status::InvalidArgument(set_res.Msg());
+      }
     }
 
+    dirty_keys[ns_keys[i]] = std::make_pair(value, metadata);
+  }
+
+  for (const auto& [ns_key, updated_object] : dirty_keys) {
+    auto [value, metadata] = updated_object;
     auto format = storage_->GetConfig()->json_storage_format;
     metadata.format = format;
 
@@ -613,7 +626,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
       return rocksdb::Status::InvalidArgument("Failed to encode JSON into storage: " + res.Msg());
     }
 
-    s = batch->Put(metadata_cf_handle_, ns_keys[i], val);
+    s = batch->Put(metadata_cf_handle_, ns_key, val);
     if (!s.ok()) return s;
   }
 

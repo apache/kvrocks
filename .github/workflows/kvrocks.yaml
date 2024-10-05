@@ -19,6 +19,8 @@ name: CI
 
 on: [push, pull_request]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
 # Concurrency strategy:
 #   github.workflow: distinguish this workflow from others
 #   github.event_name: distinguish `push` event from `pull_request` event

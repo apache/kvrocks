@@ -19,6 +19,7 @@
  */
 
 #include "redis_json.h"
+
 #include <unordered_map>
 
 #include "json.h"
@@ -575,7 +576,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
 
-  std::unordered_map<std::string, std::pair<JsonValue, JsonMetadata>> dirty_keys {};
+  std::unordered_map<std::string, std::pair<JsonValue, JsonMetadata>> dirty_keys{};
 
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -606,7 +607,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
     dirty_keys[ns_keys[i]] = std::make_pair(value, metadata);
   }
 
-  for (const auto& [ns_key, updated_object] : dirty_keys) {
+  for (const auto &[ns_key, updated_object] : dirty_keys) {
     auto [value, metadata] = updated_object;
     auto format = storage_->GetConfig()->json_storage_format;
     metadata.format = format;

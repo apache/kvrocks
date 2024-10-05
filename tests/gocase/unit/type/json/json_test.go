@@ -651,6 +651,13 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		EqualJSON(t, `[4]`, rdb.Do(ctx, "JSON.GET", "a1", "$.a").Val())
 	})
 
+	t.Run("JSON.MSET multi-command", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "doc", "$", `{"f1":{"a1":0},"f2":{"a2":0}}`).Err())
+		require.NoError(t, rdb.Do(ctx, "JSON.MSET", "doc", "$.f1.a1", "1", "doc", "$.f2.a2", "2").Err())
+
+		EqualJSON(t, `{"f1":{"a1":1},"f2":{"a2":2}}`, rdb.Do(ctx, "JSON.GET", "doc").Val())
+	})
+
 	t.Run("JSON.DEBUG MEMORY basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"},"f":{"x":[]}}`).Err())
 		//object
@@ -712,7 +719,6 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, make([]interface{}, 0), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
 
 	})
-
 }
 
 func EqualJSON(t *testing.T, expected string, actual interface{}) {

@@ -576,6 +576,8 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisJson);
 
+  // A single JSON key may be modified multiple times in the MSET command,
+  // so we need to record them temporarily to avoid reading old values from DB.
   std::unordered_map<std::string, std::pair<JsonValue, JsonMetadata>> dirty_keys{};
 
   auto s = batch->PutLogData(log_data.Encode());
@@ -588,6 +590,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
     JsonMetadata metadata;
     JsonValue value;
 
+    // If a key has been modified before, just read from memory to find the modified value.
     if (dirty_keys.count(ns_keys[i])) {
       value = dirty_keys[ns_keys[i]].first;
       auto set_res = value.Set(paths[i], *std::move(json_res));
@@ -608,7 +611,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
   }
 
   for (const auto &[ns_key, updated_object] : dirty_keys) {
-    auto [value, metadata] = updated_object;
+    auto &[value, metadata] = updated_object;
     auto format = storage_->GetConfig()->json_storage_format;
     metadata.format = format;
 

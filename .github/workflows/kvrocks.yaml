@@ -209,7 +209,7 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install --formula cmake gcc autoconf automake libtool openssl coreutils
+          brew install --quiet --formula cmake gcc autoconf automake libtool openssl coreutils
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
       - name: Setup Linux

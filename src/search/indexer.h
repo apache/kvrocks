@@ -83,6 +83,17 @@ struct IndexUpdater {
                      const kqir::Value &current) const;
   Status Update(engine::Context &ctx, const FieldValues &original, std::string_view key) const;
 
+  Status Delete(engine::Context &ctx, std::string_view key) const;
+
+  Status DeleteKey(engine::Context &ctx, const std::string &field, std::string_view key,
+                   const kqir::Value &original_val) const;
+
+  Status DeleteTagKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                      const SearchKey &search_key, const TagFieldMetadata *tag) const;
+
+  Status DeleteNumericKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                          const SearchKey &search_key, const NumericFieldMetadata *num) const;
+
   Status Build(engine::Context &ctx) const;
 
   Status UpdateTagIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
@@ -93,6 +104,8 @@ struct IndexUpdater {
   Status UpdateHnswVectorIndex(engine::Context &ctx, std::string_view key, const kqir::Value &original,
                                const kqir::Value &current, const SearchKey &search_key,
                                HnswVectorFieldMetadata *vector) const;
+  Status ScanKeys(engine::Context &ctx) const;
+  static Status IsKeyExpired(engine::Context &ctx, std::string_view key, const std::string &ns, bool *expired);
 };
 
 struct GlobalIndexer {

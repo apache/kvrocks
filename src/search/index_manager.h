@@ -186,7 +186,7 @@ struct IndexManager {
     indexer->Add(updater);
     index_map.Insert(std::move(info));
 
-    for (auto updater : indexer->updater_list) {
+    for (auto &updater : indexer->updater_list) {
       GET_OR_RET(updater.Build(ctx));
     }
 
@@ -209,10 +209,13 @@ struct IndexManager {
     return plan_op;
   }
 
-  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
+  StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(engine::Context &ctx, std::unique_ptr<kqir::Node> ir,
                                                                const std::string &ns) const {
-    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
+    for (auto &updater : indexer->updater_list) {
+      GET_OR_RET(updater.ScanKeys(ctx));
+    }
 
+    auto plan_op = GET_OR_RET(GeneratePlan(std::move(ir), ns));
     kqir::ExecutorContext executor_ctx(plan_op.get(), storage);
 
     std::vector<kqir::ExecutorContext::RowType> results;
@@ -220,10 +223,8 @@ struct IndexManager {
     auto iter_res = GET_OR_RET(executor_ctx.Next());
     while (!std::holds_alternative<kqir::ExecutorNode::End>(iter_res)) {
       results.push_back(std::get<kqir::ExecutorContext::RowType>(iter_res));
-
       iter_res = GET_OR_RET(executor_ctx.Next());
     }
-
     return results;
   }
 

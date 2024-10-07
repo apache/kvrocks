@@ -28,6 +28,7 @@
 #include "search/hnsw_indexer.h"
 #include "search/search_encoding.h"
 #include "search/value.h"
+#include "status.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "string_util.h"
@@ -42,7 +43,6 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     Hash db(storage, ns);
     std::string ns_key = db.AppendNamespacePrefix(key);
     HashMetadata metadata(false);
-
     auto s = db.GetMetadata(ctx, ns_key, &metadata);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
@@ -167,7 +167,6 @@ StatusOr<IndexUpdater::FieldValues> IndexUpdater::Record(engine::Context &ctx, s
   }
 
   auto retriever = GET_OR_RET(FieldValueRetriever::Create(info->metadata.on_data_type, key, indexer->storage, ns));
-
   FieldValues values;
   for (const auto &[field, i] : info->fields) {
     if (i.metadata->noindex) {
@@ -354,6 +353,118 @@ Status IndexUpdater::Update(engine::Context &ctx, const FieldValues &original, s
   return Status::OK();
 }
 
+Status IndexUpdater::DeleteTagKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                                  const SearchKey &search_key, const TagFieldMetadata *tag) const {
+  CHECK(original.IsNull() || original.Is<kqir::StringArray>());
+
+  auto original_tags = original.IsNull() ? std::vector<std::string>() : original.Get<kqir::StringArray>();
+
+  auto to_tag_set = [](const std::vector<std::string> &tags, bool case_sensitive) -> std::set<std::string> {
+    if (case_sensitive) {
+      return {tags.begin(), tags.end()};
+    } else {
+      std::set<std::string> res;
+      std::transform(tags.begin(), tags.end(), std::inserter(res, res.begin()), util::ToLower);
+      return res;
+    }
+  };
+
+  std::set<std::string> tags_to_delete = to_tag_set(original_tags, tag->case_sensitive);
+
+  if (tags_to_delete.empty()) {
+    return Status::OK();
+  }
+
+  auto *storage = indexer->storage;
+  auto batch = storage->GetWriteBatchBase();
+  auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
+
+  for (const auto &tag : tags_to_delete) {
+    auto index_key = search_key.ConstructTagFieldData(tag, key);
+
+    auto s = batch->Delete(cf_handle, index_key);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+  }
+
+  auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
+Status IndexUpdater::DeleteNumericKey(engine::Context &ctx, std::string_view key, const kqir::Value &original,
+                                      const SearchKey &search_key,
+                                      [[maybe_unused]] const NumericFieldMetadata *num) const {
+  CHECK(original.IsNull() || original.Is<kqir::Numeric>());
+
+  auto *storage = indexer->storage;
+  auto batch = storage->GetWriteBatchBase();
+  auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
+
+  if (!original.IsNull()) {
+    auto index_key = search_key.ConstructNumericFieldData(original.Get<kqir::Numeric>(), key);
+    auto s = batch->Delete(cf_handle, index_key);
+    if (!s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+  }
+  auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+  return Status::OK();
+}
+
+Status IndexUpdater::Delete(engine::Context &ctx, std::string_view key) const {
+  auto original = GET_OR_RET(Record(ctx, key));
+
+  for (const auto &[field, i] : info->fields) {
+    if (i.metadata->noindex) {
+      continue;
+    }
+
+    kqir::Value original_val;
+
+    if (auto it = original.find(field); it != original.end()) {
+      original_val = it->second;
+    }
+    GET_OR_RET(DeleteKey(ctx, field, key, original_val));
+  }
+  return Status::OK();
+}
+
+Status IndexUpdater::DeleteKey(engine::Context &ctx, const std::string &field, std::string_view key,
+                               const kqir::Value &original_val) const {
+  auto iter = info->fields.find(field);
+  if (iter == info->fields.end()) {
+    return {Status::NotOK, "No such field to do index updating"};
+  }
+
+  auto *metadata = iter->second.metadata.get();
+  SearchKey search_key(info->ns, info->name, field);
+  if (auto tag = dynamic_cast<TagFieldMetadata *>(metadata)) {
+    GET_OR_RET(DeleteTagKey(ctx, key, original_val, search_key, tag));
+  } else if (auto numeric [[maybe_unused]] = dynamic_cast<NumericFieldMetadata *>(metadata)) {
+    GET_OR_RET(DeleteNumericKey(ctx, key, original_val, search_key, numeric));
+  } else {
+    return {Status::NotOK, "Unexpected field type"};
+  }
+
+  return Status::OK();
+}
+
+Status IndexUpdater::IsKeyExpired(engine::Context &ctx, std::string_view key, const std::string &ns, bool *expired) {
+  Database db(ctx.storage, ns);
+  int exists_result = 0;
+  std::vector<Slice> keys = {Slice(key)};
+  auto s = db.Exists(ctx, keys, &exists_result);
+
+  if (!s.ok() || exists_result == 0) {
+    *expired = true;
+    return Status::OK();
+  }
+  return Status::OK();
+}
+
 Status IndexUpdater::Build(engine::Context &ctx) const {
   auto storage = indexer->storage;
   util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
@@ -370,6 +481,52 @@ Status IndexUpdater::Build(engine::Context &ctx) const {
       auto s = Update(ctx, {}, key.ToStringView());
       if (s.Is<Status::TypeMismatched>()) continue;
       if (!s.OK()) return s;
+    }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return {Status::NotOK, s.ToString()};
+    }
+  }
+
+  return Status::OK();
+}
+
+Status IndexUpdater::ScanKeys(engine::Context &ctx) const {
+  auto storage = indexer->storage;
+  util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Metadata);
+
+  for (const auto &prefix : info->prefixes) {
+    auto ns_key = ComposeNamespaceKey(info->ns, prefix, storage->IsSlotIdEncoded());
+
+    for (iter->Seek(ns_key); iter->Valid(); iter->Next()) {
+      if (!iter->key().starts_with(ns_key)) {
+        break;
+      }
+
+      auto [_, key] = ExtractNamespaceKey(iter->key(), storage->IsSlotIdEncoded());
+
+      bool is_expired = false;
+      Status s = IsKeyExpired(ctx, key.ToStringView(), info->ns, &is_expired);
+      if (!s.IsOK()) {
+        return s;
+      }
+      if (is_expired) {
+        Status delete_status = Delete(ctx, key.ToStringView());
+        if (!delete_status.IsOK() && !delete_status.Is<Status::TypeMismatched>()) {
+          return delete_status;
+        }
+
+        auto batch = storage->GetWriteBatchBase();
+        auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Metadata);
+
+        batch->Delete(cf_handle, iter->key());
+
+        auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+        if (!s.ok()) {
+          return {Status::NotOK, s.ToString()};
+        }
+        continue;
+      }
     }
 
     if (auto s = iter->status(); !s.ok()) {

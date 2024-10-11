@@ -254,7 +254,7 @@ jobs:
         with:
           python-version: 3.x
       - run: apt install python3 python3-pip
-        if ${{ matrix.arm_linux }}
+        if: ${{ matrix.arm_linux }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'

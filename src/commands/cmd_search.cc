@@ -180,9 +180,9 @@ class CommandFTCreate : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     index_info_->ns = conn->GetNamespace();
-    engine::Context ctx(srv->storage);
+
     GET_OR_RET(srv->index_mgr.Create(ctx, std::move(index_info_)));
 
     output->append(redis::SimpleString("OK"));
@@ -276,7 +276,7 @@ class CommandFTExplainSQL : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
 
     if (format_ == SIMPLE) {
@@ -307,7 +307,7 @@ class CommandFTSearchSQL : public Commander {
 
     return Status::OK();
   }
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
 
     DumpQueryResult(results, output);
@@ -385,7 +385,7 @@ class CommandFTExplain : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     CHECK(ir_);
     auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
 
@@ -404,7 +404,7 @@ class CommandFTSearch : public Commander {
     return Status::OK();
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     CHECK(ir_);
     auto results = GET_OR_RET(srv->index_mgr.Search(std::move(ir_), conn->GetNamespace()));
 
@@ -418,7 +418,7 @@ class CommandFTSearch : public Commander {
 };
 
 class CommandFTInfo : public Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     const auto &index_map = srv->index_mgr.index_map;
     const auto &index_name = args_[1];
 
@@ -466,7 +466,7 @@ class CommandFTInfo : public Commander {
 };
 
 class CommandFTList : public Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     const auto &index_map = srv->index_mgr.index_map;
 
     std::vector<std::string> results;
@@ -483,10 +483,10 @@ class CommandFTList : public Commander {
 };
 
 class CommandFTDrop : public Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     const auto &index_name = args_[1];
 
-    GET_OR_RET(srv->index_mgr.Drop(index_name, conn->GetNamespace()));
+    GET_OR_RET(srv->index_mgr.Drop(ctx, index_name, conn->GetNamespace()));
 
     output->append(SimpleString("OK"));
 
@@ -495,10 +495,9 @@ class CommandFTDrop : public Commander {
 };
 
 class CommandFTTagVals : public Commander {
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     const auto &index_name = args_[1];
     const auto &tag_field_name = args_[2];
-    engine::Context ctx(srv->storage);
     auto field_values = GET_OR_RET(srv->index_mgr.FieldValues(ctx, index_name, tag_field_name, conn->GetNamespace()));
 
     std::vector<std::string> result_vec(field_values.begin(), field_values.end());

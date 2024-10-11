@@ -43,13 +43,12 @@ struct IndexManager {
 
   IndexManager(GlobalIndexer *indexer, engine::Storage *storage) : indexer(indexer), storage(storage) {}
 
-  Status Load(const std::string &ns) {
+  Status Load(engine::Context &ctx, const std::string &ns) {
     // currently index cannot work in cluster mode
     if (storage->GetConfig()->cluster_enabled) {
       return Status::OK();
     }
-    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
-    util::UniqueIterator iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
+    util::UniqueIterator iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
     auto begin = SearchKey{ns, ""}.ConstructIndexMeta();
 
     for (iter->Seek(begin); iter->Valid(); iter->Next()) {
@@ -76,9 +75,8 @@ struct IndexManager {
 
       auto index_key = SearchKey(ns, index_name.ToStringView());
       std::string prefix_value;
-      if (auto s = storage->Get(no_txn_ctx, no_txn_ctx.DefaultMultiGetOptions(),
-                                storage->GetCFHandle(ColumnFamilyID::Search), index_key.ConstructIndexPrefixes(),
-                                &prefix_value);
+      if (auto s = storage->Get(ctx, ctx.DefaultMultiGetOptions(), storage->GetCFHandle(ColumnFamilyID::Search),
+                                index_key.ConstructIndexPrefixes(), &prefix_value);
           !s.ok()) {
         return {Status::NotOK, fmt::format("fail to find index prefixes for index {}: {}", index_name, s.ToString())};
       }
@@ -92,7 +90,7 @@ struct IndexManager {
       auto info = std::make_unique<kqir::IndexInfo>(index_name.ToString(), metadata, ns);
       info->prefixes = prefixes;
 
-      util::UniqueIterator field_iter(no_txn_ctx, no_txn_ctx.DefaultScanOptions(), ColumnFamilyID::Search);
+      util::UniqueIterator field_iter(ctx, ctx.DefaultScanOptions(), ColumnFamilyID::Search);
       auto field_begin = index_key.ConstructFieldMeta();
 
       for (field_iter->Seek(field_begin); field_iter->Valid(); field_iter->Next()) {
@@ -227,7 +225,7 @@ struct IndexManager {
     return results;
   }
 
-  Status Drop(std::string_view index_name, const std::string &ns) {
+  Status Drop(engine::Context &ctx, std::string_view index_name, const std::string &ns) {
     auto iter = index_map.Find(index_name, ns);
     if (iter == index_map.end()) {
       return {Status::NotOK, "index not found"};
@@ -264,8 +262,7 @@ struct IndexManager {
       return {Status::NotOK, s.ToString()};
     }
 
-    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
-    if (auto s = storage->Write(no_txn_ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
+    if (auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch()); !s.ok()) {
       return {Status::NotOK, fmt::format("failed to delete index metadata and data: {}", s.ToString())};
     }
 

@@ -158,9 +158,10 @@ Status Server::Start() {
   }
 
   if (!config_->cluster_enabled) {
-    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    engine::Context no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    GET_OR_RET(index_mgr.Load(no_txn_ctx, kDefaultNamespace));
     for (auto [_, ns] : namespace_.List()) {
-      GET_OR_RET(index_mgr.Load(ns));
+      GET_OR_RET(index_mgr.Load(no_txn_ctx, ns));
     }
   }
 

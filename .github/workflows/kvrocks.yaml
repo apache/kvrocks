@@ -203,6 +203,7 @@ jobs:
           - name: Ubuntu Arm64
             os: [self-hosted, Linux, ARM64]
             compiler: auto
+            arm_linux: true
 
     runs-on: ${{ matrix.os }}
     env:
@@ -216,7 +217,7 @@ jobs:
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
       - name: Setup Linux
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |
           sudo apt update
           sudo apt install -y ninja-build libssl-dev

@@ -250,8 +250,11 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
+        if: ${{ !matrix.arm_linux }}
         with:
           python-version: 3.x
+      - run: apt install python3 python3-pip
+        if ${{ matrix.arm_linux }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'

@@ -200,6 +200,9 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          - name: Ubuntu Arm64
+            os: [self-hosted, Linux, ARM64]
+            compiler: auto
 
     runs-on: ${{ matrix.os }}
     env:

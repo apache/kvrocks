@@ -219,7 +219,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt update
-          sudo apt install -y ninja-build
+          sudo apt install -y ninja-build libssl-dev
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

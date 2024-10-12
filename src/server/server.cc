@@ -158,9 +158,10 @@ Status Server::Start() {
   }
 
   if (!config_->cluster_enabled) {
-    GET_OR_RET(index_mgr.Load(kDefaultNamespace));
+    engine::Context no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    GET_OR_RET(index_mgr.Load(no_txn_ctx, kDefaultNamespace));
     for (auto [_, ns] : namespace_.List()) {
-      GET_OR_RET(index_mgr.Load(ns));
+      GET_OR_RET(index_mgr.Load(no_txn_ctx, ns));
     }
   }
 
@@ -852,13 +853,10 @@ void Server::GetRocksDBInfo(std::string *info) {
   uint64_t num_immutable_tables = 0, memtable_flush_pending = 0, compaction_pending = 0;
   uint64_t num_running_compaction = 0, num_live_versions = 0, num_super_version = 0, num_background_errors = 0;
 
-  db->GetAggregatedIntProperty("rocksdb.num-snapshots", &num_snapshots);
   db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
   db->GetAggregatedIntProperty("rocksdb.cur-size-all-mem-tables", &cur_memtable_sizes);
-  db->GetAggregatedIntProperty("rocksdb.num-running-flushes", &num_running_flushes);
   db->GetAggregatedIntProperty("rocksdb.num-immutable-mem-table", &num_immutable_tables);
   db->GetAggregatedIntProperty("rocksdb.mem-table-flush-pending", &memtable_flush_pending);
-  db->GetAggregatedIntProperty("rocksdb.num-running-compactions", &num_running_compaction);
   db->GetAggregatedIntProperty("rocksdb.current-super-version-number", &num_super_version);
   db->GetAggregatedIntProperty("rocksdb.background-errors", &num_background_errors);
   db->GetAggregatedIntProperty("rocksdb.compaction-pending", &compaction_pending);
@@ -876,6 +874,11 @@ void Server::GetRocksDBInfo(std::string *info) {
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
     string_stream << "block_cache_pinned_usage[" << subkey_cf_handle->GetName() << "]:" << block_cache_pinned_usage
                   << "\r\n";
+
+    // All column faimilies share the same property of the DB, so it's good to count a single one.
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kNumSnapshots, &num_snapshots);
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kNumRunningFlushes, &num_running_flushes);
+    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kNumRunningCompactions, &num_running_compaction);
   }
 
   for (const auto &cf_handle : *storage->GetCFHandles()) {

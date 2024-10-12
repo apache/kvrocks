@@ -35,6 +35,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/string_util.h"
 #include "config_type.h"
 #include "config_util.h"
 #include "parse_util.h"
@@ -42,7 +43,6 @@
 #include "server/server.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
-#include "vendor/globmatch.h"
 
 constexpr const char *kDefaultDir = "/tmp/kvrocks";
 constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
@@ -868,7 +868,7 @@ Status Config::Load(const CLIOptions &opts) {
 void Config::Get(const std::string &key, std::vector<std::string> *values) const {
   values->clear();
   for (const auto &iter : fields_) {
-    if (stringmatchlen(key.c_str(), key.size(), iter.first.c_str(), iter.first.size(), 1)) {
+    if (StringMatchLen(key.c_str(), key.size(), iter.first.c_str(), iter.first.size(), 1)) {
       if (iter.second->IsMultiConfig()) {
         for (const auto &p : util::Split(iter.second->ToString(), "\n")) {
           values->emplace_back(iter.first);

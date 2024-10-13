@@ -29,7 +29,7 @@
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
-#include "storage/rdb.h"
+#include "storage/rdb/rdb.h"
 #include "string_util.h"
 #include "time_util.h"
 

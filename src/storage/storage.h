@@ -432,6 +432,8 @@ struct Context {
     ctx.snapshot_ = nullptr;
   }
 
+  // GetSnapshot will create a snapshot first if it doesn't exist,
+  // and it's not a thread-safe operation.
   const rocksdb::Snapshot *GetSnapshot() {
     if (snapshot_ == nullptr) {
       snapshot_ = storage->GetDB()->GetSnapshot();  // NOLINT

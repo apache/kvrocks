@@ -66,9 +66,6 @@ func TestKeyspace(t *testing.T) {
 	})
 
 	t.Run("KEYS with invalid pattern", func(t *testing.T) {
-		for _, key := range []string{"*ab1", "*ab2", "*ab3"} {
-			require.NoError(t, rdb.Set(ctx, key, "hello", 0).Err())
-		}
 		require.Error(t, rdb.Keys(ctx, "*ab*").Err())
 	})
 

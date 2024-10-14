@@ -229,7 +229,8 @@ Status Worker::listenFD(int fd, uint32_t expected_port, int backlog) {
   if (dup_fd == -1) {
     return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
   }
-  evconnlistener* lev = NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, dup_fd);
+  evconnlistener *lev =
+      NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, dup_fd);
   listen_events_.emplace_back(lev);
   LOG(INFO) << "Listening on dup'ed fd: " << dup_fd;
   return Status::OK();

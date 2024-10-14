@@ -45,7 +45,7 @@ class CommandScanBase : public Commander {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
-        // The match pattern should contain exactly one '*' at the end; remove the * to 
+        // The match pattern should contain exactly one '*' at the end; remove the * to
         // get the prefix to match.
         if (!prefix_.empty() && prefix_.find('*') == prefix_.size() - 1) {
           prefix_.pop_back();

@@ -65,6 +65,13 @@ func TestKeyspace(t *testing.T) {
 		require.Equal(t, []string{"foo_a", "foo_b", "foo_c"}, keys)
 	})
 
+	t.Run("KEYS with invalid pattern", func(t *testing.T) {
+		for _, key := range []string{"*ab1", "*ab2", "*ab3"} {
+			require.NoError(t, rdb.Set(ctx, key, "hello", 0).Err())
+		}
+		require.Error(t, rdb.Keys(ctx, "*ab*").Err())
+	})
+
 	t.Run("KEYS to get all keys", func(t *testing.T) {
 		keys := rdb.Keys(ctx, "*").Val()
 		sort.Slice(keys, func(i, j int) bool {

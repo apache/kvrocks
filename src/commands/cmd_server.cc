@@ -114,7 +114,7 @@ class CommandNamespace : public Commander {
 class CommandKeys : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    const std::string& prefix = args_[1];
+    const std::string &prefix = args_[1];
     std::vector<std::string> keys;
     redis::Database redis(srv->storage, conn->GetNamespace());
 

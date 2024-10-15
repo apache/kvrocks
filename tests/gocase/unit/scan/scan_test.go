@@ -97,6 +97,13 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.Len(t, keys, 1000)
 	})
 
+	t.Run("SCAN MATCH invalid pattern", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		util.Populate(t, rdb, "*ab", 1000, 10)
+		// SCAN MATCH with invalid pattern should return an error
+		require.Error(t, rdb.Do(context.Background(), "SCAN", "match", "*ab*").Err())
+	})
+
 	t.Run("SCAN guarantees check under write load", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		util.Populate(t, rdb, "", 100, 10)

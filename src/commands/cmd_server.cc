@@ -114,20 +114,15 @@ class CommandNamespace : public Commander {
 class CommandKeys : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    std::string prefix = args_[1];
+    const std::string &prefix = args_[1];
     std::vector<std::string> keys;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    rocksdb::Status s;
-    if (prefix == "*") {
-      s = redis.Keys(ctx, std::string(), &keys);
-    } else {
-      if (prefix[prefix.size() - 1] != '*') {
-        return {Status::RedisExecErr, "only keys prefix match was supported"};
-      }
-
-      s = redis.Keys(ctx, prefix.substr(0, prefix.size() - 1), &keys);
+    if (prefix.empty() || prefix.find('*') != prefix.size() - 1) {
+      return {Status::RedisExecErr, "only keys prefix match was supported"};
     }
+
+    const rocksdb::Status s = redis.Keys(ctx, prefix.substr(0, prefix.size() - 1), &keys);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }

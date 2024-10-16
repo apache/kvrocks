@@ -23,12 +23,13 @@
 #include <algorithm>
 #include <cctype>
 #include <string_view>
+#include <string>
 
 namespace util {
 
 static bool GlobMatchImpl(std::string_view pattern, std::string_view string, bool ignore_case,
                           bool *skip_longer_matches, size_t recursion_depth = 0) {
-  const auto canonicalize = [ignore_case](char c) -> int { return ignore_case ? std::tolower(c) : c; };
+  const auto canonicalize = [ignore_case](unsigned char c) -> unsigned char { return ignore_case ? static_cast<unsigned char>(std::tolower(c)) : c; };
 
   if (recursion_depth > 1000) return false;
 
@@ -79,7 +80,9 @@ static bool GlobMatchImpl(std::string_view pattern, std::string_view string, boo
             pattern.remove_prefix(1);
             if (pattern[0] == string[0]) match = true;
           } else if (pattern.length() >= 3 && pattern[1] == '-') {
-            const auto &[start, end] = std::minmax(canonicalize(pattern[0]), canonicalize(pattern[2]));
+            unsigned char start = canonicalize(pattern[0]);
+            unsigned char end = canonicalize(pattern[2]);
+            if (start > end) std::swap(start, end);
             const int c = canonicalize(string[0]);
             pattern.remove_prefix(2);
 
@@ -118,9 +121,37 @@ static bool GlobMatchImpl(std::string_view pattern, std::string_view string, boo
   return pattern.empty() && string.empty();
 }
 
+// Given a glob [pattern] and a string [string], return true iff the string matches the glob.
+// If [ignore_case] is true, the match is case-insensitive.
 inline bool GlobMatches(std::string_view glob, std::string_view str, bool ignore_case = false) {
   bool skip_longer_matches = false;
   return GlobMatchImpl(glob, str, ignore_case, &skip_longer_matches);
+}
+
+// Split a glob pattern into a literal prefix and a suffix containing wildcards.
+// For example, if the user calls [KEYS bla*bla], this function will return {"bla", "*bla"}.
+// This allows the caller of this function to optimize this call by performing a 
+// prefix-scan on "bla" and then filtering the results using the GlobMatches function.
+std::pair<std::string, std::string> SplitGlob(std::string_view glob) {
+    // Stores the prefix of the glob pattern, with backslashes removed
+    std::string prefix;
+    // Find the first un-escaped '*', '?' or '[' character in [glob]
+    for (size_t idx = 0; idx < glob.size(); ++idx) {
+        if (glob[idx] == '*' || glob[idx] == '?' || glob[idx] == '[') {
+            // Return a pair of views: the part of the glob before the wildcard, and the part after
+            return {prefix, std::string(glob.substr(idx))};
+        } else if (glob[idx] == '\\') {
+            // Skip checking whether the next character is a special character
+            ++idx;
+            // Append the escaped special character to the prefix
+            prefix.push_back(glob[idx]);
+        } else {
+            prefix.push_back(glob[idx]);
+        }
+
+    }
+    // No wildcard found, return the entire string (without the backslashes) as the prefix
+    return {prefix, ""};
 }
 
 }  // namespace util

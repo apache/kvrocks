@@ -45,8 +45,10 @@ class CommandScanBase : public Commander {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         prefix_ = GET_OR_RET(parser.TakeStr());
-        if (!prefix_.empty() && prefix_.back() == '*') {
-          prefix_ = prefix_.substr(0, prefix_.size() - 1);
+        // The match pattern should contain exactly one '*' at the end; remove the * to
+        // get the prefix to match.
+        if (!prefix_.empty() && prefix_.find('*') == prefix_.size() - 1) {
+          prefix_.pop_back();
         } else {
           return {Status::RedisParseErr, "currently only key prefix matching is supported"};
         }

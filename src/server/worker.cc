@@ -56,7 +56,7 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_.reset(NewEvent(base_, -1, EV_PERSIST));
-  timeval tm = {10, 0};
+  timeval tm = {1, 0};
   evtimer_add(timer_.get(), &tm);
 
   uint32_t ports[3] = {config->port, config->tls_port, 0};
@@ -102,8 +102,13 @@ Worker::~Worker() {
 
 void Worker::TimerCB(int, [[maybe_unused]] int16_t events) {
   auto config = srv->GetConfig();
-  if (config->timeout == 0) return;
-  KickoutIdleClients(config->timeout);
+  if (config->timeout != 0) {
+    KickoutIdleClients(config->timeout);
+  }
+
+  if (config->max_memory_clients > 0 && config->workers > 0) {
+    evictionClients(config->max_memory_clients / config->workers);
+  }
 }
 
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
@@ -339,6 +344,7 @@ redis::Connection *Worker::removeConnection(int fd) {
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
     conn = iter->second;
+    conn->GetOutputBuffer().clear();
     conns_.erase(iter);
     srv->DecrClientNum();
   }
@@ -550,6 +556,43 @@ void Worker::KickoutIdleClients(int timeout) {
 
   for (const auto &conn : to_be_killed_conns) {
     FreeConnectionByID(conn.first, conn.second);
+  }
+}
+
+size_t Worker::GetConnectionsMemoryUsed() {
+  size_t mem = 0;
+  std::lock_guard<std::mutex> guard(conns_mu_);
+
+  for (auto &it : conns_) {
+    mem += it.second->GetConnectionMemoryUsed();
+  }
+  return mem;
+}
+
+void Worker::evictionClients(size_t max_memory) {
+  size_t mem = GetConnectionsMemoryUsed();
+  if (mem < max_memory) {
+    return;
+  }
+  using ConnWithMem = std::tuple<int, uint64_t, uint64_t>;
+  std::vector<ConnWithMem> conns;
+  {
+    std::lock_guard<std::mutex> guard(conns_mu_);
+    for (auto &iter : conns_) {
+      conns.emplace_back(iter.first, iter.second->GetID(), iter.second->GetConnectionMemoryUsed());
+    }
+
+    // sort Connections by memory used from high to low
+    std::sort(conns.begin(), conns.end(),
+              [](const ConnWithMem &a, const ConnWithMem &b) { return std::get<2>(a) < std::get<2>(b); });
+  }
+
+  while (mem > max_memory && conns.size() > 0) {
+    auto conn = conns.back();
+    conns.pop_back();
+    mem -= std::get<2>(conn);
+    srv->stats.IncrEvictedClients();
+    FreeConnectionByID(std::get<0>(conn), std::get<1>(conn));
   }
 }
 

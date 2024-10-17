@@ -1139,6 +1139,7 @@ void Server::GetStatsInfo(std::string *info) {
   string_stream << "sync_full:" << stats.fullsync_count << "\r\n";
   string_stream << "sync_partial_ok:" << stats.psync_ok_count << "\r\n";
   string_stream << "sync_partial_err:" << stats.psync_err_count << "\r\n";
+  string_stream << "evicted_clients:" << stats.stat_evictedclients << "\r\n";
 
   auto db_stats = storage->GetDBStats();
   string_stream << "keyspace_hits:" << db_stats->keyspace_hits << "\r\n";

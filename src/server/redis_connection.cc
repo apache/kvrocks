@@ -51,6 +51,8 @@ Connection::Connection(bufferevent *bev, Worker *owner)
   int64_t now = util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
+  output_buffer_.clear();
+  slave_output_buffer_.clear();
 }
 
 Connection::~Connection() {
@@ -369,8 +371,9 @@ static bool IsCmdForIndexing(const CommandAttributes *attr) {
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
+  GetOutputBuffer().clear();
   const Config *config = srv_->GetConfig();
-  std::string reply;
+  std::string &reply = GetOutputBuffer();
   std::string password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
@@ -557,6 +560,39 @@ void Connection::ResetMultiExec() {
   multi_error_ = false;
   multi_cmds_.clear();
   DisableFlag(Connection::kMultiExec);
+}
+
+size_t Connection::GetConnectionMemoryUsed() const {
+  size_t total_memory = sizeof(*this);
+
+  total_memory += name_.capacity();
+  total_memory += ns_.capacity();
+  total_memory += ip_.capacity();
+  total_memory += announce_ip_.capacity();
+  total_memory += addr_.capacity();
+  total_memory += last_cmd_.capacity();
+  total_memory += output_buffer_.capacity();
+  total_memory += slave_output_buffer_.capacity();
+  total_memory += evbuffer_get_length(Output()) + evbuffer_get_length(Input());
+
+  for (const auto &channel : subscribe_channels_) {
+    total_memory += channel.capacity();
+  }
+  for (const auto &pattern : subscribe_patterns_) {
+    total_memory += pattern.capacity();
+  }
+  for (const auto &channel : subscribe_shard_channels_) {
+    total_memory += channel.capacity();
+  }
+  for (const auto &cmd : multi_cmds_) {
+    total_memory += cmd.capacity();
+  }
+
+  if (saved_current_command_) {
+    total_memory += saved_current_command_->GetMemoryUsage();
+  }
+
+  return total_memory;
 }
 
 }  // namespace redis

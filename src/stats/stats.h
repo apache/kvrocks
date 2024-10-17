@@ -68,6 +68,7 @@ class Stats {
   std::atomic<uint64_t> psync_err_count = {0};
   std::atomic<uint64_t> psync_ok_count = {0};
   std::map<std::string, CommandStat> commands_stats;
+  std::atomic<uint64_t> stat_evictedclients = {0};
 
   Stats();
   void IncrCalls(const std::string &command_name);
@@ -77,6 +78,8 @@ class Stats {
   void IncrFullSyncCount() { fullsync_count.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncErrCount() { psync_err_count.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCount() { psync_ok_count.fetch_add(1, std::memory_order_relaxed); }
+  void IncrEvictedClients() { stat_evictedclients.fetch_add(1, std::memory_order_relaxed); }
+
   static int64_t GetMemoryRSS();
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
   uint64_t GetInstantaneousMetric(int metric) const;

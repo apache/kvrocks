@@ -21,8 +21,11 @@ package limits
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -92,5 +95,55 @@ func TestWriteBatchLimit(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
 		require.NoError(t, rdb.ZAdd(ctx, key, memberScores...).Err())
+	})
+}
+
+func getEvictedClients(rdb *redis.Client, ctx context.Context) (int, error) {
+	info, err := rdb.Info(ctx, "stats").Result()
+	if err != nil {
+		return 0, err
+	}
+
+	lines := strings.Split(info, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "evicted_clients:") {
+			parts := strings.Split(line, ":")
+			if len(parts) == 2 {
+				return strconv.Atoi(strings.TrimSpace(parts[1]))
+			}
+		}
+	}
+	return 0, fmt.Errorf("evicted_clients not found")
+}
+
+func TestMaxMemoryClientsLimits(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	t.Run("check if maxmemory-clients works well", func(t *testing.T) {
+		var clean []func()
+		defer func() {
+			for _, f := range clean {
+				f()
+			}
+		}()
+
+		ctx := context.Background()
+		rdb := srv.NewClient()
+		defer rdb.Close()
+
+		elem := strings.Repeat("a", 10240)
+		for i := 0; i < 1024; i++ {
+			require.NoError(t, rdb.RPush(ctx, "test_max_memory_clients", elem).Err())
+		}
+
+		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "10M").Err())
+		require.NoError(t, rdb.LRange(ctx, "test_max_memory_clients", 0, -1).Err())
+		time.Sleep(25 * time.Second)
+
+		require.NoError(t, rdb.ConfigSet(ctx, "maxmemory-clients", "0").Err())
+		r, err := getEvictedClients(rdb, ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, r)
 	})
 }

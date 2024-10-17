@@ -106,7 +106,8 @@ void FeedSlaveThread::loop() {
   // first batch here to work around this issue instead of waiting for enough batch size.
   bool is_first_repl_batch = true;
   uint32_t yield_microseconds = 2 * 1000;
-  std::string batches_bulk;
+  std::string &batches_bulk = conn_->GetSlaveOutputBuffer();
+  batches_bulk.clear();
   size_t updates_in_batches = 0;
   while (!IsStopped()) {
     auto curr_seq = next_repl_seq_.load();

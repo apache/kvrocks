@@ -157,7 +157,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetOwner(Worker *new_owner) { owner_ = new_owner; };
   int GetFD() { return bufferevent_getfd(bev_); }
   evbuffer *Input() { return bufferevent_get_input(bev_); }
+  evbuffer *Input() const { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
+  evbuffer *Output() const { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
   void ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
   Status ExecuteCommand(engine::Context &ctx, const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
@@ -179,6 +181,10 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   std::set<std::string> watched_keys;
   std::atomic<bool> watched_keys_modified = false;
+
+  inline std::string &GetOutputBuffer() { return output_buffer_; }
+  inline std::string &GetSlaveOutputBuffer() { return slave_output_buffer_; }
+  size_t GetConnectionMemoryUsed() const;
 
  private:
   uint64_t id_ = 0;
@@ -213,6 +219,8 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   bool importing_ = false;
   RESP protocol_version_ = RESP::v2;
+  std::string output_buffer_;
+  std::string slave_output_buffer_;
 };
 
 }  // namespace redis

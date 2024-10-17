@@ -195,6 +195,7 @@ Config::Config() {
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
+      {"maxmemory-clients", false, new IntWithUnitField<uint64_t>(&max_memory_clients, "0", 0, UINT64_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,

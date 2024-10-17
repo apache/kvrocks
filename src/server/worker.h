@@ -76,6 +76,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
 
   lua_State *Lua() { return lua_; }
   std::map<int, redis::Connection *> GetConnections() const { return conns_; }
+  std::mutex &GetConnectionsMutex() { return conns_mu_; }
+  size_t GetConnectionsMemoryUsed();
   Server *srv;
 
  private:
@@ -83,6 +85,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   redis::Connection *removeConnection(int fd);
+  void evictionClients(size_t max_memory);
 
   event_base *base_;
   UniqueEvent timer_;

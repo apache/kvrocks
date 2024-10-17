@@ -176,6 +176,11 @@ rocksdb::Options Storage::InitRocksDBOptions() {
       options.compression_per_level[i] = config_->rocks_db.compression;
     }
   }
+  if (config_->rocks_db.wal_compression) {
+    options.wal_compression = rocksdb::CompressionType::kZSTD;
+  } else {
+    options.wal_compression = rocksdb::CompressionType::kNoCompression;
+  }
 
   if (config_->rocks_db.row_cache_size) {
     options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB, kRocksdbLRUAutoAdjustShardBits,

@@ -120,9 +120,6 @@ class CommandKeys : public Commander {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     const auto [prefix, suffix_glob] = util::SplitGlob(glob_pattern);
-
-    LOG(INFO) << "Keys command, namespace: " << conn->GetNamespace() << ", pattern: " << glob_pattern
-              << ", prefix = " << prefix << ", suffix_glob = " << suffix_glob;
     const rocksdb::Status s = redis.Keys(ctx, prefix, suffix_glob, &keys);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -849,8 +846,6 @@ class CommandScan : public CommandScanBase {
     std::vector<std::string> keys;
     std::string end_key;
 
-    LOG(INFO) << "Scan: key_name=" << key_name << ", limit=" << limit_ << ", prefix=" << prefix_
-              << ", suffix_glob=" << suffix_glob_ << ", type=" << type_;
     const auto s = redis_db.Scan(ctx, key_name, limit_, prefix_, suffix_glob_, &keys, &end_key, type_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

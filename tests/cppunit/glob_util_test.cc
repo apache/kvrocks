@@ -30,6 +30,8 @@ TEST(GlobUtil, GlobMatches) {
   EXPECT_FALSE(util::GlobMatches("a", ""));
   EXPECT_TRUE(util::GlobMatches("", ""));
   EXPECT_FALSE(util::GlobMatches("", "a"));
+  EXPECT_TRUE(util::GlobMatches("*", ""));
+  EXPECT_TRUE(util::GlobMatches("*", "a"));
 
   /* Simple character class tests */
   EXPECT_TRUE(util::GlobMatches("[a]", "a"));
@@ -115,19 +117,20 @@ TEST(GlobUtil, GlobMatches) {
 }
 
 TEST(GlobUtil, SplitGlob) {
-    using namespace std::string_literals;
-    
-    // Basic functionality: no escaped characters
-    EXPECT_EQ(util::SplitGlob("string"), std::make_pair("string"s, ""s));
-    EXPECT_EQ(util::SplitGlob("string*"), std::make_pair("string"s, "*"s));
-    EXPECT_EQ(util::SplitGlob("*string"), std::make_pair(""s, "*string"s));
-    EXPECT_EQ(util::SplitGlob("str*ing"), std::make_pair("str"s, "*ing"s));
-    EXPECT_EQ(util::SplitGlob("string?"), std::make_pair("string"s, "?"s));
-    EXPECT_EQ(util::SplitGlob("?string"), std::make_pair(""s, "?string"s));
-    EXPECT_EQ(util::SplitGlob("ab[cd]ef"), std::make_pair("ab"s, "[cd]ef"s));
+  using namespace std::string_literals;
 
-    // Escaped characters; also tests that prefix is trimmed of backslashes
-    EXPECT_EQ(util::SplitGlob("str\\*ing*"), std::make_pair("str*ing"s, "*"s));
-    EXPECT_EQ(util::SplitGlob("str\\?ing?"), std::make_pair("str?ing"s, "?"s));
-    EXPECT_EQ(util::SplitGlob("str\\[ing[a]"), std::make_pair("str[ing"s, "[a]"s));
+  // Basic functionality: no escaped characters
+  EXPECT_EQ(util::SplitGlob(""), std::make_pair(""s, ""s));
+  EXPECT_EQ(util::SplitGlob("string"), std::make_pair("string"s, ""s));
+  EXPECT_EQ(util::SplitGlob("string*"), std::make_pair("string"s, "*"s));
+  EXPECT_EQ(util::SplitGlob("*string"), std::make_pair(""s, "*string"s));
+  EXPECT_EQ(util::SplitGlob("str*ing"), std::make_pair("str"s, "*ing"s));
+  EXPECT_EQ(util::SplitGlob("string?"), std::make_pair("string"s, "?"s));
+  EXPECT_EQ(util::SplitGlob("?string"), std::make_pair(""s, "?string"s));
+  EXPECT_EQ(util::SplitGlob("ab[cd]ef"), std::make_pair("ab"s, "[cd]ef"s));
+
+  // Escaped characters; also tests that prefix is trimmed of backslashes
+  EXPECT_EQ(util::SplitGlob("str\\*ing*"), std::make_pair("str*ing"s, "*"s));
+  EXPECT_EQ(util::SplitGlob("str\\?ing?"), std::make_pair("str?ing"s, "?"s));
+  EXPECT_EQ(util::SplitGlob("str\\[ing[a]"), std::make_pair("str[ing"s, "[a]"s));
 }

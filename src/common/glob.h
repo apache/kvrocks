@@ -22,14 +22,17 @@
 
 #include <algorithm>
 #include <cctype>
-#include <string_view>
 #include <string>
+#include <string_view>
 
 namespace util {
 
-static bool GlobMatchImpl(std::string_view pattern, std::string_view string, bool ignore_case,
-                          bool *skip_longer_matches, size_t recursion_depth = 0) {
-  const auto canonicalize = [ignore_case](unsigned char c) -> unsigned char { return ignore_case ? static_cast<unsigned char>(std::tolower(c)) : c; };
+constexpr inline bool GlobMatchImpl(std::string_view pattern, std::string_view string, bool ignore_case,
+                                    bool *skip_longer_matches, size_t recursion_depth = 0) {
+  // If we want to ignore case, this is equivalent to converting both the pattern and the string to lowercase
+  const auto canonicalize = [ignore_case](unsigned char c) -> unsigned char {
+    return ignore_case ? static_cast<unsigned char>(std::tolower(c)) : c;
+  };
 
   if (recursion_depth > 1000) return false;
 
@@ -113,45 +116,43 @@ static bool GlobMatchImpl(std::string_view pattern, std::string_view string, boo
         break;
     }
     pattern.remove_prefix(1);
-    // If the string is empty; this is a match iff the rest of the pattern is just '*' characters.
-    if (string.empty()) {
-      return std::all_of(pattern.begin(), pattern.end(), [](char c) { return c == '*'; });
-    }
   }
-  return pattern.empty() && string.empty();
+
+  // Now that either the pattern is empty or the string is empty, this is a match iff
+  // the pattern consists only of '*', and the string is empty.
+  return string.empty() && std::all_of(pattern.begin(), pattern.end(), [](char c) { return c == '*'; });
 }
 
 // Given a glob [pattern] and a string [string], return true iff the string matches the glob.
 // If [ignore_case] is true, the match is case-insensitive.
-inline bool GlobMatches(std::string_view glob, std::string_view str, bool ignore_case = false) {
+constexpr inline bool GlobMatches(std::string_view glob, std::string_view str, bool ignore_case = false) {
   bool skip_longer_matches = false;
   return GlobMatchImpl(glob, str, ignore_case, &skip_longer_matches);
 }
 
 // Split a glob pattern into a literal prefix and a suffix containing wildcards.
 // For example, if the user calls [KEYS bla*bla], this function will return {"bla", "*bla"}.
-// This allows the caller of this function to optimize this call by performing a 
+// This allows the caller of this function to optimize this call by performing a
 // prefix-scan on "bla" and then filtering the results using the GlobMatches function.
-std::pair<std::string, std::string> SplitGlob(std::string_view glob) {
-    // Stores the prefix of the glob pattern, with backslashes removed
-    std::string prefix;
-    // Find the first un-escaped '*', '?' or '[' character in [glob]
-    for (size_t idx = 0; idx < glob.size(); ++idx) {
-        if (glob[idx] == '*' || glob[idx] == '?' || glob[idx] == '[') {
-            // Return a pair of views: the part of the glob before the wildcard, and the part after
-            return {prefix, std::string(glob.substr(idx))};
-        } else if (glob[idx] == '\\') {
-            // Skip checking whether the next character is a special character
-            ++idx;
-            // Append the escaped special character to the prefix
-            prefix.push_back(glob[idx]);
-        } else {
-            prefix.push_back(glob[idx]);
-        }
-
+inline std::pair<std::string, std::string> SplitGlob(std::string_view glob) {
+  // Stores the prefix of the glob pattern, with backslashes removed
+  std::string prefix;
+  // Find the first un-escaped '*', '?' or '[' character in [glob]
+  for (size_t idx = 0; idx < glob.size(); ++idx) {
+    if (glob[idx] == '*' || glob[idx] == '?' || glob[idx] == '[') {
+      // Return a pair of views: the part of the glob before the wildcard, and the part after
+      return {prefix, std::string(glob.substr(idx))};
+    } else if (glob[idx] == '\\') {
+      // Skip checking whether the next character is a special character
+      ++idx;
+      // Append the escaped special character to the prefix
+      prefix.push_back(glob[idx]);
+    } else {
+      prefix.push_back(glob[idx]);
     }
-    // No wildcard found, return the entire string (without the backslashes) as the prefix
-    return {prefix, ""};
+  }
+  // No wildcard found, return the entire string (without the backslashes) as the prefix
+  return {prefix, ""};
 }
 
 }  // namespace util

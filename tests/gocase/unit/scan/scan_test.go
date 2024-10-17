@@ -47,8 +47,6 @@ func TestScanEmptyKey(t *testing.T) {
 	require.NoError(t, rdb.SAdd(ctx, "sadd_key", "", "fab", "fiz", "foobar").Err())
 	keys, _, err := rdb.SScan(ctx, "sadd_key", 0, "*", 10000).Result()
 	require.NoError(t, err)
-	slices.Sort(keys)
-	keys = slices.Compact(keys)
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
 }
 
@@ -77,7 +75,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		util.Populate(t, rdb, "", 1000, 10)
 		keys := scanAll(t, rdb)
-		keys = slices.Compact(keys)
 		require.Len(t, keys, 1000)
 	})
 
@@ -85,7 +82,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		util.Populate(t, rdb, "", 1000, 10)
 		keys := scanAll(t, rdb, "count", 5)
-		keys = slices.Compact(keys)
 		require.Len(t, keys, 1000)
 	})
 
@@ -93,15 +89,39 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		util.Populate(t, rdb, "key:", 1000, 10)
 		keys := scanAll(t, rdb, "match", "key:*")
-		keys = slices.Compact(keys)
 		require.Len(t, keys, 1000)
 	})
 
-	t.Run("SCAN MATCH invalid pattern", func(t *testing.T) {
+	t.Run("SCAN MATCH non-trivial pattern", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
-		util.Populate(t, rdb, "*ab", 1000, 10)
-		// SCAN MATCH with invalid pattern should return an error
-		require.Error(t, rdb.Do(context.Background(), "SCAN", "match", "*ab*").Err())
+
+		for _, key := range []string{"aa", "aab", "aabb", "ab", "abb"} {
+			require.NoError(t, rdb.Set(ctx, key, "hello", 0).Err())
+		}
+
+		keys := scanAll(t, rdb, "match", "a*")
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
+
+		keys = scanAll(t, rdb, "match", "a?")
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "ab"}, keys)
+
+		keys = scanAll(t, rdb, "match", "a*?")
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
+
+		keys = scanAll(t, rdb, "match", "ab*")
+		slices.Sort(keys)
+		require.Equal(t, []string{"ab", "abb"}, keys)
+
+		keys = scanAll(t, rdb, "match", "*ab")
+		slices.Sort(keys)
+		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
+
+		keys = scanAll(t, rdb, "match", "*ab*")
+		slices.Sort(keys)
+		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
 	})
 
 	t.Run("SCAN guarantees check under write load", func(t *testing.T) {
@@ -179,8 +199,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.SAdd(ctx, "mykey", "foo", "fab", "fiz", "foobar", 1, 2, 3, 4).Err())
 		keys, _, err := rdb.SScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
-		slices.Sort(keys)
-		keys = slices.Compact(keys)
 		require.Equal(t, []string{"foo", "foobar"}, keys)
 	})
 
@@ -189,8 +207,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.HMSet(ctx, "mykey", "foo", 1, "fab", 2, "fiz", 3, "foobar", 10, 1, "a", 2, "b", 3, "c", 4, "d").Err())
 		keys, _, err := rdb.HScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
-		slices.Sort(keys)
-		keys = slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
 
@@ -205,8 +221,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.ZAdd(ctx, "mykey", members...).Err())
 		keys, _, err := rdb.ZScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
-		slices.Sort(keys)
-		keys = slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
 
@@ -226,7 +240,6 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 			require.NoError(t, rdb.SAdd(ctx, "set", elements...).Err())
 			keys, _, err := rdb.SScan(ctx, "set", 0, "", 10000).Result()
 			require.NoError(t, err)
-			keys = slices.Compact(keys)
 			require.Len(t, keys, 100)
 		})
 	}
@@ -406,6 +419,8 @@ func scanAll(t testing.TB, rdb *redis.Client, args ...interface{}) (keys []strin
 		keys = append(keys, keyList...)
 
 		if c == "0" {
+			slices.Sort(keys)
+			keys = slices.Compact(keys)
 			return
 		}
 	}

@@ -27,6 +27,7 @@ import (
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 func TestKeyspace(t *testing.T) {
@@ -65,16 +66,43 @@ func TestKeyspace(t *testing.T) {
 		require.Equal(t, []string{"foo_a", "foo_b", "foo_c"}, keys)
 	})
 
-	t.Run("KEYS with invalid pattern", func(t *testing.T) {
-		require.Error(t, rdb.Keys(ctx, "*ab*").Err())
-	})
-
 	t.Run("KEYS to get all keys", func(t *testing.T) {
 		keys := rdb.Keys(ctx, "*").Val()
 		sort.Slice(keys, func(i, j int) bool {
 			return keys[i] < keys[j]
 		})
 		require.Equal(t, []string{"foo_a", "foo_b", "foo_c", "key_x", "key_y", "key_z"}, keys)
+	})
+
+	t.Run("KEYS with non-trivial patterns", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		for _, key := range []string{"aa", "aab", "aabb", "ab", "abb"} {
+			require.NoError(t, rdb.Set(ctx, key, "hello", 0).Err())
+		}
+
+		keys := rdb.Keys(ctx, "a*").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
+
+		keys = rdb.Keys(ctx, "a?").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "ab"}, keys)
+
+		keys = rdb.Keys(ctx, "a*?").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
+
+		keys = rdb.Keys(ctx, "ab*").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"ab", "abb"}, keys)
+
+		keys = rdb.Keys(ctx, "*ab").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
+
+		keys = rdb.Keys(ctx, "*ab*").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
 	})
 
 	t.Run("DBSize", func(t *testing.T) {

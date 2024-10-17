@@ -200,6 +200,7 @@ struct Config {
     int level0_stop_writes_trigger;
     int level0_file_num_compaction_trigger;
     rocksdb::CompressionType compression;
+    int nocompression_for_first_n_levels;
     int compression_level;
     bool disable_auto_compactions;
     bool enable_blob_files;

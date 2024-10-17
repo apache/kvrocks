@@ -211,6 +211,9 @@ Config::Config() {
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
+      // can't be more than rocksdb levels count
+      {"rocksdb.nocompression_for_first_n_levels", false,
+       new IntField(&rocks_db.nocompression_for_first_n_levels, 2, 0, 7)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
       {"rocksdb.max_open_files", false, new IntField(&rocks_db.max_open_files, 8096, -1, INT_MAX)},
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
@@ -381,12 +384,11 @@ void Config::initFieldCallback() {
     return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
   };
   auto set_compression_type_cb = [](Server *srv, [[maybe_unused]] const std::string &k,
-                                    const std::string &v) -> Status {
+                                    [[maybe_unused]] const std::string &v) -> Status {
     if (!srv) return Status::OK();
-
     std::string compression_option;
     for (auto &option : engine::CompressionOptions) {
-      if (option.name == v) {
+      if (option.type == srv->GetConfig()->rocks_db.compression) {
         compression_option = option.val;
         break;
       }
@@ -395,15 +397,23 @@ void Config::initFieldCallback() {
       return {Status::NotOK, "Invalid compression type"};
     }
 
-    // For the first two levels, it may contain the frequently accessed data,
-    // so it'd be better to use uncompressed data to save the CPU.
-    std::string compression_levels = "kNoCompression:kNoCompression";
-    auto db = srv->storage->GetDB();
-    for (size_t i = 2; i < db->GetOptions().compression_per_level.size(); i++) {
-      compression_levels += ":";
-      compression_levels += compression_option;
+    const int nocompression_for_first_n_levels = srv->GetConfig()->rocks_db.nocompression_for_first_n_levels;
+    const int num_levels = srv->storage->GetDB()->GetOptions().num_levels;
+    if (nocompression_for_first_n_levels > num_levels) {
+      return {Status::NotOK, "nocompression_for_first_n_levels must <= rocksdb levels count"};
     }
-    return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_levels);
+    std::vector<std::string> compression_per_level_builder;
+    compression_per_level_builder.reserve(num_levels);
+
+    for (int i = 0; i < nocompression_for_first_n_levels; i++) {
+      compression_per_level_builder.emplace_back("kNoCompression");
+    }
+    for (int i = nocompression_for_first_n_levels; i < num_levels; i++) {
+      compression_per_level_builder.emplace_back(compression_option);
+    }
+    const std::string compression_per_level = util::StringJoin(
+        compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
+    return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_per_level);
   };
 #ifdef ENABLE_OPENSSL
   auto set_tls_option = [](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) {
@@ -709,6 +719,7 @@ void Config::initFieldCallback() {
           {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
           {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
           {"rocksdb.compression", set_compression_type_cb},
+          {"rocksdb.nocompression_for_first_n_levels", set_compression_type_cb},
 #ifdef ENABLE_OPENSSL
           {"tls-cert-file", set_tls_option},
           {"tls-key-file", set_tls_option},

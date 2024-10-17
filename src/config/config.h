@@ -138,6 +138,11 @@ struct Config {
   std::string replica_announce_ip;
   uint32_t replica_announce_port = 0;
 
+  // The following options exist so users can spawn a read-only server from a snapshot
+  // of a running server.
+  std::string snapshot_dir;
+  bool keep_snapshot = false;
+
   bool persist_cluster_nodes_enabled = true;
   bool slot_id_encoded = false;
   bool cluster_enabled = false;

@@ -79,6 +79,15 @@ const std::vector<ConfigEnum<rocksdb::CompressionType>> compression_types{[] {
   return res;
 }()};
 
+const std::vector<ConfigEnum<rocksdb::CompressionType>> wal_compression_types{[] {
+  std::vector<ConfigEnum<rocksdb::CompressionType>> res;
+  res.reserve(engine::WalCompressionOptions.size());
+  for (const auto &e : engine::WalCompressionOptions) {
+    res.push_back({e.name, e.type});
+  }
+  return res;
+}()};
+
 const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
   std::vector<ConfigEnum<BlockCacheType>> res;
   res.reserve(engine::CacheOptions.size());
@@ -210,7 +219,9 @@ Config::Config() {
       {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},
       {"rocksdb.max_subcompactions", false, new IntField(&rocks_db.max_subcompactions, 2, 0, 16)},
       {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db.delayed_write_rate, 0, 0, INT64_MAX)},
-      {"rocksdb.wal_compression", true, new YesNoField(&rocks_db.wal_compression, false)},
+      {"rocksdb.wal_compression", true,
+       new EnumField<rocksdb::CompressionType>(&rocks_db.wal_compression, wal_compression_types,
+                                               rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.wal_ttl_seconds", true, new IntField(&rocks_db.wal_ttl_seconds, 3 * 3600, 0, INT_MAX)},
       {"rocksdb.wal_size_limit_mb", true, new IntField(&rocks_db.wal_size_limit_mb, 16384, 0, INT_MAX)},
       {"rocksdb.max_total_wal_size", false, new IntField(&rocks_db.max_total_wal_size, 64 * 4 * 2, 0, INT_MAX)},

@@ -110,6 +110,7 @@ Config::Config() {
       {"daemonize", true, new YesNoField(&daemonize, false)},
       {"bind", true, new StringField(&binds_str_, "")},
       {"port", true, new UInt32Field(&port, kDefaultPort, 1, PORT_LIMIT)},
+      {"socket-fd", true, new IntField(&socket_fd, -1, -1, 1 << 16)},
 #ifdef ENABLE_OPENSSL
       {"tls-port", true, new UInt32Field(&tls_port, 0, 0, PORT_LIMIT)},
       {"tls-cert-file", false, new StringField(&tls_cert_file, "")},

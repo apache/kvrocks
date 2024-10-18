@@ -70,6 +70,7 @@ struct Config {
   Config();
   ~Config() = default;
   uint32_t port = 0;
+  int socket_fd = -1;
 
   uint32_t tls_port = 0;
   std::string tls_cert_file;

@@ -25,8 +25,8 @@
 
 #include "cluster/redis_slot.h"
 #include "common/scope_exit.h"
+#include "common/string_util.h"
 #include "db_util.h"
-#include "glob.h"
 #include "parse_util.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
@@ -277,7 +277,7 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
         break;
       }
       auto [_, user_key] = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
-      if (!util::GlobMatches(suffix_glob, user_key.ToString().substr(prefix.size()))) {
+      if (!util::StringMatch(suffix_glob, user_key.ToString().substr(prefix.size()))) {
         continue;
       }
       Metadata metadata(kRedisNone, false);
@@ -369,7 +369,7 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
       if (metadata.Expired()) continue;
       std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
 
-      if (!util::GlobMatches(suffix_glob, user_key.substr(prefix.size()))) {
+      if (!util::StringMatch(suffix_glob, user_key.substr(prefix.size()))) {
         continue;
       }
       keys->emplace_back(user_key);
@@ -401,7 +401,7 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
         if (iter->Valid()) {
           std::tie(std::ignore, user_key) = ExtractNamespaceKey<std::string>(iter->key(), storage_->IsSlotIdEncoded());
           auto res = std::mismatch(prefix.begin(), prefix.end(), user_key.begin());
-          if (res.first == prefix.end() && util::GlobMatches(suffix_glob, user_key.substr(prefix.size()))) {
+          if (res.first == prefix.end() && util::StringMatch(suffix_glob, user_key.substr(prefix.size()))) {
             keys->emplace_back(user_key);
           }
 

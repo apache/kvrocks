@@ -20,7 +20,11 @@
 
 #pragma once
 
-#include "status.h"
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace util {
 
@@ -32,8 +36,10 @@ std::string Trim(std::string in, std::string_view chars);
 std::vector<std::string> Split(std::string_view in, std::string_view delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
-int StringMatch(const std::string &pattern, const std::string &in, int nocase);
-int StringMatchLen(const char *p, size_t plen, const char *s, size_t slen, int nocase);
+
+bool StringMatch(std::string_view glob, std::string_view str, bool ignore_case = false);
+std::pair<std::string, std::string> SplitGlob(std::string_view glob);
+
 std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex);
 std::string StringToHex(std::string_view input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);

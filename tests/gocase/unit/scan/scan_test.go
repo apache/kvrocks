@@ -100,27 +100,27 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		}
 
 		keys := scanAll(t, rdb, "match", "a*")
-		slices.Sort(keys)
 		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
 
+		keys = scanAll(t, rdb, "match", "aa")
+		require.Equal(t, []string{"aa"}, keys)
+
+		keys = scanAll(t, rdb, "match", "aa*")
+		require.Equal(t, []string{"aa", "aab", "aabb"}, keys)
+
 		keys = scanAll(t, rdb, "match", "a?")
-		slices.Sort(keys)
 		require.Equal(t, []string{"aa", "ab"}, keys)
 
 		keys = scanAll(t, rdb, "match", "a*?")
-		slices.Sort(keys)
 		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
 
 		keys = scanAll(t, rdb, "match", "ab*")
-		slices.Sort(keys)
 		require.Equal(t, []string{"ab", "abb"}, keys)
 
 		keys = scanAll(t, rdb, "match", "*ab")
-		slices.Sort(keys)
 		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
 
 		keys = scanAll(t, rdb, "match", "*ab*")
-		slices.Sort(keys)
 		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
 	})
 

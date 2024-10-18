@@ -95,7 +95,7 @@ class CommandScanBase : public Commander {
  protected:
   std::string cursor_;
   std::string prefix_;
-  std::string suffix_glob_;
+  std::string suffix_glob_ = "*";
   int limit_ = 20;
   RedisType type_ = kRedisNone;
 };

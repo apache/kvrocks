@@ -84,6 +84,14 @@ func TestKeyspace(t *testing.T) {
 		slices.Sort(keys)
 		require.Equal(t, []string{"aa", "aab", "aabb", "ab", "abb"}, keys)
 
+		keys = rdb.Keys(ctx, "aa").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa"}, keys)
+
+		keys = rdb.Keys(ctx, "aa*").Val()
+		slices.Sort(keys)
+		require.Equal(t, []string{"aa", "aab", "aabb"}, keys)
+
 		keys = rdb.Keys(ctx, "a?").Val()
 		slices.Sort(keys)
 		require.Equal(t, []string{"aa", "ab"}, keys)

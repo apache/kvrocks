@@ -21,9 +21,9 @@
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
-#include "common/glob.h"
 #include "common/io_util.h"
 #include "common/rdb_stream.h"
+#include "common/string_util.h"
 #include "common/time_util.h"
 #include "config/config.h"
 #include "error_constants.h"
@@ -32,7 +32,6 @@
 #include "server/server.h"
 #include "stats/disk_stats.h"
 #include "storage/rdb/rdb.h"
-#include "string_util.h"
 
 namespace redis {
 

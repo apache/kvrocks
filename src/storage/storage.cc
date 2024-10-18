@@ -168,6 +168,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.num_levels = 7;
   options.compression_opts.level = config_->rocks_db.compression_level;
   options.compression_per_level.resize(options.num_levels);
+  options.wal_compression = config_->rocks_db.wal_compression;
   // only compress levels >= 2
   for (int i = 0; i < options.num_levels; ++i) {
     if (i < 2) {

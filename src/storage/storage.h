@@ -94,6 +94,11 @@ inline const std::vector<CompressionOption> CompressionOptions = {
     {rocksdb::kZSTD, "zstd", "kZSTD"},
 };
 
+inline const std::vector<CompressionOption> WalCompressionOptions = {
+    {rocksdb::kNoCompression, "no", "kNoCompression"},
+    {rocksdb::kZSTD, "zstd", "kZSTD"},
+};
+
 struct CacheOption {
   BlockCacheType type;
   const std::string name;

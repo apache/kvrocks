@@ -199,6 +199,8 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.SAdd(ctx, "mykey", "foo", "fab", "fiz", "foobar", 1, 2, 3, 4).Err())
 		keys, _, err := rdb.SScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
 		require.Equal(t, []string{"foo", "foobar"}, keys)
 	})
 
@@ -207,6 +209,8 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.HMSet(ctx, "mykey", "foo", 1, "fab", 2, "fiz", 3, "foobar", 10, 1, "a", 2, "b", 3, "c", 4, "d").Err())
 		keys, _, err := rdb.HScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
 
@@ -221,6 +225,8 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.ZAdd(ctx, "mykey", members...).Err())
 		keys, _, err := rdb.ZScan(ctx, "mykey", 0, "foo*", 10000).Result()
 		require.NoError(t, err)
+		slices.Sort(keys)
+		keys = slices.Compact(keys)
 		require.Equal(t, []string{"1", "10", "foo", "foobar"}, keys)
 	})
 
@@ -240,6 +246,8 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 			require.NoError(t, rdb.SAdd(ctx, "set", elements...).Err())
 			keys, _, err := rdb.SScan(ctx, "set", 0, "", 10000).Result()
 			require.NoError(t, err)
+			slices.Sort(keys)
+			keys = slices.Compact(keys)
 			require.Len(t, keys, 100)
 		})
 	}

@@ -26,6 +26,7 @@
 #include "glob.h"
 #include "parse_util.h"
 #include "server/server.h"
+#include "string_util.h"
 
 namespace redis {
 
@@ -46,6 +47,9 @@ class CommandScanBase : public Commander {
     while (parser.Good()) {
       if (parser.EatEqICase("match")) {
         const std::string glob_pattern = GET_OR_RET(parser.TakeStr());
+        if (const Status s = util::ValidateGlob(glob_pattern); !s.IsOK()) {
+          return {Status::RedisParseErr, "Invalid glob pattern: " + s.Msg()};
+        }
         std::tie(prefix_, suffix_glob_) = util::SplitGlob(glob_pattern);
       } else if (parser.EatEqICase("count")) {
         limit_ = GET_OR_RET(parser.TakeInt());

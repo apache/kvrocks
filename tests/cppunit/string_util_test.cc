@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <initializer_list>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -82,6 +83,48 @@ TEST(StringUtil, HasPrefix) {
   ASSERT_FALSE(util::HasPrefix("has_prefix_is_false", "_has_prefix"));
   ASSERT_TRUE(util::HasPrefix("has_prefix", "has_prefix"));
   ASSERT_FALSE(util::HasPrefix("has", "has_prefix"));
+}
+
+TEST(StringUtil, ValidateGlob) {
+  const auto expect_ok = [](std::string_view glob) {
+    const auto result = util::ValidateGlob(glob);
+    EXPECT_TRUE(result.IsOK()) << glob << ": " << result.Msg();
+  };
+
+  const auto expect_error = [](std::string_view glob, std::string_view expected_error) {
+    const auto result = util::ValidateGlob(glob);
+    EXPECT_FALSE(result.IsOK());
+    EXPECT_EQ(result.Msg(), expected_error) << glob;
+  };
+
+  expect_ok("a");
+  expect_ok("\\*");
+  expect_ok("\\?");
+  expect_ok("\\[");
+  expect_ok("\\]");
+  expect_ok("a*");
+  expect_ok("a?");
+  expect_ok("[ab]");
+  expect_ok("[^ab]");
+  expect_ok("[a-c]");
+  // Surprisingly valid: this accepts the characters {a, b, c, e, f, g, -}
+  expect_ok("[a-c-e-g]");
+  expect_ok("[^a-c]");
+  expect_ok("[-]");
+  expect_ok("[\\]]");
+  expect_ok("[\\\\]");
+  expect_ok("[\\?]");
+  expect_ok("[\\*]");
+  expect_ok("[\\[]");
+
+  expect_error("[", "Unterminated [ group");
+  expect_error("]", "Unmatched unescaped ]");
+  expect_error("[a", "Unterminated [ group");
+  expect_error("\\", "Trailing unescaped backslash");
+
+  // Weird case: we open a character class, with the range 'a' to ']', but then never close it
+  expect_error("[a-]", "Unterminated [ group");
+  expect_ok("[a-]]");
 }
 
 TEST(StringUtil, StringMatch) {

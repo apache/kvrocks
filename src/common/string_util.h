@@ -26,6 +26,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/status.h"
+
 namespace util {
 
 std::string Float2String(double d);
@@ -37,6 +39,7 @@ std::vector<std::string> Split(std::string_view in, std::string_view delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
 
+Status ValidateGlob(std::string_view glob);
 bool StringMatch(std::string_view glob, std::string_view str, bool ignore_case = false);
 std::pair<std::string, std::string> SplitGlob(std::string_view glob);
 

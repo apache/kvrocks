@@ -101,6 +101,48 @@ bool HasPrefix(const std::string &str, const std::string &prefix) {
   return !strncasecmp(str.data(), prefix.data(), prefix.size());
 }
 
+Status ValidateGlob(std::string_view glob) {
+  for (size_t idx = 0; idx < glob.size(); ++idx) {
+    switch (glob[idx]) {
+      case '*':
+      case '?':
+        break;
+      case ']':
+        return {Status::NotOK, "Unmatched unescaped ]"};
+      case '\\':
+        if (idx == glob.size() - 1) {
+          return {Status::NotOK, "Trailing unescaped backslash"};
+        }
+        // Skip the next character: this is a literal so nothing can go wrong
+        idx++;
+        break;
+      case '[':
+        idx++;  // Skip the opening bracket
+        while (idx < glob.size() && glob[idx] != ']') {
+          if (glob[idx] == '\\') {
+            idx += 2;
+            continue;
+          } else if (idx + 1 < glob.size() && glob[idx + 1] == '-') {
+            if (idx + 2 >= glob.size()) {
+              return {Status::NotOK, "Unterminated character range"};
+            }
+            // Skip the - and the end of the range
+            idx += 2;
+          }
+          idx++;
+        }
+        if (idx == glob.size()) {
+          return {Status::NotOK, "Unterminated [ group"};
+        }
+        break;
+      default:
+        // This is a literal: nothing can go wrong
+        break;
+    }
+  }
+  return Status::OK();
+}
+
 constexpr bool StringMatchImpl(std::string_view pattern, std::string_view string, bool ignore_case,
                                bool *skip_longer_matches, size_t recursion_depth = 0) {
   // If we want to ignore case, this is equivalent to converting both the pattern and the string to lowercase

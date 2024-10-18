@@ -118,6 +118,9 @@ class CommandKeys : public Commander {
     std::vector<std::string> keys;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
+    if (const Status s = util::ValidateGlob(glob_pattern); !s.IsOK()) {
+      return {Status::RedisParseErr, "Invalid glob pattern: " + s.Msg()};
+    }
     const auto [prefix, suffix_glob] = util::SplitGlob(glob_pattern);
     const rocksdb::Status s = redis.Keys(ctx, prefix, suffix_glob, &keys);
     if (!s.ok()) {

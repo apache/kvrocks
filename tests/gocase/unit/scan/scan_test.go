@@ -330,6 +330,11 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.Do(ctx, "SCAN", "0", "match", "a*", "count", "1").Err())
 		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*", "hello").Err(), ".*syntax error.*")
 		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "count", "1", "match", "a*", "hello", "hi").Err(), ".*syntax error.*")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "match", "[").Err(), ".*Invalid glob pattern.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "match", "\\").Err(), ".*Invalid glob pattern.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "match", "[a").Err(), ".*Invalid glob pattern.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SCAN", "0", "match", "[a-]").Err(), ".*Invalid glob pattern.*")
 	})
 
 	t.Run("SCAN with type args ", func(t *testing.T) {

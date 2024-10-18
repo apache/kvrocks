@@ -70,6 +70,7 @@ struct Config {
   Config();
   ~Config() = default;
   uint32_t port = 0;
+  int socket_fd = -1;
 
   uint32_t tls_port = 0;
   std::string tls_cert_file;
@@ -196,6 +197,7 @@ struct Config {
     int64_t delayed_write_rate;
     int compaction_readahead_size;
     int target_file_size_base;
+    rocksdb::CompressionType wal_compression;
     int wal_ttl_seconds;
     int wal_size_limit_mb;
     int max_total_wal_size;

@@ -128,6 +128,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.row_cache_size", "100"},
       {"rocksdb.rate_limiter_auto_tuned", "yes"},
       {"rocksdb.compression_level", "32767"},
+      {"rocksdb.wal_compression", "no"},
   };
   for (const auto &iter : immutable_cases) {
     s = config.Set(nullptr, iter.first, iter.second);

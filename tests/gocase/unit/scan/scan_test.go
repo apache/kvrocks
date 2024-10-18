@@ -47,6 +47,8 @@ func TestScanEmptyKey(t *testing.T) {
 	require.NoError(t, rdb.SAdd(ctx, "sadd_key", "", "fab", "fiz", "foobar").Err())
 	keys, _, err := rdb.SScan(ctx, "sadd_key", 0, "*", 10000).Result()
 	require.NoError(t, err)
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
 }
 

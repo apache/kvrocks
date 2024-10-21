@@ -105,6 +105,37 @@ std::string TrimRocksDbPrefix(std::string s) {
   return s.substr(8, s.size() - 8);
 }
 
+Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compression,
+                             const int compression_start_level) {
+  if (!srv) return Status::OK();
+  std::string compression_option;
+  for (auto &option : engine::CompressionOptions) {
+    if (option.type == compression) {
+      compression_option = option.val;
+      break;
+    }
+  }
+  if (compression_option.empty()) {
+    return {Status::NotOK, "Invalid compression type"};
+  }
+
+  if (compression_start_level >= KVROCKS_MAX_LSM_LEVEL) {
+    return {Status::NotOK, "compression_start_level must <= rocksdb levels count"};
+  }
+  std::vector<std::string> compression_per_level_builder;
+  compression_per_level_builder.reserve(KVROCKS_MAX_LSM_LEVEL);
+
+  for (int i = 0; i < compression_start_level; i++) {
+    compression_per_level_builder.emplace_back("kNoCompression");
+  }
+  for (int i = compression_start_level; i < KVROCKS_MAX_LSM_LEVEL; i++) {
+    compression_per_level_builder.emplace_back(compression_option);
+  }
+  const std::string compression_per_level = util::StringJoin(
+      compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
+  return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_per_level);
+};
+
 Config::Config() {
   struct FieldWrapper {
     std::string name;
@@ -382,38 +413,20 @@ void Config::initFieldCallback() {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
     return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
   };
+
   auto set_compression_type_cb = [](Server *srv, [[maybe_unused]] const std::string &k,
                                     [[maybe_unused]] const std::string &v) -> Status {
     if (!srv) return Status::OK();
-    std::string compression_option;
-    for (auto &option : engine::CompressionOptions) {
-      if (option.type == srv->GetConfig()->rocks_db.compression) {
-        compression_option = option.val;
-        break;
-      }
-    }
-    if (compression_option.empty()) {
-      return {Status::NotOK, "Invalid compression type"};
-    }
-
-    const int compression_start_level = srv->GetConfig()->rocks_db.compression_start_level;
-    const int num_levels = srv->storage->GetDB()->GetOptions().num_levels;
-    if (compression_start_level >= num_levels) {
-      return {Status::NotOK, "compression_start_level must <= rocksdb levels count"};
-    }
-    std::vector<std::string> compression_per_level_builder;
-    compression_per_level_builder.reserve(num_levels);
-
-    for (int i = 0; i < compression_start_level; i++) {
-      compression_per_level_builder.emplace_back("kNoCompression");
-    }
-    for (int i = compression_start_level; i < num_levels; i++) {
-      compression_per_level_builder.emplace_back(compression_option);
-    }
-    const std::string compression_per_level = util::StringJoin(
-        compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
-    return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_per_level);
+    return SetRocksdbCompression(srv, srv->GetConfig()->rocks_db.compression,
+                                 srv->GetConfig()->rocks_db.compression_start_level);
   };
+  auto set_compression_start_level_cb = [](Server *srv, [[maybe_unused]] const std::string &k,
+                                           [[maybe_unused]] const std::string &v) -> Status {
+    if (!srv) return Status::OK();
+    return SetRocksdbCompression(srv, srv->GetConfig()->rocks_db.compression,
+                                 srv->GetConfig()->rocks_db.compression_start_level);
+  };
+
 #ifdef ENABLE_OPENSSL
   auto set_tls_option = [](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
@@ -718,7 +731,7 @@ void Config::initFieldCallback() {
           {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
           {"rocksdb.level0_file_num_compaction_trigger", set_cf_option_cb},
           {"rocksdb.compression", set_compression_type_cb},
-          {"rocksdb.compression_start_level", set_compression_type_cb},
+          {"rocksdb.compression_start_level", set_compression_start_level_cb},
 #ifdef ENABLE_OPENSSL
           {"tls-cert-file", set_tls_option},
           {"tls-key-file", set_tls_option},

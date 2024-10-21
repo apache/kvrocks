@@ -44,6 +44,7 @@
 #include "redis_metadata.h"
 #include "rocksdb/cache.h"
 #include "rocksdb_crc32c.h"
+#include "scope_exit.h"
 #include "server/server.h"
 #include "storage/batch_indexer.h"
 #include "table_properties_collector.h"
@@ -75,12 +76,46 @@ const int64_t kIORateLimitMaxMb = 1024000;
 
 using rocksdb::Slice;
 
+static Status CreateSnapshot(Config &config, const std::string &snapshot_location) {
+  // The Storage destructor deletes anything at the checkpoint_dir, so we need to make 
+  // sure it's empty in case the user happens to use a snapshot name which matches the 
+  // default (checkpoint/)
+  const std::string old_checkpoint_dir = std::exchange(config.checkpoint_dir, "");
+  const auto checkpoint_dir_guard =
+      MakeScopeExit([&config, &old_checkpoint_dir] { config.checkpoint_dir = old_checkpoint_dir; });
+
+  engine::Storage storage(&config);
+  if (const auto s = storage.Open(kDBOpenModeForReadOnly); !s.IsOK()) {
+    return {Status::NotOK, fmt::format("failed to open DB in read-only mode: {}", s.Msg())};
+  }
+
+  rocksdb::Checkpoint *snapshot = nullptr;
+  if (const auto s = rocksdb::Checkpoint::Create(storage.GetDB(), &snapshot); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+
+  std::unique_ptr<rocksdb::Checkpoint> snapshot_guard(snapshot);
+  if (const auto s = snapshot->CreateCheckpoint(snapshot_location + "/db"); !s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+
+  return Status::OK();
+}
+
 Storage::Storage(Config *config)
     : backup_creating_time_secs_(util::GetTimeStamp<std::chrono::seconds>()),
       env_(rocksdb::Env::Default()),
       config_(config),
       lock_mgr_(16),
       db_stats_(std::make_unique<DBStats>()) {
+  if (config->snapshot_dir != "") {
+    if (const auto s = CreateSnapshot(*config, config->snapshot_dir); !s.IsOK()) {
+      throw std::runtime_error(fmt::format("Failed to create snapshot: {}", s.Msg()));
+    }
+    LOG(INFO) << "Starting server in read-only mode with snapshot dir: " << config->snapshot_dir;
+    config->db_dir = config->snapshot_dir + "/db";
+  }
+
   Metadata::InitVersionCounter();
   SetWriteOptions(config->rocks_db.write_options);
 }

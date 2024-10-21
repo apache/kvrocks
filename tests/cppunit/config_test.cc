@@ -82,7 +82,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_bytes_for_level_multiplier", "10"},
       {"rocksdb.level_compaction_dynamic_level_bytes", "yes"},
       {"rocksdb.max_background_jobs", "4"},
-      {"rocksdb.nocompression_for_first_n_levels", "2"},
+      {"rocksdb.compression_start_level", "2"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

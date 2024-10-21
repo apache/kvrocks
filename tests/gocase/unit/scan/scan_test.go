@@ -97,7 +97,7 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 	t.Run("SCAN MATCH non-trivial pattern", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 
-		for _, key := range []string{"aa", "aab", "aabb", "ab", "abb"} {
+		for _, key := range []string{"aa", "aab", "aabb", "ab", "abb", "ba"} {
 			require.NoError(t, rdb.Set(ctx, key, "hello", 0).Err())
 		}
 
@@ -124,6 +124,13 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 
 		keys = scanAll(t, rdb, "match", "*ab*")
 		require.Equal(t, []string{"aab", "aabb", "ab", "abb"}, keys)
+
+		// Special case: using [b]* instead of b* forces the a full scan of the keyspace,
+		// matching every result with the pattern. We ask for exactly one key, but the
+		// first 5 keys don't match the pattern. This tests that SCAN returns a valid
+		// cursor even when the first [limit] keys don't satisfy the pattern.
+		keys = scanAll(t, rdb, "match", "[b]*", "count", "1")
+		require.Equal(t, []string{"ba"}, keys)
 	})
 
 	t.Run("SCAN guarantees check under write load", func(t *testing.T) {

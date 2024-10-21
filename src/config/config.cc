@@ -120,7 +120,7 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
   }
 
   if (compression_start_level >= KVROCKS_MAX_LSM_LEVEL) {
-    return {Status::NotOK, "compression_start_level must <= rocksdb levels count"};
+    return {Status::NotOK, "compression_start_level must be < " + std::to_string(KVROCKS_MAX_LSM_LEVEL)};
   }
   std::vector<std::string> compression_per_level_builder;
   compression_per_level_builder.reserve(KVROCKS_MAX_LSM_LEVEL);

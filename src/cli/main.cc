@@ -27,14 +27,12 @@
 #include <event2/thread.h>
 #include <glog/logging.h>
 
-#include <filesystem>
 #include <iomanip>
 #include <ostream>
 
 #include "daemon_util.h"
 #include "io_util.h"
 #include "pid_util.h"
-#include "rocksdb/utilities/checkpoint.h"
 #include "scope_exit.h"
 #include "server/server.h"
 #include "signal_util.h"
@@ -115,31 +113,6 @@ static void InitGoogleLog(const Config *config) {
   }
 }
 
-static Status CreateSnapshot(Config &config, const std::string &snapshot_location) {
-  // The Storage destructor deletes anything at the checkpoint_dir, so we need to make sure it's empty in case the user
-  // happens to use a snapshot name which matches the default (checkpoint/)
-  const std::string old_checkpoint_dir = std::exchange(config.checkpoint_dir, "");
-  const auto checkpoint_dir_guard =
-      MakeScopeExit([&config, &old_checkpoint_dir] { config.checkpoint_dir = old_checkpoint_dir; });
-
-  engine::Storage storage(&config);
-  if (const auto s = storage.Open(kDBOpenModeForReadOnly); !s.IsOK()) {
-    return {Status::NotOK, fmt::format("failed to open DB in read-only mode: {}", s.Msg())};
-  }
-
-  rocksdb::Checkpoint *snapshot = nullptr;
-  if (const auto s = rocksdb::Checkpoint::Create(storage.GetDB(), &snapshot); !s.ok()) {
-    return {Status::NotOK, s.ToString()};
-  }
-
-  std::unique_ptr<rocksdb::Checkpoint> snapshot_guard(snapshot);
-  if (const auto s = snapshot->CreateCheckpoint(snapshot_location + "/db"); !s.ok()) {
-    return {Status::NotOK, s.ToString()};
-  }
-
-  return Status::OK();
-}
-
 int main(int argc, char *argv[]) {
   srand(static_cast<unsigned>(util::GetTimeStamp()));
 
@@ -197,24 +170,8 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-  const bool use_snapshot = config.snapshot_dir != "";
-  if (use_snapshot) {
-    if (const auto s = CreateSnapshot(config, config.snapshot_dir); !s.IsOK()) {
-      LOG(ERROR) << "Failed to create snapshot: " << s.Msg();
-      return 1;
-    }
-    LOG(INFO) << "Starting server in read-only mode with snapshot dir: " << config.snapshot_dir;
-    config.db_dir = config.snapshot_dir + "/db";
-  }
-  const auto snapshot_exit = MakeScopeExit([use_snapshot, &config]() {
-    if (use_snapshot && !config.keep_snapshot) {
-      LOG(INFO) << "Removing snapshot dir: " << config.snapshot_dir;
-      std::filesystem::remove_all(config.snapshot_dir);
-    }
-  });
-
   engine::Storage storage(&config);
-  const bool read_only = use_snapshot;
+  const bool read_only = config.snapshot_dir != "";
   const DBOpenMode open_mode = read_only ? kDBOpenModeForReadOnly : kDBOpenModeDefault;
   s = storage.Open(open_mode);
 

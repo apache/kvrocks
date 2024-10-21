@@ -54,6 +54,7 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+constexpr const size_t KVROCKS_MAX_LSM_LEVEL = 7;
 
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
@@ -200,6 +201,7 @@ struct Config {
     int level0_stop_writes_trigger;
     int level0_file_num_compaction_trigger;
     rocksdb::CompressionType compression;
+    int compression_start_level;
     int compression_level;
     bool disable_auto_compactions;
     bool enable_blob_files;

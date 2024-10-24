@@ -141,7 +141,16 @@ struct CommandKeyRange {
   template <typename F>
   void ForEachKey(F &&f, const std::vector<std::string> &args) const {
     for (size_t i = first_key; last_key > 0 ? i <= size_t(last_key) : i <= args.size() + last_key; i += key_step) {
+      if (i >= args.size()) continue;
       std::forward<F>(f)(args[i]);
+    }
+  }
+
+  template <typename F>
+  void ForEachKeyIndex(F &&f, size_t arg_size) const {
+    for (size_t i = first_key; last_key > 0 ? i <= size_t(last_key) : i <= arg_size + last_key; i += key_step) {
+      if (i >= arg_size) continue;
+      std::forward<F>(f)(i);
     }
   }
 };
@@ -161,20 +170,20 @@ struct CommandAttributes {
       : name(std::move(name)),
         arity(arity),
         category(category),
-        key_range{0, 0, 0},
         factory(std::move(factory)),
         flags_(flags),
-        flag_gen_(std::move(flag_gen)) {}
+        flag_gen_(std::move(flag_gen)),
+        key_range_{0, 0, 0} {}
 
   CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
                     CommandKeyRange key_range, CommanderFactory factory)
       : name(std::move(name)),
         arity(arity),
         category(category),
-        key_range(key_range),
         factory(std::move(factory)),
         flags_(flags),
-        flag_gen_(std::move(flag_gen)) {
+        flag_gen_(std::move(flag_gen)),
+        key_range_(key_range) {
     if (key_range.first_key <= 0 || key_range.key_step <= 0 ||
         (key_range.last_key >= 0 && key_range.last_key < key_range.first_key)) {
       std::cout << fmt::format("Encountered invalid key range in command {}", this->name) << std::endl;
@@ -187,22 +196,22 @@ struct CommandAttributes {
       : name(std::move(name)),
         arity(arity),
         category(category),
-        key_range{-1, 0, 0},
-        key_range_gen(std::move(key_range)),
         factory(std::move(factory)),
         flags_(flags),
-        flag_gen_(std::move(flag_gen)) {}
+        flag_gen_(std::move(flag_gen)),
+        key_range_{-1, 0, 0},
+        key_range_gen_(std::move(key_range)) {}
 
   CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
                     CommandKeyRangeVecGen key_range, CommanderFactory factory)
       : name(std::move(name)),
         arity(arity),
         category(category),
-        key_range{-2, 0, 0},
-        key_range_vec_gen(std::move(key_range)),
         factory(std::move(factory)),
         flags_(flags),
-        flag_gen_(std::move(flag_gen)) {}
+        flag_gen_(std::move(flag_gen)),
+        key_range_{-2, 0, 0},
+        key_range_vec_gen_(std::move(key_range)) {}
 
   // command name
   std::string name;
@@ -214,16 +223,6 @@ struct CommandAttributes {
 
   // category of this command, e.g. key, string, hash
   CommandCategory category;
-
-  // static determined key range
-  // if key_range.first_key == 0, there's no key in this command args
-  CommandKeyRange key_range;
-
-  // if key_range.first_key == -1, key_range_gen is used instead
-  CommandKeyRangeGen key_range_gen;
-
-  // if key_range.first_key == -2, key_range_vec_gen is used instead
-  CommandKeyRangeVecGen key_range_vec_gen;
 
   // commander object generator
   CommanderFactory factory;
@@ -240,25 +239,39 @@ struct CommandAttributes {
     return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
   }
 
-  template <typename F>
-  void ForEachKeyRange(F &&f, const std::vector<std::string> &args) const {
-    if (key_range.first_key > 0) {
-      std::forward<F>(f)(args, key_range);
-    } else if (key_range.first_key == -1) {
-      redis::CommandKeyRange range = key_range_gen(args);
+  StatusOr<CommandKeyRange> InitialKeyRange() const {
+    if (key_range_.first_key >= 0) return key_range_;
+    return {Status::NotOK, "key range is unavailable without command arguments"};
+  }
+
+  template <typename F, typename G>
+  void ForEachKeyRange(F &&f, const std::vector<std::string> &args, G &&g) const {
+    if (key_range_.first_key > 0) {
+      std::forward<F>(f)(args, key_range_);
+    } else if (key_range_.first_key == -1) {
+      redis::CommandKeyRange range = key_range_gen_(args);
 
       if (range.first_key > 0) {
         std::forward<F>(f)(args, range);
       }
-    } else if (key_range.first_key == -2) {
-      std::vector<redis::CommandKeyRange> vec_range = key_range_vec_gen(args);
+    } else if (key_range_.first_key == -2) {
+      std::vector<redis::CommandKeyRange> vec_range = key_range_vec_gen_(args);
 
       for (const auto &range : vec_range) {
         if (range.first_key > 0) {
           std::forward<F>(f)(args, range);
         }
       }
+    } else if (key_range_.first_key == 0) {
+      // otherwise, if there's no key inside the command arguments
+      // e.g. FLUSHALL, with "write" flag but no key specified
+      std::forward<G>(g)(args);
     }
+  }
+
+  template <typename F>
+  void ForEachKeyRange(F &&f, const std::vector<std::string> &args) const {
+    ForEachKeyRange(std::forward<F>(f), args, [](const auto &) {});
   }
 
  private:
@@ -267,6 +280,16 @@ struct CommandAttributes {
 
   // additional flags regarding to dynamic command arguments
   AdditionalFlagGen flag_gen_;
+
+  // static determined key range
+  // if key_range.first_key == 0, there's no key in this command args
+  CommandKeyRange key_range_;
+
+  // if key_range.first_key == -1, key_range_gen is used instead
+  CommandKeyRangeGen key_range_gen_;
+
+  // if key_range.first_key == -2, key_range_vec_gen is used instead
+  CommandKeyRangeVecGen key_range_vec_gen_;
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
@@ -374,8 +397,8 @@ struct CommandTable {
   static void GetAllCommandsInfo(std::string *info);
   static void GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names);
   static std::string GetCommandInfo(const CommandAttributes *command_attributes);
-  static Status GetKeysFromCommand(const CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
-                                   std::vector<int> *keys_indexes);
+  static StatusOr<std::vector<int>> GetKeysFromCommand(const CommandAttributes *attributes,
+                                                       const std::vector<std::string> &cmd_tokens);
 
   static size_t Size();
   static bool IsExists(const std::string &name);

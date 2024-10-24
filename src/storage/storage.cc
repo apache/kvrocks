@@ -77,8 +77,8 @@ const int64_t kIORateLimitMaxMb = 1024000;
 using rocksdb::Slice;
 
 static Status CreateSnapshot(Config &config, const std::string &snapshot_location) {
-  // The Storage destructor deletes anything at the checkpoint_dir, so we need to make 
-  // sure it's empty in case the user happens to use a snapshot name which matches the 
+  // The Storage destructor deletes anything at the checkpoint_dir, so we need to make
+  // sure it's empty in case the user happens to use a snapshot name which matches the
   // default (checkpoint/)
   const std::string old_checkpoint_dir = std::exchange(config.checkpoint_dir, "");
   const auto checkpoint_dir_guard =

@@ -676,18 +676,16 @@ class CommandCommand : public Commander {
           return {Status::RedisUnknownCmd, "Invalid command specified"};
         }
 
-        std::vector<int> keys_indexes;
-        auto s = CommandTable::GetKeysFromCommand(
-            cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end()), &keys_indexes);
-        if (!s.IsOK()) return s;
+        auto key_indexes = GET_OR_RET(CommandTable::GetKeysFromCommand(
+            cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end())));
 
-        if (keys_indexes.size() == 0) {
+        if (key_indexes.size() == 0) {
           return {Status::RedisExecErr, "Invalid arguments specified for command"};
         }
 
         std::vector<std::string> keys;
-        keys.reserve(keys_indexes.size());
-        for (const auto &key_index : keys_indexes) {
+        keys.reserve(key_indexes.size());
+        for (const auto &key_index : key_indexes) {
           keys.emplace_back(args_[key_index + 2]);
         }
         *output = conn->MultiBulkString(keys);

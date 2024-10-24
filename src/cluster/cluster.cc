@@ -832,16 +832,16 @@ bool Cluster::IsWriteForbiddenSlot(int slot) const {
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx) {
-  std::vector<int> keys_indexes;
+  std::vector<int> key_indexes;
 
-  // No keys
-  if (auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens, &keys_indexes); !s.IsOK())
-    return Status::OK();
+  auto s = redis::CommandTable::GetKeysFromCommand(attributes, cmd_tokens);
+  if (!s) return Status::OK();
+  key_indexes = *s;
 
-  if (keys_indexes.empty()) return Status::OK();
+  if (key_indexes.empty()) return Status::OK();
 
   int slot = -1;
-  for (auto i : keys_indexes) {
+  for (auto i : key_indexes) {
     if (i >= static_cast<int>(cmd_tokens.size())) break;
 
     int cur_slot = GetSlotIdFromKey(cmd_tokens[i]);

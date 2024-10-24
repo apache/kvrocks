@@ -361,10 +361,9 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
   return s;
 }
 
-static bool IsCmdForIndexing(const CommandAttributes *attr) {
-  return (attr->flags & redis::kCmdWrite) &&
-         (attr->category == CommandCategory::Hash || attr->category == CommandCategory::JSON ||
-          attr->category == CommandCategory::Key);
+static bool IsCmdForIndexing(uint64_t cmd_flags, CommandCategory cmd_cat) {
+  return (cmd_flags & redis::kCmdWrite) &&
+         (cmd_cat == CommandCategory::Hash || cmd_cat == CommandCategory::JSON || cmd_cat == CommandCategory::Key);
 }
 
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
@@ -518,7 +517,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       engine::Context ctx(srv_->storage);
 
       std::vector<GlobalIndexer::RecordResult> index_records;
-      if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(attributes) && !config->cluster_enabled) {
+      if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(cmd_flags, attributes->category) &&
+          !config->cluster_enabled) {
         attributes->ForEachKeyRange(
             [&, this](const std::vector<std::string> &args, const CommandKeyRange &key_range) {
               key_range.ForEachKey(

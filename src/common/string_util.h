@@ -50,8 +50,7 @@ std::string EscapeString(std::string_view s);
 std::string StringNext(std::string s);
 
 template <typename T, typename F>
-std::string StringJoin(
-    const T &con, F &&f = [](const auto &v) -> decltype(auto) { return v; }, std::string_view sep = ", ") {
+std::string StringJoin(const T &con, F &&f, std::string_view sep = ", ") {
   std::string res;
   bool is_first = true;
   for (const auto &v : con) {

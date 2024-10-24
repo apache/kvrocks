@@ -1982,28 +1982,10 @@ void Server::updateAllWatchedKeys() {
 }
 
 void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr) {
-  if ((attr.flags & redis::kCmdWrite) && watched_key_size_ > 0) {
-    if (attr.key_range.first_key > 0) {
-      updateWatchedKeysFromRange(args, attr.key_range);
-    } else if (attr.key_range.first_key == -1) {
-      redis::CommandKeyRange range = attr.key_range_gen(args);
-
-      if (range.first_key > 0) {
-        updateWatchedKeysFromRange(args, range);
-      }
-    } else if (attr.key_range.first_key == -2) {
-      std::vector<redis::CommandKeyRange> vec_range = attr.key_range_vec_gen(args);
-
-      for (const auto &range : vec_range) {
-        if (range.first_key > 0) {
-          updateWatchedKeysFromRange(args, range);
-        }
-      }
-
-    } else {
-      // support commands like flushdb (write flag && key range {0,0,0})
-      updateAllWatchedKeys();
-    }
+  if ((attr.GenerateFlags(args) & redis::kCmdWrite) && watched_key_size_ > 0) {
+    attr.ForEachKeyRange([this](const std::vector<std::string> &args,
+                                redis::CommandKeyRange range) { updateWatchedKeysFromRange(args, range); },
+                         args, [this](const std::vector<std::string> &) { updateAllWatchedKeys(); });
   }
 }
 

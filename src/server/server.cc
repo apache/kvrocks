@@ -1983,7 +1983,7 @@ void Server::updateAllWatchedKeys() {
 }
 
 void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr) {
-  if ((attr.flags & redis::kCmdWrite) && watched_key_size_ > 0) {
+  if ((attr.GenerateFlags(args) & redis::kCmdWrite) && watched_key_size_ > 0) {
     if (attr.key_range.first_key > 0) {
       updateWatchedKeysFromRange(args, attr.key_range);
     } else if (attr.key_range.first_key == -1) {

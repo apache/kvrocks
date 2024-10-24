@@ -48,7 +48,7 @@ std::string CommandTable::GetCommandInfo(const CommandAttributes *command_attrib
   command.append(redis::BulkString(command_attributes->name));
   command.append(redis::Integer(command_attributes->arity));
   command_flags.append(redis::MultiLen(1));
-  command_flags.append(redis::BulkString(command_attributes->flags & kCmdWrite ? "write" : "readonly"));
+  command_flags.append(redis::BulkString(command_attributes->InitialFlags() & kCmdWrite ? "write" : "readonly"));
   command.append(command_flags);
   command.append(redis::Integer(command_attributes->key_range.first_key));
   command.append(redis::Integer(command_attributes->key_range.last_key));

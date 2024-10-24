@@ -27,13 +27,14 @@ namespace redis {
 
 class CommandPublish : public Commander {
  public:
-  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
     if (!srv->IsSlave()) {
       // Compromise: can't replicate a message to sub-replicas in a cascading-like structure.
       // Replication relies on WAL seq; increasing the seq on a replica will break the replication process,
       // hence the compromise solution
       redis::PubSub pubsub_db(srv->storage);
-      engine::Context ctx(srv->storage);
+
       auto s = pubsub_db.Publish(ctx, args_[1], args_[2]);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
@@ -50,9 +51,9 @@ class CommandPublish : public Commander {
 
 class CommandMPublish : public Commander {
  public:
-  Status Execute(Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     int total_receivers = 0;
-    engine::Context ctx(srv->storage);
+
     for (size_t i = 2; i < args_.size(); i++) {
       if (!srv->IsSlave()) {
         redis::PubSub pubsub_db(srv->storage);
@@ -83,7 +84,8 @@ void SubscribeCommandReply(const Connection *conn, std::string *output, const st
 
 class CommandSubscribe : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     for (unsigned i = 1; i < args_.size(); i++) {
       conn->SubscribeChannel(args_[i]);
       SubscribeCommandReply(conn, output, "subscribe", args_[i],
@@ -95,7 +97,8 @@ class CommandSubscribe : public Commander {
 
 class CommandUnSubscribe : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     if (args_.size() == 1) {
       conn->UnsubscribeAll([conn, output](const std::string &sub_name, int num) {
         SubscribeCommandReply(conn, output, "unsubscribe", sub_name, num);
@@ -113,7 +116,8 @@ class CommandUnSubscribe : public Commander {
 
 class CommandPSubscribe : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     for (size_t i = 1; i < args_.size(); i++) {
       conn->PSubscribeChannel(args_[i]);
       SubscribeCommandReply(conn, output, "psubscribe", args_[i],
@@ -125,7 +129,8 @@ class CommandPSubscribe : public Commander {
 
 class CommandPUnSubscribe : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     if (args_.size() == 1) {
       conn->PUnsubscribeAll([conn, output](const std::string &sub_name, int num) {
         SubscribeCommandReply(conn, output, "punsubscribe", sub_name, num);
@@ -143,7 +148,7 @@ class CommandPUnSubscribe : public Commander {
 
 class CommandSSubscribe : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     uint16_t slot = 0;
     if (srv->GetConfig()->cluster_enabled) {
       slot = GetSlotIdFromKey(args_[1]);
@@ -164,7 +169,7 @@ class CommandSSubscribe : public Commander {
 
 class CommandSUnSubscribe : public Commander {
  public:
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     if (args_.size() == 1) {
       conn->SUnsubscribeAll([conn, output](const std::string &sub_name, int num) {
         SubscribeCommandReply(conn, output, "sunsubscribe", sub_name, num);
@@ -204,7 +209,7 @@ class CommandPubSub : public Commander {
     return {Status::RedisInvalidCmd, errUnknownSubcommandOrWrongArguments};
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "numpat") {
       *output = redis::Integer(srv->GetPubSubPatternSize());
       return Status::OK();
@@ -248,14 +253,14 @@ class CommandPubSub : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(
-    Pubsub, MakeCmdAttr<CommandPublish>("publish", 3, "read-only pub-sub", 0, 0, 0),
-    MakeCmdAttr<CommandMPublish>("mpublish", -3, "read-only pub-sub", 0, 0, 0),
-    MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandSSubscribe>("ssubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandSUnSubscribe>("sunsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0),
-    MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0), )
+    Pubsub, MakeCmdAttr<CommandPublish>("publish", 3, "read-only pub-sub", NO_KEY),
+    MakeCmdAttr<CommandMPublish>("mpublish", -3, "read-only pub-sub", NO_KEY),
+    MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandUnSubscribe>("unsubscribe", -1, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandPSubscribe>("psubscribe", -2, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandSSubscribe>("ssubscribe", -2, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandSUnSubscribe>("sunsubscribe", -1, "read-only pub-sub no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only pub-sub no-script", NO_KEY), )
 
 }  // namespace redis

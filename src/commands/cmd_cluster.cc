@@ -65,7 +65,7 @@ class CommandCluster : public Commander {
     return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET|REPLICAS"};
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     if (!srv->GetConfig()->cluster_enabled) {
       return {Status::RedisExecErr, "Cluster mode is not enabled"};
     }
@@ -244,7 +244,7 @@ class CommandClusterX : public Commander {
     return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
   }
 
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     if (!srv->GetConfig()->cluster_enabled) {
       return {Status::RedisExecErr, "Cluster mode is not enabled"};
     }
@@ -329,7 +329,8 @@ static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::strin
 
 class CommandReadOnly : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     *output = redis::SimpleString("OK");
     conn->EnableFlag(redis::Connection::kReadOnly);
     return Status::OK();
@@ -338,7 +339,8 @@ class CommandReadOnly : public Commander {
 
 class CommandReadWrite : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     *output = redis::SimpleString("OK");
     conn->DisableFlag(redis::Connection::kReadOnly);
     return Status::OK();
@@ -347,7 +349,8 @@ class CommandReadWrite : public Commander {
 
 class CommandAsking : public Commander {
  public:
-  Status Execute([[maybe_unused]] Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
+                 std::string *output) override {
     conn->EnableFlag(redis::Connection::kAsking);
     *output = redis::SimpleString("OK");
     return Status::OK();
@@ -355,10 +358,10 @@ class CommandAsking : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(Cluster,
-                        MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
-                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", 0, 0, 0, GenerateClusterFlag),
-                        MakeCmdAttr<CommandReadOnly>("readonly", 1, "cluster no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", 0, 0, 0),
-                        MakeCmdAttr<CommandAsking>("asking", 1, "cluster", 0, 0, 0), )
+                        MakeCmdAttr<CommandCluster>("cluster", -2, "cluster no-script", NO_KEY, GenerateClusterFlag),
+                        MakeCmdAttr<CommandClusterX>("clusterx", -2, "cluster no-script", NO_KEY, GenerateClusterFlag),
+                        MakeCmdAttr<CommandReadOnly>("readonly", 1, "cluster no-multi", NO_KEY),
+                        MakeCmdAttr<CommandReadWrite>("readwrite", 1, "cluster no-multi", NO_KEY),
+                        MakeCmdAttr<CommandAsking>("asking", 1, "cluster", NO_KEY), )
 
 }  // namespace redis

@@ -24,7 +24,7 @@ extend-exclude = [
     # Uses short strings for testing glob matching
     "tests/cppunit/string_util_test.cc",
     "tests/gocase/unit/keyspace/keyspace_test.go",
-    "tests/gocase/unit/keyspace/scan_test.go",
+    "tests/gocase/unit/scan/scan_test.go",
 ]
 ignore-hidden = false
 

@@ -878,7 +878,6 @@ Status Storage::CommitTxn() {
   if (!is_txn_mode_) {
     return Status{Status::NotOK, "cannot commit while not in transaction mode"};
   }
-  // TODO: fix
   engine::Context ctx(this);
   auto s = writeToDB(ctx, default_write_opts_, txn_write_batch_->GetWriteBatch());
 

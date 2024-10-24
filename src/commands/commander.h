@@ -177,7 +177,7 @@ struct CommandAttributes {
         flag_gen_(std::move(flag_gen)) {
     if (key_range.first_key <= 0 || key_range.key_step <= 0 ||
         (key_range.last_key >= 0 && key_range.last_key < key_range.first_key)) {
-      std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
+      std::cout << fmt::format("Encountered invalid key range in command {}", this->name) << std::endl;
       std::abort();
     }
   }

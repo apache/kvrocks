@@ -509,8 +509,8 @@ class CommandFTTagVals : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(Search,
-                        MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script slow", 0, 0,
-                                                     0),
+                        MakeCmdAttr<CommandFTCreate>("ft.create", -2, "write exclusive no-multi no-script slow",
+                                                     NO_KEY),
                         MakeCmdAttr<CommandFTSearchSQL>("ft.searchsql", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandFTSearch>("ft.search", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandFTExplainSQL>("ft.explainsql", -2, "read-only", NO_KEY),

@@ -152,7 +152,58 @@ using CommandKeyRangeVecGen = std::function<std::vector<CommandKeyRange>(const s
 
 using AdditionalFlagGen = std::function<uint64_t(uint64_t, const std::vector<std::string> &)>;
 
+struct NoKeyInThisCommand {};
+static constexpr const NoKeyInThisCommand NO_KEY{};
+
 struct CommandAttributes {
+  CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
+                    NoKeyInThisCommand, CommanderFactory factory)
+      : name(std::move(name)),
+        arity(arity),
+        category(category),
+        key_range{0, 0, 0},
+        factory(std::move(factory)),
+        flags_(flags),
+        flag_gen_(std::move(flag_gen)) {}
+
+  CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
+                    CommandKeyRange key_range, CommanderFactory factory)
+      : name(std::move(name)),
+        arity(arity),
+        category(category),
+        key_range(key_range),
+        factory(std::move(factory)),
+        flags_(flags),
+        flag_gen_(std::move(flag_gen)) {
+    if (key_range.first_key <= 0 || key_range.key_step <= 0 ||
+        (key_range.last_key >= 0 && key_range.last_key < key_range.first_key)) {
+      std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
+      std::abort();
+    }
+  }
+
+  CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
+                    CommandKeyRangeGen key_range, CommanderFactory factory)
+      : name(std::move(name)),
+        arity(arity),
+        category(category),
+        key_range{-1, 0, 0},
+        key_range_gen(std::move(key_range)),
+        factory(std::move(factory)),
+        flags_(flags),
+        flag_gen_(std::move(flag_gen)) {}
+
+  CommandAttributes(std::string name, int arity, CommandCategory category, uint64_t flags, AdditionalFlagGen flag_gen,
+                    CommandKeyRangeVecGen key_range, CommanderFactory factory)
+      : name(std::move(name)),
+        arity(arity),
+        category(category),
+        key_range{-2, 0, 0},
+        key_range_vec_gen(std::move(key_range)),
+        factory(std::move(factory)),
+        flags_(flags),
+        flag_gen_(std::move(flag_gen)) {}
+
   // command name
   std::string name;
 
@@ -164,13 +215,8 @@ struct CommandAttributes {
   // category of this command, e.g. key, string, hash
   CommandCategory category;
 
-  // bitmap of enum CommandFlags
-  uint64_t flags;
-
-  // additional flags regarding to dynamic command arguments
-  AdditionalFlagGen flag_gen;
-
   // static determined key range
+  // if key_range.first_key == 0, there's no key in this command args
   CommandKeyRange key_range;
 
   // if key_range.first_key == -1, key_range_gen is used instead
@@ -182,9 +228,11 @@ struct CommandAttributes {
   // commander object generator
   CommanderFactory factory;
 
+  uint64_t InitialFlags() const { return flags_; }
+
   auto GenerateFlags(const std::vector<std::string> &args) const {
-    uint64_t res = flags;
-    if (flag_gen) res = flag_gen(res, args);
+    uint64_t res = flags_;
+    if (flag_gen_) res = flag_gen_(res, args);
     return res;
   }
 
@@ -212,6 +260,13 @@ struct CommandAttributes {
       }
     }
   }
+
+ private:
+  // bitmap of enum CommandFlags
+  uint64_t flags_;
+
+  // additional flags regarding to dynamic command arguments
+  AdditionalFlagGen flag_gen_;
 };
 
 using CommandMap = std::map<std::string, const CommandAttributes *>;
@@ -258,22 +313,20 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
 }
 
 template <typename T>
+auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, NoKeyInThisCommand no_key,
+                 const AdditionalFlagGen &flag_gen = {}) {
+  CommandAttributes attr(name, arity, CommandCategory::Unknown, ParseCommandFlags(description, name), flag_gen, no_key,
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); });
+
+  return attr;
+}
+
+template <typename T>
 auto MakeCmdAttr(const std::string &name, int arity, const std::string &description, int first_key, int last_key,
                  int key_step = 1, const AdditionalFlagGen &flag_gen = {}) {
-  CommandAttributes attr{name,
-                         arity,
-                         CommandCategory::Unknown,
-                         ParseCommandFlags(description, name),
-                         flag_gen,
+  CommandAttributes attr(name, arity, CommandCategory::Unknown, ParseCommandFlags(description, name), flag_gen,
                          {first_key, last_key, key_step},
-                         {},
-                         {},
-                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
-
-  if ((first_key > 0 && key_step <= 0) || (first_key > 0 && last_key >= 0 && last_key < first_key)) {
-    std::cout << fmt::format("Encountered invalid key range in command {}", name) << std::endl;
-    std::abort();
-  }
+                         []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); });
 
   return attr;
 }
@@ -286,9 +339,7 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
-                         {-1, 0, 0},
                          gen,
-                         {},
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 
   return attr;
@@ -302,8 +353,6 @@ auto MakeCmdAttr(const std::string &name, int arity, const std::string &descript
                          CommandCategory::Unknown,
                          ParseCommandFlags(description, name),
                          flag_gen,
-                         {-2, 0, 0},
-                         {},
                          vec_gen,
                          []() -> std::unique_ptr<Commander> { return std::unique_ptr<Commander>(new T()); }};
 

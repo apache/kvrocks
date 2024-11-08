@@ -146,6 +146,7 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->enable_blob_files = config_->rocks_db.enable_blob_files;
+  cf_options->blob_cache = config_->enable_blob_cache ? shared_block_cache_ : nullptr;
   cf_options->min_blob_size = config_->rocks_db.min_blob_size;
   cf_options->blob_file_size = config_->rocks_db.blob_file_size;
   cf_options->blob_compression_type = config_->rocks_db.compression;

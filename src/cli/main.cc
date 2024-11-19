@@ -31,6 +31,7 @@
 #include <ostream>
 
 #include "daemon_util.h"
+#include "glog/log_severity.h"
 #include "io_util.h"
 #include "pid_util.h"
 #include "scope_exit.h"
@@ -100,7 +101,7 @@ static void InitGoogleLog(const Config *config) {
 
   if (util::EqualICase(config->log_dir, "stdout")) {
     for (int level = google::INFO; level <= google::FATAL; level++) {
-      google::SetLogDestination(level, "");
+      google::SetLogDestination(static_cast<google::LogSeverity>(level), "");
     }
     FLAGS_stderrthreshold = google::ERROR;
     FLAGS_logtostdout = true;
@@ -108,7 +109,7 @@ static void InitGoogleLog(const Config *config) {
   } else {
     FLAGS_log_dir = config->log_dir + "/";
     if (config->log_retention_days != -1) {
-      google::EnableLogCleaner(config->log_retention_days);
+      google::EnableLogCleaner(std::chrono::hours(24) * config->log_retention_days);
     }
   }
 }

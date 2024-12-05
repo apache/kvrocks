@@ -88,6 +88,13 @@ Storage::Storage(Config *config)
 Storage::~Storage() {
   DestroyBackup();
   CloseDB();
+  TrySkipBlockCacheDeallocationOnClose();
+}
+
+void Storage::TrySkipBlockCacheDeallocationOnClose() {
+  if (config_->skip_block_cache_deallocation_on_close) {
+    shared_block_cache_->DisownData();
+  }
 }
 
 void Storage::CloseDB() {
@@ -285,18 +292,16 @@ Status Storage::Open(DBOpenMode mode) {
     }
   }
 
-  std::shared_ptr<rocksdb::Cache> shared_block_cache;
-
   if (config_->rocks_db.block_cache_type == BlockCacheType::kCacheTypeLRU) {
-    shared_block_cache = rocksdb::NewLRUCache(block_cache_size, kRocksdbLRUAutoAdjustShardBits,
-                                              kRocksdbCacheStrictCapacityLimit, kRocksdbLRUBlockCacheHighPriPoolRatio);
+    shared_block_cache_ = rocksdb::NewLRUCache(block_cache_size, kRocksdbLRUAutoAdjustShardBits,
+                                               kRocksdbCacheStrictCapacityLimit, kRocksdbLRUBlockCacheHighPriPoolRatio);
   } else {
     rocksdb::HyperClockCacheOptions hcc_cache_options(block_cache_size, kRockdbHCCAutoAdjustCharge);
-    shared_block_cache = hcc_cache_options.MakeSharedCache();
+    shared_block_cache_ = hcc_cache_options.MakeSharedCache();
   }
 
   rocksdb::BlockBasedTableOptions metadata_table_opts = InitTableOptions();
-  metadata_table_opts.block_cache = shared_block_cache;
+  metadata_table_opts.block_cache = shared_block_cache_;
   metadata_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   metadata_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   metadata_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
@@ -313,7 +318,7 @@ Status Storage::Open(DBOpenMode mode) {
   SetBlobDB(&metadata_opts);
 
   rocksdb::BlockBasedTableOptions subkey_table_opts = InitTableOptions();
-  subkey_table_opts.block_cache = shared_block_cache;
+  subkey_table_opts.block_cache = shared_block_cache_;
   subkey_table_opts.pin_l0_filter_and_index_blocks_in_cache = true;
   subkey_table_opts.cache_index_and_filter_blocks = cache_index_and_filter_blocks;
   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;

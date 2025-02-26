@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.29.4
+        uses: crate-ci/typos@v1.29.7
         with:
           config: .github/config/typos.toml
 
@@ -69,7 +69,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: apache/skywalking-eyes/header@v0.6.0
+      - uses: apache/skywalking-eyes/header@v0.7.0
         with:
           config: .github/config/licenserc.yml
       - uses: actions/setup-go@v5
@@ -199,6 +199,10 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          - name: Ubuntu Arm64
+            os: ubuntu-24.04-arm
+            compiler: auto
+            arm_linux: true
 
     runs-on: ${{ matrix.os }}
     env:
@@ -212,11 +216,15 @@ jobs:
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
       - name: Setup Linux
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |
           sudo apt update
           sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      - name: Setup Linux ARM64
+        if: ${{ matrix.arm_linux }}
+        run: |
+          sudo apt install -y git build-essential cmake libtool python3 python3-pip libssl-dev
 
       - name: Cache redis
         id: cache-redis
@@ -245,6 +253,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
+        if: ${{ !matrix.arm_linux }}
         with:
           python-version: 3.x
       - uses: actions/setup-go@v5
@@ -296,14 +305,14 @@ jobs:
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
-            cd minica && git checkout 96a5c93723cf3d34b50b3e723a9f05cd3765bc67 && go build && cd ..
-            ./minica/minica --domains localhost
+            cd minica && git checkout v1.1.0 && go build && cd ..
+            ./minica/minica --ca-alg rsa --domains localhost
             cp localhost/cert.pem tests/gocase/tls/cert/server.crt
             cp localhost/key.pem tests/gocase/tls/cert/server.key
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
 
       - name: Install redis-py
         run: pip3 install redis==5.2.0
@@ -381,7 +390,10 @@ jobs:
     name: Check Docker image
     needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
       - name: Get core numbers
@@ -431,6 +443,10 @@ jobs:
           - name: Debian 12
             image: debian:12
             compiler: gcc
+          - name: Alpine 3
+            image: alpine:3
+            compiler: gcc
+            disable_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ubuntu-22.04
     container:
@@ -458,8 +474,9 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled powertools
-          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
           source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -470,8 +487,9 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
           source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -482,6 +500,13 @@ jobs:
         run: |
           apt update
           apt install -y bash build-essential cmake curl git libssl-dev libtool python3 python3-pip wget
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Alpine
+        if: ${{ startsWith(matrix.image, 'alpine') }}
+        run: |
+          apk update
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -519,7 +544,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }}
 
       - name: Run Unit Test
         run: |
@@ -529,10 +554,10 @@ jobs:
         run: |
           export PATH=$PATH:$HOME/local/bin/
           GOCASE_RUN_ARGS=""
-          ./x.py test go build $GOCASE_RUN_ARGS
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky
-        if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') }}
+        if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') && !startsWith(matrix.image, 'alpine') }}
         run: pip3 install redis==4.3.6
 
       - name: Install redis-py for Debian

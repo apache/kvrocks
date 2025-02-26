@@ -177,6 +177,8 @@ struct Config {
 
   bool skip_block_cache_deallocation_on_close = false;
 
+  std::vector<double> histogram_bucket_boundaries;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;
@@ -221,6 +223,7 @@ struct Config {
     bool rate_limiter_auto_tuned;
     bool avoid_unnecessary_blocking_io = true;
     bool partition_filters;
+    int64_t max_compaction_bytes;
 
     struct WriteOptions {
       bool sync;
@@ -247,6 +250,7 @@ struct Config {
   void ClearMaster();
   bool IsSlave() const { return !master_host.empty(); }
   bool HasConfigFile() const { return !path_.empty(); }
+  std::string ConfigFilePath() const { return path_; }
 
  private:
   std::string path_;
@@ -260,6 +264,7 @@ struct Config {
   std::string profiling_sample_commands_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
+  std::string histogram_bucket_boundaries_str_;
 
   void initFieldValidator();
   void initFieldCallback();

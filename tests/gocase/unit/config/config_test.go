@@ -36,7 +36,9 @@ import (
 )
 
 func TestRenameCommand(t *testing.T) {
+	t.Parallel()
 	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled":       "no",
 		"rename-command KEYS": "KEYSNEW",
 		"rename-command GET":  "GETNEW",
 		"rename-command SET":  "SETNEW",
@@ -61,6 +63,7 @@ func TestRenameCommand(t *testing.T) {
 }
 
 func TestSetConfigBackupDir(t *testing.T) {
+	t.Parallel()
 	configs := map[string]string{}
 	srv := util.StartServer(t, configs)
 	defer srv.Close()
@@ -71,10 +74,8 @@ func TestSetConfigBackupDir(t *testing.T) {
 
 	originBackupDir := filepath.Join(configs["dir"], "backup")
 
-	r := rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
-	rList := r.Val().([]interface{})
-	require.EqualValues(t, rList[0], "backup-dir")
-	require.EqualValues(t, rList[1], originBackupDir)
+	r := rdb.ConfigGet(ctx, "backup-dir").Val()
+	require.EqualValues(t, r["backup-dir"], originBackupDir)
 
 	hasCompactionFiles := func(dir string) bool {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -98,14 +99,11 @@ func TestSetConfigBackupDir(t *testing.T) {
 
 	require.False(t, hasCompactionFiles(newBackupDir))
 
-	require.NoError(t, rdb.Do(ctx, "CONFIG", "SET", "backup-dir", newBackupDir).Err())
+	require.NoError(t, rdb.ConfigSet(ctx, "backup-dir", newBackupDir).Err())
+	r = rdb.ConfigGet(ctx, "backup-dir").Val()
+	require.EqualValues(t, r["backup-dir"], newBackupDir)
 
-	r = rdb.Do(ctx, "CONFIG", "GET", "backup-dir")
-	rList = r.Val().([]interface{})
-	require.EqualValues(t, rList[0], "backup-dir")
-	require.EqualValues(t, rList[1], newBackupDir)
-
-	require.NoError(t, rdb.Do(ctx, "bgsave").Err())
+	require.NoError(t, rdb.BgSave(ctx).Err())
 	time.Sleep(2000 * time.Millisecond)
 
 	require.True(t, hasCompactionFiles(newBackupDir))
@@ -113,6 +111,7 @@ func TestSetConfigBackupDir(t *testing.T) {
 }
 
 func TestConfigSetCompression(t *testing.T) {
+	t.Parallel()
 	configs := map[string]string{}
 	srv := util.StartServer(t, configs)
 	defer srv.Close()
@@ -134,6 +133,7 @@ func TestConfigSetCompression(t *testing.T) {
 }
 
 func TestConfigGetRESP3(t *testing.T) {
+	t.Parallel()
 	srv := util.StartServer(t, map[string]string{
 		"resp3-enabled": "yes",
 	})
@@ -147,6 +147,7 @@ func TestConfigGetRESP3(t *testing.T) {
 }
 
 func TestStartWithoutConfigurationFile(t *testing.T) {
+	t.Parallel()
 	srv := util.StartServerWithCLIOptions(t, false, map[string]string{}, []string{})
 	defer srv.Close()
 
@@ -159,6 +160,7 @@ func TestStartWithoutConfigurationFile(t *testing.T) {
 }
 
 func TestDynamicChangeWorkerThread(t *testing.T) {
+	t.Parallel()
 	configs := map[string]string{}
 	srv := util.StartServer(t, configs)
 	defer srv.Close()
@@ -247,6 +249,7 @@ func TestDynamicChangeWorkerThread(t *testing.T) {
 }
 
 func TestChangeProtoMaxBulkLen(t *testing.T) {
+	t.Parallel()
 	configs := map[string]string{}
 	srv := util.StartServer(t, configs)
 	defer srv.Close()
@@ -277,6 +280,7 @@ func TestChangeProtoMaxBulkLen(t *testing.T) {
 }
 
 func TestGetConfigTxnContext(t *testing.T) {
+	t.Parallel()
 	srv := util.StartServer(t, map[string]string{
 		"txn-context-enabled": "yes",
 	})
@@ -298,6 +302,7 @@ func TestGetConfigTxnContext(t *testing.T) {
 }
 
 func TestGenerateConfigsMatrix(t *testing.T) {
+	t.Parallel()
 	configOptions := []util.ConfigOptions{
 		{
 			Name:       "txn-context-enabled",
@@ -322,6 +327,7 @@ func TestGenerateConfigsMatrix(t *testing.T) {
 }
 
 func TestGetConfigSkipBlockCacheDeallocationOnClose(t *testing.T) {
+	t.Parallel()
 	srv := util.StartServer(t, map[string]string{
 		"skip-block-cache-deallocation-on-close": "yes",
 	})
@@ -340,4 +346,28 @@ func TestGetConfigSkipBlockCacheDeallocationOnClose(t *testing.T) {
 	rdb = srv1.NewClient()
 	val = rdb.ConfigGet(ctx, "skip-block-cache-deallocation-on-close").Val()
 	require.EqualValues(t, "no", val["skip-block-cache-deallocation-on-close"])
+}
+
+func TestConfigRocksDBOptions(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Get and Set rocksdb.max_compaction_bytes", func(t *testing.T) {
+		ctx := context.Background()
+		parameter := "rocksdb.max_compaction_bytes"
+		result, err := rdb.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "0", result[parameter])
+
+		util.ErrorRegexp(t, rdb.ConfigSet(ctx, parameter, "-1").Err(), ".*out of numeric range")
+
+		require.NoError(t, rdb.ConfigSet(ctx, parameter, "1073741824").Err())
+		result, err = rdb.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "1073741824", result[parameter])
+	})
 }

@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(kvrocks
         DESCRIPTION "NoSQL which is based on RocksDB and compatible with the Redis protocol"
-        LANGUAGES CXX)
+        LANGUAGES C CXX)
 
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
 option(ENABLE_ASAN "enable address sanitizer" OFF)
@@ -37,8 +37,6 @@ option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size a
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
-
-find_package(Backtrace REQUIRED)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)

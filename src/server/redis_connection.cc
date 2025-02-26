@@ -385,10 +385,17 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
+      auto cmd_name = cmd_tokens.front();
+      if (util::EqualICase(cmd_name, "host:") || util::EqualICase(cmd_name, "post")) {
+        LOG(WARNING) << "A likely HTTP request is detected in the RESP connection, indicating a potential "
+                        "Cross-Protocol Scripting attack. Connection aborted.";
+        EnableFlag(kCloseAsync);
+        return;
+      }
       if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error(
           {Status::NotOK,
-           fmt::format("unknown command `{}`, with args beginning with: {}", cmd_tokens.front(),
+           fmt::format("unknown command `{}`, with args beginning with: {}", cmd_name,
                        util::StringJoin(nonstd::span(cmd_tokens.begin() + 1, cmd_tokens.end()),
                                         [](const auto &v) -> decltype(auto) { return fmt::format("`{}`", v); }))}));
       continue;
@@ -397,8 +404,15 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
-    auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
 
+    int tokens = static_cast<int>(cmd_tokens.size());
+    if (!attributes->CheckArity(tokens)) {
+      if (is_multi_exec) multi_error_ = true;
+      Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
+      continue;
+    }
+
+    auto cmd_flags = attributes->GenerateFlags(cmd_tokens);
     if (GetNamespace().empty()) {
       if (!password.empty()) {
         if (!(cmd_flags & kCmdAuth)) {
@@ -431,13 +445,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
-    int tokens = static_cast<int>(cmd_tokens.size());
-    if (!attributes->CheckArity(tokens)) {
-      if (is_multi_exec) multi_error_ = true;
-      Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
-      continue;
-    }
-
     current_cmd->SetArgs(cmd_tokens);
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
@@ -449,6 +456,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
       Reply(redis::Error({Status::NotOK, fmt::format("{} inside MULTI is not allowed", util::ToUpper(cmd_name))}));
       multi_error_ = true;
+      continue;
+    }
+
+    if ((cmd_flags & kCmdAdmin) && !IsAdmin()) {
+      Reply(redis::Error({Status::RedisExecErr, errAdminPermissionRequired}));
       continue;
     }
 
@@ -489,6 +501,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
                           "Link with MASTER is down "
                           "and slave-serve-stale-data is set to 'no'."}));
       continue;
+    }
+
+    ScopeExit in_script_exit{[this] { in_script_ = false; }, false};
+    if (attributes->category == CommandCategory::Script || attributes->category == CommandCategory::Function) {
+      in_script_ = true;
+      in_script_exit.Enable();
     }
 
     SetLastCmd(cmd_name);

@@ -21,10 +21,12 @@
 #pragma once
 
 #include <rocksdb/status.h>
+#include <sys/time.h>
 
 #include <atomic>
 #include <bitset>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -50,6 +52,7 @@ enum RedisType : uint8_t {
   kRedisBloomFilter = 9,
   kRedisJson = 10,
   kRedisHyperLogLog = 11,
+  kRedisTDigest = 12,
 };
 
 struct RedisTypes {
@@ -91,9 +94,9 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none",   "string",    "hash",      "list",
-                                                 "set",    "zset",      "bitmap",    "sortedint",
-                                                 "stream", "MBbloom--", "ReJSON-RL", "hyperloglog"};
+const std::vector<std::string> RedisTypeNames = {"none",      "string",      "hash",      "list",   "set",
+                                                 "zset",      "bitmap",      "sortedint", "stream", "MBbloom--",
+                                                 "ReJSON-RL", "hyperloglog", "TDIS-TYPE"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -112,6 +115,7 @@ template <typename T = Slice>
 [[nodiscard]] std::tuple<T, T> ExtractNamespaceKey(Slice ns_key, bool slot_id_encoded);
 [[nodiscard]] std::string ComposeNamespaceKey(const Slice &ns, const Slice &key, bool slot_id_encoded);
 [[nodiscard]] std::string ComposeSlotKeyPrefix(const Slice &ns, int slotid);
+[[nodiscard]] std::string ComposeSlotKeyUpperBound(const Slice &ns, int slotid);
 
 class InternalKey {
  public:
@@ -334,4 +338,28 @@ class HyperLogLogMetadata : public Metadata {
   rocksdb::Status Decode(Slice *input) override;
 
   EncodeType encode_type = EncodeType::DENSE;
+};
+
+class TDigestMetadata : public Metadata {
+ public:
+  uint32_t compression;
+  uint32_t capacity;
+  uint64_t unmerged_nodes = 0;
+  uint64_t merged_nodes = 0;
+  uint64_t total_weight = 0;
+  uint64_t merged_weight = 0;
+  double minimum = std::numeric_limits<double>::max();
+  double maximum = std::numeric_limits<double>::lowest();
+  uint64_t total_observations = 0;  // reserved for TDIGEST.INFO command
+  uint64_t merge_times = 0;         // reserved for TDIGEST.INFO command
+
+  explicit TDigestMetadata(uint32_t compression, uint32_t capacity, bool generate_version = true)
+      : Metadata(kRedisTDigest, generate_version), compression(compression), capacity(capacity) {}
+  explicit TDigestMetadata(bool generate_version = true) : TDigestMetadata(0, 0, generate_version) {}
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
+
+  uint64_t TotalNodes() const { return merged_nodes + unmerged_nodes; }
+
+  double Delta() const { return 1. / static_cast<double>(compression); }
 };

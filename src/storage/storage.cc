@@ -221,6 +221,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_bytes_for_level_multiplier = config_->rocks_db.max_bytes_for_level_multiplier;
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
+  options.max_compaction_bytes = static_cast<uint64_t>(config_->rocks_db.max_compaction_bytes);
 
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
@@ -605,7 +606,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              std::string *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
@@ -630,7 +631,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              rocksdb::PinnableSlice *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
@@ -663,7 +664,7 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
 rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   auto iter = db_->NewIterator(options, column_family);
@@ -679,7 +680,7 @@ void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options
                        rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
                        rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {

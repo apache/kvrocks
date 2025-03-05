@@ -242,20 +242,7 @@ Status Server::Start() {
   return Status::OK();
 }
 
-void Server::Stop() {
-  stop_ = true;
-
-  slaveof_mu_.lock();
-  if (replication_thread_) replication_thread_->Stop();
-  slaveof_mu_.unlock();
-
-  for (const auto &worker : worker_threads_) {
-    worker->Stop(0 /* immediately terminate  */);
-  }
-
-  rocksdb::CancelAllBackgroundWork(storage->GetDB(), true);
-  task_runner_.Cancel();
-}
+void Server::Stop() { stop_ = true; }
 
 void Server::Join() {
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
@@ -853,6 +840,19 @@ void Server::cron() {
     CleanupExitedSlaves();
     recordInstantaneousMetrics();
   }
+
+  assert(stop_);
+
+  slaveof_mu_.lock();
+  if (replication_thread_) replication_thread_->Stop();
+  slaveof_mu_.unlock();
+
+  for (const auto &worker : worker_threads_) {
+    worker->Stop(0 /* immediately terminate  */);
+  }
+
+  rocksdb::CancelAllBackgroundWork(storage->GetDB(), true);
+  task_runner_.Cancel();
 }
 
 Server::InfoEntries Server::GetRocksDBInfo() {

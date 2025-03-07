@@ -34,6 +34,15 @@ RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
   }
 }
 
+RegisterToCommandTable key_commands(
+    CommandCategory::kKey,
+    {
+        {"del", CommandAttributes::WriteKey(CommandFactory<CommandDel>(), -2, 1, -1, 1)},
+        {"delprefix", CommandAttributes::WriteKey(CommandFactory<CommandDelPrefix>(), 2, 1, 1, 1)}, // Added DELPREFIX command
+    });
+
+}
+
 size_t CommandTable::Size() { return redis_command_table.size(); }
 
 const CommandMap *CommandTable::GetOriginal() { return &original_commands; }

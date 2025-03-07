@@ -19,20 +19,43 @@
  */
 
 #include "commander.h"
-
 #include "cluster/cluster_defs.h"
 
 namespace redis {
 
-RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
-                                               std::initializer_list<CommandAttributes> list) {
+RegisterToCommandTable::RegisterToCommandTable(
+    CommandCategory category, std::initializer_list<CommandAttributes> list) {
   for (auto attr : list) {
     attr.category = category;
     CommandTable::redis_command_table.emplace_back(attr);
-    CommandTable::original_commands[attr.name] = &CommandTable::redis_command_table.back();
-    CommandTable::commands[attr.name] = &CommandTable::redis_command_table.back();
+    CommandTable::original_commands[attr.name] =
+        &CommandTable::redis_command_table.back();
+    CommandTable::commands[attr.name] =
+        &CommandTable::redis_command_table.back();
   }
 }
+
+// Register all commands in the "keys" category, including DELPREFIX
+static redis::RegisterToCommandTable
+    _("keys",
+      {
+          {"del", -2, "wm", CommandFlags::WRITE, 1, -1, 1},
+          {"exists", -2, "r", CommandFlags::READONLY, 1, -1, 1},
+          {"expire", 3, "wm", CommandFlags::WRITE, 1, 1, 1},
+          {"expireat", 3, "wm", CommandFlags::WRITE, 1, 1, 1},
+          {"keys", 2, "r", CommandFlags::READONLY, 0, 0, 0},
+          {"persist", 2, "wm", CommandFlags::WRITE, 1, 1, 1},
+          {"pexpire", 3, "wm", CommandFlags::WRITE, 1, 1, 1},
+          {"pexpireat", 3, "wm", CommandFlags::WRITE, 1, 1, 1},
+          {"pttl", 2, "r", CommandFlags::READONLY, 1, 1, 1},
+          {"rename", 3, "wm", CommandFlags::WRITE, 1, 2, 1},
+          {"renamenx", 3, "wm", CommandFlags::WRITE, 1, 2, 1},
+          {"scan", -2, "r", CommandFlags::READONLY, 0, 0, 0},
+          {"ttl", 2, "r", CommandFlags::READONLY, 1, 1, 1},
+          {"type", 2, "r", CommandFlags::READONLY, 1, 1, 1},
+          {"unlink", -2, "wm", CommandFlags::WRITE, 1, -1, 1},
+          {"delprefix", 2, "wm", CommandFlags::WRITE, 1, 1, 1}, // NEW COMMAND
+      });
 
 size_t CommandTable::Size() { return redis_command_table.size(); }
 
@@ -42,13 +65,15 @@ CommandMap *CommandTable::Get() { return &commands; }
 
 void CommandTable::Reset() { commands = original_commands; }
 
-std::string CommandTable::GetCommandInfo(const CommandAttributes *command_attributes) {
+std::string
+CommandTable::GetCommandInfo(const CommandAttributes *command_attributes) {
   std::string command, command_flags;
   command.append(redis::MultiLen(6));
   command.append(redis::BulkString(command_attributes->name));
   command.append(redis::Integer(command_attributes->arity));
   command_flags.append(redis::MultiLen(1));
-  command_flags.append(redis::BulkString(command_attributes->InitialFlags() & kCmdWrite ? "write" : "readonly"));
+  command_flags.append(redis::BulkString(
+      command_attributes->InitialFlags() & kCmdWrite ? "write" : "readonly"));
   command.append(command_flags);
   auto key_range = command_attributes->InitialKeyRange().ValueOr({0, 0, 0});
   command.append(redis::Integer(key_range.first_key));
@@ -66,7 +91,8 @@ void CommandTable::GetAllCommandsInfo(std::string *info) {
   }
 }
 
-void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::string> &cmd_names) {
+void CommandTable::GetCommandsInfo(std::string *info,
+                                   const std::vector<std::string> &cmd_names) {
   info->append(redis::MultiLen(cmd_names.size()));
   for (const auto &cmd_name : cmd_names) {
     auto cmd_iter = commands.find(util::ToLower(cmd_name));
@@ -80,8 +106,9 @@ void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::str
   }
 }
 
-StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttributes *attributes,
-                                                            const std::vector<std::string> &cmd_tokens) {
+StatusOr<std::vector<int>>
+CommandTable::GetKeysFromCommand(const CommandAttributes *attributes,
+                                 const std::vector<std::string> &cmd_tokens) {
   int argc = static_cast<int>(cmd_tokens.size());
 
   if (!attributes->CheckArity(argc)) {
@@ -90,7 +117,8 @@ StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttribu
 
   auto cmd = attributes->factory();
   if (auto s = cmd->Parse(cmd_tokens); !s) {
-    return {Status::NotOK, "Invalid syntax found in this command arguments: " + s.Msg()};
+    return {Status::NotOK,
+            "Invalid syntax found in this command arguments: " + s.Msg()};
   }
 
   Status status;
@@ -98,7 +126,8 @@ StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttribu
 
   attributes->ForEachKeyRange(
       [&](const std::vector<std::string> &, CommandKeyRange key_range) {
-        key_range.ForEachKeyIndex([&](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
+        key_range.ForEachKeyIndex([&](int i) { key_indexes.push_back(i); },
+                                  cmd_tokens.size());
       },
       cmd_tokens,
       [&](const auto &) {
@@ -116,7 +145,8 @@ bool CommandTable::IsExists(const std::string &name) {
   return original_commands.find(util::ToLower(name)) != original_commands.end();
 }
 
-Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<SlotRange> &slots) {
+Status CommandTable::ParseSlotRanges(const std::string &slots_str,
+                                     std::vector<SlotRange> &slots) {
   if (slots_str.empty()) {
     return {Status::NotOK, "No slots to parse."};
   }
@@ -124,7 +154,9 @@ Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<S
   std::vector<std::string> slot_ranges = util::Split(slots_str, " ");
   if (slot_ranges.empty()) {
     return {Status::NotOK,
-            fmt::format("Invalid slots: `{}`. No slots to parse. Please use spaces to separate slots.", slots_str)};
+            fmt::format("Invalid slots: `{}`. No slots to parse. Please use "
+                        "spaces to separate slots.",
+                        slots_str)};
   }
 
   auto valid_range = NumericRange<int>{0, kClusterSlots - 1};
@@ -142,21 +174,25 @@ Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<S
     // parse slot range: "int1-int2" (satisfy: int1 <= int2 )
     if (slot_range.front() == '-' || slot_range.back() == '-') {
       return {Status::NotOK,
-              fmt::format("Invalid slot range: `{}`. The character '-' can't appear in the first or last position.",
+              fmt::format("Invalid slot range: `{}`. The character '-' can't "
+                          "appear in the first or last position.",
                           slot_range)};
     }
     std::vector<std::string> fields = util::Split(slot_range, "-");
     if (fields.size() != 2) {
       return {Status::NotOK,
-              fmt::format("Invalid slot range: `{}`. The slot range should be of the form `int1-int2`.", slot_range)};
+              fmt::format("Invalid slot range: `{}`. The slot range should be "
+                          "of the form `int1-int2`.",
+                          slot_range)};
     }
     auto parse_start = ParseInt<int>(fields[0], valid_range, 10);
     auto parse_end = ParseInt<int>(fields[1], valid_range, 10);
     if (!parse_start || !parse_end || *parse_start > *parse_end) {
-      return {Status::NotOK,
-              fmt::format(
-                  "Invalid slot range: `{}`. The slot range `int1-int2` needs to satisfy the condition (int1 <= int2).",
-                  slot_range)};
+      return {
+          Status::NotOK,
+          fmt::format("Invalid slot range: `{}`. The slot range `int1-int2` "
+                      "needs to satisfy the condition (int1 <= int2).",
+                      slot_range)};
     }
     slots.emplace_back(*parse_start, *parse_end);
   }
@@ -164,4 +200,4 @@ Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<S
   return Status::OK();
 }
 
-}  // namespace redis
+} // namespace redis

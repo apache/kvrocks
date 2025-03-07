@@ -336,6 +336,30 @@ class CommandPersist : public Commander {
   }
 };
 
+class CommandDelPrefix : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (args_.size() != 2) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'DELPREFIX' command"};
+    }
+
+    std::string prefix = args_[1];
+    auto storage = srv->storage;
+    std::string start_key = prefix;
+    std::string end_key = prefix;
+    end_key.back()++;
+
+    rocksdb::WriteOptions write_options;
+    auto s = storage->GetDB()->DeleteRange(write_options, storage->GetCFHandle("data"), start_key, end_key);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 class CommandDel : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {

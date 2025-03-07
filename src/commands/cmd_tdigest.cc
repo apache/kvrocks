@@ -18,8 +18,6 @@
  *
  */
 
-#include <type_traits>
-
 #include "command_parser.h"
 #include "commander.h"
 #include "server/redis_reply.h"

@@ -55,6 +55,7 @@ static redis::RegisterToCommandTable
           {"type", 2, "r", CommandFlags::READONLY, 1, 1, 1},
           {"unlink", -2, "wm", CommandFlags::WRITE, 1, -1, 1},
           {"delprefix", 2, "wm", CommandFlags::WRITE, 1, 1, 1}, // NEW COMMAND
+          {"del_prefix", CommandDelPrefix, "w", 2, 2}, // REGISTER_COMMAND
       });
 
 size_t CommandTable::Size() { return redis_command_table.size(); }

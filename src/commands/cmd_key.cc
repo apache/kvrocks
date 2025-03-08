@@ -477,33 +477,22 @@ private:
 
 class CommandDelPrefix : public Commander {
 public:
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn,
+  Status Execute(Server *server, Connection *conn,
                  std::string *output) override {
     if (args_.size() != 2) {
       return {Status::RedisParseErr,
-              "ERR wrong number of arguments for 'DEL prefix' command"};
+              "wrong number of arguments for 'DEL_PREFIX' command"};
     }
 
     std::string prefix = args_[1];
-    auto db = srv->storage->GetDB();
-    auto cursor = db->NewIterator();
-    std::vector<std::string> keys_to_delete;
+    auto storage = server->storage;
+    auto s = storage->DelByPrefix(prefix);
 
-    for (cursor->SeekToFirst(); cursor->Valid(); cursor->Next()) {
-      std::string key = cursor->key().ToString();
-      if (key.rfind(prefix, 0) == 0) { // Check if key starts with prefix
-        keys_to_delete.push_back(key);
-      }
+    if (!s.IsOK()) {
+      return {Status::RedisExecErr, "Failed to delete keys with prefix"};
     }
 
-    int deleted_count = 0;
-    for (const auto &key : keys_to_delete) {
-      if (db->Delete(key).ok()) {
-        deleted_count++;
-      }
-    }
-
-    *output = redis::Integer(deleted_count);
+    *output = redis::Integer(s.GetValue());
     return Status::OK();
   }
 };
@@ -655,6 +644,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
     MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
     MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
-    MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1))
+    MakeCmdAttr<CommandDelPrefix>("del_prefix", 2, "write", 1, 1,
+                                  1)) // Register the new command
 
 } // namespace redis

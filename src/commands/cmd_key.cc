@@ -18,6 +18,8 @@
  *
  */
 
+#include <cstdint>
+
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
@@ -473,29 +475,162 @@ private:
   bool replace_ = false;
 };
 
-class CommandDelprefix : public Commander {
+class CommandDelPrefix : public Commander {
 public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn,
                  std::string *output) override {
+    if (args_.size() != 2) {
+      return {Status::RedisParseErr,
+              "ERR wrong number of arguments for 'DEL prefix' command"};
+    }
+
     std::string prefix = args_[1];
-    std::string end_key =
-        StringNext(prefix); // Calculate the end key for the range
+    auto db = srv->storage->GetDB();
+    auto cursor = db->NewIterator();
+    std::vector<std::string> keys_to_delete;
 
-    auto storage = srv->storage;
-    rocksdb::WriteOptions write_options;
-    auto cf_handle = storage->GetCFHandle(
-        ColumnFamilyID::kMetadata); // Use metadata column family
+    for (cursor->SeekToFirst(); cursor->Valid(); cursor->Next()) {
+      std::string key = cursor->key().ToString();
+      if (key.rfind(prefix, 0) == 0) { // Check if key starts with prefix
+        keys_to_delete.push_back(key);
+      }
+    }
 
-    rocksdb::Status s = storage->GetDB()->DeleteRange(write_options, cf_handle,
-                                                      prefix, end_key);
+    int deleted_count = 0;
+    for (const auto &key : keys_to_delete) {
+      if (db->Delete(key).ok()) {
+        deleted_count++;
+      }
+    }
 
-    if (!s.ok()) {
+    *output = redis::Integer(deleted_count);
+    return Status::OK();
+  }
+};
+
+template <bool ReadOnly> class CommandSort : public Commander {
+public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("BY")) {
+        if (!sort_argument_.sortby.empty())
+          return {Status::InvalidArgument, "don't use multiple BY parameters"};
+        sort_argument_.sortby = GET_OR_RET(parser.TakeStr());
+
+        if (sort_argument_.sortby.find('*') == std::string::npos) {
+          sort_argument_.dontsort = true;
+        } else {
+          /* TODO:
+           * If BY is specified with a real pattern, we can't accept it in
+           * cluster mode, unless we can make sure the keys formed by the
+           * pattern are in the same slot as the key to sort. If BY is specified
+           * with a real pattern, we can't accept it if no full ACL key access
+           * is applied for this command. */
+        }
+      } else if (parser.EatEqICase("LIMIT")) {
+        sort_argument_.offset = GET_OR_RET(parser.template TakeInt<int>());
+        sort_argument_.count = GET_OR_RET(parser.template TakeInt<int>());
+      } else if (parser.EatEqICase("GET")) {
+        /* TODO:
+         * If GET is specified with a real pattern, we can't accept it in
+         * cluster mode, unless we can make sure the keys formed by the pattern
+         * are in the same slot as the key to sort. */
+        sort_argument_.getpatterns.push_back(GET_OR_RET(parser.TakeStr()));
+      } else if (parser.EatEqICase("ASC")) {
+        sort_argument_.desc = false;
+      } else if (parser.EatEqICase("DESC")) {
+        sort_argument_.desc = true;
+      } else if (parser.EatEqICase("ALPHA")) {
+        sort_argument_.alpha = true;
+      } else if (parser.EatEqICase("STORE")) {
+        if constexpr (ReadOnly) {
+          return {
+              Status::RedisParseErr,
+              "SORT_RO is read-only and does not support the STORE parameter"};
+        }
+        sort_argument_.storekey = GET_OR_RET(parser.TakeStr());
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn,
+                 std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    RedisType type = kRedisNone;
+    if (auto s = redis.Type(ctx, args_[1], &type); !s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::SimpleString("OK");
+    if (type != RedisType::kRedisList && type != RedisType::kRedisSet &&
+        type != RedisType::kRedisZSet) {
+      return {Status::RedisWrongType,
+              "Operation against a key holding the wrong kind of value"};
+    }
+
+    /* When sorting a set with no sort specified, we must sort the output
+     * so the result is consistent across scripting and replication.
+     *
+     * The other types (list, sorted set) will retain their native order
+     * even if no sort order is requested, so they remain stable across
+     * scripting and replication.
+     *
+     * TODO: support CLIENT_SCRIPT flag, (!storekey_.empty() || c->flags &
+     * CLIENT_SCRIPT)) */
+    if (sort_argument_.dontsort && type == RedisType::kRedisSet &&
+        (!sort_argument_.storekey.empty())) {
+      /* Force ALPHA sorting */
+      sort_argument_.dontsort = false;
+      sort_argument_.alpha = true;
+      sort_argument_.sortby = "";
+    }
+
+    std::vector<std::optional<std::string>> sorted_elems;
+    Database::SortResult res = Database::SortResult::DONE;
+
+    if (auto s = redis.Sort(ctx, type, args_[1], sort_argument_, &sorted_elems,
+                            &res);
+        !s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    switch (res) {
+    case Database::SortResult::UNKNOWN_TYPE:
+      return {Status::RedisErrorNoPrefix, "Unknown Type"};
+    case Database::SortResult::DOUBLE_CONVERT_ERROR:
+      return {Status::RedisErrorNoPrefix,
+              "One or more scores can't be converted into double"};
+    case Database::SortResult::LIMIT_EXCEEDED:
+      return {
+          Status::RedisErrorNoPrefix,
+          "The number of elements to be sorted exceeds SORT_LENGTH_LIMIT = " +
+              std::to_string(SORT_LENGTH_LIMIT)};
+    case Database::SortResult::DONE:
+      if (sort_argument_.storekey.empty()) {
+        std::vector<std::string> output_vec;
+        output_vec.reserve(sorted_elems.size());
+        for (const auto &elem : sorted_elems) {
+          output_vec.emplace_back(elem.has_value()
+                                      ? redis::BulkString(elem.value())
+                                      : conn->NilString());
+        }
+        *output = redis::Array(output_vec);
+      } else {
+        *output = Integer(sorted_elems.size());
+      }
+      break;
+    }
+
     return Status::OK();
   }
+
+private:
+  SortArgument sort_argument_;
 };
 
 REDIS_REGISTER_COMMANDS(
@@ -518,8 +653,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
     MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
     MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
-    MakeCmdAttr<CommandDelprefix>("delprefix", 2, "write", 1, 1,
-                                  1) // NEW COMMAND
-)
+    MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
+    MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
+    MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1))
 
 } // namespace redis

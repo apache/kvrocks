@@ -1009,18 +1009,18 @@ static uint64_t GenerateConfigFlag(uint64_t flags, const std::vector<std::string
 class CommandLastSave : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
     if (args.size() > 2) {
-      return {Status::RedisParseErr, "unknown extra subcommand"};
+      return {Status::RedisParseErr, "unknown extra arguments"};
     }
-    if (args.size() == 2) {
-      std::string fmt_arg = args[1];
-      std::transform(fmt_arg.begin(), fmt_arg.end(), fmt_arg.begin(), ::tolower);
-      if (fmt_arg == "iso8601") {
+    while (parser.Good()) {
+      if (parser.EatEqICase("iso8601")) {
         format_spec_ = true;
       } else {
-        return {Status::RedisParseErr, "unknown subcommand"};
+        return {Status::RedisParseErr, "unknown arguments"};
       }
     }
+
     return Status::OK();
   }
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
@@ -1028,13 +1028,13 @@ class CommandLastSave : public Commander {
     int64_t unix_sec = srv->GetLastBgsaveTime();
     if (format_spec_) {
       time_t raw_time = static_cast<time_t>(unix_sec);
-      struct tm *local_time = localtime(&raw_time);
-      if (local_time) {
+      struct tm local_time;
+      if (localtime_r(&raw_time, &local_time)) {
         char buf[100];
-        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S%z", local_time);
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S%z", &local_time);
         *output = redis::BulkString(buf);
       } else {
-        *output = redis::BulkString("Error converting time");
+        *output = redis::BulkString("Failed to convert timestamp to local time");
       }
     } else {
       *output = redis::Integer(unix_sec);

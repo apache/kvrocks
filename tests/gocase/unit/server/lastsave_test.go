@@ -17,55 +17,54 @@
 * under the License.
  */
 
- package server
+package server
 
- import (
-	 "context"
-	 "regexp"
-	 "testing"
- 
-	 "github.com/apache/kvrocks/tests/gocase/util"
-	 "github.com/stretchr/testify/require"
- )
- 
- func TestLastSaveCommand(t *testing.T) {
-	 ctx := context.Background()
- 
-	 srv := util.StartServer(t, map[string]string{})
-	 rdb := srv.NewClient()
-	 defer func() {
-		 require.NoError(t, rdb.Close())
-	 }()
- 
-	 t.Run("LASTSAVE unix timestamp", func(t *testing.T) {
-		 result, err := rdb.Do(ctx, "LASTSAVE").Result()
-		 require.NoError(t, err)
- 
-		 timestamp, ok := result.(int64)
-		 require.True(t, ok, "Expected an integer timestamp")
-		 require.Greater(t, timestamp, int64(0), "Timestamp should be a positive number")
-	 })
- 
-	 t.Run("LASTSAVE with format", func(t *testing.T) {
-		 result, err := rdb.Do(ctx, "LASTSAVE", "ISO8601").Result()
-		 require.NoError(t, err)
- 
-		 timestampStr, ok := result.(string)
-		 require.True(t, ok, "Expected LASTSAVE ISO8601 to return a string timestamp")
- 
-		 matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$`, timestampStr)
-		 require.True(t, matched, "Timestamp should be in ISO8601 format")
-	 })
-	 t.Run("LASTSAVE with format and case sensitivity", func(t *testing.T) {
-		 result, err := rdb.Do(ctx, "LASTSAVE", "iso8601").Result()
-		 require.NoError(t, err)
- 
-		 timeStampStr, ok := result.(string)
-		 require.True(t, ok, "Expected LASTSAVE iso8601 to return a string timestamp")
- 
-		 matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$`, timeStampStr)
-		 require.True(t, matched, "Timestamp should be in ISO8601 format")
-	 })
- 
- }
- 
+import (
+	"context"
+	"regexp"
+	"testing"
+
+	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLastSaveCommand(t *testing.T) {
+	ctx := context.Background()
+
+	srv := util.StartServer(t, map[string]string{})
+	rdb := srv.NewClient()
+	defer func() {
+		require.NoError(t, rdb.Close())
+	}()
+
+	t.Run("LASTSAVE unix timestamp", func(t *testing.T) {
+		result, err := rdb.Do(ctx, "LASTSAVE").Result()
+		require.NoError(t, err)
+
+		timestamp, ok := result.(int64)
+		require.True(t, ok, "Expected an integer timestamp")
+		require.Greater(t, timestamp, int64(0), "Timestamp should be a positive number")
+	})
+
+	t.Run("LASTSAVE with format", func(t *testing.T) {
+		result, err := rdb.Do(ctx, "LASTSAVE", "ISO8601").Result()
+		require.NoError(t, err)
+
+		timestampStr, ok := result.(string)
+		require.True(t, ok, "Expected LASTSAVE ISO8601 to return a string timestamp")
+
+		matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$`, timestampStr)
+		require.True(t, matched, "Timestamp should be in ISO8601 format")
+	})
+	t.Run("LASTSAVE with format and case sensitivity", func(t *testing.T) {
+		result, err := rdb.Do(ctx, "LASTSAVE", "iso8601").Result()
+		require.NoError(t, err)
+
+		timeStampStr, ok := result.(string)
+		require.True(t, ok, "Expected LASTSAVE iso8601 to return a string timestamp")
+
+		matched, _ := regexp.MatchString(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}$`, timeStampStr)
+		require.True(t, matched, "Timestamp should be in ISO8601 format")
+	})
+
+}

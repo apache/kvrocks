@@ -1027,14 +1027,14 @@ class CommandLastSave : public Commander {
                  std::string *output) override {
     int64_t unix_sec = srv->GetLastBgsaveTime();
     if (format_spec_) {
-      time_t raw_time = static_cast<time_t>(unix_sec);
-      struct tm local_time;
+      auto raw_time = static_cast<time_t>(unix_sec);
+      tm local_time{};
       if (localtime_r(&raw_time, &local_time)) {
-        char buf[100];
+        char buf[64];
         strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S%z", &local_time);
         *output = redis::BulkString(buf);
       } else {
-        *output = redis::BulkString("Failed to convert timestamp to local time");
+        return {Status::NotOK, "unable to convert timestamp to local time"};
       }
     } else {
       *output = redis::Integer(unix_sec);

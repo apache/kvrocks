@@ -168,7 +168,55 @@ class CommandTDigestAdd : public Commander {
   std::vector<double> values_;
 };
 
+class CommandTDigestMinMax : public Commander {
+ public:
+  explicit CommandTDigestMinMax(bool is_min) : is_min_(is_min) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    key_name_ = args[1];
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    TDigestMetadata metadata;
+    auto s = tdigest.GetMetaData(ctx, key_name_, &metadata);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (metadata.total_observations == 0) {
+      *output = redis::BulkString("nan");
+      return Status::OK();
+    }
+
+    double value = is_min_ ? metadata.minimum : metadata.maximum;
+    *output = redis::BulkString(fmt::format("{}", value));
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  bool is_min_;
+};
+
+// Then replace the existing template implementation and type aliases with:
+class CommandTDigestMin : public CommandTDigestMinMax {
+ public:
+  CommandTDigestMin() : CommandTDigestMinMax(true) {}
+};
+
+class CommandTDigestMax : public CommandTDigestMinMax {
+ public:
+  CommandTDigestMax() : CommandTDigestMinMax(false) {}
+};
+
 REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1));
 }  // namespace redis

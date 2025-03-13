@@ -553,6 +553,68 @@ class CommandSort : public Commander {
   SortArgument sort_argument_;
 };
 
+class CommandGetMeta : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 2) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    std::string &key = args_[1];
+    std::string nskey = redis.AppendNamespacePrefix(key);
+
+    RedisType type = kRedisNone;
+    auto s = redis.Type(ctx, key, &type);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    if (type == kRedisNone) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    // Create appropriate metadata object based on type
+    std::unique_ptr<Metadata> metadata;
+    switch (type) {
+      case kRedisString:
+        metadata = std::make_unique<StringMetadata>();
+        break;
+      case kRedisHash:
+        metadata = std::make_unique<HashMetadata>();
+        break;
+      case kRedisSet:
+        metadata = std::make_unique<SetMetadata>();
+        break;
+      case kRedisZSet:
+        metadata = std::make_unique<ZSetMetadata>();
+        break;
+      case kRedisBitmap:
+        metadata = std::make_unique<BitmapMetadata>();
+        break;
+      case kRedisList:
+        metadata = std::make_unique<ListMetadata>();
+        break;
+      default:
+        return {Status::RedisExecErr, "Unimplemented Redis type"};
+    }
+
+    // Get metadata
+    s = redis.GetMetadata(ctx, {type}, nskey, metadata.get());
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[type])},
+                         {redis::BulkString("size"), redis::Integer(metadata->size)},
+                         {redis::BulkString("ttl"), redis::Integer(metadata->expire)},
+                         {redis::BulkString("flags"), redis::Integer(metadata->flags)},
+                         {redis::BulkString("version"), redis::Integer(metadata->version)}});
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
@@ -573,6 +635,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
-                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandGetMeta>("getmeta", 2, "read-only", 1, 1, 1))
 
 }  // namespace redis

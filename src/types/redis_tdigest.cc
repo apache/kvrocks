@@ -238,7 +238,27 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
 
   return rocksdb::Status::OK();
 }
+rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
 
+  TDigestMetadata metadata;
+  auto status = getMetaDataByNsKey(ctx, ns_key, &metadata);
+  if (!status.ok()) return status;
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTDigest);
+  status = batch->PutLogData(log_data.Encode());
+  if (!status.ok()) return status;
+
+  metadata.compression = 0;
+  metadata.capacity = 0;
+  metadata.unmerged_nodes = 0;
+  metadata.merged_nodes = 0;
+  metadata.total_weight = 0;
+  metadata.merged_weight = 0;
+  metadata.minimum = std::numeric_limits<double>::max();
+  metadata.maximum = std::numeric_limits<double>::lowest();
+}
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   return Database::GetMetadata(context, {kRedisTDigest}, ns_key, metadata);

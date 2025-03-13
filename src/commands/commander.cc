@@ -164,4 +164,40 @@ Status CommandTable::ParseSlotRanges(const std::string &slots_str, std::vector<S
   return Status::OK();
 }
 
+class CommandDelPrefix : public Commander {
+public:
+  Status Execute(Server *srv, Connection *conn,
+                 std::string_view args) override {
+    if (args.size() < 2) {
+      return {Status::RedisParseErr,
+              "wrong number of arguments for 'delprefix' command"};
+    }
+
+    std::string prefix = std::string(args[1]);
+    auto *storage = srv->storage;
+    if (!storage) {
+      return {Status::RedisExecErr, "storage is not available"};
+    }
+
+    rocksdb::WriteBatch batch;
+    auto iter = storage->GetDB()->NewIterator(rocksdb::ReadOptions());
+
+    size_t deleted_count = 0;
+    for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix);
+         iter->Next()) {
+      batch.Delete(iter->key());
+      deleted_count++;
+    }
+
+    delete iter;
+    auto s = storage->GetDB()->Write(rocksdb::WriteOptions(), &batch);
+    if (!s.ok()) {
+      return {Status::RedisExecErr,
+              "failed to delete keys with the given prefix"};
+    }
+
+    return {Status::OK, std::to_string(deleted_count)};
+  }
+};
+
 }  // namespace redis

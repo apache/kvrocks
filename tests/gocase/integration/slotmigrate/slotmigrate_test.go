@@ -1341,9 +1341,7 @@ func TestSlotRangeMigrate(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		key := "AAA" // CLUSTER KEYSLOT AAA is `3205`, which is in the range of `3200-3500`
-		if rdb0.ClusterKeySlot(ctx, key).Val() != 3205 {
-			t.Fatalf("key %s should be in slot 3205", key)
-		}
+		require.Equal(t, 3205, rdb0.ClusterKeySlot(ctx, key).Val())
 
 		require.NoError(t, rdb0.Set(ctx, key, "value", 0).Err())
 		require.Equal(t, "value", rdb0.Get(ctx, key).Val())

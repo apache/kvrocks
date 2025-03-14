@@ -243,34 +243,40 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
 
   TDigestMetadata metadata;
   auto status = getMetaDataByNsKey(ctx, ns_key, &metadata);
-  if (!status.ok()) return status;
+  if (!status.ok()) {
+    return status;
+  }
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTDigest);
   status = batch->PutLogData(log_data.Encode());
-  if (!status.ok()) return status;
+  if (!status.ok()) {
+    return status;
+  }
 
-  metadata.compression = 0;
-  metadata.capacity = 0;
+  // metadata.compression = 0;
+  // metadata.capacity = 0;
   metadata.unmerged_nodes = 0;
   metadata.merged_nodes = 0;
   metadata.total_weight = 0;
   metadata.merged_weight = 0;
   metadata.minimum = std::numeric_limits<double>::max();
   metadata.maximum = std::numeric_limits<double>::lowest();
+  metadata.total_observations = 0;
+  metadata.merge_times = 0;
 
   std::string metadata_bytes;
   metadata.Encode(&metadata_bytes);
 
-  // Ensure we're writing the reset metadata
   status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  if (!status.ok()) {
+    return status;
+  }
+
+  status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!status.ok()) return status;
 
-  // status = batch->Delete(metadata_cf_handle_, ns_key, metadata_bytes);
-
-  // Apply batch write
-  status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-  return status;
+  return rocksdb::Status::OK();
 }
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);

@@ -38,6 +38,7 @@ constexpr auto kInfoUnmergedWeight = "Unmerged weight";
 constexpr auto kInfoObservations = "Observations";
 constexpr auto kInfoTotalCompressions = "Total compressions";
 }  // namespace
+// chamba, sultanpur college.
 class CommandTDigestCreate : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -221,10 +222,11 @@ class CommandTDigestReset : public Commander {
       return Status::OK();
     }
     s = tdigest.Reset(ctx, key_name_);
-    if (s.ok()) {
-      return Status::OK();
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
     }
-    return {Status::RedisExecErr, s.ToString()};
+    *output = redis::RESP_OK;
+    return Status::OK();
   }
 
  private:

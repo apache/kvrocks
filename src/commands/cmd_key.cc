@@ -336,25 +336,49 @@ class CommandPersist : public Commander {
   }
 };
 
-// DelPrefix command implementation
-Status DelPrefixCommand(Server *svr, Connection *conn, const std::vector<std::string> &args) {
-    if (args.size() != 2) {
-        return {Status::RedisParseErr, "wrong number of arguments for 'delprefix' command"};
+class CommandDel : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
+    for (size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
     }
 
-    std::string prefix = args[1];
-    auto keys = svr->GetAllKeysWithPrefix(prefix);
-    int deleted_count = 0;
+    uint64_t cnt = 0;
+    redis::Database redis(srv->storage, conn->GetNamespace());
 
-    for (const auto &key : keys) {
-        auto s = svr->storage->Delete(key);
-        if (s.ok()) {
-            deleted_count++;
-        }
+    auto s = redis.MDel(ctx, keys, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::Integer(cnt);
+    return Status::OK();
+  }
+};
+
+class CommandDelPrefix : public Commander {
+  public:
+    Status Execute(Server *server, Connection *conn,
+                   std::vector<std::string> args) override {
+      if (args.size() != 2) {
+        return {Status::RedisParseErr,
+                "wrong number of arguments for 'delprefix' command"};
+      }
+  
+      std::string prefix = args[1];
+      auto db = conn->GetNamespace();
+      auto keys = server->storage->GetKeysWithPrefix(db, prefix);
+  
+      int deleted_count = 0;
+      for (const auto &key : keys) {
+        auto s = server->storage->Del(db, key);
+        if (s.ok())
+          deleted_count++;
+      }
+  
+      return ReplyInteger(deleted_count);
     }
-
-    return {Status::OK, std::to_string(deleted_count)};
-}
+  };
 
 class CommandRename : public Commander {
  public:
@@ -553,28 +577,27 @@ class CommandSort : public Commander {
   SortArgument sort_argument_;
 };
 
-REDIS_REGISTER_COMMANDS(
-    Key, 
-    MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
-    MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
-    MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
-    MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
-    MakeCmdAttr<CommandExpireTime>("expiretime", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
-    MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
-    MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
-    MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
-    MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
-    MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
-    MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
-    MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
-    MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1)  // Correctly added here
-)
+REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+                        MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
+                        MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandPExpire>("pexpire", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandExpireAt>("expireat", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandPExpireAt>("pexpireat", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandExpireTime>("expiretime", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
+                        MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
+                        MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
+
+}  // namespace redis

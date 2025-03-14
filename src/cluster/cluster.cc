@@ -377,7 +377,9 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
           LOG(ERROR) << fmt::format("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
-      if (slot_range == srv_->slot_migrator->GetForbiddenSlotRange()) srv_->slot_migrator->ReleaseForbiddenSlotRange();
+      if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {
+        srv_->slot_migrator->ReleaseForbiddenSlotRange();
+      }
       LOG(INFO) << fmt::format("[import] Start importing slot(s) {}", slot_range.String());
       break;
     case kImportSuccess:

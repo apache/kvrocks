@@ -258,6 +258,19 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
   metadata.merged_weight = 0;
   metadata.minimum = std::numeric_limits<double>::max();
   metadata.maximum = std::numeric_limits<double>::lowest();
+
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+
+  // Ensure we're writing the reset metadata
+  status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  if (!status.ok()) return status;
+
+  // status = batch->Delete(metadata_cf_handle_, ns_key, metadata_bytes);
+
+  // Apply batch write
+  status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return status;
 }
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);

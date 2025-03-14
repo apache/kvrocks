@@ -38,7 +38,7 @@ constexpr auto kInfoUnmergedWeight = "Unmerged weight";
 constexpr auto kInfoObservations = "Observations";
 constexpr auto kInfoTotalCompressions = "Total compressions";
 }  // namespace
-
+// chamba, sultanpur college.
 class CommandTDigestCreate : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -208,16 +208,29 @@ class CommandTDigestReset : public Commander {
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    TDigest tdigest(srv->storage, conn->GetNamespace);
+    TDigest tdigest(srv->storage, conn->GetNamespace());
     TDigestMetadata metadata;
     auto s = tdigest.GetMetaData(ctx, key_name_, &metadata);
-    CentroidsWithDelta cd = tdigest.DumpCentroids();
-    tdigest.Reset(cd);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (metadata.total_observations == 0) {
+      *output = redis::BulkString("nan");
+      return Status::OK();
+    }
+    s = tdigest.Reset(ctx, key_name_);
+    if (s.ok()) {
+      return Status::OK();
+    }
+    return {Status::RedisExecErr, s.ToString()};
   }
 
  private:
-  srd::srring key_name_;
-}
+  std::string key_name_;
+};
 // Then replace the existing template implementation and type aliases with:
 class CommandTDigestMin : public CommandTDigestMinMax {
  public:
@@ -233,6 +246,6 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1)),
-                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1);
+                        MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1));
 }  // namespace redis

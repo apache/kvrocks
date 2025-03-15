@@ -217,7 +217,7 @@ class CommandTDigestReset : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
     if (metadata.total_observations == 0) {
-      *output = redis::BulkString("nan");
+      *output = redis::RESP_OK;
       return Status::OK();
     }
     s = tdigest.Reset(ctx, key_name_);

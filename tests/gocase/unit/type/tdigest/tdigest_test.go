@@ -257,4 +257,41 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rsp.Err())
 		require.Equal(t, "-10.5", rsp.Val())
 	})
+	t.Run("tdigest.reset with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_reset_"
+
+		//testing with no arguments to .RESET
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RESET").Err(), errMsgWrongNumberArg)
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", keyPrefix+"mydigest", "compression", "101").Err())
+
+		key := keyPrefix + "mydigest"
+		//adding some data to digest
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "-84.3", "199.3", "343.34", "12.34").Err())
+		rsp := rdb.Do(ctx, "TDIGEST.MIN", key)
+		require.NoError(t, rsp.Err())
+		require.EqualValues(t, rsp.Val(), "-84.3")
+
+		//reset on a non existent key.
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RESET", keyPrefix+"notexist").Err(), errMsgKeyNotExist)
+		{
+			// reset on non-empty digest.
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.RESET", key).Err())
+			// getting TDIGEST.INFO after an reset for testing metadata.
+			rsp = rdb.Do(ctx, "TDIGEST.INFO", key)
+			require.NoError(t, rsp.Err())
+			info := toTdigestInfo(t, rsp.Val())
+			require.GreaterOrEqual(t, int64(1024), info.Capacity)
+			require.EqualValues(t, 101, info.Compression)
+			require.EqualValues(t, 0, info.MergedNodes)
+			require.EqualValues(t, 0, info.UnmergedNodes)
+			require.EqualValues(t, 0, info.Observations)
+			require.EqualValues(t, 0, info.TotalCompressions)
+		}
+		//reset on empty digest.
+		empty_digest_key := keyPrefix + "empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", empty_digest_key, "COMPRESSION", "100").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RESET", empty_digest_key)
+		require.NoError(t, rsp.Err())
+	})
 }

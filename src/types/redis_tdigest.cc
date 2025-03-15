@@ -276,6 +276,7 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
   auto guard_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kGuardFlag);
   
   status = batch->DeleteRange(cf_handle_, start_key, guard_key);
+  if (!status.ok()) return status;
   status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!status.ok()) return status;
 

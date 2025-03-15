@@ -254,8 +254,6 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
     return status;
   }
 
-  // metadata.compression = 0;
-  // metadata.capacity = 0;
   metadata.unmerged_nodes = 0;
   metadata.merged_nodes = 0;
   metadata.total_weight = 0;
@@ -273,6 +271,11 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
     return status;
   }
 
+  if (!status.ok()) return status;
+  auto start_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kBuffer);
+  auto guard_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kGuardFlag);
+  
+  status = batch->DeleteRange(cf_handle_, start_key, guard_key);
   status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!status.ok()) return status;
 

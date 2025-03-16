@@ -22,6 +22,7 @@
 
 #include "ir.h"
 #include "search/ir_plan.h"
+#include "search/passes/egraph_equality_saturation.h"
 
 namespace kqir {
 

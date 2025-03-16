@@ -36,6 +36,7 @@
 #include "search/passes/simplify_boolean.h"
 #include "search/passes/sort_limit_fuse.h"
 #include "search/passes/sort_limit_to_knn.h"
+#include "search/passes/egraph_equality_saturation.h"
 #include "type_util.h"
 
 namespace kqir {
@@ -91,7 +92,7 @@ struct PassManager {
                   SortByWithLimitToKnnExpr{}, SimplifyAndOrExpr{});
   }
   static PassSequence NumericPasses() { return Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{}); }
-  static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }
+  static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}, EGraphEqualitySaturation{}); }
 
   static PassSequence Default() { return Merge(ExprPasses(), NumericPasses(), PlanPasses()); }
   static PassSequence Debug(std::vector<std::unique_ptr<Node>> &recorded) { return FullRecord(Default(), recorded); }

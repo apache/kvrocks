@@ -242,15 +242,13 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
   auto ns_key = AppendNamespacePrefix(digest_name);
 
   TDigestMetadata metadata;
-  auto status = getMetaDataByNsKey(ctx, ns_key, &metadata);
-  if (!status.ok()) {
+  if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
     return status;
   }
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTDigest);
-  status = batch->PutLogData(log_data.Encode());
-  if (!status.ok()) {
+  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
     return status;
   }
 
@@ -266,21 +264,18 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
   std::string metadata_bytes;
   metadata.Encode(&metadata_bytes);
 
-  status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
-  if (!status.ok()) {
+  if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
     return status;
   }
 
-  if (!status.ok()) return status;
   auto start_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kBuffer);
   auto guard_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kGuardFlag);
-  
-  status = batch->DeleteRange(cf_handle_, start_key, guard_key);
-  if (!status.ok()) return status;
-  status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-  if (!status.ok()) return status;
 
-  return rocksdb::Status::OK();
+  if (auto status = batch->DeleteRange(cf_handle_, start_key, guard_key); !status.ok()) {
+    return status;
+  }
+  auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return status;
 }
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);

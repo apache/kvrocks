@@ -1334,6 +1334,19 @@ func TestSlotRangeMigrate(t *testing.T) {
 		require.ErrorContains(t, rdb0.Do(ctx, "clusterx", "migrate", "110-112", id1).Err(), errMsg)
 	})
 
+	t.Run("MIGRATE - Migrate back a proper subset range", func(t *testing.T) {
+		migrateSlotRangeAndSetSlot(t, ctx, rdb0, rdb1, id1, "3100-3400")
+		time.Sleep(1 * time.Second)
+		migrateSlotRangeAndSetSlot(t, ctx, rdb1, rdb0, id0, "3200-3300")
+		time.Sleep(1 * time.Second)
+
+		key := "AAA" // CLUSTER KEYSLOT AAA is `3205`, which is in the range of `3200-3500`
+		require.Equal(t, int64(3205), rdb0.ClusterKeySlot(ctx, key).Val())
+
+		require.NoError(t, rdb0.Set(ctx, key, "value", 0).Err())
+		require.Equal(t, "value", rdb0.Get(ctx, key).Val())
+	})
+
 	t.Run("MIGRATE - Failure cases", func(t *testing.T) {
 		largeSlot := 210
 		for i := 0; i < 20000; i++ {
@@ -1347,4 +1360,5 @@ func TestSlotRangeMigrate(t *testing.T) {
 		// TODO: More precise migration failure slot range
 		waitForMigrateSlotRangeState(t, rdb0, "200-220", SlotMigrationStateFailed)
 	})
+
 }

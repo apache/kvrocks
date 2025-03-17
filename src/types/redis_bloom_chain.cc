@@ -214,8 +214,8 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
       }
       std::string data = bf_data_list.back().ToString();
       bloomAdd(item_hash_list[i], data);
-      *bf_data_list.back().GetSelf() = std::move(data);
-      bf_data_list.back().PinSelf();
+      bf_data_list.back().Reset();
+      bf_data_list.back().PinSlice(data, nullptr);
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }

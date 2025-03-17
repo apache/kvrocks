@@ -1,2 +1,0 @@
-# googletest requires C++14 or above
-build --cxxopt='-std=c++17'

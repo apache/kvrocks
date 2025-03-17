@@ -1,2 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/ar qc lib/libevent_extra.a CMakeFiles/event_extra_static.dir/event_tagging.c.o CMakeFiles/event_extra_static.dir/http.c.o CMakeFiles/event_extra_static.dir/evdns.c.o CMakeFiles/event_extra_static.dir/evrpc.c.o
-/Library/Developer/CommandLineTools/usr/bin/ranlib lib/libevent_extra.a

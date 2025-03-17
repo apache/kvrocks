@@ -1,2 +1,0 @@
-/Library/Developer/CommandLineTools/usr/bin/ar qc libxxhash.a CMakeFiles/xxhash.dir/__/xxhash.c.o
-/Library/Developer/CommandLineTools/usr/bin/ranlib libxxhash.a

@@ -1,3 +1,0 @@
-# TODO: temporary, until tests itself will be fixed
-leak:libcrypto.so
-leak:libssl.so

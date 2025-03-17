@@ -1,3 +1,0 @@
-/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/xxhash-subbuild/CMakeFiles/xxhash-populate.dir
-/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/xxhash-subbuild/CMakeFiles/edit_cache.dir
-/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/xxhash-subbuild/CMakeFiles/rebuild_cache.dir

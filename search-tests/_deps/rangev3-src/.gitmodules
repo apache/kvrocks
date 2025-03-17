@@ -1,4 +1,0 @@
-[submodule "doc/gh-pages"]
-	path = doc/gh-pages
-	url = https://github.com/ericniebler/range-v3.git
-	branch = gh-pages

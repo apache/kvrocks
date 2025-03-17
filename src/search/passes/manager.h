@@ -27,6 +27,8 @@
 
 #include "search/ir.h"
 #include "search/ir_pass.h"
+#include "search/passes/egraph.h"
+#include "search/passes/egraph_saturation.h"
 #include "search/passes/index_selection.h"
 #include "search/passes/interval_analysis.h"
 #include "search/passes/lower_to_plan.h"
@@ -93,7 +95,11 @@ struct PassManager {
   static PassSequence NumericPasses() { return Create(IntervalAnalysis{true}, SimplifyAndOrExpr{}, SimplifyBoolean{}); }
   static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }
 
-  static PassSequence Default() { return Merge(ExprPasses(), NumericPasses(), PlanPasses()); }
+  static PassSequence EGraphOptimizationPasses() { return Create(EGraphSaturation{}); }
+
+  static PassSequence Default() {
+    return Merge(ExprPasses(), NumericPasses(), EGraphOptimizationPasses(), PlanPasses());
+  }
   static PassSequence Debug(std::vector<std::unique_ptr<Node>> &recorded) { return FullRecord(Default(), recorded); }
 };
 

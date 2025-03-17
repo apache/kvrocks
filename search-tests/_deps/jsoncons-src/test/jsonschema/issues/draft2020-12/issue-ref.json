@@ -1,0 +1,29 @@
+[
+    {
+        "description": "URN base URI with r-component",
+        "schema": {
+            "$comment": "RFC 8141 §2.3.1",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "urn:example:foo-bar-baz-qux?+CCResolve:cc=uk",
+            "properties": {
+                "foo": {"$ref": "#/$defs/bar"}
+            },
+            "$defs": {
+                "bar": {"type": "string"}
+            }
+        },
+        "tests": [
+            {
+                "description": "a string is valid",
+                "data": {"foo": "bar"},
+                "valid": true
+            }/*,
+            {
+                "description": "a non-string is invalid",
+                "data": {"foo": 12},
+                "valid": false
+            }*/
+        ]
+    }
+]
+

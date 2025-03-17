@@ -1,0 +1,41 @@
+[
+    {
+        "description": "$recursiveRef with no $recursiveAnchor in the initial target schema resource",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "$id": "http://localhost:4242/draft2019-09/recursiveRef6/base.json",
+            "$recursiveAnchor": true,
+            "anyOf": [
+                { "type": "boolean" },
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$id": "http://localhost:4242/draft2019-09/recursiveRef6/inner.json",
+                        "$comment": "there is no $recursiveAnchor: true here, so we do NOT recurse to the base",
+                        "anyOf": [
+                            { "type": "integer" },
+                            { "type": "object", "additionalProperties": { "$recursiveRef": "#" } }
+                        ]
+                    }
+                }
+            ]
+        },
+        "tests": [
+            /*{
+                "description": "leaf node does not match; no recursion",
+                "data": { "foo": true },
+                "valid": false
+            },*/
+            {
+                "description": "leaf node matches: recursion uses the inner schema",
+                "data": { "foo": { "bar": 1 } },
+                "valid": true
+            }/*,
+            {
+                "description": "leaf node does not match: recursion uses the inner schema",
+                "data": { "foo": { "bar": true } },
+                "valid": false
+            }*/
+        ]
+    }
+]

@@ -1,0 +1,100 @@
+[
+    /*{
+        "given" : [
+            {"name": "hullo world"},
+            {"name": "hello world"},
+            {"name": "yes hello world"},
+            {"name": "HELLO WORLD"},
+            {"name": "good bye"}
+        ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with regular expression",
+                "expression" : "$[?(@.name=~/hello.* /)]",
+                "result" : [
+                    {
+                        "name": "hello world"
+                    },
+                    {
+                        "name": "yes hello world"
+                    }
+                ]
+            },
+            {
+                "comment" : "Filter expression with regular expression",
+                "expression" : "$[?(@.name=~/hello.* /i)]",
+                "result" : [
+                    {"name": "hello world"},
+                    {"name": "yes hello world"},
+                    {"name": "HELLO WORLD"}
+                ]
+            }
+        ]
+    },
+    {
+        "given" : {
+              "store": {
+                  "book": [
+                      {
+                          "category": "reference",
+                          "author": "Nigel Rees",
+                          "title": "Sayings of the Century",
+                          "price": 8.95
+                      },
+                      {
+                          "category": "fiction",
+                          "author": "Evelyn Waugh",
+                          "title": "Sword of Honour",
+                          "price": 12.99
+                      },
+                      {
+                          "category": "fiction",
+                          "author": "Herman Melville",
+                          "title": "Moby Dick",
+                          "isbn": "0-553-21311-3",
+                          "price": 8.99
+                      },
+                      {
+                          "category": "fiction",
+                          "author": "J. R. R. Tolkien",
+                          "title": "The Lord of the Rings",
+                          "isbn": "0-395-19395-8",
+                          "price": 22.99
+                      }
+                  ],
+                  "bicycle": {
+                      "color": "red",
+                      "price": 19.95
+                  }
+              }
+          },
+        "cases" : [
+            {
+                "comment" : "Filter expression with regular expression",
+                "expression" : "$.store.book[ ?(@.category =~ /fic.*?/)].author",
+                "result" : ["Evelyn Waugh","Herman Melville","J. R. R. Tolkien"]
+            },
+            {
+                "comment" : "Filter expression with regular expression",
+                "expression" : "$.store.book[ ?(@.author =~ /Evelyn.*?/)].author",
+                "result" : ["Evelyn Waugh"]
+            },
+            {
+                "comment" : "Filter expression with regular expression",
+                "expression" : "$.store.book[ ?(!(@.author =~ /Evelyn.*?/))].author",
+                "result" : ["Nigel Rees","Herman Melville","J. R. R. Tolkien"]
+            }
+        ]
+    },*/
+    {
+        "given" : "The cat sat on the mat",
+        "cases" : [
+            {
+                "comment" : "tokenize",
+                "expression" : "tokenize($,'\\\\s+')[*]",
+                "result" : ["The","cat","sat","on","the","mat"]
+            }
+        ]
+    }
+    
+]

@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/download-rocksdb-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/verify-rocksdb-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/extract-rocksdb-populate.cmake
+source_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-src
+work_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps
+url(s)=https://github.com/facebook/rocksdb/archive/v9.11.1.zip
+hash=MD5=d332d9b17863d518ed3d128a81fd653b
+      no_extract=
+

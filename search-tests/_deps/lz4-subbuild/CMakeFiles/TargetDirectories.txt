@@ -1,0 +1,3 @@
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/lz4-subbuild/CMakeFiles/lz4-populate.dir
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/lz4-subbuild/CMakeFiles/edit_cache.dir
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/lz4-subbuild/CMakeFiles/rebuild_cache.dir

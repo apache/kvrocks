@@ -1,0 +1,244 @@
+[
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": "bar"},
+        "cases": [
+             {
+                "comment" : "Adding an object member",
+                "patch": [
+                   { "op": "add", "path": "/baz", "value": "qux" }
+                ],
+                "result": {"baz":"qux","foo":"bar"}
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": [ "bar", "baz" ] },
+        "cases": [
+             {
+                "comment" : "Adding an array element",
+                "patch": [
+                    { "op": "add", "path": "/foo/1", "value": "qux" }
+                  ],
+                "result": { "foo": [ "bar", "qux", "baz" ] }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "baz": "qux",
+              "foo": "bar"
+            },
+        "cases": [
+             {
+                "comment" : "Removing an object member",
+                "patch": [
+                    { "op": "remove", "path": "/baz" }
+                  ],
+                "result": { "foo": "bar" }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": [ "bar", "qux", "baz" ] },
+        "cases": [
+             {
+                "comment" : "Removing an array element",
+                "patch":  [
+                    { "op": "remove", "path": "/foo/1" }
+                  ],
+                "result": { "foo": [ "bar", "baz" ] }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "baz": "qux",
+              "foo": "bar"
+            },
+        "cases": [
+             {
+                "comment" : "Replacing a value",
+                "patch":  [
+                    { "op": "replace", "path": "/baz", "value": "boo" }
+                  ],
+                "result": {
+                    "baz": "boo",
+                    "foo": "bar"
+                  }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "foo": {
+                "bar": "baz",
+                "waldo": "fred"
+              },
+              "qux": {
+                "corge": "grault"
+              }
+            },
+        "cases": [
+             {
+                "comment" : "Moving a value",
+                "patch": [
+                    { "op": "move", "from": "/foo/waldo", "path": "/qux/thud" }
+                  ],
+                "result": {
+                    "foo": {
+                      "bar": "baz"
+                    },
+                    "qux": {
+                      "corge": "grault",
+                      "thud": "fred"
+                    }
+                  }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": [ "all", "grass", "cows", "eat" ] },
+        "cases": [
+             {
+                "comment" : "Moving an array element",
+                "patch": [
+                     { "op": "move", "from": "/foo/1", "path": "/foo/3" }
+                  ],
+                "result": { "foo": [ "all", "cows", "eat", "grass" ] }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "baz": "qux",
+              "foo": [ "a", 2, "c" ]
+            },
+        "cases": [
+             {
+                "comment" : "Testing a value: success",
+                "patch": [
+                    { "op": "test", "path": "/baz", "value": "qux" },
+                    { "op": "test", "path": "/foo/1", "value": 2 }
+                  ],
+                "result":  {"baz":"qux","foo":["a",2,"c"]}
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "baz": "qux" },
+        "cases": [
+             {
+                "comment" : "Testing a value: error",
+                "patch": [
+                    { "op": "test", "path": "/baz", "value": "bar" }
+                  ],
+                "error": "path error"
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": "bar" },
+        "cases": [
+             {
+                "comment" : "Adding a nested member object",
+                "patch": [
+                    { "op": "add", "path": "/child", "value": { "grandchild": { } } }
+                  ],
+                "result":  {
+                    "foo": "bar",
+                    "child": {
+                      "grandchild": {
+                      }
+                    }
+                  }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": "bar" },
+        "cases": [
+             {
+                "comment" : "Ignoring unrecognized elements",
+                "patch": [
+                    { "op": "add", "path": "/baz", "value": "qux", "xyz": 123 }
+                  ],
+                "result":  {
+                 "foo": "bar",
+                 "baz": "qux"
+               }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": "bar" },
+        "cases": [
+             {
+                "comment" : "Adding to a nonexistent target",
+                "patch": [
+                    { "op": "add", "path": "/baz/bat", "value": "qux" }
+                  ],
+                "error": "nonexistent target"
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "/": 9,
+              "~1": 10
+            },
+        "cases": [
+             {
+                "comment" : " ~ escape ordering",
+                "patch": [
+                    {"op": "test", "path": "/~01", "value": 10}
+                  ],
+                "result":  {
+                    "/": 9,
+                    "~1": 10
+                  }
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": {
+              "/": 9,
+              "~1": 10
+            },
+        "cases": [
+             {
+                "comment" : "Comparing strings and numbers",
+                "patch": [
+                    {"op": "test", "path": "/~01", "value": "10"}
+                  ],
+                "error" : "The document value is numeric, whereas the value being tested for is a string."
+             }
+         ]
+    },
+    {
+        "source" : "https://tools.ietf.org/html/rfc6902 Appendix A",       
+        "given": { "foo": ["bar"] },
+        "cases": [
+             {
+                "comment" : "Adding an array value",
+                "patch": [
+                    { "op": "add", "path": "/foo/-", "value": ["abc", "def"] }
+                  ],
+                "result":  { "foo": ["bar", ["abc", "def"]] }
+             }
+         ]
+    }
+]

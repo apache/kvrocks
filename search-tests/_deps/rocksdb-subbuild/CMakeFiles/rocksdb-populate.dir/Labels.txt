@@ -1,0 +1,14 @@
+# Target labels
+ rocksdb-populate
+# Source files and their labels
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate-complete.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-build.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-configure.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-download.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-install.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-mkdir.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-patch.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-test.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-update.rule

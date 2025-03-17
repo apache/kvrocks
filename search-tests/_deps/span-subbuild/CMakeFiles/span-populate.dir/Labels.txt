@@ -1,0 +1,14 @@
+# Target labels
+ span-populate
+# Source files and their labels
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/CMakeFiles/span-populate
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/CMakeFiles/span-populate.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/CMakeFiles/span-populate-complete.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-build.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-configure.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-download.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-install.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-mkdir.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-patch.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-test.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/span-subbuild/span-populate-prefix/src/span-populate-stamp/span-populate-update.rule

@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/CMakeFiles/rocksdb-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/rocksdb-subbuild/rocksdb-populate-prefix/src/rocksdb-populate-stamp/rocksdb-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"rocksdb-populate"
+		],
+		"name" : "rocksdb-populate"
+	}
+}

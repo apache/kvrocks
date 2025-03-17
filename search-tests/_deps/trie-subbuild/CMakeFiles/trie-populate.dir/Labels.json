@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/CMakeFiles/trie-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/CMakeFiles/trie-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/CMakeFiles/trie-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/trie-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"trie-populate"
+		],
+		"name" : "trie-populate"
+	}
+}

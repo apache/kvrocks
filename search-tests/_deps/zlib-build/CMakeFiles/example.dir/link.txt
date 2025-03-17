@@ -1,0 +1,1 @@
+/Library/Developer/CommandLineTools/usr/bin/cc -O2 -g -DNDEBUG -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX15.2.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/example.dir/test/example.c.o -o example  -Wl,-rpath,/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-build libz.1.3.dylib

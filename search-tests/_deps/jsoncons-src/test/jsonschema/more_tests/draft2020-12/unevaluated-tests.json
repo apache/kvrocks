@@ -1,0 +1,2247 @@
+[
+  {
+    "description": "schema with a $ref",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "definitions": {
+        "address": {
+          "properties": {
+            "residence": {
+              "$ref": "#/definitions/residence",
+              "description": "Residence details where the person lives"
+            },
+            "city": {
+              "type": "string",
+              "description": "City where the person lives."
+            },
+            "street": {
+              "type": "string",
+              "description": "street where the person lives."
+            },
+            "pinCode": {
+              "type": "number",
+              "description": "pincode of street"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "residence": {
+          "properties": {
+            "flatNumber": {
+              "type": "string"
+            },
+            "flatName": {
+              "type": "string"
+            },
+            "landmark": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "address": {
+          "description": "Address of the person.",
+          "$ref": "#/definitions/address"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Basic Success Test",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "address": {
+            "city": "Hyderabad",
+            "pinCode": 500025
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Unevaluated Property - Outside $ref",
+        "data": {
+          "firstName": "First Name",
+          "invalid": 18,
+          "lastName": "Last Name",
+          "address": {
+            "city": "Hyderabad",
+            "pinCode": 500025
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$: property 'invalid' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Unevaluated Property - inside $ref",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "address": {
+            "city": "Hyderabad",
+            "pinCode": 500025,
+            "invalid": "invalid"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.address: property 'invalid' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Unevaluated - multiple properties",
+        "data": {
+          "invalid1": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "address": {
+            "city": "Hyderabad",
+            "pinCode": 500025,
+            "invalid2": "invalid"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.address: property 'invalid2' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Inside nested $ref",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "address": {
+            "city": "Hyderabad",
+            "pinCode": 500025,
+            "residence": {
+              "invalid": ""
+            }
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.address.residence: property 'invalid' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }
+    ]
+  },
+  {
+    "description": "schema with a oneOf",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "vehicle": {
+          "oneOf": [
+            {
+              "title": "Car",
+              "required": [
+                "wheels",
+                "headlights"
+              ],
+              "properties": {
+                "wheels": {
+                  "type": "string"
+                },
+                "headlights": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Boat",
+              "required": [
+                "pontoons"
+              ],
+              "properties": {
+                "pontoons": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Plane",
+              "required": [
+                "wings"
+              ],
+              "properties": {
+                "wings": {
+                  "type": "string"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "tests": [
+      {
+        "description": "Data with oneOf and one property",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Data which satisfies 1 oneOf schemas, but fails due to unevaluated prop",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons",
+            "wheels": "wheels"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: property 'wheels' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Data which satisfies 2 oneOf schemas",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons",
+            "wings": "wings"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: must be valid to one and only one schema, but 2 are valid with indexes '1, 2'",
+          "$.vehicle: required property 'wheels' not found",
+          "$.vehicle: required property 'headlights' not found"
+        ]
+      },
+      {
+        "description": "Data which satisfies 2 oneOf schemas and an invalid prop",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons",
+            "wings": "wings",
+            "invalid": "invalid"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: must be valid to one and only one schema, but 2 are valid with indexes '1, 2'",
+          "$.vehicle: property 'invalid' is not evaluated and the schema does not allow unevaluated properties",
+          "$.vehicle: required property 'wheels' not found",
+          "$.vehicle: required property 'headlights' not found"
+        ]
+      },
+      {
+        "description": "Data which doesn't satisfy any of oneOf schemas but having an invalid prop",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "invalid": "invalid"
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: must be valid to one and only one schema, but 0 are valid",
+          "$.vehicle: property 'invalid' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }
+    ]
+  },
+  {
+    "description": "schema with a anyOf",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "vehicle": {
+          "anyOf": [
+            {
+              "title": "Car",
+              "required": [
+                "wheels",
+                "headlights"
+              ],
+              "properties": {
+                "wheels": {
+                  "type": "string"
+                },
+                "headlights": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Boat",
+              "required": [
+                "pontoons"
+              ],
+              "properties": {
+                "pontoons": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Plane",
+              "required": [
+                "wings"
+              ],
+              "properties": {
+                "wings": {
+                  "type": "string"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "tests": [
+      {
+        "description": "Data with 1 valid AnyOf",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Data with 1 AnyOf and 1 unevaluated property",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons",
+            "unevaluated": true
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Data with just unevaluated property",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "unevaluated": true
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      },
+      {
+        "description": "Data with 2 valid AnyOf and 1 unevaluated property",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "pontoons": "pontoons",
+            "wings": "wings",
+            "unevaluated": true
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }
+    ]
+  },
+  {
+    "description": "schema with a allOf",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "vehicle": {
+          "allOf": [
+            {
+              "title": "Car",
+              "required": [
+                "wheels"
+              ],
+              "properties": {
+                "wheels": {
+                  "type": "string"
+                },
+                "headlights": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Boat",
+              "required": [
+                "pontoons"
+              ],
+              "properties": {
+                "pontoons": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "title": "Plane",
+              "required": [
+                "wings"
+              ],
+              "properties": {
+                "wings": {
+                  "type": "string"
+                }
+              }
+            }
+          ],
+          "unevaluatedProperties": false
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "tests": [
+      {
+        "description": "Data with allOf",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "wheels": "wheels",
+            "pontoons": "pontoons",
+            "wings": "wings"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Data with invalid allOf and one unevaluated property",
+        "data": {
+          "firstName": "First Name",
+          "age": 18,
+          "lastName": "Last Name",
+          "vehicle": {
+            "wheels": "wheels",
+            "pontoons": "pontoons",
+            "unevaluated": true
+          }
+        },
+        "valid": false,
+        "validationMessages": [
+          "$.vehicle: required property 'wings' not found",
+          "$.vehicle: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }
+    ]
+  },
+  {
+    "description": "schema with if then and else",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "if": {
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "The person's first name."
+          },
+          "age": {
+            "description": "Age in years which must be equal to or greater than zero.",
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "firstName"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lastName": {
+            "type": "string",
+            "description": "The person's last name."
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "surName": {
+            "type": "string",
+            "description": "The person's sur name."
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Data with if then and else",
+        "data": {
+          "age": 18,
+          "surName": "Sur Name"
+        },
+        "valid": false
+      },
+      {
+        "description": "Data - else schema with one unevaluated property",
+        "data": {
+          "age": 18,
+          "surName": "Sur Name",
+          "unevaluated": true
+        },
+        "valid": false,
+        "validationMessages": [
+          "$: property 'age' is not evaluated and the schema does not allow unevaluated properties",
+          "$: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }
+    ]
+  },
+  {
+    "description": "schema with additional properties as object",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": {
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "The person's location."
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Data with additional properties as object",
+        "data": {
+          "age": 18,
+          "otherProperty": {
+            "location": "hello"
+          }
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "schema with additional properties as type",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "properties": {
+        "firstName": {
+          "type": "string",
+          "description": "The person's first name."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The person's last name."
+        },
+        "age": {
+          "description": "Age in years which must be equal to or greater than zero.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Data with additional properties as type",
+        "data": {
+          "age": 18,
+          "otherProperty": "test"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties should not affect sub-schemas",
+    "schema": {
+      "properties": {
+        "foo": {}
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "unevaluated property bar is in sub-schema",
+        "data": {
+          "foo": {
+            "bar": "baz"
+          }
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties true",
+    "schema": {
+      "type": "object",
+      "unevaluatedProperties": true
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {},
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties false",
+    "schema": {
+      "type": "object",
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {},
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with adjacent properties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with adjacent patternProperties",
+    "schema": {
+      "type": "object",
+      "patternProperties": {
+        "^foo": {
+          "type": "string"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with adjacent additionalProperties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no additional properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with nested properties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "properties": {
+            "bar": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "with additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with nested patternProperties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "patternProperties": {
+            "^bar": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "with additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with nested additionalProperties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "additionalProperties": true
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no additional properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with additional properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with nested unevaluatedProperties",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "unevaluatedProperties": true
+        }
+      ],
+      "unevaluatedProperties": {
+        "type": "string",
+        "maxLength": 2
+      }
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with anyOf",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "bar": {
+              "const": "bar"
+            }
+          },
+          "required": [
+            "bar"
+          ]
+        },
+        {
+          "properties": {
+            "baz": {
+              "const": "baz"
+            }
+          },
+          "required": [
+            "baz"
+          ]
+        },
+        {
+          "properties": {
+            "quux": {
+              "const": "quux"
+            }
+          },
+          "required": [
+            "quux"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "when one matches and has no unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "when one matches and has unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "not-baz"
+        },
+        "valid": false
+      },
+      {
+        "description": "when two match and has unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "baz",
+          "quux": "not-quux"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with oneOf",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "bar": {
+              "const": "bar"
+            }
+          },
+          "required": [
+            "bar"
+          ]
+        },
+        {
+          "properties": {
+            "baz": {
+              "const": "baz"
+            }
+          },
+          "required": [
+            "baz"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "quux": "quux"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with not",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "not": {
+        "not": {
+          "properties": {
+            "bar": {
+              "const": "bar"
+            }
+          },
+          "required": [
+            "bar"
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with if/then/else",
+    "schema": {
+      "type": "object",
+      "if": {
+        "properties": {
+          "foo": {
+            "const": "then"
+          }
+        },
+        "required": [
+          "foo"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bar": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bar"
+        ]
+      },
+      "else": {
+        "properties": {
+          "baz": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baz"
+        ]
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "when if is true and has no unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "when if is true and has unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      },
+      {
+        "description": "when if is false and has no unevaluated properties",
+        "data": {
+          "baz": "baz"
+        },
+        "valid": true
+      },
+      {
+        "description": "when if is false and has unevaluated properties",
+        "data": {
+          "foo": "else",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with if/then/else, then not defined",
+    "schema": {
+      "type": "object",
+      "if": {
+        "properties": {
+          "foo": {
+            "const": "then"
+          }
+        },
+        "required": [
+          "foo"
+        ]
+      },
+      "else": {
+        "properties": {
+          "baz": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baz"
+        ]
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "when if is true and has no unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar"
+        },
+        "valid": false
+      },
+      {
+        "description": "when if is true and has unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      },
+      {
+        "description": "when if is false and has no unevaluated properties",
+        "data": {
+          "baz": "baz"
+        },
+        "valid": true
+      },
+      {
+        "description": "when if is false and has unevaluated properties",
+        "data": {
+          "foo": "else",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with if/then/else, else not defined",
+    "schema": {
+      "type": "object",
+      "if": {
+        "properties": {
+          "foo": {
+            "const": "then"
+          }
+        },
+        "required": [
+          "foo"
+        ]
+      },
+      "then": {
+        "properties": {
+          "bar": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bar"
+        ]
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "when if is true and has no unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "when if is true and has unevaluated properties",
+        "data": {
+          "foo": "then",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      },
+      {
+        "description": "when if is false and has no unevaluated properties",
+        "data": {
+          "baz": "baz"
+        },
+        "valid": false
+      },
+      {
+        "description": "when if is false and has unevaluated properties",
+        "data": {
+          "foo": "else",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with dependentSchemas",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "dependentSchemas": {
+        "foo": {
+          "properties": {
+            "bar": {
+              "const": "bar"
+            }
+          },
+          "required": [
+            "bar"
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with boolean schemas",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        true
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with $ref",
+    "schema": {
+      "type": "object",
+      "$ref": "#/$defs/bar",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "unevaluatedProperties": false,
+      "$defs": {
+        "bar": {
+          "properties": {
+            "bar": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "tests": [
+      {
+        "description": "with no unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      },
+      {
+        "description": "with unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar",
+          "baz": "baz"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties can't see inside cousins",
+    "schema": {
+      "allOf": [
+        {
+          "properties": {
+            "foo": true
+          }
+        },
+        {
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "always fails",
+        "data": {
+          "foo": 1
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "nested unevaluatedProperties, outer false, inner true, properties outside",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "unevaluatedProperties": true
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "nested unevaluatedProperties, outer false, inner true, properties inside",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": true
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "nested unevaluatedProperties, outer true, inner false, properties outside",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "unevaluatedProperties": false
+        }
+      ],
+      "unevaluatedProperties": true
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": false
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "nested unevaluatedProperties, outer true, inner false, properties inside",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ],
+      "unevaluatedProperties": true
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "cousin unevaluatedProperties, true and false, true with properties",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": true
+        },
+        {
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": false
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "cousin unevaluatedProperties, true and false, false with properties",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "unevaluatedProperties": true
+        },
+        {
+          "properties": {
+            "foo": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "with no nested unevaluated properties",
+        "data": {
+          "foo": "foo"
+        },
+        "valid": true
+      },
+      {
+        "description": "with nested unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "property is evaluated in an uncle schema to unevaluatedProperties",
+    "comment": "see https://stackoverflow.com/questions/66936884/deeply-nested-unevaluatedproperties-and-their-expectations",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "foo": {
+          "type": "object",
+          "properties": {
+            "bar": {
+              "type": "string"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "foo": {
+              "properties": {
+                "faz": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "no extra properties",
+        "data": {
+          "foo": {
+            "bar": "test"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "uncle keyword evaluation is not significant",
+        "data": {
+          "foo": {
+            "bar": "test",
+            "faz": "test"
+          }
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "in-place applicator siblings, allOf has unevaluated",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": true
+          },
+          "unevaluatedProperties": false
+        }
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "bar": true
+          }
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "base case: both properties present",
+        "data": {
+          "foo": 1,
+          "bar": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "in place applicator siblings, bar is missing",
+        "data": {
+          "foo": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "in place applicator siblings, foo is missing",
+        "data": {
+          "bar": 1
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "in-place applicator siblings, anyOf has unevaluated",
+    "schema": {
+      "type": "object",
+      "allOf": [
+        {
+          "properties": {
+            "foo": true
+          }
+        }
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "bar": true
+          },
+          "unevaluatedProperties": false
+        }
+      ]
+    },
+    "tests": [
+      {
+        "description": "base case: both properties present",
+        "data": {
+          "foo": 1,
+          "bar": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "in place applicator siblings, bar is missing",
+        "data": {
+          "foo": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "in place applicator siblings, foo is missing",
+        "data": {
+          "bar": 1
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties + single cyclic ref",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Empty is valid",
+        "data": {},
+        "valid": true
+      },
+      {
+        "description": "Single is valid",
+        "data": {
+          "x": {}
+        },
+        "valid": true
+      },
+      {
+        "description": "Unevaluated on 1st level is invalid",
+        "data": {
+          "x": {},
+          "y": {}
+        },
+        "valid": false
+      },
+      {
+        "description": "Nested is valid",
+        "data": {
+          "x": {
+            "x": {}
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Unevaluated on 2nd level is invalid",
+        "data": {
+          "x": {
+            "x": {},
+            "y": {}
+          }
+        },
+        "valid": false
+      },
+      {
+        "description": "Deep nested is valid",
+        "data": {
+          "x": {
+            "x": {
+              "x": {}
+            }
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "Unevaluated on 3rd level is invalid",
+        "data": {
+          "x": {
+            "x": {
+              "x": {},
+              "y": {}
+            }
+          }
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties + ref inside allOf / oneOf",
+    "schema": {
+      "$defs": {
+        "one": {
+          "properties": {
+            "a": true
+          }
+        },
+        "two": {
+          "required": [
+            "x"
+          ],
+          "properties": {
+            "x": true
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/one"
+        },
+        {
+          "properties": {
+            "b": true
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/two"
+            },
+            {
+              "required": [
+                "y"
+              ],
+              "properties": {
+                "y": true
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Empty is invalid (no x or y)",
+        "data": {},
+        "valid": false
+      },
+      {
+        "description": "a and b are invalid (no x or y)",
+        "data": {
+          "a": 1,
+          "b": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "x and y are invalid",
+        "data": {
+          "x": 1,
+          "y": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "a and x are valid",
+        "data": {
+          "a": 1,
+          "x": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "a and y are valid",
+        "data": {
+          "a": 1,
+          "y": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "a and b and x are valid",
+        "data": {
+          "a": 1,
+          "b": 1,
+          "x": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "a and b and y are valid",
+        "data": {
+          "a": 1,
+          "b": 1,
+          "y": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "a and b and x and y are invalid",
+        "data": {
+          "a": 1,
+          "b": 1,
+          "x": 1,
+          "y": 1
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "dynamic evalation inside nested refs",
+    "schema": {
+      "$defs": {
+        "one": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/two"
+            },
+            {
+              "required": [
+                "b"
+              ],
+              "properties": {
+                "b": true
+              }
+            },
+            {
+              "required": [
+                "xx"
+              ],
+              "patternProperties": {
+                "x": true
+              }
+            },
+            {
+              "required": [
+                "all"
+              ],
+              "unevaluatedProperties": true
+            }
+          ]
+        },
+        "two": {
+          "oneOf": [
+            {
+              "required": [
+                "c"
+              ],
+              "properties": {
+                "c": true
+              }
+            },
+            {
+              "required": [
+                "d"
+              ],
+              "properties": {
+                "d": true
+              }
+            }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/one"
+        },
+        {
+          "required": [
+            "a"
+          ],
+          "properties": {
+            "a": true
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Empty is invalid",
+        "data": {},
+        "valid": false
+      },
+      {
+        "description": "a is valid",
+        "data": {
+          "a": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "b is valid",
+        "data": {
+          "b": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "c is valid",
+        "data": {
+          "c": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "d is valid",
+        "data": {
+          "d": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "a + b is invalid",
+        "data": {
+          "a": 1,
+          "b": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "a + c is invalid",
+        "data": {
+          "a": 1,
+          "c": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "a + d is invalid",
+        "data": {
+          "a": 1,
+          "d": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "b + c is invalid",
+        "data": {
+          "b": 1,
+          "c": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "b + d is invalid",
+        "data": {
+          "b": 1,
+          "d": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "c + d is invalid",
+        "data": {
+          "c": 1,
+          "d": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "xx + a is invalid",
+        "data": {
+          "xx": 1,
+          "a": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "xx + b is invalid",
+        "data": {
+          "xx": 1,
+          "b": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "xx + c is invalid",
+        "data": {
+          "xx": 1,
+          "c": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "xx + d is invalid",
+        "data": {
+          "xx": 1,
+          "d": 1
+        },
+        "valid": false
+      },
+      {
+        "description": "all is valid",
+        "data": {
+          "all": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "all + foo is valid",
+        "data": {
+          "all": 1,
+          "foo": 1
+        },
+        "valid": true
+      },
+      {
+        "description": "all + a is invalid",
+        "data": {
+          "all": 1,
+          "a": 1
+        },
+        "valid": false
+      }
+    ]
+  },
+  {
+    "description": "unevaluatedProperties with patternProperties and type union",
+    "schema": {
+      "type": "object",
+      "patternProperties": {
+        "^valid_": {
+          "type": ["array", "string"],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Not valid key against pattern",
+        "data": {
+          "valid_array": ["array1_value", "array2_value"],
+          "valid_string": "string_value",
+          "invalid_key": "this is an unevaluated properties due to key not matching the pattern"
+        },
+        "valid": false
+      },
+      {
+        "description": "Not valid type",
+        "data": {
+          "valid_array": ["array1_value", "array2_value"],
+          "valid_string": "string_value",
+          "valid_key": 5
+        },
+        "valid": false
+      },
+      {
+        "description": "Valid",
+        "data": {
+          "valid_array": ["array1_value", "array2_value"],
+          "valid_string": "string_value"
+        },
+        "valid": true
+      }
+    ]
+  }
+]

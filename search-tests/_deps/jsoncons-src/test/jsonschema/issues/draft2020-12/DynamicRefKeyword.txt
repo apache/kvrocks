@@ -1,0 +1,158 @@
+public KeywordConstraint GetConstraint(SchemaConstraint schemaConstraint, IReadOnlyList<KeywordConstraint> localConstraints, EvaluationContext context)
+{
+  var newUri = new Uri(context.Scope.LocalScope, Reference);
+  var newBaseUri = new Uri(newUri.GetLeftPart(UriPartial.Query));
+  var anchorName = Reference.OriginalString.Split('#').Last();
+
+  JsonSchema? targetSchema = null;
+  var targetBase = context.Options.SchemaRegistry.Get(newBaseUri) ??
+                   throw new JsonSchemaException($"Cannot resolve base schema from `{newUri}`");
+
+  foreach (var uri in context.Scope.Reverse())
+  {
+        var scopeRoot = context.Options.SchemaRegistry.Get(uri);
+        if (scopeRoot == null)
+                throw new Exception("This shouldn't happen");
+
+        if (scopeRoot is not JsonSchema schemaRoot)
+                throw new Exception("Does OpenAPI use anchors?");
+
+        if (!schemaRoot.Anchors.TryGetValue(anchorName, out var anchor) || !anchor.IsDynamic) continue;
+
+        if (targetBase is JsonSchema targetBaseSchema &&
+            context.EvaluatingAs == SpecVersion.Draft202012 &&
+            (!targetBaseSchema.Anchors.TryGetValue(anchorName, out var targetAnchor) || !targetAnchor.IsDynamic)) break;
+
+        targetSchema = anchor.Schema;
+        break;
+  }
+
+  if (targetSchema == null)
+  {
+        if (JsonPointer.TryParse(newUri.Fragment, out var pointerFragment))
+        {
+                if (targetBase == null)
+                        throw new JsonSchemaException($"Cannot resolve base schema from `{newUri}`");
+
+                targetSchema = targetBase.FindSubschema(pointerFragment!, context.Options);
+        }
+        else
+        {
+                var anchorFragment = newUri.Fragment.Substring(1);
+                if (!AnchorKeyword.AnchorPattern.IsMatch(anchorFragment))
+                        throw new JsonSchemaException($"Unrecognized fragment type `{newUri}`");
+
+                if (targetBase is JsonSchema targetBaseSchema &&
+                    targetBaseSchema.Anchors.TryGetValue(anchorFragment, out var anchorDefinition))
+                        targetSchema = anchorDefinition.Schema;
+        }
+
+        if (targetSchema == null)
+                throw new JsonSchemaException($"Cannot resolve schema `{newUri}`");
+  }
+
+  return new KeywordConstraint(Name, (e, c) => Evaluator(e, c, targetSchema));
+}
+
+Anchors
+    public EvaluationResults Evaluate(JsonNode? root, EvaluationOptions? options = null)
+    {
+        options = EvaluationOptions.From(options ?? EvaluationOptions.Default);
+
+        // BaseUri may change if $id is present
+        // TODO: remove options.EvaluatingAs
+        var evaluatingAs = DetermineSpecVersion(this, options.SchemaRegistry, options.EvaluateAs);
+        PopulateBaseUris(this, this, BaseUri, options.SchemaRegistry, evaluatingAs, true);
+
+
+        var context = new EvaluationContext(options, evaluatingAs, BaseUri);
+        var constraint = BuildConstraint(JsonPointer.Empty, JsonPointer.Empty, JsonPointer.Empty, context.Scope);
+        if (!BoolValue.HasValue)
+                PopulateConstraint(constraint, context);
+
+        var evaluation = constraint.BuildEvaluation(root, JsonPointer.Empty, JsonPointer.Empty, options);
+        evaluation.Evaluate(context);
+
+        if (options.AddAnnotationForUnknownKeywords && constraint.UnknownKeywords != null)
+                evaluation.Results.SetAnnotation(_unknownKeywordsAnnotationKey, constraint.UnknownKeywords);
+
+        var results = evaluation.Results;
+        switch (options.OutputFormat)
+        {
+                case OutputFormat.Flag:
+                        results.ToFlag();
+                        break;
+                case OutputFormat.List:
+                        results.ToList();
+                        break;
+                case OutputFormat.Hierarchical:
+                        break;
+                default:
+                        throw new ArgumentOutOfRangeException();
+        }
+
+        return results;
+    }
+
+    private static void PopulateBaseUris(JsonSchema schema, JsonSchema resourceRoot, Uri currentBaseUri, SchemaRegistry registry, SpecVersion evaluatingAs = SpecVersion.Unspecified, bool selfRegister = false)
+    {
+        if (schema.BoolValue.HasValue) return;
+        evaluatingAs = DetermineSpecVersion(schema, registry, evaluatingAs);
+        if (evaluatingAs is SpecVersion.Draft6 or SpecVersion.Draft7 &&
+                schema.TryGetKeyword<RefKeyword>(RefKeyword.Name, out _))
+        {
+                schema.BaseUri = currentBaseUri;
+                if (selfRegister)
+                        registry.RegisterSchema(schema.BaseUri, schema);
+        }
+        else
+        {
+                var idKeyword = (IIdKeyword?)schema.Keywords!.FirstOrDefault(x => x is IIdKeyword);
+                if (idKeyword != null)
+                {
+                        if (evaluatingAs <= SpecVersion.Draft7 &&
+                            idKeyword.Id.OriginalString[0] == '#' &&
+                            AnchorKeyword.AnchorPattern.IsMatch(idKeyword.Id.OriginalString.Substring(1)))
+                        {
+                                schema.BaseUri = currentBaseUri;
+                                resourceRoot.Anchors[idKeyword.Id.OriginalString.Substring(1)] = (schema, false);
+                        }
+                        else
+                        {
+                                schema.IsResourceRoot = true;
+                                schema.DeclaredVersion = evaluatingAs;
+                                resourceRoot = schema;
+                                schema.BaseUri = new Uri(currentBaseUri, idKeyword.Id);
+                                registry.RegisterSchema(schema.BaseUri, schema);
+                        }
+                }
+                else
+                {
+                        schema.BaseUri = currentBaseUri;
+                        if (selfRegister)
+                                registry.RegisterSchema(schema.BaseUri, schema);
+                }
+
+                if (schema.TryGetKeyword<AnchorKeyword>(AnchorKeyword.Name, out var anchorKeyword))
+                {
+                        resourceRoot.Anchors[anchorKeyword!.Anchor] = (schema, false);
+                }
+
+                if (schema.TryGetKeyword<DynamicAnchorKeyword>(DynamicAnchorKeyword.Name, out var dynamicAnchorKeyword))
+                {
+                        resourceRoot.Anchors[dynamicAnchorKeyword!.Value] = (schema, true);
+                }
+
+                schema.TryGetKeyword<RecursiveAnchorKeyword>(RecursiveAnchorKeyword.Name, out var recursiveAnchorKeyword);
+                if (recursiveAnchorKeyword is { Value: true })
+                        resourceRoot.RecursiveAnchor = schema;
+        }
+
+        var subschemas = schema.Keywords!.SelectMany(GetSubschemas);
+
+        foreach (var subschema in subschemas)
+        {
+                PopulateBaseUris(subschema, resourceRoot, schema.BaseUri, registry, evaluatingAs);
+        }
+    }
+

@@ -1,0 +1,28 @@
+ [
+    {
+        "description": "Location-independent identifier with absolute URI",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "$ref": "http://localhost:1234/draft2019-09/bar#foo",
+            "$defs": {
+                "A": {
+                    "$id": "http://localhost:1234/draft2019-09/bar",
+                    "$anchor": "foo",
+                    "type": "integer"
+                }
+            }
+        },
+        "tests": [
+            {
+                "data": 1,
+                "description": "match",
+                "valid": true
+            },
+            {
+                "data": "a",
+                "description": "mismatch",
+                "valid": false
+            }
+        ]
+    }
+]

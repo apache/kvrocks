@@ -1,0 +1,13 @@
+[
+{
+    "given": {"reservations": [
+        {"instances": [{"foo": 1}, {"foo": 2}]}
+    ]},
+    "cases": [
+        {
+           "expression": "reservations[].instances[].foo",
+           "result": [1, 2]
+        }
+    ]
+}
+]

@@ -1,0 +1,171 @@
+validator_type make_schema_validator(const Json& schema,
+    const compilation_context& context,
+    jsoncons::span<const std::string> keys) 
+{
+    auto new_context = context.update_uris(schema, keys);
+
+    validator_pointer validator_ptr = nullptr;
+
+    switch (schema.type())
+    {
+        case json_type::object_value:
+        {
+            auto it = schema.find("$defs");
+            if (it != schema.object_range().end()) 
+            {
+                for (const auto& def : it->value().object_range())
+                {
+                    std::string sub_keys[] = { "$defs", def.key() };
+                    make_schema_validator(def.value(), new_context, sub_keys);
+                }
+            }
+            it = schema.find("definitions");
+            if (it != schema.object_range().end()) 
+            {
+                for (const auto& def : it->value().object_range())
+                {
+                    std::string sub_keys[] = { "definitions", def.key() };
+                    make_schema_validator(def.value(), new_context, sub_keys);
+                }
+            }
+
+            auto ref = make_type_validator(schema, new_context);
+            validator_ptr = ref.get();
+            subschemas_.emplace_back(std::move(ref));
+            it = schema.find("$anchor"); // If $anchor is found, this schema can be referenced by the id
+            if (it != schema.object_range().end()) 
+            {
+                std::string anchor = it->value().template as<std::string>(); 
+                if (!validate_anchor(anchor))
+                {
+                    std::string message("Invalid anchor ");
+                    message.append(anchor.data(), anchor.size());
+                    JSONCONS_THROW(schema_error(message));
+                }
+                schema_location relative("#"+anchor); 
+                insert_schema(relative, validator_ptr);
+                if (new_context.get_base_uri().is_absolute())
+                {
+                    schema_location new_uri = relative.resolve(new_context.get_base_uri());
+                    insert_schema(new_uri, validator_ptr);
+                }
+            }
+            
+            for (const auto& uri : new_context.uris()) 
+            { 
+                insert_schema(uri, validator_ptr);
+                for (const auto& item : schema.object_range())
+                {
+                    insert_unknown_keyword(uri, item.key(), item.value()); // save unknown keywords for later reference
+                }
+            }          
+            break;
+        }
+        default:
+            JSONCONS_THROW(schema_error("invalid JSON-type for a schema for " + new_context.get_absolute_uri().string() + ", expected: boolean or object"));
+            break;
+    }
+    
+    return jsoncons::make_unique<reference_validator_type>(validator_ptr);
+}
+
+std::unique_ptr<type_validator<Json>> make_type_validator(const Json& schema,
+    const compilation_context& context)
+{
+    std::string schema_path = context.get_absolute_uri().string();
+    Json default_value{jsoncons::null_type()};
+    std::unique_ptr<enum_validator<Json>> enumvalidator{};
+    std::unique_ptr<const_validator<Json>> const_validator;
+    std::vector<validator_type> combined_validators;
+    std::unique_ptr<conditional_validator<Json>> conditionalvalidator;
+    std::vector<std::string> expected_types;
+    std::unique_ptr<unevaluated_properties_validator<Json>> unevaluated_properties_validator_ptr;
+    validator_type ref_validator;
+    validator_type recursive_ref_validator;
+
+    auto it = schema.find("$ref");
+    if (it != schema.object_range().end()) // this schema is a reference
+    {
+        std::string ref_string = it->value().template as<std::string>();
+        schema_location relative(ref_string); 
+        auto id = relative.resolve(context.get_base_uri());
+        auto ref =  get_or_create_reference(id);
+        auto ptr = ref.get();
+        subschemas_.emplace_back(std::move(ref));
+        ref_validator = jsoncons::make_unique<reference_validator_type>(ptr);
+    } 
+    it = schema.find("$recursiveRef");
+    if (it != schema.object_range().end()) // this schema is a reference
+    {
+        std::string ref_string = it->value().template as<std::string>();
+        schema_location relative(ref_string); 
+        auto base_uri = context.get_base_uri(uri_anchor_flags::recursive_anchor);
+        auto id = relative.resolve(base_uri);
+        auto ref =  get_or_create_reference(id);
+        auto ptr = ref.get();
+        subschemas_.emplace_back(std::move(ref));
+        recursive_ref_validator = jsoncons::make_unique<reference_validator_type>(ptr);
+    } 
+
+    std::vector<validator_type> type_mapping{(uint8_t)(json_type::object_value)+1};
+    std::set<std::string> known_keywords;
+
+    it = schema.find("type");
+    if (it == schema.object_range().end()) 
+    {
+        init_type_mapping(type_mapping, "", schema, context, known_keywords);
+    }
+    else 
+    {
+        switch (it->value().type()) 
+        { 
+            case json_type::string_value: 
+            {
+                auto type = it->value().template as<std::string>();
+                init_type_mapping(type_mapping, type, schema, context, known_keywords);
+                expected_types.emplace_back(std::move(type));
+                break;
+            } 
+
+            case json_type::array_value: // "type": ["type1", "type2"]
+            {
+                for (const auto& item : it->value().array_range())
+                {
+                    auto type = item.template as<std::string>();
+                    init_type_mapping(type_mapping, type, schema, context, known_keywords);
+                    expected_types.emplace_back(std::move(type));
+                }
+                break;
+            }
+        }
+    }
+
+    it = schema.find("anyOf");
+    if (it != schema.object_range().end()) 
+    {
+        combined_validators.emplace_back(make_any_of_validator(it->value(), context));
+    }
+
+    return jsoncons::make_unique<type_validator<Json>>(std::move(schema_path), 
+        std::move(type_mapping),
+        std::move(combined_validators),
+        std::move(ref_validator),
+        std::move(recursive_ref_validator)
+        );
+}
+
+std::unique_ptr<combining_validator<Json,any_of_criterion<Json>>> make_any_of_validator(const Json& schema,
+    const compilation_context& context)
+{
+    std::string schema_path = context.make_schema_path_with("anyOf");
+    std::vector<validator_type> subschemas;
+
+    size_t c = 0;
+    for (const auto& subsch : schema.array_range())
+    {
+        std::string sub_keys[] = { any_of_criterion<Json>::key(), std::to_string(c++) };
+        subschemas.emplace_back(make_schema_validator(subsch, context, sub_keys));
+    }
+    return jsoncons::make_unique<combining_validator<Json,any_of_criterion<Json>>>(std::move(schema_path), std::move(subschemas));
+}
+

@@ -1,0 +1,9 @@
+# Editors.
+*.sw*
+.vscode
+.DS_Store
+
+# Build directory.
+build/
+/bazel-*
+out/

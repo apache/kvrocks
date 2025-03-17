@@ -1,0 +1,156 @@
+[
+    {
+        "given" : {"foo": ["zero","one","two"]},
+        "cases" : [
+            {
+                "comment" : "Dot followed by index",
+                "expression" : "$.foo.1",
+                "result" : ["one"] 
+            }
+        ]
+    },
+    {
+        "given" : {"0": "value"},
+        "cases" : [
+            {
+                "source" : "https://github.com/cburgmer/json-path-comparison",
+                "comment" : "Bracket notation with number on object",
+                "expression" : "$[0]",
+                "result" : [] // unquoted identifier can't start with digit
+            }
+        ]
+    },
+    {
+       "given":
+           {"foo": {"bar": ["zero", "one", "two"]}},
+        "cases": [
+            {
+               "expression": "$.foo.bar[0]",
+               "result": ["zero"],
+               "path" : ["$['foo']['bar'][0]"]
+            },
+            {
+               "expression": "$.foo.bar[1]",
+               "result": ["one"],
+               "path" : ["$['foo']['bar'][1]"]
+            },
+            {
+               "expression": "$.foo.bar[2]",
+               "result": ["two"],
+               "path" : ["$['foo']['bar'][2]"]
+            },
+            {
+               "expression": "$.foo.bar[3]",
+               "result": []
+            },
+            {
+               "expression": "$.foo.bar[-1]",
+               "result": ["two"]
+            },
+            {
+               "expression": "$.foo.bar[-2]",
+               "result": ["one"]
+            },
+            {
+               "expression": "$.foo.bar[-3]",
+               "result": ["zero"]
+            },
+            {
+               "expression": "$.foo.bar[-4]",
+               "result": []
+            }
+        ]
+   },
+   {
+       "given":
+           {"foo": [{"bar": "one"}, {"bar": "two"}, {"bar": "three"}, {"notbar": "four"}]},
+        "cases": [
+            {
+               "expression": "$.foo.bar",
+               "result": []
+            },
+            {
+               "expression": "$.foo[0].bar",
+               "result": ["one"]
+            },
+            {
+               "expression": "$.foo[1].bar",
+               "result": ["two"]
+            },
+            {
+               "expression": "$.foo[2].bar",
+               "result": ["three"]
+            },
+            {
+               "expression": "$.foo[3].notbar",
+               "result": ["four"]
+            },
+            {
+               "expression": "$.foo[3].bar",
+               "result": []
+            },
+            {
+               "expression": "$.foo[0]",
+               "result": [{"bar": "one"}]
+            },
+            {
+               "expression": "$.foo[1]",
+               "result": [{"bar": "two"}]
+            },
+            {
+               "expression": "$.foo[2]",
+               "result": [{"bar": "three"}]
+            },
+            {
+               "expression": "$.foo[3]",
+               "result": [{"notbar": "four"}]
+            },
+            {
+               "expression": "$.foo[4]",
+               "result": []
+            }
+        ]
+   },
+   {
+       "given": [
+           "one", "two", "three"
+       ],
+        "cases": [
+            {
+               "expression": "$[0]",
+               "result": ["one"]
+            },
+            {
+               "expression": "$[1]",
+               "result": ["two"]
+            },
+            {
+               "expression": "$[2]",
+               "result": ["three"]
+            },
+            {
+               "expression": "$[-1]",
+               "result": ["three"]
+            },
+            {
+               "expression": "$[-2]",
+               "result": ["two"]
+            },
+            {
+               "expression": "$[-3]",
+               "result": ["one"]
+            }
+        ]
+   },
+    {
+        "source" : "https://github.com/cburgmer/json-path-comparison",
+        "given" : ["first", "second", "third"],
+        "cases" : [
+            {
+                "comment" : "Array index last",
+                "expression" : "$[-1]",
+                "result" : ["third"]
+            }
+        ]
+    }
+]

@@ -43,7 +43,7 @@ class QueryPlanCostModel {
  public:
   // Calculate the cost of a node in the e-graph
   double calculate_cost(const Node* node) const;
-  
+
   // Compare two nodes and return the one with lower cost
   std::unique_ptr<Node> choose_best(std::unique_ptr<Node> a, std::unique_ptr<Node> b) const;
 };
@@ -52,26 +52,29 @@ class QueryPlanCostModel {
 class EGraphSaturation : public Pass {
  public:
   EGraphSaturation();
-  
+
   // Transform a query plan using e-graph equality saturation
   std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) override;
-  
+
   // Reset the pass state
   void Reset() override;
-  
+
  private:
   // Create the rule set with all rewrite rules
   void create_rule_set();
-  
+
   // Convert a KQIR node to an e-graph
   EGraph build_egraph(const Node* node);
-  
+
   // Extract the best plan from the e-graph
   std::unique_ptr<Node> extract_best_plan(const EGraph& egraph);
-  
+
+  // Helper function to reconstruct a Node from an ENode's operator and children
+  std::unique_ptr<Node> reconstruct_node(const std::string& op, const std::vector<std::unique_ptr<Node>>& children);
+
   // The rule set containing all rewrite rules
   RuleSet rule_set_;
-  
+
   // The cost model for extracting the best plan
   QueryPlanCostModel cost_model_;
 };

@@ -44,22 +44,21 @@ using ClassId = size_t;
 class ENode {
  public:
   explicit ENode(std::string op) : op_(std::move(op)) {}
-  
-  ENode(std::string op, std::vector<ClassId> children)
-      : op_(std::move(op)), children_(std::move(children)) {}
-  
+
+  ENode(std::string op, std::vector<ClassId> children) : op_(std::move(op)), children_(std::move(children)) {}
+
   // Get the operator name
   const std::string& op() const { return op_; }
-  
+
   // Get the children class IDs
   const std::vector<ClassId>& children() const { return children_; }
-  
+
   // Hash function for ENode
   size_t hash() const;
-  
+
   // Equality operator for ENode
   bool operator==(const ENode& other) const;
-  
+
  private:
   std::string op_;
   std::vector<ClassId> children_;
@@ -74,16 +73,16 @@ struct ENodeHash {
 class EClass {
  public:
   explicit EClass(ClassId id) : id_(id) {}
-  
+
   // Get the class ID
   ClassId id() const { return id_; }
-  
+
   // Add a node to this equivalence class
   void add(ENode node);
-  
+
   // Get all nodes in this equivalence class
   const std::unordered_set<ENode, ENodeHash>& nodes() const { return nodes_; }
-  
+
  private:
   ClassId id_;
   std::unordered_set<ENode, ENodeHash> nodes_;
@@ -93,32 +92,38 @@ class EClass {
 class EGraph {
  public:
   EGraph() = default;
-  
+
   // Add a node to the e-graph, returns the class ID
   ClassId add(ENode node);
-  
+
   // Find the canonical class ID for a given class ID
-  ClassId find(ClassId id);
-  
+  ClassId find(ClassId id) const;
+
+  // Non-const version for internal use
+  ClassId find_mutable(ClassId id);
+
   // Merge two equivalence classes
   ClassId merge(ClassId id1, ClassId id2);
-  
+
   // Get an equivalence class by ID
   const EClass& get_class(ClassId id) const;
-  
+
+  // Get all equivalence classes
+  const std::unordered_map<ClassId, EClass>& get_classes() const { return classes_; }
+
   // Convert a KQIR node to an e-graph representation
   ClassId add_node(const Node* node);
-  
+
   // Extract the best KQIR node from the e-graph based on a cost function
   std::unique_ptr<Node> extract_best();
-  
+
  private:
   // Map from class ID to equivalence class
   std::unordered_map<ClassId, EClass> classes_;
-  
+
   // Union-find data structure for class IDs
   std::unordered_map<ClassId, ClassId> parents_;
-  
+
   // Next available class ID
   ClassId next_id_ = 0;
 };
@@ -127,10 +132,10 @@ class EGraph {
 class Rewrite {
  public:
   virtual ~Rewrite() = default;
-  
+
   // Apply this rewrite rule to the e-graph
   virtual void apply(EGraph& egraph) = 0;
-  
+
   // Get the name of this rewrite rule
   virtual std::string name() const = 0;
 };
@@ -140,10 +145,10 @@ class RuleSet {
  public:
   // Add a rewrite rule to the rule set
   void add(std::unique_ptr<Rewrite> rule);
-  
+
   // Apply all rewrite rules to the e-graph until saturation
   void run_until_saturation(EGraph& egraph, size_t max_iterations = 100);
-  
+
  private:
   std::vector<std::unique_ptr<Rewrite>> rules_;
 };
@@ -158,8 +163,6 @@ inline size_t ENode::hash() const {
 }
 
 // Implementation of ENode::operator==
-inline bool ENode::operator==(const ENode& other) const {
-  return op_ == other.op_ && children_ == other.children_;
-}
+inline bool ENode::operator==(const ENode& other) const { return op_ == other.op_ && children_ == other.children_; }
 
 }  // namespace kqir

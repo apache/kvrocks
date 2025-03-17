@@ -1,0 +1,31 @@
+# Configuration file for EditorConfig, see https://EditorConfig.org
+
+# Ignore any other files further up in the file system
+root = true
+
+# All files:
+[*]
+# Let git determine line ending: end_of_line = lf
+charset = utf-8
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Markdown files: keep trailing space-pair as line-break
+[*.md]
+trim_trailing_whitespace = false
+
+# Python scripts:
+[*.py]
+
+# YAML scripts:
+[*.yml]
+indent_size = 2
+
+# Makefiles: Tab indentation (no size specified)
+[Makefile]
+indent_style = tab
+
+# C, C++ source files:
+[*.{h,hpp,c,cpp}]

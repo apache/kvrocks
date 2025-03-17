@@ -1,0 +1,30 @@
+name: clang-analyze
+
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+
+jobs:
+  clang-analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - run: sudo apt-get update -yq
+
+    - run: sudo apt-get install -yq clang-tools
+
+    - run: scan-build cmake -E make_directory build
+
+    - working-directory: build/
+      run: scan-build cmake $GITHUB_WORKSPACE
+
+    - working-directory: build/
+      run: scan-build cmake --build .

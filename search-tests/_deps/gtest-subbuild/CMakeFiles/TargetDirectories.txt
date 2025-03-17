@@ -1,0 +1,3 @@
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/gtest-subbuild/CMakeFiles/gtest-populate.dir
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/gtest-subbuild/CMakeFiles/edit_cache.dir
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/gtest-subbuild/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,39 @@
+name: Android
+
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'doc/**'
+
+jobs:
+  android:
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - r22
+        platform:
+          - android-27
+          - android-29
+        abi:
+          - armeabi-v7a
+          - arm64-v8a
+        build_type: [Debug, Release]
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: bojoe/cpp-android-ndk-build-env-ubuntu:${{ matrix.image }}
+      options: --user root
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - run: cmake -H$GITHUB_WORKSPACE -B/home/developer/build -GNinja -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=${{ matrix.platform }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - run: cmake --build /home/developer/build

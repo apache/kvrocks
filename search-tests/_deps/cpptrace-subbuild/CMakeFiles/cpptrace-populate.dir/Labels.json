@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/CMakeFiles/cpptrace-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/CMakeFiles/cpptrace-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/CMakeFiles/cpptrace-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/cpptrace-subbuild/cpptrace-populate-prefix/src/cpptrace-populate-stamp/cpptrace-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"cpptrace-populate"
+		],
+		"name" : "cpptrace-populate"
+	}
+}

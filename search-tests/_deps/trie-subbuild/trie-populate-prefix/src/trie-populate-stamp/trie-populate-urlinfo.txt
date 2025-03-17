@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/download-trie-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/verify-trie-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-subbuild/trie-populate-prefix/src/trie-populate-stamp/extract-trie-populate.cmake
+source_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/trie-src
+work_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps
+url(s)=https://github.com/Tessil/hat-trie/archive/906e6abd1e7063f1dacd3a6b270aa654b525eb0a.zip
+hash=MD5=a930364e9f6b60371319664bddf78000
+      no_extract=
+

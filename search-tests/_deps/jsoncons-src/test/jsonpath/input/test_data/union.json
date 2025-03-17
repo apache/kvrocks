@@ -1,0 +1,385 @@
+[
+    {
+        "given" : [{"key": "ey"}, {"key": "bee"}, {"key": "see"}],
+        "cases" : [
+            {
+                "comment" : "Dot notation after union",
+                "expression" : "$[0,2].key",
+                "result" : ["ey","see"],
+                "path" : ["$[0]['key']","$[2]['key']"]
+            }
+        ]
+    },
+    {
+        "given" : {
+             "one": {"key": "value"},
+             "two": {"k": "v"},
+             "three": {"some": "more", "key": "other value"}
+         }
+         ,
+        "cases" : [
+            {
+                "comment" : "Dot notation after union with keys",
+                "expression" : "$['one','three'].key",
+                "result" : ["value","other value"]
+            }
+        ]
+    },
+    {
+        "given" : ["a"],
+        "cases" : [
+            {
+                "comment" : "Union with duplication from array",
+                "expression" : "$[0,0]",
+                "result" : ["a","a"]
+            }
+        ]
+    },
+    {
+        "given" : ["a"],
+        "cases" : [
+            {
+                "comment" : "Union with duplication from array and nodups",
+                "expression" : "$[0,0]",
+                "nodups" : true,
+                "result" : ["a"]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 1}, {"key": 8}, {"key": 3}, {"key": 10}, {"key": 7}, {"key": 2}, {"key": 6}, {"key": 4}],
+        "cases" : [
+            {
+                "comment" : "Union with filter",
+                "expression" : "$[?(@.key<3),?(@.key>6)]",
+                "result" : [
+                 {
+                   "key": 1
+                 },
+                 {
+                   "key": 2
+                 },
+                 {
+                   "key": 8
+                 },
+                 {
+                   "key": 10
+                 },
+                 {
+                   "key": 7
+                 }
+               ]
+            }
+        ]
+    },
+    {
+        "given" : {"key": "value","another": "entry"},
+        "cases" : [
+            {
+                "comment" : "Union with keys",
+                "expression" : "$['key','another']",
+                "result" : ["value","entry"]
+            },
+            {
+                "comment" : "Union with keys",
+                "expression" : "$[\"key\",\"another\"]",
+                "result" : ["value","entry"]
+            },
+            {
+                "comment" : "Union with keys",
+                "expression" : "$[key,another]",
+                "error" : "syntax error"
+            },
+            {
+                "comment" : "Union with keys on object without key",
+                "expression" : "$['missing','key']",
+                "result" : ["value"]
+            }
+        ]
+    },
+    {
+        "given" : [{"c":"cc1","d":"dd1","e":"ee1"},{"c":"cc2","d":"dd2","e":"ee2"}],
+        "cases" : [
+            {
+                "comment" : "Union with keys after array slice",
+                "expression" : "$[:]['c','d']",
+                "result" : ["cc1","dd1","cc2","dd2"]
+            },
+            {
+                "comment" : "Union with keys after bracket notation",
+                "expression" : "$[0]['c','d']",
+                "result" : ["cc1","dd1"]
+            },
+            {
+                "comment" : "Union with keys after dot notation with wildcard",
+                "expression" : "$.*['c','d']",
+                "result" : ["cc1","dd1","cc2","dd2"]
+            }
+        ]
+    },
+    {
+        "given" : [{"c":"cc1","d":"dd1","e":"ee1"}, {"c": "cc2", "child": {"d": "dd2"}}, {"c": "cc3"}, {"d": "dd4"}, {"child": {"c": "cc5"}}],
+        "cases" : [
+            {
+                "comment" : "Union with keys after recursive descent",
+                "expression" : "$..['c','d']",
+                "result" : ["cc1","dd1","cc2","dd2","cc3","dd4","cc5"]
+            }
+        ]
+    },
+    {
+        "given" : [1,2,3,4,5],
+        "cases" : [
+            {
+                "comment" : "Union with numbers in decreasing order",
+                "expression" : "$[4,1]",
+                "result" : [5,2]
+            }
+        ]
+    },
+    {
+        "given" : {"a": ["string",null,true],"b": [false,"string",5.4]},
+        "cases" : [
+            {
+                "comment" : "Union with repeated matches after dot notation with wildcard",
+                "expression" : "$.*[0,:5]",
+                "result" : ["string","string",null,true,false,false,"string",5.4]
+            },
+            {
+                "comment" : "Union with repeated matches after dot notation with wildcard",
+                "expression" : "$.*[0,:5]",
+                "nodups" : true,
+                "result" : ["string",null,true,false,"string",5.4]
+            }
+        ]
+    },
+    {
+        "given" : [1,2,3,4,5],
+        "cases" : [
+            {
+                "comment" : "Union with slice and number",
+                "expression" : "$[1:3,4]",
+                "result" : [2,3,5]
+            }
+        ]
+    },
+    {
+        "given" : ["first", "second", "third"],
+        "cases" : [
+            {
+                "comment" : "Union with spaces",
+                "expression" : "$[ 0 , 1 ]",
+                "result" : ["first","second"]
+            }
+        ]
+    },
+    {
+        "given" : {"key1":"first", "key2":"second", "key3":"third"},
+        "cases" : [
+            {
+                "comment" : "Union with spaces",
+                "expression" : "$[ key1 , key2 ]",
+                "error" : "syntax error"
+            },
+            {
+                "comment" : "Union with spaces",
+                "expression" : "$[ 'key1' , 'key2' ]",
+                "result" : ["first","second"]
+            },
+            {
+                "comment" : "Union with spaces",
+                "expression" : "$[ \"key1\" , \"key2\" ]",
+                "result" : ["first","second"]
+            }
+        ]
+    },
+    {
+        "given" : {
+          "firstName": "John",
+          "lastName" : "doe",
+          "age"      : 26,
+          "address"  : {
+            "streetAddress": "naist street",
+            "city"         : "Nara",
+            "postalCode"   : "630-0192"
+          },
+          "phoneNumbers": [
+            {
+              "type"  : "iPhone",
+              "number": "0123-4567-8888"
+            },
+            {
+              "type"  : "home",
+              "number": "0123-4567-8910"
+            }
+          ]
+        },
+        "cases" : [
+            {
+                "comment" : "JSONPath union of multiple different paths",
+                "expression" : "$[@.firstName,@.address.city]",
+                "result" : ["John","Nara"]
+            }
+        ]
+    },
+    {
+    "given": {
+      "foo": {"bar": 1, "baz": [2, 3, 4]}
+        },
+    "cases": [
+        {
+           "expression": "$.foo[@.bar,@.baz[1]]",
+           "result": [1, 3]
+        },
+        {
+           "expression": "$.foo[@.bar,@.baz[2]]",
+           "result": [1, 4]
+        },
+        {
+           "expression": "$.foo[@.bar,@.baz[3]]",
+           "result": [1]
+        }
+      ]
+    },
+    {
+       "given": {
+         "foo": {
+             "bar": {"baz": [{"common": "first", "one": 1},
+                             {"common": "second", "two": 2}]},
+             "ignoreme": 1,
+             "includeme": true
+         }
+       },
+       "cases": [
+            
+            {
+               "expression": "$.foo['includeme', @.bar.baz[*].common]",
+               "result": [true, "first", "second"]
+            },
+            {
+               "expression": "$.foo['includeme', @.bar.baz[*].none]",
+               "result": [true]
+            }
+         ]
+    },
+    // no duplicates
+    {
+       "given": {
+        "a": [
+          "string",
+          null,
+          true
+        ],
+        "b": [
+          false,
+          "string",
+          5.4
+        ]
+      },
+       "cases": [            
+            {
+               "expression": "$.*[0,:5]",
+               "result": ["string","string",null,true,false,false,"string",5.4]
+            },
+            {
+               "nodups" : true,
+               "expression": "$.*[0,:5]",
+               "result": [
+                 "string",
+                 null,
+                 true,
+                 false,
+                 "string",
+                 5.4
+               ]
+            }
+         ]
+    },
+    {
+        "given" : {
+          "name": "John",
+          "age"      : 26,
+          "address"  : {
+            "city" : "Nara"
+          }
+        },
+        "cases" : [
+            {
+                "comment" : "JSONPath union of multiple different paths",
+                "expression" : "$['name',@.address.city]",
+                "result" : ["John","Nara"]
+            },
+            {
+                "comment" : "JSONPath union of multiple different paths",
+                "expression" : "$['name',*]",
+                "result" : ["John",{"city":"Nara"},26,"John"]
+            },
+            {
+                "comment" : "JSONPath union of multiple different paths",
+                "expression" : "$['name',?(@.name == 'John')]",
+                "result" : ["John"]
+            },
+            {
+                "comment" : "JSONPath union of multiple different paths",
+                "expression" : "$['name',?(@.city == 'Nara')]",
+                "result" : ["John",{"city":"Nara"}]
+            }
+        ]
+    },
+    {
+        "given":
+            ["first", "second", "third", "forth", "fifth"],
+         "cases": [
+             {
+                "comment" : "union with expression",
+                "expression": "$[(@.length - 1),(@.length - 2)]",
+                "result": ["fifth","forth"]
+             }
+         ]
+    },
+    {
+        "given": {
+           "books":
+                 [
+                     {"title" : "A Wild Sheep Chase"},
+                     {"title" : "The Night Watch"},
+                     {"title" : "The Comedians"},
+                     {"title" : "The Night Watch"},
+                     {"title" : "Norwegian Wood"},
+                     {"title" : "Infinite Jest"},
+                     {"title" : "Kafka on the Shore"},
+                     {"title" : "Life"},
+                     {"title" : "The Immortal Life of Henrietta Lacks"},
+                     {"title" : "I Am a Cat"}
+                 ]
+          },
+         "cases": [
+             {
+                "comment" : "union with path and no duplicates",
+                "expression": "$['books',@['books'][0]]",
+                "path" : ["$['books']","$['books'][0]"],
+                "nodups" : true             
+             },
+             {
+                "comment" : "union with path and no duplicates",
+                "expression": "$[@['books'][0],'books']",
+                "path" : ["$['books'][0]","$['books']"],
+                "nodups" : true             
+             },
+             {
+                "comment" : "union with path and no duplicates",
+                "expression": "$['books',@['books'][0]]",
+                "path" : ["$['books']","$['books'][0]"],
+                "nodups" : true,             
+                "sort" : true             
+             },
+             {
+                "comment" : "union with path, no duplicates, and sort",
+                "expression": "$[@['books'][0],'books']",
+                "path" : ["$['books']","$['books'][0]"],
+                "nodups" : true,             
+                "sort" : true             
+             }
+         ]
+    }
+]

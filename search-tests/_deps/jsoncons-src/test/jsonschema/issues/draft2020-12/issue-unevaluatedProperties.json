@@ -1,0 +1,66 @@
+[
+  {
+    "description": "schema with if then and else",
+    "schema": {
+      "title": "Person",
+      "type": "object",
+      "if": {
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "The person's first name."
+          },
+          "age": {
+            "description": "Age in years which must be equal to or greater than zero.",
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "firstName"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lastName": {
+            "type": "string",
+            "description": "The person's last name."
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "surName": {
+            "type": "string",
+            "description": "The person's sur name."
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "tests": [
+      {
+        "description": "Data with if then and else",
+        "data": {
+          "age": 18,
+          "surName": "Sur Name"
+        },
+        "valid": false
+      }/*,
+      {
+        "description": "Data - else schema with one unevaluated property",
+        "data": {
+          "age": 18,
+          "surName": "Sur Name",
+          "unevaluated": true
+        },
+        "valid": false,
+        "validationMessages": [
+          "$: property 'age' is not evaluated and the schema does not allow unevaluated properties",
+          "$: property 'unevaluated' is not evaluated and the schema does not allow unevaluated properties"
+        ]
+      }*/
+    ]
+  }
+]
+

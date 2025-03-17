@@ -1,0 +1,306 @@
+[
+    // From jmespath.org tutorial
+    {
+        "given" : {"a": "foo", "b": "bar", "c": "baz"},
+        "cases" : [
+            {
+                "comment" : "Select a value with an identifier",
+                "expression" : "a",
+                "result" : "foo"
+            }
+        ]
+    },
+    {
+        "given" : {"a": {"b": {"c": {"d": "value"}}}},
+        "cases" : [
+            {
+                "comment" : "Select nested values in json object with subexpression",
+                "expression" : "a.b.c.d",
+                "result" : "value"
+            }
+        ]
+    },
+    {
+        "given" : {"a": {"b": {"c": {"d": "value"}}}},
+        "cases" : [
+            { 
+                "comment" : "Select nested values in json object with subexpression, key does not exist",
+                "expression" : "b.c.d.e",
+                "result" : null
+            }
+        ]
+    },
+    {
+        "given" : ["a", "b", "c", "d", "e", "f"],
+        "cases" : [ 
+            {
+                "comment" : "Index expression",
+                "expression" : "[1]",
+                "result" : "b"
+            }
+        ]
+    },
+    {
+        "given" : ["a", "b", "c", "d", "e", "f"],
+        "cases" : [ 
+            {
+                "comment" : "Index expression larger than list",
+                "expression" : "[6]",
+                "result" : null
+            }
+        ]
+    },
+    {
+        "given" : ["a", "b", "c", "d", "e", "f"],
+        "cases" : [ 
+            {
+                "comment" : "Negative index",
+                "expression" : "[-2]",
+                "result" : "e"
+            }
+        ]
+    },
+    {
+        "given" : {"a": {"b": {"c": [{"d": [0, [1, 2]]},{"d": [3, 4]}]}}},
+        "cases" : [ 
+            {
+                "comment" : "Combine identifiers, sub expressions, and index expressions",
+                "expression" : "a.b.c[0].d[1][0]",
+                "result" : 1
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing",
+                "expression" : "[0:5]",
+                "result" : [0,1,2,3,4]
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing",
+                "expression" : "[5:10]",
+                "result" : [5,6,7,8,9]
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing - omit start value",
+                "expression" : "[:5]",
+                "result" : [0,1,2,3,4]
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing - omit end value",
+                "expression" : "[5:]",
+                "result" : [5,6,7,8,9]
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing - select only even elements",
+                "expression" : "[::2]",
+                "result" : [0,2,4,6,8]
+            }
+        ]
+    },
+    {
+        "given" : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "cases" : [ 
+            {
+                "comment" : "Slicing - create in reverse order",
+                "expression" : "[::-1]",
+                "result" : [9,8,7,6,5,4,3,2,1,0]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"first": "James", "last": "d"},{"first": "Jacob", "last": "e"},{"first": "Jayden", "last": "f"},{"missing": "different"}],"foo": {"bar": "baz"}},
+        "cases" : [ 
+            {
+                "comment" : "List Projection",
+                "expression" : "people[*].first",
+                "result" : ["James","Jacob","Jayden"]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"first": "James", "last": "d"},{"first": "Jacob", "last": "e"},{"first": "Jayden", "last": "f"},{"missing": "different"}],"foo": {"bar": "baz"}},
+        "cases" : [ 
+            {
+                "comment" : "Slice Projection",
+                "expression" : "people[:2].first",
+                "result" : ["James","Jacob"]
+            }
+        ]
+    },
+    {
+        "given" : {"ops": {"functionA": {"numArgs": 2},"functionB": {"numArgs": 3},"functionC": {"variadic": true}}},
+        "cases" : [ 
+            {
+                "comment" : "Object Projection",
+                "expression" : "ops.*.numArgs",
+                "result" : [2,3]
+            }
+        ]
+    },
+    {
+        "given" : {"reservations": [{"instances": [{"state": "running"},{"state": "stopped"}]},{"instances": [{"state": "terminated"},{"state": "runnning"}]}]},
+        "cases" : [ 
+            {
+                "comment" : "More than one List Projection",
+                "expression" : "reservations[*].instances[*].state",
+                "result" : [["running","stopped"],["terminated","runnning"]]
+            }
+        ]
+    },
+    {
+        "given" : {"reservations": [{"instances": [{"state": "running"},{"state": "stopped"}]},{"instances": [{"state": "terminated"},{"state": "runnning"}]}]},
+        "cases" : [ 
+            {
+                "comment" : "Flatten Projection using []",
+                "expression" : "reservations[].instances[].state",
+                "result" : ["running","stopped","terminated","runnning"]
+            }
+        ]
+    },
+    {
+        "given" : [[0, 1],2,[3],4,[5, [6, 7]]],
+        "cases" : [ 
+            {
+                "comment" : "Flatten Projection using [] to flatten a list",
+                "expression" : "[]",
+                "result" : [0,1,2,3,4,5,[6,7]]
+            }
+        ]
+    },
+    {
+        "given" : {"machines": [{"name": "a", "state": "running"},{"name": "b", "state": "stopped"},{"name": "b", "state": "running"}]},
+        "cases" : [ 
+            {
+                "comment" :"Comparison ==",
+                "expression" : "machines[?state=='running'].name",
+                "result" : ["a","b"]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"first": "James", "last": "d"},{"first": "Jacob", "last": "e"},{"first": "Jayden", "last": "f"},{"missing": "different"}],"foo": {"bar": "baz"}},
+        "cases" : [ 
+            {
+                "comment" : "Pipe",
+                "expression" : "people[*].first | [0]",
+                "result" : "James"
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"name": "a","state": {"name": "up"}},{"name": "b","state": {"name": "down"}},{"name": "c","state": {"name": "up"}}]},
+        "cases" : [ 
+            {
+                "comment" : "Multiselect List",
+                "expression" : "people[].[name,state.name]",
+                "result" : [["a","up"],["b","down"],["c","up"]]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"name": "a","state": {"name": "up"}},{"name": "b","state": {"name": "down"}},{"name": "c","state": {"name": "up"}}]},
+        "cases" : [ 
+            {
+                "comment" : "Multi select hash",
+                "expression" : "people[].{Name: name, State: state.name}",
+                "result" : [{"Name": "a","State": "up"},{"Name": "b","State": "down"},{"Name": "c","State": "up"}]
+            }
+        ]
+
+        // From jmespath.org examples
+
+    },
+    {
+        "given" : {"people": [{"age": 20,"other": "foo","name": "Bob"},{"age": 25,"other": "bar","name": "Fred"},{"age": 30,"other": "baz","name": "George"}]},
+        "cases" : [ 
+            {
+                "comment" : "Filters and Multiselect Lists",
+                "expression" : "people[?age > `20`].[name, age]",
+                "result" : [["Fred",25],["George",30]]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"age": 20,"other": "foo","name": "Bob"},{"age": 25,"other": "bar","name": "Fred"},{"age": 30,"other": "baz","name": "George"}]},
+        "cases" : [ 
+            {
+                "comment" : "Filters and Multiselect Hashes",
+                "expression" : "people[?age > `20`].{name: name, age: age}",
+                "result" : [{"name": "Fred","age": 25},{"name": "George","age": 30}]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"age": 20,"tags": ["a", "b", "c"],"name": "Bob"},{"age": 25,"tags": ["d", "e", "f"],"name": "Fred"},{"age": 30,"tags": ["g", "h", "i"],"name": "George"}]},
+        "cases" : [ 
+            {
+                "comment" : "Filters and Multiselect Hashes",
+                "expression" : "people[*].{name: name, tags: tags[0]}",
+                "result" : [{"name": "Bob","tags": "a"},{"name": "Fred","tags": "d"},{"name": "George","tags": "g"}]
+            }
+        ]
+    },
+    {
+        "given" : {"reservations": [{"instances": [{"type": "small","state": {"name": "running"},"tags": [{"Key": "Name","Values": ["Web"]},{"Key": "version","Values": ["1"]}]},{"type": "large","state": {"name": "stopped"},"tags": [{"Key": "Name","Values": ["Web"]},{"Key": "version","Values": ["1"]}]}]}, {"instances": [{"type": "medium","state": {"name": "terminated"},"tags": [{"Key": "Name","Values": ["Web"]},{"Key": "version","Values": ["1"]}]},{"type": "xlarge","state": {"name": "running"},"tags": [{"Key": "Name","Values": ["DB"]},{"Key": "version","Values": ["1"]}]}]}]},
+        "cases" : [ 
+            {
+                "comment" : "Working with Nested Data",
+                "expression" : "reservations[].instances[].[tags[?Key=='Name'].Values[] | [0], type, state.name]",
+                "result" : [["Web","small","running"],["Web","large","stopped"],["Web","medium","terminated"],["DB","xlarge","running"]]
+            }
+        ]
+    },
+    {
+        "given" : {"people": [{"general": {"id": 100,"age": 20,"other": "foo","name": "Bob"},"history": {"first_login": "2014-01-01","last_login": "2014-01-02"}},{"general": {"id": 101,"age": 30,"other": "bar","name": "Bill"},"history": {"first_login": "2014-05-01","last_login": "2014-05-02"}}]},
+        "cases" : [ 
+            {
+                "comment" : "Filtering and Selecting Nested Data",
+                "expression" : "people[?general.id==`100`].general | [0]",
+                "result" : {"id": 100,"age": 20,"other": "foo","name": "Bob"}
+            }
+        ]
+    },
+    {
+        "given" : {"Contents": [{"Date": "2014-12-21T05:18:08.000Z","Key": "logs/bb","Size": 303},{"Date": "2014-12-20T05:19:10.000Z","Key": "logs/aa","Size": 308},{"Date": "2014-12-20T05:19:12.000Z","Key": "logs/qux","Size": 297},{"Date": "2014-11-20T05:22:23.000Z","Key": "logs/baz","Size": 329},{"Date": "2014-12-20T05:25:24.000Z","Key": "logs/bar","Size": 604},{"Date": "2014-12-20T05:27:12.000Z","Key": "logs/foo","Size": 647}]},
+        "cases" : [ 
+            {
+                "comment" : "Using Functions",
+                "expression" : "sort_by(Contents, &Date)[*].{Key: Key, Size: Size}",
+                "result" : [{"Key": "logs/baz","Size": 329},{"Key": "logs/aa","Size": 308},{"Key": "logs/qux","Size": 297},{"Key": "logs/bar","Size": 604},{"Key": "logs/foo","Size": 647},{"Key": "logs/bb","Size": 303}]
+            }
+        ]
+    },
+    {
+        "given" : {"locations": [{"name": "Seattle", "state": "WA"},{"name": "New York", "state": "NY"},{"name": "Bellevue", "state": "WA"},{"name": "Olympia", "state": "WA"}]},
+        "cases" : [ 
+            {
+                "comment" : "Pipe",
+                "expression" : "locations[?state == 'WA'].name | sort(@)[-2:] | {WashingtonCities: join(', ', @)}",
+                "result" : {"WashingtonCities": "Olympia, Seattle"}
+            }
+        ]
+    }
+]

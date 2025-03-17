@@ -1,0 +1,66 @@
+{
+  "title": "Person",
+  "type": "object",
+  "if": {
+    "properties": {
+      "firstName": {
+        "type": "string",
+        "description": "The person's first name."
+      },
+      "age": {
+        "description": "Age in years which must be equal to or greater than zero.",
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "firstName"
+    ]
+  },
+  "then": {
+    "properties": {
+      "lastName": {
+        "type": "string",
+        "description": "The person's last name."
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "surName": {
+        "type": "string",
+        "description": "The person's sur name."
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}
+
+{"age": 18,"surName": "Sur Name"}
+
+Fail - else schema with one unevaluated property
+
+if: age
+else: age, surName
+
+void do_validate(const evaluation_context<Json>& context,const Json& instance,const jsonpointer::json_pointer& instance_location,evaluation_results& results,error_reporter& reporter,Json& patch) const final
+{
+    evaluation_context<Json> this_context(context, this->keyword_name());
+    if (if_val_) 
+    {
+        collecting_error_reporter local_reporter;
+
+        if_val_->validate(this_context, instance, instance_location, results, local_reporter, patch);
+        if (local_reporter.errors.empty()) 
+        {
+            if (then_val_)
+                then_val_->validate(this_context, instance, instance_location, results, reporter, patch);
+        } 
+        else 
+        {
+            if (else_val_)
+                else_val_->validate(this_context, instance, instance_location, results, reporter, patch);
+        }
+    }
+}
+

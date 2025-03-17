@@ -1,0 +1,204 @@
+[
+    {
+        "description": "URN base URI with r-component",
+        "schema": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "logicalapps": {
+      "type": "array",
+      "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-zA-Z]([\\- a-zA-Z0-9])+$", "minLength": 3, "maxLength": 64 },
+            "listenIP": {
+              "oneOf": [
+                { "type": "string", "format": "ipv6" },
+                { "type": "string", "format": "ipv4" }
+              ]
+            },
+            "forwardPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "forwardIP": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {  "type": "string", "format": "ipv6" },
+                  {  "type": "string", "format": "ipv4" }
+                ]
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "protocol": { 
+              "type": "array",
+              "items": { 
+                "enum": [ "TCP", "UDP"] 
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "serverMode": {
+              "type": "array",
+              "items": {
+                  "type": "object",
+                  "properties": {
+                    "ip": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "net": { "type": "string", "format": "ipv4" },
+                              "mask": { "type": "integer", "minimum": 1, "maximum": 32 }
+                            },
+                            "required": [ "net" ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "net": { "type": "string", "format": "ipv6" },
+                              "mask": { "type": "integer", "minimum": 1, "maximum": 128 }
+                            },
+                            "required": [ "net" ]
+                          }
+                        ]
+                      },
+                      "minItems": 1
+                    },
+                    "port": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                          "end": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                        },
+                        "required": [ "start" ]
+                      },
+                      "minItems": 1
+                    },
+                    "interface": {
+                      "type": "array",
+                      "items": { "type": "string", "pattern": "^[a-zA-Z]([a-zA-Z0-9])+$", "minLength": 3, "maxLength": 32 },
+                      "minItems": 1
+                    }
+                  },
+                  "required": [ "port" ]                  
+              }
+            },
+            "clientMode": {
+              "type": "array",
+              "items": {
+                  "type": "object",
+                  "properties": {
+                    "ip": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "net": { "type": "string", "format": "ipv4" },
+                              "mask": { "type": "integer", "minimum": 1, "maximum": 32 }
+                            },
+                            "required": [ "net" ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "net": { "type": "string", "format": "ipv6" },
+                              "mask": { "type": "integer", "minimum": 1, "maximum": 128 }
+                            },
+                            "required": [ "net" ]
+                          }
+                        ]
+                      },
+                      "minItems": 1
+                    },
+                    "port": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                          "end": { "type": "integer", "minimum": 1, "maximum": 65535 }
+                        },
+                        "required": [ "start" ]
+                      },
+                      "minItems": 1
+                    },
+                    "interface": {
+                      "type": "array",
+                      "items": { "type": "string", "pattern": "^[a-zA-Z]([a-zA-Z0-9])+$", "minLength": 3, "maxLength": 32 },
+                      "minItems": 1
+                    }
+                  },
+                  "required": [ "port" ]
+              }
+            }
+          },
+          "required": [ "name", "protocol" ]
+        }
+    }
+  },
+  "required": [ "logicalapps" ]
+},
+        "tests": [
+            {
+                "description": "a string is valid",
+                "data": {
+  "logicalapps": [
+    {
+      "name": "Email Server",
+      "listenIP": "192.168.1.4",
+      "forwardPort": 7443,
+      "forwardIP": [
+        "203.34.5.6",
+        "203.45.6.7"
+      ],
+      "protocol": [ "TCP", "UDP" ],
+      "serverMode": [
+        {
+          "ip": [
+            { "net": "192.168.1.4" },
+            { "net": "203.199.224.0", "mask": 24 },
+            { "net": "172.16.4.5", "mask": 32 },
+            { "net": "10.34.56.1", "mask": 8 }
+          ],
+          "port": [
+            { "start": 25 },
+            { "start": 16328, "end": 32766 }
+          ]
+        },
+        {
+          "port": [ { "start": 587 } ]
+        }
+      ],
+      "clientMode": [
+        {
+          "ip": [
+            { "net": "8.8.8.8" },
+            { "net": "8.8.4.4" }
+          ],
+          "port": [
+            { "start": "53" }
+          ]
+        },
+        {
+          "port": [
+            { "start": 68 },
+            { "start": 67 }
+          ],
+          "interface": [ "eth0" ]
+        }
+      ]
+    }
+  ]
+},
+                "valid": false
+            }
+        ]
+    }
+]
+

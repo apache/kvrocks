@@ -1,0 +1,3 @@
+#!/bin/bash
+@Range-v3_SOURCE_DIR@/doc/ignore_errors.sh @CMAKE_CXX_COMPILER@ -x c++ -std=c++2a -DRANGES_DOXYGEN_INVOKED=1 -DMETA_DOXYGEN_INVOKED=1 -DCPP_DOXYGEN_INVOKED=1 -I @Range-v3_SOURCE_DIR@/include -E -CC $1 | @Range-v3_SOURCE_DIR@/doc/unpreprocess.pl
+exit 0

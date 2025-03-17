@@ -33,7 +33,7 @@
 
 template <typename Iter>
 struct MoveIterator : Iter {
-  explicit MoveIterator(Iter iter) : Iter(iter){};
+  explicit MoveIterator(Iter iter) : Iter(iter) {};
 
   typename Iter::value_type&& operator*() const { return std::move(this->Iter::operator*()); }
 };

@@ -1,0 +1,138 @@
+[
+  {
+    "given": {
+      "long_name_for_a_field": true,
+      "a": {
+        "b": {
+          "c": {
+            "d": {
+              "e": {
+                "f": {
+                  "g": {
+                    "h": {
+                      "i": {
+                        "j": {
+                          "k": {
+                            "l": {
+                              "m": {
+                                "n": {
+                                  "o": {
+                                    "p": true
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "b": true,
+      "c": {
+        "d": true
+      }
+    },
+    "cases": [
+      {
+        "comment": "simple field",
+        "expression": "b",
+        "bench": "full"
+      },
+      {
+        "comment": "simple subexpression",
+        "expression": "c.d",
+        "bench": "full"
+      },
+      {
+        "comment": "deep field selection no match",
+        "expression": "a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s",
+        "bench": "full"
+      },
+      {
+        "comment": "deep field selection",
+        "expression": "a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p",
+        "bench": "full"
+      },
+      {
+        "comment": "simple or",
+        "expression": "not_there || b",
+        "bench": "full"
+      }
+    ]
+  },
+  {
+    "given": {
+      "a":0,"b":1,"c":2,"d":3,"e":4,"f":5,"g":6,"h":7,"i":8,"j":9,"k":10,
+      "l":11,"m":12,"n":13,"o":14,"p":15,"q":16,"r":17,"s":18,"t":19,"u":20,
+      "v":21,"w":22,"x":23,"y":24,"z":25
+    },
+    "cases": [
+      {
+        "comment": "deep ands",
+        "expression": "a && b && c && d && e && f && g && h && i && j && k && l && m && n && o && p && q && r && s && t && u && v && w && x && y && z",
+        "bench": "full"
+      },
+      {
+        "comment": "deep ors",
+        "expression": "z || y || x || w || v || u || t || s || r || q || p || o || n || m || l || k || j || i || h || g || f || e || d || c || b || a",
+        "bench": "full"
+      },
+      {
+        "comment": "lots of summing",
+        "expression": "sum([z, y, x, w, v, u, t, s, r, q, p, o, n, m, l, k, j, i, h, g, f, e, d, c, b, a])",
+        "bench": "full"
+      },
+      {
+        "comment": "lots of function application",
+        "expression": "sum([z, sum([y, sum([x, sum([w, sum([v, sum([u, sum([t, sum([s, sum([r, sum([q, sum([p, sum([o, sum([n, sum([m, sum([l, sum([k, sum([j, sum([i, sum([h, sum([g, sum([f, sum([e, sum([d, sum([c, sum([b, a])])])])])])])])])])])])])])])])])])])])])])])])])",
+        "bench": "full"
+      },
+      {
+        "comment": "lots of multi list",
+        "expression": "[z, y, x, w, v, u, t, s, r, q, p, o, n, m, l, k, j, i, h, g, f, e, d, c, b, a]",
+        "bench": "full"
+      }
+    ]
+  },
+  {
+    "given": {},
+    "cases": [
+      {
+        "comment": "field 50",
+        "expression": "j49.j48.j47.j46.j45.j44.j43.j42.j41.j40.j39.j38.j37.j36.j35.j34.j33.j32.j31.j30.j29.j28.j27.j26.j25.j24.j23.j22.j21.j20.j19.j18.j17.j16.j15.j14.j13.j12.j11.j10.j9.j8.j7.j6.j5.j4.j3.j2.j1.j0",
+        "bench": "parse"
+      },
+      {
+        "comment": "pipe 50",
+        "expression": "j49|j48|j47|j46|j45|j44|j43|j42|j41|j40|j39|j38|j37|j36|j35|j34|j33|j32|j31|j30|j29|j28|j27|j26|j25|j24|j23|j22|j21|j20|j19|j18|j17|j16|j15|j14|j13|j12|j11|j10|j9|j8|j7|j6|j5|j4|j3|j2|j1|j0",
+        "bench": "parse"
+      },
+      {
+        "comment": "index 50",
+        "expression": "[49][48][47][46][45][44][43][42][41][40][39][38][37][36][35][34][33][32][31][30][29][28][27][26][25][24][23][22][21][20][19][18][17][16][15][14][13][12][11][10][9][8][7][6][5][4][3][2][1][0]",
+        "bench": "parse"
+      },
+      {
+        "comment": "long raw string literal",
+        "expression": "'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz'",
+        "bench": "parse"
+      },
+      {
+        "comment": "deep projection 104",
+        "expression": "a[*].b[*].c[*].d[*].e[*].f[*].g[*].h[*].i[*].j[*].k[*].l[*].m[*].n[*].o[*].p[*].q[*].r[*].s[*].t[*].u[*].v[*].w[*].x[*].y[*].z[*].a[*].b[*].c[*].d[*].e[*].f[*].g[*].h[*].i[*].j[*].k[*].l[*].m[*].n[*].o[*].p[*].q[*].r[*].s[*].t[*].u[*].v[*].w[*].x[*].y[*].z[*].a[*].b[*].c[*].d[*].e[*].f[*].g[*].h[*].i[*].j[*].k[*].l[*].m[*].n[*].o[*].p[*].q[*].r[*].s[*].t[*].u[*].v[*].w[*].x[*].y[*].z[*].a[*].b[*].c[*].d[*].e[*].f[*].g[*].h[*].i[*].j[*].k[*].l[*].m[*].n[*].o[*].p[*].q[*].r[*].s[*].t[*].u[*].v[*].w[*].x[*].y[*].z[*]",
+        "bench": "parse"
+      },
+      {
+        "comment": "filter projection",
+        "expression": "foo[?bar > baz][?qux > baz]",
+        "bench": "parse"
+      }
+    ]
+  }
+]

@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"zlib-populate"
+		],
+		"name" : "zlib-populate"
+	}
+}

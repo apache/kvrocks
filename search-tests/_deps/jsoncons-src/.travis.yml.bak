@@ -1,0 +1,276 @@
+language: cpp
+dist: xenial
+sudo: required
+
+matrix:
+  include:
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.8
+            - libgmp-dev
+      env: COMPILER=gcc VERSION=4.8 CXXFLAGS="-std=c++11" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.8
+            - libgmp-dev
+      env: COMPILER=gcc VERSION=4.8 CXXFLAGS="-std=c++11 -Wnoexcept" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.9
+            - libgmp-dev
+      env: COMPILER=gcc VERSION=4.9 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++11" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-5
+      env: COMPILER=gcc VERSION=5  CXXFLAGS="-std=gnu++11" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
+      env: COMPILER=gcc VERSION=6 JSONCONS_SANITIZE=1
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-7
+      env: COMPILER=gcc VERSION=7 JSONCONS_SANITIZE=1
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+      env: COMPILER=gcc VERSION=8 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++17 -Wall -Wextra -Wimplicit-fallthrough -pedantic -Wcast-align -Wcast-qual" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+      env: COMPILER=gcc VERSION=8 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++17 -Werror -Wall -Wextra -Wimplicit-fallthrough -pedantic -Wcast-align -Wcast-qual" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+      env: COMPILER=gcc VERSION=8 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++17 -DJSONCONS_HAS_STRING_VIEW" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-9
+      env: COMPILER=gcc VERSION=9 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++17 -Werror -Wall -Wextra -Wimplicit-fallthrough -pedantic -Wcast-align -Wcast-qual" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-9
+      env: COMPILER=gcc VERSION=9 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++17 -Wnoexcept -Werror -Wall -Wextra -Wimplicit-fallthrough -pedantic -Wcast-align -Wcast-qual" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-9
+      env: COMPILER=gcc VERSION=9 JSONCONS_SANITIZE=1 CXXFLAGS="-std=c++2a -DJSONCONS_HAS_STRING_VIEW" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+      env: COMPILER=gcc VERSION=8 JSONCONS_SANITIZE=1 CXXFLAGS="-std=gnu++17 -Wall -Wextra -Wimplicit-fallthrough" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-4.0
+          packages:
+            - clang-4.0
+            - g++-7
+      env: COMPILER=clang VERSION=4.0 CXXFLAGS="-std=c++11" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-5.0
+          packages:
+            - clang-5.0
+            - g++-7
+      env: COMPILER=clang VERSION=5.0 CXXFLAGS="-std=gnu++11" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-6.0
+          packages:
+            - clang-6.0
+            - g++-7
+      env: COMPILER=clang VERSION=6.0 JSONCONS_SANITIZE=1  CXXFLAGS="-std=c++11 -Wall -Wextra -Wimplicit-fallthrough"
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-6.0
+          packages:
+            - clang-6.0
+            - g++-7
+      env: COMPILER=clang VERSION=6.0 JSONCONS_SANITIZE=1  CXXFLAGS="-std=c++11  -Wnoexcept -Wall -Wextra -Wimplicit-fallthrough"
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-7
+          packages:
+            - clang-7
+            - g++-7
+      env: COMPILER=clang VERSION=7 CXXFLAGS="-DJSONCONS_NO_DEPRECATED" 
+
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-xenial-8
+          packages:
+            - clang-8
+            - g++-8
+      env: COMPILER=clang VERSION=8 CXXFLAGS="-DJSONCONS_NO_DEPRECATED" 
+
+    - os: osx
+      osx_image: xcode9.3
+      compiler: clang
+      env: CXXFLAGS="-std=c++11"
+
+    - os: osx
+      osx_image: xcode9.4
+      compiler: clang
+      env: CXXFLAGS="-std=c++11"
+
+    - os: osx
+      osx_image: xcode10
+      compiler: clang
+      env: CXXFLAGS="-std=c++17"
+
+    - os: osx
+      osx_image: xcode10.1
+      compiler: clang
+      env: CXXFLAGS="-std=c++14"
+
+    - os: osx
+      osx_image: xcode10.2
+      compiler: clang
+      env: CXXFLAGS="-std=c++17"
+
+    - os: osx
+      osx_image: xcode11.2
+      compiler: clang
+      env: CXXFLAGS="-std=c++17"
+
+    - os: osx
+      osx_image: xcode11.2
+      compiler: clang
+      env: CXXFLAGS="-std=c++17 -Wnoexcept"
+
+    - os: osx
+      osx_image: xcode12
+      compiler: clang
+      env: CXXFLAGS="-std=c++14" 
+
+    - os: osx
+      osx_image: xcode12
+      compiler: clang
+      env: CXXFLAGS="-std=c++17" 
+
+before_install:
+    - |
+      # Configure build variables
+      if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+        if [[ "$COMPILER" == "gcc" ]]; then
+          export CXX=g++-$VERSION CC=gcc-$VERSION;
+        fi
+        if [[ "$COMPILER" == "clang" ]]; then
+          export CXX=clang++-$VERSION CC=clang-$VERSION;
+        fi
+      elif [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+        export CXX=clang++ CC=clang;
+      fi
+install:
+    # get CMake (only for systems with brew - macOS)
+    - |
+     if [[ (-x $(which brew)) ]]; then
+       brew update
+       brew install cmake 
+       brew upgrade cmake
+       cmake --version
+     fi
+
+    - cmake . -DBUILD_TESTS=ON  ${CMAKE_OPTIONS};
+    - make -j2 test_jsoncons
+    - cd tests
+script:
+    - if [[ "$JSONCONS_VALGRIND" == 1 ]]; then
+        ctest -T memcheck;
+      fi
+    - if [[ "$CROSS_COMPILE" == 1 ]]; then
+        if [[ "$ARM_ARCH_DIR" == "aarch64-linux-gnu" ]]; then
+          qemu-aarch64 -L /usr/aarch64-linux-gnu/ ./test_jsoncons ;
+        else
+          qemu-arm -L /usr/arm-linux-gnueabi/ ./test_jsoncons ;
+        fi
+      else
+        ./test_jsoncons;
+      fi

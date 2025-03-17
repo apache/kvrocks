@@ -1,0 +1,90 @@
+{
+    "description": "$recursiveRef with $recursiveAnchor: false works like $ref",
+    "schema": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
+        "$recursiveAnchor": false,
+        "$defs": {
+            "myobject": {
+                "$id": "myobject.json",
+                "$recursiveAnchor": false,
+                "anyOf": [
+                    { "type": "string" },
+                    {
+                        "type": "object",
+                        "additionalProperties": { "$recursiveRef": "#" }
+                    }
+                ]
+            }
+        },
+        "anyOf": [
+            { "type": "integer" },
+            { "$ref": "#/$defs/myobject" }
+        ]
+    },
+    "tests": [
+        {
+            "description": "two levels, properties match with inner definition",
+            "data": { "foo": { "bar": "hi" } },
+            "valid": true
+        }
+    ]
+}
+
+recursive_ref_validator.clone base_uri: << http://localhost:4242/draft2019-09/recursiveRef4/schema.json, schema_path: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/schema.json#/anyOf/0, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/schema.json, has_recursive_anchor: 0
+
+ref_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json
+  base: http://localhost:4242/draft2019-09/recursiveRef4/schema.json#/anyOf/1, has_recursive_anchor: 0
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf/0, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, has_recursive_anchor: 0
+
+recursive_ref_validator::do_resolve_recursive_refs location: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json
+  base: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf/1/additionalProperties, has_recursive_anchor: 0
+  location: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf/1/additionalProperties, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf/1, has_recursive_anchor: 0
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf/1, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, has_recursive_anchor: 0
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, has_recursive_anchor: 0
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/schema.json#/anyOf/1, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/schema.json, has_recursive_anchor: 0
+
+object_schema_validator location::do_resolve_recursive_refs: http://localhost:4242/draft2019-09/recursiveRef4/schema.json, 0
+  base: http://localhost:4242/draft2019-09/recursiveRef4/schema.json, has_recursive_anchor: 0
+
+combining_validator.do_validate keywordLocation: << http://localhost:4242/draft2019-09/recursiveRef4/schema.json#/anyOf, instanceLocation:
+combining_validator.do_validate keywordLocation: << http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf, instanceLocation:
+recursive_ref_validator.do_validate keywordLocation: << http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, instanceLocation:/foo
+combining_validator.do_validate keywordLocation: << http://localhost:4242/draft2019-09/recursiveRef4/myobject.json#/anyOf, instanceLocation:/foo
+recursive_ref_validator.do_validate keywordLocation: << http://localhost:4242/draft2019-09/recursiveRef4/myobject.json, instanceLocation:/foo/bar
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+test.exe is a Catch v2.13.10 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+jsonschema draft2019-09 tests
+  issues
+-------------------------------------------------------------------------------
+C:\Users\danie\source\repos\jsoncons\test\jsonschema\src\jsonschema_draft201909_tests.cpp(97)
+...............................................................................
+
+C:\Users\danie\source\repos\jsoncons\test\jsonschema\src\jsonschema_draft201909_tests.cpp(66): FAILED:
+  CHECK_FALSE( test_case["valid"].as<bool>() )
+with expansion:
+  !true
+
+  File: ./jsonschema/issues/draft2019-09/issue-recursiveRef.json
+  Test case 1.1: "two levels, properties match with inner definition"
+  Failed: #: No schema matched, but one of them is required to match
+  Nested error: #: Expected 1 integer, found object
+  Nested error: #: No schema matched, but one of them is required to match

@@ -1,0 +1,17 @@
+{
+    "$id" : "https://www.example.com/other",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$defs": {
+        "orNull": {
+            "anyOf": [
+                {
+                    "type": "null"
+                },
+                {
+                    "$ref": "#"
+                }
+            ]
+        }
+    },
+    "type": "string"
+}

@@ -1,0 +1,79 @@
+[
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given":
+           ["first", "second", "third", "forth", "fifth"],
+        "cases": [
+            {
+               "comment" : "Dot notation after filter expression",
+               "expression": "$[(@.length-1)]",
+               "result": ["fifth"]
+            },
+            {
+               "comment" : "Dot notation after filter expression",
+               "expression": "$[(@.length - 1)]",
+               "result": ["fifth"]
+            },
+            {
+               "comment" : "Dot notation after filter expression",
+               "expression": "$[(@.length - 1),(@.length - 2)]",
+               "result": ["fifth","forth"]
+            }
+        ]
+   },
+   {
+       "source" : "https://github.com/danielaparker/jsoncons/issues/338",       
+       "given":
+                       {
+                  "version": "EC_v1",
+                  "data": {
+                    "paymentData": {
+                      "CCX": {
+                        "CCN": "3569990010095841",
+                        "CVV": "737",
+                        "DDMM": "0420"
+                      },
+                      "eciIndicator": "5"
+                    },
+                    "paymentDataList": [
+                      {
+                        "CCN": "3569990010095840",
+                        "CVV": "737",
+                        "DDMM": "0420"
+                      },
+                      {
+                        "CCN": "3569990010095841",
+                        "CVV": "737",
+                        "DDMM": "0421"
+                      },
+                      {
+                        "CCN": "3569990010095842",
+                        "CVV": "737",
+                        "DDMM": "0422"
+                      },
+                      {
+                        "CCN": "3569990010095843",
+                        "CVV": "737",
+                        "DDMM": "0423"
+                      },
+                      {
+                        "CCN": "3569990010095844",
+                        "CVV": "737",
+                        "DDMM": "0424"
+                      }
+                    ]
+                  }
+                }
+            ,
+        "cases": [
+            {
+               "comment" : "Normalized paths with expression",
+               "expression": "$.data.paymentDataList[0,(@.length-1)].DDMM",
+               "path": [
+                 "$['data']['paymentDataList'][0]['DDMM']",
+                 "$['data']['paymentDataList'][4]['DDMM']"
+               ]
+            }
+        ]
+   }
+]

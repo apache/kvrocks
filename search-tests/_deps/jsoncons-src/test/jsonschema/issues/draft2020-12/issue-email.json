@@ -1,0 +1,16 @@
+[
+    {
+        "description": "validation of e-mail addresses",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "format": "email"
+        },
+        "tests": [
+            {
+                "description": "an invalid IPv4-address-literal",
+                "data": "joe.bloggs@[127.0.0.300]",
+                "valid": false
+            }
+        ]
+    }
+]

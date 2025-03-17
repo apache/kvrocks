@@ -26,7 +26,7 @@
 
 class IntSet {
  public:
-  explicit IntSet(std::string_view input) : input_(input){};
+  explicit IntSet(std::string_view input) : input_(input) {};
   ~IntSet() = default;
   StatusOr<std::vector<std::string>> Entries();
 

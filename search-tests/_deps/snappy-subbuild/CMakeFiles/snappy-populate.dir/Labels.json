@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/CMakeFiles/snappy-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/CMakeFiles/snappy-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/CMakeFiles/snappy-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/snappy-subbuild/snappy-populate-prefix/src/snappy-populate-stamp/snappy-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"snappy-populate"
+		],
+		"name" : "snappy-populate"
+	}
+}

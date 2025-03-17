@@ -1,0 +1,14 @@
+# Target labels
+ luajit-populate
+# Source files and their labels
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/CMakeFiles/luajit-populate
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/CMakeFiles/luajit-populate.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/CMakeFiles/luajit-populate-complete.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-build.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-configure.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-download.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-install.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-mkdir.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-patch.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-test.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/luajit-subbuild/luajit-populate-prefix/src/luajit-populate-stamp/luajit-populate-update.rule

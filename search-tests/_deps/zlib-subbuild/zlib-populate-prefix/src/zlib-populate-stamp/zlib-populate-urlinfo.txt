@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/download-zlib-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/verify-zlib-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/extract-zlib-populate.cmake
+source_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-src
+work_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps
+url(s)=https://github.com/madler/zlib/archive/v1.3.zip
+hash=MD5=2be1b77674e5aa3196330e58180e5a2c
+      no_extract=
+

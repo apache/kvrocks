@@ -1,0 +1,48 @@
+[
+    {
+        "description": "URN base URI with r-component",
+        "schema": {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "hexaStringOrPositiveInteger": {
+      "description": "A hexadecimal integer in a string (eg: 0xHE770 or HE770) or a positive integer",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]+$"
+        },
+        {
+          "type": "integer",
+          "minimum": 0
+        }
+      ]
+    }
+  },
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/hexaStringOrPositiveInteger"
+  }
+}
+,
+        "tests": [
+            {
+                "description": "a string is valid",
+                "data": [
+    "0x7FFFFFFFFFFFFFFF",
+    9223372036854775807,
+
+    "0xFFFFFFFFFFFFFFFF",
+    18446744073709551615,
+
+    "0x1FFFFFFFFFFFFFFFF",
+    36893488147419103231,
+
+    "0xFFFFFFFFFFFFFFFFF",
+    295147905179352825855
+],
+                "valid": true
+            }
+        ]
+    }
+]
+

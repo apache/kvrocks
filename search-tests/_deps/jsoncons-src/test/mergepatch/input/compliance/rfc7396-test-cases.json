@@ -1,0 +1,172 @@
+[
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"b"},
+        "cases": [
+             {
+                "patch": {"a":"c"},
+                "result": {"a":"c"}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"b"},
+        "cases": [
+             {
+                "patch": {"b":"c"},
+                "result": {"a":"b",
+                           "b":"c"}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"b"},
+        "cases": [
+             {
+                "patch": {"a":null},
+                "result": {}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"b", 
+                  "b":"c"},
+        "cases": [
+             {
+                "patch": {"a":null},
+                "result": {"b":"c"}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":["b"]},
+        "cases": [
+             {
+                "patch": {"a":"c"},
+                "result": {"a":"c"}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"c"},
+        "cases": [
+             {
+                "patch": {"a":["b"]},
+                "result": {"a":["b"]}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a": {     
+                   "b": "c"} 
+                 },           
+        "cases": [
+             {
+                "patch": {"a": {      
+                           "b": "d",  
+                           "c": null} 
+                                     },
+                "result": {"a": {    
+                            "b": "d" 
+                            }        
+                            }
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a": [     
+                   {"b":"c"} 
+                  ]          
+                 },
+        "cases": [
+             {
+                "patch": {"a": [1]},
+                "result": {"a": [1]}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": ["a","b"],
+        "cases": [
+             {
+                "patch": ["c","d"],
+                "result": ["c","d"]
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"b"},
+        "cases": [
+             {
+                "patch": ["c"],
+                "result": ["c"]
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"foo"},
+        "cases": [
+             {
+                "patch": null,
+                "result": null
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"a":"foo"},
+        "cases": [
+             {
+                "patch": "bar",
+                "result": "bar"
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {"e":null},
+        "cases": [
+             {
+                "patch": {"a":1},
+                "result": {"e":null,              
+                           "a":1}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": [1,2],
+        "cases": [
+             {
+                "patch": {"a":"b",      
+                          "c":null},
+                "result": {"a":"b"}
+             }
+         ]
+    },
+    {
+        "source" : "https://datatracker.ietf.org/doc/html/rfc7396 Appendix A. Example Test Cases",       
+        "given": {},
+        "cases": [
+             {
+                "patch": {"a":        
+                            {"bb":    
+                             {"ccc":  
+                              null}}},
+                "result": {"a":    
+                             {"bb":
+                              {}}} 
+             }
+         ]
+    }
+]

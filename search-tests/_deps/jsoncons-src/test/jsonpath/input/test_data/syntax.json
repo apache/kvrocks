@@ -1,0 +1,80 @@
+[
+   {
+     "comment": "Empty string",
+     "given": {"type": "object"},
+     "cases": [
+       {
+         "expression": "",
+         "error": "syntax"
+       },
+       {
+         "expression": " ",
+         "error": "syntax"
+       }
+     ]
+   },
+   {
+     "comment": "Dot syntax",
+     "given": {"type": "object"},
+     "cases": [
+       {
+         "expression": "$.foo.bar",
+         "result": []
+       },
+       {
+         "expression": "foo.1",
+         "error": "syntax"
+       },
+       {
+         "expression": "$.foo.1",
+         "result": []
+       }
+     ]
+   },
+   {
+     "comment": "Filter expression with single equal",
+     "given": [{"key": 0},{"key": 42}],
+     "cases": [
+       {
+         "expression": "$[?(@.key=42)]",
+         "error": "syntax"
+       }
+     ]
+   },
+   {
+     "comment": "Bracket notation without quotes",
+     "given": {"key1": "value1", "key2": "value2"},
+     "cases": [
+       {
+         "expression": "$[key1]",
+         "error": "syntax"
+       },
+       {
+         "expression": "$['key1',key2]",
+         "error": "syntax"
+       }
+     ]
+   },
+  {
+    "comment": "Identifiers",
+    "given": {"type": "object"},
+    "cases": [
+      {
+        "expression": "$.foo",
+        "result": []
+      },
+      {
+        "expression": "$.\"foo\"",
+        "result": []
+      },
+      {
+        "expression": "$.\"\\\\\"",
+        "result": []
+      },
+      {
+        "expression": "$.\"\\u\"",
+        "error": "syntax"
+      }
+    ]
+  }
+]

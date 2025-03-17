@@ -1,0 +1,2 @@
+  File: ./jsonschema/JSON-Schema-Test-Suite/tests/draft2019-09/ref.json 16
+Could not open ./jsonschema/JSON-Schema-Test-Suite/remotes/draft2019-09/schema-relative-uri-defs2.json for schema loading

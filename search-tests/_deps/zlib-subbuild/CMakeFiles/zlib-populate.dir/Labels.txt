@@ -1,0 +1,14 @@
+# Target labels
+ zlib-populate
+# Source files and their labels
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/CMakeFiles/zlib-populate-complete.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-build.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-configure.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-download.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-install.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-mkdir.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-patch.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-test.rule
+/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/zlib-subbuild/zlib-populate-prefix/src/zlib-populate-stamp/zlib-populate-update.rule

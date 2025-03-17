@@ -1,0 +1,175 @@
+[
+    {
+        "given" : {"key": "value"},
+        "cases" : [
+            {
+                "comment" : "dot notation",
+                "expression" : "$.key",
+                "result" : ["value"]
+            }
+        ]
+    },
+    {
+        "given" : {
+             "one": {"key": "value"},
+             "two": {"some": "more", "key": "other value"},
+             "two.some": "42"
+         },
+        "cases" : [
+            {
+                "comment" : "dot notation",
+                "expression" : "$.two.some",
+                "result" : ["more"]
+            }
+        ]
+    },
+    {
+        "given" : {
+           "key": "value",
+           "\"key\"": 42
+         },
+        "cases" : [
+            {
+                "comment" : "Dot notation with double quotes",
+                "expression" : "$.\"key\"",
+                "result" : ["value"]
+            },
+            {
+                "comment" : "Dot notation with single quotes",
+                "expression" : "$.'key'",
+                "result" : ["value"]
+            }
+        ]
+    },
+    {
+        "given" : {
+           "key": "value",
+           "\"key\"": 42
+         },
+        "cases" : [
+            {
+                "comment" : "Dot notation with double quotes",
+                "expression" : "$.\"key\"",
+                "result" : ["value"]
+            },
+            {
+                "comment" : "Dot notation with single quotes",
+                "expression" : "$.'key'",
+                "result" : ["value"]
+            }
+        ]
+    },
+    {
+        "given" : {
+			"屬性": "value"
+		},
+        "cases" : [
+            {
+                "comment" : "Dot notation with non ASCII key",
+                "expression" : "$.屬性",
+                "result" : ["value"]
+            }
+        ]
+    },
+    {
+        "given" : {"a": "first", "2": "second", "b": "third"},
+        "cases" : [
+            {
+                "comment" : "Dot notation with number on object",
+                "expression" : "$.2",
+                "result" : ["second"]
+            }
+        ]
+    },
+    {
+           "given": {
+               "store": {
+                   "book": [
+                       {
+                           "category": "reference",
+                           "author": "Nigel Rees",
+                           "title": "Sayings of the Century",
+                           "price": 8.95
+                       },
+                       {
+                           "category": "fiction",
+                           "author": "Evelyn Waugh",
+                           "title": "Sword of Honour",
+                           "price": 12.99
+                       },
+                       {
+                           "category": "fiction",
+                           "author": "Herman Melville",
+                           "title": "Moby Dick",
+                           "isbn": "0-553-21311-3",
+                           "price": 8.99
+                       },
+                       {
+                           "category": "fiction",
+                           "author": "J. R. R. Tolkien",
+                           "title": "The Lord of the Rings",
+                           "isbn": "0-395-19395-8",
+                           "price": 22.99
+                       }
+                   ],
+                   "bicycle": {
+                       "color": "red",
+                       "price": 19.95
+                   }
+               }
+           },
+        "cases" : [
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$.store.book.0.title",
+                "result" : ["Sayings of the Century"]
+            },
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$ . store . book . 0 . title",
+                "result" : ["Sayings of the Century"]
+            },
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$.'store'.'book'.0.'title'",
+                "result" : ["Sayings of the Century"]
+            },
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$ . 'store' . 'book' . 0 . 'title'",
+                "result" : ["Sayings of the Century"]
+            },
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$.\"store\".\"book\".0.\"title\"",
+                "result" : ["Sayings of the Century"]
+            },
+            {
+                "comment" : "Select the first (indexed 0) book",
+                "expression" : "$ . \"store\" . \"book\" . 0 . \"title\"",
+                "result" : ["Sayings of the Century"]
+            }
+        ]
+    },
+    {
+        "source:" : "https://cburgmer.github.io/json-path-comparison/",
+        "given": {"key-dash": "value"},
+        "cases": [
+            {
+                "comment" : "Dot notation with dash",
+                "expression" : "$.key-dash",
+                "error" : true
+            },
+            {
+                "comment" : "Dot notation with dash",
+                "expression" : "$.'key-dash'",
+                "result" : ["value"]
+            },
+            {
+                "comment" : "Dot notation with dash",
+                "expression" : "$.\"key-dash\"",
+                "result" : ["value"]
+            }
+        ]
+    }
+]

@@ -1,0 +1,4 @@
+[bugtraq]
+	url = https://github.com/martinmoene/span-lite/issues/%BUGID%
+	number = true
+	logregex = "(\\s*(,|and)?\\s*#\\d+)+\n(\\d+)"

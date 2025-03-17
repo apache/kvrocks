@@ -1,0 +1,12 @@
+# This is a generated file and its contents are an internal implementation detail.
+# The download step will be re-executed if anything in this file changes.
+# No other meaning or use of this file is supported.
+
+method=url
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/download-pegtl-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/verify-pegtl-populate.cmake;COMMAND;/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/extract-pegtl-populate.cmake
+source_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-src
+work_dir=/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps
+url(s)=https://github.com/taocpp/PEGTL/archive/3.2.8.tar.gz
+hash=MD5=50339029d1bb037909b28c382214033e
+      no_extract=
+

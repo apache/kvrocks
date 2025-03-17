@@ -1,0 +1,55 @@
+[
+    {
+        "description": "A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://test.json-schema.org/relative-dynamic-reference/root",
+            "$dynamicAnchor": "meta",
+            "type": "object",
+            "properties": {
+                "foo": { "const": "pass" }
+            },
+            "$ref": "extended",
+            "$defs": {
+                "extended": {
+                    "$id": "extended",
+                    "$dynamicAnchor": "meta",
+                    "type": "object",
+                    "properties": {
+                        "bar": { "$ref": "bar" }
+                    }
+                },
+                "bar": {
+                    "$id": "bar",
+                    "type": "object",
+                    "properties": {
+                        "baz": { "$dynamicRef": "extended#meta" }
+                    }
+                }
+            }
+        },
+        "tests": [
+            /*{
+                "description": "The recursive part is valid against the root",
+                "data": {
+                    "foo": "pass",
+                    "bar": {
+                        "baz": { "foo": "pass" }
+                    }
+                },
+                "valid": true
+            },*/
+            {
+                "description": "The recursive part is not valid against the root",
+                "data": {
+                    "foo": "pass",
+                    "bar": {
+                        "baz": { "foo": "fail" }
+                    }
+                },
+                "valid": false
+            }
+        ]
+    }
+]
+

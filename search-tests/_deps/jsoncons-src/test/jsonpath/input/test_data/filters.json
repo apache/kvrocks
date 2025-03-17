@@ -1,0 +1,1605 @@
+[
+  {
+       "given":
+           [{"name": "John Smith"}, {"name": null}],
+        "cases": [
+            {
+               "comment" : "Filter expression without enclosing parentheses",
+               "expression": "$[?@.name == 'John Smith']",
+               "result": [{"name": "John Smith"}]
+            }
+        ]
+   },
+   {
+        "given" : [{"key": 0}, {"key": 42}, {"key": -1}, {"key": 41}, {"key": 43}, {"key": 42.0001}, {"key": 41.9999}, {"key": 100}, {"some": "value"}],
+        "cases" : [
+            {
+                "source" : "https://github.com/cburgmer/json-path-comparison",
+                "comment" : "Filter less than",
+                "expression" : "$[?(@.key<42)]",
+                "result" : [{"key": 0}, {"key": -1}, {"key": 41}, {"key": 41.9999}]
+            }
+        ]
+    },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [{"id": 2}],
+        "cases": [
+            {
+               "comment" : "Filter expression after recursive descent",
+               "expression": "$..[?(@.id==2)]",
+               "result": [{"id":2}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": {"id": 2, "more": [{"id": 2}, {"more": {"id": 2}}, {"id": {"id": 2}}, [{"id": 2}]]},
+        "cases": [
+            {
+               "comment" : "Filter expression after recursive descent",
+               "expression": "$..[?(@.id==2)]",
+               "result":  [
+                   {
+                       "id": 2
+                   },
+                   {
+                       "id": 2
+                   },
+                   {
+                       "id": 2
+                   },
+                   {
+                       "id": 2
+                   }
+               ]
+             }
+           ]
+   },
+   {
+       "given":
+           [{"name": "John Smith"}, {"name": null}],
+        "cases": [
+            {
+               "comment" : "Filter expression",
+               "expression": "$[?(@.name == 'John Smith')]",
+               "result": [{"name": "John Smith"}]
+            },
+            {
+               "comment" : "Filter expression",
+               "expression": "$[?(@.name)]",
+               "result": [{"name": "John Smith"}]
+            },
+            {
+               "comment" : "Filter expression",
+               "expression": "$[?(!@.name)]",
+               "result": [{"name": null}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+             {
+                 "complext": {
+                     "one": [
+                         {
+                             "name": "first",
+                             "id": 1
+                         },
+                         {
+                             "name": "next",
+                             "id": 2
+                         },
+                         {
+                             "name": "another",
+                             "id": 3
+                         },
+                         {
+                             "name": "more",
+                             "id": 4
+                         }
+                     ],
+                     "more": {
+                         "name": "next to last",
+                         "id": 5
+                     }
+                 }
+             },
+             {
+                 "name": "last",
+                 "id": 6
+             }
+         ],
+        "cases": [
+            {
+               "comment" : "Filter expression after dot notation with wildcard after recursive descent",
+               "expression": "$..*[?(@.id>2)]",
+               "result": [{"id":5,"name":"next to last"},{"id":3,"name":"another"},{"id":4,"name":
+     "more"}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given":
+           [{"id": 42, "name": "forty-two"}, {"id": 1, "name": "one"}],
+        "cases": [
+            {
+               "comment" : "Filter expression with ==",
+               "expression": "$[?(@.id==42)]",
+               "result": [{"id": 42, "name": "forty-two"}]
+            },
+            {
+               "comment" : "Dot notation after filter expression",
+               "expression": "$[?(@.id==42)].name",
+               "result": ["forty-two"]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given":{"key": 42, "another": {"key": 1}},
+        "cases": [
+            {
+               "comment" : "Filter expression on object",
+               "expression": "$[?(@.key)]",
+               "result": [{"key":1}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": {"id": 2, "more": [{"id": 2}, {"more": {"id": 2}}, {"id": {"id": 2}}, [{"id": 2}]]},
+        "cases": [
+            {
+               "comment" : "Filter expression after recursive descent",
+               "expression": "$..[?(@.id==2)]",
+               "result": [{"id":2},{"id":2},{"id":2},{"id":2}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [{"key": 60}, {"key": 50}, {"key": 10}, {"key": -50}, {"key+50": 100}],
+        "cases": [
+            {
+               "comment" : "Filter expression with addition",
+               "expression": "$[?(@.key+50==100)]",
+               "result": [{"key": 50}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [{"key": 42},{"key": 43},{"key": 44}],
+        "cases": [
+            {
+               "comment" : "Filter expression with boolean and operator",
+               "expression": "$[?(@.key>42 && @.key<44)]",
+               "result": [{"key": 43}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+              {"key": 1},
+              {"key": 3},
+              {"key": "nice"},
+              {"key": true},
+              {"key": null},
+              {"key": false},
+              {"key": {}},
+              {"key": []},
+              {"key": -1},
+              {"key": 0},
+              {"key": ""}
+            ],
+        "cases": [
+            {
+               "comment" : "Filter expression with boolean and operator and value false",
+               "expression": "$[?(@.key>0 && false)]",
+               "result": []
+            },
+            {
+               "comment" : "Filter expression with boolean and operator and value true",
+               "expression": "$[?(@.key>0 && true)]",
+               "result": [
+                 {
+                   "key": 1
+                 },
+                 {
+                   "key": 3
+                 }
+               ]
+            },
+            {
+               "comment" : "Filter expression with boolean or operator or value false",
+               "expression": "$[?(@.key>0 || false)]",
+               "result": [
+                 {
+                   "key": 1
+                 },
+                 {
+                   "key": 3
+                 }
+               ]
+            },
+            {
+               "comment" : "Filter expression with boolean or operator or value true",
+               "expression": "$[?(@.key>0 || true)]",
+               "result": [
+                 {"key": 1},
+                 {"key": 3},
+                 {"key": "nice"},
+                 {"key": true},
+                 {"key": null},
+                 {"key": false},
+                 {"key": {}},
+                 {"key": []},
+                 {"key": -1},
+                 {"key": 0},
+                 {"key": ""}
+               ]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+                {"key": 42},
+                {"key": 43},
+                {"key": 44}
+            ],
+        "cases": [
+            {
+               "comment" : "Filter expression with boolean or operator",
+               "expression": "$[?(@.key>43 || @.key<43)]",
+               "result": [{"key": 42},{"key": 44}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+                {"key": 0},
+                {"key": 42},
+                {"key": -1},
+                {"key": 41},
+                {"key": 43},
+                {"key": 42.0001},
+                {"key": 41.9999},
+                {"key": 100},
+                {"some": "value"}
+            ],
+        "cases": [
+            {
+               "comment" : "Filter expression with bracket notation",
+               "expression": "$[?(@['key']==42)]",
+               "result": [{"key": 42}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+             {"@key": 0},
+             {"@key": 42},
+             {"key": 42},
+             {"@key": 43},
+             {"some": "value"}
+         ],
+        "cases": [
+            {
+               "comment" : "Filter expression with bracket notation and current object literal",
+               "expression": "$[?(@['@key']==42)]",
+               "result": [{"@key": 42}]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [[2, 3], ["a"], [0, 2], [2]],
+        "cases": [
+            {
+               "comment" : "Filter expression with bracket notation with -1",
+               "expression": "$[?(@[-1]==2)]",
+               "result": [[0,2],[2]]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [["a", "b"], ["x", "y"]],
+        "cases": [
+            {
+               "comment" : "Filter expression with bracket notation with number",
+               "expression": "$[?(@[1]=='b')]",
+               "result": [["a","b"]]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": {"1": ["a", "b"], "2": ["x", "y"]},
+        "cases": [
+            {
+               "comment" : "Filter expression with bracket notation with number on object",
+               "expression": "$[?(@[1]=='b')]",
+               "result": [["a","b"]]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+           "some value",
+           null,
+           "value",
+           0,
+           1,
+           -1,
+           "",
+           [],
+           {},
+           false,
+           true
+         ],
+        "cases": [
+            {
+               "comment" : "Filter expression with current object",
+               "expression": "$[?(@)]",
+               "result": [
+                   "some value",
+                   "value",
+                   0,
+                   1,
+                   -1,
+                   true
+               ]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+           {
+             "a": true
+           },
+           {
+             "a": true,
+             "b": true
+           },
+           {
+             "a": true,
+             "b": true,
+             "c": true
+           },
+           {
+             "b": true,
+             "c": true
+           },
+           {
+             "a": true,
+             "c": true
+           },
+           {
+             "c": true
+           },
+           {
+             "b": true
+           }
+         ],
+        "cases": [
+            {
+               "comment" : "Filter expression with different grouped operators",
+               "expression": "$[?(@.a && (@.b || @.c))]",
+               "result": [
+                 {
+                   "a": true,
+                   "b": true
+                 },
+                 {
+                   "a": true,
+                   "b": true,
+                   "c": true
+                 },
+                 {
+                   "a": true,
+                   "c": true
+                 }
+               ]
+            }
+        ]
+   },
+   {
+       "source" : "https://cburgmer.github.io/json-path-comparison/",       
+       "given": [
+              {
+                "a": true,
+                "b": true
+              },
+              {
+                "a": true,
+                "b": true,
+                "c": true
+              },
+              {
+                "b": true,
+                "c": true
+              },
+              {
+                "a": true,
+                "c": true
+              },
+              {
+                "a": true
+              },
+              {
+                "b": true
+              },
+              {
+                "c": true
+              },
+              {
+                "d": true
+              },
+              {}
+            ],
+        "cases": [
+            {
+               "comment" : "Filter expression with different ungrouped operators",
+               "expression": "$[?(@.a && @.b || @.c)]",
+               "result": [
+                 {
+                   "a": true,
+                   "b": true
+                 },
+                 {
+                   "a": true,
+                   "b": true,
+                   "c": true
+                 },
+                 {
+                   "b": true,
+                   "c": true
+                 },
+                 {
+                   "a": true,
+                   "c": true
+                 },
+                 {
+                   "c": true
+                 }
+               ]
+            }
+        ]
+   },
+   {
+       "comment" : "Filter expressions with || and &&",
+       "given": [{"id":42,"name":"forty-two"},{"id":1,"name":"one"}],
+        "cases": [
+            {
+               "comment" : "true and true",
+               "expression": "$[?(true && true)]",
+               "result": [{"id":42,"name":"forty-two"},{"id":1,"name":"one"}]
+            },
+            {
+               "comment" : "true and false",
+               "expression": "$[?(true && false)]",
+               "result": []
+            },
+            {
+               "comment" : "true or true",
+               "expression": "$[?(true || true)]",
+               "result": [{"id":42,"name":"forty-two"},{"id":1,"name":"one"}]
+            },
+            {
+               "comment" : "true or false",
+               "expression": "$[?(true || false)]",
+               "result": [{"id":42,"name":"forty-two"},{"id":1,"name":"one"}]
+            },
+            {
+               "comment" : "(true or false) and true",
+               "expression": "$[?((true || false) && true)]",
+               "result": [{"id":42,"name":"forty-two"},{"id":1,"name":"one"}]
+            },
+            {
+               "comment" : "(true and false) and true",
+               "expression": "$[?((true && false) && true)]",
+               "result": []
+            }
+        ]
+   },
+    {
+        "given" : [{"key": 60}, {"key": 50}, {"key": 10}, {"key": -50}, {"key/10": 5}],
+        "cases" : [
+            {
+                "comment" : "Filter expression with division",
+                "expression" : "$[?(@.key/10==5)]",
+                "result" : [{"key": 50}]
+            }
+        ]
+    },
+    {
+        "given" : [1, {"key": 42}, "value", null],
+        "cases" : [
+            {
+                "comment" : "Filter expression with empty expression",
+                "expression" : "$[?()]",
+                "error" : "syntax error"
+            }
+        ]
+    },
+    {
+        "given" : [
+                {"key": 0},
+                {"key": 42},
+                {"key": -1},
+                {"key": 1},
+                {"key": 41},
+                {"key": 43},
+                {"key": 42.0001},
+                {"key": 41.9999},
+                {"key": 100},
+                {"key": "some"},
+                {"key": "42"},
+                {"key": null},
+                {"key": 420},
+                {"key": ""},
+                {"key": {}},
+                {"key": []},
+                {"key": [42]},
+                {"key": {"key": 42}},
+                {"key": {"some": 42}},
+                {"some": "value"}
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals",
+                "expression" : "$[?(@.key==42)]",
+                "result" : [{"key": 42}]
+            }
+        ]
+    },
+    {
+        "given" : [
+             0,
+             42,
+             -1,
+             41,
+             43,
+             42.0001,
+             41.9999,
+             null,
+             100
+         ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals on array of numbers",
+                "expression" : "$[?(@==42)]",
+                "result" : [42]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 42}],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals on array without match",
+                "expression" : "$[?(@.key==43)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : {
+             "a": {"key": 0},
+             "b": {"key": 42},
+             "c": {"key": -1},
+             "d": {"key": 41},
+             "e": {"key": 43},
+             "f": {"key": 42.0001},
+             "g": {"key": 41.9999},
+             "h": {"key": 100},
+             "i": {"some": "value"}
+         },
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals on object",
+                "expression" : "$[?(@.key==42)]",
+                "result" : [{"key":42}]
+            }
+        ]
+    },
+    {
+        "given" : {"id": 2},
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals on object with key matching query",
+                "expression" : "$[?(@.id==2)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [
+           {
+             "d": [
+               "v1",
+               "v2"
+             ]
+           },
+           {
+             "d": [
+               "a",
+               "b"
+             ]
+           },
+           {
+             "d": "v1"
+           },
+           {
+             "d": "v2"
+           },
+           {
+             "d": {}
+           },
+           {
+             "d": []
+           },
+           {
+             "d": null
+           },
+           {
+             "d": -1
+           },
+           {
+             "d": 0
+           },
+           {
+             "d": 1
+           },
+           {
+             "d": "['v1','v2']"
+           },
+           {
+             "d": "['v1', 'v2']"
+           },
+           {
+             "d": "v1,v2"
+           },
+           {
+             "d": "[\"v1\", \"v2\"]"
+           },
+           {
+             "d": "[\"v1\",\"v2\"]"
+           }
+         ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals array",
+                "expression" : "$[?(@.d==[\"v1\",\"v2\"])]",
+                "result" :  [{"d": ["v1", "v2"]}]
+            }
+        ]
+    },
+    {
+        "given" : [[1, 2, 3], [1], [2, 3], 1, 2],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with equals array for array slice with range 1",
+                "expression" : "$[?(@[0:1]==[1])]",
+                "result" : [[1,2,3],[1]]
+            }
+        ]
+    },
+    {
+        "given" : [[1,2], [2,3], [1], [2], [1, 2, 3], 1, 2, 3],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals array for dot notation with star",
+                "expression" : "$[?(@.*==[1,2])]",
+                "result" : [[1,2]]
+            }
+        ]
+    },
+    {
+        "given" : [
+              {
+                "d": [
+                  "v1",
+                  "v2"
+                ]
+              },
+              {
+                "d": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "d": "v1"
+              },
+              {
+                "d": "v2"
+              },
+              {
+                "d": {}
+              },
+              {
+                "d": []
+              },
+              {
+                "d": null
+              },
+              {
+                "d": -1
+              },
+              {
+                "d": 0
+              },
+              {
+                "d": 1
+              },
+              {
+                "d": "['v1','v2']"
+              },
+              {
+                "d": "['v1', 'v2']"
+              },
+              {
+                "d": "v1,v2"
+              },
+              {
+                "d": "[\"v1\", \"v2\"]"
+              },
+              {
+                "d": "[\"v1\",\"v2\"]"
+              }
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals array with single quotes",
+                "expression" : "$[?(@.d==['v1','v2'])]",
+                "error" : "syntax error"
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 42}, {"key": 43}, {"key": 44}],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with equals boolean expression value",
+                "expression" : "$[?((@.key<44)==false)]",
+                "result" : [{"key": 44}]
+            }
+        ]
+    },
+    {
+        "given" : [
+              {
+                "some": "some value"
+              },
+              {
+                "key": true
+              },
+              {
+                "key": false
+              },
+              {
+                "key": null
+              },
+              {
+                "key": "value"
+              },
+              {
+                "key": ""
+              },
+              {
+                "key": 0
+              },
+              {
+                "key": 1
+              },
+              {
+                "key": -1
+              },
+              {
+                "key": 42
+              },
+              {
+                "key": {}
+              },
+              {
+                "key": []
+              }
+            ],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with equals false",
+                "expression" : "$[?(@.key==false)]",
+                "result" : [{"key": false}]
+            },
+            { 
+                "comment" : "Filter expression with equals null",
+                "expression" : "$[?(@.key==null)]",
+                "result" : [{"some": "some value"},{"key": null}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 42}, {"key": 43}, {"key": 44}],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with equals boolean expression value",
+                "expression" : "$[?((@.key<44)==false)]",
+                "result" : [{"key": 44}]
+            }
+        ]
+    },
+    {
+        "given" : [
+                {
+                    "a": [{"price": 1}, {"price": 3}]
+                },
+                {
+                    "a": [{"price": 11}]
+                },
+                {
+                    "a": [{"price": 8}, {"price": 12}, {"price": 3}]
+                },
+                {
+                    "a": []
+                }
+            ],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with subfilter",
+                "expression" : "$[?(@.a[?(@.price>10)])]",
+                "result" : [{"a":[{"price":11}]},{"a":[{"price":8},{"price":12},{"price":3}]}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 60}, {"key": 50}, {"key": 10}, {"key": -50}, {"key-50": -100}],
+        "cases" : [
+            { 
+                "comment" : "Filter expression with subtraction",
+                "expression" : "$[?(@.key-50==-100)]",
+                "result" : [{"key": -50}]
+            },
+            { 
+                "comment" : "Filter expression with subtraction",
+                "expression" : "$[?(@.key - 50==-100)]",
+                "result" : [{"key": -50}]
+            },
+            { 
+                "comment" : "Filter expression with subtraction",
+                "expression" : "$[?(@.'key-50'==-100)]",
+                "result" : [{"key-50":-100}]
+            }
+        ]
+    },
+    // + operator
+    {
+        "given" : [{"key1": 100,"key2": 100},{"key1": 105,"key2": 200}],
+        "cases" : [
+            {
+                "comment" : "set plus value",
+                "expression" : "$[?((@.key1 + 110) == 210)]",
+                "result" : [{"key1": 100,"key2": 100}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 100,"key2": 100},{"key1": 105,"key2": 200}],
+        "cases" : [
+            {
+                "comment" : "value plus set",
+                "expression" : "$[?((110 + @.key1) == 210)]",
+                "result" : [{"key1": 100,"key2": 100}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 100,"key2": 100},{"key1": 105,"key2": 200}],
+        "cases" : [
+            {
+                "comment" : "set plus set",
+                "expression" : "$[?((@.key1 + @.key2) == 200)]",
+                "result" : [{"key1": 100,"key2": 100}]
+            }
+        ]
+    },
+
+    // < operator
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set less than value",
+                "expression" : "$[?(@.key<42)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter value less than empty set",
+                "expression" : "$[?(42 < @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set less than empty set",
+                "expression" : "$[?(@.other < @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 0,"key2": 20}, {"key1": 10,"key2": 9}],
+        "cases" : [
+            {
+                "comment" : "Filter non-empty set less than non-empty set",
+                "expression" : "$[?(@.key1 < @.key2)]",
+                "result" : [{"key1": 0,"key2": 20}]
+            }
+        ]
+    },
+    {
+        "given" : [[1, 2, 3], [1], [2, 3], 1, 2],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals number for array slice with range 1",
+                "expression" : "$[?(@[0:1]==1)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [[1,2], [2,3], [1], [2], [1, 2, 3], 1, 2, 3],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals number for bracket notation with star",
+                "expression" : "$[?(@[*]==2)]",
+                "result" : []
+            },
+            {
+                "comment" : "Filter expression with equals number for dot notation with star",
+                "expression" : "$[?(@.*==2)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"key": -12.3}, {"key": -0.123}, {"key": -12}, {"key": 12.3}, {"key": 2}, {"key": "-0.123e2"}],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals number with fraction",
+                "expression" : "$[?(@.key==-0.123e2)]",
+                "result" : [{"key": -12.3}]
+            }
+        ]
+    },
+    {
+        "given" : [
+              {
+                "d": {
+                  "k": "v"
+                }
+              },
+              {
+                "d": {
+                  "a": "b"
+                }
+              },
+              {
+                "d": "k"
+              },
+              {
+                "d": "v"
+              },
+              {
+                "d": {}
+              },
+              {
+                "d": []
+              },
+              {
+                "d": null
+              },
+              {
+                "d": -1
+              },
+              {
+                "d": 0
+              },
+              {
+                "d": 1
+              },
+              {
+                "d": "[object Object]"
+              },
+              {
+                "d": "{\"k\": \"v\"}"
+              },
+              {
+                "d": "{\"k\":\"v\"}"
+              },
+              "v"
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals object",
+                "expression" : "$[?(@.d=={\"k\":\"v\"})]",
+                "result" : [{"d": {"k": "v"}}]
+            }
+        ]
+    },
+    {
+        "given" : [
+             {"key": "some"},
+             {"key": "value"},
+             {"key": null},
+             {"key": 0},
+             {"key": 1},
+             {"key": -1},
+             {"key": ""},
+             {"key": {}},
+             {"key": []},
+             {"key": "valuemore"},
+             {"key": "morevalue"},
+             {"key": ["value"]},
+             {"key": {"some": "value"}},
+             {"key": {"key": "value"}},
+             {"some": "value"}
+         ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals string",
+                "expression" : "$[?(@.key==\"value\")]",
+                "result" : [{"key": "value"}]
+            }
+        ]
+    },
+    {
+        "given" : [
+                {"key": "some"},
+                {"key": "value"},
+                {"key": "hi@example.com"}
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals string with current object literal",
+                "expression" : "$[?(@.key==\"hi@example.com\")]",
+                "result" : [{"key": "hi@example.com"}]
+            }
+        ]
+    },
+    {
+        "given" : [
+                {"key": "some"},
+                {"key": "value"},
+                {"key": "some.value"}
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals string with dot literal",
+                "expression" : "$[?(@.key==\"some.value\")]",
+                "result" : [{"key": "some.value"}]
+            }
+        ]
+    },
+    {
+        "given" : [
+                {"key": "some"},
+                {"key": "value"}
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals string with single quotes",
+                "expression" : "$[?(@.key=='value')]",
+                "result" : [{"key": "value"}]
+            }
+        ]
+    },
+    {
+        "given" : [
+              {
+                "some": "some value"
+              },
+              {
+                "key": true
+              },
+              {
+                "key": false
+              },
+              {
+                "key": null
+              },
+              {
+                "key": "value"
+              },
+              {
+                "key": ""
+              },
+              {
+                "key": 0
+              },
+              {
+                "key": 1
+              },
+              {
+                "key": -1
+              },
+              {
+                "key": 42
+              },
+              {
+                "key": {}
+              },
+              {
+                "key": []
+              }
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals true",
+                "expression" : "$[?(@.key==true)]",
+                "result" : [{"key": true}]
+            }
+        ]
+    },
+    {
+        "given" : {"value": 42, "items": [{"key": 10}, {"key": 42}, {"key": 50}]},
+        "cases" : [
+            {
+                "comment" : "Filter expression with equals with root reference",
+                "expression" : "$.items[?(@.key==$.value)]",
+                "result" : [{"key": 42}]
+            }
+        ]
+    },
+    {
+        "given" : [
+                {"key": 0},
+                {"key": 42},
+                {"key": -1},
+                {"key": 41},
+                {"key": 43},
+                {"key": 42.0001},
+                {"key": 41.9999},
+                {"key": 100},
+                {"key": "43"},
+                {"key": "42"},
+                {"key": "41"},
+                {"key": "value"},
+                {"some": "value"}
+            ],
+        "cases" : [
+            {
+                "comment" : "Filter expression with greater than",
+                "expression" : "$[?(@.key>42)]",
+                "result" : [{"key":43},{"key":42.0001},{"key":100}]
+            },
+            {
+                "comment" : "Filter expression with greater than or equal",
+                "expression" : "$[?(@.key>=42)]",
+                "result" : [{"key":42},{"key":43},{"key":42.0001},{"key":100}]
+            },
+            {
+                "comment" : "Filter expression with greater than or equal with whitespace",
+                "expression" : "$[?(@.key >= 42)]",
+                "result" : [{"key":42},{"key":43},{"key":42.0001},{"key":100}]
+            },
+            {
+                "comment" : "Filter expression with greater than or equal with whitespace",
+                "expression" : "$[?(@.key >= 42.0)]",
+                "result" : [{"key":42},{"key":43},{"key":42.0001},{"key":100}]
+            },
+            {
+                "comment" : "Filter expression with less than",
+                "expression" : "$[?(@.key<42)]",
+                "result" : [{"key":0},{"key":-1},{"key":41},{"key":41.9999}]
+            },
+            {
+                "comment" : "Filter expression with less than or equal",
+                "expression" : "$[?(@.key<=42)]",
+                "result" : [{"key":0},{"key":42},{"key":-1},{"key":41},{"key":41.9999}]
+            },
+            {
+                "comment" : "Filter expression with negation and equals",
+                "expression" : "$[?(!(@.key==42))]",
+                "result" : [
+                   {"key": 0},
+                   {"key": -1},
+                   {"key": 41},
+                   {"key": 43},
+                   {"key": 42.0001},
+                   {"key": 41.9999},
+                   {"key": 100},
+                   {"key": "43"},
+                   {"key": "42"},
+                   {"key": "41"},
+                   {"key": "value"},
+                   {"some": "value"}
+               ]
+            },
+            {
+                "comment" : "Filter expression with negation and less than",
+                "expression" : "$[?(!(@.key<42))]",
+                "result" : [
+                   {"key": 42},
+                   {"key": 43},
+                   {"key": 42.0001},
+                   {"key": 100},
+                   {"key": "43"},
+                   {"key": "42"},
+                   {"key": "41"},
+                   {"key": "value"},
+                   {"some": "value"}
+               ]
+            },
+            {
+                "comment" : "Filter expression with negation and less than",
+                "expression" : "$[?(!(@.key<=42))]",
+                "result" : [
+                   {"key": 43},
+                   {"key": 42.0001},
+                   {"key": 100},
+                   {"key": "43"},
+                   {"key": "42"},
+                   {"key": "41"},
+                   {"key": "value"},
+                   {"some": "value"}
+               ]
+            },
+            {
+                "comment" : "Filter expression with negation and less than",
+                "expression" : "$[?(@.key!=42)]",
+                "result" : [{"key":0},{"key":-1},{"key":41},{"key":43},{"key":42.0001},{"key":41.9999},
+                            {"key":100},{"key":"43"},{"key":"42"},{"key":"41"},{"key":"value"},{"some":"value"}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 60}, {"key": 50}, {"key": 10}, {"key": -50}, {"key*2": 100}],
+        "cases" : [
+            {
+                "comment" : "Filter expression with multiplication",
+                "expression" : "$[?(@.key*2==100)]",
+                "result" : [{"key": 50}]
+            }
+        ]
+    },
+    {
+        "given" : [{"key": 60}, {"key": 50}, {"key": 10}, {"key": -50}, {"key*2": 100}],
+        "cases" : [
+            {
+                "comment" : "Filter expression with modulus",
+                "expression" : "$[?(@.key%40==20)]",
+                "result" : [{"key": 60}]
+            }
+        ]
+    },
+    {
+        "given" : [[1,2],[3,4],[5,6]],
+        "cases" : [
+            {
+                "comment" : "Filter expression with set wise comparison to scalar",
+                "expression" : "$[?(@[*]>=4)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : {"x":[[1,2],[3,4],[5,6]],"y":[3,4,5]},
+        "cases" : [
+            {
+                "comment" : "Filter expression with set wise comparison to set",
+                "expression" : "$.x[?(@[*]>=$.y[*])]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : {"x":[[1,2],[3,4],[5,6]],"y":[3,4,5]},
+        "cases" : [
+            {
+                "comment" : "Filter expression with set wise comparison to set",
+                "expression" : "$.x[?(@[*]>=$.y[*])]",
+                "result" : []
+            }
+        ]
+    },
+    // > operator
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set greater than value",
+                "expression" : "$[?(@.key>42)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter value greater than empty set",
+                "expression" : "$[?(42 > @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set greater than empty set",
+                "expression" : "$[?(@.other > @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 0,"key2": 20}, {"key1": 10,"key2": 9}],
+        "cases" : [
+            {
+                "comment" : "Filter non-empty set greater than non-empty set",
+                "expression" : "$[?(@.key1 > @.key2)]",
+                "result" : [{"key1": 10,"key2": 9}]
+            }
+        ]
+    },
+    // <= operator
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set less than or equal value",
+                "expression" : "$[?(@.key<=42)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter value less than or equal empty set",
+                "expression" : "$[?(42 <= @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set less than or equal empty set",
+                "expression" : "$[?(@.other <= @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 0,"key2": 20}, {"key1": 10,"key2": 9}],
+        "cases" : [
+            {
+                "comment" : "Filter non-empty set less than or equal non-empty set",
+                "expression" : "$[?(@.key1 <= @.key2)]",
+                "result" : [{"key1": 0,"key2": 20}]
+            }
+        ]
+    },
+    // >= operator
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set greater than or equal value",
+                "expression" : "$[?(@.key>=42)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter value greater than or equal empty set",
+                "expression" : "$[?(42 >= @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"some": "value"}],
+        "cases" : [
+            {
+                "comment" : "Filter empty set greater than or equal empty set",
+                "expression" : "$[?(@.other >= @.key)]",
+                "result" : []
+            }
+        ]
+    },
+    {
+        "given" : [{"key1": 0,"key2": 20}, {"key1": 10,"key2": 9}],
+        "cases" : [
+            {
+                "comment" : "Filter non-empty set greater than or equal non-empty set",
+                "expression" : "$[?(@.key1 >= @.key2)]",
+                "result" : [{"key1": 10,"key2": 9}]
+            }
+        ]
+    },
+    {
+       "given":     [
+      {
+        "root": {
+          "id" : 10,
+          "second": [
+            {
+                 "names": [
+                2
+              ],
+              "complex": [
+                {
+                  "names": [
+                    1
+                  ],
+                  "panels": [
+                    {
+                      "result": [
+                        1
+                      ]
+                    },
+                    {
+                      "result": [
+                        1,
+                        2,
+                        3,
+                        4
+                      ]
+                    },
+                    {
+                      "result": [
+                        1
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "root": {
+          "id" : 20,
+          "second": [
+            {
+              "names": [
+                2
+              ],
+              "complex": [
+                {
+                  "names": [
+                    1
+                  ],
+                  "panels": [
+                    {
+                      "result": [
+                        1
+                      ]
+                    },
+                    {
+                      "result": [
+                        1,
+                        2,
+                        3,
+                        4
+                      ]
+                    },
+                    {
+                      "result": [
+                        1
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+       "cases": [
+            
+            {
+               "expression": "$..[?(@.result.length == 4)]",
+               "result": [{"result":[1,2,3,4]},{"result":[1,2,3,4]}]
+            },
+            {
+               "expression": "$..[?(@.id == 10)]..[?(@.result.length == 4)]",
+               "result": [{"result":[1,2,3,4]}]
+            },
+            {
+               "expression": "$..[?(@.result.length == 4)][?(@[0] == 3 || @[1] == 3 || @[2] == 3 || @[3] == 3)]",
+               "result": [[1,2,3,4],[1,2,3,4]]
+            }        
+        ]
+    },
+  {
+     "given": {
+         "store": {
+             "book": [
+                 {
+                     "category": "reference",
+                     "author": "Nigel Rees",
+                     "title": "Sayings of the Century",
+                     "price": 8.95
+                 },
+                 {
+                     "category": "fiction",
+                     "author": "Evelyn Waugh",
+                     "title": "Sword of Honour",
+                     "price": 12.99
+                 },
+                 {
+                     "category": "fiction",
+                     "author": "Herman Melville",
+                     "title": "Moby Dick",
+                     "isbn": "0-553-21311-3",
+                     "price": 8.99
+                 },
+                 {
+                     "category": "fiction",
+                     "author": "J. R. R. Tolkien",
+                     "title": "The Lord of the Rings",
+                     "isbn": "0-395-19395-8",
+                     "price": 22.99
+                 }
+             ],
+             "bicycle": {
+                 "color": "red",
+                 "price": 19.95
+             }
+         }
+     },
+     "cases": [
+       {
+         "comment" : "==number",
+         "expression": "$..book[?(@.price==8.99)].price",
+         "result": [8.99]
+       },
+       {
+         "comment" : "==number",
+         "expression": "$..book[?@.price==8.99].price",
+         "result": [8.99]
+       }
+     ]
+   },
+   {
+        "given" :  [{"key1" : {"a" : {"a" : 2}}, "key2" : 1},{"key1" : {"a" : {"a" : 1}}, "key2" : 2}],
+        "cases" : [
+            {
+                "comment" : "Union of filters followed by multiple identifiers",
+                "expression" : "$[?(@.key2 == 1),?(@.key2 == 2)].key1.a.a",
+                "result" : [2,1]
+            }
+        ]
+   }
+]
+

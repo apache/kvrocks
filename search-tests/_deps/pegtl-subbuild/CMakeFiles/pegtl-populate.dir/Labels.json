@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/CMakeFiles/pegtl-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/CMakeFiles/pegtl-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/CMakeFiles/pegtl-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/pegtl-subbuild/pegtl-populate-prefix/src/pegtl-populate-stamp/pegtl-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"pegtl-populate"
+		],
+		"name" : "pegtl-populate"
+	}
+}

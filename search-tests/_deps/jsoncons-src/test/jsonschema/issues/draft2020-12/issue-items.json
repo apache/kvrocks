@@ -1,0 +1,86 @@
+[
+    {
+        "description": "items and subitems",
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": {
+                "item": {
+                    "type": "array",
+                    "items": false,
+                    "prefixItems": [
+                        { "$ref": "#/$defs/sub-item" },
+                        { "$ref": "#/$defs/sub-item" }
+                    ]
+                },
+                "sub-item": {
+                    "type": "object",
+                    "required": ["foo"]
+                }
+            },
+            "type": "array",
+            "items": false,
+            "prefixItems": [
+                { "$ref": "#/$defs/item" },
+                { "$ref": "#/$defs/item" },
+                { "$ref": "#/$defs/item" }
+            ]
+        },
+        "tests": [
+            {
+                "description": "valid items",
+                "data": [
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ]
+                ],
+                "valid": true
+            },
+            {
+                "description": "too many items",
+                "data": [
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ]
+                ],
+                "valid": false
+            },
+            {
+                "description": "too many sub-items",
+                "data": [
+                    [ {"foo": null}, {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ]
+                ],
+                "valid": false
+            },
+            {
+                "description": "wrong item",
+                "data": [
+                    {"foo": null},
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ]
+                ],
+                "valid": false
+            },
+            {
+                "description": "wrong sub-item",
+                "data": [
+                    [ {}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ],
+                    [ {"foo": null}, {"foo": null} ]
+                ],
+                "valid": false
+            },
+            {
+                "description": "fewer items is valid",
+                "data": [
+                    [ {"foo": null} ],
+                    [ {"foo": null} ]
+                ],
+                "valid": true
+            }
+        ]
+    }
+]
+

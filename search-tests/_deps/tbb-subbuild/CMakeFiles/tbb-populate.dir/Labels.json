@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/CMakeFiles/tbb-populate"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/CMakeFiles/tbb-populate.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/CMakeFiles/tbb-populate-complete.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-build.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-configure.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-download.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-install.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-mkdir.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-patch.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-test.rule"
+		},
+		{
+			"file" : "/Users/vivek-w/Downloads/GSOC/kvrocks/search-tests/_deps/tbb-subbuild/tbb-populate-prefix/src/tbb-populate-stamp/tbb-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"tbb-populate"
+		],
+		"name" : "tbb-populate"
+	}
+}

@@ -378,6 +378,10 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {
+        // This approach assumes a shard only handles one migration task at a time.
+        // When executing the import logic, the absence of other outgoing migrations on this shard justifies safely
+        // removing the forbidden slot. A more robust solution would be required if concurrent slot migrations are
+        // supported in the future.
         srv_->slot_migrator->ReleaseForbiddenSlotRange();
       }
       LOG(INFO) << fmt::format("[import] Start importing slot(s) {}", slot_range.String());

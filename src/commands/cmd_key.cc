@@ -553,15 +553,8 @@ class CommandSort : public Commander {
   SortArgument sort_argument_;
 };
 
-class CommandGetMeta : public Commander {
+class CommandKMetadata : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 2) {
-      return {Status::RedisExecErr, errWrongNumOfArguments};
-    }
-    return Status::OK();
-  }
-
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
     std::string &key = args_[1];
@@ -602,6 +595,7 @@ class CommandGetMeta : public Commander {
 
     // Get metadata
     s = redis.GetMetadata(ctx, {type}, nskey, metadata.get());
+
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -636,6 +630,6 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
                         MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
-                        MakeCmdAttr<CommandGetMeta>("getmeta", 2, "read-only", 1, 1, 1))
+                        MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))
 
 }  // namespace redis

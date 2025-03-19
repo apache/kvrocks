@@ -21,8 +21,14 @@
 #include <cstdint>
 
 #include "commander.h"
+#include "commands/command.h"
 #include "commands/ttl_util.h"
+#include "db_util.h"
 #include "error_constants.h"
+#include "rocksdb/db.h"
+#include "rocksdb/status.h"
+#include "rocksdb/write_batch.h"
+#include "server/conn.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
@@ -336,6 +342,47 @@ class CommandPersist : public Commander {
   }
 };
 
+class CommandDelPrefix : public redis::Commander {
+ public:
+  CommandDelPrefix() : Commander("delprefix", 2, false) {}
+
+  static Status Execute(Server *srv, Connection *conn, std::string *output) {
+    auto db = srv->storage->GetDB();
+    if (!db) return Status(Status::NotOK, "DB not initialized");
+
+    std::string prefix = conn->GetArg(1);
+
+    // Creating an iterator with ReadOptions
+    rocksdb::ReadOptions read_options;
+    std::unique_ptr<rocksdb::Iterator> it(db->NewIterator(read_options));
+
+    if (!it) return Status(Status::NotOK, "Failed to create iterator");
+
+    rocksdb::WriteBatch batch;
+    int delete_count = 0;
+
+    for (it->Seek(prefix); it->Valid() && it->key().starts_with(prefix); it->Next()) {
+      batch.Delete(it->key());
+      delete_count++;
+    }
+
+    if (!it->status().ok()) {
+      return Status(Status::NotOK, "Iterator error: " + it->status().ToString());
+    }
+
+    // Writing batch operations
+    rocksdb::WriteOptions write_options;
+    rocksdb::Status s = db->Write(write_options, &batch);
+
+    if (!s.ok()) {
+      return Status(Status::NotOK, "Write batch error: " + s.ToString());
+    }
+
+    *output = std::to_string(delete_count);
+    return Status::OK();
+  }
+};
+
 class CommandDel : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -354,44 +401,6 @@ class CommandDel : public Commander {
     *output = redis::Integer(cnt);
     return Status::OK();
   }
-};
-
-class CommandDelPrefix : public Commander {
- public:
-  CommandDelPrefix() : Commander("delprefix", 2, false) {}  // "delprefix" requires 2 args: command and prefix
-
-  Status Parse(const std::vector<std::string> &args) override {
-    prefix_ = args[1];
-    return Status::OK();
-  }
-
-  Status Execute(Server *srv, Connection *conn, std::string *output) override {
-    auto db = srv->storage->GetDB();
-    auto it = db->NewIterator();
-
-    WriteBatch batch;
-    size_t deleted_count = 0;
-
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
-      std::string key = it->key().ToString();
-      if (key.rfind(prefix_, 0) == 0) {  // Checks if key starts with prefix_
-        batch.Delete(it->key());
-        deleted_count++;
-      }
-    }
-    delete it;
-
-    Status s = db->Write(WriteOptions(), &batch);
-    if (!s.ok()) {
-      return {Status::RedisExecErr, "Error deleting keys"};
-    }
-
-    *output = redis::Integer(deleted_count);
-    return Status::OK();
-  }
-
- private:
-  std::string prefix_;
 };
 
 class CommandRename : public Commander {
@@ -611,7 +620,6 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
-                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
-                        MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
 
 }  // namespace redis

@@ -16,14 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package cli
 
 import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDelPrefix(t *testing.T) {

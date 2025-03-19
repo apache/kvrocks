@@ -38,6 +38,7 @@ constexpr auto kInfoUnmergedWeight = "Unmerged weight";
 constexpr auto kInfoObservations = "Observations";
 constexpr auto kInfoTotalCompressions = "Total compressions";
 }  // namespace
+
 class CommandTDigestCreate : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {

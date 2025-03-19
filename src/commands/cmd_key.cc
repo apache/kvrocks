@@ -560,51 +560,16 @@ class CommandKMetadata : public Commander {
     std::string &key = args_[1];
     std::string nskey = redis.AppendNamespacePrefix(key);
 
-    RedisType type = kRedisNone;
-    auto s = redis.Type(ctx, key, &type);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    if (type == kRedisNone) {
-      *output = conn->NilString();
-      return Status::OK();
-    }
-
-    // Create appropriate metadata object based on type
-    std::unique_ptr<Metadata> metadata;
-    switch (type) {
-      case kRedisString:
-        metadata = std::make_unique<StringMetadata>();
-        break;
-      case kRedisHash:
-        metadata = std::make_unique<HashMetadata>();
-        break;
-      case kRedisSet:
-        metadata = std::make_unique<SetMetadata>();
-        break;
-      case kRedisZSet:
-        metadata = std::make_unique<ZSetMetadata>();
-        break;
-      case kRedisBitmap:
-        metadata = std::make_unique<BitmapMetadata>();
-        break;
-      case kRedisList:
-        metadata = std::make_unique<ListMetadata>();
-        break;
-      default:
-        return {Status::RedisExecErr, "Unimplemented Redis type"};
-    }
-
     // Get metadata
-    s = redis.GetMetadata(ctx, {type}, nskey, metadata.get());
+    Metadata metadata(kRedisNone);
+    auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
-    }
-
-    *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[type])},
-                         {redis::BulkString("size"), redis::Integer(metadata->size)},
-                         {redis::BulkString("ttl"), redis::Integer(metadata->expire)},
-                         {redis::BulkString("flags"), redis::Integer(metadata->flags)},
-                         {redis::BulkString("version"), redis::Integer(metadata->version)}});
+    *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
+                         {redis::BulkString("size"), redis::Integer(metadata.size)},
+                         {redis::BulkString("ttl"), redis::Integer(metadata.expire)},
+                         {redis::BulkString("flags"), redis::Integer(metadata.flags)},
+                         {redis::BulkString("version"), redis::Integer(metadata.version)}});
     return Status::OK();
   }
 };

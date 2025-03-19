@@ -206,11 +206,6 @@ class Metadata {
   static uint64_t generateVersion();
 };
 
-class StringMetadata : public Metadata {
- public:
-  explicit StringMetadata(bool generate_version = false) : Metadata(kRedisString, generate_version) {}
-};
-
 class HashMetadata : public Metadata {
  public:
   explicit HashMetadata(bool generate_version = true) : Metadata(kRedisHash, generate_version) {}

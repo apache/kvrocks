@@ -564,11 +564,17 @@ class CommandKMetadata : public Commander {
     auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
-                         {redis::BulkString("size"), redis::Integer(metadata.size)},
-                         {redis::BulkString("expire"), redis::Integer(metadata.expire)},
-                         {redis::BulkString("flags"), redis::Integer(metadata.flags)},
-                         {redis::BulkString("version"), redis::Integer(metadata.version)}});
+    if (metadata.IsSingleKVType()) {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
+    } else {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
+                           {redis::BulkString("size"), redis::Integer(metadata.size)},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)},
+                           {redis::BulkString("version"), redis::Integer(metadata.version)}});
+    }
     return Status::OK();
   }
 };

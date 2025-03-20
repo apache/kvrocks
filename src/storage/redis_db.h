@@ -111,6 +111,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Expire(engine::Context &ctx, const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(engine::Context &ctx, const Slice &user_key);
   [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt);
+  [[nodiscard]] rocksdb::Status DeleteRange(engine::Context &ctx, const Slice &start, const Slice &end);
   [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(engine::Context &ctx, const Slice &user_key, uint64_t *timestamp);

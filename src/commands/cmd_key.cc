@@ -23,6 +23,7 @@
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
+#include "rocksdb/slice.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
@@ -356,6 +357,33 @@ class CommandDel : public Commander {
   }
 };
 
+class CommandDeleteRange : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 3) {
+      if (args.size() != 2) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      if (args[1].find('*') != args[1].size() - 1) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      args_[1] = args[1].substr(0, args[1].size() - 1);
+    }
+    return Status::OK();
+  }
+
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    rocksdb::Slice key_begin, key_end;
+    key_begin = args_[1];
+    key_end = args_.size() == 3 ? args_[2] : "";
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    auto s = redis.DeleteRange(ctx, key_begin, key_end);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = redis::RESP_OK;
+    return Status::OK();
+  }
+};
+
 class CommandRename : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -595,6 +623,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandPExpireTime>("pexpiretime", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDel>("del", -2, "write no-dbsize-check", 1, -1, 1),
                         MakeCmdAttr<CommandDel>("unlink", -2, "write no-dbsize-check", 1, -1, 1),
+                        MakeCmdAttr<CommandDeleteRange>("deleterange", -2, "write exclusive", 1, -1, 1),
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),

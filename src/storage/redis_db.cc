@@ -207,6 +207,17 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status Database::DeleteRange(engine::Context &ctx, const Slice &start, const Slice &end) {
+  std::string ns_start = AppendNamespacePrefix(start);
+  std::string ns_end;
+  if (!end.empty()) {
+    ns_end = AppendNamespacePrefix(end);
+  } else {
+    ns_end = util::StringNext(ns_start);
+  }
+  return storage_->DeleteRange(ctx, ns_start, ns_end);
+}
+
 rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret) {
   std::vector<std::string> ns_keys;
   ns_keys.reserve(keys.size());

@@ -21,14 +21,12 @@
 #include <cstdint>
 
 #include "commander.h"
-#include "commands/commander.h"
 #include "commands/ttl_util.h"
-#include "db_util.h"
 #include "error_constants.h"
 #include "rocksdb/db.h"
+#include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
 #include "rocksdb/write_batch.h"
-#include "server/conn.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
@@ -342,15 +340,16 @@ class CommandPersist : public Commander {
   }
 };
 
-class CommandDelPrefix : public redis::Commander {
+class CommandDelPrefix : public Commander {
  public:
-  CommandDelPrefix() : Commander("delprefix", 2, false) {}
+  CommandDelPrefix() : Commander() {}
 
-  static Status Execute(Server *srv, Connection *conn, std::string *output) {
+  Status Execute(engine::Context & /*ctx*/, Server *srv, Connection * /*conn*/, std::string *output) override {
     auto db = srv->storage->GetDB();
     if (!db) return Status(Status::NotOK, "DB not initialized");
 
-    std::string prefix = conn->GetArg(1);
+    if (args_.size() < 2) return Status(Status::NotOK, "Missing prefix argument");
+    std::string prefix = args_[1];
 
     // Creating an iterator with ReadOptions
     rocksdb::ReadOptions read_options;
@@ -361,7 +360,9 @@ class CommandDelPrefix : public redis::Commander {
     rocksdb::WriteBatch batch;
     int delete_count = 0;
 
-    for (it->Seek(prefix); it->Valid() && it->key().starts_with(prefix); it->Next()) {
+    for (it->Seek(prefix); it->Valid(); it->Next()) {
+      if (!it->key().starts_with(rocksdb::Slice(prefix))) break;
+
       batch.Delete(it->key());
       delete_count++;
     }
@@ -370,12 +371,13 @@ class CommandDelPrefix : public redis::Commander {
       return Status(Status::NotOK, "Iterator error: " + it->status().ToString());
     }
 
-    // Writing batch operations
-    rocksdb::WriteOptions write_options;
-    rocksdb::Status s = db->Write(write_options, &batch);
-
-    if (!s.ok()) {
-      return Status(Status::NotOK, "Write batch error: " + s.ToString());
+    // Only write batch if there are keys to delete
+    if (delete_count > 0) {
+      rocksdb::WriteOptions write_options;
+      rocksdb::Status s = db->Write(write_options, &batch);
+      if (!s.ok()) {
+        return Status(Status::NotOK, "Write batch error: " + s.ToString());
+      }
     }
 
     *output = std::to_string(delete_count);
@@ -603,6 +605,7 @@ class CommandSort : public Commander {
 REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),

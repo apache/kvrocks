@@ -2,8 +2,6 @@ module github.com/apache/kvrocks/tests/gocase
 
 go 1.23.0
 
-toolchain go1.24.1
-
 require (
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/shirou/gopsutil/v4 v4.25.2

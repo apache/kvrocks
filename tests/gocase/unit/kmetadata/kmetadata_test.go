@@ -39,8 +39,20 @@ type kMetadataResponse struct {
 	version int64  `redis:"version"`
 }
 
+func toInt64(val interface{}) (int64, error) {
+	switch v := val.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("value is not a number, got %T", val)
+	}
+}
+
 func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
-	// Check if result is a map
 	resultMap, ok := result.(map[interface{}]interface{})
 	if !ok {
 		return nil, fmt.Errorf("expected map[interface{}]interface{}, got %T", result)
@@ -48,31 +60,19 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 
 	response := &kMetadataResponse{}
 
-	// Extract TTL field
-	if val, ok := resultMap["ttl"]; ok {
-		switch v := val.(type) {
-		case int64:
-			response.ttl = v
-		case int:
-			response.ttl = int64(v)
-		case float64:
-			response.ttl = int64(v)
-		default:
-			return nil, fmt.Errorf("ttl is not a number, got %T", val)
-		}
-	}
-
-	// Extract Size field
-	if val, ok := resultMap["size"]; ok {
-		switch v := val.(type) {
-		case int64:
-			response.size = v
-		case int:
-			response.size = int64(v)
-		case float64:
-			response.size = int64(v)
-		default:
-			return nil, fmt.Errorf("size is not a number, got %T", val)
+	// Convert numeric fields
+	for field, target := range map[string]*int64{
+		"ttl":     &response.ttl,
+		"size":    &response.size,
+		"flags":   &response.flags,
+		"version": &response.version,
+	} {
+		if val, ok := resultMap[field]; ok {
+			converted, err := toInt64(val)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", field, err)
+			}
+			*target = converted
 		}
 	}
 
@@ -82,34 +82,6 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 			response.ktype = strVal
 		} else {
 			return nil, fmt.Errorf("type is not a string, got %T", val)
-		}
-	}
-
-	// Extract Flags field
-	if val, ok := resultMap["flags"]; ok {
-		switch v := val.(type) {
-		case int64:
-			response.flags = v
-		case int:
-			response.flags = int64(v)
-		case float64:
-			response.flags = int64(v)
-		default:
-			return nil, fmt.Errorf("flags is not a number, got %T", val)
-		}
-	}
-
-	// Extract Version field
-	if val, ok := resultMap["version"]; ok {
-		switch v := val.(type) {
-		case int64:
-			response.version = v
-		case int:
-			response.version = int64(v)
-		case float64:
-			response.version = int64(v)
-		default:
-			return nil, fmt.Errorf("version is not a number, got %T", val)
 		}
 	}
 

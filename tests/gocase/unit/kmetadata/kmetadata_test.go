@@ -111,8 +111,8 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Test KMetadata for String type", func(t *testing.T) {
-		key := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(0, 8, util.Alpha)
-		val := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(0, 8, util.Alpha)
+		key := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(1, 10, util.Alpha)
+		val := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(1, 10, util.Alpha)
 		rdb.Set(ctx, key, val, 0)
 		r := rdb.Do(ctx, "kmetadata", key)
 		result, err := r.Result()
@@ -129,11 +129,11 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for hash type", func(t *testing.T) {
-		key := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(0, 8, util.Alpha)
-		f1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(0, 8, util.Alpha)
-		v1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(0, 8, util.Alpha)
-		f2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(0, 8, util.Alpha)
-		v2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(0, 8, util.Alpha)
+		key := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
+		f1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
+		v1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
+		f2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
+		v2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
 		rdb.HSet(ctx, key, f1, v1, f2, v2)
 		r := rdb.Do(ctx, "kmetadata", key)
 		result, err := r.Result()
@@ -150,11 +150,11 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for set type", func(t *testing.T) {
-		setName := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(0, 8, util.Alpha)
-		item1 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(0, 8, util.Alpha)
-		item2 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(0, 8, util.Alpha)
-		item3 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(0, 8, util.Alpha)
-		item4 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(0, 8, util.Alpha)
+		setName := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
+		item1 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
+		item2 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
+		item3 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
+		item4 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
 		rdb.SAdd(ctx, setName, item1, item2, item3, item4)
 		r := rdb.Do(ctx, "kmetadata", setName)
 		result, err := r.Result()
@@ -171,19 +171,19 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for zset type", func(t *testing.T) {
-		zsetName := "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(0, 8, util.Alpha)
+		zsetName := "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha)
 		members := []redis.Z{
 			{
 				Score:  1.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(0, 8, util.Alpha),
+				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
 			},
 			{
 				Score:  2.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(0, 8, util.Alpha),
+				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
 			},
 			{
 				Score:  3.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(0, 8, util.Alpha),
+				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
 			},
 		}
 		rdb.ZAdd(ctx, zsetName, members...)
@@ -202,7 +202,7 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for Bitmap type", func(t *testing.T) {
-		bitMapKey := "__avoid_collisions__" + "_kMetadataBitMap_" + util.RandString(0, 8, util.Alpha)
+		bitMapKey := "__avoid_collisions__" + "_kMetadataBitMap_" + util.RandString(1, 10, util.Alpha)
 		rdb.SetBit(ctx, bitMapKey, 0, 1)
 		r := rdb.Do(ctx, "kmetadata", bitMapKey)
 		result, err := r.Result()
@@ -219,9 +219,9 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for List type", func(t *testing.T) {
-		listKey := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(0, 8, util.Alpha)
-		item1 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(0, 8, util.Alpha)
-		item2 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(0, 8, util.Alpha)
+		listKey := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
+		item1 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
+		item2 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
 		rdb.RPush(ctx, listKey, item1, item2)
 		r := rdb.Do(ctx, "kmetadata", listKey)
 		result, err := r.Result()
@@ -238,7 +238,7 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test Key not present", func(t *testing.T) {
-		notFoundKey := "__avoid_collisions__" + "_kMetadataNotFound_" + util.RandString(0, 8, util.Alpha)
+		notFoundKey := "__avoid_collisions__" + "_kMetadataNotFound_" + util.RandString(1, 10, util.Alpha)
 		r := rdb.Do(ctx, "kmetadata", notFoundKey)
 		val := r.Val()
 		assert.Equal(t, nil, val)

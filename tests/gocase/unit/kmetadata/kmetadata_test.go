@@ -32,7 +32,7 @@ import (
 )
 
 type kMetadataResponse struct {
-	ttl     int64  `redis:"ttl"`
+	expire  int64  `redis:"expire"`
 	size    int64  `redis:"size"`
 	ktype   string `redis:"type"`
 	flags   int64  `redis:"flags"`
@@ -62,7 +62,7 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 
 	// Convert numeric fields
 	for field, target := range map[string]*int64{
-		"ttl":     &response.ttl,
+		"expire":  &response.expire,
 		"size":    &response.size,
 		"flags":   &response.flags,
 		"version": &response.version,

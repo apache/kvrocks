@@ -566,7 +566,7 @@ class CommandKMetadata : public Commander {
 
     *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
                          {redis::BulkString("size"), redis::Integer(metadata.size)},
-                         {redis::BulkString("ttl"), redis::Integer(metadata.expire)},
+                         {redis::BulkString("expire"), redis::Integer(metadata.expire)},
                          {redis::BulkString("flags"), redis::Integer(metadata.flags)},
                          {redis::BulkString("version"), redis::Integer(metadata.version)}});
     return Status::OK();

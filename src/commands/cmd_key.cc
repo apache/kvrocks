@@ -560,7 +560,6 @@ class CommandKMetadata : public Commander {
     std::string &key = args_[1];
     std::string nskey = redis.AppendNamespacePrefix(key);
 
-    // Get metadata
     Metadata metadata(kRedisNone, false);
     auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};

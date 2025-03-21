@@ -195,6 +195,14 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
     if (exist) {
       (*rets)[i] = BloomFilterAddResult::kExist;
     } else {
+	  auto pinnable_slice_from_data = [](std::string data) -> rocksdb::PinnableSlice {
+        // This is a workaround for the issue that PinnableSlice does not support
+        // constructing from a temporary string.
+        rocksdb::PinnableSlice slice;
+        *slice.GetSelf() = std::move(data);
+        slice.PinSelf();
+        return slice;
+      };
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
           s = batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
@@ -202,20 +210,17 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
           std::string bf_data;
           s = createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
           if (!s.ok()) return s;
-          rocksdb::PinnableSlice pin_slice;
-          *pin_slice.GetSelf() = std::move(bf_data);
-          pin_slice.PinSelf();
-          bf_data_list.push_back(std::move(pin_slice));
+          bf_data_list.push_back(pinnable_slice_from_data(std::move(bf_data)));
           bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
         } else {
           (*rets)[i] = BloomFilterAddResult::kFull;
           continue;
         }
       }
-      std::string data = bf_data_list.back().ToString();
+      auto& bf_data = bf_data_list.back();
+      std::string data = bf_data.ToString();
       bloomAdd(item_hash_list[i], data);
-      bf_data_list.back().Reset();
-      bf_data_list.back().PinSlice(data, nullptr);
+	  bf_data = pinnable_slice_from_data(std::move(data));
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }

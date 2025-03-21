@@ -212,6 +212,7 @@ class Storage {
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
+  void SetSideloadingOptions(const Config::RocksDB::SideloadingOptions &config);
   Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
   void TrySkipBlockCacheDeallocationOnClose();
@@ -270,6 +271,8 @@ class Storage {
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
+  [[nodiscard]] rocksdb::Status IngestSST();
+
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
@@ -383,12 +386,16 @@ class Storage {
 
   rocksdb::WriteOptions default_write_opts_;
 
+  rocksdb::IngestExternalFileOptions default_ingest_opts_;
+
   // rocksdb used global block cache
   std::shared_ptr<rocksdb::Cache> shared_block_cache_;
 
   rocksdb::Status writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
   Status applyWriteBatch(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *batch);
+  rocksdb::Status ingestSST(rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::IngestExternalFileOptions &options,
+                            const std::vector<std::string> &sst_file_names);
 };
 
 /// Context passes fixed snapshot and batch between APIs

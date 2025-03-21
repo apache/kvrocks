@@ -70,3 +70,12 @@ inline void SetupSigSegvAction(void (*handler)(int)) {
   sigaction(SIGTERM, &act, nullptr);
   sigaction(SIGINT, &act, nullptr);
 }
+
+inline void SetupSigUsr1Action(void (*handler)(int)) {
+  struct sigaction act;
+
+  sigemptyset(&act.sa_mask);
+  act.sa_flags = 0;
+  act.sa_handler = handler;
+  sigaction(SIGUSR1, &act, nullptr);
+}

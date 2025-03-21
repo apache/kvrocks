@@ -20,6 +20,7 @@
 
 #include "storage.h"
 
+#include <dirent.h>
 #include <event2/buffer.h>
 #include <fcntl.h>
 #include <glog/logging.h>
@@ -85,6 +86,7 @@ Storage::Storage(Config *config)
       db_stats_(std::make_unique<DBStats>()) {
   Metadata::InitVersionCounter();
   SetWriteOptions(config->rocks_db.write_options);
+  SetSideloadingOptions(config->rocks_db.sideloading_options);
 }
 
 Storage::~Storage() {
@@ -116,6 +118,10 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   default_write_opts_.no_slowdown = config.no_slowdown;
   default_write_opts_.low_pri = config.low_pri;
   default_write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
+}
+
+void Storage::SetSideloadingOptions(const Config::RocksDB::SideloadingOptions &config) {
+  default_ingest_opts_.move_files = config.move_files;
 }
 
 rocksdb::ReadOptions Storage::DefaultScanOptions() const {
@@ -767,6 +773,67 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   }
 
   return Write(ctx, options, batch->GetWriteBatch());
+}
+
+rocksdb::Status Storage::IngestSST() {
+  const std::string sst_dir = config_->rocks_db.sideloading_options.dir;
+
+  std::vector<std::string> sst_files;
+  DIR *dir = opendir(sst_dir.c_str());
+  if (!dir) {
+    return rocksdb::Status::IOError("Failed to open directory " + sst_dir);
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    std::string filename = entry->d_name;
+    if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".sst") {
+      sst_files.push_back(sst_dir + "/" + filename);
+    }
+  }
+  closedir(dir);
+
+  if (sst_files.empty()) {
+    LOG(WARNING) << "No SST files found in " << sst_dir;
+    return rocksdb::Status::OK();
+  }
+
+  std::vector<std::string> default_files;
+  std::vector<std::string> metadata_files;
+
+  // Sort files into appropriate vectors based on filename
+  for (const auto &file : sst_files) {
+    if (file.find("metadata") != std::string::npos) {
+      metadata_files.push_back(file);
+    } else {
+      default_files.push_back(file);
+    }
+  }
+
+  // Process each set of files with the appropriate column family
+  // By importing the Default column family SST files first, we avoid data corruption -
+  // if import fails, no data is made available or corrupted in either column family
+  // if the metadata import fails, the imported data will be deleted by the compaction.
+  rocksdb::Status status;
+  // Process default files with no specific column family
+  if (!default_files.empty()) {
+    status = ingestSST(db_->DefaultColumnFamily(), default_ingest_opts_, default_files);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  // Process metadata files
+  if (!metadata_files.empty()) {
+    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), default_ingest_opts_, metadata_files);
+  }
+
+  return status;
+}
+
+rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
+                                   const rocksdb::IngestExternalFileOptions &options,
+                                   const std::vector<std::string> &sst_file_names) {
+  return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {

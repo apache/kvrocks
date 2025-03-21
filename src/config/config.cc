@@ -45,6 +45,7 @@
 
 constexpr const char *kDefaultDir = "/tmp/kvrocks";
 constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
+constexpr const char *kDefaultSideloadingDir = "/tmp/kvrocks/sideloading";
 constexpr const char *kDefaultPidfile = "/tmp/kvrocks/kvrocks.pid";
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
@@ -130,8 +131,8 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
   for (size_t i = compression_start_level; i < KVROCKS_MAX_LSM_LEVEL; i++) {
     compression_per_level_builder.emplace_back(compression_option);
   }
-  const std::string compression_per_level = util::StringJoin(
-      compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
+  const std::string compression_per_level =
+      util::StringJoin(compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
   return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_per_level);
 };
 
@@ -313,6 +314,10 @@ Config::Config() {
 
       /* rocksdb read options */
       {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, true)},
+
+      /* rocksdb sideloading options*/
+      {"rocksdb.sideloading.dir", false, new StringField(&rocks_db.sideloading_options.dir, kDefaultSideloadingDir)},
+      {"rocksdb.sideloading.move_files", false, new YesNoField(&rocks_db.sideloading_options.move_files, true)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;

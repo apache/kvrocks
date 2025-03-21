@@ -176,6 +176,7 @@ class Metadata {
   void PutExpire(std::string *dst) const;
 
   RedisType Type() const;
+  const std::string &TypeName() const;
   size_t CommonEncodedSize() const;
   int64_t TTL() const;
   timeval Time() const;

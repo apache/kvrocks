@@ -22,6 +22,7 @@
 
 #include <event2/buffer.h>
 
+#include <initializer_list>
 #include <map>
 #include <numeric>
 #include <string>
@@ -75,6 +76,10 @@ std::string Array(const Con &list) {
   result.reserve(result.size() + total_size);
   for (const auto &i : list) result += i;
   return result;
+}
+template <typename T>
+std::string Array(std::initializer_list<T> list) {
+  return Array<std::initializer_list<T>>(list);
 }
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elements);
 

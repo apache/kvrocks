@@ -53,3 +53,46 @@ func TestDelPrefix(t *testing.T) {
 	assert.Equal(t, int64(0), existsTest2, "test:2 should be deleted")
 	assert.Equal(t, int64(1), existsOther1, "other:1 should still exist")
 }
+
+func TestDelPrefixClusterMode(t *testing.T) {
+	ctx := context.Background()
+	client := redis.NewClient(&redis.Options{
+		Addr: "localhost:6666", // Update this if Kvrocks runs on a different port
+	})
+	defer client.Close()
+
+	// Simulate cluster mode by adding keys with hash prefixes
+	client.Set(ctx, "{hash1}test:1", "value1", 0)
+	client.Set(ctx, "{hash1}test:2", "value2", 0)
+	client.Set(ctx, "{hash2}other:1", "value3", 0)
+
+	// Run the DELPREFIX command
+	res, err := client.Do(ctx, "DELPREFIX", "{hash1}test:").Int()
+	assert.NoError(t, err)
+	assert.Equal(t, 2, res, "Expected to delete 2 keys with hash prefix")
+
+	// Ensure the prefixed keys are deleted, but others remain
+	existsTest1, _ := client.Exists(ctx, "{hash1}test:1").Result()
+	existsTest2, _ := client.Exists(ctx, "{hash1}test:2").Result()
+	existsOther1, _ := client.Exists(ctx, "{hash2}other:1").Result()
+
+	assert.Equal(t, int64(0), existsTest1, "{hash1}test:1 should be deleted")
+	assert.Equal(t, int64(0), existsTest2, "{hash1}test:2 should be deleted")
+	assert.Equal(t, int64(1), existsOther1, "{hash2}other:1 should still exist")
+}
+
+func TestDelPrefixDisabledInClusterMode(t *testing.T) {
+	ctx := context.Background()
+	client := redis.NewClient(&redis.Options{
+		Addr: "localhost:6666", // Update this if Kvrocks runs on a different port
+	})
+	defer client.Close()
+
+	// Simulate cluster mode by adding keys with hash prefixes
+	client.Set(ctx, "{hash1}test:1", "value1", 0)
+	client.Set(ctx, "{hash1}test:2", "value2", 0)
+
+	// Assume DELPREFIX command is disabled in cluster mode, expect an error
+	_, err := client.Do(ctx, "DELPREFIX", "{hash1}test:").Result()
+	assert.Error(t, err, "Expected error when running DELPREFIX in cluster mode")
+}

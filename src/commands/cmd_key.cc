@@ -565,7 +565,7 @@ class CommandKMetadata : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     if (metadata.IsSingleKVType()) {
-      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
                            {redis::BulkString("expire"), redis::Integer(metadata.expire)},
                            {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
     } else {

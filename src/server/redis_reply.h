@@ -121,8 +121,8 @@ template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfMap(RESP ver, T len) {
   return ver == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
 }
-template <typename Map>
-std::string Map(RESP ver, const Map &map) {
+template <typename Con>
+std::string Map(RESP ver, const Con &map) {
   std::string result = HeaderOfMap(ver, map.size());
   for (const auto &pair : map) {
     result += pair.first;

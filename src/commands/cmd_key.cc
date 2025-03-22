@@ -569,7 +569,7 @@ class CommandKMetadata : public Commander {
                            {redis::BulkString("expire"), redis::Integer(metadata.expire)},
                            {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
     } else {
-      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(RedisTypeNames[metadata.Type()])},
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
                            {redis::BulkString("size"), redis::Integer(metadata.size)},
                            {redis::BulkString("expire"), redis::Integer(metadata.expire)},
                            {redis::BulkString("flags"), redis::Integer(metadata.flags)},

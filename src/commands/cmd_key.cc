@@ -344,7 +344,12 @@ class CommandDelPrefix : public Commander {
  public:
   CommandDelPrefix() : Commander() {}
 
-  Status Execute(engine::Context & /*ctx*/, Server *srv, Connection * /*conn*/, std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    // Disable delprefix in cluster mode
+    if (srv->IsClusterMode()) {
+      return Status(Status::NotOK, "delprefix command is disabled in cluster mode to avoid inconsistencies");
+    }
+
     auto db = srv->storage->GetDB();
     if (!db) return Status(Status::NotOK, "DB not initialized");
 

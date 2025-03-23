@@ -222,6 +222,8 @@ bool Metadata::operator==(const Metadata &that) const {
 
 RedisType Metadata::Type() const { return static_cast<RedisType>(flags & METADATA_TYPE_MASK); }
 
+const std::string &Metadata::TypeName() const { return RedisTypeNames[Type()]; }
+
 size_t Metadata::GetOffsetAfterExpire(uint8_t flags) {
   if (flags & METADATA_64BIT_ENCODING_MASK) {
     return 1 + 8;

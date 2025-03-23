@@ -66,7 +66,7 @@ struct SlotInfo {
   std::vector<NodeInfo> nodes;
 };
 
-using ClusterNodes = std::unordered_map<std::string_view, std::shared_ptr<ClusterNode>, StringHash, StringEqual>;
+using ClusterNodes = std::unordered_map<std::string_view, std::shared_ptr<ClusterNode>>;
 
 class Server;
 class SyncMigrateContext;

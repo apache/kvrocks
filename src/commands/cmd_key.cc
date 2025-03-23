@@ -342,38 +342,38 @@ class CommandPersist : public Commander {
 
 class CommandDelPrefix : public Commander {
  public:
-  CommandDelPrefix() : Commander() {}
+  Status Execute(engine::Context &ctx, Server *srv, redis::Connection *conn, std::string *output) override {
+    // Suppress unused parameter warnings
+    (void)ctx;
+    (void)conn;
 
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    // Disable delprefix in cluster mode
-    if (srv->IsClusterMode()) {
-      return Status(Status::NotOK, "delprefix command is disabled in cluster mode to avoid inconsistencies");
-    }
+    if (args_.size() < 2) return {Status::NotOK, "Missing prefix argument"};
 
-    auto db = srv->storage->GetDB();
-    if (!db) return Status(Status::NotOK, "DB not initialized");
+    // Placeholder for cluster mode check
+    // if (srv->IsClusterMode()) {
+    //   return {Status::NotOK, "delprefix command is disabled in cluster mode to avoid inconsistencies"};
+    // }
 
-    if (args_.size() < 2) return Status(Status::NotOK, "Missing prefix argument");
     std::string prefix = args_[1];
+    auto db = srv->storage->GetDB();
+    if (!db) return {Status::NotOK, "DB not initialized"};
 
     // Creating an iterator with ReadOptions
     rocksdb::ReadOptions read_options;
     std::unique_ptr<rocksdb::Iterator> it(db->NewIterator(read_options));
-
-    if (!it) return Status(Status::NotOK, "Failed to create iterator");
+    if (!it) return {Status::NotOK, "Failed to create iterator"};
 
     rocksdb::WriteBatch batch;
     int delete_count = 0;
 
     for (it->Seek(prefix); it->Valid(); it->Next()) {
       if (!it->key().starts_with(rocksdb::Slice(prefix))) break;
-
       batch.Delete(it->key());
       delete_count++;
     }
 
     if (!it->status().ok()) {
-      return Status(Status::NotOK, "Iterator error: " + it->status().ToString());
+      return {Status::NotOK, "Iterator error: " + it->status().ToString()};
     }
 
     // Only write batch if there are keys to delete
@@ -381,7 +381,7 @@ class CommandDelPrefix : public Commander {
       rocksdb::WriteOptions write_options;
       rocksdb::Status s = db->Write(write_options, &batch);
       if (!s.ok()) {
-        return Status(Status::NotOK, "Write batch error: " + s.ToString());
+        return {Status::NotOK, "Write batch error: " + s.ToString()};
       }
     }
 
@@ -607,10 +607,36 @@ class CommandSort : public Commander {
   SortArgument sort_argument_;
 };
 
+class CommandKMetadata : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    std::string &key = args_[1];
+    std::string nskey = redis.AppendNamespacePrefix(key);
+
+    Metadata metadata(kRedisNone, false);
+    auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (metadata.IsSingleKVType()) {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
+    } else {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
+                           {redis::BulkString("size"), redis::Integer(metadata.size)},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)},
+                           {redis::BulkString("version"), redis::Integer(metadata.version)}});
+    }
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
@@ -628,6 +654,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
-                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))
 
 }  // namespace redis

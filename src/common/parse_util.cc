@@ -20,12 +20,11 @@
 
 #include "parse_util.h"
 
-#include <limits>
-
 #include "bit_util.h"
+#include "string_util.h"
 
 StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v) {
-  auto [num, rest] = GET_OR_RET(TryParseInt<std::uint64_t>(v.c_str(), 10));
+  auto [num, rest] = GET_OR_RET(TryParseInt<std::uint64_t>(v, 10));
 
   if (*rest == 0) {
     return num;

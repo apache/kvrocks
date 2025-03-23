@@ -224,6 +224,11 @@ func TestClusterReplicas(t *testing.T) {
 		clusterNode := fmt.Sprintf("%s\n%s", master1Node, master2Node)
 		err := rdb1.Do(ctx, "clusterx", "SETNODES", clusterNode, "3").Err()
 		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb2, "master_link_status") == "down"
+		}, 5*time.Second, 100*time.Millisecond)
+
 		err = rdb2.Do(ctx, "clusterx", "SETNODES", clusterNode, "3").Err()
 		require.NoError(t, err)
 

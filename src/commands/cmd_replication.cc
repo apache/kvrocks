@@ -18,12 +18,22 @@
  *
  */
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <string_view>
+
+#include "cluster/cluster_defs.h"
 #include "commander.h"
 #include "error_constants.h"
+#include "fmt/format.h"
 #include "io_util.h"
 #include "scope_exit.h"
+#include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "stats/log_collector.h"
+#include "status.h"
 #include "thread_util.h"
 #include "time_util.h"
 #include "unique_fd.h"
@@ -57,11 +67,12 @@ class CommandPSync : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    LOG(INFO) << "Slave " << conn->GetAddr() << ", listening port: " << conn->GetListeningPort()
-              << ", announce ip: " << conn->GetAnnounceIP() << " asks for synchronization"
-              << " with next sequence: " << next_repl_seq_
-              << " replication id: " << (replica_replid_.length() ? replica_replid_ : "not supported")
-              << ", and local sequence: " << srv->storage->LatestSeqNumber();
+    auto peer_info = conn->GetPeerInfo()->ToString();
+
+    LOG(INFO) << fmt::format(
+        "Slave {} asks for synchronization with next sequence: {} "
+        "replication id: {} and local sequence: {}",
+        peer_info, next_repl_seq_, (new_psync_ ? replica_replid_ : "not supported"), srv->storage->LatestSeqNumber());
 
     bool need_full_sync = false;
 
@@ -166,41 +177,66 @@ class CommandReplConf : public Commander {
     return Commander::Parse(args);
   }
 
-  Status ParseParam(const std::string &option, const std::string &value) {
+  Status ParseParam(std::string_view option, std::string_view value) {
     if (option == "listening-port") {
       auto parse_result = ParseInt<int>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {
         return {Status::RedisParseErr, "listening-port should be number or out of range"};
       }
-
       port_ = *parse_result;
-    } else if (option == "ip-address") {
-      if (value == "") {
-        return {Status::RedisParseErr, "ip-address should not be empty"};
-      }
-      ip_address_ = value;
-    } else {
-      return {Status::RedisParseErr, errUnknownOption};
+      return Status::OK();
     }
 
-    return Status::OK();
+    if (option == "ip-address") {
+      if (value.empty()) {
+        return {Status::RedisParseErr, "ip-address should not be empty"};
+      }
+      ip_ = value;
+      return Status::OK();
+    }
+
+    if (option == "peer-id") {
+      if (value.empty()) {
+        return {Status::RedisParseErr, "peer-id should not be empty"};
+      }
+      peer_id_ = value;
+      return Status::OK();
+    }
+
+    if (option == "version") {
+      auto parse_result = ParseInt<int64_t>(value, 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, "version should be number"};
+      }
+      peer_version_ = *parse_result;
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr, errUnknownOption};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
                  std::string *output) override {
-    if (port_ != 0) {
-      conn->SetListeningPort(port_);
+    if (peer_version_ >= 0 && !srv->cluster->IsInCluster(peer_id_, peer_version_)) {
+      return {Status::NotOK, errYouAreFired};
     }
-    if (!ip_address_.empty()) {
-      conn->SetAnnounceIP(ip_address_);
+
+    if (ip_.empty()) {
+      ip_ = conn->GetIP();
     }
+
+    auto peer_info = std::make_unique<PeerInfo>(ip_, port_, peer_id_, peer_version_);
+    conn->SetPeerInfo(std::move(peer_info));
+
     *output = redis::RESP_OK;
     return Status::OK();
   }
 
  private:
-  int port_ = 0;
-  std::string ip_address_;
+  std::string ip_;
+  uint32_t port_;
+  std::string peer_id_;
+  int64_t peer_version_ = -1;
 };
 
 class CommandFetchMeta : public Commander {
@@ -210,7 +246,7 @@ class CommandFetchMeta : public Commander {
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn,
                  [[maybe_unused]] std::string *output) override {
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetAnnounceIP();
+    std::string_view peer_info = conn->GetPeerInfo()->ToString();
 
     auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
@@ -222,7 +258,7 @@ class CommandFetchMeta : public Commander {
     srv->stats.IncrFullSyncCount();
 
     // Feed-replica-meta thread
-    auto t = GET_OR_RET(util::CreateThread("feed-repl-info", [srv, repl_fd, ip, bev = conn->GetBufferEvent()] {
+    auto t = GET_OR_RET(util::CreateThread("feed-repl-info", [srv, repl_fd, peer_info, bev = conn->GetBufferEvent()] {
       srv->IncrFetchFileThread();
       auto exit = MakeScopeExit([srv, bev] {
         bufferevent_free(bev);
@@ -241,9 +277,9 @@ class CommandFetchMeta : public Commander {
       }
       // Send full data file info
       if (auto s = util::SockSend(repl_fd, files + CRLF, bev)) {
-        LOG(INFO) << "[replication] Succeed sending full data file info to " << ip;
+        LOG(INFO) << fmt::format("[replication] Succeed sending full data file info to {}: {}", peer_info, files);
       } else {
-        LOG(WARNING) << "[replication] Fail to send full data file info " << ip << ", error: " << s.Msg();
+        LOG(WARNING) << fmt::format("[replication] Failed to send full data file info to {}: {}", peer_info, s.Msg());
       }
       auto now_secs = static_cast<time_t>(util::GetTimeStamp());
       srv->storage->SetCheckpointAccessTimeSecs(now_secs);
@@ -269,7 +305,7 @@ class CommandFetchFile : public Commander {
     std::vector<std::string> files = util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
-    std::string ip = conn->GetAnnounceIP();
+    std::string_view peer_info = conn->GetPeerInfo()->ToString();
 
     auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
@@ -279,51 +315,53 @@ class CommandFetchFile : public Commander {
     conn->NeedNotFreeBufferEvent();  // Feed-replica-file thread will close the replica bufferevent
     conn->EnableFlag(redis::Connection::kCloseAsync);
 
-    auto t = GET_OR_RET(util::CreateThread("feed-repl-file", [srv, repl_fd, ip, files, bev = conn->GetBufferEvent()]() {
-      auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
-      srv->IncrFetchFileThread();
+    auto t = GET_OR_RET(
+        util::CreateThread("feed-repl-file", [srv, repl_fd, peer_info, files, bev = conn->GetBufferEvent()]() {
+          auto exit = MakeScopeExit([bev] { bufferevent_free(bev); });
+          srv->IncrFetchFileThread();
 
-      for (const auto &file : files) {
-        if (srv->IsStopped()) break;
+          for (const auto &file : files) {
+            if (srv->IsStopped()) break;
 
-        uint64_t file_size = 0, max_replication_bytes = 0;
-        if (srv->GetConfig()->max_replication_mb > 0 && srv->GetFetchFileThreadNum() != 0) {
-          max_replication_bytes = (srv->GetConfig()->max_replication_mb * MiB) / srv->GetFetchFileThreadNum();
-        }
-        auto start = std::chrono::high_resolution_clock::now();
-        auto fd = UniqueFD(engine::Storage::ReplDataManager::OpenDataFile(srv->storage, file, &file_size));
-        if (!fd) break;
+            uint64_t file_size = 0, max_replication_bytes = 0;
+            if (srv->GetConfig()->max_replication_mb > 0 && srv->GetFetchFileThreadNum() != 0) {
+              max_replication_bytes = (srv->GetConfig()->max_replication_mb * MiB) / srv->GetFetchFileThreadNum();
+            }
+            auto start = std::chrono::high_resolution_clock::now();
+            auto fd = UniqueFD(engine::Storage::ReplDataManager::OpenDataFile(srv->storage, file, &file_size));
+            if (!fd) break;
 
-        // Send file size and content
-        auto s = util::SockSend(repl_fd, std::to_string(file_size) + CRLF, bev);
-        if (s) {
-          s = util::SockSendFile(repl_fd, *fd, file_size, bev);
-        }
-        if (s) {
-          LOG(INFO) << "[replication] Succeed sending file " << file << " to " << ip;
-        } else {
-          LOG(WARNING) << "[replication] Fail to send file " << file << " to " << ip << ", error: " << s.Msg();
-          break;
-        }
-        fd.Close();
+            // Send file size and content
+            auto s = util::SockSend(repl_fd, std::to_string(file_size) + CRLF, bev);
+            if (s) {
+              s = util::SockSendFile(repl_fd, *fd, file_size, bev);
+            }
+            if (s) {
+              LOG(INFO) << fmt::format("[replication] Succeed sending file {} to {} with size: {}", file, peer_info,
+                                       file_size);
+            } else {
+              LOG(WARNING) << fmt::format("[replication] Fail to send file {} to {}: {}", file, peer_info, s.Msg());
+              break;
+            }
+            fd.Close();
 
-        // Sleep if the speed of sending file is more than replication speed limit
-        auto end = std::chrono::high_resolution_clock::now();
-        uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        if (max_replication_bytes > 0) {
-          auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
-                                                static_cast<double>(max_replication_bytes) * (1000 * 1000));
-          if (duration < shortest) {
-            LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
-                      << " ms since of sending files too quickly";
-            usleep(shortest - duration);
+            // Sleep if the speed of sending file is more than replication speed limit
+            auto end = std::chrono::high_resolution_clock::now();
+            uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+            if (max_replication_bytes > 0) {
+              auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
+                                                    static_cast<double>(max_replication_bytes) * (1000 * 1000));
+              if (duration < shortest) {
+                LOG(INFO) << "[replication] Need to sleep " << (shortest - duration) / 1000
+                          << " ms since of sending files too quickly";
+                usleep(shortest - duration);
+              }
+            }
           }
-        }
-      }
-      auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
-      srv->storage->SetCheckpointAccessTimeSecs(now_secs);
-      srv->DecrFetchFileThread();
-    }));
+          auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
+          srv->storage->SetCheckpointAccessTimeSecs(now_secs);
+          srv->DecrFetchFileThread();
+        }));
 
     if (auto s = util::ThreadDetach(t); !s) {
       return s;

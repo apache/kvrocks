@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <string_view>
 #include <utility>
 
 template <typename F, F *f>
@@ -46,4 +47,14 @@ struct GetClassFromMember;
 template <typename C, typename T>
 struct GetClassFromMember<T C::*> {
   using type = C;  // NOLINT
+};
+
+struct StringHash {
+  using is_transparent = void;  // NOLINT
+  std::size_t operator()(std::string_view str) const noexcept { return std::hash<std::string_view>{}(str); }
+};
+
+struct StringEqual {
+  using is_transparent = void;  // NOLINT
+  bool operator()(std::string_view lhs, std::string_view rhs) const noexcept { return lhs == rhs; }
 };

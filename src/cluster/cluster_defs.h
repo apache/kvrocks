@@ -41,6 +41,7 @@ inline constexpr const char *errNoMasterNode = "The node isn't a master";
 inline constexpr const char *errClusterNoInitialized = "The cluster is not initialized";
 inline constexpr const char *errInvalidClusterNodeInfo = "Invalid cluster nodes info";
 inline constexpr const char *errInvalidImportState = "Invalid import state";
+inline constexpr const char *errYouAreFired = "You are fired";
 
 /// SlotRange is a range of cluster slots covering [start, end],
 /// where the valid values for start and end are [0, kClusterSlots).

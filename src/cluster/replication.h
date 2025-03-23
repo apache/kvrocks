@@ -26,6 +26,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -159,6 +160,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   std::atomic<ReplState> repl_state_;
   std::atomic<int64_t> last_io_time_secs_ = 0;
   bool next_try_old_psync_ = false;
+  bool next_try_without_peer_id_ = false;
   bool next_try_without_announce_ip_address_ = false;
 
   std::function<bool()> pre_fullsync_cb_;
@@ -209,6 +211,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   static bool isRestoringError(std::string_view err);
   static bool isWrongPsyncNum(std::string_view err);
   static bool isUnknownOption(std::string_view err);
+  static bool isNodeFired(std::string_view err);
 
   Status parseWriteBatch(const rocksdb::WriteBatch &write_batch);
 };

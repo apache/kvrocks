@@ -198,6 +198,7 @@ class Server {
   Status RemoveMaster();
   Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
+  void CleanupOrphanSlaves(int64_t version, const ClusterNodes &nodes);
   void CleanupExitedSlaves();
   bool IsSlave() const { return !master_host_.empty(); }
   void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);

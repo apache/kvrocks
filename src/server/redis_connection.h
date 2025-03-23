@@ -253,7 +253,7 @@ class PeerInfo {
   std::string_view GetIP() const { return ip_; }
   uint32_t GetPort() const { return port_; }
 
-  std::string_view ToString() const { return str_; }
+  std::string_view GetStringView() const { return str_; }
   std::string_view GetPeerID() const { return peer_id_; }
   std::string_view GetAddr() const { return addr_; }
   int64_t GetPeerVersion() const { return peer_version_; }

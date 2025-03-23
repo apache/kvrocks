@@ -67,7 +67,7 @@ class CommandPSync : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    auto peer_info = conn->GetPeerInfo()->ToString();
+    auto peer_info = conn->GetPeerInfo()->GetStringView();
 
     LOG(INFO) << fmt::format(
         "Slave {} asks for synchronization with next sequence: {} "
@@ -246,7 +246,7 @@ class CommandFetchMeta : public Commander {
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn,
                  [[maybe_unused]] std::string *output) override {
     int repl_fd = conn->GetFD();
-    std::string_view peer_info = conn->GetPeerInfo()->ToString();
+    std::string_view peer_info = conn->GetPeerInfo()->GetStringView();
 
     auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {
@@ -305,7 +305,7 @@ class CommandFetchFile : public Commander {
     std::vector<std::string> files = util::Split(files_str_, ",");
 
     int repl_fd = conn->GetFD();
-    std::string_view peer_info = conn->GetPeerInfo()->ToString();
+    std::string_view peer_info = conn->GetPeerInfo()->GetStringView();
 
     auto s = util::SockSetBlocking(repl_fd, 1);
     if (!s.IsOK()) {

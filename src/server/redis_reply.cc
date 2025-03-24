@@ -60,15 +60,12 @@ std::string StatusToRedisErrorMsg(const Status &s) {
   return prefix + " " + s.Msg();
 }
 
-std::string BulkString(const std::string &data) { return "$" + std::to_string(data.length()) + CRLF + data + CRLF; }
-
-std::string Array(const std::vector<std::string> &list) {
-  size_t n = std::accumulate(list.begin(), list.end(), 0, [](size_t n, const std::string &s) { return n + s.size(); });
-  std::string result = MultiLen(list.size());
-  std::string::size_type final_size = result.size() + n;
-  result.reserve(final_size);
-  for (const auto &i : list) result += i;
-  return result;
+std::string BulkString(std::string_view data) {
+  std::string res = "$" + std::to_string(data.length()) + CRLF;
+  res.reserve(res.size() + data.size() + 2);
+  res += data;
+  res += CRLF;
+  return res;
 }
 
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
@@ -127,15 +124,6 @@ std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
   result += HeaderOfMap(ver, elems.size() / 2);
   for (const auto &elem : elems) {
     result += BulkString(elem);
-  }
-  return result;
-}
-
-std::string Map(RESP ver, const std::map<std::string, std::string> &map) {
-  std::string result = HeaderOfMap(ver, map.size());
-  for (const auto &pair : map) {
-    result += pair.first;
-    result += pair.second;
   }
   return result;
 }

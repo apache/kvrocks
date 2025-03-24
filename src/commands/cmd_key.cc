@@ -349,11 +349,6 @@ class CommandDelPrefix : public Commander {
 
     if (args_.size() < 2) return {Status::NotOK, "Missing prefix argument"};
 
-    // Placeholder for cluster mode check
-    // if (srv->IsClusterMode()) {
-    //   return {Status::NotOK, "delprefix command is disabled in cluster mode to avoid inconsistencies"};
-    // }
-
     std::string prefix = args_[1];
     auto db = srv->storage->GetDB();
     if (!db) return {Status::NotOK, "DB not initialized"};

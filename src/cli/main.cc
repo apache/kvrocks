@@ -52,18 +52,6 @@ extern "C" void SignalHandler(int sig) {
   }
 }
 
-extern "C" void SigUsr1lHandler(int sig) {
-  if (srv && !srv->IsStopped()) {
-    LOG(INFO) << "Signal " << strsignal(sig) << " received, initiating sideloading";
-    auto s = srv->storage->IngestSST();
-    if (!s.ok()) {
-      LOG(ERROR) << "Failed to ingest SST files. Error: " << s.ToString();
-    } else {
-      LOG(INFO) << "Successfully ingested SST files";
-    }
-  }
-}
-
 struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
 } new_opt;
@@ -134,8 +122,6 @@ int main(int argc, char *argv[]) {
   auto event_exit = MakeScopeExit(libevent_global_shutdown);
 
   signal(SIGPIPE, SIG_IGN);
-  // SST sideloading
-  SetupSigUsr1Action(SigUsr1lHandler);
   SetupSigSegvAction(SignalHandler);
 
   auto opts = ParseCommandLineOptions(argc, argv);

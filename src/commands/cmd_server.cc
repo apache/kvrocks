@@ -1370,6 +1370,29 @@ class CommandPollUpdates : public Commander {
   Format format_ = Format::Raw;
 };
 
+class CommandSST : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, "Invalid number of arguments"};
+    }
+    std::string cmd = util::ToLower(args[1]);
+    if (cmd != "load") {
+      return {Status::RedisParseErr, "unknown subcommand"};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
+    auto folder = args_[2];
+    int files_loaded = 0;
+    auto s = srv->storage->IngestSST(folder, &files_loaded);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(files_loaded)}});
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
@@ -1410,5 +1433,6 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
                         MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY), )
+                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
+                        MakeCmdAttr<CommandSST>("sst", -3, "write admin", 1, 1, 1), )
 }  // namespace redis

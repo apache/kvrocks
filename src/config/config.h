@@ -240,7 +240,6 @@ struct Config {
 
     struct SideloadingOptions {
       bool move_files;
-      std::string dir;
     } sideloading_options;
 
   } rocks_db;

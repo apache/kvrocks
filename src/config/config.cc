@@ -45,7 +45,6 @@
 
 constexpr const char *kDefaultDir = "/tmp/kvrocks";
 constexpr const char *kDefaultBackupDir = "/tmp/kvrocks/backup";
-constexpr const char *kDefaultSideloadingDir = "/tmp/kvrocks/sideloading";
 constexpr const char *kDefaultPidfile = "/tmp/kvrocks/kvrocks.pid";
 constexpr const char *kDefaultBindAddress = "127.0.0.1";
 
@@ -315,7 +314,6 @@ Config::Config() {
       {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, true)},
 
       /* rocksdb sideloading options*/
-      {"rocksdb.sideloading.dir", false, new StringField(&rocks_db.sideloading_options.dir, kDefaultSideloadingDir)},
       {"rocksdb.sideloading.move_files", false, new YesNoField(&rocks_db.sideloading_options.move_files, true)},
   };
   for (auto &wrapper : fields) {

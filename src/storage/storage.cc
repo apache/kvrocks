@@ -775,9 +775,7 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::IngestSST() {
-  const std::string sst_dir = config_->rocks_db.sideloading_options.dir;
-
+rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded) {
   std::vector<std::string> sst_files;
   DIR *dir = opendir(sst_dir.c_str());
   if (!dir) {
@@ -826,7 +824,7 @@ rocksdb::Status Storage::IngestSST() {
   if (!metadata_files.empty()) {
     status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), default_ingest_opts_, metadata_files);
   }
-
+  *files_loaded = default_files.size() + metadata_files.size();
   return status;
 }
 

@@ -76,14 +76,12 @@ Status Cluster::SetNodeId(const std::string &node_id) {
   }
 
   myid_ = node_id;
-  // Already has cluster topology
-  if (version_ >= 0 && nodes_->count(node_id) > 0) {
-    myself_ = nodes_->at(node_id);
-  } else {
+  if (version_ < 0) {
     myself_ = nullptr;
+  } else if (auto it = nodes_->find(node_id); it != nodes_->end()) {
+    myself_ = it->second;
   }
 
-  // Set replication relationship
   return SetMasterSlaveRepl();
 }
 
@@ -104,13 +102,14 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
     return {Status::NotOK, errInvalidNodeID};
   }
 
+  std::shared_ptr<ClusterNode> to_assign_node{};
+
   // Get the node which we want to assign slots into it
-  auto it = nodes_->find(node_id);
-  if (it == nodes_->end()) {
+  if (auto it = nodes_->find(node_id); it != nodes_->end()) {
+    to_assign_node = it->second;
+  } else {
     return {Status::NotOK, "No this node in the cluster"};
   }
-
-  auto to_assign_node = it->second;
 
   if (to_assign_node->role != kClusterMaster) {
     return {Status::NotOK, errNoMasterNode};
@@ -215,8 +214,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   myself_ = nullptr;
   if (!myid_.empty()) {
-    auto it = nodes_->find(myid_);
-    if (it != nodes_->end()) {
+    if (auto it = nodes_->find(myid_); it != nodes_->end()) {
       myself_ = it->second;
     }
   }

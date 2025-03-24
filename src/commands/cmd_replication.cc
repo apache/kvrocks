@@ -217,7 +217,8 @@ class CommandReplConf : public Commander {
 
   Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, Connection *conn,
                  std::string *output) override {
-    if (peer_version_ >= 0 && !srv->cluster->IsInCluster(peer_id_, peer_version_)) {
+    if (srv->GetConfig()->cluster_enabled && peer_version_ >= 0 &&
+        !srv->cluster->IsInCluster(peer_id_, peer_version_)) {
       return {Status::NotOK, errYouAreFired};
     }
 

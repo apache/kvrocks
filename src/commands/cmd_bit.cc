@@ -18,6 +18,8 @@
  *
  */
 
+#include <cstdint>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -28,9 +30,18 @@
 namespace redis {
 
 Status GetBitOffsetFromArgument(const std::string &arg, uint32_t *offset) {
-  auto parse_result = ParseInt<uint32_t>(arg, 10);
+  static const std::string errValueNotInteger = "bit offset is not an integer or out of range";
+  auto parse_result = ParseInt<int64_t>(arg, 10);
   if (!parse_result) {
     return parse_result.ToStatus();
+  }
+
+  if (*parse_result < 0) {
+    return {Status::RedisParseErr, errValueNotInteger};
+  }
+
+  if (*parse_result > std::numeric_limits<uint32_t>::max()) {
+    return {Status::RedisParseErr, errValueNotInteger};
   }
 
   *offset = *parse_result;

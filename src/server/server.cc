@@ -1121,7 +1121,7 @@ std::string Server::GetRoleInfo() {
       const auto peer_info = slave->GetConn()->GetPeerInfo();
 
       list.emplace_back(redis::ArrayOfBulkStrings({
-          std::string(peer_info->GetAddr()),
+          std::string(peer_info->GetIP()),
           std::to_string(peer_info->GetPort()),
           std::to_string(slave->GetCurrentReplSeq()),
       }));
@@ -2064,7 +2064,7 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
     const auto peer_info = slave->GetConn()->GetPeerInfo();
-    result.emplace_back(peer_info->GetIP(), static_cast<uint32_t>(slave->GetConn()->GetPort()));
+    result.emplace_back(peer_info->GetIP(), peer_info->GetPort());
   }
   slave_threads_mu_.unlock();
   return result;

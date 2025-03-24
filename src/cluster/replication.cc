@@ -457,7 +457,7 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev) 
     data_to_send.emplace_back("ip-address");
     data_to_send.emplace_back(config->replica_announce_ip);
   }
-  if (!next_try_without_peer_id_) {
+  if (!next_try_without_peer_id_ && config->cluster_enabled) {
     data_to_send.emplace_back("peer-id");
     data_to_send.emplace_back(srv_->cluster->GetMyId());
     data_to_send.emplace_back("version");

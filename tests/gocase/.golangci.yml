@@ -38,5 +38,4 @@ linters:
     - rowserrcheck
     - staticcheck
     - stylecheck
-    - typecheck
     - unused

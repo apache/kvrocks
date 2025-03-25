@@ -195,6 +195,20 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
     if (exist) {
       (*rets)[i] = BloomFilterAddResult::kExist;
     } else {
+      auto pinnable_slice_from_string = [](std::string data) -> rocksdb::PinnableSlice {
+        // This is a workaround for the issue that PinnableSlice does not support
+        // constructing from a temporary string.
+        rocksdb::PinnableSlice slice;
+        *slice.GetSelf() = std::move(data);
+        slice.PinSelf();
+        return slice;
+      };
+      auto strip_string_from_pinnable_slice = [](rocksdb::PinnableSlice &slice) -> std::string {
+        if (slice.GetSelf() != nullptr) {
+          return std::move(*slice.GetSelf());
+        }
+        return slice.ToString();
+      };
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
           s = batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
@@ -202,20 +216,17 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
           std::string bf_data;
           s = createBloomFilterInBatch(ns_key, &metadata, batch, &bf_data);
           if (!s.ok()) return s;
-          rocksdb::PinnableSlice pin_slice;
-          *pin_slice.GetSelf() = std::move(bf_data);
-          pin_slice.PinSelf();
-          bf_data_list.push_back(std::move(pin_slice));
+          bf_data_list.push_back(pinnable_slice_from_string(std::move(bf_data)));
           bf_key_list.push_back(getBFKey(ns_key, metadata, metadata.n_filters - 1));
         } else {
           (*rets)[i] = BloomFilterAddResult::kFull;
           continue;
         }
       }
-      std::string data = bf_data_list.back().ToString();
+      auto &bf_data = bf_data_list.back();
+      std::string data = strip_string_from_pinnable_slice(bf_data);
       bloomAdd(item_hash_list[i], data);
-      *bf_data_list.back().GetSelf() = std::move(data);
-      bf_data_list.back().PinSelf();
+      bf_data = pinnable_slice_from_string(std::move(data));
       (*rets)[i] = BloomFilterAddResult::kOk;
       metadata.size += 1;
     }

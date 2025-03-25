@@ -1396,22 +1396,23 @@ class CommandSST : public Commander {
           return {Status::RedisParseErr, "movefiles value must be 'yes' or 'no'"};
         }
       } else {
-      return {Status::RedisParseErr, "unknown option: " + args[3]};
+        return {Status::RedisParseErr, "unknown option: " + args[3]};
       }
     }
     return Commander::Parse(args);
   }
 
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
-    auto s = srv->storage->IngestSST(folder_,ingestOptions_);
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    auto s = srv->storage->IngestSST(folder_, ingestOptions_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(s.GetValue())}});
     return Status::OK();
   }
 
-  private:
-    std::string folder_;
-    rocksdb::IngestExternalFileOptions ingestOptions_;
+ private:
+  std::string folder_;
+  rocksdb::IngestExternalFileOptions ingestOptions_;
 };
 
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),

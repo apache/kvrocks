@@ -313,9 +313,6 @@ Config::Config() {
 
       /* rocksdb read options */
       {"rocksdb.read_options.async_io", false, new YesNoField(&rocks_db.read_options.async_io, true)},
-
-      /* rocksdb sideloading options*/
-      {"rocksdb.sideloading.move_files", false, new YesNoField(&rocks_db.sideloading_options.move_files, true)},
   };
   for (auto &wrapper : fields) {
     auto &field = wrapper.field;

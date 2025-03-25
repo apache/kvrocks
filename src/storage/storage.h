@@ -212,7 +212,6 @@ class Storage {
   ~Storage();
 
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
-  void SetSideloadingOptions(const Config::RocksDB::SideloadingOptions &config);
   Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
   void TrySkipBlockCacheDeallocationOnClose();
@@ -271,7 +270,7 @@ class Storage {
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
-  [[nodiscard]] rocksdb::Status IngestSST(const std::string &folder, int* file_loaded);
+  [[nodiscard]] rocksdb::Status IngestSST(const std::string &folder, int* file_loaded,const rocksdb::IngestExternalFileOptions &ingestOptions);
 
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
@@ -385,8 +384,6 @@ class Storage {
   std::unique_ptr<rocksdb::WriteBatchWithIndex> txn_write_batch_;
 
   rocksdb::WriteOptions default_write_opts_;
-
-  rocksdb::IngestExternalFileOptions default_ingest_opts_;
 
   // rocksdb used global block cache
   std::shared_ptr<rocksdb::Cache> shared_block_cache_;

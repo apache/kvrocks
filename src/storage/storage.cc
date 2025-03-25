@@ -86,7 +86,6 @@ Storage::Storage(Config *config)
       db_stats_(std::make_unique<DBStats>()) {
   Metadata::InitVersionCounter();
   SetWriteOptions(config->rocks_db.write_options);
-  SetSideloadingOptions(config->rocks_db.sideloading_options);
 }
 
 Storage::~Storage() {
@@ -118,10 +117,6 @@ void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
   default_write_opts_.no_slowdown = config.no_slowdown;
   default_write_opts_.low_pri = config.low_pri;
   default_write_opts_.memtable_insert_hint_per_batch = config.memtable_insert_hint_per_batch;
-}
-
-void Storage::SetSideloadingOptions(const Config::RocksDB::SideloadingOptions &config) {
-  default_ingest_opts_.move_files = config.move_files;
 }
 
 rocksdb::ReadOptions Storage::DefaultScanOptions() const {
@@ -775,7 +770,7 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded) {
+rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded, const rocksdb::IngestExternalFileOptions &ingestOptions) {
   if (config_->cluster_enabled) {
       return rocksdb::Status::NotSupported("SST command is not supported in cluster mode");
   }
@@ -818,14 +813,14 @@ rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded
   rocksdb::Status status;
   // Process default files with no specific column family
   if (!default_files.empty()) {
-    status = ingestSST(db_->DefaultColumnFamily(), default_ingest_opts_, default_files);
+    status = ingestSST(db_->DefaultColumnFamily(), ingestOptions, default_files);
     if (!status.ok()) {
       return status;
     }
   }
   // Process metadata files
   if (!metadata_files.empty()) {
-    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), default_ingest_opts_, metadata_files);
+    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingestOptions, metadata_files);
   }
   *files_loaded = default_files.size() + metadata_files.size();
   return status;

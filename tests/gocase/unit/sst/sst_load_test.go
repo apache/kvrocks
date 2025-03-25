@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -47,6 +48,10 @@ type Metadata struct {
 	Expire  uint64
 	Version uint64
 	Size    uint64
+}
+
+type SSTResponse struct {
+	files_loaded int64 `redis:"files_loaded"`
 }
 
 func NewMetadata() *Metadata {
@@ -72,7 +77,7 @@ func (m *Metadata) Encode() []byte {
 	return buf
 }
 
-func encodeIternalKey(namespace, key, field string, version uint64) []byte {
+func encodeInternalKey(namespace, key, field string, version uint64) []byte {
 	nsLen := len(namespace)
 	keyLen := len(key)
 	fieldLen := len(field)
@@ -135,6 +140,43 @@ func createSSTFile(filename string, data map[string]string) error {
 	return nil
 }
 
+func makeTempDir() (string, error) {
+	return os.MkdirTemp("", "sst_test_*")
+}
+
+func toInt64(val interface{}) (int64, error) {
+	switch v := val.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("value is not a number, got %T", val)
+	}
+}
+
+func ExtractSSTResponse(result interface{}) (*SSTResponse, error) {
+	resultMap, ok := result.(map[interface{}]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected map[interface{}]interface{}, got %T", result)
+	}
+	response := &SSTResponse{}
+	for field, target := range map[string]*int64{
+		"loaded_files": &response.files_loaded,
+	} {
+		if val, ok := resultMap[field]; ok {
+			converted, err := toInt64(val)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", field, err)
+			}
+			*target = converted
+		}
+	}
+	return response, nil
+}
+
 func TestSSTLoad(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
@@ -163,8 +205,29 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test wrong subcommand", func(t *testing.T) {
-		r := rdb.Do(ctx, "sst", "wrong-sub-command")
+		dir, err := makeTempDir()
+		require.NoError(t, err)
+		defer os.RemoveAll(dir)
+		r := rdb.Do(ctx, "sst", "wrong-sub-command", dir)
 		assert.Error(t, r.Err())
 	})
 
+	t.Run("Test wrong load option", func(t *testing.T) {
+		dir, err := makeTempDir()
+		require.NoError(t, err)
+		defer os.RemoveAll(dir)
+		r := rdb.Do(ctx, "sst", "load", dir, "wrong-config")
+		assert.Error(t, r.Err())
+	})
+
+	t.Run("Test empty folder", func(t *testing.T) {
+		dir, err := makeTempDir()
+		require.NoError(t, err)
+		defer os.RemoveAll(dir)
+		r := rdb.Do(ctx, "sst", "load", dir)
+		assert.NoError(t, r.Err())
+		resp, err := ExtractSSTResponse(r.Val())
+		assert.NoError(t, err)
+		assert.Equal(t, int64(0), resp.files_loaded)
+	})
 }

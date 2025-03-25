@@ -237,11 +237,6 @@ struct Config {
     struct ReadOptions {
       bool async_io;
     } read_options;
-
-    struct SideloadingOptions {
-      bool move_files;
-    } sideloading_options;
-
   } rocks_db;
 
   mutable std::mutex backup_mu;

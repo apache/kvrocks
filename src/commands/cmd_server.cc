@@ -1373,24 +1373,46 @@ class CommandPollUpdates : public Commander {
 class CommandSST : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 3) {
+    if (args.size() < 3) {
       return {Status::RedisParseErr, "Invalid number of arguments"};
     }
     std::string cmd = util::ToLower(args[1]);
     if (cmd != "load") {
-      return {Status::RedisParseErr, "unknown subcommand"};
+      return {Status::RedisParseErr, "unknown subcommand:" + args[1]};
+    }
+    folder_ = args[2];
+    // Parse optional movefiles flag
+    if (args.size() > 3) {
+      if (util::ToLower(args[3]) == "movefiles") {
+        if (args.size() < 5) {
+          return {Status::RedisParseErr, "missing movefiles value"};
+        }
+        std::string value = util::ToLower(args[4]);
+        if (value == "yes") {
+          ingestOptions_.move_files = true;
+        } else if (value == "no") {
+          ingestOptions_.move_files = false;
+        } else {
+          return {Status::RedisParseErr, "movefiles value must be 'yes' or 'no'"};
+        }
+      } else {
+      return {Status::RedisParseErr, "unknown option: " + args[3]};
+      }
     }
     return Commander::Parse(args);
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
-    auto folder = args_[2];
     int files_loaded = 0;
-    auto s = srv->storage->IngestSST(folder, &files_loaded);
+    auto s = srv->storage->IngestSST(folder_, &files_loaded, ingestOptions_);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(files_loaded)}});
     return Status::OK();
   }
+
+  private:
+    std::string folder_;
+    rocksdb::IngestExternalFileOptions ingestOptions_;
 };
 
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),

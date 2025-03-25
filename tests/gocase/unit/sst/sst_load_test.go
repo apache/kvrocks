@@ -1,0 +1,170 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package sst
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"log"
+	"math/rand"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/linxGnu/grocksdb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/apache/kvrocks/tests/gocase/util"
+)
+
+const (
+	DefaultKvrocksNamespace       = "__namespace"
+	metaDataEncodingMask    uint8 = 0x82
+	versionCounterBits            = 11
+)
+
+type Metadata struct {
+	Flags   uint8
+	Expire  uint64
+	Version uint64
+	Size    uint64
+}
+
+func NewMetadata() *Metadata {
+	src := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(src)
+
+	timestamp := uint64(time.Now().UnixMicro())
+	counter := uint64(r.Int63())
+	version := (timestamp << versionCounterBits) + (counter % (1 << versionCounterBits))
+
+	return &Metadata{
+		Flags:   metaDataEncodingMask,
+		Version: version,
+	}
+}
+
+func (m *Metadata) Encode() []byte {
+	buf := make([]byte, 25) // 1 + 8 + 8 + 8 bytes
+	buf[0] = m.Flags
+	binary.BigEndian.PutUint64(buf[1:], m.Expire)
+	binary.BigEndian.PutUint64(buf[9:], m.Version)
+	binary.BigEndian.PutUint64(buf[17:], m.Size)
+	return buf
+}
+
+func encodeIternalKey(namespace, key, field string, version uint64) []byte {
+	nsLen := len(namespace)
+	keyLen := len(key)
+	fieldLen := len(field)
+
+	// Pre-calculate total size: 1 byte for ns size + ns + 4 bytes for key size + key + 8 bytes for version + field
+	out := make([]byte, 1+nsLen+4+keyLen+8+fieldLen)
+
+	out[0] = uint8(nsLen)
+	copy(out[1:], namespace)
+	binary.BigEndian.PutUint32(out[1+nsLen:], uint32(keyLen))
+	copy(out[5+nsLen:], key)
+	binary.BigEndian.PutUint64(out[5+nsLen+keyLen:], version)
+	copy(out[13+nsLen+keyLen:], field)
+
+	return out
+}
+
+func encodeRedisHashKey(namespace, userKey string) []byte {
+	totalLen := 1 + len(namespace) + len(userKey)
+	buf := make([]byte, totalLen)
+	buf[0] = uint8(len(namespace))
+	copy(buf[1:], namespace)
+	copy(buf[1+len(namespace):], userKey)
+	return buf
+}
+
+func createSSTFile(filename string, data map[string]string) error {
+	envOpts := grocksdb.NewDefaultEnvOptions()
+	sstWriterOpts := grocksdb.NewDefaultOptions()
+	sstWriterOpts.SetCompression(grocksdb.CompressionType(2))
+	sstWriter := grocksdb.NewSSTFileWriter(envOpts, sstWriterOpts)
+	defer sstWriter.Destroy()
+
+	err := sstWriter.Open(filename)
+	if err != nil {
+		return fmt.Errorf("failed to open SST file writer: %v", err)
+	}
+
+	// Get all keys and sort them
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Add keys in sorted order
+	for _, k := range keys {
+		err = sstWriter.Add([]byte(k), []byte(data[k]))
+		if err != nil {
+			log.Printf("Error adding key %s to SST: %v", k, err)
+		}
+	}
+
+	err = sstWriter.Finish()
+	if err != nil {
+		return fmt.Errorf("failed to finish SST file: %v", err)
+	}
+
+	fmt.Printf("SST file created successfully: %s\n", filename)
+	return nil
+}
+
+func TestSSTLoad(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes"},
+			ConfigType: util.YesNo,
+		},
+	}
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+	for _, configs := range configsMatrix {
+		testSSTLoad(t, configs)
+	}
+}
+
+var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Test load cmd with no folder", func(t *testing.T) {
+		r := rdb.Do(ctx, "sst", "load")
+		assert.Error(t, r.Err())
+	})
+
+	t.Run("Test wrong subcommand", func(t *testing.T) {
+		r := rdb.Do(ctx, "sst", "wrong-sub-command")
+		assert.Error(t, r.Err())
+	})
+
+}

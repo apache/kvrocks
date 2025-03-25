@@ -313,6 +313,17 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     workspace = basedir / 'workspace'
+    rocksdb = Path(dir).absolute().joinpath('_deps/rocksdb-src/include')
+    rocksdb_lib = Path(dir).absolute().joinpath('_deps/rocksdb-build')
+    zlib = Path(dir).absolute().joinpath('_deps/zstd-src/lib')
+    z4lib = Path(dir).absolute().joinpath('_deps/lz4-src/lib')
+    snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
+
+    env = os.environ.copy()
+    env.update({
+        "CGO_CFLAGS": f"-I{rocksdb}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+    })
 
     args = [
         'test', '-timeout=1800s', '-bench=.', './...',
@@ -322,7 +333,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir), verbose=True)
+    run(go, *args, cwd=str(basedir),  verbose=True, env=env)
 
 
 if __name__ == '__main__':

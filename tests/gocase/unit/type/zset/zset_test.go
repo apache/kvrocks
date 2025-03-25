@@ -1635,13 +1635,15 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
 	var elements int
-	if encoding == "ziplist" {
-		elements = 128
-	} else if encoding == "skiplist" {
-		elements = 100
-	} else {
-		fmt.Println("Unknown sorted set encoding")
-		return
+	switch encoding {
+		case "ziplist":
+			elements = 128
+		case "skiplist":
+			elements = 100
+		default: {
+			fmt.Println("Unknown sorted set encoding")
+			return
+		}
 	}
 	t.Run(fmt.Sprintf("ZSCORE - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zscoretest")

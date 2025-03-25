@@ -776,6 +776,9 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
 }
 
 rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded) {
+  if (config_->cluster_enabled) {
+      return rocksdb::Status::NotSupported("SST command is not supported in cluster mode");
+  }
   std::vector<std::string> sst_files;
   DIR *dir = opendir(sst_dir.c_str());
   if (!dir) {

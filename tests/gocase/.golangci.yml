@@ -55,3 +55,8 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+linters-settings:
+  staticcheck:
+    checks:
+      - all
+      - '-QF1012' # disable the rule QF1012: Use fmt.Fprintf(...) instead of WriteString(fmt.Sprintf(...))

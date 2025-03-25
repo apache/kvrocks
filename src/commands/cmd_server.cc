@@ -1403,10 +1403,9 @@ class CommandSST : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
-    int files_loaded = 0;
-    auto s = srv->storage->IngestSST(folder_, &files_loaded, ingestOptions_);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-    *output = *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(files_loaded)}});
+    auto s = srv->storage->IngestSST(folder_,ingestOptions_);
+    if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
+    *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(s.GetValue())}});
     return Status::OK();
   }
 

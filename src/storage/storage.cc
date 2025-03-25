@@ -770,14 +770,14 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
-rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded, const rocksdb::IngestExternalFileOptions &ingestOptions) {
+StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingestOptions) {
   if (config_->cluster_enabled) {
-      return rocksdb::Status::NotSupported("SST command is not supported in cluster mode");
+      return {Status::NotOK, "SST command is not supported in cluster mode"};
   }
   std::vector<std::string> sst_files;
   DIR *dir = opendir(sst_dir.c_str());
   if (!dir) {
-    return rocksdb::Status::IOError("Failed to open directory " + sst_dir);
+    return {Status::NotOK, "Failed to open directory " + sst_dir};
   }
 
   struct dirent *entry;
@@ -791,7 +791,7 @@ rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded
 
   if (sst_files.empty()) {
     LOG(WARNING) << "No SST files found in " << sst_dir;
-    return rocksdb::Status::OK();
+    return 0;
   }
 
   std::vector<std::string> default_files;
@@ -815,15 +815,17 @@ rocksdb::Status Storage::IngestSST(const std::string &sst_dir, int* files_loaded
   if (!default_files.empty()) {
     status = ingestSST(db_->DefaultColumnFamily(), ingestOptions, default_files);
     if (!status.ok()) {
-      return status;
+      return {Status::NotOK, status.ToString()};
     }
   }
   // Process metadata files
   if (!metadata_files.empty()) {
     status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingestOptions, metadata_files);
+    if (!status.ok()) {
+      return {Status::NotOK, status.ToString()};
+    }
   }
-  *files_loaded = default_files.size() + metadata_files.size();
-  return status;
+  return default_files.size() + metadata_files.size();
 }
 
 rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,

@@ -270,7 +270,7 @@ class Storage {
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
-  [[nodiscard]] rocksdb::Status IngestSST(const std::string &folder, int* file_loaded,const rocksdb::IngestExternalFileOptions &ingestOptions);
+  [[nodiscard]] StatusOr<int> IngestSST(const std::string &folder, const rocksdb::IngestExternalFileOptions &ingestOptions);
 
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }

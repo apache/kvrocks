@@ -1389,9 +1389,9 @@ class CommandSST : public Commander {
         }
         std::string value = util::ToLower(args[4]);
         if (value == "yes") {
-          ingestOptions_.move_files = true;
+          ingest_options_.move_files = true;
         } else if (value == "no") {
-          ingestOptions_.move_files = false;
+          ingest_options_.move_files = false;
         } else {
           return {Status::RedisParseErr, "movefiles value must be 'yes' or 'no'"};
         }
@@ -1404,7 +1404,7 @@ class CommandSST : public Commander {
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
-    auto s = srv->storage->IngestSST(folder_, ingestOptions_);
+    auto s = srv->storage->IngestSST(folder_, ingest_options_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(s.GetValue())}});
     return Status::OK();
@@ -1412,7 +1412,7 @@ class CommandSST : public Commander {
 
  private:
   std::string folder_;
-  rocksdb::IngestExternalFileOptions ingestOptions_;
+  rocksdb::IngestExternalFileOptions ingest_options_;
 };
 
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),

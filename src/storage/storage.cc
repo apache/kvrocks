@@ -770,7 +770,7 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   return Write(ctx, options, batch->GetWriteBatch());
 }
 
-StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingestOptions) {
+StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingest_options) {
   if (config_->cluster_enabled) {
     return {Status::NotOK, "SST command is not supported in cluster mode"};
   }
@@ -813,14 +813,14 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
   rocksdb::Status status;
   // Process default files with no specific column family
   if (!default_files.empty()) {
-    status = ingestSST(db_->DefaultColumnFamily(), ingestOptions, default_files);
+    status = ingestSST(db_->DefaultColumnFamily(), ingest_options, default_files);
     if (!status.ok()) {
       return {Status::NotOK, status.ToString()};
     }
   }
   // Process metadata files
   if (!metadata_files.empty()) {
-    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingestOptions, metadata_files);
+    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
     if (!status.ok()) {
       return {Status::NotOK, status.ToString()};
     }

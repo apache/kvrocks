@@ -485,9 +485,9 @@ jobs:
       - name: Setup Rocky Linux 9
         if: ${{ startsWith(matrix.image, 'rockylinux:9') }}
         run: |
-          dnf install -y epel-release libstdc++-devel
+          dnf install -y epel-release 
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake libstdc++-devel
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100

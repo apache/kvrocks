@@ -555,6 +555,10 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
+          echo "DEBUG START"
+          ldconfig -p | grep libstdc++
+          gcc -print-file-name=libstdc++.so
+          echo "DEBUG END"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky

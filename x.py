@@ -258,6 +258,11 @@ def golangci_lint(golangci_lint_path: str) -> None:
         check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
 
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
+    rocksdb = Path(dir).absolute().joinpath('_deps/rocksdb-src/include')
+    rocksdb_lib = Path(dir).absolute().joinpath('_deps/rocksdb-build')
+    zlib = Path(dir).absolute().joinpath('_deps/zstd-src/lib')
+    z4lib = Path(dir).absolute().joinpath('_deps/lz4-src/lib')
+    snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
 
     env = os.environ.copy()
     env.update({

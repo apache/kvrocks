@@ -258,7 +258,14 @@ def golangci_lint(golangci_lint_path: str) -> None:
         check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
 
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True)
+
+    env = os.environ.copy()
+    env.update({
+        "CGO_CFLAGS": f"-I{rocksdb}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+    })
+
+    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=env)
 
 
 def write_version(release_version: str) -> str:
@@ -333,7 +340,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir),  verbose=True, env=env)
+    run(go, *args, cwd=str(basedir), verbose=True, env=env)
 
 
 if __name__ == '__main__':

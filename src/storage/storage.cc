@@ -780,7 +780,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     return {Status::NotOK, "Failed to open directory " + sst_dir};
   }
 
-  struct dirent *entry;
+  struct dirent *entry = nullptr;
   while ((entry = readdir(dir)) != nullptr) {
     std::string filename = entry->d_name;
     if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".sst") {

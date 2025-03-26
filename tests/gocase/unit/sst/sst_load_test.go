@@ -52,7 +52,7 @@ type Metadata struct {
 }
 
 type SSTResponse struct {
-	files_loaded int64 `redis:"files_loaded"`
+	filesLoaded int64 `redis:"files_loaded"`
 }
 
 func NewMetadata() *Metadata {
@@ -163,7 +163,7 @@ func ExtractSSTResponse(result interface{}) (*SSTResponse, error) {
 	}
 	response := &SSTResponse{}
 	for field, target := range map[string]*int64{
-		"files_loaded": &response.files_loaded,
+		"files_loaded": &response.filesLoaded,
 	} {
 		if val, ok := resultMap[field]; ok {
 			converted, err := toInt64(val)
@@ -227,7 +227,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(0), resp.files_loaded)
+		assert.Equal(t, int64(0), resp.filesLoaded)
 	})
 
 	t.Run("Test load redis hash keys", func(t *testing.T) {
@@ -237,14 +237,14 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		namespace := DefaultKvrocksNamespace
 		data := map[string][]map[string]string{
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
@@ -275,7 +275,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(2), resp.files_loaded)
+		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		//verify files didn't get moved
 		_, err = os.Stat(filepath.Join(dir, "kvrocks_keys.sst"))
@@ -301,14 +301,14 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		namespace := DefaultKvrocksNamespace
 		data := map[string][]map[string]string{
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
@@ -339,7 +339,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(2), resp.files_loaded)
+		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		for hashK, fields := range data {
 			for _, field := range fields {
@@ -354,7 +354,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		for hashK := range data {
 			fields := data[hashK]
 			for _, field := range fields {
-				for fieldK, _ := range field {
+				for fieldK := range field {
 					newVal := "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)
 					r := rdb.HSet(ctx, hashK, fieldK, newVal)
 					assert.NoError(t, r.Err())
@@ -376,7 +376,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		for hashK := range data {
 			fields := data[hashK]
 			for _, field := range fields {
-				for fieldK, _ := range field {
+				for fieldK := range field {
 					newVal := "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)
 					field[fieldK] = newVal
 				}
@@ -408,7 +408,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err = ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(2), resp.files_loaded)
+		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		for hashK, fields := range data {
 			for _, field := range fields {
@@ -428,14 +428,14 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		namespace := DefaultKvrocksNamespace
 		data := map[string][]map[string]string{
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
@@ -466,7 +466,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(2), resp.files_loaded)
+		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		//verify files did get moved
 		_, err = os.Stat(filepath.Join(dir, "kvrocks_keys.sst"))
@@ -492,14 +492,14 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		namespace := DefaultKvrocksNamespace
 		data := map[string][]map[string]string{
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
@@ -528,11 +528,11 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(1), resp.files_loaded)
+		assert.Equal(t, int64(1), resp.filesLoaded)
 
 		for hashK, fields := range data {
 			for _, field := range fields {
-				for fieldK, _ := range field {
+				for fieldK := range field {
 					val := rdb.HGet(ctx, hashK, fieldK)
 					assert.Error(t, val.Err())
 				}
@@ -547,14 +547,14 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		namespace := DefaultKvrocksNamespace
 		data := map[string][]map[string]string{
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 			},
-			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): {
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
 				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
@@ -586,10 +586,10 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.NoError(t, r.Err())
 		resp, err := ExtractSSTResponse(r.Val())
 		assert.NoError(t, err)
-		assert.Equal(t, int64(2), resp.files_loaded)
+		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		// verify keys have expiration
-		for hashK, _ := range data {
+		for hashK := range data {
 			expireDuration := rdb.ExpireTime(ctx, hashK)
 			assert.NotEmpty(t, expireDuration.Val().Milliseconds())
 		}
@@ -597,7 +597,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		time.Sleep(5 * time.Second)
 		for hashK, fields := range data {
 			for _, field := range fields {
-				for fieldK, _ := range field {
+				for fieldK := range field {
 					val := rdb.HGet(ctx, hashK, fieldK)
 					assert.Error(t, val.Err())
 				}

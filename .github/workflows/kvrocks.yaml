@@ -462,7 +462,7 @@ jobs:
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go zlib-devel
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -506,7 +506,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis zlib-dev
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -553,6 +553,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

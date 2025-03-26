@@ -294,6 +294,133 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		}
 	})
 
+	t.Run("Test load and update redis hash keys", func(t *testing.T) {
+		dir, err := makeTempDir()
+		require.NoError(t, err)
+		defer os.RemoveAll(dir)
+
+		namespace := DefaultKvrocksNamespace
+		data := map[string][]map[string]string{
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+			},
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+			},
+			"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): []map[string]string{
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+				{"__avoid_collisions__" + util.RandString(1, 10, util.Alpha): "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)},
+			},
+		}
+		keys := make(map[string]string, len(data))
+		metaKeys := make(map[string]string, len(data))
+		for hashK := range data {
+			meta := NewMetadata()
+			fields := data[hashK]
+			for _, field := range fields {
+				for fieldK, fieldV := range field {
+					internalKey := encodeInternalKey(namespace, hashK, fieldK, meta.Version)
+					keys[string(internalKey)] = fieldV
+				}
+			}
+			hashKey := encodeRedisHashKey(namespace, hashK)
+			meta.Size++
+			metaKeys[string(hashKey)] = string(meta.Encode())
+		}
+
+		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		assert.NoError(t, err)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
+		assert.NoError(t, err)
+
+		r := rdb.Do(ctx, "sst", "load", dir)
+		assert.NoError(t, r.Err())
+		resp, err := ExtractSSTResponse(r.Val())
+		assert.NoError(t, err)
+		assert.Equal(t, int64(2), resp.files_loaded)
+
+		for hashK, fields := range data {
+			for _, field := range fields {
+				for fieldK, expectedVal := range field {
+					val := rdb.HGet(ctx, hashK, fieldK)
+					assert.NoError(t, val.Err())
+					assert.Equal(t, expectedVal, val.Val(), "Hash field value mismatch for key:%s field:%s", hashK, fieldK)
+				}
+			}
+		}
+		// update the keys fields via redis interface
+		for hashK := range data {
+			fields := data[hashK]
+			for _, field := range fields {
+				for fieldK, _ := range field {
+					newVal := "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)
+					r := rdb.HSet(ctx, hashK, fieldK, newVal)
+					assert.NoError(t, r.Err())
+					field[fieldK] = newVal
+				}
+			}
+		}
+		// validate the updates made via redis interface
+		for hashK, fields := range data {
+			for _, field := range fields {
+				for fieldK, expectedVal := range field {
+					val := rdb.HGet(ctx, hashK, fieldK)
+					assert.NoError(t, val.Err())
+					assert.Equal(t, expectedVal, val.Val(), "Hash field value mismatch for key:%s field:%s", hashK, fieldK)
+				}
+			}
+		}
+		// update the values and sst load
+		for hashK := range data {
+			fields := data[hashK]
+			for _, field := range fields {
+				for fieldK, _ := range field {
+					newVal := "__avoid_collisions__" + util.RandString(1, 10, util.Alpha)
+					field[fieldK] = newVal
+				}
+			}
+		}
+
+		keys = make(map[string]string, len(data))
+		metaKeys = make(map[string]string, len(data))
+		for hashK := range data {
+			meta := NewMetadata()
+			fields := data[hashK]
+			for _, field := range fields {
+				for fieldK, fieldV := range field {
+					internalKey := encodeInternalKey(namespace, hashK, fieldK, meta.Version)
+					keys[string(internalKey)] = fieldV
+				}
+			}
+			hashKey := encodeRedisHashKey(namespace, hashK)
+			meta.Size++
+			metaKeys[string(hashKey)] = string(meta.Encode())
+		}
+
+		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		assert.NoError(t, err)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
+		assert.NoError(t, err)
+
+		r = rdb.Do(ctx, "sst", "load", dir)
+		assert.NoError(t, r.Err())
+		resp, err = ExtractSSTResponse(r.Val())
+		assert.NoError(t, err)
+		assert.Equal(t, int64(2), resp.files_loaded)
+
+		for hashK, fields := range data {
+			for _, field := range fields {
+				for fieldK, expectedVal := range field {
+					val := rdb.HGet(ctx, hashK, fieldK)
+					assert.NoError(t, val.Err())
+					assert.Equal(t, expectedVal, val.Val(), "Hash field value mismatch for key:%s field:%s", hashK, fieldK)
+				}
+			}
+		}
+	})
+
 	t.Run("Test load redis hash keys with move option", func(t *testing.T) {
 		dir, err := makeTempDir()
 		require.NoError(t, err)

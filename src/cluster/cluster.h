@@ -43,8 +43,8 @@
 
 class ClusterNode {
  public:
-  explicit ClusterNode(std::string &&id, std::string &&host, int port, int role, std::string &&master_id,
-                       std::bitset<kClusterSlots> &&slots);
+  explicit ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
+                       std::bitset<kClusterSlots> slots);
   std::string id;
   std::string host;
   int port;

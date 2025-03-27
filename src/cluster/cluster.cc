@@ -42,8 +42,8 @@
 #include "string_util.h"
 #include "time_util.h"
 
-ClusterNode::ClusterNode(std::string &&id, std::string &&host, int port, int role, std::string &&master_id,
-                         std::bitset<kClusterSlots> &&slots)
+ClusterNode::ClusterNode(std::string id, std::string host, int port, int role, std::string master_id,
+                         std::bitset<kClusterSlots> slots)
     : id(std::move(id)),
       host(std::move(host)),
       port(port),
@@ -863,8 +863,7 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    auto node = std::make_shared<ClusterNode>(std::move(id), std::move(host), port, role, std::move(master_id),
-                                              std::move(slots));
+    auto node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
     nodes->insert({node->id, node});
   }
 

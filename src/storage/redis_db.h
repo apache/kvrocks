@@ -113,6 +113,7 @@ class Database {
   [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt);
   [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret);
   [[nodiscard]] rocksdb::Status TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl);
+  [[nodiscard]] rocksdb::Status DeletePrefix(engine::Context &ctx, const Slice &prefix, uint64_t *deleted_cnt);
   [[nodiscard]] rocksdb::Status GetExpireTime(engine::Context &ctx, const Slice &user_key, uint64_t *timestamp);
   [[nodiscard]] rocksdb::Status Type(engine::Context &ctx, const Slice &key, RedisType *type);
   [[nodiscard]] rocksdb::Status Dump(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *infos);

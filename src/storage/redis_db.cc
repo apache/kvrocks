@@ -28,8 +28,10 @@
 #include "common/string_util.h"
 #include "db_util.h"
 #include "parse_util.h"
+#include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
+#include "rocksdb/write_batch.h"
 #include "storage/iterator.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
@@ -932,6 +934,38 @@ bool RedisSortObject::SortCompare(const RedisSortObject &a, const RedisSortObjec
       return !args.desc ? a.obj < b.obj : a.obj > b.obj;
     }
   }
+}
+
+rocksdb::Status Database::DeletePrefix(engine::Context & /*ctx*/, const Slice &prefix, uint64_t *deleted_cnt) {
+  *deleted_cnt = 0;
+
+  auto db = storage_->GetDB();
+  if (!db) return rocksdb::Status::NotFound("DB not initialized");
+
+  rocksdb::ReadOptions read_options;
+  std::unique_ptr<rocksdb::Iterator> it(db->NewIterator(read_options));
+  if (!it) return rocksdb::Status::NotFound("Failed to create iterator");
+
+  rocksdb::WriteBatch batch;
+  for (it->Seek(prefix); it->Valid(); it->Next()) {
+    if (!it->key().starts_with(prefix)) break;
+    batch.Delete(it->key());
+    (*deleted_cnt)++;
+  }
+
+  if (!it->status().ok()) {
+    return rocksdb::Status::NotFound("Iterator error: " + it->status().ToString());
+  }
+
+  if (*deleted_cnt > 0) {
+    rocksdb::WriteOptions write_options;
+    rocksdb::Status s = db->Write(write_options, &batch);
+    if (!s.ok()) {
+      return rocksdb::Status::NotFound("Write batch error: " + s.ToString());
+    }
+  }
+
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

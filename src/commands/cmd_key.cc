@@ -23,10 +23,7 @@
 #include "commander.h"
 #include "commands/ttl_util.h"
 #include "error_constants.h"
-#include "rocksdb/db.h"
-#include "rocksdb/iterator.h"
-#include "rocksdb/status.h"
-#include "rocksdb/write_batch.h"
+#include "rocksdb/slice.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
@@ -340,16 +337,34 @@ class CommandPersist : public Commander {
   }
 };
 
+class CommandDel : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    std::vector<rocksdb::Slice> keys;
+    keys.reserve(args_.size() - 1);
+    for (size_t i = 1; i < args_.size(); i++) {
+      keys.emplace_back(args_[i]);
+    }
+
+    uint64_t cnt = 0;
+    redis::Database redis(srv->storage, conn->GetNamespace());
+
+    auto s = redis.MDel(ctx, keys, &cnt);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::Integer(cnt);
+    return Status::OK();
+  }
+};
+
 class CommandDelPrefix : public Commander {
  public:
-  Status Execute(engine::Context &ctx, Server *srv, redis::Connection *conn, std::string *output) override {
-    // Suppress unused parameter warnings
-    (void)ctx;
-    (void)conn;
-
+  Status Execute(engine::Context & /*ctx*/, Server *srv, Connection * /*conn*/, std::string *output) override {
     if (args_.size() < 2) return {Status::NotOK, "Missing prefix argument"};
 
     std::string prefix = args_[1];
+    if (prefix.empty()) return {Status::NotOK, "Prefix cannot be empty"};
+
     auto db = srv->storage->GetDB();
     if (!db) return {Status::NotOK, "DB not initialized"};
 
@@ -381,26 +396,6 @@ class CommandDelPrefix : public Commander {
     }
 
     *output = std::to_string(delete_count);
-    return Status::OK();
-  }
-};
-
-class CommandDel : public Commander {
- public:
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    std::vector<rocksdb::Slice> keys;
-    keys.reserve(args_.size() - 1);
-    for (size_t i = 1; i < args_.size(); i++) {
-      keys.emplace_back(args_[i]);
-    }
-
-    uint64_t cnt = 0;
-    redis::Database redis(srv->storage, conn->GetNamespace());
-
-    auto s = redis.MDel(ctx, keys, &cnt);
-    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-
-    *output = redis::Integer(cnt);
     return Status::OK();
   }
 };
@@ -630,7 +625,6 @@ class CommandKMetadata : public Commander {
 
 REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
@@ -648,6 +642,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandDelPrefix>("delprefix", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
                         MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))

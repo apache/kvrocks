@@ -267,8 +267,13 @@ def golangci_lint(golangci_lint_path: str) -> None:
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L/lib64 -L/usr/lib64 -lstdc++",
+        "LD_LIBRARY_PATH": f"/lib64:/usr/lib64:{env.get('LD_LIBRARY_PATH', '')}"
     })
+
+    print("CGO_CFLAGS:", env.get("CGO_CFLAGS"))
+    print("CGO_LDFLAGS:", env.get("CGO_LDFLAGS"))
+    print("LD_LIBRARY_PATH:", env.get("LD_LIBRARY_PATH"))
 
     run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=env)
 
@@ -334,7 +339,8 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L/lib64 -L/usr/lib64 -lstdc++",
+        "LD_LIBRARY_PATH": f"/lib64:/usr/lib64:{env.get('LD_LIBRARY_PATH', '')}"
     })
 
     args = [
@@ -344,6 +350,10 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         f'-workspace={workspace}',
         *rest
     ]
+
+    print("CGO_CFLAGS:", env.get("CGO_CFLAGS"))
+    print("CGO_LDFLAGS:", env.get("CGO_LDFLAGS"))
+    print("LD_LIBRARY_PATH:", env.get("LD_LIBRARY_PATH"))
 
     run(go, *args, cwd=str(basedir), verbose=True, env=env)
 

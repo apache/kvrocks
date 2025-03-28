@@ -533,7 +533,7 @@ void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string 
     }
 
     if ((type & conn->GetClientType()) ||
-        (!addr.empty() && (conn->GetAddr() == addr || conn->GetPeerInfo()->GetAddr() == addr)) ||
+        (!addr.empty() && (conn->GetAddr() == addr || conn->GetPeerInfo().GetAddr() == addr)) ||
         (id != 0 && conn->GetID() == id)) {
       conn->EnableFlag(redis::Connection::kCloseAfterReply);
       // enable write event to notify worker wake up ASAP, and remove the connection

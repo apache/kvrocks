@@ -360,13 +360,13 @@ void Server::CleanupOrphanSlaves(int64_t version, const ClusterNodes &nodes) {
 
   for (auto &slave_thread : slave_threads_) {
     const auto peer_info = slave_thread->GetConn()->GetPeerInfo();
-    auto peer_version = peer_info->GetPeerVersion();
+    auto peer_version = peer_info.GetPeerVersion();
     if (peer_version < 0 || peer_version > version) {
       // The peer version is greater than the current version,
       // so we can't determine whether it is an orphan node, just skip it.
       continue;
     }
-    auto peer_id = peer_info->GetPeerID();
+    auto peer_id = peer_info.GetPeerID();
     auto it = nodes.find(peer_id);
     if (it != nodes.end()) {
       // The peer id is in the cluster, so it is not an orphan node.
@@ -1081,10 +1081,10 @@ Server::InfoEntries Server::GetReplicationInfo() {
   entries.emplace_back("connected_slaves", slave_threads_.size());
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
-
+    const auto& peer_info = slave->GetConn()->GetPeerInfo();
     entries.emplace_back("slave" + std::to_string(idx),
-                         fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetPeerInfo()->GetIP(),
-                                     slave->GetConn()->GetPeerInfo()->GetPort(), slave->GetCurrentReplSeq(),
+                         fmt::format("ip={},port={},offset={},lag={}", peer_info.GetIP(),
+                                     peer_info.GetPort(), slave->GetCurrentReplSeq(),
                                      latest_seq - slave->GetCurrentReplSeq()));
     ++idx;
   }
@@ -1119,10 +1119,10 @@ std::string Server::GetRoleInfo() {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
       const auto peer_info = slave->GetConn()->GetPeerInfo();
-
+      
       list.emplace_back(redis::ArrayOfBulkStrings({
-          std::string(peer_info->GetIP()),
-          std::to_string(peer_info->GetPort()),
+          std::string(peer_info.GetIP()),
+          std::to_string(peer_info.GetPort()),
           std::to_string(slave->GetCurrentReplSeq()),
       }));
     }
@@ -1681,7 +1681,7 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   slave_threads_mu_.lock();
   for (const auto &st : slave_threads_) {
     if ((type & kTypeSlave) ||
-        (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetPeerInfo()->GetAddr() == addr)) ||
+        (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetPeerInfo().GetAddr() == addr)) ||
         (id != 0 && st->GetConn()->GetID() == id)) {
       st->Stop();
       (*killed)++;
@@ -2064,7 +2064,7 @@ std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
     const auto peer_info = slave->GetConn()->GetPeerInfo();
-    result.emplace_back(peer_info->GetIP(), peer_info->GetPort());
+    result.emplace_back(peer_info.GetIP(), peer_info.GetPort());
   }
   slave_threads_mu_.unlock();
   return result;

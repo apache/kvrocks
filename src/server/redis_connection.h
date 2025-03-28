@@ -142,13 +142,13 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   void SetPeerInfo(std::unique_ptr<PeerInfo> &&peer_info) { peer_info_ = std::move(peer_info); }
 
-  const PeerInfo *GetPeerInfo() {
+  const PeerInfo &GetPeerInfo() {
     if (peer_info_) {
-      return peer_info_.get();
+      return *peer_info_;
     }
 
     SetPeerInfo(std::make_unique<PeerInfo>(ip_, port_, "", -1));
-    return peer_info_.get();
+    return *peer_info_;
   }
 
   uint64_t GetClientType() const;
@@ -235,35 +235,30 @@ class PeerInfo {
   ~PeerInfo() = default;
 
   PeerInfo(std::string_view ip, uint32_t port, std::string_view peer_id, int64_t peer_version)
-      : port_(port), peer_version_(peer_version) {
-    if (peer_id.empty()) {
-      str_ = fmt::format("{}:{}", ip, port);
-    } else {
-      str_ = fmt::format("{}:{} ({}@{})", ip, port, peer_id, peer_version);
-    }
-
-    addr_ = std::string_view(str_).substr(0, str_.find(' '));
-    ip_ = std::string_view(str_).substr(0, ip.length());
-
-    if (!peer_id.empty()) {
-      peer_id_ = std::string_view(str_).substr(addr_.length() + 1, peer_id.length());
-    }
+      : ip_(ip), port_(port), peer_id_(peer_id), peer_version_(peer_version) {
+    addr_ = fmt::format("{}:{}", ip, port);
   }
 
-  std::string_view GetIP() const { return ip_; }
+  std::string GetIP() const { return ip_; }
   uint32_t GetPort() const { return port_; }
 
-  std::string_view GetStringView() const { return str_; }
-  std::string_view GetPeerID() const { return peer_id_; }
-  std::string_view GetAddr() const { return addr_; }
+  std::string ToString() const {
+    if (peer_id_.empty()) {
+      return fmt::format("{}:{}", ip_, port_);
+    } else {
+      return fmt::format("{}:{} ({}@{})", ip_, port_, peer_id_, peer_version_);
+    }
+  }
+  std::string GetPeerID() const { return peer_id_; }
+  std::string GetAddr() const { return addr_; }
   int64_t GetPeerVersion() const { return peer_version_; }
 
  private:
-  std::string_view ip_;
-  std::string_view addr_;
+  std::string ip_;
+  std::string addr_;
   uint32_t port_ = 0;
 
-  std::string_view peer_id_;
+  std::string peer_id_;
   int64_t peer_version_ = 0;
 
   std::string str_;

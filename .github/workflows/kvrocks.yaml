@@ -558,8 +558,6 @@ jobs:
           echo "DEBUG START"
           ldconfig -p | grep libstdc++
           gcc -print-file-name=libstdc++.so
-          export LIBRARY_PATH=$LIBRARY_PATH:/lib64
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/lib64
           echo "DEBUG END"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

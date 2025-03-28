@@ -500,7 +500,7 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev) {
     return CBState::RESTART;
   }
 
-  if (isNodeFired(resp)) {
+  if (isNodeDecommissioned(resp)) {
     LOG(ERROR) << "The master has fired the node, stop the replication";
     return CBState::QUIT;
   }
@@ -1065,7 +1065,7 @@ bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
   return err == msg;
 }
 
-bool ReplicationThread::isNodeFired(std::string_view err) {
+bool ReplicationThread::isNodeDecommissioned(std::string_view err) {
   static const auto msg =
       fmt::format(RESP_PREFIX_ERROR "{}", redis::StatusToRedisErrorMsg({Status::NotOK, errNodeDecommissioned}));
   return err == msg;

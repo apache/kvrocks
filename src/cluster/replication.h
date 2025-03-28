@@ -211,7 +211,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   static bool isRestoringError(std::string_view err);
   static bool isWrongPsyncNum(std::string_view err);
   static bool isUnknownOption(std::string_view err);
-  static bool isNodeFired(std::string_view err);
+  static bool isNodeDecommissioned(std::string_view err);
 
   Status parseWriteBatch(const rocksdb::WriteBatch &write_batch);
 };

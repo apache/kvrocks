@@ -177,7 +177,7 @@ class CommandReplConf : public Commander {
     return Commander::Parse(args);
   }
 
-  Status ParseParam(const std::string& option, const std::string& value) {
+  Status ParseParam(const std::string &option, const std::string &value) {
     if (option == "listening-port") {
       auto parse_result = ParseInt<int>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {
@@ -219,7 +219,7 @@ class CommandReplConf : public Commander {
                  std::string *output) override {
     if (srv->GetConfig()->cluster_enabled && peer_version_ >= 0 &&
         !srv->cluster->IsInCluster(peer_id_, peer_version_)) {
-      return {Status::NotOK, errYouAreFired};
+      return {Status::NotOK, errNodeDecommissioned};
     }
 
     if (ip_.empty()) {

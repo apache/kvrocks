@@ -1067,7 +1067,7 @@ bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
 
 bool ReplicationThread::isNodeFired(std::string_view err) {
   static const auto msg =
-      fmt::format(RESP_PREFIX_ERROR "{}", redis::StatusToRedisErrorMsg({Status::NotOK, errYouAreFired}));
+      fmt::format(RESP_PREFIX_ERROR "{}", redis::StatusToRedisErrorMsg({Status::NotOK, errNodeDecommissioned}));
   return err == msg;
 }
 

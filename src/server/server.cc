@@ -1081,11 +1081,10 @@ Server::InfoEntries Server::GetReplicationInfo() {
   entries.emplace_back("connected_slaves", slave_threads_.size());
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
-    const auto& peer_info = slave->GetConn()->GetPeerInfo();
+    const auto &peer_info = slave->GetConn()->GetPeerInfo();
     entries.emplace_back("slave" + std::to_string(idx),
-                         fmt::format("ip={},port={},offset={},lag={}", peer_info.GetIP(),
-                                     peer_info.GetPort(), slave->GetCurrentReplSeq(),
-                                     latest_seq - slave->GetCurrentReplSeq()));
+                         fmt::format("ip={},port={},offset={},lag={}", peer_info.GetIP(), peer_info.GetPort(),
+                                     slave->GetCurrentReplSeq(), latest_seq - slave->GetCurrentReplSeq()));
     ++idx;
   }
   slave_threads_mu_.unlock();
@@ -1119,7 +1118,7 @@ std::string Server::GetRoleInfo() {
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
       const auto peer_info = slave->GetConn()->GetPeerInfo();
-      
+
       list.emplace_back(redis::ArrayOfBulkStrings({
           std::string(peer_info.GetIP()),
           std::to_string(peer_info.GetPort()),

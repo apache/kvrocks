@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <string_view>
 #include <utility>
 
 template <typename F, F *f>

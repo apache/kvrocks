@@ -177,7 +177,7 @@ class CommandReplConf : public Commander {
     return Commander::Parse(args);
   }
 
-  Status ParseParam(std::string_view option, std::string_view value) {
+  Status ParseParam(const std::string& option, const std::string& value) {
     if (option == "listening-port") {
       auto parse_result = ParseInt<int>(value, NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {

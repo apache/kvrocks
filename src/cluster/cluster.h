@@ -22,13 +22,10 @@
 
 #include <algorithm>
 #include <bitset>
-#include <cstdint>
-#include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -39,7 +36,6 @@
 #include "server/redis_connection.h"
 #include "status.h"
 #include "storage/scripting.h"
-#include "type_util.h"
 
 class ClusterNode {
  public:
@@ -66,7 +62,7 @@ struct SlotInfo {
   std::vector<NodeInfo> nodes;
 };
 
-using ClusterNodes = std::unordered_map<std::string_view, std::shared_ptr<ClusterNode>>;
+using ClusterNodes = std::unordered_map<std::string, std::shared_ptr<ClusterNode>>;
 
 class Server;
 class SyncMigrateContext;
@@ -97,9 +93,9 @@ class Cluster {
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);
   Status Reset();
-  bool IsInCluster(const std::string &node_id, int64_t version) const;
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
+  bool IsInCluster(const std::string &node_id, int64_t version) const;
 
  private:
   std::string getNodeIDBySlot(int slot) const;
@@ -116,7 +112,7 @@ class Cluster {
   int64_t version_ = -1;
   std::string myid_;
   std::shared_ptr<ClusterNode> myself_;
-  std::unique_ptr<const ClusterNodes> nodes_;
+  ClusterNodes nodes_;
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 
   std::map<int, std::string> migrated_slots_;

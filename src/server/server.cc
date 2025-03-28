@@ -359,7 +359,7 @@ void Server::CleanupOrphanSlaves(int64_t version, const ClusterNodes &nodes) {
   std::lock_guard<std::mutex> lg(slave_threads_mu_);
 
   for (auto &slave_thread : slave_threads_) {
-    const auto peer_info = slave_thread->GetConn()->GetPeerInfo();
+    const auto& peer_info = slave_thread->GetConn()->GetPeerInfo();
     auto peer_version = peer_info.GetPeerVersion();
     if (peer_version < 0 || peer_version > version) {
       // The peer version is greater than the current version,

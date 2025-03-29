@@ -269,7 +269,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
     output = run_pipe("head", "-n", "1", stdin=output)    
     output = run_pipe("awk", "{print $(NF)}", stdin=output)
     stdcpp_path = output.read().strip()
-    stdcpp_dir = str(pathlib.Path(stdcpp_path).parent)
+    stdcpp_dir = str(Path(stdcpp_path).parent)
 
     env = os.environ.copy()
     current_ldflags = env.get("CGO_LDFLAGS", "")
@@ -347,7 +347,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     output = run_pipe("head", "-n", "1", stdin=output)    
     output = run_pipe("awk", "{print $(NF)}", stdin=output)
     stdcpp_path = output.read().strip()
-    stdcpp_dir = str(pathlib.Path(stdcpp_path).parent)
+    stdcpp_dir = str(Path(stdcpp_path).parent)
 
     env = os.environ.copy()
     current_ldflags = env.get("CGO_LDFLAGS", "")

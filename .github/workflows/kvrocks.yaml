@@ -559,6 +559,14 @@ jobs:
           ldconfig -p | grep libstdc++
           gcc -print-file-name=libstdc++.so
           echo "DEBUG END"
+          STDCPP_PATH=$(ldconfig -p | grep libstdc++ | head -n1 | awk '{print $NF}')
+          STDCPP_DIR=$(dirname "$STDCPP_PATH")
+          echo "DEBUG STDCPP_PATH: $STDCPP_DIR"
+          ls -l $STDCPP_DIR
+          # Add the directory to CGO_LDFLAGS
+          if [ -n "$STDCPP_DIR" ]; then
+            export CGO_LDFLAGS="$CGO_LDFLAGS -L$STDCPP_DIR -Wl,-rpath,$STDCPP_DIR"
+          fi
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky

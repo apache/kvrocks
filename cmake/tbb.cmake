@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(tbb
-  oneapi-src/oneTBB v2022.0.0
-  MD5=7eaeff0ddec85182afb60f2232fae2af
+  uxlfoundation/oneTBB v2022.1.0
+  MD5=4a8940795f7e414727a1c443b94fd686
 )
 
 FetchContent_MakeAvailableWithArgs(tbb

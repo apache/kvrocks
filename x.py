@@ -264,14 +264,22 @@ def golangci_lint(golangci_lint_path: str) -> None:
     z4lib = Path(__file__).parent.absolute().joinpath('build/_deps/lz4-src/lib')
     snappy_lib = Path(__file__).parent.absolute().joinpath('build/_deps/snappy-build')
 
+    output = run_pipe("ldconfig", "-p")    
+    output = run_pipe("grep", "libstdc++", stdin=output)    
+    output = run_pipe("head", "-n", "1", stdin=output)    
+    output = run_pipe("awk", "{print $(NF)}", stdin=output)
+    stdcpp_path = output.read().strip()
+    stdcpp_dir = str(pathlib.Path(stdcpp_path).parent)
+
     env = os.environ.copy()
+    current_ldflags = env.get("CGO_LDFLAGS", "")
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L{stdcpp_dir} -Wl,-rpath,{stdcpp_dir}",
     })
 
-    print("CGO_CFLAGS:", env.get("CGO_CFLAGS"))
-    print("CGO_LDFLAGS:", env.get("CGO_LDFLAGS"))
+    print(f"Added C++ standard library path: {stdcpp_dir}")
+    print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")
 
     run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=env)
 
@@ -334,11 +342,22 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     z4lib = Path(dir).absolute().joinpath('_deps/lz4-src/lib')
     snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
 
+    output = run_pipe("ldconfig", "-p")    
+    output = run_pipe("grep", "libstdc++", stdin=output)    
+    output = run_pipe("head", "-n", "1", stdin=output)    
+    output = run_pipe("awk", "{print $(NF)}", stdin=output)
+    stdcpp_path = output.read().strip()
+    stdcpp_dir = str(pathlib.Path(stdcpp_path).parent)
+
     env = os.environ.copy()
+    current_ldflags = env.get("CGO_LDFLAGS", "")
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L{stdcpp_dir} -Wl,-rpath,{stdcpp_dir}",
     })
+
+    print(f"Added C++ standard library path: {stdcpp_dir}")
+    print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")
 
     args = [
         'test', '-timeout=1800s', '-bench=.', './...',

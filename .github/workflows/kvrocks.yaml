@@ -477,7 +477,7 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled powertools
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
           dnf --enablerepo=powertools install -y libstdc++-static
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
@@ -491,7 +491,7 @@ jobs:
         run: |
           dnf install -y epel-release 
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
           dnf --enablerepo=crb install -y libstdc++-static
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100

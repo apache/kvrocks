@@ -128,15 +128,15 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
 
     os.makedirs(dir, exist_ok=True)
 
-    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
+    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
     if ghproxy:
         cmake_options.append("-DDEPS_FETCH_PROXY=https://mirror.ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':
-        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
+        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
     elif compiler == 'clang':
-        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
+        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
     if D:
         cmake_options += [f"-D{o}" for o in D]
 

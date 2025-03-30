@@ -243,8 +243,8 @@ class CommandTDigestMax : public CommandTDigestMinMax {
   CommandTDigestMax() : CommandTDigestMinMax(false) {}
 };
 class CommandTDigestQuantile : public Commander {
-  Status Parse(const std::vector<std::string> &agrs) {
-    key_name = args[1];
+  Status Parse(const std::vector<std::string> &args) {
+    key_name_ = args[1];
     values_.reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {
       auto value = ParseFloat(args[i]);
@@ -259,6 +259,16 @@ class CommandTDigestQuantile : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     TDigestQuantitleResult result;
     auto s = tdigest.Quantile(ctx, key_name_, values_, &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, errKeyNotFound};
+    }
+    std::vector<std::string> quantile_strings;
+    quantile_strings.reserve(result.quantiles.size());
+    for (const auto &q : result.quantiles) {
+      quantile_strings.push_back(std::to_string(q));
+    }
+    *output = redis::MultiBulkString(RESP::v2, quantile_strings);
+    return Status::OK();
   }
 
  private:

@@ -134,9 +134,9 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':
-        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++"]
+        cmake_options += ["-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
     elif compiler == 'clang':
-        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+        cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
     if D:
         cmake_options += [f"-D{o}" for o in D]
 

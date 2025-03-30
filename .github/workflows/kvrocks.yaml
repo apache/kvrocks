@@ -561,9 +561,6 @@ jobs:
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           echo "DEBUG START"
-          ldconfig -p | grep libstdc++
-          ldconfig -p | grep stdc++
-          gcc -print-file-name=libstdc++.so
           echo "DEBUG END"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

@@ -27,10 +27,13 @@
 
 class RedisBloomChainTest : public TestBase {
  protected:
-  explicit RedisBloomChainTest() { sb_chain_ = std::make_unique<redis::BloomChain>(storage_.get(), "sb_chain_ns"); }
+  explicit RedisBloomChainTest() = default;
   ~RedisBloomChainTest() override = default;
 
-  void SetUp() override { key_ = "test_sb_chain_key"; }
+  void SetUp() override {
+    key_ = "test_sb_chain_key";
+    sb_chain_ = std::make_unique<redis::BloomChain>(storage_.get(), "sb_chain_ns");
+  }
   void TearDown() override {}
 
   std::unique_ptr<redis::BloomChain> sb_chain_;
@@ -48,8 +51,6 @@ TEST_F(RedisBloomChainTest, Reserve) {
   s = sb_chain_->Reserve(*ctx_, key_, capacity, error_rate, expansion);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.ToString(), "Invalid argument: the key already exists");
-
-  s = sb_chain_->Del(*ctx_, key_);
 }
 
 TEST_F(RedisBloomChainTest, BasicAddAndTest) {
@@ -79,5 +80,34 @@ TEST_F(RedisBloomChainTest, BasicAddAndTest) {
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(exist, false);
   }
-  s = sb_chain_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisBloomChainTest, DuplicateInsert) {
+  std::string insert_items[] = {"item1", "item2", "item3", "item101", "item202", "303"};
+  for (const auto& insert_item : insert_items) {
+    redis::BloomFilterAddResult ret = redis::BloomFilterAddResult::kOk;
+    auto s = sb_chain_->Add(*ctx_, key_, insert_item, &ret);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(ret, redis::BloomFilterAddResult::kOk);
+  }
+  std::vector<std::string> arrays;
+  for (int64_t idx = 0; idx < 1000; ++idx) {
+    arrays.push_back("itemx" + std::to_string(idx));
+  }
+  std::vector<redis::BloomFilterAddResult> results;
+  results.resize(arrays.size());
+  auto s = sb_chain_->MAdd(*ctx_, key_, arrays, &results);
+  EXPECT_TRUE(s.ok());
+  arrays.clear();
+  for (int64_t idx = 1000; idx < 2000; ++idx) {
+    arrays.push_back("itemx" + std::to_string(idx));
+  }
+  s = sb_chain_->MAdd(*ctx_, key_, arrays, &results);
+  EXPECT_TRUE(s.ok());
+  arrays.clear();
+  for (int64_t idx = 2000; idx < 3000; ++idx) {
+    arrays.push_back("itemx" + std::to_string(idx));
+  }
+  s = sb_chain_->MAdd(*ctx_, key_, arrays, &results);
+  EXPECT_TRUE(s.ok());
 }

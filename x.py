@@ -353,6 +353,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
 
     print("CGO_CFLAGS:", env.get("CGO_CFLAGS"))
     print("CGO_LDFLAGS:", env.get("CGO_LDFLAGS"))
+    print("ENV:", env)
 
     run(go, *args, cwd=str(basedir), verbose=True, env=env)
 

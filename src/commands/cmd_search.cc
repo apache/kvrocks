@@ -436,7 +436,7 @@ class CommandFTInfo : public Commander {
     output->append(redis::SimpleString("index_definition"));
     output->append(redis::MultiLen(4));
     output->append(redis::SimpleString("key_type"));
-    output->append(redis::BulkString(RedisTypeNames[(size_t)info->metadata.on_data_type]));
+    output->append(redis::BulkString(info->metadata.OnDataTypeName()));
     output->append(redis::SimpleString("prefixes"));
     output->append(redis::ArrayOfBulkStrings(info->prefixes.prefixes));
 

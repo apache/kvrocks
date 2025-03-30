@@ -149,11 +149,15 @@ jobs:
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
+            with_env: 
+             - BUILD_WITH_ASAN=TRUE
             compiler: gcc
           - name: Ubuntu Clang ASan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_env: 
+              - BUILD_WITH_ASAN=TRUE
             compiler: clang
           - name: Ubuntu GCC TSan
             os: ubuntu-22.04
@@ -273,6 +277,11 @@ jobs:
       - name: Build Kvrocks
         if: ${{ !matrix.sonarcloud }}
         run: |
+          if [[ "${{ matrix.with_env }}" ]]; then
+            for env_var in "${matrix.with_env[@]}"; do
+              export $env_var
+            done
+          fi
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}

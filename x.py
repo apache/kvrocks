@@ -336,9 +336,16 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
 
     env = os.environ.copy()
     current_ldflags = env.get("CGO_LDFLAGS", "")
+    
+    is_asan_build = env.get("BUILD_WITH_ASAN","false")
+    print(f"debug: {is_asan_build}")
+    additional_flag = ""
+    if is_asan_build == "true":
+            additional_flag = "-g -O2"
+
     env.update({
-        "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_CFLAGS": f"{additional_flag} -I{rocksdb}",
+        "CGO_LDFLAGS": f"{current_ldflags} {additional_flag} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
     })
 
     print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")

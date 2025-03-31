@@ -302,6 +302,7 @@ jobs:
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
@@ -487,7 +488,7 @@ jobs:
       - name: Setup Rocky Linux 9
         if: ${{ startsWith(matrix.image, 'rockylinux:9') }}
         run: |
-          dnf install -y epel-release 
+          dnf install -y epel-release
           dnf config-manager --set-enabled crb
           dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
           dnf --enablerepo=crb install -y libstdc++-static
@@ -558,8 +559,6 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
-          echo "DEBUG START"
-          echo "DEBUG END"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky

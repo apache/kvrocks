@@ -342,7 +342,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
 
     additional_flag = ""
     if is_lsan_build != "" or is_tsan_build != "":
-            additional_flag = "-g -O2"
+            additional_flag = "-g -O2 -fsanitize=thread"
 
     env.update({
         "CGO_CFLAGS": f"{additional_flag} -I{rocksdb}",

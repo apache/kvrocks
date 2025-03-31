@@ -337,10 +337,11 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     env = os.environ.copy()
     current_ldflags = env.get("CGO_LDFLAGS", "")
     
-    is_asan_build = env.get("BUILD_WITH_ASAN","false")
-    print(f"debug: {is_asan_build}")
+    is_lsan_build = env.get("LSAN_OPTIONS","")
+    is_tsan_build = env.get("TSAN_OPTIONS","")
+
     additional_flag = ""
-    if is_asan_build == "true":
+    if is_lsan_build != "" || is_tsan_build != "":
             additional_flag = "-g -O2"
 
     env.update({

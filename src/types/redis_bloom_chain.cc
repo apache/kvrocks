@@ -203,12 +203,6 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
         slice.PinSelf();
         return slice;
       };
-      auto strip_string_from_pinnable_slice = [](rocksdb::PinnableSlice &slice) -> std::string {
-        if (slice.GetSelf() != nullptr) {
-          return std::move(*slice.GetSelf());
-        }
-        return slice.ToString();
-      };
       if (metadata.size + 1 > metadata.GetCapacity()) {
         if (metadata.IsScaling()) {
           s = batch->Put(bf_key_list.back(), bf_data_list.back().ToStringView());
@@ -224,7 +218,7 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
         }
       }
       auto &bf_data = bf_data_list.back();
-      std::string data = strip_string_from_pinnable_slice(bf_data);
+      std::string data = bf_data.ToString();
       bloomAdd(item_hash_list[i], data);
       bf_data = pinnable_slice_from_string(std::move(data));
       (*rets)[i] = BloomFilterAddResult::kOk;

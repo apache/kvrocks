@@ -340,19 +340,19 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     is_lsan_build = env.get("LSAN_OPTIONS","")
     is_tsan_build = env.get("TSAN_OPTIONS","")
 
-    additional_flag = ""
-    #if is_lsan_build != "" or is_tsan_build != "":
-    #        additional_flag = "-g -O2 -fsanitize=thread"
+    additional_tags = ""
+    if is_lsan_build != "":
+        additional_tags = "-tags=asan"
 
     env.update({
-        "CGO_CFLAGS": f"{additional_flag} -I{rocksdb}",
-        "CGO_LDFLAGS": f"{current_ldflags} {additional_flag} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        "CGO_CFLAGS": f" -I{rocksdb}",
+        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
     })
 
     print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")
 
     args = [
-        'test', '-timeout=1800s', '-bench=.', './...',
+        'test', f'{additional_tags}', '-timeout=1800s', '-bench=.', './...',
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',

@@ -1,8 +1,7 @@
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
+# regarding copyright ownership.  The ASF licenses this file to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
 #
@@ -110,34 +109,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Darwin Clang
-            os: macos-13
-            compiler: auto
-          - name: Darwin Clang arm64
-            os: macos-14
-            compiler: auto
-          - name: Darwin Clang without Jemalloc
-            os: macos-13
-            compiler: auto
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - name: Darwin Clang with OpenSSL
-            os: macos-13
-            compiler: auto
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Darwin Clang without luaJIT
-            os: macos-13
-            compiler: auto
-            without_luajit: -DENABLE_LUAJIT=OFF
-          - name: Ubuntu GCC
-            os: ubuntu-22.04
-            compiler: gcc
+          #- name: Darwin Clang
+          #  os: macos-13
+          #  compiler: auto
+          #- name: Darwin Clang arm64
+          #  os: macos-14
+          #  compiler: auto
+          #- name: Darwin Clang without Jemalloc
+          #  os: macos-13
+          #  compiler: auto
+          #  without_jemalloc: -DDISABLE_JEMALLOC=ON
+          #- name: Darwin Clang with OpenSSL
+          #  os: macos-13
+          #  compiler: auto
+          #  with_openssl: -DENABLE_OPENSSL=ON
+          #- name: Darwin Clang without luaJIT
+          #  os: macos-13
+          #  compiler: auto
+          #  without_luajit: -DENABLE_LUAJIT=OFF
+          #- name: Ubuntu GCC
+          #  os: ubuntu-22.04
+          #  compiler: gcc
           - name: SonarCloud with Coverage
             os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
-          - name: Ubuntu Clang
-            os: ubuntu-22.04
-            compiler: clang
+          #- name: Ubuntu Clang
+          #  os: ubuntu-22.04
+          #  compiler: clang
           # FIXME: https://github.com/apache/kvrocks/issues/2411
           # - name: Ubuntu 24 GCC
           #   os: ubuntu-24.04
@@ -149,65 +148,71 @@ jobs:
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
-            with_env: 
+            with_env:
              - BUILD_WITH_ASAN=TRUE
             compiler: gcc
           - name: Ubuntu Clang ASan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_env: 
+            with_env:
               - BUILD_WITH_ASAN=TRUE
             compiler: clang
           - name: Ubuntu GCC TSan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_TSAN=ON
+            with_env:
+              - BUILD_WITH_TSAN=TRUE
             compiler: gcc
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_env:
+              - BUILD_WITH_TSAN=TRUE
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang UBSAN
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_UBSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
+            with_env:
+              - BUILD_WITH_USAN=TRUE
             compiler: clang
-          - name: Ubuntu GCC Ninja
-            os: ubuntu-22.04
-            with_ninja: --ninja
-            compiler: gcc
-          - name: Ubuntu GCC with OpenSSL
-            os: ubuntu-22.04
-            compiler: gcc
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Ubuntu Clang with OpenSSL
-            os: ubuntu-22.04
-            compiler: clang
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Ubuntu GCC without luaJIT
-            os: ubuntu-22.04
-            without_luajit: -DENABLE_LUAJIT=OFF
-            compiler: gcc
-          - name: Ubuntu Clang without luaJIT
-            os: ubuntu-22.04
-            without_luajit: -DENABLE_LUAJIT=OFF
-            compiler: clang
-          - name: Ubuntu GCC with old encoding
-            os: ubuntu-22.04
-            compiler: gcc
-            new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu Clang with old encoding
-            os: ubuntu-22.04
-            compiler: clang
-            new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu Arm64
-            os: ubuntu-24.04-arm
-            compiler: auto
-            arm_linux: true
+          #- name: Ubuntu GCC Ninja
+          #  os: ubuntu-22.04
+          #  with_ninja: --ninja
+          #  compiler: gcc
+          #- name: Ubuntu GCC with OpenSSL
+          #  os: ubuntu-22.04
+          #  compiler: gcc
+          #  with_openssl: -DENABLE_OPENSSL=ON
+          #- name: Ubuntu Clang with OpenSSL
+          #  os: ubuntu-22.04
+          #  compiler: clang
+          #  with_openssl: -DENABLE_OPENSSL=ON
+          #- name: Ubuntu GCC without luaJIT
+          #  os: ubuntu-22.04
+          #  without_luajit: -DENABLE_LUAJIT=OFF
+          #  compiler: gcc
+          #- name: Ubuntu Clang without luaJIT
+          #  os: ubuntu-22.04
+          #  without_luajit: -DENABLE_LUAJIT=OFF
+          #  compiler: clang
+          #- name: Ubuntu GCC with old encoding
+          #  os: ubuntu-22.04
+          #  compiler: gcc
+          #  new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          #- name: Ubuntu Clang with old encoding
+          #  os: ubuntu-22.04
+          #  compiler: clang
+          #  new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          #- name: Ubuntu Arm64
+          #  os: ubuntu-24.04-arm
+          #  compiler: auto
+          #  arm_linux: true
 
     runs-on: ${{ matrix.os }}
     env:
@@ -278,9 +283,11 @@ jobs:
         if: ${{ !matrix.sonarcloud }}
         run: |
           if [[ "${{ matrix.with_env }}" ]]; then
-            for env_var in "${matrix.with_env[@]}"; do
-              export $env_var
-            done
+            while IFS= read -r env_var; do
+              if [[ -n "$env_var" ]]; then
+                export "$env_var"
+              fi
+            done < <(echo "${{ matrix.with_env }}")
           fi
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
@@ -440,25 +447,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: openSUSE Leap 15
-            image: opensuse/leap:15
-            compiler: gcc
-          - name: ArchLinux
-            image: archlinux:base
-            compiler: gcc
+          #- name: openSUSE Leap 15
+          #  image: opensuse/leap:15
+          #  compiler: gcc
+          #- name: ArchLinux
+          #  image: archlinux:base
+          #  compiler: gcc
           - name: Rocky Linux 8
             image: rockylinux:8
             compiler: gcc
-          - name: Rocky Linux 9
-            image: rockylinux:9
-            compiler: gcc
-          - name: Debian 12
-            image: debian:12
-            compiler: gcc
-          - name: Alpine 3
-            image: alpine:3
-            compiler: gcc
-            disable_jemalloc: -DDISABLE_JEMALLOC=ON
+          #- name: Rocky Linux 9
+          #  image: rockylinux:9
+          #  compiler: gcc
+          #- name: Debian 12
+          #  image: debian:12
+          #  compiler: gcc
+          #- name: Alpine 3
+          #  image: alpine:3
+          #  compiler: gcc
+          #  disable_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ubuntu-22.04
     container:

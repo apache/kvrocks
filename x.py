@@ -335,18 +335,16 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
 
     env = os.environ.copy()
-    current_ldflags = env.get("CGO_LDFLAGS", "")
-    env.update({
-        "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
-    })
     
     is_tsan_build = env.get("TSAN_OPTIONS","")
     additional_tags = ""
     if is_tsan_build != "":
         additional_tags = "-tags=tsan"
-
-    print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")
+    else:
+        env.update({
+            "CGO_CFLAGS": f"-I{rocksdb}",
+            "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+        })
 
     args = [
         'test', f'{additional_tags}', '-timeout=1800s', '-bench=.', './...',
@@ -355,10 +353,6 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         f'-workspace={workspace}',
         *rest
     ]
-
-    print("CGO_CFLAGS:", env.get("CGO_CFLAGS"))
-    print("CGO_LDFLAGS:", env.get("CGO_LDFLAGS"))
-    print("ENV:", env)
 
     run(go, *args, cwd=str(basedir), verbose=True, env=env)
 

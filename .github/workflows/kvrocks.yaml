@@ -148,38 +148,28 @@ jobs:
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
-            with_env:
-             - BUILD_WITH_ASAN=TRUE
             compiler: gcc
           - name: Ubuntu Clang ASan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_env:
-              - BUILD_WITH_ASAN=TRUE
             compiler: clang
           - name: Ubuntu GCC TSan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_TSAN=ON
-            with_env:
-              - BUILD_WITH_TSAN=TRUE
             compiler: gcc
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_env:
-              - BUILD_WITH_TSAN=TRUE
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang UBSAN
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_UBSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_env:
-              - BUILD_WITH_USAN=TRUE
             compiler: clang
           #- name: Ubuntu GCC Ninja
           #  os: ubuntu-22.04
@@ -282,13 +272,6 @@ jobs:
       - name: Build Kvrocks
         if: ${{ !matrix.sonarcloud }}
         run: |
-          if [[ "${{ matrix.with_env }}" ]]; then
-            while IFS= read -r env_var; do
-              if [[ -n "$env_var" ]]; then
-                export "$env_var"
-              fi
-            done < <(echo "${{ matrix.with_env }}")
-          fi
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}

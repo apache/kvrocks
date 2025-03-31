@@ -335,19 +335,13 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
 
     env = os.environ.copy()
-    
-    is_tsan_build = env.get("TSAN_OPTIONS","")
-    additional_tags = ""
-    if is_tsan_build != "":
-        additional_tags = "-tags=tsan"
-    else:
-        env.update({
-            "CGO_CFLAGS": f"-I{rocksdb}",
-            "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
-        })
+    env.update({
+        "CGO_CFLAGS": f"-I{rocksdb}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
+    })
 
     args = [
-        'test', f'{additional_tags}', '-timeout=1800s', '-bench=.', './...',
+        'test', '-timeout=1800s', '-bench=.', './...',
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',

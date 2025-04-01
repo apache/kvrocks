@@ -223,6 +223,31 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
+def get_custom_env():
+    rocksdb = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-src/include')
+    rocksdb_lib = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-build')
+    zlib = Path(__file__).parent.absolute().joinpath('build/_deps/zstd-src/lib')
+    z4lib = Path(__file__).parent.absolute().joinpath('build/_deps/lz4-src/lib')
+    snappy_lib = Path(__file__).parent.absolute().joinpath('build/_deps/snappy-build')
+
+    additional_flags = ""
+    libstdc_folder = ""
+    if is_rocky_linux():
+        output = run_pipe("rpm", "-qa")
+        output = run_pipe("grep", "gcc-toolset-12-libstdc++-devel", stdin=output)
+        libstdc_path = output.read().strip()
+        libstdc_folder = os.path.dirname(libstdc_path)
+    if libstdc_folder != "":
+        additional_flags = f"-L{libstdc_folder} -lstdc++"
+
+    env = os.environ.copy()
+    env.update({
+        "CGO_CFLAGS": f"-I{rocksdb}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
+    })
+    return env
+
+
 def golangci_lint(golangci_lint_path: str) -> None:
     def get_gopath() -> Tuple[Path, Path]:
         go = find_command('go', msg='go is required for testing')
@@ -258,22 +283,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
 
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    rocksdb = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-src/include')
-    rocksdb_lib = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-build')
-    zlib = Path(__file__).parent.absolute().joinpath('build/_deps/zstd-src/lib')
-    z4lib = Path(__file__).parent.absolute().joinpath('build/_deps/lz4-src/lib')
-    snappy_lib = Path(__file__).parent.absolute().joinpath('build/_deps/snappy-build')
-
-    env = os.environ.copy()
-    current_ldflags = env.get("CGO_LDFLAGS", "")
-    env.update({
-        "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"{current_ldflags} -L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib}",
-    })
-
-    print(f"Updated CGO_LDFLAGS: {env['CGO_LDFLAGS']}")
-
-    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=env)
+    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=get_custom_env())
 
 
 def write_version(release_version: str) -> str:
@@ -337,27 +347,6 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     binpath = Path(dir).absolute() / 'kvrocks'
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     workspace = basedir / 'workspace'
-    rocksdb = Path(dir).absolute().joinpath('_deps/rocksdb-src/include')
-    rocksdb_lib = Path(dir).absolute().joinpath('_deps/rocksdb-build')
-    zlib = Path(dir).absolute().joinpath('_deps/zstd-src/lib')
-    z4lib = Path(dir).absolute().joinpath('_deps/lz4-src/lib')
-    snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
-
-    additional_flags = ""
-    libstdc_folder = ""
-    if is_rocky_linux():
-        output = run_pipe("rpm", "-qa")
-        output = run_pipe("grep", "gcc-toolset-12-libstdc++-devel", stdin=output)
-        libstdc_path = output.read().strip()
-        libstdc_folder = os.path.dirname(libstdc_path)
-    if libstdc_folder != "":
-        additional_flags = f"-L{libstdc_folder} -lstdc++"
-
-    env = os.environ.copy()
-    env.update({
-        "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
-    })
 
     args = [
         'test', '-timeout=1800s', '-bench=.', './...',
@@ -367,7 +356,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir), verbose=True, env=env)
+    run(go, *args, cwd=str(basedir), verbose=True, env=get_custom_env())
 
 
 if __name__ == '__main__':

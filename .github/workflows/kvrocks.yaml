@@ -561,6 +561,8 @@ jobs:
         run: |
           echo "DEBUG"
           ldconfig -p | grep libstdc++
+          find /opt/rh/gcc-toolset-12 -name "libstdc++.so*"
+          rpm -qa | grep gcc-toolset-12-libstdc++-devel
           echo "DEBUG"
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1

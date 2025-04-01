@@ -337,7 +337,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L/opt/rh/gcc-toolset-12/root/usr/lib64 -lstdc++",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/ -lstdc++",
     })
 
     args = [

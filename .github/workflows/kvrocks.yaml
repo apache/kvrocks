@@ -560,6 +560,9 @@ jobs:
 
       - name: Run Go Integration Cases
         run: |
+          echo "DEBUG"
+          ldconfig -p | grep libstdc++
+          echo "DEBUG"
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""

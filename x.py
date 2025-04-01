@@ -321,6 +321,15 @@ def test_cpp(dir: str, rest: List[str]) -> None:
     run(str(unittest), *rest, cwd=str(basedir), verbose=True)
 
 
+def is_rocky_linux():
+    try:
+        with open('/etc/os-release') as f:
+            data = {k: v.strip('"') for k, v in (line.split('=') for line in f if '=' in line)}
+        return data.get('ID') == 'rocky' and data.get('VERSION_ID') in ('8', '9')
+    except FileNotFoundError:
+        return False
+
+
 def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     go = find_command('go', msg='go is required for testing')
     find_command(cli_path, msg='redis-cli is required for testing')
@@ -334,10 +343,20 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     z4lib = Path(dir).absolute().joinpath('_deps/lz4-src/lib')
     snappy_lib = Path(dir).absolute().joinpath('_deps/snappy-build')
 
+    additional_flags = ""
+    libstdc_folder = ""
+    if is_rocky_linux():
+        output = run_pipe("rpm", "-qa")
+        output = run_pipe("grep", "gcc-toolset-12-libstdc++-devel", stdin=output)
+        libstdc_path = output.read().strip()
+        libstdc_folder = os.path.dirname(libstdc_path)
+    if libstdc_folder != "":
+        additional_flags = f"-L{libstdc_folder} -lstdc++"
+
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -L/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/ -lstdc++",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
     })
 
     args = [

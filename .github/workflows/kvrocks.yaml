@@ -443,9 +443,9 @@ jobs:
           - name: Rocky Linux 8
             image: rockylinux:8
             compiler: gcc
-          #- name: Rocky Linux 9
-          #  image: rockylinux:9
-          #  compiler: gcc
+          - name: Rocky Linux 9
+            image: rockylinux:9
+            compiler: gcc
           #- name: Debian 12
           #  image: debian:12
           #  compiler: gcc
@@ -494,7 +494,6 @@ jobs:
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
           dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
-          dnf --enablerepo=crb install -y libstdc++-static
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -559,11 +558,6 @@ jobs:
 
       - name: Run Go Integration Cases
         run: |
-          echo "DEBUG"
-          ldconfig -p | grep libstdc++
-          find /opt/rh/gcc-toolset-12 -name "libstdc++.so*"
-          rpm -qa | grep gcc-toolset-12-libstdc++-devel
-          echo "DEBUG"
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""

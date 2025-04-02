@@ -267,7 +267,7 @@ def get_custom_env():
     env = os.environ.copy()
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -lgcov {additional_flags}",
     })
     return env
 

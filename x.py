@@ -341,7 +341,7 @@ def is_rocky_linux():
         with open('/etc/os-release') as f:
             lines = f.readlines()
         
-        logging.debug(f"Raw lines from /etc/os-release: {lines}")
+        print(f"Raw lines from /etc/os-release: {lines}")
 
         data = {}
         for line in lines:
@@ -349,20 +349,20 @@ def is_rocky_linux():
                 key, value = line.strip().split('=', 1)
                 data[key] = value.strip('"')
 
-        logging.debug(f"Parsed OS release data: {data}")
+        print(f"Parsed OS release data: {data}")
 
         is_rocky = data.get('ID') == 'rocky'
         version_match = data.get('VERSION_ID') in ('8', '9')
 
-        logging.debug(f"OS ID is 'rocky': {is_rocky}")
-        logging.debug(f"VERSION_ID is in ('8', '9'): {version_match}")
+        print(f"OS ID is 'rocky': {is_rocky}")
+        print(f"VERSION_ID is in ('8', '9'): {version_match}")
 
         return is_rocky and version_match
     except FileNotFoundError:
-        logging.error("File /etc/os-release not found.")
+        print("File /etc/os-release not found.")
         return False
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
+        print(f"Unexpected error: {e}")
         return False
 
 

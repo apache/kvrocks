@@ -255,6 +255,8 @@ def get_custom_env():
 
     additional_flags = ""
     libstdc_folder = ""
+    env = os.environ.copy()
+    
     if is_rocky_linux():
         output = run_pipe("find", "/opt/rh/gcc-toolset-12/root/", "-name", "libstdc++.so*")
         output = run_pipe("grep", "-v", "32",stdin=output)
@@ -264,10 +266,13 @@ def get_custom_env():
     if libstdc_folder != "":
         additional_flags = f"-L{libstdc_folder} -lstdc++"
 
-    env = os.environ.copy()
+    with_cov = env.get("WITH_COVERAGE","false")
+    if with_cov == "true":
+        additional_flags += "-lgcov"
+
     env.update({
         "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} -lgcov {additional_flags}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
     })
     return env
 

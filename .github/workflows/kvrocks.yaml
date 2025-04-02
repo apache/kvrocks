@@ -134,6 +134,7 @@ jobs:
             os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
+            with_coverage: "true"
           #- name: Ubuntu Clang
           #  os: ubuntu-22.04
           #  compiler: clang
@@ -310,6 +311,9 @@ jobs:
           echo "DEBUG"
           env
           echo "DEBUG"
+          if [[ -n "${{ matrix.with_coverage }}" ]]; then
+            export WITH_COVERAGE="true"
+          fi
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && git checkout v1.1.0 && go build && cd ..

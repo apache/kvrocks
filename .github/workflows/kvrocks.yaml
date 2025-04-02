@@ -562,7 +562,7 @@ jobs:
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           echo "DEBUG"
-          env | grep -i gcov
+          env
           echo "DEBUG"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

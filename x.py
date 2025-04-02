@@ -256,13 +256,7 @@ def get_custom_env():
     additional_flags = ""
     libstdc_folder = ""
     if is_rocky_linux():
-        output = run_pipe("which", "gcc")
-        output = run_pipe("xargs", "readlink", "-f", stdin=output)
-        output = run_pipe("sed", "-E", "s|(.*gcc-toolset-[0-9]+)/.*|\1/root/|", stdin=output)
-        toolset_path = output.read().strip()
-        print(toolset_path)
-
-        output = run_pipe("find", toolset_path, "-name", "libstdc++.so*")
+        output = run_pipe("find", "/opt/rh/gcc-toolset-12/root/", "-name", "libstdc++.so*")
         output = run_pipe("xargs", "dirname", stdin=output)
         libstdc_path = output.read().strip()
         print(f"libstdc_path: {libstdc_path}")

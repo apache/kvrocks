@@ -440,9 +440,9 @@ jobs:
           #- name: ArchLinux
           #  image: archlinux:base
           #  compiler: gcc
-          #- name: Rocky Linux 8
-          #  image: rockylinux:8
-          #  compiler: gcc
+          - name: Rocky Linux 8
+            image: rockylinux:8
+            compiler: gcc
           #- name: Rocky Linux 9
           #  image: rockylinux:9
           #  compiler: gcc

@@ -259,7 +259,7 @@ def get_custom_env():
         output = run_pipe("which", "gcc")
         output = run_pipe("xargs", "readlink", "-f", stdin=output)
         output = run_pipe("sed", "-E", "s|(.*gcc-toolset-[0-9]+)/.*|\1/root/|", stdin=output)
-        toolset_path = output
+        toolset_path = output.read().strip()
         print(toolset_path)
 
         output = run_pipe("find", toolset_path, "-name", "libstdc++.so*")

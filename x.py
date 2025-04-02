@@ -259,10 +259,7 @@ def get_custom_env():
         output = run_pipe("find", "/opt/rh/gcc-toolset-12/root/", "-name", "libstdc++.so*")
         output = run_pipe("grep", "-v", "32",stdin=output)
         output = run_pipe("xargs", "dirname", stdin=output)
-        libstdc_path = output.read().strip()
-        print(f"libstdc_path: {libstdc_path}")
-        libstdc_folder = os.path.dirname(libstdc_path)
-        print(f"libstdc_folder: {libstdc_folder}")
+        libstdc_folder = output.read().strip() + "/"
 
     if libstdc_folder != "":
         additional_flags = f"-L{libstdc_folder} -lstdc++"

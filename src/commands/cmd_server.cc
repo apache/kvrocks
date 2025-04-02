@@ -1374,7 +1374,7 @@ class CommandSST : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 3) {
-      return {Status::RedisParseErr, "Invalid number of arguments"};
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     std::string cmd = util::ToLower(args[1]);
     if (cmd != "load") {
@@ -1456,5 +1456,5 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
                         MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandSST>("sst", -3, "write admin", 1, 1, 1), )
+                        MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1), )
 }  // namespace redis

@@ -352,7 +352,8 @@ def is_rocky_linux():
         print(f"Parsed OS release data: {data}")
 
         is_rocky = data.get('ID') == 'rocky'
-        version_match = data.get('VERSION_ID') in ('8', '9')
+        version_id = data.get('VERSION_ID', '').split('.')[0]
+        version_match = version_id in ('8', '9')
 
         print(f"OS ID is 'rocky': {is_rocky}")
         print(f"VERSION_ID is in ('8', '9'): {version_match}")

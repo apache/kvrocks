@@ -308,12 +308,12 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
-          echo "DEBUG"
-          env
-          echo "DEBUG"
           if [[ -n "${{ matrix.with_coverage }}" ]]; then
             export WITH_COVERAGE="true"
           fi
+          echo "DEBUG"
+          env
+          echo "DEBUG"
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && git checkout v1.1.0 && go build && cd ..
@@ -568,9 +568,6 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
-          echo "DEBUG"
-          env
-          echo "DEBUG"
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky

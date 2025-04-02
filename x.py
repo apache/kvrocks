@@ -269,17 +269,6 @@ def get_custom_env():
         "CGO_CFLAGS": f"-I{rocksdb}",
         "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
     })
-    print("debug")
-    print(f"{rocksdb}")
-    print(f"{rocksdb_lib}")
-    print(f"{zlib}")
-    print(f"{z4lib}")
-    print(f"{snappy_lib}")
-    print(f"{additional_flags}")
-    print(f"{libstdc_folder}")
-    print(env.get("CGO_CFLAGS"))
-    print(env.get("CGO_LDFLAGS"))
-    print("debug")
     return env
 
 

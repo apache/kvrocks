@@ -223,6 +223,29 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
+def is_rocky_linux():
+    try:
+        with open('/etc/os-release') as f:
+            lines = f.readlines()
+        data = {}
+        for line in lines:
+            if '=' in line:
+                key, value = line.strip().split('=', 1)
+                data[key] = value.strip('"')
+
+        is_rocky = data.get('ID') == 'rocky'
+        version_id = data.get('VERSION_ID', '').split('.')[0]
+        version_match = version_id in ('8', '9')
+
+        return is_rocky and version_match
+    except FileNotFoundError:
+        print("File /etc/os-release not found.")
+        return False
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return False
+
+
 def get_custom_env():
     rocksdb = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-src/include')
     rocksdb_lib = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-build')
@@ -246,8 +269,13 @@ def get_custom_env():
         "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
     })
     print("debug")
-    print(is_rocky_linux())
+    print(f"{rocksdb}")
+    print(f"{rocksdb_lib}")
+    print(f"{zlib}")
+    print(f"{z4lib}")
+    print(f"{snappy_lib}")
     print(f"{additional_flags}")
+    print(f"{libstdc_folder}")
     print(env)
     print("debug")
     return env
@@ -334,37 +362,6 @@ def test_cpp(dir: str, rest: List[str]) -> None:
     unittest = basedir / 'unittest'
 
     run(str(unittest), *rest, cwd=str(basedir), verbose=True)
-
-
-def is_rocky_linux():
-    try:
-        with open('/etc/os-release') as f:
-            lines = f.readlines()
-        
-        print(f"Raw lines from /etc/os-release: {lines}")
-
-        data = {}
-        for line in lines:
-            if '=' in line:
-                key, value = line.strip().split('=', 1)
-                data[key] = value.strip('"')
-
-        print(f"Parsed OS release data: {data}")
-
-        is_rocky = data.get('ID') == 'rocky'
-        version_id = data.get('VERSION_ID', '').split('.')[0]
-        version_match = version_id in ('8', '9')
-
-        print(f"OS ID is 'rocky': {is_rocky}")
-        print(f"VERSION_ID is in ('8', '9'): {version_match}")
-
-        return is_rocky and version_match
-    except FileNotFoundError:
-        print("File /etc/os-release not found.")
-        return False
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return False
 
 
 def test_go(dir: str, cli_path: str, rest: List[str]) -> None:

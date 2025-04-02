@@ -245,6 +245,11 @@ def get_custom_env():
         "CGO_CFLAGS": f"-I{rocksdb}",
         "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
     })
+    print("debug")
+    print(is_rocky_linux())
+    print(f"{additional_flags}")
+    print(env)
+    print("debug")
     return env
 
 

@@ -257,9 +257,14 @@ def get_custom_env():
     libstdc_folder = ""
     if is_rocky_linux():
         output = run_pipe("rpm", "-qa")
+        print(f"first {output}")
         output = run_pipe("grep", "gcc-toolset-12-libstdc++-devel", stdin=output)
+        print(f"second {output}")
         libstdc_path = output.read().strip()
+        print(f"libstdc_path: {libstdc_path}")
         libstdc_folder = os.path.dirname(libstdc_path)
+        print(f"libstdc_folder: {libstdc_folder}")
+
     if libstdc_folder != "":
         additional_flags = f"-L{libstdc_folder} -lstdc++"
 
@@ -276,7 +281,8 @@ def get_custom_env():
     print(f"{snappy_lib}")
     print(f"{additional_flags}")
     print(f"{libstdc_folder}")
-    print(env)
+    print(env.get("CGO_CFLAGS"))
+    print(env.get("CGO_LDFLAGS"))
     print("debug")
     return env
 

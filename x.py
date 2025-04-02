@@ -258,7 +258,7 @@ def get_custom_env():
     if is_rocky_linux():
         output = run_pipe("which", "gcc")
         output = run_pipe("xargs", "readlink", "-f", stdin=output)
-        output = run_pipe("sed", "-E", "'s|(.*gcc-toolset-[0-9]+)/.*|\1/root/|'", stdin=output)
+        output = run_pipe("sed", "-E", "s|(.*gcc-toolset-[0-9]+)/.*|\1/root/|", stdin=output)
         toolset_path = output
         print(toolset_path)
 

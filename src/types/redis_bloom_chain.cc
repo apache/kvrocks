@@ -204,7 +204,9 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
         return slice;
       };
       auto strip_string_from_pinnable_slice = [](rocksdb::PinnableSlice &slice) -> std::string {
-        if (slice.GetSelf() != nullptr) {
+        if (!slice.IsPinned()) {
+          // Only a "PinSelf" slice ( which is !IsPinned )
+          // can operate in this way.
           return std::move(*slice.GetSelf());
         }
         return slice.ToString();

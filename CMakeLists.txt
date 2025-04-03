@@ -34,6 +34,8 @@ set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific opti
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()

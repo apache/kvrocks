@@ -794,38 +794,69 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     return 0;
   }
 
-  std::vector<std::string> default_files;
-  std::vector<std::string> metadata_files;
+  // Create a map to store SST files for each column family
+  std::unordered_map<std::string_view, std::vector<std::string>> cf_files;
+
+  // Initialize vectors for each column family
+  std::vector<std::string> cf_names;
+  for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
+    cf_names.emplace_back(cf.Name());
+  }
+
+  // Initialize vectors for each column family
+  for (const auto &cf_name : cf_names) {
+    cf_files[cf_name] = std::vector<std::string>();
+  }
 
   // Sort files into appropriate vectors based on filename
   for (const auto &file : sst_files) {
-    if (file.find("metadata") != std::string::npos) {
-      metadata_files.push_back(file);
-    } else {
-      default_files.push_back(file);
+    bool matched = false;
+    for (const auto &cf_name : cf_names) {
+      if (file.find(cf_name) != std::string::npos) {
+        cf_files[cf_name].push_back(file);
+        matched = true;
+        break;
+      }
+    }
+    // If no match found, assume it belongs to default CF
+    if (!matched) {
+      cf_files[rocksdb::kDefaultColumnFamilyName].push_back(file);
     }
   }
 
   // Process each set of files with the appropriate column family
-  // By importing the Default column family SST files first, we avoid data corruption -
+  // By importing the specific column family SST files first, we avoid data corruption -
   // if import fails, no data is made available or corrupted in either column family
   // if the metadata import fails, the imported data will be deleted by the compaction.
   rocksdb::Status status;
-  // Process default files with no specific column family
-  if (!default_files.empty()) {
-    status = ingestSST(db_->DefaultColumnFamily(), ingest_options, default_files);
+  // Process files for each column family except metadata
+  for (const auto &[cf_name, files] : cf_files) {
+    if (cf_name == kMetadataColumnFamilyName) continue;
+    if (files.empty()) continue;
+
+    rocksdb::ColumnFamilyHandle *cf_handle = nullptr;
+    // Find the correct CF handle
+    for (auto handle : cf_handles_) {
+      if (handle->GetName() == cf_name) {
+        cf_handle = handle;
+        break;
+      }
+    }
+
+    status = ingestSST(cf_handle, ingest_options, files);
     if (!status.ok()) {
       return {Status::NotOK, status.ToString()};
     }
   }
   // Process metadata files
+  const auto &metadata_files = cf_files[kMetadataColumnFamilyName];
   if (!metadata_files.empty()) {
     status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
     if (!status.ok()) {
       return {Status::NotOK, status.ToString()};
     }
   }
-  return default_files.size() + metadata_files.size();
+  return sst_files.size();
 }
 
 rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,

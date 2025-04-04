@@ -1376,27 +1376,25 @@ class CommandSST : public Commander {
     if (args.size() < 3) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    std::string cmd = util::ToLower(args[1]);
-    if (cmd != "load") {
+    CommandParser parser(args, 1);
+    std::string cmd = GET_OR_RET(parser.TakeStr());
+    if (!util::EqualICase(cmd, "load")) {
       return {Status::RedisParseErr, "unknown subcommand:" + args[1]};
     }
-    folder_ = args[2];
+    folder_ = GET_OR_RET(parser.TakeStr());
     // Parse optional movefiles flag
-    if (args.size() > 3) {
-      if (util::ToLower(args[3]) == "movefiles") {
-        if (args.size() < 5) {
-          return {Status::RedisParseErr, "missing movefiles value"};
-        }
-        std::string value = util::ToLower(args[4]);
-        if (value == "yes") {
+    while (parser.Good()) {
+      if (parser.EatEqICase("movefiles")) {
+        std::string move_files = GET_OR_RET(parser.TakeStr());
+        if (util::EqualICase(move_files, "yes")) {
           ingest_options_.move_files = true;
-        } else if (value == "no") {
+        } else if (util::EqualICase(move_files, "no")) {
           ingest_options_.move_files = false;
         } else {
           return {Status::RedisParseErr, "movefiles value must be 'yes' or 'no'"};
         }
       } else {
-        return {Status::RedisParseErr, "unknown option: " + args[3]};
+        return {Status::RedisParseErr, "unknown option: " + parser.TakeStr().GetValue()};
       }
     }
     return Commander::Parse(args);

@@ -268,3 +268,41 @@ TEST(StringUtil, RegexMatchExtractSSTFile) {
     ASSERT_TRUE(match_results[1] == "/000038.sst");
   }
 }
+
+TEST(StringUtil, SplitArguments) {
+  std::map<std::string, std::vector<std::string>> valid_cases = {
+      // normal cases
+      {"a b c", {"a", "b", "c"}},
+      {"a\tb\nc\fd", {"a", "b", "c", "d"}},
+
+      //  quote cases
+      {"hello \"a b\" c", {"hello", "a b", "c"}},
+      {"'a b' c", {"a b", "c"}},
+
+      {"\"a\\\"b\" c", {"a\"b", "c"}},
+      {"'a\\' b' c", {"a' b", "c"}},
+  };
+  for (const auto &item : valid_cases) {
+    const std::string &input = item.first;
+    const std::vector<std::string> &expected = item.second;
+    auto result = util::SplitArguments(input);
+    ASSERT_TRUE(result.IsOK());
+    ASSERT_EQ(result.GetValue(), expected);
+  }
+
+  // invalid cases
+  std::map<std::string, std::string> invalid_cases = {
+      {"a \"b c", "unclosed quote string"},
+      {"a 'b c", "unclosed quote string"},
+      {"a \"b' c", "unclosed quote string"},
+      {"a 'b\" c", "unclosed quote string"},
+      {"a b 'c\\", "unexpected trailing escape character"},
+  };
+  for (const auto &item : invalid_cases) {
+    const std::string &input = item.first;
+    const std::string &expected_error = item.second;
+    auto result = util::SplitArguments(input);
+    ASSERT_FALSE(result.IsOK());
+    ASSERT_EQ(result.Msg(), expected_error);
+  }
+}

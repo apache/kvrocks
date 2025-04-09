@@ -276,6 +276,71 @@ std::pair<std::string, std::string> SplitGlob(std::string_view glob) {
   return {prefix, ""};
 }
 
+StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
+  std::vector<std::string> arguments;
+  std::string current_string;
+
+  enum { NORMAL, QUOTED, SINGLE_QUOTED, ESCAPE } state = NORMAL;
+
+  bool is_quoted = false;
+  for (const char c : in) {
+    switch (state) {
+      case NORMAL:
+        if (std::isspace(c)) {
+          if (!current_string.empty()) {
+            arguments.emplace_back(std::move(current_string));
+            current_string.clear();
+          }
+          // skip spaces
+        } else if (c == '"' || c == '\'') {
+          state = c == '"' ? QUOTED : SINGLE_QUOTED;
+          is_quoted = c == '"';
+        } else {
+          current_string.push_back(c);
+        }
+        break;
+      case QUOTED:
+      case SINGLE_QUOTED:
+        if (c == '\\') {
+          state = ESCAPE;
+        } else if ((c == '"' && state == QUOTED) || (c == '\'' && state == SINGLE_QUOTED)) {
+          state = NORMAL;
+        } else {
+          current_string.push_back(c);
+        }
+        break;
+      case ESCAPE:
+        if (c == '"' || c == '\'' || c == '\\') {
+          current_string.push_back(c);
+        } else if (c == 't') {
+          current_string.push_back('\t');
+        } else if (c == 'r') {
+          current_string.push_back('\r');
+        } else if (c == 'n') {
+          current_string.push_back('\n');
+        } else if (c == 'v') {
+          current_string.push_back('\v');
+        } else if (c == 'f') {
+          current_string.push_back('\f');
+        } else if (c == 'b') {
+          current_string.push_back('\b');
+        }
+        state = is_quoted ? QUOTED : SINGLE_QUOTED;
+        break;
+    }
+  }
+  if (state == QUOTED || state == SINGLE_QUOTED) {
+    return {Status::NotOK, "unclosed quote string"};
+  }
+  if (state == ESCAPE) {
+    return {Status::NotOK, "unexpected trailing escape character"};
+  }
+  if (!current_string.empty()) {
+    arguments.emplace_back(std::move(current_string));
+  }
+  return arguments;
+}
+
 std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex) {
   std::regex base_regex(regex);
   std::smatch pieces_match;

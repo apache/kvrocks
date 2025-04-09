@@ -20,6 +20,8 @@ project(kvrocks
         DESCRIPTION "NoSQL which is based on RocksDB and compatible with the Redis protocol"
         LANGUAGES C CXX)
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 option(DISABLE_JEMALLOC "disable use of the jemalloc library" OFF)
 option(ENABLE_ASAN "enable address sanitizer" OFF)
 option(ENABLE_TSAN "enable thread sanitizer" OFF)

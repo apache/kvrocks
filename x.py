@@ -128,7 +128,7 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
 
     os.makedirs(dir, exist_ok=True)
 
-    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"]
+    cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     if ghproxy:
         cmake_options.append("-DDEPS_FETCH_PROXY=https://mirror.ghproxy.com/")
     if ninja:

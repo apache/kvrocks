@@ -278,6 +278,8 @@ TEST(StringUtil, SplitArguments) {
       //  quote cases
       {"hello \"a b\" c", {"hello", "a b", "c"}},
       {"'a b' c", {"a b", "c"}},
+      {"a 'b c' \" d e \"", {"a", "b c", " d e "}},
+      {"a \" b c \" 'd e'", {"a", " b c ", "d e"}},
 
       {"\"a\\\"b\" c", {"a\"b", "c"}},
       {"'a\\' b' c", {"a' b", "c"}},

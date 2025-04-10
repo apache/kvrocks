@@ -123,12 +123,14 @@ func TestProtocolNetwork(t *testing.T) {
 		c.MustRead(t, ":4")
 		require.NoError(t, c.Write("RPUSH my_list \"bar \\\"\"\n"))
 		c.MustRead(t, ":5")
+		require.NoError(t, c.Write("RPUSH my_list ' a b' \"c d e \" \n"))
+		c.MustRead(t, ":7")
 
 		rdb := srv.NewClient()
 		defer func() { require.NoError(t, rdb.Close()) }()
 		values, err := rdb.LRange(context.Background(), "my_list", 0, -1).Result()
 		require.NoError(t, err)
-		require.Equal(t, []string{"a", "b c", "d", "foo", "bar \""}, values)
+		require.Equal(t, []string{"a", "b c", "d", "foo", "bar \"", " a b", "c d e "}, values)
 	})
 
 	t.Run("mix LF/CRLF protocol separator", func(t *testing.T) {

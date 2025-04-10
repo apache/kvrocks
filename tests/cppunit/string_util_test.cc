@@ -276,13 +276,13 @@ TEST(StringUtil, SplitArguments) {
       {"a\tb\nc\fd", {"a", "b", "c", "d"}},
 
       //  quote cases
-      {"hello \"a b\" c", {"hello", "a b", "c"}},
-      {"'a b' c", {"a b", "c"}},
-      {"a 'b c' \" d e \"", {"a", "b c", " d e "}},
-      {"a \" b c \" 'd e'", {"a", " b c ", "d e"}},
+      {R"(hello "a b" c)", {"hello", "a b", "c"}},
+      {R"('a b' c)", {"a b", "c"}},
+      {R"(a 'b c' " d e ")", {"a", "b c", " d e "}},
+      {R"(a " b c " 'd e')", {"a", " b c ", "d e"}},
 
-      {"\"a\\\"b\" c", {"a\"b", "c"}},
-      {"'a\\' b' c", {"a' b", "c"}},
+      {R"("a\"b" c)", {"a\"b", "c"}},
+      {R"('a\' b' c)", {"a' b", "c"}},
   };
   for (const auto &item : valid_cases) {
     const std::string &input = item.first;
@@ -294,11 +294,11 @@ TEST(StringUtil, SplitArguments) {
 
   // invalid cases
   std::map<std::string, std::string> invalid_cases = {
-      {"a \"b c", "unclosed quote string"},
-      {"a 'b c", "unclosed quote string"},
-      {"a \"b' c", "unclosed quote string"},
-      {"a 'b\" c", "unclosed quote string"},
-      {"a b 'c\\", "unexpected trailing escape character"},
+      {R"(a "b c)", "unclosed quote string"},
+      {R"(a 'b c)", "unclosed quote string"},
+      {R"(a "b' c)", "unclosed quote string"},
+      {R"(a 'b" c)", "unclosed quote string"},
+      {R"(a b 'c\)", "unexpected trailing escape character"},
   };
   for (const auto &item : invalid_cases) {
     const std::string &input = item.first;

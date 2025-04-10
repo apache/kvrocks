@@ -116,14 +116,15 @@ func TestProtocolNetwork(t *testing.T) {
 
 	t.Run("inline protocol with quoted string", func(t *testing.T) {
 		c := srv.NewTCPClient()
+		LF := "\n"
 		defer func() { require.NoError(t, c.Close()) }()
-		require.NoError(t, c.Write("RPUSH my_list a 'b c' d\n"))
+		require.NoError(t, c.Write("RPUSH my_list a 'b c' d"+LF))
 		c.MustRead(t, ":3")
-		require.NoError(t, c.Write("RPUSH my_list \"foo\"\n"))
+		require.NoError(t, c.Write(`RPUSH my_list "foo"`+LF))
 		c.MustRead(t, ":4")
-		require.NoError(t, c.Write("RPUSH my_list \"bar \\\"\"\n"))
+		require.NoError(t, c.Write(`RPUSH my_list "bar \""`+LF))
 		c.MustRead(t, ":5")
-		require.NoError(t, c.Write("RPUSH my_list ' a b' \"c d e \" \n"))
+		require.NoError(t, c.Write(`RPUSH my_list ' a b' "c d e " `+LF))
 		c.MustRead(t, ":7")
 
 		rdb := srv.NewClient()

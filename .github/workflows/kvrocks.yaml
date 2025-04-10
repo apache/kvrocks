@@ -219,6 +219,7 @@ jobs:
           brew install --quiet --formula cmake gcc autoconf automake libtool openssl coreutils
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
+          echo "CMAKE_OSX_SYSROOT=$(xcrun --sdk macos --show-sdk-path)" >> $GITHUB_ENV
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |
@@ -278,7 +279,8 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} \
+            -DCMAKE_OSX_SYSROOT=${{ env.CMAKE_OSX_SYSROOT }}
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}

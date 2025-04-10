@@ -280,9 +280,9 @@ StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
   std::vector<std::string> arguments;
   std::string current_string;
 
-  enum { NORMAL, QUOTED, SINGLE_QUOTED, ESCAPE } state = NORMAL;
+  enum State { NORMAL, DOUBLE_QUOTED, SINGLE_QUOTED, ESCAPE } state = NORMAL;
 
-  bool is_quoted = false;
+  State state_before_escape = NORMAL;
   for (const char c : in) {
     switch (state) {
       case NORMAL:
@@ -293,17 +293,17 @@ StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
           }
           // skip spaces
         } else if (c == '"' || c == '\'') {
-          state = c == '"' ? QUOTED : SINGLE_QUOTED;
-          is_quoted = c == '"';
+          state = c == '"' ? DOUBLE_QUOTED : SINGLE_QUOTED;
         } else {
           current_string.push_back(c);
         }
         break;
-      case QUOTED:
+      case DOUBLE_QUOTED:
       case SINGLE_QUOTED:
         if (c == '\\') {
+          state_before_escape = state;
           state = ESCAPE;
-        } else if ((c == '"' && state == QUOTED) || (c == '\'' && state == SINGLE_QUOTED)) {
+        } else if ((c == '"' && state == DOUBLE_QUOTED) || (c == '\'' && state == SINGLE_QUOTED)) {
           state = NORMAL;
         } else {
           current_string.push_back(c);
@@ -325,11 +325,11 @@ StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
         } else if (c == 'b') {
           current_string.push_back('\b');
         }
-        state = is_quoted ? QUOTED : SINGLE_QUOTED;
+        state = state_before_escape;
         break;
     }
   }
-  if (state == QUOTED || state == SINGLE_QUOTED) {
+  if (state == DOUBLE_QUOTED || state == SINGLE_QUOTED) {
     return {Status::NotOK, "unclosed quote string"};
   }
   if (state == ESCAPE) {

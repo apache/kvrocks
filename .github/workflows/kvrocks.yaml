@@ -217,7 +217,6 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           brew install --quiet --formula cmake gcc autoconf automake libtool openssl coreutils
-          ls /Applications | grep Xcode
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV

@@ -790,7 +790,7 @@ Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata
       if (metadata.Type() > RedisTypeNames.size()) {
         return {Status::NotOK, "unknown key type: " + std::to_string(metadata.Type())};
       }
-      return {Status::NotOK, "unsupported complex key type: " + RedisTypeNames[metadata.Type()]};
+      return {Status::NotOK, "unsupported complex key type: " + metadata.TypeName()};
     }
   }
 

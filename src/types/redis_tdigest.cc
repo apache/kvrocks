@@ -238,7 +238,45 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
 
   return rocksdb::Status::OK();
 }
+rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
 
+  TDigestMetadata metadata;
+  if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+    return status;
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTDigest);
+  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+    return status;
+  }
+
+  metadata.unmerged_nodes = 0;
+  metadata.merged_nodes = 0;
+  metadata.total_weight = 0;
+  metadata.merged_weight = 0;
+  metadata.minimum = std::numeric_limits<double>::max();
+  metadata.maximum = std::numeric_limits<double>::lowest();
+  metadata.total_observations = 0;
+  metadata.merge_times = 0;
+
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+
+  if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+    return status;
+  }
+
+  auto start_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kBuffer);
+  auto guard_key = internalSegmentGuardPrefixKey(metadata, ns_key, SegmentType::kGuardFlag);
+
+  if (auto status = batch->DeleteRange(cf_handle_, start_key, guard_key); !status.ok()) {
+    return status;
+  }
+  auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  return status;
+}
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   return Database::GetMetadata(context, {kRedisTDigest}, ns_key, metadata);

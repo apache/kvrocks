@@ -20,6 +20,8 @@
 
 #include <storage/batch_extractor.h>
 
+#include <ctime>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -1006,12 +1008,42 @@ static uint64_t GenerateConfigFlag(uint64_t flags, const std::vector<std::string
 
 class CommandLastSave : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    if (args.size() > 2) {
+      return {Status::RedisParseErr, "unknown extra arguments"};
+    }
+    while (parser.Good()) {
+      if (parser.EatEqICase("iso8601")) {
+        format_spec_ = true;
+      } else {
+        return {Status::RedisParseErr, "unknown arguments"};
+      }
+    }
+
+    return Status::OK();
+  }
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
     int64_t unix_sec = srv->GetLastBgsaveTime();
-    *output = redis::Integer(unix_sec);
+    if (format_spec_) {
+      auto raw_time = static_cast<time_t>(unix_sec);
+      tm local_time{};
+      if (localtime_r(&raw_time, &local_time)) {
+        char buf[64];
+        strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S%z", &local_time);
+        *output = redis::BulkString(buf);
+      } else {
+        return {Status::NotOK, "unable to convert timestamp to local time"};
+      }
+    } else {
+      *output = redis::Integer(unix_sec);
+    }
     return Status::OK();
   }
+
+ private:
+  bool format_spec_ = false;
 };
 
 class CommandRestore : public Commander {
@@ -1369,7 +1401,7 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
 
                         MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", NO_KEY),
                         MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandLastSave>("lastsave", 1, "read-only admin", NO_KEY),
+                        MakeCmdAttr<CommandLastSave>("lastsave", -1, "read-only admin", NO_KEY),
                         MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script admin", NO_KEY),
                         MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script admin", NO_KEY),
                         MakeCmdAttr<CommandSlaveOf>("replicaof", 3, "read-only exclusive no-script admin", NO_KEY),

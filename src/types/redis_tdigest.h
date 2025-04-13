@@ -67,6 +67,7 @@ class TDigest : public SubKeyScanner {
   rocksdb::Status Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                            TDigestQuantitleResult* result);
 
+  rocksdb::Status Reset(engine::Context& ctx, const Slice& digest_name);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
 
  private:

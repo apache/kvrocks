@@ -477,7 +477,7 @@ rocksdb::Status Database::Dump(engine::Context &ctx, const Slice &user_key, std:
   infos->emplace_back("namespace");
   infos->emplace_back(namespace_);
   infos->emplace_back("type");
-  infos->emplace_back(RedisTypeNames[metadata.Type()]);
+  infos->emplace_back(metadata.TypeName());
   infos->emplace_back("version");
   infos->emplace_back(std::to_string(metadata.version));
   infos->emplace_back("expire");

@@ -176,14 +176,16 @@ Status Server::Start() {
   }
 
   if (config_->cluster_enabled) {
+    // Create objects used for slot migration
+    slot_migrator = std::make_unique<SlotMigrator>(this);
+
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
       if (!s.IsOK()) {
         return s.Prefixed("failed to load cluster nodes info");
       }
     }
-    // Create objects used for slot migration
-    slot_migrator = std::make_unique<SlotMigrator>(this);
+
     auto s = slot_migrator->CreateMigrationThread();
     if (!s.IsOK()) {
       return s.Prefixed("failed to create migration thread");

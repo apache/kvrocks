@@ -22,7 +22,9 @@
 
 #include <event2/buffer.h>
 
+#include <initializer_list>
 #include <map>
+#include <numeric>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,23 +61,38 @@ inline std::string NilString(RESP ver) {
   return "$-1" CRLF;
 }
 
-std::string BulkString(const std::string &data);
+std::string BulkString(std::string_view data);
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string MultiLen(T len) {
   return "*" + std::to_string(len) + CRLF;
 }
 
-std::string Array(const std::vector<std::string> &list);
+template <typename Con>
+std::string Array(const Con &list) {
+  size_t total_size =
+      std::accumulate(list.begin(), list.end(), 0, [](size_t n, const auto &s) { return n + s.size(); });
+  std::string result = MultiLen(list.size());
+  result.reserve(result.size() + total_size);
+  for (const auto &i : list) result += i;
+  return result;
+}
+template <typename T>
+std::string Array(std::initializer_list<T> list) {
+  return Array<std::initializer_list<T>>(list);
+}
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elements);
 
 std::string Bool(RESP ver, bool b);
+
 inline std::string BigNumber(RESP ver, const std::string &n) {
   return ver == RESP::v3 ? "(" + n + CRLF : BulkString(n);
 }
+
 inline std::string Double(RESP ver, double d) {
   return ver == RESP::v3 ? "," + util::Float2String(d) + CRLF : BulkString(util::Float2String(d));
 }
+
 // ext is the extension of file to send, 'txt' for text file, 'md ' for markdown file
 // at most 3 chars, padded with space
 // if RESP is V2, treat verbatim string as blob string
@@ -89,6 +106,7 @@ inline std::string VerbatimString(RESP ver, std::string ext, const std::string &
 }
 
 inline std::string NilArray(RESP ver) { return ver == RESP::v3 ? "_" CRLF : "*-1" CRLF; }
+
 std::string MultiBulkString(RESP ver, const std::vector<std::string> &values);
 std::string MultiBulkString(RESP ver, const std::vector<std::string> &values,
                             const std::vector<rocksdb::Status> &statuses);
@@ -98,16 +116,27 @@ std::string HeaderOfSet(RESP ver, T len) {
   return ver == RESP::v3 ? "~" + std::to_string(len) + CRLF : MultiLen(len);
 }
 std::string SetOfBulkStrings(RESP ver, const std::vector<std::string> &elems);
+
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfMap(RESP ver, T len) {
   return ver == RESP::v3 ? "%" + std::to_string(len) + CRLF : MultiLen(len * 2);
 }
-std::string Map(RESP ver, const std::map<std::string, std::string> &map);
+template <typename Con>
+std::string Map(RESP ver, const Con &map) {
+  std::string result = HeaderOfMap(ver, map.size());
+  for (const auto &pair : map) {
+    result += pair.first;
+    result += pair.second;
+  }
+  return result;
+}
 std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems);
+
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfAttribute(T len) {
   return "|" + std::to_string(len) + CRLF;
 }
+
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string HeaderOfPush(RESP ver, T len) {
   return ver == RESP::v3 ? ">" + std::to_string(len) + CRLF : MultiLen(len);

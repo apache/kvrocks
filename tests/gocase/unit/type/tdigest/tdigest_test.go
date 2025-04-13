@@ -203,4 +203,111 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 100, info.Observations)
 		require.Greater(t, info.TotalCompressions, int64(0))
 	})
+
+	t.Run("tdigest.max with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_max_"
+
+		// Test invalid arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MAX").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MAX", keyPrefix+"nonexistent").Err(), errMsgKeyNotExist)
+
+		// Test with empty tdigest
+		key := keyPrefix + "test1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		rsp := rdb.Do(ctx, "TDIGEST.MAX", key)
+		require.NoError(t, rsp.Err())
+		require.EqualValues(t, rsp.Val(), "nan")
+
+		// Test with single value
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42.5").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", key)
+		require.NoError(t, rsp.Err())
+		require.Equal(t, "42.5", rsp.Val())
+
+		// Test with multiple values
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1.0", "100.5", "50.5", "-10.5").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", key)
+		require.NoError(t, rsp.Err())
+		require.Equal(t, "100.5", rsp.Val())
+	})
+
+	t.Run("tdigest.min with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_min_"
+
+		// Test invalid arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MIN").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MIN", keyPrefix+"nonexistent").Err(), errMsgKeyNotExist)
+
+		// Test with empty tdigest
+		key := keyPrefix + "test1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		rsp := rdb.Do(ctx, "TDIGEST.MIN", key)
+		require.NoError(t, rsp.Err())
+		require.EqualValues(t, rsp.Val(), "nan")
+
+		// Test with single value
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42.5").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", key)
+		require.NoError(t, rsp.Err())
+		require.Equal(t, "42.5", rsp.Val())
+
+		// Test with multiple values
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1.0", "100.5", "50.5", "-10.5").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", key)
+		require.NoError(t, rsp.Err())
+		require.Equal(t, "-10.5", rsp.Val())
+	})
+	t.Run("tdigest.reset with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_reset_"
+
+		// Testing with no arguments to .RESET
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RESET").Err(), errMsgWrongNumberArg)
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", keyPrefix+"mydigest", "compression", "101").Err())
+
+		key := keyPrefix + "mydigest"
+		// Adding some data to digest
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "-84.3", "199.3", "343.34", "12.34").Err())
+
+		// Checking MIN value to ensure data was added
+		rsp := rdb.Do(ctx, "TDIGEST.MIN", key)
+		require.NoError(t, rsp.Err())
+		require.EqualValues(t, rsp.Val(), "-84.3")
+
+		// Reset on a non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RESET", keyPrefix+"notexist").Err(), errMsgKeyNotExist)
+
+		// Get TDIGEST.INFO before reset
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", key)
+		require.NoError(t, rsp.Err())
+		infoBeforeReset := toTdigestInfo(t, rsp.Val())
+
+		// Perform the reset
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.RESET", key).Err())
+
+		// Get TDIGEST.INFO after reset
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", key)
+		require.NoError(t, rsp.Err())
+		infoAfterReset := toTdigestInfo(t, rsp.Val())
+
+		// Ensure capacity remains unchanged
+		require.EqualValues(t, infoBeforeReset.Capacity, infoAfterReset.Capacity)
+		require.EqualValues(t, 101, infoAfterReset.Compression)
+		require.EqualValues(t, 0, infoAfterReset.MergedNodes)
+		require.EqualValues(t, 0, infoAfterReset.UnmergedNodes)
+		require.EqualValues(t, 0, infoAfterReset.Observations)
+		require.EqualValues(t, 0, infoAfterReset.TotalCompressions)
+
+		// Reset on an empty digest
+		emptyDigestKey := keyPrefix + "empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyDigestKey, "COMPRESSION", "100").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RESET", emptyDigestKey)
+		require.NoError(t, rsp.Err())
+
+		// Ensure empty digest's capacity remains the same
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", emptyDigestKey)
+		require.NoError(t, rsp.Err())
+		infoAfterEmptyReset := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 100, infoAfterEmptyReset.Compression)
+	})
 }

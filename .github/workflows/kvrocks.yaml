@@ -40,7 +40,7 @@ jobs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.30.0
+        uses: crate-ci/typos@v1.31.0
         with:
           config: .github/config/typos.toml
 
@@ -109,24 +109,37 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Darwin Clang
-            os: macos-13
-            compiler: auto
           - name: Darwin Clang arm64
             os: macos-14
             compiler: auto
-          - name: Darwin Clang without Jemalloc
-            os: macos-13
+          - name: Darwin Clang arm64 without Jemalloc
+            os: macos-14
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - name: Darwin Clang with OpenSSL
-            os: macos-13
+          - name: Darwin Clang arm64 with OpenSSL
+            os: macos-14
             compiler: auto
             with_openssl: -DENABLE_OPENSSL=ON
-          - name: Darwin Clang without luaJIT
-            os: macos-13
+          - name: Darwin Clang arm64 without luaJIT
+            os: macos-14
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
+          # FIXME: temporarily disable macos-13 build, refer to #2874
+          # - name: Darwin Clang
+          #   os: macos-13
+          #   compiler: auto
+          # - name: Darwin Clang without Jemalloc
+          #   os: macos-13
+          #   compiler: auto
+          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
+          # - name: Darwin Clang with OpenSSL
+          #   os: macos-13
+          #   compiler: auto
+          #   with_openssl: -DENABLE_OPENSSL=ON
+          # - name: Darwin Clang without luaJIT
+          #   os: macos-13
+          #   compiler: auto
+          #   without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc

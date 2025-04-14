@@ -21,7 +21,6 @@
 #pragma once
 
 #include <config/config.h>
-#include <glog/logging.h>
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -29,6 +28,7 @@
 
 #include <cstdlib>
 
+#include "logging.h"
 #include "unique_fd.h"
 
 inline bool SupervisedUpstart() {
@@ -114,7 +114,7 @@ inline void Daemonize() {
   // change the file mode
   umask(0);
   if (setsid() < 0) {
-    LOG(ERROR) << "Failed to setsid, err: %s" << strerror(errno);
+    LOG(ERROR) << "Failed to setsid, err: " << strerror(errno);
     exit(1);
   }
 

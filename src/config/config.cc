@@ -22,6 +22,7 @@
 
 #include <fmt/format.h>
 #include <rocksdb/env.h>
+#include <spdlog/spdlog.h>
 #include <strings.h>
 
 #include <cstddef>
@@ -57,13 +58,6 @@ const std::vector<ConfigEnum<SupervisedMode>> supervised_modes{
     {"auto", kSupervisedAutoDetect},
     {"upstart", kSupervisedUpStart},
     {"systemd", kSupervisedSystemd},
-};
-
-const std::vector<ConfigEnum<int>> log_levels{
-    {"info", google::INFO},
-    {"warning", google::WARNING},
-    {"error", google::ERROR},
-    {"fatal", google::FATAL},
 };
 
 const std::vector<ConfigEnum<JsonStorageFormat>> json_storage_formats{{"json", JsonStorageFormat::JSON},
@@ -192,7 +186,7 @@ Config::Config() {
       {"dir", true, new StringField(&dir, kDefaultDir)},
       {"backup-dir", false, new StringField(&backup_dir, kDefaultBackupDir)},
       {"log-dir", true, new StringField(&log_dir, "")},
-      {"log-level", false, new EnumField<int>(&log_level, log_levels, google::INFO)},
+      {"log-level", false, new EnumField<spdlog::level::level_enum>(&log_level, log_levels, spdlog::level::info)},
       {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
@@ -227,7 +221,7 @@ Config::Config() {
       {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 0, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
-      {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
+      {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
@@ -475,7 +469,7 @@ void Config::initFieldCallback() {
        [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,
               [[maybe_unused]] const std::string &v) -> Status {
          db_dir = dir + "/db";
-         if (log_dir.empty()) log_dir = dir;
+         if (log_dir.empty()) log_dir = dir + ",stdout";
          checkpoint_dir = dir + "/checkpoint";
          sync_checkpoint_dir = dir + "/sync_checkpoint";
          backup_sync_dir = dir + "/backup_for_sync";
@@ -595,21 +589,7 @@ void Config::initFieldCallback() {
       {"log-level",
        [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         FLAGS_minloglevel = log_level;
-         return Status::OK();
-       }},
-      {"log-retention-days",
-       [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
-         if (!srv) return Status::OK();
-         if (util::ToLower(log_dir) == "stdout") {
-           return {Status::NotOK, "can't set the 'log-retention-days' when the log dir is stdout"};
-         }
-
-         if (log_retention_days != -1) {
-           google::EnableLogCleaner(std::chrono::hours(24) * log_retention_days);
-         } else {
-           google::DisableLogCleaner();
-         }
+         spdlog::set_level(log_level);
          return Status::OK();
        }},
       {"persist-cluster-nodes-enabled",
@@ -900,8 +880,8 @@ Status Config::Load(const CLIOptions &opts) {
       line_num++;
     }
   } else {
-    std::cout << "WARNING: No config file specified, using the default configuration. "
-              << "In order to specify a config file use 'kvrocks -c /path/to/kvrocks.conf'" << std::endl;
+    std::cout << "WARNING: No config file specified, default configuration applied. "
+              << "In order to specify a config file, use `kvrocks -c /path/to/kvrocks.conf`." << std::endl;
   }
 
   for (const auto &opt : opts.cli_options) {

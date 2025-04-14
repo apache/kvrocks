@@ -21,7 +21,6 @@
 #include "types/tdigest.h"
 
 #include <fmt/format.h>
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -37,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "logging.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "time_util.h"

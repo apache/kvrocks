@@ -23,7 +23,6 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <fcntl.h>
-#include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 #include <unistd.h>
 
@@ -32,6 +31,7 @@
 
 #include "event_util.h"
 #include "io_util.h"
+#include "logging.h"
 #include "server/redis_reply.h"
 
 void SendStringToEvent(bufferevent *bev, const std::string &data) {

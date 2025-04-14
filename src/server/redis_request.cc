@@ -20,7 +20,6 @@
 
 #include "redis_request.h"
 
-#include <glog/logging.h>
 #include <rocksdb/perf_context.h>
 
 #include <chrono>
@@ -29,6 +28,7 @@
 
 #include "cluster/redis_slot.h"
 #include "event_util.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "redis_connection.h"
 #include "redis_reply.h"

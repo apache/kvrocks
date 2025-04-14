@@ -22,7 +22,6 @@
 
 #include <event2/buffer.h>
 #include <fcntl.h>
-#include <glog/logging.h>
 #include <rocksdb/convenience.h>
 #include <rocksdb/env.h>
 #include <rocksdb/filter_policy.h>
@@ -40,6 +39,7 @@
 #include "db_util.h"
 #include "event_listener.h"
 #include "event_util.h"
+#include "logging.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
 #include "rocksdb/cache.h"
@@ -606,8 +606,8 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              std::string *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NE(options.snapshot, nullptr);
-    DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+    DCHECK(options.snapshot != nullptr);
+    DCHECK(ctx.GetSnapshot()->GetSequenceNumber() == options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
@@ -631,8 +631,8 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              rocksdb::PinnableSlice *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NE(options.snapshot, nullptr);
-    DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+    DCHECK(options.snapshot != nullptr);
+    DCHECK(ctx.GetSnapshot()->GetSequenceNumber() == options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
@@ -664,8 +664,8 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
 rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NE(options.snapshot, nullptr);
-    DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+    DCHECK(options.snapshot != nullptr);
+    DCHECK(ctx.GetSnapshot()->GetSequenceNumber() == options.snapshot->GetSequenceNumber());
   }
   auto iter = db_->NewIterator(options, column_family);
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
@@ -680,8 +680,8 @@ void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options
                        rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
                        rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NE(options.snapshot, nullptr);
-    DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
+    DCHECK(options.snapshot != nullptr);
+    DCHECK(ctx.GetSnapshot()->GetSequenceNumber() == options.snapshot->GetSequenceNumber());
   }
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
     txn_write_batch_->MultiGetFromBatchAndDB(db_.get(), options, column_family, num_keys, keys, values, statuses,

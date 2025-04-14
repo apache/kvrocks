@@ -20,13 +20,13 @@
 
 #include "parser.h"
 
-#include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 
 #include <memory>
 
 #include "cluster/redis_slot.h"
 #include "db_util.h"
+#include "logging.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
 #include "types/redis_string.h"

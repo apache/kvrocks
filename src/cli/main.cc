@@ -25,18 +25,20 @@
 #endif
 
 #include <event2/thread.h>
-#include <glog/logging.h>
 
 #include <iomanip>
+#include <memory>
 #include <ostream>
 
 #include "daemon_util.h"
-#include "glog/log_severity.h"
 #include "io_util.h"
+#include "logging.h"
 #include "pid_util.h"
 #include "scope_exit.h"
 #include "server/server.h"
 #include "signal_util.h"
+#include "spdlog/sinks/daily_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
 #include "storage/storage.h"
 #include "string_util.h"
 #include "time_util.h"
@@ -94,24 +96,45 @@ static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
   return opts;
 }
 
-static void InitGoogleLog(const Config *config) {
-  FLAGS_minloglevel = config->log_level;
-  FLAGS_max_log_size = 100;
-  FLAGS_logbufsecs = 0;
+static Status InitSpdlog(const Config &config) {
+  std::vector<spdlog::sink_ptr> sinks;
 
-  if (util::EqualICase(config->log_dir, "stdout")) {
-    for (int level = google::INFO; level <= google::FATAL; level++) {
-      google::SetLogDestination(static_cast<google::LogSeverity>(level), "");
+  // NOTE: to be compatible with old behaviors, we allow negative log_retention_days (-1)
+  auto retention_days = config.log_retention_days < 0 ? 0 : config.log_retention_days;
+
+  for (const auto &i : util::Split(config.log_dir, ",")) {
+    auto item = util::Trim(i, " ");
+    auto vals = util::Split(item, ":");
+    if (vals.empty()) {
+      return {Status::NotOK, "cannot get valid directory in config option log-dir"};
     }
-    FLAGS_stderrthreshold = google::ERROR;
-    FLAGS_logtostdout = true;
-    std::setbuf(stdout, nullptr);
-  } else {
-    FLAGS_log_dir = config->log_dir + "/";
-    if (config->log_retention_days != -1) {
-      google::EnableLogCleaner(std::chrono::hours(24) * config->log_retention_days);
+
+    auto dir = vals[0];
+    auto level_str = vals.size() >= 2 ? vals[1] : "info";
+    auto it = std::find_if(log_levels.begin(), log_levels.end(), [&](const auto &v) { return v.name == level_str; });
+    if (it == log_levels.end()) {
+      return {Status::NotOK, "failed to set log level with config option log-dir"};
     }
+    auto level = it->val;
+
+    if (util::EqualICase(dir, "stdout")) {
+      sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+    } else if (util::EqualICase(dir, "stderr")) {
+      sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_mt>());
+    } else {
+      sinks.push_back(
+          std::make_shared<spdlog::sinks::daily_file_sink_mt>(dir + "/kvrocks.log", 0, 0, false, retention_days));
+    }
+
+    sinks.back()->set_level(level);
   }
+
+  auto logger = std::make_shared<spdlog::logger>("kvrocks", sinks.begin(), sinks.end());
+  logger->set_level(config.log_level);
+  logger->set_pattern("[%Y-%m-%dT%H:%M:%S.%f%z][%^%L%$][%s:%#] %v");
+  spdlog::set_default_logger(logger);
+
+  return Status::OK();
 }
 
 int main(int argc, char *argv[]) {
@@ -138,9 +161,10 @@ int main(int argc, char *argv[]) {
     }
   });
 
-  InitGoogleLog(&config);
-  google::InitGoogleLogging("kvrocks");
-  auto glog_exit = MakeScopeExit(google::ShutdownGoogleLogging);
+  if (auto s = InitSpdlog(config); !s) {
+    std::cout << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
+    return 1;
+  }
   LOG(INFO) << "kvrocks " << PrintVersion;
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect

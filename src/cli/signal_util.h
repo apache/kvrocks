@@ -20,20 +20,25 @@
 
 #pragma once
 
-#include <glog/logging.h>
 #include <signal.h>
 
 #include <cpptrace/cpptrace.hpp>
 #include <cstddef>
 #include <iomanip>
+#include <sstream>
 
+#include "logging.h"
 #include "version_util.h"
 
 extern "C" inline void SegvHandler(int sig, [[maybe_unused]] siginfo_t *info, [[maybe_unused]] void *secret) {
   LOG(ERROR) << "Ooops! Apache Kvrocks " << PrintVersion << " got signal: " << strsignal(sig) << " (" << sig << ")";
   auto trace = cpptrace::generate_trace();
-  trace.print(LOG(ERROR));
+
+  std::string trace_str;
+  std::ostringstream os(trace_str);
+  trace.print(os);
   LOG(ERROR)
+      << os.str()
       << "It would be greatly appreciated if you could submit this crash to https://github.com/apache/kvrocks/issues "
          "along with the stacktrace above, logs and any relevant information.";
 

@@ -22,7 +22,6 @@
 
 #include <event2/bufferevent.h>
 #include <event2/event.h>
-#include <glog/logging.h>
 #include <rocksdb/types.h>
 #include <rocksdb/utilities/backup_engine.h>
 
@@ -39,6 +38,7 @@
 
 #include "cluster/cluster_defs.h"
 #include "error_constants.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "status.h"

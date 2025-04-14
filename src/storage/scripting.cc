@@ -271,7 +271,7 @@ int RedisRegisterFunction(lua_State *lua) {
 
   // store the map from function name to library name
   auto *script_run_ctx = GetFromRegistry<ScriptRunCtx>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
-  CHECK_NOTNULL(script_run_ctx);
+  CHECK(script_run_ctx != nullptr);
 
   auto s = script_run_ctx->conn->GetServer()->FunctionSetLib(name, libname);
   if (!s) {
@@ -723,7 +723,7 @@ int RedisPCallCommand(lua_State *lua) { return RedisGenericCommand(lua, 0); }
 // so the function need to be refactored
 int RedisGenericCommand(lua_State *lua, int raise_error) {
   auto *script_run_ctx = GetFromRegistry<ScriptRunCtx>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
-  CHECK_NOTNULL(script_run_ctx);
+  CHECK(script_run_ctx != nullptr);
 
   int argc = lua_gettop(lua);
   if (argc == 0) {
@@ -909,7 +909,7 @@ int RedisReturnSingleFieldTable(lua_State *lua, const char *field) {
 
 int RedisSetResp(lua_State *lua) {
   auto *script_run_ctx = GetFromRegistry<ScriptRunCtx>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
-  CHECK_NOTNULL(script_run_ctx);
+  CHECK(script_run_ctx != nullptr);
   auto *conn = script_run_ctx->conn;
   auto *srv = conn->GetServer();
 

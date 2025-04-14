@@ -20,11 +20,10 @@
 
 #include "rdb.h"
 
-#include <glog/logging.h>
-
 #include "common/encoding.h"
 #include "common/rdb_stream.h"
 #include "common/time_util.h"
+#include "logging.h"
 #include "rdb_intset.h"
 #include "rdb_listpack.h"
 #include "rdb_ziplist.h"

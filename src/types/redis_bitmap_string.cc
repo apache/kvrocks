@@ -20,11 +20,10 @@
 
 #include "redis_bitmap_string.h"
 
-#include <glog/logging.h>
-
 #include <cstdint>
 
 #include "common/bit_util.h"
+#include "logging.h"
 #include "redis_string.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"

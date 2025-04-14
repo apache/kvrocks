@@ -31,6 +31,7 @@
 
 #include "config_type.h"
 #include "cron.h"
+#include "spdlog/common.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 
@@ -55,6 +56,11 @@ constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
+
+const std::vector<ConfigEnum<spdlog::level::level_enum>> log_levels{
+    {"debug", spdlog::level::debug}, {"info", spdlog::level::info},      {"warning", spdlog::level::warn},
+    {"error", spdlog::level::err},   {"fatal", spdlog::level::critical},
+};
 
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
@@ -91,7 +97,7 @@ struct Config {
 
   int workers = 0;
   int timeout = 0;
-  int log_level = 0;
+  spdlog::level::level_enum log_level = spdlog::level::info;
   int backlog = 511;
   int maxclients = 10000;
   int max_backup_to_keep = 1;

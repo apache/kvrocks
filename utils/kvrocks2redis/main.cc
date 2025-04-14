@@ -21,7 +21,6 @@
 #include <event2/thread.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <glog/logging.h>
 #include <sys/stat.h>
 
 #include <csignal>
@@ -32,6 +31,7 @@
 #include "config.h"
 #include "config/config.h"
 #include "io_util.h"
+#include "logging.h"
 #include "parser.h"
 #include "redis_writer.h"
 #include "storage/storage.h"

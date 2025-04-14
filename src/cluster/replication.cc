@@ -24,7 +24,6 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
-#include <glog/logging.h>
 
 #include <algorithm>
 #include <atomic>
@@ -39,6 +38,7 @@
 #include "event_util.h"
 #include "fmt/format.h"
 #include "io_util.h"
+#include "logging.h"
 #include "rocksdb/write_batch.h"
 #include "rocksdb_crc32c.h"
 #include "scope_exit.h"

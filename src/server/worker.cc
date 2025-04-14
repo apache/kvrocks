@@ -21,7 +21,6 @@
 #include "worker.h"
 
 #include <event2/util.h>
-#include <glog/logging.h>
 #include <unistd.h>
 
 #include <stdexcept>
@@ -29,6 +28,7 @@
 
 #include "event2/bufferevent.h"
 #include "io_util.h"
+#include "logging.h"
 #include "scope_exit.h"
 #include "thread_util.h"
 

@@ -276,14 +276,26 @@ std::pair<std::string, std::string> SplitGlob(std::string_view glob) {
   return {prefix, ""};
 }
 
+static int HexDigitToInt(const char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  } else if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  } else if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
+  return 0;
+}
+
 StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
   std::vector<std::string> arguments;
   std::string current_string;
 
   enum State { NORMAL, DOUBLE_QUOTED, SINGLE_QUOTED, ESCAPE } state = NORMAL;
 
-  State state_before_escape = NORMAL;
-  for (const char c : in) {
+  bool done = false;
+  for (size_t i = 0; i < in.size() && !done; i++) {
+    const auto c = in[i];
     switch (state) {
       case NORMAL:
         if (std::isspace(c)) {
@@ -291,41 +303,65 @@ StatusOr<std::vector<std::string>> SplitArguments(std::string_view in) {
             arguments.emplace_back(std::move(current_string));
             current_string.clear();
           }
-          // skip spaces
-        } else if (c == '"' || c == '\'') {
-          state = c == '"' ? DOUBLE_QUOTED : SINGLE_QUOTED;
+        } else if (c == '\r' || c == '\n' || c == '\t') {
+          done = true;
+        } else if (c == '"') {
+          state = DOUBLE_QUOTED;
+        } else if (c == '\'') {
+          state = SINGLE_QUOTED;
+        } else {
+          current_string.push_back(c);
+        }
+        break;
+      case SINGLE_QUOTED:
+        if (c == '\\' && (i + 1) < in.size() && in[i + 1] == '\'') {
+          current_string.push_back('\'');
+          i++;
+        } else if (c == '\'') {
+          //
+          if (i + 1 < in.size() && !std::isspace(in[i + 1])) {
+            return {Status::NotOK, "the closed single quote must be followed by a space"};
+          }
+          state = NORMAL;
         } else {
           current_string.push_back(c);
         }
         break;
       case DOUBLE_QUOTED:
-      case SINGLE_QUOTED:
         if (c == '\\') {
-          state_before_escape = state;
           state = ESCAPE;
-        } else if ((c == '"' && state == DOUBLE_QUOTED) || (c == '\'' && state == SINGLE_QUOTED)) {
+        } else if (c == '"') {
+          if (i + 1 < in.size() && !std::isspace(in[i + 1])) {
+            return {Status::NotOK, "the closed double quote must be followed by a space"};
+          }
           state = NORMAL;
         } else {
           current_string.push_back(c);
         }
         break;
       case ESCAPE:
-        if (c == '"' || c == '\'' || c == '\\') {
+        // It's the hex digit after the \x
+        if (c == 'x' && (i + 2) < in.size() && std::isxdigit(in[i + 1]) && std::isxdigit(in[i + 2])) {
+          // Convert the hex digit to a char
+          auto hex_byte = static_cast<char>(HexDigitToInt(in[i + 1]) * 16 | HexDigitToInt(in[i + 2]));
+          current_string.push_back(hex_byte);
+          i += 2;
+        } else if (c == '"' || c == '\'' || c == '\\') {
           current_string.push_back(c);
-        } else if (c == 't') {
-          current_string.push_back('\t');
-        } else if (c == 'r') {
-          current_string.push_back('\r');
         } else if (c == 'n') {
           current_string.push_back('\n');
-        } else if (c == 'v') {
-          current_string.push_back('\v');
-        } else if (c == 'f') {
-          current_string.push_back('\f');
+        } else if (c == 'r') {
+          current_string.push_back('\r');
+        } else if (c == 't') {
+          current_string.push_back('\t');
         } else if (c == 'b') {
           current_string.push_back('\b');
+        } else if (c == 'a') {
+          current_string.push_back('\a');
+        } else {
+          current_string.push_back(c);
         }
-        state = state_before_escape;
+        state = DOUBLE_QUOTED;
         break;
     }
   }

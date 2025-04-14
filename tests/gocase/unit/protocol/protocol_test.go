@@ -120,9 +120,9 @@ func TestProtocolNetwork(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 		require.NoError(t, c.Write("RPUSH my_list a 'b c' d"+LF))
 		c.MustRead(t, ":3")
-		require.NoError(t, c.Write(`RPUSH my_list "foo"`+LF))
+		require.NoError(t, c.Write(`RPUSH my_list "foo \x61\x62"`+LF))
 		c.MustRead(t, ":4")
-		require.NoError(t, c.Write(`RPUSH my_list "bar \""`+LF))
+		require.NoError(t, c.Write(`RPUSH my_list "bar \"\g\t\n\q"`+LF))
 		c.MustRead(t, ":5")
 		require.NoError(t, c.Write(`RPUSH my_list ' a b' "c d e " `+LF))
 		c.MustRead(t, ":7")
@@ -131,7 +131,7 @@ func TestProtocolNetwork(t *testing.T) {
 		defer func() { require.NoError(t, rdb.Close()) }()
 		values, err := rdb.LRange(context.Background(), "my_list", 0, -1).Result()
 		require.NoError(t, err)
-		require.Equal(t, []string{"a", "b c", "d", "foo", "bar \"", " a b", "c d e "}, values)
+		require.Equal(t, []string{"a", "b c", "d", "foo ab", "bar \"g\t\nq", " a b", "c d e "}, values)
 	})
 
 	t.Run("mix LF/CRLF protocol separator", func(t *testing.T) {

@@ -271,18 +271,35 @@ TEST(StringUtil, RegexMatchExtractSSTFile) {
 
 TEST(StringUtil, SplitArguments) {
   std::map<std::string, std::vector<std::string>> valid_cases = {
-      // normal cases
+      // With ' ' only
       {"a b c", {"a", "b", "c"}},
+      // Other whitespace characters should work
       {"a\tb\nc\fd", {"a", "b", "c", "d"}},
 
-      //  quote cases
+      // With double quote escape characters
       {R"(hello "a b" c)", {"hello", "a b", "c"}},
+      // With single quote escape characters
       {R"('a b' c)", {"a b", "c"}},
+      // With both single and double quote escape characters
       {R"(a 'b c' " d e ")", {"a", "b c", " d e "}},
+      // With both single and double quote escape characters
       {R"(a " b c " 'd e')", {"a", " b c ", "d e"}},
 
-      {R"("a\"b" c)", {"a\"b", "c"}},
+      // With the single quote escape characters
       {R"('a\' b' c)", {"a' b", "c"}},
+      {R"('a\n\t\r\'b' c)", {R"(a\n\t\r'b)", "c"}},
+
+      // With the double quote escape characters
+      {R"("a\"b" c)", {"a\"b", "c"}},
+      {R"("a\n\t\qb\g" c)", {"a\n\tqbg", "c"}},
+
+      // Escape with the hex digits
+      {R"(\x61 \x62 \x63)", {R"(\x61)", R"(\x62)", R"(\x63)"}},
+      {R"("a \x61\x62" "\x63")", {"a ab", "c"}},
+      // '\' will be removed from '\xT0' because it's not v alid hex digit and a valid escape sequence
+      {R"("a \xT0\x62" "\x63")", {R"(a xT0b)", "c"}},
+      {R"("a b\x6Fc" "d\x63e")", {"a boc", "dce"}},
+
   };
   for (const auto &item : valid_cases) {
     const std::string &input = item.first;
@@ -298,7 +315,10 @@ TEST(StringUtil, SplitArguments) {
       {R"(a 'b c)", "unclosed quote string"},
       {R"(a "b' c)", "unclosed quote string"},
       {R"(a 'b" c)", "unclosed quote string"},
-      {R"(a b 'c\)", "unexpected trailing escape character"},
+      {R"(a b 'c\)", "unclosed quote string"},
+      {R"(a b "c\)", "unexpected trailing escape character"},
+      {R"(a b "c"d)", "the closed double quote must be followed by a space"},
+      {R"(a 'b'c)", "the closed single quote must be followed by a space"},
   };
   for (const auto &item : invalid_cases) {
     const std::string &input = item.first;

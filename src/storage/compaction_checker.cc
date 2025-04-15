@@ -31,7 +31,7 @@ void CompactionChecker::CompactPropagateAndPubSubFiles() {
   compact_opts.change_level = true;
   for (const auto &cf :
        {engine::ColumnFamilyConfigs::PubSubColumnFamily(), engine::ColumnFamilyConfigs::PropagateColumnFamily()}) {
-    LOG(INFO) << "[compaction checker] Start the compact the column family: " << cf.Name();
+    LOG(INFO) << "[compaction checker] Start to compact the column family: " << cf.Name();
     auto cf_handle = storage_->GetCFHandle(cf.Id());
     auto s = storage_->GetDB()->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
     LOG(INFO) << "[compaction checker] Compact the column family: " << cf.Name()

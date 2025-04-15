@@ -50,6 +50,7 @@ Iter FindICase(Iter begin, Iter end, std::string_view expected) {
 Status ValidateGlob(std::string_view glob);
 bool StringMatch(std::string_view glob, std::string_view str, bool ignore_case = false);
 std::pair<std::string, std::string> SplitGlob(std::string_view glob);
+StatusOr<std::vector<std::string>> SplitArguments(std::string_view in);
 
 std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex);
 std::string StringToHex(std::string_view input);

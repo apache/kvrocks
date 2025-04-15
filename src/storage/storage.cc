@@ -820,7 +820,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     }
     // If no match found, assume it belongs to default CF
     if (!matched) {
-      cf_files[rocksdb::kDefaultColumnFamilyName].push_back(file);
+      return {Status::NotOK, fmt::format("SST file '{}' does not match any known column family name", file)};
     }
   }
 

@@ -18,6 +18,7 @@
  *
  */
 
+#include "spdlog/common.h"
 #ifdef __linux__
 #define _XOPEN_SOURCE 700  // NOLINT
 #else
@@ -132,6 +133,7 @@ static Status InitSpdlog(const Config &config) {
   auto logger = std::make_shared<spdlog::logger>("kvrocks", sinks.begin(), sinks.end());
   logger->set_level(config.log_level);
   logger->set_pattern("[%Y-%m-%dT%H:%M:%S.%f%z][%^%L%$][%s:%#] %v");
+  logger->flush_on(spdlog::level::err);
   spdlog::set_default_logger(logger);
 
   return Status::OK();

@@ -1399,6 +1399,12 @@ class CommandSST : public Commander {
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::NotOK, "The SST command is not supported in cluster mode."};
+    }
+    if (srv->IsSlave()) {
+      return {Status::NotOK, "Replica nodes do not support the SST command"};
+    }
     auto s = srv->storage->IngestSST(folder_, ingest_options_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(s.GetValue())}});

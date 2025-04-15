@@ -268,7 +268,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
 		assert.NoError(t, err)
@@ -280,7 +280,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		//verify files didn't get moved
-		_, err = os.Stat(filepath.Join(dir, "kvrocks_keys.sst"))
+		_, err = os.Stat(filepath.Join(dir, "kvrocks_default.sst"))
 		assert.NoError(t, err)
 		_, err = os.Stat(filepath.Join(dir, "kvrocks_metadata.sst"))
 		assert.NoError(t, err)
@@ -332,7 +332,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
 		assert.NoError(t, err)
@@ -401,7 +401,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
 		assert.NoError(t, err)
@@ -459,7 +459,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
 		assert.NoError(t, err)
@@ -471,7 +471,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.Equal(t, int64(2), resp.filesLoaded)
 
 		//verify files did get moved
-		_, err = os.Stat(filepath.Join(dir, "kvrocks_keys.sst"))
+		_, err = os.Stat(filepath.Join(dir, "kvrocks_default.sst"))
 		assert.True(t, os.IsNotExist(err))
 		_, err = os.Stat(filepath.Join(dir, "kvrocks_metadata.sst"))
 		assert.True(t, os.IsNotExist(err))
@@ -523,7 +523,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 
 		r := rdb.Do(ctx, "sst", "load", dir)
@@ -579,7 +579,7 @@ var testSSTLoad = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			metaKeys[string(hashKey)] = string(meta.Encode())
 		}
 
-		err = createSSTFile(filepath.Join(dir, "kvrocks_keys.sst"), keys)
+		err = createSSTFile(filepath.Join(dir, "kvrocks_default.sst"), keys)
 		assert.NoError(t, err)
 		err = createSSTFile(filepath.Join(dir, "kvrocks_metadata.sst"), metaKeys)
 		assert.NoError(t, err)

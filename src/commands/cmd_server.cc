@@ -1373,9 +1373,6 @@ class CommandPollUpdates : public Commander {
 class CommandSST : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 3) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
     CommandParser parser(args, 1);
     std::string cmd = GET_OR_RET(parser.TakeStr());
     if (!util::EqualICase(cmd, "load")) {

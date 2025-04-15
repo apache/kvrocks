@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 
 #include <csignal>
+#include <memory>
 
 #include "cli/daemon_util.h"
 #include "cli/pid_util.h"
@@ -34,6 +35,10 @@
 #include "logging.h"
 #include "parser.h"
 #include "redis_writer.h"
+#include "spdlog/logger.h"
+#include "spdlog/sinks/daily_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 #include "storage/storage.h"
 #include "sync.h"
 #include "version.h"
@@ -78,17 +83,18 @@ static Options ParseCommandLineOptions(int argc, char **argv) {
   return opts;
 }
 
-static void InitGoogleLog(const kvrocks2redis::Config *config) {
-  FLAGS_minloglevel = config->loglevel;
-  FLAGS_max_log_size = 100;
-  FLAGS_logbufsecs = 0;
-  FLAGS_log_dir = config->output_dir;
+static void InitSpdlog(const kvrocks2redis::Config &config) {
+  std::vector<spdlog::sink_ptr> sinks = {
+      std::make_shared<spdlog::sinks::daily_file_sink_mt>(config.output_dir + "/kvrocks2redis.log", 0, 0),
+      std::make_shared<spdlog::sinks::stdout_color_sink_mt>()};
+  auto logger = std::make_shared<spdlog::logger>("kvrocks2redis", sinks.begin(), sinks.end());
+  logger->set_level(config.loglevel);
+  spdlog::set_default_logger(logger);
 }
 
 Server *GetServer() { return nullptr; }
 
 int main(int argc, char *argv[]) {
-  google::InitGoogleLogging("kvrocks2redis");
   evthread_use_pthreads();
 
   signal(SIGPIPE, SIG_IGN);
@@ -105,7 +111,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  InitGoogleLog(&config);
+  InitSpdlog(config);
   LOG(INFO) << "kvrocks2redis " << PrintVersion;
 
   if (config.daemonize) Daemonize();

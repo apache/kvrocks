@@ -73,7 +73,8 @@ func (s *KvrocksServer) TLSAddr() string {
 
 func (s *KvrocksServer) LogFileMatches(t testing.TB, pattern string) bool {
 	dir := s.configs["dir"]
-	content, err := os.ReadFile(dir + "/kvrocks.INFO")
+	now := time.Now()
+	content, err := os.ReadFile(dir + fmt.Sprintf("/kvrocks_%d-%02d-%02d.log", now.Year(), now.Month(), now.Day()))
 	require.NoError(t, err)
 	p := regexp.MustCompile(pattern)
 	return p.Match(content)

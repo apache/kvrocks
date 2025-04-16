@@ -270,7 +270,6 @@ class CommandTDigestQuantile : public Commander {
     *output = redis::MultiBulkString(RESP::v2, quantile_strings);
     return Status::OK();
   }
-
  private:
   std::string key_name_;
   std::vector<double> values_;

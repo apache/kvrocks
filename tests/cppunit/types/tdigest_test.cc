@@ -244,3 +244,38 @@ TEST_F(RedisTDigestTest, Add_2_times) {
                                                 expect_upper);
   }
 }
+
+TEST_F(RedisTDigestTest, Add_100_times_same_value) {
+  std::string test_digest_name = "test_digest_quantile" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  auto samples = std::vector<double>{-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  auto qs = std::vector<double>{0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99};
+
+  auto repeat_times = 100;
+
+  for (auto i = 0; i < repeat_times; ++i) {
+    std::shuffle(samples.begin(), samples.end(), std::mt19937(kSeed));
+    status = tdigest_->Add(*ctx_, test_digest_name, samples);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+  }
+
+  redis::TDigestQuantitleResult tdigest_result;
+  status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &tdigest_result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  auto expect_result = std::vector<double>{
+      -10, -9, -8, -5, 1, 7, 10, 11, 12,
+  };
+
+  EXPECT_EQ(tdigest_result.quantiles.size(), qs.size());
+
+  for (size_t i = 0; i < qs.size(); i++) {
+    auto got = tdigest_result.quantiles[i];
+    EXPECT_NEAR(got, expect_result[i], 0.5) << fmt::format("quantile is {}, should be {}", qs[i], expect_result[i]);
+  }
+}

@@ -23,6 +23,7 @@ package tdigest
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -309,5 +310,44 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rsp.Err())
 		infoAfterEmptyReset := toTdigestInfo(t, rsp.Val())
 		require.EqualValues(t, 100, infoAfterEmptyReset.Compression)
+	})
+	t.Run("tdigest.quantile with different arguments", func(t *testing.T) {
+		key_prefix := "t_qt_"
+
+		//Testing with no arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE").Err(), errMsgWrongNumberArg)
+
+		// Quantile on a non existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", key_prefix+"iDoNotExist").Err(), errMsgKeyNotExist)
+
+		// Creating a key
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key_prefix+"01", "compression", "100").Err())
+
+		key := key_prefix + "01"
+		//Adding some data to tdigest 1 2 2 3 3 3 4 4 4 4 5 5 5 5 5
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "2", "3", "3", "3", "4", "4", "4", "4", "5", "5", "5", "5", "5").Err())
+
+		// Getting quantiles 0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+		rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key, "0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1")
+		require.NoError(t, rsp.Err())
+
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 11)
+
+		// Expected values
+		expected := []float64{
+			1.0, 2.0, 2.5, 3.0, 3.5,
+			4.0, 4.0, 5.0, 5.0, 5.0, 5.0,
+		}
+		for i, v := range vals {
+			str, ok := v.(string)
+			require.True(t, ok, "expected string but got %T at index %d", v, i)
+
+			got, err := strconv.ParseFloat(str, 64)
+			require.NoError(t, err, "could not parse value at index %d", i)
+
+			require.InEpsilon(t, expected[i], got, 0.0001, "mismatch at index %d", i)
+		}
 	})
 }

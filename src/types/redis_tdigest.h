@@ -112,7 +112,7 @@ class TDigest : public SubKeyScanner {
                                      const std::vector<double>* additional_buffer = nullptr);
   std::string internalBufferKey(const std::string& ns_key, const TDigestMetadata& metadata) const;
   std::string internalKeyFromCentroid(const std::string& ns_key, const TDigestMetadata& metadata,
-                                      const Centroid& centroid) const;
+                                      const Centroid& centroid, uint32_t seq) const;
   static std::string internalValueFromCentroid(const Centroid& centroid);
   rocksdb::Status decodeCentroidFromKeyValue(const rocksdb::Slice& key, const rocksdb::Slice& value,
                                              Centroid* centroid) const;

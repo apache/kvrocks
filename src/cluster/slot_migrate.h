@@ -121,14 +121,11 @@ class SlotMigrator : public redis::Database {
   Status finishFailedMigration();
   void clean();
 
-  Status authOnDstNode(int sock_fd, const std::string &password);
   Status setImportStatusOnDstNode(int sock_fd, int status);
   static StatusOr<bool> supportedApplyBatchCommandOnDstNode(int sock_fd);
 
   Status sendSnapshotByCmd();
   Status syncWALByCmd();
-  Status checkSingleResponse(int sock_fd);
-  Status checkMultipleResponses(int sock_fd, int total);
 
   StatusOr<KeyMigrationResult> migrateOneKey(const rocksdb::Slice &key, const rocksdb::Slice &encoded_metadata,
                                              std::string *restore_cmds);
@@ -175,7 +172,6 @@ class SlotMigrator : public redis::Database {
   std::atomic<size_t> migrate_batch_size_bytes_;
 
   SlotMigrationStage current_stage_ = SlotMigrationStage::kNone;
-  ParserState parser_state_ = ParserState::ArrayLen;
   std::atomic<ThreadState> thread_state_ = ThreadState::Uninitialized;
   std::atomic<MigrationState> migration_state_ = MigrationState::kNone;
 

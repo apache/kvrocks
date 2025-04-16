@@ -31,10 +31,12 @@
 #include "common/time_util.h"
 #include "config/config.h"
 #include "error_constants.h"
+#include "redis_protocol.h"
 #include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "stats/disk_stats.h"
+#include "status.h"
 #include "storage/rdb/rdb.h"
 
 namespace redis {
@@ -1257,8 +1259,15 @@ class CommandDump : public Commander {
       return Status::OK();
     }
 
+    auto s = DumpKey(ctx, srv, conn, key);
+    if (!s.IsOK()) return s;
+    *output = redis::BulkString(s.GetValue());
+    return Status::OK();
+  }
+  static StatusOr<std::string> DumpKey(engine::Context &ctx, Server *srv, Connection *conn, const std::string &key) {
     RedisType type = kRedisNone;
-    db_status = redis.Type(ctx, key, &type);
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    rocksdb::Status db_status = redis.Type(ctx, key, &type);
     if (!db_status.ok()) return {Status::RedisExecErr, db_status.ToString()};
 
     std::string result;
@@ -1267,8 +1276,7 @@ class CommandDump : public Commander {
     auto s = rdb.Dump(key, type);
     if (!s.IsOK()) return s;
     CHECK(dynamic_cast<RdbStringStream *>(rdb.GetStream().get()) != nullptr);
-    *output = redis::BulkString(static_cast<RdbStringStream *>(rdb.GetStream().get())->GetInput());
-    return Status::OK();
+    return static_cast<RdbStringStream *>(rdb.GetStream().get())->GetInput();
   }
 };
 
@@ -1370,6 +1378,143 @@ class CommandPollUpdates : public Commander {
   Format format_ = Format::Raw;
 };
 
+class CommandMigrate : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    host_ = GET_OR_RET(parser.TakeStr());
+    port_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+    keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    db_ = GET_OR_RET(parser.TakeInt<int>());
+    timeout_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+    while (parser.Good()) {
+      if (parser.EatEqICase("COPY")) {
+        copy_ = true;
+      } else if (parser.EatEqICase("REPLACE")) {
+        replace_ = true;
+      } else if (parser.EatEqICase("AUTH")) {
+        auth_type_ = AuthType::AUTH;
+        password_ = GET_OR_RET(parser.TakeStr());
+        LOG(INFO) << "password: " << password_;
+      } else if (parser.EatEqICase("AUTH2")) {
+        auth_type_ = AuthType::AUTH2;
+        username_ = GET_OR_RET(parser.TakeStr());
+        password_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICase("KEYS")) {
+        if (keys_[0] != "") {
+          return {Status::RedisParseErr,
+                  "When using MIGRATE KEYS option, the key argument must be set to the empty string"};
+        }
+        keys_[0] = GET_OR_RET(parser.TakeStr());
+        while (parser.Good()) {
+          keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+        }
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    Status status;
+    for (const auto &key : keys_) {
+      auto db_status = redis.KeyExist(ctx, key);
+      if (!db_status.ok()) {
+        continue;
+      }
+      auto dump_status = CommandDump::DumpKey(ctx, srv, conn, key);
+      if (!dump_status.IsOK()) return status;
+      migrate_keys_.emplace_back(key);
+      migrate_values_.emplace_back(dump_status.GetValue());
+    }
+
+    if (migrate_keys_.size() == 0) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    auto result = util::SockConnect(host_, port_, 0, timeout_);
+    if (!result.IsOK()) {
+      return {Status::RedisExecErr, "failed to connect to the destination node"};
+    }
+
+    UniqueFD dst_fd;
+    dst_fd.Reset(*result);
+
+    if (auth_type_ == AuthType::AUTH) {
+      status = util::AuthOnDstNode(*dst_fd, password_);
+    } else if (auth_type_ == AuthType::AUTH2) {
+      status = util::AuthOnDstNode(*dst_fd, username_, password_);
+    }
+
+    if (!status.IsOK()) {
+      return {Status::RedisExecErr, "failed to authenticate on destination node"};
+    }
+
+    status = restoreOnDstNode(redis, ctx, *dst_fd);
+    if (!status.IsOK()) {
+      return {Status::RedisExecErr, status.Msg()};
+    }
+    if (!copy_) {
+      for (const auto &key : migrate_keys_) {
+        auto redis_status = redis.Del(ctx, key);
+        if (!redis_status.ok()) {
+          return {Status::RedisExecErr, redis_status.ToString()};
+        }
+      }
+    }
+
+    *output = redis::SimpleString("OK");
+    return Status::OK();
+  }
+
+ private:
+  Status restoreOnDstNode(redis::Database &redis, engine::Context &ctx, int dst_fd) {
+    std::string restore_cmd;
+    uint64_t timestamp = 0;
+    for (size_t i = 0; i < migrate_keys_.size(); i++) {
+      auto s = redis.GetExpireTime(ctx, migrate_keys_[i], &timestamp);
+      if (!s.ok() || s.IsExpired()) {
+        return {Status::RedisExecErr, "failed to get expire time"};
+      }
+      if (replace_) {
+        restore_cmd += redis::ArrayOfBulkStrings(
+            {"restore", migrate_keys_[i], std::to_string(timestamp), migrate_values_[i], "replace"});
+      } else {
+        restore_cmd +=
+            redis::ArrayOfBulkStrings({"restore", migrate_keys_[i], std::to_string(timestamp), migrate_values_[i]});
+      }
+    }
+
+    auto sock_status = util::SockSend(dst_fd, restore_cmd);
+    if (!sock_status.IsOK()) {
+      return {Status::RedisExecErr, fmt::format("failed to send restore command to destination node")};
+    }
+
+    sock_status = util::CheckMultipleResponses(dst_fd, static_cast<int>(migrate_keys_.size()));
+    if (!sock_status.IsOK()) {
+      return {Status::RedisExecErr, sock_status.Msg()};
+    }
+
+    return Status::OK();
+  }
+
+  std::string host_;
+  uint32_t port_;
+  std::vector<std::string> keys_;
+  int db_;
+  int timeout_;
+  bool copy_{false};
+  bool replace_{false};
+  std::string username_;
+  std::string password_;
+  std::vector<std::string> migrate_keys_;
+  std::vector<std::string> migrate_values_;
+  enum class AuthType { NO_AUTH, AUTH, AUTH2 } auth_type_;
+};
+
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
@@ -1410,5 +1555,6 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
                         MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY), )
+                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
+                        MakeCmdAttr<CommandMigrate>("migrate", -6, "write", 1, -1, 1))
 }  // namespace redis

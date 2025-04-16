@@ -1405,6 +1405,9 @@ class CommandSST : public Commander {
     if (srv->IsSlave()) {
       return {Status::NotOK, "Replica nodes do not support the SST command"};
     }
+    if (srv->GetReplicaCount() != 0) {
+      return {Status::NotOK, "The SST command is not supported when there are replicas."};
+    }
     auto s = srv->storage->IngestSST(folder_, ingest_options_);
     if (!s.IsOK()) return {Status::RedisExecErr, s.Msg()};
     *output = conn->Map({{redis::BulkString("files_loaded"), redis::Integer(s.GetValue())}});

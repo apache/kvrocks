@@ -332,10 +332,13 @@ std::string TDigest::internalBufferKey(const std::string& ns_key, const TDigestM
 }
 
 std::string TDigest::internalKeyFromCentroid(const std::string& ns_key, const TDigestMetadata& metadata,
-                                             const Centroid& centroid) const {
+                                             const Centroid& centroid, uint32_t seq) const {
   std::string sub_key;
   PutFixed8(&sub_key, static_cast<uint8_t>(SegmentType::kCentroids));
   PutDouble(&sub_key, centroid.mean);  // It uses EncodeDoubleToUInt64 and keeps original order of double
+  // The tdigest centroids only cares about the weight rather than the mean, so different centroids may have same mean,
+  // we should keep them with same original order, this seq id could be discarded in decode
+  PutFixed32(&sub_key, seq);
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 }
 
@@ -363,6 +366,9 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
     LOG(ERROR) << "corrupted tdigest centroid key, extract mean failed";
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
+
+  // The seq id after mean is not used in tdigest, but it is used to keep the original order of the centroids, so
+  // discard it for simplicity
 
   if (rocksdb::Slice value_slice = value;  // GetDouble needs a mutable pointer of slice
       !GetDouble(&value_slice, &centroid->weight)) {
@@ -463,8 +469,9 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
 rocksdb::Status TDigest::applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
                                            const std::string& ns_key, const TDigestMetadata& metadata,
                                            const std::vector<Centroid>& centroids) {
-  for (const auto& c : centroids) {
-    auto centroid_key = internalKeyFromCentroid(ns_key, metadata, c);
+  for (size_t i = 0; i < centroids.size(); ++i) {
+    const auto& c = centroids[i];
+    auto centroid_key = internalKeyFromCentroid(ns_key, metadata, c, i);
     auto centroid_payload = internalValueFromCentroid(c);
     if (auto status = batch->Put(cf_handle_, centroid_key, centroid_payload); !status.ok()) {
       return status;

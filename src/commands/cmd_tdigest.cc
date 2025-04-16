@@ -260,7 +260,10 @@ class CommandTDigestQuantile : public Commander {
     TDigestQuantitleResult result;
     auto s = tdigest.Quantile(ctx, key_name_, values_, &result);
     if (!s.ok()) {
-      return {Status::RedisExecErr, errKeyNotFound};
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
     }
     std::vector<std::string> quantile_strings;
     quantile_strings.reserve(result.quantiles.size());
@@ -270,6 +273,7 @@ class CommandTDigestQuantile : public Commander {
     *output = redis::MultiBulkString(RESP::v2, quantile_strings);
     return Status::OK();
   }
+
  private:
   std::string key_name_;
   std::vector<double> values_;

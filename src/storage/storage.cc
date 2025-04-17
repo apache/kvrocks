@@ -20,6 +20,7 @@
 
 #include "storage.h"
 
+#include <dirent.h>
 #include <event2/buffer.h>
 #include <fcntl.h>
 #include <glog/logging.h>
@@ -767,6 +768,87 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   }
 
   return Write(ctx, options, batch->GetWriteBatch());
+}
+
+StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingest_options) {
+  std::vector<std::string> sst_files;
+  auto s = env_->GetChildren(sst_dir, &sst_files);
+  if (!s.ok()) {
+    return {Status::NotOK, "Failed to open directory " + sst_dir + ": " + s.ToString()};
+  }
+
+  std::vector<std::string> filtered_files;
+  for (const auto &filename : sst_files) {
+    if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".sst") {
+      filtered_files.push_back(sst_dir + "/" + filename);
+    }
+  }
+  sst_files = std::move(filtered_files);
+
+  if (sst_files.empty()) {
+    LOG(WARNING) << "No SST files found in " << sst_dir;
+    return 0;
+  }
+
+  std::unordered_map<std::string_view, std::vector<std::string>> cf_files;
+  std::vector<std::string> cf_names;
+  for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
+    cf_names.emplace_back(cf.Name());
+  }
+
+  for (const auto &file : sst_files) {
+    bool matched = false;
+    for (const auto &cf_name : cf_names) {
+      if (file.find(cf_name) != std::string::npos) {
+        cf_files[cf_name].push_back(file);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return {Status::NotOK, fmt::format("SST file '{}' does not match any known column family name", file)};
+    }
+  }
+
+  // Process each set of files with the appropriate column family
+  // By importing the specific column family SST files first, we avoid data corruption -
+  // if import fails, no data is made available or corrupted in either column family
+  // if the metadata import fails, the imported data will be deleted by the compaction.
+  rocksdb::Status status;
+  // Process files for each column family except metadata
+  for (const auto &[cf_name, files] : cf_files) {
+    if (cf_name == kMetadataColumnFamilyName) continue;
+    if (files.empty()) continue;
+
+    rocksdb::ColumnFamilyHandle *cf_handle = nullptr;
+    // Find the correct CF handle
+    for (auto handle : cf_handles_) {
+      if (handle->GetName() == cf_name) {
+        cf_handle = handle;
+        break;
+      }
+    }
+
+    status = ingestSST(cf_handle, ingest_options, files);
+    if (!status.ok()) {
+      return {Status::NotOK, status.ToString()};
+    }
+  }
+  // Process metadata files
+  const auto &metadata_files = cf_files[kMetadataColumnFamilyName];
+  if (!metadata_files.empty()) {
+    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
+    if (!status.ok()) {
+      return {Status::NotOK, status.ToString()};
+    }
+  }
+  return sst_files.size();
+}
+
+rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
+                                   const rocksdb::IngestExternalFileOptions &options,
+                                   const std::vector<std::string> &sst_file_names) {
+  return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {

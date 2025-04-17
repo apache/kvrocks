@@ -228,6 +228,13 @@ class Server {
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
+  size_t GetReplicaCount() {
+    slave_threads_mu_.lock();
+    auto replica_count = slave_threads_.size();
+    slave_threads_mu_.unlock();
+    return replica_count;
+  }
+
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
 

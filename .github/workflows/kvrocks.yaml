@@ -147,6 +147,7 @@ jobs:
             os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
+            with_coverage: "true"
           - name: Ubuntu Clang
             os: ubuntu-22.04
             compiler: clang
@@ -162,11 +163,13 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: gcc
+            ignore_when_asan: -tags="ignore_when_asan"
           - name: Ubuntu Clang ASan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+            ignore_when_asan: -tags="ignore_when_asan"
           - name: Ubuntu GCC TSan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -184,6 +187,7 @@ jobs:
             with_sanitizer: -DENABLE_UBSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+            ignore_when_ubsan: -tags="ignore_when_ubsan"
           - name: Ubuntu GCC Ninja
             os: ubuntu-22.04
             with_ninja: --ninja
@@ -315,7 +319,11 @@ jobs:
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
+          if [[ -n "${{ matrix.with_coverage }}" ]]; then
+            export WITH_COVERAGE="true"
+          fi
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && git checkout v1.1.0 && go build && cd ..
@@ -325,7 +333,7 @@ jobs:
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
 
       - name: Install redis-py
         run: pip3 install redis==5.2.0
@@ -475,7 +483,7 @@ jobs:
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go zlib-devel
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -487,7 +495,7 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled powertools
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel gcc-toolset-12-libstdc++-devel
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -500,7 +508,7 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -519,7 +527,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis zlib-dev
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -566,6 +574,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

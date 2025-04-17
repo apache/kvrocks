@@ -270,6 +270,9 @@ class Storage {
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
+  [[nodiscard]] StatusOr<int> IngestSST(const std::string &folder,
+                                        const rocksdb::IngestExternalFileOptions &ingest_options);
+
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
@@ -389,6 +392,8 @@ class Storage {
   rocksdb::Status writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);
   Status applyWriteBatch(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *batch);
+  rocksdb::Status ingestSST(rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::IngestExternalFileOptions &options,
+                            const std::vector<std::string> &sst_file_names);
 };
 
 /// Context passes fixed snapshot and batch between APIs

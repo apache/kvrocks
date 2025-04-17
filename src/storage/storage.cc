@@ -794,7 +794,6 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
   std::vector<std::string> cf_names;
   for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
     cf_names.emplace_back(cf.Name());
-    cf_files[cf.Name()] = std::vector<std::string>();
   }
 
   for (const auto &file : sst_files) {

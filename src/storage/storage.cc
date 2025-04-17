@@ -772,40 +772,33 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
 
 StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingest_options) {
   std::vector<std::string> sst_files;
-  DIR *dir = opendir(sst_dir.c_str());
-  if (!dir) {
-    return {Status::NotOK, "Failed to open directory " + sst_dir};
+  auto s = env_->GetChildren(sst_dir, &sst_files);
+  if (!s.ok()) {
+    return {Status::NotOK, "Failed to open directory " + sst_dir + ": " + s.ToString()};
   }
 
-  struct dirent *entry = nullptr;
-  while ((entry = readdir(dir)) != nullptr) {
-    std::string filename = entry->d_name;
+  std::vector<std::string> filtered_files;
+  for (const auto &filename : sst_files) {
     if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".sst") {
-      sst_files.push_back(sst_dir + "/" + filename);
+      filtered_files.push_back(sst_dir + "/" + filename);
     }
   }
-  closedir(dir);
+  sst_files = std::move(filtered_files);
 
   if (sst_files.empty()) {
     LOG(WARNING) << "No SST files found in " << sst_dir;
     return 0;
   }
 
-  // Create a map to store SST files for each column family
   std::unordered_map<std::string_view, std::vector<std::string>> cf_files;
-
-  // Initialize vectors for each column family
   std::vector<std::string> cf_names;
   for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
     cf_names.emplace_back(cf.Name());
   }
-
-  // Initialize vectors for each column family
   for (const auto &cf_name : cf_names) {
     cf_files[cf_name] = std::vector<std::string>();
   }
 
-  // Sort files into appropriate vectors based on filename
   for (const auto &file : sst_files) {
     bool matched = false;
     for (const auto &cf_name : cf_names) {

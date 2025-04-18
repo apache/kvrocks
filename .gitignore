@@ -47,3 +47,5 @@ testdb
 build
 cmake-build-*
 build-*
+search-tests
+

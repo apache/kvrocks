@@ -92,7 +92,7 @@ StatusOr<BlockSplitBloomFilter> CreateBlockSplitBloomFilter(std::string& bitset)
 class BlockSplitBloomFilter {
  public:
   /// The constructor of BlockSplitBloomFilter. It uses XXH64 as hash function.
-  explicit BlockSplitBloomFilter(nonstd::span<char> data) : data_(data){};
+  explicit BlockSplitBloomFilter(nonstd::span<char> data) : data_(data) {};
 
   /// Calculate optimal size according to the number of distinct values and false
   /// positive probability.

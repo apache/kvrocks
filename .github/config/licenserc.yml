@@ -37,4 +37,3 @@ header:
     - 'src/storage/batch_debugger.h'
     - 'src/types/geohash.h'
     - 'src/types/geohash.cc'
-    - 'tests/gocase/unit/sst/sst_load_test.go'

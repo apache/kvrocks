@@ -29,6 +29,8 @@
 namespace kqir {
 
 struct SortLimitFuse : Visitor {
+  std::string_view Name() override { return "SORTBY-LIMIT Fusion"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<Limit> node) override {
     node = Node::MustAs<Limit>(Visitor::Visit(std::move(node)));
 

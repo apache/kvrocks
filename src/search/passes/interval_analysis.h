@@ -24,6 +24,7 @@
 #include <cmath>
 #include <memory>
 #include <set>
+#include <string_view>
 #include <type_traits>
 
 #include "search/interval.h"
@@ -50,6 +51,8 @@ struct IntervalAnalysis : Visitor {
       : simplify_numeric_compare(simplify_numeric_compare) {}
 
   void Reset() override { result.clear(); }
+
+  std::string_view Name() override { return "Interval Analysis and Simplification"; }
 
   template <typename T>
   std::unique_ptr<Node> VisitImpl(std::unique_ptr<T> node) {

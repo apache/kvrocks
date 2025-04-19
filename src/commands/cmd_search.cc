@@ -264,6 +264,8 @@ class CommandFTExplainSQL : public Commander {
         format_ = SIMPLE;
       } else if (parser.EatEqICase("dot")) {
         format_ = DOT_GRAPH;
+      } else if (parser.EatEqICase("debug")) {
+        format_ = DEBUG;
       } else {
         return {Status::NotOK, "output format should be SIMPLE or DOT"};
       }
@@ -277,6 +279,23 @@ class CommandFTExplainSQL : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (format_ == DEBUG) {
+      auto results = GET_OR_RET(srv->index_mgr.DebugPlan(std::move(ir_), conn->GetNamespace()));
+
+      output->append(MultiLen(results.size()));
+      for (const auto &res : results) {
+        output->append(MultiLen(2));
+        if (res.after_pass.empty()) {
+          output->append(SimpleString("Initial"));
+        } else {
+          output->append(SimpleString("After " + std::string(res.after_pass) + " Pass"));
+        }
+        output->append(BulkString(res.ir->Dump()));
+      }
+
+      return Status::OK();
+    }
+
     auto plan = GET_OR_RET(srv->index_mgr.GeneratePlan(std::move(ir_), conn->GetNamespace()));
 
     if (format_ == SIMPLE) {
@@ -292,7 +311,7 @@ class CommandFTExplainSQL : public Commander {
     return Status::OK();
   };
 
-  enum OutputFormat { SIMPLE, DOT_GRAPH } format_ = SIMPLE;
+  enum OutputFormat { SIMPLE, DOT_GRAPH, DEBUG } format_ = SIMPLE;
   std::unique_ptr<kqir::Node> ir_;
 };
 

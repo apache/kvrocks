@@ -285,7 +285,91 @@ rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& dige
 rocksdb::Status TDigest::getMetaDataByNsKey(engine::Context& context, const Slice& ns_key, TDigestMetadata* metadata) {
   return Database::GetMetadata(context, {kRedisTDigest}, ns_key, metadata);
 }
+rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                             TDigestCDFResult* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
 
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.unmerged_nodes > 0) {
+      auto batch = storage_->GetWriteBatchBase();
+      WriteBatchLogData log_data(kRedisTDigest);
+      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
+        return status;
+      }
+
+      std::string metadata_bytes;
+      metadata.Encode(&metadata_bytes);
+      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
+        return status;
+      }
+      ctx.RefreshLatestSnapshot();
+    }
+  }
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto iter = dump_centroids.Begin();
+  double total_weight = dump_centroids.TotalWeight();
+  std::vector<double> results;
+  for (double val : inputs) {
+    double weight_so_far = 0;
+    double cdf_val = 0;
+
+    // Edge case: empty sketch
+    if (dump_centroids.Size() == 0 || total_weight == 0) {
+      results.push_back(std::numeric_limits<double>::quiet_NaN());
+      continue;
+    }
+
+    // Edge case: val < min
+    if (val < dump_centroids.Min()) {
+      results.push_back(0.0);
+      continue;
+    }
+
+    // Edge case: val > max
+    if (val > dump_centroids.Max()) {
+      results.push_back(1.0);
+      continue;
+    }
+
+    auto ci = dump_centroids.Begin();
+    for (; ci->Valid(); ci->Next()) {
+      auto c = *(ci->GetCentroid());
+      if (val < c.mean) {
+        break;
+      }
+      weight_so_far += c.weight;
+    }
+
+    if (!ci->Valid()) {
+      cdf_val = 1.0;
+    } else {
+      auto c = *(ci->GetCentroid());
+      cdf_val = (weight_so_far + c.weight / 2) / total_weight;
+    }
+
+    results.push_back(cdf_val);
+  }
+  result->cdf_values = results;
+  return rocksdb::Status::OK();
+}
 rocksdb::Status TDigest::mergeCurrentBuffer(engine::Context& ctx, const std::string& ns_key,
                                             ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
                                             TDigestMetadata* metadata, const std::vector<double>* additional_buffer) {

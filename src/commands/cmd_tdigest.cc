@@ -242,11 +242,52 @@ class CommandTDigestMax : public CommandTDigestMinMax {
  public:
   CommandTDigestMax() : CommandTDigestMinMax(false) {}
 };
+class CommandTDigestCDF : public Commander {
+  Status Parse(const std::vector<std::string> &args) {
+    key_name_ = args[1];
+    values_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); i++) {
+      auto value = ParseFloat(args[i]);
+      if (!value) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      values_.push_back(*value);
+    }
+    return Status::OK();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    std::vector<std::string> cdf_result;
+    TDigestCDFResult result;
+    TDigestMetadata metadata;
+    auto meta_status = tdigest.GetMetaData(ctx, key_name_, &metadata);
+    if (metadata.total_observations == 0) {
+      *output = redis::MultiBulkString(RESP::v2, cdf_result);
+      return Status::OK();
+    }
+    auto s = tdigest.CDF(ctx, key_name_, values_, &result);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    for (const auto &val : result.cdf_values) {
+      cdf_result.push_back(std::to_string(val));
+    }
+    *output = redis::MultiBulkString(RESP::v2, cdf_result);
+    return Status::OK();
+  }
 
+ private:
+  std::string key_name_;
+  std::vector<double> values_;
+};
 REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestCDF>("tdigest.cdf", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1));
 }  // namespace redis

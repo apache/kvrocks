@@ -46,6 +46,9 @@ struct TDigestCreateOptions {
 struct TDigestQuantitleResult {
   std::vector<double> quantiles;
 };
+struct TDigestCDFResult {
+  std::vector<double> cdf_values;
+};
 
 class TDigest : public SubKeyScanner {
  public:
@@ -69,6 +72,8 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status Reset(engine::Context& ctx, const Slice& digest_name);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
+  rocksdb::Status CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                      TDigestCDFResult* result);
 
  private:
   enum class SegmentType : uint8_t { kBuffer = 0, kCentroids = 1, kGuardFlag = 0xFF };

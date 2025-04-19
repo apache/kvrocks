@@ -324,47 +324,22 @@ rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, con
     return status;
   }
   auto dump_centroids = DummyCentroids(metadata, centroids);
-  auto iter = dump_centroids.Begin();
   double total_weight = dump_centroids.TotalWeight();
   std::vector<double> results;
   for (double val : inputs) {
-    double weight_so_far = 0;
-    double cdf_val = 0;
-
-    // Edge case: empty sketch
-    if (dump_centroids.Size() == 0 || total_weight == 0) {
-      results.push_back(std::numeric_limits<double>::quiet_NaN());
-      continue;
-    }
-
-    // Edge case: val < min
-    if (val < dump_centroids.Min()) {
-      results.push_back(0.0);
-      continue;
-    }
-
-    // Edge case: val > max
-    if (val > dump_centroids.Max()) {
-      results.push_back(1.0);
-      continue;
-    }
-
-    auto ci = dump_centroids.Begin();
-    for (; ci->Valid(); ci->Next()) {
-      auto c = *(ci->GetCentroid());
-      if (val < c.mean) {
-        break;
+    auto iter_begin = dump_centroids.Begin();
+    auto iter_end = dump_centroids.End();
+    double eq_count = 0;
+    double smaller_count = 0;
+    for (; iter_begin->Valid(); iter_begin->Next()) {
+      auto current_centroid = iter_begin->GetCentroid();
+      if (val > current_centroid->mean) {
+        smaller_count++;
+      } else if (val == current_centroid->mean) {
+        eq_count++;
       }
-      weight_so_far += c.weight;
     }
-
-    if (!ci->Valid()) {
-      cdf_val = 1.0;
-    } else {
-      auto c = *(ci->GetCentroid());
-      cdf_val = (weight_so_far + c.weight / 2) / total_weight;
-    }
-
+    double cdf_val = (smaller_count / total_weight) + ((eq_count / 2) / total_weight);
     results.push_back(cdf_val);
   }
   result->cdf_values = results;

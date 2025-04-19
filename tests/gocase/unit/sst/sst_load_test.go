@@ -1,4 +1,4 @@
-//go:build !(ignore_when_tsan || ignore_when_asan || ignore_when_ubsan)
+//go:build enable_grocksdb
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one

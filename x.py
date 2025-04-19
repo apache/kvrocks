@@ -223,56 +223,17 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
-def is_rocky_linux():
-    try:
-        with open('/etc/os-release') as f:
-            lines = f.readlines()
-        data = {}
-        for line in lines:
-            if '=' in line:
-                key, value = line.strip().split('=', 1)
-                data[key] = value.strip('"')
+def env_with_cgo_flags(build_dir: Path):
+    rocksdb_inc = build_dir.joinpath('_deps/rocksdb-src/include')
+    rocksdb_lib = build_dir.joinpath('_deps/rocksdb-build')
+    zlib_lib = build_dir.joinpath('_deps/zstd-src/lib')
+    lz4_lib = build_dir.joinpath('_deps/lz4-src/lib')
+    snappy_lib = build_dir.joinpath('_deps/snappy-build')
 
-        is_rocky = data.get('ID') == 'rocky'
-        version_id = data.get('VERSION_ID', '').split('.')[0]
-        version_match = version_id in ('8', '9')
-
-        return is_rocky and version_match
-    except FileNotFoundError:
-        print("File /etc/os-release not found.")
-        return False
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return False
-
-
-def get_custom_env():
-    rocksdb = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-src/include')
-    rocksdb_lib = Path(__file__).parent.absolute().joinpath('build/_deps/rocksdb-build')
-    zlib = Path(__file__).parent.absolute().joinpath('build/_deps/zstd-src/lib')
-    z4lib = Path(__file__).parent.absolute().joinpath('build/_deps/lz4-src/lib')
-    snappy_lib = Path(__file__).parent.absolute().joinpath('build/_deps/snappy-build')
-
-    additional_flags = ""
-    libstdc_folder = ""
     env = os.environ.copy()
-    
-    if is_rocky_linux():
-        output = run_pipe("find", "/opt/rh/gcc-toolset-12/root/", "-name", "libstdc++.so*")
-        output = run_pipe("grep", "-v", "32",stdin=output)
-        output = run_pipe("xargs", "dirname", stdin=output)
-        libstdc_folder = output.read().strip() + "/"
-
-    if libstdc_folder != "":
-        additional_flags = f"-L{libstdc_folder} -lstdc++"
-
-    with_cov = env.get("WITH_COVERAGE","false")
-    if with_cov == "true":
-        additional_flags += "-lgcov"
-
     env.update({
-        "CGO_CFLAGS": f"-I{rocksdb}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib} -L{z4lib} -L{snappy_lib} {additional_flags}",
+        "CGO_CFLAGS": f"-I{rocksdb_inc} {env.get('CGO_CFLAGS', '')}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib_lib} -L{lz4_lib} -L{snappy_lib} {env.get('CGO_LDFLAGS', '')}",
     })
     return env
 
@@ -312,7 +273,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         check_version(version_str, GOLANGCI_LINT_REQUIRED_VERSION, "golangci-lint")
 
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
-    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True, env=get_custom_env())
+    run(binpath_str, 'run', '-v', './...', cwd=str(basedir), verbose=True)
 
 
 def write_version(release_version: str) -> str:
@@ -376,7 +337,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir), verbose=True, env=get_custom_env())
+    run(go, *args, cwd=str(basedir), verbose=True, env=env_with_cgo_flags(Path(dir).absolute()))
 
 
 if __name__ == '__main__':

@@ -232,8 +232,8 @@ def env_with_cgo_flags(build_dir: Path):
 
     env = os.environ.copy()
     env.update({
-        "CGO_CFLAGS": f"-I{rocksdb_inc} {env.get("CGO_CFLAGS", '')}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib_lib} -L{lz4_lib} -L{snappy_lib} {env.get("CGO_LDFLAGS", '')}",
+        "CGO_CFLAGS": f"-I{rocksdb_inc} {env.get('CGO_CFLAGS', '')}",
+        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib_lib} -L{lz4_lib} -L{snappy_lib} {env.get('CGO_LDFLAGS', '')}",
     })
     return env
 

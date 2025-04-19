@@ -20,7 +20,6 @@
 
 #include "storage.h"
 
-#include <dirent.h>
 #include <event2/buffer.h>
 #include <fcntl.h>
 #include <glog/logging.h>
@@ -783,24 +782,19 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
       filtered_files.push_back(sst_dir + "/" + filename);
     }
   }
-  sst_files = std::move(filtered_files);
 
+  sst_files = std::move(filtered_files);
   if (sst_files.empty()) {
     LOG(WARNING) << "No SST files found in " << sst_dir;
     return 0;
   }
 
-  std::unordered_map<std::string_view, std::vector<std::string>> cf_files;
-  std::vector<std::string> cf_names;
-  for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
-    cf_names.emplace_back(cf.Name());
-  }
-
+  std::unordered_map<ColumnFamilyID, std::vector<std::string>> cf_files;
   for (const auto &file : sst_files) {
     bool matched = false;
-    for (const auto &cf_name : cf_names) {
-      if (file.find(cf_name) != std::string::npos) {
-        cf_files[cf_name].push_back(file);
+    for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
+      if (file.find(cf.Name()) != std::string::npos) {
+        cf_files[cf.Id()].push_back(file);
         matched = true;
         break;
       }
@@ -816,18 +810,11 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
   // if the metadata import fails, the imported data will be deleted by the compaction.
   rocksdb::Status status;
   // Process files for each column family except metadata
-  for (const auto &[cf_name, files] : cf_files) {
-    if (cf_name == kMetadataColumnFamilyName) continue;
+  for (const auto &[cf, files] : cf_files) {
+    if (cf == ColumnFamilyID::Metadata) continue;
     if (files.empty()) continue;
 
-    rocksdb::ColumnFamilyHandle *cf_handle = nullptr;
-    // Find the correct CF handle
-    for (auto handle : cf_handles_) {
-      if (handle->GetName() == cf_name) {
-        cf_handle = handle;
-        break;
-      }
-    }
+    rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(cf);
 
     status = ingestSST(cf_handle, ingest_options, files);
     if (!status.ok()) {
@@ -835,7 +822,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     }
   }
   // Process metadata files
-  const auto &metadata_files = cf_files[kMetadataColumnFamilyName];
+  const auto &metadata_files = cf_files[ColumnFamilyID::Metadata];
   if (!metadata_files.empty()) {
     status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
     if (!status.ok()) {

@@ -143,11 +143,11 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc
+            enable_grocksdb: -tags=enable_grocksdb
           - name: SonarCloud with Coverage
             os: ubuntu-22.04
             compiler: gcc
             sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
-            with_coverage: "true"
           - name: Ubuntu Clang
             os: ubuntu-22.04
             compiler: clang
@@ -321,9 +321,6 @@ jobs:
           export PATH=$PATH:$HOME/local/bin/
           export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
-          if [[ -n "${{ matrix.with_coverage }}" ]]; then
-            export WITH_COVERAGE="true"
-          fi
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
             cd minica && git checkout v1.1.0 && go build && cd ..
@@ -333,7 +330,7 @@ jobs:
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}} ${{ matrix.enable_grocksdb }}
 
       - name: Install redis-py
         run: pip3 install redis==5.2.0

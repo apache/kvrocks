@@ -50,7 +50,6 @@ BSD-3-Clause licenses
 The following components are provided under the BSD-3-Clause License. See project link for details.
 The text of each license is also included in licenses/LICENSE-[project].txt.
 
-* glog(https://github.com/google/glog)
 * googletest(https://github.com/google/googletest)
 * libevent(https://github.com/libevent/libevent)
 * snappy(https://github.com/google/snappy)

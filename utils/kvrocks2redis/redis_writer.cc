@@ -131,7 +131,7 @@ void RedisWriter::sync() {
 
         auto line_state = util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
-          error("Failed to read redis response err: ", s.Msg());
+          error("Failed to read redis response err: {}", s.Msg());
           break;
         }
 
@@ -139,14 +139,14 @@ void RedisWriter::sync() {
         if (line.compare(0, 1, "-") == 0) {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
           // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-          error("CRITICAL - redis sync return error, administrator confirm needed: ", line);
+          error("CRITICAL - redis sync return error, administrator confirm needed: {}", line);
           Stop();
           return;
         }
 
         s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
         if (!s.IsOK()) {
-          error("Failed to updating next offset: ", s.Msg());
+          error("Failed to updating next offset: {}", s.Msg());
           break;
         }
       }

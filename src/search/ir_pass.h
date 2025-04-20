@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "ir.h"
 #include "search/ir_plan.h"
 
@@ -28,6 +30,7 @@ namespace kqir {
 struct Pass {
   virtual std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) = 0;
 
+  virtual std::string_view Name() = 0;
   virtual void Reset() {}
 
   virtual ~Pass() = default;

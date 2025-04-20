@@ -28,6 +28,8 @@
 namespace kqir {
 
 struct SimplifyBoolean : Visitor {
+  std::string_view Name() override { return "Boolean Literal Simplification"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<OrExpr> node) override {
     node = Node::MustAs<OrExpr>(Visitor::Visit(std::move(node)));
 

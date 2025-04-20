@@ -23,17 +23,20 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInfo(t *testing.T) {
-	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	srv0 := util.StartServer(t, map[string]string{
+		"cluster-enabled":             "yes",
+		"histogram-bucket-boundaries": "10,20,30,50",
+	})
 	defer func() { srv0.Close() }()
 	rdb0 := srv0.NewClient()
 	defer func() { require.NoError(t, rdb0.Close()) }()
@@ -50,6 +53,14 @@ func TestInfo(t *testing.T) {
 		require.NoError(t, err)
 		return i
 	}
+
+	t.Run("check last dbsize scan timestamp", func(t *testing.T) {
+		require.Equal(t, "0", util.FindInfoEntry(rdb, "last_dbsize_scan_timestamp", "keyspace"))
+		require.NoError(t, rdb.Do(ctx, "DBSIZE", "SCAN").Err())
+		require.Eventually(t, func() bool {
+			return MustAtoi(t, util.FindInfoEntry(rdb, "last_dbsize_scan_timestamp", "keyspace")) > 0
+		}, 5*time.Second, 100*time.Millisecond)
+	})
 
 	t.Run("get rocksdb ops by INFO", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
@@ -101,6 +112,27 @@ func TestInfo(t *testing.T) {
 
 	t.Run("get cluster information by INFO - cluster enabled", func(t *testing.T) {
 		require.Equal(t, "1", util.FindInfoEntry(rdb0, "cluster_enabled", "cluster"))
+	})
+
+	t.Run("get command latencies via histogram INFO - histogram-bucket-boundaries", func(t *testing.T) {
+		output := util.FindInfoEntry(rdb0, "cmdstathist_info", "commandstats")
+
+		splitValues := strings.FieldsFunc(output, func(r rune) bool {
+			return r == '=' || r == ','
+		})
+
+		// expected: 10=..,20=..,30=..,50=..,inf=..,sum=...,count=..
+		require.GreaterOrEqual(t, len(splitValues), 14)
+		require.Contains(t, splitValues, "sum")
+		require.Contains(t, splitValues, "count")
+		require.Contains(t, splitValues, "inf")
+	})
+
+	t.Run("multiple sections", func(t *testing.T) {
+		info := rdb.Info(ctx, "server", "cpu")
+		require.NoError(t, info.Err())
+		require.Contains(t, info.Val(), "# Server")
+		require.Contains(t, info.Val(), "# CPU")
 	})
 }
 

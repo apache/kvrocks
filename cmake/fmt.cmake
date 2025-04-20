@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(fmt
-  fmtlib/fmt 11.1.1
-  MD5=887c59024c43ce2cd37296c3fe3fc164
+  fmtlib/fmt 11.1.4
+  MD5=90667b07f34d91554cf8285ae234ff66
 )
 
 FetchContent_MakeAvailableWithArgs(fmt)

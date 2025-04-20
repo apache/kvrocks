@@ -33,7 +33,7 @@ import (
 )
 
 func TestScripting(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -198,8 +198,14 @@ return {type(foo),foo == false}
 	})
 
 	t.Run("EVAL - Scripts can't run certain commands", func(t *testing.T) {
-		r := rdb.Eval(ctx, `return redis.pcall('blpop','x',0)`, []string{})
+		r := rdb.Eval(ctx, `return redis.pcall('shutdown')`, []string{})
 		require.ErrorContains(t, r.Err(), "not allowed")
+	})
+
+	t.Run("EVAL - Scripts can run blocking commands and get immediate result", func(t *testing.T) {
+		r := rdb.Eval(ctx, `return redis.pcall('blpop', KEYS[1], 0)`, []string{"key_for_blpop_script"})
+		require.Equal(t, r.Val(), nil)
+		require.ErrorContains(t, r.Err(), "nil")
 	})
 
 	t.Run("EVAL - Scripts can run certain commands", func(t *testing.T) {
@@ -368,9 +374,11 @@ assert(bit.bor(1,2,4,8,16,32,64,128) == 255)
 		r1 := rdb.Eval(ctx, "return 1+1", []string{})
 		require.NoError(t, r1.Err())
 		require.Equal(t, int64(2), r1.Val())
-		r2 := rdb.ScriptExists(ctx, "a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bd9", "a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bda")
+		r2 := rdb.ScriptLoad(ctx, "return 1+2")
 		require.NoError(t, r2.Err())
-		require.Equal(t, []bool{true, false}, r2.Val())
+		r3 := rdb.ScriptExists(ctx, "a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bd9", "a27e7e8a43702b7046d4f6a7ccf5b60cef6b9bda", r2.Val())
+		require.NoError(t, r3.Err())
+		require.Equal(t, []bool{false, false, true}, r3.Val())
 	})
 
 	t.Run("SCRIPT LOAD - should return SHA as the bulk string", func(t *testing.T) {
@@ -874,8 +882,8 @@ func TestEvalScriptFlags(t *testing.T) {
 
 		r = rdb0.Do(ctx, "EVAL",
 			`#!lua flags=no-writes,allow-cross-slot-keys
-		redis.call('set', 'bar');
-		return redis.call('set', 'test');`, "0")
+		redis.call('set', 'bar', 'value');
+		return redis.call('set', 'test', 'value');`, "0")
 		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
 
 		r = rdb0.Do(ctx, "EVAL",

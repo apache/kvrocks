@@ -24,13 +24,12 @@
 #include <rocksdb/env.h>
 #include <strings.h>
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -125,7 +124,7 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
   std::vector<std::string> compression_per_level_builder;
   compression_per_level_builder.reserve(KVROCKS_MAX_LSM_LEVEL);
 
-  for (int i = 0; i < compression_start_level; i++) {
+  for (size_t i = 0; i < compression_start_level; i++) {
     compression_per_level_builder.emplace_back("kNoCompression");
   }
   for (size_t i = compression_start_level; i < KVROCKS_MAX_LSM_LEVEL; i++) {
@@ -231,7 +230,7 @@ Config::Config() {
       {"log-retention-days", false, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
-      {"resp3-enabled", false, new YesNoField(&resp3_enabled, false)},
+      {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
        new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB, UINT64_MAX)},
@@ -240,6 +239,7 @@ Config::Config() {
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
+      {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -299,6 +299,7 @@ Config::Config() {
       {"rocksdb.rate_limiter_auto_tuned", true, new YesNoField(&rocks_db.rate_limiter_auto_tuned, true)},
       {"rocksdb.avoid_unnecessary_blocking_io", true, new YesNoField(&rocks_db.avoid_unnecessary_blocking_io, true)},
       {"rocksdb.partition_filters", true, new YesNoField(&rocks_db.partition_filters, true)},
+      {"rocksdb.max_compaction_bytes", false, new Int64Field(&rocks_db.max_compaction_bytes, 0, 0, INT64_MAX)},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db.write_options.sync, false)},
@@ -734,6 +735,7 @@ void Config::initFieldCallback() {
       {"rocksdb.compaction_readahead_size", set_db_option_cb},
       {"rocksdb.max_background_jobs", set_db_option_cb},
 
+      {"rocksdb.max_compaction_bytes", set_cf_option_cb},
       {"rocksdb.max_write_buffer_number", set_cf_option_cb},
       {"rocksdb.level0_slowdown_writes_trigger", set_cf_option_cb},
       {"rocksdb.level0_stop_writes_trigger", set_cf_option_cb},
@@ -755,6 +757,25 @@ void Config::initFieldCallback() {
       {"tls-session-cache-size", set_tls_option},
       {"tls-session-cache-timeout", set_tls_option},
 #endif
+      {"histogram-bucket-boundaries",
+       [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
+         std::vector<std::string> buckets = util::Split(v, ",");
+         histogram_bucket_boundaries.clear();
+         if (buckets.size() < 1) {
+           return Status::OK();
+         }
+         for (const auto &bucket_val : buckets) {
+           auto parse_result = ParseFloat<double>(bucket_val);
+           if (!parse_result) {
+             return {Status::NotOK, "The values in the bucket list must be double or integer."};
+           }
+           histogram_bucket_boundaries.push_back(*parse_result);
+         }
+         if (!std::is_sorted(histogram_bucket_boundaries.begin(), histogram_bucket_boundaries.end())) {
+           return {Status::NotOK, "The values for the histogram must be sorted."};
+         }
+         return Status::OK();
+       }},
   };
   for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

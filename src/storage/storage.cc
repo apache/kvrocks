@@ -221,6 +221,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_bytes_for_level_multiplier = config_->rocks_db.max_bytes_for_level_multiplier;
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
+  options.max_compaction_bytes = static_cast<uint64_t>(config_->rocks_db.max_compaction_bytes);
 
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
@@ -605,7 +606,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              std::string *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
@@ -630,7 +631,7 @@ rocksdb::Status Storage::Get(engine::Context &ctx, const rocksdb::ReadOptions &o
                              rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Slice &key,
                              rocksdb::PinnableSlice *value) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   rocksdb::Status s;
@@ -663,7 +664,7 @@ void Storage::recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_famil
 rocksdb::Iterator *Storage::NewIterator(engine::Context &ctx, const rocksdb::ReadOptions &options,
                                         rocksdb::ColumnFamilyHandle *column_family) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   auto iter = db_->NewIterator(options, column_family);
@@ -679,7 +680,7 @@ void Storage::MultiGet(engine::Context &ctx, const rocksdb::ReadOptions &options
                        rocksdb::ColumnFamilyHandle *column_family, const size_t num_keys, const rocksdb::Slice *keys,
                        rocksdb::PinnableSlice *values, rocksdb::Status *statuses) {
   if (ctx.txn_context_enabled) {
-    DCHECK_NOTNULL(options.snapshot);
+    DCHECK_NE(options.snapshot, nullptr);
     DCHECK_EQ(ctx.GetSnapshot()->GetSequenceNumber(), options.snapshot->GetSequenceNumber());
   }
   if (is_txn_mode_ && txn_write_batch_->GetWriteBatch()->Count() > 0) {
@@ -766,6 +767,75 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
   }
 
   return Write(ctx, options, batch->GetWriteBatch());
+}
+
+StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::IngestExternalFileOptions &ingest_options) {
+  std::vector<std::string> sst_files;
+  auto s = env_->GetChildren(sst_dir, &sst_files);
+  if (!s.ok()) {
+    return {Status::NotOK, "Failed to open directory " + sst_dir + ": " + s.ToString()};
+  }
+
+  std::vector<std::string> filtered_files;
+  for (const auto &filename : sst_files) {
+    if (filename.length() >= 4 && filename.substr(filename.length() - 4) == ".sst") {
+      filtered_files.push_back(sst_dir + "/" + filename);
+    }
+  }
+
+  sst_files = std::move(filtered_files);
+  if (sst_files.empty()) {
+    LOG(WARNING) << "No SST files found in " << sst_dir;
+    return 0;
+  }
+
+  std::unordered_map<ColumnFamilyID, std::vector<std::string>> cf_files;
+  for (const auto &file : sst_files) {
+    bool matched = false;
+    for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
+      if (file.find(cf.Name()) != std::string::npos) {
+        cf_files[cf.Id()].push_back(file);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return {Status::NotOK, fmt::format("SST file '{}' does not match any known column family name", file)};
+    }
+  }
+
+  // Process each set of files with the appropriate column family
+  // By importing the specific column family SST files first, we avoid data corruption -
+  // if import fails, no data is made available or corrupted in either column family
+  // if the metadata import fails, the imported data will be deleted by the compaction.
+  rocksdb::Status status;
+  // Process files for each column family except metadata
+  for (const auto &[cf, files] : cf_files) {
+    if (cf == ColumnFamilyID::Metadata) continue;
+    if (files.empty()) continue;
+
+    rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(cf);
+
+    status = ingestSST(cf_handle, ingest_options, files);
+    if (!status.ok()) {
+      return {Status::NotOK, status.ToString()};
+    }
+  }
+  // Process metadata files
+  const auto &metadata_files = cf_files[ColumnFamilyID::Metadata];
+  if (!metadata_files.empty()) {
+    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
+    if (!status.ok()) {
+      return {Status::NotOK, status.ToString()};
+    }
+  }
+  return sst_files.size();
+}
+
+rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
+                                   const rocksdb::IngestExternalFileOptions &options,
+                                   const std::vector<std::string> &sst_file_names) {
+  return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {

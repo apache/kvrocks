@@ -63,26 +63,28 @@ enum CommandFlags : uint64_t {
   kCmdReadOnly = 1ULL << 1,
   // "ok-loading" flag, for any command that can be executed while
   // the db is in loading phase
-  kCmdLoading = 1ULL << 5,
+  kCmdLoading = 1ULL << 2,
   // "bypass-multi" flag, for commands that can be executed in a MULTI scope,
   // but these commands will NOT be queued and will be executed immediately
-  kCmdBypassMulti = 1ULL << 6,
+  kCmdBypassMulti = 1ULL << 3,
   // "exclusive" flag, for commands that should be executed execlusive globally
-  kCmdExclusive = 1ULL << 7,
+  kCmdExclusive = 1ULL << 4,
   // "no-multi" flag, for commands that cannot be executed in MULTI scope
-  kCmdNoMulti = 1ULL << 8,
+  kCmdNoMulti = 1ULL << 5,
   // "no-script" flag, for commands that cannot be executed in scripting
-  kCmdNoScript = 1ULL << 9,
+  kCmdNoScript = 1ULL << 6,
   // "no-dbsize-check" flag, for commands that can ignore the db size checking
-  kCmdNoDBSizeCheck = 1ULL << 12,
+  kCmdNoDBSizeCheck = 1ULL << 7,
   // "slow" flag, for commands that run slowly,
   // usually with a non-constant number of rocksdb ops
-  kCmdSlow = 1ULL << 13,
+  kCmdSlow = 1ULL << 8,
   // "blocking" flag, for commands that don't perform db ops immediately,
   // but block and wait for some event to happen before performing db ops
-  kCmdBlocking = 1ULL << 14,
+  kCmdBlocking = 1ULL << 9,
   // "auth" flag, for commands used for authentication
-  kCmdAuth = 1ULL << 15,
+  kCmdAuth = 1ULL << 10,
+  // "admin" flag, for commands that require admin permission
+  kCmdAdmin = 1ULL << 11,
 };
 
 enum class CommandCategory : uint8_t {
@@ -106,6 +108,7 @@ enum class CommandCategory : uint8_t {
   SortedInt,
   Stream,
   String,
+  TDigest,
   Txn,
   ZSet,
 };
@@ -333,13 +336,11 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
       flags |= kCmdSlow;
     else if (flag == "auth")
       flags |= kCmdAuth;
-    else if (flag == "blocking") {
+    else if (flag == "blocking")
       flags |= kCmdBlocking;
-
-      // blocking commands should always be no-script
-      // TODO: we can relax this restriction if scripting becomes non-exclusive
-      flags |= kCmdNoScript;
-    } else {
+    else if (flag == "admin")
+      flags |= kCmdAdmin;
+    else {
       std::cout << fmt::format("Encountered non-existent flag '{}' in command {} in command attribute parsing", flag,
                                cmd_name)
                 << std::endl;

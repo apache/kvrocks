@@ -28,12 +28,21 @@
 namespace kqir {
 
 struct Recorder : Pass {
-  std::vector<std::unique_ptr<Node>> &results;
+  struct Result {
+    std::unique_ptr<Node> ir;
+    std::string_view after_pass;
+  };
 
-  explicit Recorder(std::vector<std::unique_ptr<Node>> &results) : results(results) {}
+  std::vector<Result> &results;
+  std::string_view after_pass;
+
+  std::string_view Name() override { return "Recorder"; }
+
+  explicit Recorder(std::string_view after_pass, std::vector<Result> &results)
+      : results(results), after_pass(after_pass) {}
 
   std::unique_ptr<Node> Transform(std::unique_ptr<Node> node) override {
-    results.push_back(node->Clone());
+    results.push_back(Result{node->Clone(), after_pass});
     return node;
   }
 };

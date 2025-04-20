@@ -40,6 +40,8 @@ class IndexMetadata {
   uint8_t flag = 0;  // all reserved
   IndexOnDataType on_data_type;
 
+  const std::string &OnDataTypeName() const { return RedisTypeNames[(size_t)on_data_type]; }
+
   void Encode(std::string *dst) const {
     PutFixed8(dst, flag);
     PutFixed8(dst, uint8_t(on_data_type));

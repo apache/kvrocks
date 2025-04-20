@@ -33,6 +33,7 @@
 #include <set>
 #include <shared_mutex>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -227,21 +228,45 @@ class Server {
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
+  size_t GetReplicaCount() {
+    slave_threads_mu_.lock();
+    auto replica_count = slave_threads_.size();
+    slave_threads_mu_.unlock();
+    return replica_count;
+  }
+
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
 
   static int64_t GetCachedUnixTime();
   int64_t GetLastBgsaveTime();
-  void GetStatsInfo(std::string *info);
-  void GetServerInfo(std::string *info);
-  void GetMemoryInfo(std::string *info);
-  void GetRocksDBInfo(std::string *info);
-  void GetClientsInfo(std::string *info);
-  void GetReplicationInfo(std::string *info);
-  void GetRoleInfo(std::string *info);
-  void GetCommandsStatsInfo(std::string *info);
-  void GetClusterInfo(std::string *info);
-  void GetInfo(const std::string &ns, const std::string &section, std::string *info);
+  std::string GetRoleInfo();
+
+  struct InfoEntry {
+    std::string name;
+    std::string val;
+
+    InfoEntry(std::string name, std::string val) : name(std::move(name)), val(std::move(val)) {}
+    InfoEntry(std::string name, std::string_view val) : name(std::move(name)), val(val.begin(), val.end()) {}
+    InfoEntry(std::string name, const char *val) : name(std::move(name)), val(val) {}
+    template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_floating_point_v<T>, int> = 0>
+    InfoEntry(std::string name, T v) : name(std::move(name)), val(std::to_string(v)) {}
+  };
+  using InfoEntries = std::vector<InfoEntry>;
+
+  InfoEntries GetStatsInfo();
+  InfoEntries GetServerInfo();
+  InfoEntries GetMemoryInfo();
+  InfoEntries GetRocksDBInfo();
+  InfoEntries GetClientsInfo();
+  InfoEntries GetReplicationInfo();
+  InfoEntries GetCommandsStatsInfo();
+  InfoEntries GetClusterInfo();
+  InfoEntries GetPersistenceInfo();
+  InfoEntries GetCpuInfo();
+  InfoEntries GetKeyspaceInfo(const std::string &ns);
+
+  std::string GetInfo(const std::string &ns, const std::vector<std::string> &sections);
   std::string GetRocksDBStatsJson() const;
   ReplState GetReplicationState();
 
@@ -269,8 +294,7 @@ class Server {
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                   redis::Connection *conn);
 
-  lua_State *Lua() { return lua_; }
-  Status ScriptExists(const std::string &sha);
+  Status ScriptExists(const std::string &sha) const;
   Status ScriptGet(const std::string &sha, std::string *body) const;
   Status ScriptSet(const std::string &sha, const std::string &body) const;
   void ScriptReset();
@@ -337,8 +361,6 @@ class Server {
   Config *config_ = nullptr;
   std::string last_random_key_cursor_;
   std::mutex last_random_key_cursor_mu_;
-
-  std::atomic<lua_State *> lua_;
 
   // client counters
   std::atomic<uint64_t> client_id_{1};

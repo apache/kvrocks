@@ -40,7 +40,7 @@ jobs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.28.4
+        uses: crate-ci/typos@v1.31.0
         with:
           config: .github/config/typos.toml
 
@@ -69,6 +69,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - uses: apache/skywalking-eyes/header@v0.7.0
+        with:
+          config: .github/config/licenserc.yml
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -77,9 +80,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y clang-format-14 clang-tidy-14
-      - uses: apache/skywalking-eyes/header@v0.6.0
-        with:
-          config: .github/config/licenserc.yml
       - name: Check with clang-format
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-14
@@ -89,7 +89,6 @@ jobs:
           ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-14 --run-clang-tidy-path run-clang-tidy-14
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
-
       - name: Prepare format patch
         if: always() && steps.check-format.outcome != 'success'
         run: |
@@ -110,27 +109,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Darwin Clang
-            os: macos-13
-            compiler: auto
           - name: Darwin Clang arm64
             os: macos-14
             compiler: auto
-          - name: Darwin Clang without Jemalloc
-            os: macos-13
+          - name: Darwin Clang arm64 without Jemalloc
+            os: macos-14
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - name: Darwin Clang with OpenSSL
-            os: macos-13
+          - name: Darwin Clang arm64 with OpenSSL
+            os: macos-14
             compiler: auto
             with_openssl: -DENABLE_OPENSSL=ON
-          - name: Darwin Clang without luaJIT
-            os: macos-13
+          - name: Darwin Clang arm64 without luaJIT
+            os: macos-14
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
+          # FIXME: temporarily disable macos-13 build, refer to #2874
+          # - name: Darwin Clang
+          #   os: macos-13
+          #   compiler: auto
+          # - name: Darwin Clang without Jemalloc
+          #   os: macos-13
+          #   compiler: auto
+          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
+          # - name: Darwin Clang with OpenSSL
+          #   os: macos-13
+          #   compiler: auto
+          #   with_openssl: -DENABLE_OPENSSL=ON
+          # - name: Darwin Clang without luaJIT
+          #   os: macos-13
+          #   compiler: auto
+          #   without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc
+            enable_grocksdb: -tags=enable_grocksdb
           - name: SonarCloud with Coverage
             os: ubuntu-22.04
             compiler: gcc
@@ -150,11 +163,13 @@ jobs:
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: gcc
+            ignore_when_asan: -tags="ignore_when_asan"
           - name: Ubuntu Clang ASan
             os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+            ignore_when_asan: -tags="ignore_when_asan"
           - name: Ubuntu GCC TSan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -172,6 +187,7 @@ jobs:
             with_sanitizer: -DENABLE_UBSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
+            ignore_when_ubsan: -tags="ignore_when_ubsan"
           - name: Ubuntu GCC Ninja
             os: ubuntu-22.04
             with_ninja: --ninja
@@ -200,6 +216,10 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
+          - name: Ubuntu Arm64
+            os: ubuntu-24.04-arm
+            compiler: auto
+            arm_linux: true
 
     runs-on: ${{ matrix.os }}
     env:
@@ -213,11 +233,15 @@ jobs:
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
       - name: Setup Linux
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |
           sudo apt update
           sudo apt install -y ninja-build
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
+      - name: Setup Linux ARM64
+        if: ${{ matrix.arm_linux }}
+        run: |
+          sudo apt install -y git build-essential cmake libtool python3 python3-pip libssl-dev
 
       - name: Cache redis
         id: cache-redis
@@ -246,6 +270,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
+        if: ${{ !matrix.arm_linux }}
         with:
           python-version: 3.x
       - uses: actions/setup-go@v5
@@ -294,17 +319,18 @@ jobs:
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
-            cd minica && git checkout 96a5c93723cf3d34b50b3e723a9f05cd3765bc67 && go build && cd ..
-            ./minica/minica --domains localhost
+            cd minica && git checkout v1.1.0 && go build && cd ..
+            ./minica/minica --ca-alg rsa --domains localhost
             cp localhost/cert.pem tests/gocase/tls/cert/server.crt
             cp localhost/key.pem tests/gocase/tls/cert/server.key
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}}
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}} ${{ matrix.enable_grocksdb }}
 
       - name: Install redis-py
         run: pip3 install redis==5.2.0
@@ -382,7 +408,10 @@ jobs:
     name: Check Docker image
     needs: [precondition, check-and-lint, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
       - name: Get core numbers
@@ -432,6 +461,10 @@ jobs:
           - name: Debian 12
             image: debian:12
             compiler: gcc
+          - name: Alpine 3
+            image: alpine:3
+            compiler: gcc
+            disable_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ubuntu-22.04
     container:
@@ -447,7 +480,7 @@ jobs:
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go zlib-devel
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -459,8 +492,9 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled powertools
-          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel gcc-toolset-12-libstdc++-devel
           source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -471,8 +505,9 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool libstdc++-static python3 python3-pip openssl-devel which cmake
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
           source /opt/rh/gcc-toolset-12/enable
+          update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
           update-alternatives --install /usr/bin/cc cc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/c++ c++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -483,6 +518,13 @@ jobs:
         run: |
           apt update
           apt install -y bash build-essential cmake curl git libssl-dev libtool python3 python3-pip wget
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Alpine
+        if: ${{ startsWith(matrix.image, 'alpine') }}
+        run: |
+          apk update
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis zlib-dev
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -520,7 +562,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }}
 
       - name: Run Unit Test
         run: |
@@ -529,11 +571,12 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
+          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
-          ./x.py test go build $GOCASE_RUN_ARGS
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 
       - name: Install redis-py for openSUSE and Rocky
-        if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') }}
+        if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') && !startsWith(matrix.image, 'alpine') }}
         run: pip3 install redis==4.3.6
 
       - name: Install redis-py for Debian

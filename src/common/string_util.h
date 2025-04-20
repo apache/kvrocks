@@ -42,9 +42,15 @@ std::vector<std::string> Split(std::string_view in, std::string_view delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
 bool HasPrefix(const std::string &str, const std::string &prefix);
 
+template <typename Iter>
+Iter FindICase(Iter begin, Iter end, std::string_view expected) {
+  return std::find_if(begin, end, [expected](const auto &v) { return EqualICase(v, expected); });
+}
+
 Status ValidateGlob(std::string_view glob);
 bool StringMatch(std::string_view glob, std::string_view str, bool ignore_case = false);
 std::pair<std::string, std::string> SplitGlob(std::string_view glob);
+StatusOr<std::vector<std::string>> SplitArguments(std::string_view in);
 
 std::vector<std::string> RegexMatch(const std::string &str, const std::string &regex);
 std::string StringToHex(std::string_view input);

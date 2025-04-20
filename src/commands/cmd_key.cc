@@ -553,6 +553,32 @@ class CommandSort : public Commander {
   SortArgument sort_argument_;
 };
 
+class CommandKMetadata : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    std::string &key = args_[1];
+    std::string nskey = redis.AppendNamespacePrefix(key);
+
+    Metadata metadata(kRedisNone, false);
+    auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (metadata.IsSingleKVType()) {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
+    } else {
+      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
+                           {redis::BulkString("size"), redis::Integer(metadata.size)},
+                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+                           {redis::BulkString("flags"), redis::Integer(metadata.flags)},
+                           {redis::BulkString("version"), redis::Integer(metadata.version)}});
+    }
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPTTL>("pttl", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
@@ -573,6 +599,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
-                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1))
+                        MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))
 
 }  // namespace redis

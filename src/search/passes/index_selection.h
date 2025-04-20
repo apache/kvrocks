@@ -51,6 +51,8 @@ struct IndexSelection : Visitor {
     intervals.clear();
   }
 
+  std::string_view Name() override { return "Index Selection"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<Projection> node) override {
     IntervalAnalysis analysis(false);
     node = Node::MustAs<Projection>(analysis.Transform(std::move(node)));

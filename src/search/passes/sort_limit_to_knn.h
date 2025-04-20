@@ -29,6 +29,8 @@
 namespace kqir {
 
 struct SortByWithLimitToKnnExpr : Visitor {
+  std::string_view Name() override { return "SORTBY-LIMIT to KNN Transformation"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
     node = Node::MustAs<SearchExpr>(Visitor::Visit(std::move(node)));
 

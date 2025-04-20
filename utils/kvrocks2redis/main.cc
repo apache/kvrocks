@@ -73,7 +73,7 @@ static Options ParseCommandLineOptions(int argc, char **argv) {
         break;
       }
       case 'v':
-        std::cout << "kvrocks2redis " << PrintVersion << std::endl;
+        std::cout << "kvrocks2redis " << PrintVersion() << std::endl;
         exit(0);
       case 'h':
       default:
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
   }
 
   InitSpdlog(config);
-  LOG(INFO) << "kvrocks2redis " << PrintVersion;
+  LOG(INFO) << "kvrocks2redis " << PrintVersion();
 
   if (config.daemonize) Daemonize();
 

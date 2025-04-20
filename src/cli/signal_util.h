@@ -31,16 +31,17 @@
 #include "version_util.h"
 
 extern "C" inline void SegvHandler(int sig, [[maybe_unused]] siginfo_t *info, [[maybe_unused]] void *secret) {
-  LOG(ERROR) << "Ooops! Apache Kvrocks " << PrintVersion << " got signal: " << strsignal(sig) << " (" << sig << ")";
+  error("Ooops! Apache Kvrocks {} got signal: {} ({})", PrintVersion(), strsignal(sig), sig);
   auto trace = cpptrace::generate_trace();
 
   std::string trace_str;
   std::ostringstream os(trace_str);
   trace.print(os);
-  LOG(ERROR)
-      << os.str()
-      << "It would be greatly appreciated if you could submit this crash to https://github.com/apache/kvrocks/issues "
-         "along with the stacktrace above, logs and any relevant information.";
+
+  error("{}", os.str());
+  error(
+      "It would be greatly appreciated if you could submit this crash to https://github.com/apache/kvrocks/issues "
+      "along with the stacktrace above, logs and any relevant information.");
 
   struct sigaction act;
   /* Make sure we exit with the right signal at the end. So for instance

@@ -30,43 +30,43 @@
 
 // just like std::source_location::current() in C++20 and __builtin_source_location(),
 // but works in lower version compilers (GCC and Clang)
-inline spdlog::source_loc CurrentLocation(const char *filename = __builtin_FILE(), int lineno = __builtin_LINE(),
-                                          const char *funcname = __builtin_FUNCTION()) {
+inline constexpr spdlog::source_loc CurrentLocation(const char *filename = __builtin_FILE(),
+                                                    int lineno = __builtin_LINE(),
+                                                    const char *funcname = __builtin_FUNCTION()) {
   return {filename, lineno, funcname};
 }
 
-template <typename... Args>
 struct FormatMessageWithLoc {
   template <typename T>
-  FormatMessageWithLoc(T &&v, spdlog::source_loc loc = CurrentLocation())  // NOLINT
-      : fmt(std::forward<T>(v)), current_loc(loc) {}
+  constexpr FormatMessageWithLoc(const T &v, spdlog::source_loc loc = CurrentLocation())  // NOLINT
+      : fmt(v), current_loc(loc) {}
 
-  spdlog::format_string_t<Args...> fmt;
+  std::string_view fmt;
   spdlog::source_loc current_loc;
 };
 
 template <typename... Args>
-inline void debug(FormatMessageWithLoc<Args...> fmt, Args &&...args) {  // NOLINT
+inline void debug(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::debug, fmt.fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
-inline void info(FormatMessageWithLoc<Args...> fmt, Args &&...args) {  // NOLINT
+inline void info(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::info, fmt.fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
-inline void warn(FormatMessageWithLoc<Args...> fmt, Args &&...args) {  // NOLINT
+inline void warn(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::warn, fmt.fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
-inline void error(FormatMessageWithLoc<Args...> fmt, Args &&...args) {  // NOLINT
+inline void error(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::err, fmt.fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
-[[noreturn]] inline void fatal(FormatMessageWithLoc<Args...> fmt, Args &&...args) {  // NOLINT
+[[noreturn]] inline void fatal(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::critical, fmt.fmt, std::forward<Args>(args)...);
   std::abort();
 }

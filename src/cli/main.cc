@@ -50,7 +50,7 @@ Server *srv = nullptr;
 
 extern "C" void SignalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
-    LOG(INFO) << "Signal " << strsignal(sig) << " (" << sig << ") received, stopping the server";
+    info("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
     srv->Stop();
   }
 }
@@ -80,7 +80,7 @@ static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
     if ((argv[i] == "-c"sv || argv[i] == "--config"sv) && i + 1 < argc) {
       opts.conf_file = argv[++i];
     } else if (argv[i] == "-v"sv || argv[i] == "--version"sv) {
-      std::cout << "kvrocks " << PrintVersion << std::endl;
+      std::cout << "kvrocks " << PrintVersion() << std::endl;
       std::exit(0);
     } else if (argv[i] == "-h"sv || argv[i] == "--help"sv) {
       PrintUsage(*argv);
@@ -167,7 +167,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
     return 1;
   }
-  LOG(INFO) << "kvrocks " << PrintVersion;
+  info("kvrocks {}", PrintVersion());
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
@@ -175,7 +175,7 @@ int main(int argc, char *argv[]) {
     uint32_t ports[] = {config.port, config.tls_port, 0};
     for (uint32_t *port = ports; *port; ++port) {
       if (util::IsPortInUse(*port)) {
-        LOG(ERROR) << "Could not create server TCP since the specified port[" << *port << "] is already in use";
+        error("Could not create the server since the specified port {} is already in use", *port);
         return 1;
       }
     }
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
   if (config.daemonize && !is_supervised) Daemonize();
   s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to create pidfile: " << s.Msg();
+    error("Failed to create pidfile: {}", s.Msg());
     return 1;
   }
   auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
@@ -199,14 +199,14 @@ int main(int argc, char *argv[]) {
   engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to open: " << s.Msg();
+    error("Failed to open the database: {}", s.Msg());
     return 1;
   }
   Server server(&storage, &config);
   srv = &server;
   s = srv->Start();
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to start server: " << s.Msg();
+    error("Failed to start server: {}", s.Msg());
     return 1;
   }
   srv->Join();

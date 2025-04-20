@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
   Sync sync(&storage, &writer, &parser, &config);
   hup_handler = [&sync] {
     if (!sync.IsStopped()) {
-      info("Stoping sync");
+      info("Stopping sync");
       sync.Stop();
     }
   };

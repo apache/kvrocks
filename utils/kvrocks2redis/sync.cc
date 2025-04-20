@@ -55,10 +55,10 @@ Sync::~Sync() {
 void Sync::Start() {
   auto s = readNextSeqFromFile(&next_seq_);
   if (!s.IsOK()) {
-    LOG(ERROR) << s.Msg();
+    error(s.Msg());
     return;
   }
-  LOG(INFO) << "[kvrocks2redis] Start sync the data from kvrocks to redis";
+  info("Start sync the data from kvrocks to redis");
   while (!IsStopped()) {
     s = checkWalBoundary();
     if (!s.IsOK()) {
@@ -66,7 +66,7 @@ void Sync::Start() {
     }
     s = incrementBatchLoop();
     if (!s.IsOK()) {
-      LOG(ERROR) << s.Msg();
+      error(s.Msg());
     }
   }
 }
@@ -75,7 +75,7 @@ void Sync::Stop() {
   if (stop_flag_) return;
 
   stop_flag_ = true;  // Stopping procedure is asynchronous,
-  LOG(INFO) << "[kvrocks2redis] Stopped";
+  info("Sync Stopped");
 }
 
 Status Sync::tryCatchUpWithPrimary() {
@@ -100,8 +100,8 @@ Status Sync::checkWalBoundary() {
     auto batch = iter->GetBatch();
     if (next_seq_ != batch.sequence) {
       if (next_seq_ > batch.sequence) {
-        LOG(ERROR) << "checkWALBoundary with sequence: " << next_seq_
-                   << ", but GetWALIter return older sequence: " << batch.sequence;
+        error("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", next_seq_,
+              batch.sequence);
       }
       return {Status::NotOK};
     }
@@ -111,7 +111,7 @@ Status Sync::checkWalBoundary() {
 }
 
 Status Sync::incrementBatchLoop() {
-  LOG(INFO) << "[kvrocks2redis] Start parsing increment data";
+  info("Start parsing increment data");
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;
   while (!IsStopped()) {
     if (!tryCatchUpWithPrimary().IsOK()) {
@@ -123,8 +123,8 @@ Status Sync::incrementBatchLoop() {
         auto batch = iter->GetBatch();
         if (batch.sequence != next_seq_) {
           if (next_seq_ > batch.sequence) {
-            LOG(ERROR) << "checkWALBoundary with sequence: " << next_seq_
-                       << ", but GetWALIter return older sequence: " << batch.sequence;
+            error("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", next_seq_,
+                  batch.sequence);
           }
           return {Status::NotOK};
         }
@@ -146,25 +146,24 @@ Status Sync::incrementBatchLoop() {
 }
 
 void Sync::parseKVFromLocalStorage() {
-  LOG(INFO) << "[kvrocks2redis] Start parsing kv from the local storage";
+  info("Start parsing kv from the local storage");
   for (const auto &iter : config_->tokens) {
     auto s = writer_->FlushDB(iter.first);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[kvrocks2redis] Failed to flush target redis db in namespace: " << iter.first
-                 << ", encounter error: " << s.Msg();
+      error("Failed to flush target redis db in namespace: {}, encounter error: {}", iter.first, s.Msg());
       return;
     }
   }
 
   Status s = parser_->ParseFullDB();
   if (!s.IsOK()) {
-    LOG(ERROR) << "[kvrocks2redis] Failed to parse full db, encounter error: " << s.Msg();
+    error("Failed to parse full db, encounter error: {}", s.Msg());
     return;
   }
   auto last_seq = storage_->GetDB()->GetLatestSequenceNumber();
   s = updateNextSeq(last_seq + 1);
   if (!s.IsOK()) {
-    LOG(ERROR) << "[kvrocks2redis] Failed to update next sequence: " << s.Msg();
+    error("Failed to update next sequence: {}", s.Msg());
   }
 }
 

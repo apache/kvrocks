@@ -106,7 +106,7 @@ inline bool IsSupervisedMode(SupervisedMode mode) {
 inline void Daemonize() {
   pid_t pid = fork();
   if (pid < 0) {
-    error("Failed to fork the process, error: ", strerror(errno));
+    error("Failed to fork the process, error: {}", strerror(errno));
     exit(1);
   }
 
@@ -114,7 +114,7 @@ inline void Daemonize() {
   // change the file mode
   umask(0);
   if (setsid() < 0) {
-    error("Failed to setsid, error: ", strerror(errno));
+    error("Failed to setsid, error: {}", strerror(errno));
     exit(1);
   }
 

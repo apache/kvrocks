@@ -35,6 +35,7 @@
 #include "logging.h"
 #include "parser.h"
 #include "redis_writer.h"
+#include "spdlog/common.h"
 #include "spdlog/logger.h"
 #include "spdlog/sinks/daily_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -89,6 +90,7 @@ static void InitSpdlog(const kvrocks2redis::Config &config) {
       std::make_shared<spdlog::sinks::stdout_color_sink_mt>()};
   auto logger = std::make_shared<spdlog::logger>("kvrocks2redis", sinks.begin(), sinks.end());
   logger->set_level(config.loglevel);
+  logger->flush_on(spdlog::level::info);
   spdlog::set_default_logger(logger);
 }
 
@@ -112,13 +114,13 @@ int main(int argc, char *argv[]) {
   }
 
   InitSpdlog(config);
-  LOG(INFO) << "kvrocks2redis " << PrintVersion();
+  info("kvrocks2redis {}", PrintVersion());
 
   if (config.daemonize) Daemonize();
 
   s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to create pidfile '" << config.pidfile << "': " << s.Msg();
+    error("Failed to create pidfile '{}': {}", config.pidfile, s.Msg());
     exit(1);
   }
 
@@ -130,7 +132,7 @@ int main(int argc, char *argv[]) {
   engine::Storage storage(&kvrocks_config);
   s = storage.Open(kDBOpenModeAsSecondaryInstance);
   if (!s.IsOK()) {
-    LOG(ERROR) << "Failed to open Kvrocks storage: " << s.Msg();
+    error("Failed to open Kvrocks storage: {}", s.Msg());
     exit(1);
   }
 
@@ -140,7 +142,7 @@ int main(int argc, char *argv[]) {
   Sync sync(&storage, &writer, &parser, &config);
   hup_handler = [&sync] {
     if (!sync.IsStopped()) {
-      LOG(INFO) << "Bye Bye";
+      info("Stoping sync");
       sync.Stop();
     }
   };

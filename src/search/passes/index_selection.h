@@ -77,7 +77,8 @@ struct IndexSelection : Visitor {
     if (order->field->info->MetadataAs<redis::NumericFieldMetadata>()) {
       return std::make_unique<NumericFieldScan>(order->field->CloneAs<FieldRef>(), Interval::Full(), order->order);
     } else {
-      CHECK(false) << "current only numeric field is supported for ordering";
+      // current only numeric field is supported for ordering
+      unreachable();
     }
   }
 
@@ -130,7 +131,7 @@ struct IndexSelection : Visitor {
       return VisitExpr(v);
     }
 
-    CHECK(false) << "unreachable";
+    unreachable();
   }
 
   std::unique_ptr<PlanOperator> MakeFullIndexFilter(QueryExpr *node) const {

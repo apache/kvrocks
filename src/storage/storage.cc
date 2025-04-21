@@ -384,7 +384,7 @@ Status Storage::Open(DBOpenMode mode) {
       break;
     }
     default:
-      __builtin_unreachable();
+      unreachable();
   }
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();

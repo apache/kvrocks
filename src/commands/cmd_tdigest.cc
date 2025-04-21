@@ -243,7 +243,7 @@ class CommandTDigestMax : public CommandTDigestMinMax {
   CommandTDigestMax() : CommandTDigestMinMax(false) {}
 };
 class CommandTDigestQuantile : public Commander {
-  Status Parse(const std::vector<std::string> &args) {
+  Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
     values_.reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {

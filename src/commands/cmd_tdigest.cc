@@ -255,7 +255,7 @@ class CommandTDigestQuantile : public Commander {
     }
     return Status::OK();
   }
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     TDigestQuantitleResult result;
     auto s = tdigest.Quantile(ctx, key_name_, values_, &result);
@@ -270,7 +270,7 @@ class CommandTDigestQuantile : public Commander {
     for (const auto &q : result.quantiles) {
       quantile_strings.push_back(std::to_string(q));
     }
-    *output = redis::MultiBulkString(RESP::v2, quantile_strings);
+    *output = conn->MultiBulkString(quantile_strings);
     return Status::OK();
   }
 

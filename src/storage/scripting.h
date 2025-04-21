@@ -181,7 +181,7 @@ T *GetFromRegistry(lua_State *lua, const char *name) {
   CHECK(lua_islightuserdata(lua, -1));
   auto *ptr = static_cast<T *>(lua_touserdata(lua, -1));
 
-  CHECK_NOTNULL(ptr);
+  CHECK(ptr != nullptr);
 
   // pops the value
   lua_pop(lua, 1);

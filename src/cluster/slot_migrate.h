@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <glog/logging.h>
 #include <rocksdb/db.h>
 #include <rocksdb/status.h>
 #include <rocksdb/transaction_log.h>
@@ -33,6 +32,7 @@
 #include <vector>
 
 #include "batch_sender.h"
+#include "logging.h"
 #include "server/server.h"
 #include "status.h"
 #include "storage/redis_db.h"

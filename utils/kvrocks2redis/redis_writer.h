@@ -20,13 +20,12 @@
 
 #pragma once
 
-#include <glog/logging.h>
-
 #include <map>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "logging.h"
 #include "writer.h"
 
 class RedisWriter : public Writer {

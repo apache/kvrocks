@@ -36,9 +36,9 @@ class WriteBatchIndexer : public rocksdb::WriteBatch::Handler {
   explicit WriteBatchIndexer(engine::Storage* storage, rocksdb::WriteBatchWithIndex* dest_batch,
                              const rocksdb::Snapshot* snapshot)
       : storage_(storage), dest_batch_(dest_batch), snapshot_(snapshot) {
-    DCHECK_NE(storage, nullptr);
-    DCHECK_NE(dest_batch, nullptr);
-    DCHECK_NE(snapshot, nullptr);
+    DCHECK(storage != nullptr);
+    DCHECK(dest_batch != nullptr);
+    DCHECK(snapshot != nullptr);
   }
   explicit WriteBatchIndexer(engine::Context& ctx)
       : WriteBatchIndexer(ctx.storage, ctx.batch.get(), ctx.GetSnapshot()) {}

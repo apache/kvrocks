@@ -20,8 +20,7 @@
 
 #include "compaction_checker.h"
 
-#include <glog/logging.h>
-
+#include "logging.h"
 #include "parse_util.h"
 #include "storage.h"
 #include "time_util.h"

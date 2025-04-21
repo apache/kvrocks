@@ -18,7 +18,6 @@
  *
  */
 
-#include <glog/logging.h>
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
 
@@ -28,6 +27,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "logging.h"
 #include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"

@@ -20,12 +20,11 @@
 
 #include "compact_filter.h"
 
-#include <glog/logging.h>
-
 #include <string>
 #include <utility>
 
 #include "db_util.h"
+#include "logging.h"
 #include "time_util.h"
 #include "types/redis_bitmap.h"
 

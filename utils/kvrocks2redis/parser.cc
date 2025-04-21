@@ -20,13 +20,13 @@
 
 #include "parser.h"
 
-#include <glog/logging.h>
 #include <rocksdb/write_batch.h>
 
 #include <memory>
 
 #include "cluster/redis_slot.h"
 #include "db_util.h"
+#include "logging.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
 #include "types/redis_string.h"
@@ -178,7 +178,7 @@ Status Parser::ParseWriteBatch(const std::string &batch_string) {
   for (const auto &iter : *resp_commands) {
     auto s = writer_->Write(iter.first, iter.second);
     if (!s.IsOK()) {
-      LOG(ERROR) << "[kvrocks2redis] Failed to write to AOF from the write batch. Error: " << s.Msg();
+      error("Failed to write to AOF from the write batch. Error: {}", s.Msg());
     }
   }
 

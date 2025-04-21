@@ -41,7 +41,9 @@ TEST(IRPassTest, Simple) {
 
   auto original = ir->Dump();
 
-  Visitor visitor;
+  struct MyVisitor : Visitor {
+    std::string_view Name() override { return ""; };
+  } visitor;
   auto ir2 = visitor.Transform(std::move(ir));
   ASSERT_EQ(original, ir2->Dump());
 }

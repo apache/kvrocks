@@ -37,7 +37,7 @@ rocksdb::Status ExtractRandMemberFromSet(bool unique, size_t count, const GetAll
   if (!s.ok() || samples.empty()) return s;
 
   size_t all_element_size = samples.size();
-  DCHECK_GE(all_element_size, 1U);
+  DCHECK(all_element_size >= 1U);
   elements->reserve(std::min(all_element_size, count));
 
   if (!unique || count == 1) {

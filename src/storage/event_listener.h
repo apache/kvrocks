@@ -20,9 +20,9 @@
 
 #pragma once
 
-#include <glog/logging.h>
 #include <rocksdb/listener.h>
 
+#include "logging.h"
 #include "storage.h"
 
 class EventListener : public rocksdb::EventListener {

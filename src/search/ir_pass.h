@@ -98,7 +98,7 @@ struct Visitor : Pass {
       return Visit(std::move(v));
     }
 
-    __builtin_unreachable();
+    unreachable();
   }
 
   template <typename T>

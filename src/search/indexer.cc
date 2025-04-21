@@ -55,8 +55,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     if (!s.ok()) return {Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
-    assert(false && "unreachable code: unexpected IndexOnDataType");
-    __builtin_unreachable();
+    unreachable();
   }
 }
 

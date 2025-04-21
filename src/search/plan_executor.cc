@@ -98,7 +98,7 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
-    CHECK(false) << "unreachable";
+    unreachable();
   }
 
   void Visit(Limit *op) {

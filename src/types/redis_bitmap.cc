@@ -404,7 +404,7 @@ rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool
     }
     size_t stop_byte_in_segment = pin_value.size();
     if (i == stop_segment_index) {
-      DCHECK_LE((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1, pin_value.size());
+      DCHECK((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1 <= pin_value.size());
       stop_byte_in_segment = (u_stop / to_bit_factor) % kBitmapSegmentBytes + 1;
       byte_with_bit_stop = stop_byte_in_segment;
     }

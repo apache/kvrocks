@@ -38,7 +38,7 @@ RedisWriter::RedisWriter(kvrocks2redis::Config *config) : Writer(config) {
       assert(stop_flag_);
     });
   } catch (const std::system_error &e) {
-    LOG(ERROR) << "[kvrocks2redis] Failed to create thread: " << e.what();
+    error("Failed to create thread: {}", e.what());
     return;
   }
 }
@@ -85,53 +85,53 @@ void RedisWriter::Stop() {
 
   if (t_.joinable()) t_.join();
   // handled by sync func
-  LOG(INFO) << "[kvrocks2redis] redis_writer Stopped";
+  info("RedisWriter Stopped");
 }
 
 void RedisWriter::sync() {
   for (const auto &iter : config_->tokens) {
     Status s = readNextOffsetFromFile(iter.first, &next_offsets_[iter.first]);
     if (!s.IsOK()) {
-      LOG(ERROR) << s.Msg();
+      error("{}", s.Msg());
       return;
     }
   }
 
   size_t chunk_size = 4 * 1024 * 1024;
-  char *buffer = new char[chunk_size];
+  auto buffer = std::make_unique<char[]>(chunk_size);
   while (!stop_flag_) {
     for (const auto &iter : config_->tokens) {
       Status s = GetAofFd(iter.first);
       if (!s.IsOK()) {
-        LOG(ERROR) << s.Msg();
+        error("{}", s.Msg());
         continue;
       }
 
       s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
-        LOG(ERROR) << s.Msg();
+        error("{}", s.Msg());
         continue;
       }
 
       while (true) {
-        auto getted_line_leng = pread(aof_fds_[iter.first], buffer, chunk_size, next_offsets_[iter.first]);
+        auto getted_line_leng = pread(aof_fds_[iter.first], buffer.get(), chunk_size, next_offsets_[iter.first]);
         if (getted_line_leng <= 0) {
           if (getted_line_leng < 0) {
-            LOG(ERROR) << "ERR read aof file : " << strerror(errno);
+            error("failed to read AOF file: {}", strerror(errno));
           }
           break;
         }
 
-        std::string con = std::string(buffer, getted_line_leng);
-        s = util::SockSend(redis_fds_[iter.first], std::string(buffer, getted_line_leng));
+        std::string con = std::string(buffer.get(), getted_line_leng);
+        s = util::SockSend(redis_fds_[iter.first], con);
         if (!s.IsOK()) {
-          LOG(ERROR) << "ERR send data to redis err: " << s.Msg();
+          error("Failed to send data to redis err: {}", s.Msg());
           break;
         }
 
         auto line_state = util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
-          LOG(ERROR) << "read redis response err: " << s.Msg();
+          error("Failed to read redis response err: {}", s.Msg());
           break;
         }
 
@@ -139,23 +139,20 @@ void RedisWriter::sync() {
         if (line.compare(0, 1, "-") == 0) {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
           // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-          LOG(ERROR) << "[kvrocks2redis] CRITICAL - redis sync return error , administrator confirm needed : " << line;
-          delete[] buffer;
+          error("CRITICAL - redis sync return error, administrator confirm needed: {}", line);
           Stop();
           return;
         }
 
         s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
         if (!s.IsOK()) {
-          LOG(ERROR) << "ERR updating next offset: " << s.Msg();
+          error("Failed to updating next offset: {}", s.Msg());
           break;
         }
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
-
-  delete[] buffer;
 }
 
 Status RedisWriter::getRedisConn(const std::string &ns, const std::string &host, uint32_t port, const std::string &auth,
@@ -210,7 +207,7 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
     return s.Prefixed("failed to send SELECT command to socket");
   }
 
-  LOG(INFO) << "[kvrocks2redis] select db request was sent, waiting for response";
+  info("select db request was sent, waiting for response");
   std::string line = GET_OR_RET(util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis select db failed: " + line};

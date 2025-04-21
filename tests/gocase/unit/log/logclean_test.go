@@ -28,9 +28,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const infoLogFileNamePart = ".INFO."
+const infoLogFileNamePart = ".log"
 
 func TestInfoLogClean(t *testing.T) {
+	t.Skip("the new log system does not support zero log-retention-days for immediately removing all log files")
+
 	logDir := "/tmp/kvrocks/logfile"
 	require.NoError(t, os.RemoveAll(logDir))
 	require.NoError(t, os.MkdirAll(logDir, os.ModePerm))

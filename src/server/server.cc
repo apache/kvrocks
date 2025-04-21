@@ -20,7 +20,6 @@
 
 #include "server.h"
 
-#include <glog/logging.h>
 #include <rocksdb/convenience.h>
 #include <rocksdb/statistics.h>
 #include <sys/resource.h>
@@ -43,6 +42,7 @@
 #include "common/string_util.h"
 #include "config/config.h"
 #include "fmt/format.h"
+#include "logging.h"
 #include "redis_connection.h"
 #include "rocksdb/version.h"
 #include "storage/compaction_checker.h"

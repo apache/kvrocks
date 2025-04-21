@@ -20,9 +20,8 @@
 
 #include "batch_extractor.h"
 
-#include <glog/logging.h>
-
 #include "cluster/redis_slot.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"

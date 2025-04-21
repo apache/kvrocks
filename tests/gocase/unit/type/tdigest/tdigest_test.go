@@ -312,18 +312,18 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 100, infoAfterEmptyReset.Compression)
 	})
 	t.Run("tdigest.quantile with different arguments", func(t *testing.T) {
-		key_prefix := "t_qt_"
+		keyPrefix := "t_qt_"
 
 		//Testing with no arguments
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE").Err(), errMsgWrongNumberArg)
 
 		// Quantile on a non existent key
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", key_prefix+"iDoNotExist").Err(), errMsgKeyNotExist)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", keyPrefix+"iDoNotExist").Err(), errMsgKeyNotExist)
 
 		// Creating a key
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key_prefix+"01", "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", keyPrefix+"01", "compression", "100").Err())
 
-		key := key_prefix + "01"
+		key := keyPrefix + "01"
 		//Adding some data to tdigest 1 2 2 3 3 3 4 4 4 4 5 5 5 5 5
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "2", "3", "3", "3", "4", "4", "4", "4", "5", "5", "5", "5", "5").Err())
 

@@ -373,7 +373,7 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range]([[maybe_unused]] int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          LOG(ERROR) << fmt::format("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
+          error("[import] Failed to stop importing slot(s) {}:{}", slot_range.String(), s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {
@@ -383,17 +383,17 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
         // supported in the future.
         srv_->slot_migrator->ReleaseForbiddenSlotRange();
       }
-      LOG(INFO) << fmt::format("[import] Start importing slot(s) {}", slot_range.String());
+      info("[import] Start importing slot(s) {}", slot_range.String());
       break;
     case kImportSuccess:
       s = srv_->slot_import->Success(slot_range);
       if (!s.IsOK()) return s;
-      LOG(INFO) << fmt::format("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
+      info("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot_range);
       if (!s.IsOK()) return s;
-      LOG(INFO) << fmt::format("[import] Mark the importing slot(s) {} as failed", slot_range.String());
+      info("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -690,8 +690,7 @@ Status Cluster::DumpClusterNodes(const std::string &file) {
 
 Status Cluster::LoadClusterNodes(const std::string &file_path) {
   if (rocksdb::Env::Default()->FileExists(file_path).IsNotFound()) {
-    LOG(INFO) << fmt::format("The cluster nodes file {} is not found. Use CLUSTERX subcommands to specify it.",
-                             file_path);
+    info("The cluster nodes file {} is not found. Use CLUSTERX subcommands to specify it.", file_path);
     return Status::OK();
   }
 

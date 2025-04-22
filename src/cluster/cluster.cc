@@ -246,7 +246,7 @@ Status Cluster::SetMasterSlaveRepl() {
     if (!s.IsOK()) {
       return s.Prefixed("failed to remove master");
     }
-    info("MASTER MODE enabled by cluster topology setting")
+    info("MASTER MODE enabled by cluster topology setting");
     if (srv_->slot_migrator && is_cluster_enabled && is_slave) {
       // Slave -> Master
       srv_->slot_migrator->SetStopMigrationFlag(false);

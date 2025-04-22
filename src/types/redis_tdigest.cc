@@ -354,16 +354,16 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
   auto subkey = ikey.GetSubKey();
   auto type_flg = static_cast<uint8_t>(SegmentType::kGuardFlag);
   if (!GetFixed8(&subkey, &type_flg)) {
-    LOG(ERROR) << "corrupted tdigest centroid key, extract type failed";
+    error("corrupted tdigest centroid key, extract type failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
   if (static_cast<SegmentType>(type_flg) != SegmentType::kCentroids) {
-    LOG(ERROR) << "corrupted tdigest centroid key type: " << type_flg << ", expect to be "
-               << static_cast<uint8_t>(SegmentType::kCentroids);
+    error("corrupted tdigest centroid key type: {}, expect to be {}", type_flg,
+          static_cast<uint8_t>(SegmentType::kCentroids));
     return rocksdb::Status::Corruption("corrupted tdigest centroid key type");
   }
   if (!GetDouble(&subkey, &centroid->mean)) {
-    LOG(ERROR) << "corrupted tdigest centroid key, extract mean failed";
+    error("corrupted tdigest centroid key, extract mean failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
 
@@ -372,7 +372,7 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
 
   if (rocksdb::Slice value_slice = value;  // GetDouble needs a mutable pointer of slice
       !GetDouble(&value_slice, &centroid->weight)) {
-    LOG(ERROR) << "corrupted tdigest centroid value, extract weight failed";
+    error("corrupted tdigest centroid value, extract weight failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid value");
   }
   return rocksdb::Status::OK();
@@ -419,7 +419,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
       for (uint64_t i = 0; i < metadata.unmerged_nodes; ++i) {
         double tmp_value = std::numeric_limits<double>::quiet_NaN();
         if (!GetDouble(&buffer_slice, &tmp_value)) {
-          LOG(ERROR) << "metadata has " << metadata.unmerged_nodes << " records, but get " << i << " failed";
+          error("metadata has {} records, but get {} failed", metadata.unmerged_nodes, i);
           return rocksdb::Status::Corruption("corrupted tdigest buffer value");
         }
         buffer->emplace_back(tmp_value);
@@ -460,7 +460,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
   }
 
   if (centroids->size() != metadata.merged_nodes) {
-    LOG(ERROR) << "metadata has " << metadata.merged_nodes << " merged nodes, but got " << centroids->size();
+    error("metadata has {} merged nodes, but got {}", metadata.merged_nodes, centroids->size());
     return rocksdb::Status::Corruption("centroids count mismatch with metadata");
   }
   return rocksdb::Status::OK();

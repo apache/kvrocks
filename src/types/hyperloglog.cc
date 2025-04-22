@@ -100,7 +100,7 @@ DenseHllResult ExtractDenseHllResult(uint64_t hash) {
    * This may sound like inefficient, but actually in the average case
    * there are high probabilities to find a 1 after a few iterations. */
   uint32_t index = hash & kHyperLogLogRegisterCountMask; /* Register index. */
-  DCHECK(index < kHyperLogLogRegisterCount);
+  CHECK(index < kHyperLogLogRegisterCount);
   hash >>= kHyperLogLogRegisterCountPow; /* Remove bits used to address the register. */
   hash |= (static_cast<uint64_t>(1U) << kHyperLogLogHashBitCount);
   uint8_t ctz = __builtin_ctzll(hash) + 1;
@@ -165,7 +165,7 @@ void HllMerge(std::vector<std::string> *dest_registers, const std::vector<nonstd
       continue;
     }
     if (dest_segment->empty()) {
-      DCHECK(kHyperLogLogSegmentBytes == src_segment.size());
+      CHECK(kHyperLogLogSegmentBytes == src_segment.size());
       *dest_segment = std::string(src_segment.begin(), src_segment.end());
       continue;
     }

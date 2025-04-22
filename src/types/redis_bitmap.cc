@@ -308,7 +308,7 @@ rocksdb::Status Bitmap::BitCount(engine::Context &ctx, const Slice &user_key, in
 
 rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool bit, int64_t start, int64_t stop,
                                bool stop_given, int64_t *pos, bool is_bit_index) {
-  if (is_bit_index) DCHECK(stop_given);
+  if (is_bit_index) CHECK(stop_given);
 
   std::string raw_value;
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -404,7 +404,7 @@ rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool
     }
     size_t stop_byte_in_segment = pin_value.size();
     if (i == stop_segment_index) {
-      DCHECK((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1 <= pin_value.size());
+      CHECK((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1 <= pin_value.size());
       stop_byte_in_segment = (u_stop / to_bit_factor) % kBitmapSegmentBytes + 1;
       byte_with_bit_stop = stop_byte_in_segment;
     }
@@ -558,7 +558,7 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
           auto apply_fast_path_op = [&](auto op) {
             // Note: kBitOpNot cannot use this op, it only applying
             // to kBitOpAnd, kBitOpOr, kBitOpXor.
-            DCHECK(op_flag != kBitOpNot);
+            CHECK(op_flag != kBitOpNot);
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               for (uint64_t i = 1; i < frag_numkeys; i++) {
                 op(lres[0], lp[i][0]);

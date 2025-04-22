@@ -35,7 +35,7 @@ class CommandPfAdd final : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
-    DCHECK(args_.size() >= 2u);
+    CHECK(args_.size() >= 2u);
     std::vector<uint64_t> hashes(args_.size() - 2);
     for (size_t i = 2; i < args_.size(); i++) {
       hashes[i - 2] = redis::HyperLogLog::HllHash(args_[i]);
@@ -61,7 +61,7 @@ class CommandPfCount final : public Commander {
     uint64_t ret{};
     rocksdb::Status s;
     // The first argument is the command name, so we need to skip it.
-    DCHECK(args_.size() >= 2u);
+    CHECK(args_.size() >= 2u);
 
     if (args_.size() > 2) {
       std::vector<Slice> keys(args_.begin() + 1, args_.end());
@@ -86,7 +86,7 @@ class CommandPfCount final : public Commander {
 class CommandPfMerge final : public Commander {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::HyperLogLog hll(srv->storage, conn->GetNamespace());
-    DCHECK(args_.size() > 1u);
+    CHECK(args_.size() > 1u);
     std::vector<Slice> src_user_keys(args_.begin() + 2, args_.end());
 
     auto s = hll.Merge(ctx, /*dest_user_key=*/args_[1], src_user_keys);

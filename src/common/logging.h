@@ -120,8 +120,4 @@ inline constexpr bool GLOG_IN_DEBUG =
 
 // NOLINTNEXTLINE
 #define CHECK(cond) \
-  if (!(cond)) LOG(FATAL) << "Check `" << #cond << "` failed. "
-
-// NOLINTNEXTLINE
-#define DCHECK(cond) \
-  if constexpr (GLOG_IN_DEBUG) CHECK(cond)
+  if (!(cond)) fatal("Check `{}` failed.", #cond);

@@ -124,7 +124,7 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
     if (ci_right == td.End()) {
       // index larger than center of last bin
       auto c = GET_OR_RET(ci_left->GetCentroid());
-      DCHECK(c.weight >= 2);
+      CHECK(c.weight >= 2);
       return Lerp(c.mean, td.Max(), diff / (c.weight / 2));
     }
     ci_right->Next();
@@ -132,7 +132,7 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
     if (ci_left == td.Begin()) {
       // index smaller than center of first bin
       auto c = GET_OR_RET(ci_left->GetCentroid());
-      DCHECK(c.weight >= 2);
+      CHECK(c.weight >= 2);
       return Lerp(td.Min(), c.mean, index / (c.weight / 2));
     }
     ci_left->Prev();

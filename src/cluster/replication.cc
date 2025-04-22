@@ -273,7 +273,6 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       ssl = SSL_new(repl_->srv_->ssl_ctx.get());
       if (!ssl) {
         error("Failed to construct SSL structure for new connection: {}", SSLErrors{});
-        // LOG(ERROR) << "Failed to construct SSL structure for new connection: " << SSLErrors{};
         evutil_closesocket(*cfd);
         return;
       }

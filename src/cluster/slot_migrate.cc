@@ -239,7 +239,7 @@ void SlotMigrator::runMigrationProcess() {
           error("[migrate] Failed to finish a failed migration of slot(s) {}. Error: {}", slot_range_.load().String(),
                 s.Msg());
         }
-        info("[migrate] Failed to migrate a slot(s) ", slot_range_.load().String());
+        info("[migrate] Failed to migrate a slot(s) {}", slot_range_.load().String());
         migration_state_ = MigrationState::kFailed;
         current_stage_ = SlotMigrationStage::kClean;
         break;
@@ -1350,7 +1350,7 @@ Status SlotMigrator::syncWALByRawKV() {
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate incremental data failed, {}", s.Msg())};
     }
-    info("[migrate] Migrated incremental data, epoch: {}, seq from {} to {} ", epoch, wal_begin_seq_,
+    info("[migrate] Migrated incremental data, epoch: {}, seq from {} to {}", epoch, wal_begin_seq_,
          wal_incremental_seq);
     wal_begin_seq_ = wal_incremental_seq;
     epoch++;

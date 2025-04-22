@@ -98,7 +98,7 @@ void FeedSlaveThread::checkLivenessIfNeed() {
   const auto ping_command = redis::BulkString("ping");
   auto s = util::SockSend(conn_->GetFD(), ping_command, conn_->GetBufferEvent());
   if (!s.IsOK()) {
-    error("Ping slave [ {} ] err: {}, would stop the thread", conn_->GetAddr(), s.Msg());
+    error("Ping slave [{}] err: {}, would stop the thread", conn_->GetAddr(), s.Msg());
     Stop();
   }
 }
@@ -203,7 +203,7 @@ void ReplicationThread::CallbacksStateMachine::SetWriteCB(bufferevent *bev, buff
 void ReplicationThread::CallbacksStateMachine::ReadWriteCB(bufferevent *bev) {
 LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
-  DLOG(INFO) << "[replication] Execute handler[" << getHandlerName(handler_idx_) << "]";
+  info("[replication] Execute handler[{}]", getHandlerName(handler_idx_));
   auto st = getHandlerFunc(handler_idx_)(repl_, bev);
   repl_->last_io_time_secs_.store(util::GetTimeStamp(), std::memory_order_relaxed);
   switch (st) {
@@ -954,14 +954,14 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {
-    DLOG(INFO) << "[fetch] Start to fetch file " << files[i];
+    info("[fetch] Start to fetch file {}", files[i]);
     s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn, ssl);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
       warn("[fetch] Fail to fetch file {}, err: {}", files[i], s.Msg());
       break;
     }
-    DLOG(INFO) << "[fetch] Succeed fetching file " << files[i];
+    info("[fetch] Succeed fetching file {}", files[i]);
 
     // Just for tests
     if (srv_->GetConfig()->fullsync_recv_file_delay) {

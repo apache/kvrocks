@@ -221,7 +221,7 @@ void SlotMigrator::runMigrationProcess() {
       case SlotMigrationStage::kSuccess: {
         auto s = finishSuccessfulMigration();
         if (s.IsOK()) {
-          info("[migrate] Succees to migrate slot(s) {}", slot_range_.load().String());
+          info("[migrate] Succeed to migrate slot(s) {}", slot_range_.load().String());
           current_stage_ = SlotMigrationStage::kClean;
           migration_state_ = MigrationState::kSuccess;
           resumeSyncCtx(s);
@@ -1040,11 +1040,11 @@ void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
     forbidden_slot_range_ = slot_range;
   }
   during = util::GetTimeStampUS() - during;
-  info("[migrate] To set forbidden slot, server was blocked for {}", during)
+  info("[migrate] To set forbidden slot, server was blocked for {} us", during)
 }
 
 void SlotMigrator::ReleaseForbiddenSlotRange() {
-  info("[migrate] Release forbidden slot(s) {}", orbidden_slot_range_.load().String());
+  info("[migrate] Release forbidden slot(s) {}", forbidden_slot_range_.load().String());
   forbidden_slot_range_ = {-1, -1};
 }
 
@@ -1364,7 +1364,7 @@ Status SlotMigrator::syncWALByRawKV() {
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate last incremental data failed, {}", s.Msg())};
     }
-    info("[migrate] Migrated last incremental data after set forbidden slot, seq, from {} to {}", wal_begin_seq_,
+    info("[migrate] Migrated last incremental data after set forbidden slot, seq from {} to {}", wal_begin_seq_,
          wal_incremental_seq);
   }
 

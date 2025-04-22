@@ -67,7 +67,7 @@ Status FeedSlaveThread::Start() {
     pthread_sigmask(SIG_BLOCK, &mask, &omask);
     auto s = util::SockSend(conn_->GetFD(), redis::RESP_OK, conn_->GetBufferEvent());
     if (!s.IsOK()) {
-      error("failed to send OK response to the replica {}", s.Msg());
+      error("failed to send OK response to the replica: {}", s.Msg());
       return;
     }
     this->loop();
@@ -84,7 +84,7 @@ Status FeedSlaveThread::Start() {
 
 void FeedSlaveThread::Stop() {
   stop_ = true;
-  warn("Slave thread was terminated, would stop feeding the slave: {}", conn_->GetAddr);
+  warn("Slave thread was terminated, would stop feeding the slave: {}", conn_->GetAddr());
 }
 
 void FeedSlaveThread::Join() {
@@ -752,7 +752,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
       return CBState::QUIT;
     }
   }
-  error("Shouls not arrive here");
+  error("Should not arrive here");
   assert(false);
   return CBState::QUIT;
 }

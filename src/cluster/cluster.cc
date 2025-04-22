@@ -130,7 +130,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
         if (migrated_slots_.count(slot) > 0) {
           auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
-            error("failed to clear data of migrated slot {}", s.ToString());
+            error("failed to clear data of migrated slot {} ", s.ToString());
           }
           migrated_slots_.erase(slot);
         }
@@ -250,7 +250,7 @@ Status Cluster::SetMasterSlaveRepl() {
     if (srv_->slot_migrator && is_cluster_enabled && is_slave) {
       // Slave -> Master
       srv_->slot_migrator->SetStopMigrationFlag(false);
-      info("Change server role to master, restart migration task")
+      info("Change server role to master, restart migration task");
     }
     return Status::OK();
   }
@@ -261,7 +261,8 @@ Status Cluster::SetMasterSlaveRepl() {
     std::shared_ptr<ClusterNode> master = it->second;
     auto s = srv_->AddMaster(master->host, master->port, false);
     if (!s.IsOK()) {
-      warn("SLAVE OF {} : {} wasn't enabled by cluster topology setting, encounter error: {}", master->host, master->port, s.Msg());
+      warn("SLAVE OF {}:{} wasn't enabled by cluster topology setting, encounter error: {}", master->host, master->port,
+           s.Msg());
       return s.Prefixed("failed to add master");
     }
     if (srv_->slot_migrator && is_cluster_enabled && !is_slave) {
@@ -373,7 +374,7 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range]([[maybe_unused]] int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          error("[import] Failed to stop importing slot(s) {}:{}", slot_range.String(), s.Msg());
+          error("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {

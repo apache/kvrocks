@@ -229,9 +229,17 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install --quiet --formula cmake gcc autoconf automake libtool openssl coreutils
+          brew install --quiet --formula gcc autoconf automake libtool openssl coreutils
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
+
+      - name: Setup cmake
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        # Cmake 4.0 has the compatibility issue, just pin it to 3.31.
+        # See https://github.com/actions/runner-images/issues/11926.
+        run: |
+          pipx install --force cmake==3.31
+
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |

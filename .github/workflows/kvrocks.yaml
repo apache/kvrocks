@@ -234,6 +234,7 @@ jobs:
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup cmake
+        if: ${{ startsWith(matrix.os, 'macos') }}
         uses: jwlawson/actions-setup-cmake@v2
         with:
           # Cmake 4.0 has the compatibility issue, just pin it to 3.31.

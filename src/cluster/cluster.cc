@@ -167,7 +167,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
 
   // Update version and cluster topology
   version_ = version;
-  nodes_ = nodes;
+  nodes_ = std::move(nodes);
   size_ = 0;
 
   // Update slots to nodes
@@ -252,6 +252,11 @@ Status Cluster::SetMasterSlaveRepl() {
       srv_->slot_migrator->SetStopMigrationFlag(false);
       LOG(INFO) << "Change server role to master, restart migration task";
     }
+
+    if (!is_slave) {
+      srv_->CleanupOrphanSlaves(version_, nodes_);
+    }
+
     return Status::OK();
   }
 
@@ -976,4 +981,14 @@ Status Cluster::Reset() {
   // unlink the cluster nodes file if exists
   unlink(srv_->GetConfig()->NodesFilePath().data());
   return Status::OK();
+}
+
+// Note that if current version is lower than the given version,
+// it can't be determined whether the node is in the cluster, so just regard it as in the cluster.
+bool Cluster::IsInCluster(const std::string &node_id, int64_t version) const {
+  if (version < 0 || this->version_ < version) {
+    return true;
+  }
+
+  return nodes_.count(node_id) > 0;
 }

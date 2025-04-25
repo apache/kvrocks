@@ -58,7 +58,7 @@
 
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
-    sigset_t mask, omask;
+    sigset_t mask{}, omask{};
     sigemptyset(&mask);
     sigemptyset(&omask);
     sigaddset(&mask, SIGCHLD);
@@ -459,6 +459,12 @@ ReplicationThread::CBState ReplicationThread::replConfWriteCB(bufferevent *bev) 
     data_to_send.emplace_back("ip-address");
     data_to_send.emplace_back(config->replica_announce_ip);
   }
+  if (!next_try_without_peer_id_ && config->cluster_enabled) {
+    data_to_send.emplace_back("peer-id");
+    data_to_send.emplace_back(srv_->cluster->GetMyId());
+    data_to_send.emplace_back("version");
+    data_to_send.emplace_back(std::to_string(srv_->cluster->GetVersion()));
+  }
   SendString(bev, redis::ArrayOfBulkStrings(data_to_send));
   repl_state_.store(kReplReplConf, std::memory_order_relaxed);
   LOG(INFO) << "[replication] replconf request was sent, waiting for response";
@@ -470,26 +476,40 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev) {
   UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
   if (!line) return CBState::AGAIN;
 
+  auto resp = line.View();
+
   // on unknown option: first try without announce ip, if it fails again - do nothing (to prevent infinite loop)
-  if (isUnknownOption(line.View()) && !next_try_without_announce_ip_address_) {
-    next_try_without_announce_ip_address_ = true;
-    LOG(WARNING) << "The old version master, can't handle ip-address, "
-                 << "try without it again";
-    // Retry previous state, i.e. send replconf again
-    return CBState::PREV;
+  if (isUnknownOption(resp)) {
+    if (!next_try_without_peer_id_) {
+      next_try_without_peer_id_ = true;
+      LOG(WARNING) << "The old version master, can't handle peer-id, try without it again";
+      return CBState::PREV;
+    }
+    if (!next_try_without_announce_ip_address_) {
+      next_try_without_announce_ip_address_ = true;
+      LOG(WARNING) << "The old version master, can't handle ip-address, try without it again";
+      return CBState::PREV;
+    }
   }
-  if (line[0] == '-' && isRestoringError(line.View())) {
-    LOG(WARNING) << "The master was restoring the db, retry later";
-    return CBState::RESTART;
-  }
-  if (!ResponseLineIsOK(line.View())) {
-    LOG(WARNING) << "[replication] Failed to replconf: " << line.get() + 1;
-    //  backward compatible with old version that doesn't support replconf cmd
-    return CBState::NEXT;
-  } else {
+
+  if (ResponseLineIsOK(resp)) {
     LOG(INFO) << "[replication] replconf is ok, start psync";
     return CBState::NEXT;
   }
+
+  if (isRestoringError(resp)) {
+    LOG(WARNING) << "The master was restoring the db, retry later";
+    return CBState::RESTART;
+  }
+
+  if (isNodeDecommissioned(resp)) {
+    LOG(ERROR) << "The master has fired the node, stop the replication";
+    return CBState::QUIT;
+  }
+
+  LOG(WARNING) << "[replication] Failed to replconf: " << line.get() + 1;
+  //  backward compatible with old version that doesn't support replconf cmd
+  return CBState::NEXT;
 }
 
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) {
@@ -772,6 +792,7 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
   std::atomic<uint32_t> fetch_cnt = {0};
   std::atomic<uint32_t> skip_cnt = {0};
   std::vector<std::future<Status>> results;
+  results.reserve(concurrency);
   for (size_t tid = 0; tid < concurrency; ++tid) {
     results.push_back(
         std::async(std::launch::async, [this, dir, &files, tid, concurrency, &fetch_cnt, &skip_cnt]() -> Status {
@@ -1034,12 +1055,22 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
 
 bool ReplicationThread::isRestoringError(std::string_view err) {
   // err doesn't contain the CRLF, so cannot use redis::Error here.
-  return err == RESP_PREFIX_ERROR + redis::StatusToRedisErrorMsg({Status::RedisLoading, redis::errRestoringBackup});
+  static const auto msg = fmt::format(RESP_PREFIX_ERROR "{}",
+                                      redis::StatusToRedisErrorMsg({Status::RedisLoading, redis::errRestoringBackup}));
+  return err == msg;
 }
 
 bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
   // err doesn't contain the CRLF, so cannot use redis::Error here.
-  return err == RESP_PREFIX_ERROR + redis::StatusToRedisErrorMsg({Status::NotOK, redis::errWrongNumOfArguments});
+  static const auto msg =
+      fmt::format(RESP_PREFIX_ERROR "{}", redis::StatusToRedisErrorMsg({Status::NotOK, redis::errWrongNumOfArguments}));
+  return err == msg;
+}
+
+bool ReplicationThread::isNodeDecommissioned(std::string_view err) {
+  static const auto msg =
+      fmt::format(RESP_PREFIX_ERROR "{}", redis::StatusToRedisErrorMsg({Status::NotOK, errNodeDecommissioned}));
+  return err == msg;
 }
 
 bool ReplicationThread::isUnknownOption(std::string_view err) {

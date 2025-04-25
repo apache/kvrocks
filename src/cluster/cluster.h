@@ -95,6 +95,7 @@ class Cluster {
   Status Reset();
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
+  bool IsInCluster(const std::string &node_id, int64_t version) const;
 
  private:
   std::string getNodeIDBySlot(int slot) const;

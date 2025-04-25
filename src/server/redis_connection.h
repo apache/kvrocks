@@ -22,10 +22,13 @@
 
 #include <event2/buffer.h>
 
+#include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,6 +40,8 @@
 class Worker;
 
 namespace redis {
+
+class PeerInfo;
 
 class Connection : public EvbufCallbackBase<Connection> {
  public:
@@ -134,12 +139,18 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
   std::string GetIP() const { return ip_; }
   uint32_t GetPort() const { return port_; }
-  void SetListeningPort(int port) { listening_port_ = port; }
-  int GetListeningPort() const { return listening_port_; }
-  void SetAnnounceIP(std::string ip) { announce_ip_ = std::move(ip); }
-  std::string GetAnnounceIP() const { return !announce_ip_.empty() ? announce_ip_ : ip_; }
-  uint32_t GetAnnouncePort() const { return listening_port_ != 0 ? listening_port_ : port_; }
-  std::string GetAnnounceAddr() const { return GetAnnounceIP() + ":" + std::to_string(GetAnnouncePort()); }
+
+  void SetPeerInfo(std::unique_ptr<PeerInfo> &&peer_info) { peer_info_ = std::move(peer_info); }
+
+  const PeerInfo &GetPeerInfo() {
+    if (peer_info_) {
+      return *peer_info_;
+    }
+
+    SetPeerInfo(std::make_unique<PeerInfo>(ip_, port_, "", -1));
+    return *peer_info_;
+  }
+
   uint64_t GetClientType() const;
   Server *GetServer() { return srv_; }
 
@@ -187,10 +198,11 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string ns_;
   std::string name_;
   std::string ip_;
-  std::string announce_ip_;
+
+  std::unique_ptr<PeerInfo> peer_info_ = nullptr;
+
   uint32_t port_ = 0;
   std::string addr_;
-  int listening_port_ = 0;
   bool is_admin_ = false;
   bool need_free_bev_ = true;
   std::string last_cmd_;
@@ -215,6 +227,41 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   bool importing_ = false;
   RESP protocol_version_ = RESP::v2;
+};
+
+class PeerInfo {
+ public:
+  PeerInfo() = default;
+  ~PeerInfo() = default;
+
+  PeerInfo(std::string_view ip, uint32_t port, std::string_view peer_id, int64_t peer_version)
+      : ip_(ip), port_(port), peer_id_(peer_id), peer_version_(peer_version) {
+    addr_ = fmt::format("{}:{}", ip, port);
+  }
+
+  std::string GetIP() const { return ip_; }
+  uint32_t GetPort() const { return port_; }
+
+  std::string ToString() const {
+    if (peer_id_.empty()) {
+      return fmt::format("{}:{}", ip_, port_);
+    } else {
+      return fmt::format("{}:{} ({}@{})", ip_, port_, peer_id_, peer_version_);
+    }
+  }
+  std::string GetPeerID() const { return peer_id_; }
+  std::string GetAddr() const { return addr_; }
+  int64_t GetPeerVersion() const { return peer_version_; }
+
+ private:
+  std::string ip_;
+  std::string addr_;
+  uint32_t port_ = 0;
+
+  std::string peer_id_;
+  int64_t peer_version_ = 0;
+
+  std::string str_;
 };
 
 }  // namespace redis

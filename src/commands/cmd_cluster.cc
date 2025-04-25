@@ -292,7 +292,7 @@ class CommandClusterX : public Commander {
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
-    if (need_persist_nodes_info && srv->GetConfig()->persist_cluster_nodes_enabled) {
+    if (need_persist_nodes_info && srv->GetConfig()->persist_cluster_nodes_enabled && srv->cluster->GetVersion() >= 0) {
       return srv->cluster->DumpClusterNodes(srv->GetConfig()->NodesFilePath());
     }
     return Status::OK();

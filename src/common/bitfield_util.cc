@@ -59,7 +59,7 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = max;
     } else {
-      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
+      CHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   } else if (signed_value < min || (bits != 64 && incr < min_incr) ||
@@ -69,7 +69,7 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = min;
     } else {
-      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
+      CHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   }
@@ -103,7 +103,7 @@ StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, 
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = max;
     } else {
-      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
+      CHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   } else if (incr < 0 && incr < min_incr) {
@@ -112,7 +112,7 @@ StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, 
     } else if (overflow == BitfieldOverflowBehavior::kSat) {
       *dst = 0;
     } else {
-      DCHECK(overflow == BitfieldOverflowBehavior::kFail);
+      CHECK(overflow == BitfieldOverflowBehavior::kFail);
     }
     return true;
   }

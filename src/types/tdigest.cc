@@ -281,7 +281,7 @@ class TDigestImpl {
         break;
       }
     }
-    DCHECK(ci < td.size());
+    CHECK(ci < td.size());
 
     // deviation of index from the centroid center
     double diff = index + td[ci].weight / 2 - weight_sum;
@@ -297,9 +297,9 @@ class TDigestImpl {
     if (diff > 0) {
       if (ci_right == td.size() - 1) {
         // index larger than center of last bin
-        DCHECK(weight_sum == total_weight_);
+        CHECK(weight_sum == total_weight_);
         const Centroid* c = &td[ci_right];
-        DCHECK(c->weight >= 2);
+        CHECK(c->weight >= 2);
         return Lerp(c->mean, max_, diff / (c->weight / 2));
       }
       ++ci_right;
@@ -307,7 +307,7 @@ class TDigestImpl {
       if (ci_left == 0) {
         // index smaller than center of first bin
         const Centroid* c = &td[0];
-        DCHECK(c->weight >= 2);
+        CHECK(c->weight >= 2);
         return Lerp(min_, c->mean, index / (c->weight / 2));
       }
       --ci_left;

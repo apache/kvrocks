@@ -71,6 +71,10 @@ template <typename... Args>
   std::abort();
 }
 
+[[noreturn]] inline void unreachable(spdlog::source_loc loc = CurrentLocation()) {  // NOLINT
+  fatal({"UNREACHABLE REACHED: please submit a bug report with the stacktrace below.", loc});
+}
+
 // This is a simulation of glog API, with a spdlog backend.
 // TODO: We use it as a transition from glog to spdlog,
 // and it will be removed when the migration is complete.
@@ -116,8 +120,4 @@ inline constexpr bool GLOG_IN_DEBUG =
 
 // NOLINTNEXTLINE
 #define CHECK(cond) \
-  if (!(cond)) LOG(FATAL) << "Check `" << #cond << "` failed. "
-
-// NOLINTNEXTLINE
-#define DCHECK(cond) \
-  if constexpr (GLOG_IN_DEBUG) CHECK(cond)
+  if (!(cond)) fatal("Check `{}` failed.", #cond);

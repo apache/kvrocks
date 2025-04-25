@@ -469,7 +469,7 @@ struct Context {
   const rocksdb::Snapshot *GetSnapshot() {
     if (snapshot_ == nullptr) {
       // Should not acquire a snapshot_ on a moved-from object.
-      DCHECK(storage != nullptr);
+      CHECK(storage != nullptr);
       snapshot_ = storage->GetDB()->GetSnapshot();  // NOLINT
     }
     return snapshot_;

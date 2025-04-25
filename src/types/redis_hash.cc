@@ -418,7 +418,7 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
     case HashFetchType::kOnlyKey: {
       // GetAll should only fetching the key, checking all the values is empty
       for (const FieldValue &value : *field_values) {
-        DCHECK(value.value.empty());
+        CHECK(value.value.empty());
       }
       break;
     }

@@ -434,7 +434,7 @@ ReplicationThread::CBState ReplicationThread::checkDBNameReadCB(bufferevent *bev
 
   if (line[0] == '-') {
     if (isRestoringError(line.View())) {
-      warn("The master was restoring the db, retry later")
+      warn("The master was restoring the db, retry later");
     } else {
       error("Failed to get the db name, {}", line.get());
     }
@@ -516,7 +516,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) 
   if (!srv_->GetConfig()->use_rsid_psync || next_try_old_psync_ || replid.length() != kReplIdLength) {
     next_try_old_psync_ = false;  // Reset next_try_old_psync_
     SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", std::to_string(next_seq)}));
-    nfo("[replication] Try to use psync, next seq: {}", next_seq);
+    info("[replication] Try to use psync, next seq: {}", next_seq);
   } else {
     // NEW PSYNC "Unique Replication Sequence ID": replication id and sequence id
     SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", replid, std::to_string(next_seq)}));

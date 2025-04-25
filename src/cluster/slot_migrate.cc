@@ -1040,7 +1040,7 @@ void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
     forbidden_slot_range_ = slot_range;
   }
   during = util::GetTimeStampUS() - during;
-  info("[migrate] To set forbidden slot, server was blocked for {} us", during)
+  info("[migrate] To set forbidden slot, server was blocked for {} us", during);
 }
 
 void SlotMigrator::ReleaseForbiddenSlotRange() {

@@ -130,7 +130,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
         if (migrated_slots_.count(slot) > 0) {
           auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
-            error("failed to clear data of migrated slot {} ", s.ToString());
+            error("failed to clear data of migrated slot: {}", s.ToString());
           }
           migrated_slots_.erase(slot);
         }

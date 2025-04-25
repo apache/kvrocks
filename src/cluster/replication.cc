@@ -203,7 +203,7 @@ void ReplicationThread::CallbacksStateMachine::SetWriteCB(bufferevent *bev, buff
 void ReplicationThread::CallbacksStateMachine::ReadWriteCB(bufferevent *bev) {
 LOOP_LABEL:
   assert(handler_idx_ <= handlers_.size());
-  info("[replication] Execute handler[{}]", getHandlerName(handler_idx_));
+  debug("[replication] Execute handler[{}]", getHandlerName(handler_idx_));
   auto st = getHandlerFunc(handler_idx_)(repl_, bev);
   repl_->last_io_time_secs_.store(util::GetTimeStamp(), std::memory_order_relaxed);
   switch (st) {

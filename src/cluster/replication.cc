@@ -752,9 +752,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
       return CBState::QUIT;
     }
   }
-  error("Should not arrive here");
-  assert(false);
-  return CBState::QUIT;
+  unreachable();
 }
 
 Status ReplicationThread::parallelFetchFile(const std::string &dir,

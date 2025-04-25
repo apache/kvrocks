@@ -954,14 +954,14 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 
   UniqueEvbuf evbuf;
   for (unsigned i = 0; i < files.size(); i++) {
-    info("[fetch] Start to fetch file {}", files[i]);
+    debug("[fetch] Start to fetch file {}", files[i]);
     s = fetchFile(sock_fd, evbuf.get(), dir, files[i], crcs[i], fn, ssl);
     if (!s.IsOK()) {
       s = Status(Status::NotOK, "fetch file err: " + s.Msg());
       warn("[fetch] Fail to fetch file {}, err: {}", files[i], s.Msg());
       break;
     }
-    info("[fetch] Succeed fetching file {}", files[i]);
+    debug("[fetch] Succeed fetching file {}", files[i]);
 
     // Just for tests
     if (srv_->GetConfig()->fullsync_recv_file_delay) {

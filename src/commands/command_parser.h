@@ -88,7 +88,7 @@ struct CommandParser {
   std::enable_if_t<IsRandomAccessIter, size_t> Remains() const {
     // O(1) iff Iter is random access iterator.
     auto d = std::distance(begin_, end_);
-    DCHECK(d >= 0);
+    CHECK(d >= 0);
     return d;
   }
 

@@ -102,7 +102,7 @@ rocksdb::Status HyperLogLog::GetMetadata(engine::Context &ctx, const Slice &ns_k
 }
 
 uint64_t HyperLogLog::HllHash(std::string_view element) {
-  DCHECK(element.size() <= std::numeric_limits<int32_t>::max());
+  CHECK(element.size() <= std::numeric_limits<int32_t>::max());
   return HllMurMurHash64A(element.data(), static_cast<int32_t>(element.size()), kHyperLogLogHashSeed);
 }
 
@@ -139,8 +139,8 @@ rocksdb::Status HyperLogLog::Add(engine::Context &ctx, const Slice &user_key,
         },
         &entry);
     if (!s.ok()) return s;
-    DCHECK(entry != nullptr);
-    DCHECK(kHyperLogLogSegmentBytes == entry->data.size());
+    CHECK(entry != nullptr);
+    CHECK(kHyperLogLogSegmentBytes == entry->data.size());
     auto *segment_data = reinterpret_cast<uint8_t *>(entry->data.data());
     uint8_t old_count = HllDenseGetRegister(segment_data, register_index_in_segment);
     if (dense_hll_result.hll_trailing_zero > old_count) {
@@ -185,7 +185,7 @@ rocksdb::Status HyperLogLog::Count(engine::Context &ctx, const Slice &user_key, 
   if (!s.ok()) {
     return s;
   }
-  DCHECK(kHyperLogLogSegmentCount == registers.size());
+  CHECK(kHyperLogLogSegmentCount == registers.size());
   std::vector<nonstd::span<const uint8_t>> register_segments = TransformToSpan(registers);
   *ret = HllDenseEstimate(register_segments);
   return rocksdb::Status::OK();
@@ -193,7 +193,7 @@ rocksdb::Status HyperLogLog::Count(engine::Context &ctx, const Slice &user_key, 
 
 rocksdb::Status HyperLogLog::mergeUserKeys(engine::Context &ctx, const std::vector<Slice> &user_keys,
                                            std::vector<std::string> *register_segments) {
-  DCHECK(user_keys.size() >= static_cast<size_t>(1));
+  CHECK(user_keys.size() >= static_cast<size_t>(1));
 
   std::string first_ns_key = AppendNamespacePrefix(user_keys[0]);
   rocksdb::Status s = getRegisters(ctx, first_ns_key, register_segments);
@@ -212,8 +212,8 @@ rocksdb::Status HyperLogLog::mergeUserKeys(engine::Context &ctx, const std::vect
     std::vector<rocksdb::PinnableSlice> source_registers;
     s = getRegisters(ctx, source_key, &source_registers);
     if (!s.ok()) return s;
-    DCHECK(kHyperLogLogSegmentCount == source_registers.size());
-    DCHECK(kHyperLogLogSegmentCount == register_segments->size());
+    CHECK(kHyperLogLogSegmentCount == source_registers.size());
+    CHECK(kHyperLogLogSegmentCount == register_segments->size());
     std::vector<nonstd::span<const uint8_t>> source_register_span = TransformToSpan(source_registers);
     HllMerge(register_segments, source_register_span);
   }
@@ -221,7 +221,7 @@ rocksdb::Status HyperLogLog::mergeUserKeys(engine::Context &ctx, const std::vect
 }
 
 rocksdb::Status HyperLogLog::CountMultiple(engine::Context &ctx, const std::vector<Slice> &user_key, uint64_t *ret) {
-  DCHECK(user_key.size() > static_cast<size_t>(1));
+  CHECK(user_key.size() > static_cast<size_t>(1));
   std::vector<std::string> register_segments;
   auto s = mergeUserKeys(ctx, user_key, &register_segments);
   if (!s.ok()) return s;

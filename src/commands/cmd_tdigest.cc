@@ -261,15 +261,18 @@ class CommandTDigestCDF : public Commander {
     TDigestCDFResult result;
     TDigestMetadata metadata;
     auto meta_status = tdigest.GetMetaData(ctx, key_name_, &metadata);
+    if (!meta_status.ok()) {
+      if (meta_status.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, meta_status.ToString()};
+    }
     if (metadata.total_observations == 0) {
       *output = redis::MultiBulkString(RESP::v2, cdf_result);
       return Status::OK();
     }
     auto s = tdigest.CDF(ctx, key_name_, values_, &result);
     if (!s.ok()) {
-      if (s.IsNotFound()) {
-        return {Status::RedisExecErr, errKeyNotFound};
-      }
       return {Status::RedisExecErr, s.ToString()};
     }
     for (const auto &val : result.cdf_values) {

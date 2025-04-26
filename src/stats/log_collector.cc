@@ -79,6 +79,18 @@ void LogCollector<T>::SetMaxEntries(int64_t max_entries) {
 }
 
 template <class T>
+void LogCollector<T>::SetLogLevel(spdlog::level::level_enum level) {
+  std::lock_guard<std::mutex> guard(mu_);
+  log_level_ = level;
+}
+
+template <class T>
+void LogCollector<T>::SetSaveToLogfile(bool flag) {
+  std::lock_guard<std::mutex> guard(mu_);
+  save_to_logfile_ = flag;
+}
+
+template <class T>
 void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   std::lock_guard<std::mutex> guard(mu_);
   entry->id = ++id_;
@@ -86,6 +98,35 @@ void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     entries_.pop_back();
   }
+  entries_.push_front(std::move(entry));
+}
+
+template <>
+void LogCollector<SlowEntry>::PushEntry(std::unique_ptr<SlowEntry> &&entry) {
+  std::lock_guard<std::mutex> guard(mu_);
+  entry->id = ++id_;
+  entry->time = util::GetTimeStamp();
+  if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
+    entries_.pop_back();
+  }
+
+  if (save_to_logfile_) {
+    std::string cmd;
+    if (entry->args.size() > 0) {
+      for (const auto &arg : entry->args) {
+        cmd.append(arg).append(" ");
+      }
+      cmd.pop_back();
+    }
+    auto log = fmt::format("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}",
+                           entry->id, entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
+    if (log_level_ == spdlog::level::info) {
+      LOG(INFO) << log;
+    } else {
+      LOG(WARNING) << log;
+    }
+  }
+
   entries_.push_front(std::move(entry));
 }
 

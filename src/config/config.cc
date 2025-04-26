@@ -207,6 +207,9 @@ Config::Config() {
       {"slowlog-log-slower-than", false, new IntField(&slowlog_log_slower_than, 200000, -1, INT_MAX)},
       {"profiling-sample-commands", false, new StringField(&profiling_sample_commands_str_, "")},
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
+      {"slowlog-log-level", false,
+       new EnumField<spdlog::level::level_enum>(&slowlog_log_level, slowlog_log_levels, spdlog::level::info)},
+      {"slowlog-save-to-logfile", false, new YesNoField(&slowlog_save_to_logfile, false)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
@@ -536,6 +539,18 @@ void Config::initFieldCallback() {
        [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
          if (!srv) return Status::OK();
          srv->GetSlowLog()->SetMaxEntries(slowlog_max_len);
+         return Status::OK();
+       }},
+      {"slowlog-save-to-logfile",
+       [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         srv->GetSlowLog()->SetSaveToLogfile(slowlog_save_to_logfile);
+         return Status::OK();
+       }},
+      {"slowlog-log-level",
+       [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         srv->GetSlowLog()->SetLogLevel(slowlog_log_level);
          return Status::OK();
        }},
       {"max-db-size",

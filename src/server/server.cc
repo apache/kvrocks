@@ -115,6 +115,8 @@ Server::Server(engine::Storage *storage, Config *config)
 
   AdjustOpenFilesLimit();
   slow_log_.SetMaxEntries(config->slowlog_max_len);
+  slow_log_.SetLogLevel(config->slowlog_log_level);
+  slow_log_.SetSaveToLogfile(config->slowlog_save_to_logfile);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
 }
 

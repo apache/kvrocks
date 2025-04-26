@@ -85,7 +85,7 @@ func TestPubSubShard(t *testing.T) {
 				// note: when cluster enabled, shard channels in single command must belong to the same slot
 				// reference: https://redis.io/commands/ssubscribe
 				_, err = pubsub.Receive(ctx)
-				require.EqualError(t, err, "ERR CROSSSLOT Keys in request don't hash to the same slot")
+				require.EqualError(t, err, "CROSSSLOT Keys in request don't hash to the same slot")
 			}
 
 			err = pubsub.SUnsubscribe(ctx, "multichannel3{tag1}", "multichannel4{tag2}", "multichannel5{tag2}")

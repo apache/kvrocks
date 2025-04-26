@@ -243,8 +243,9 @@ class CommandTDigestMax : public CommandTDigestMinMax {
   CommandTDigestMax() : CommandTDigestMinMax(false) {}
 };
 class CommandTDigestCDF : public Commander {
-  Status Parse(const std::vector<std::string> &args) {
+  Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
+    if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
     values_.reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {
       auto value = ParseFloat(args[i]);
@@ -255,7 +256,7 @@ class CommandTDigestCDF : public Commander {
     }
     return Status::OK();
   }
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<std::string> cdf_result;
     TDigestCDFResult result;

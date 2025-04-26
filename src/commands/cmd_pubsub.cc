@@ -154,7 +154,7 @@ class CommandSSubscribe : public Commander {
       slot = GetSlotIdFromKey(args_[1]);
       for (unsigned int i = 2; i < args_.size(); i++) {
         if (GetSlotIdFromKey(args_[i]) != slot) {
-          return {Status::RedisExecErr, "CROSSSLOT Keys in request don't hash to the same slot"};
+          return {Status::RedisCrossSlot, "Keys in request don't hash to the same slot"};
         }
       }
     }

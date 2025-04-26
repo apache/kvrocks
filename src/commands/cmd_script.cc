@@ -69,7 +69,7 @@ class CommandScript : public Commander {
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
     if (srv->IsSlave() && subcommand_ != "exists") {
-      return {Status::NotOK, "READONLY You can't write against a read only slave"};
+      return {Status::RedisReadOnly, "You can't write against a read only slave"};
     }
 
     if (args_.size() == 2 && subcommand_ == "flush") {

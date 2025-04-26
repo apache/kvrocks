@@ -373,7 +373,7 @@ static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
-  std::string password = config->requirepass;
+  const std::string &password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
     CommandTokens cmd_tokens = std::move(to_process_cmds->front());

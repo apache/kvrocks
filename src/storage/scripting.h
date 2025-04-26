@@ -26,6 +26,7 @@
 #include "lua.hpp"
 #include "server/redis_connection.h"
 #include "status.h"
+#include "storage/storage.h"
 
 namespace engine {
 struct Context;
@@ -62,23 +63,25 @@ int RedisSetResp(lua_State *lua);
 
 Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lua_State *lua, bool need_to_store);
 
-Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
-                          const std::vector<std::string> &argv, bool evalsha, std::string *output,
-                          bool read_only = false);
+Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const std::string &body_or_sha,
+                          const std::vector<std::string> &keys, const std::vector<std::string> &argv, bool evalsha,
+                          std::string *output, bool read_only = false);
 
 bool ScriptExists(lua_State *lua, const std::string &sha);
 
-Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
-                    std::string *lib_name, bool read_only = false);
-Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
-                    const std::vector<std::string> &argv, std::string *output, bool read_only = false);
-Status FunctionList(Server *srv, const redis::Connection *conn, const std::string &libname, bool with_code,
-                    std::string *output);
-Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output);
+Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::string &script, bool need_to_store,
+                    bool replace, std::string *lib_name, bool read_only = false);
+Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::string &name,
+                    const std::vector<std::string> &keys, const std::vector<std::string> &argv, std::string *output,
+                    bool read_only = false);
+Status FunctionList(Server *srv, const redis::Connection *conn, engine::Context &ctx, const std::string &libname,
+                    bool with_code, std::string *output);
+Status FunctionListFunc(Server *srv, const redis::Connection *conn, engine::Context &ctx, const std::string &funcname,
+                        std::string *output);
 Status FunctionListLib(redis::Connection *conn, const std::string &libname, std::string *output);
 Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::string &name);
-bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage = true,
-                        bool read_only = false);
+bool FunctionIsLibExist(redis::Connection *conn, engine::Context *ctx, const std::string &libname,
+                        bool need_check_storage = true, bool read_only = false);
 
 const char *RedisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply);
@@ -150,6 +153,8 @@ struct ScriptRunCtx {
   int current_slot = -1;
   // the current connection
   redis::Connection *conn = nullptr;
+  // the storage context
+  engine::Context *ctx = nullptr;
 };
 
 /// SaveOnRegistry saves user-defined data to lua REGISTRY

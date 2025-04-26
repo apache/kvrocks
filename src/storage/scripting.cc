@@ -281,8 +281,8 @@ int RedisRegisterFunction(lua_State *lua) {
   return 0;
 }
 
-Status FunctionLoad(redis::Connection *conn, const std::string &script, bool need_to_store, bool replace,
-                    [[maybe_unused]] std::string *lib_name, bool read_only) {
+Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::string &script, bool need_to_store,
+                    bool replace, [[maybe_unused]] std::string *lib_name, bool read_only) {
   std::string first_line, lua_code;
   if (auto pos = script.find('\n'); pos != std::string::npos) {
     first_line = script.substr(0, pos);
@@ -296,17 +296,17 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
   auto srv = conn->GetServer();
   auto lua = conn->Owner()->Lua();
 
-  if (FunctionIsLibExist(conn, libname, need_to_store, read_only)) {
+  if (FunctionIsLibExist(conn, ctx, libname, need_to_store, read_only)) {
     if (!replace) {
       return {Status::NotOK, "library already exists, please specify REPLACE to force load"};
     }
-    engine::Context ctx(srv->storage);
-    auto s = FunctionDelete(ctx, conn, libname);
+    auto s = FunctionDelete(*ctx, conn, libname);
     if (!s) return s;
   }
 
   ScriptRunCtx script_run_ctx;
   script_run_ctx.conn = conn;
+  script_run_ctx.ctx = ctx;
   script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
 
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &script_run_ctx);
@@ -339,14 +339,15 @@ Status FunctionLoad(redis::Connection *conn, const std::string &script, bool nee
 
   RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
-  if (!FunctionIsLibExist(conn, libname, false, read_only)) {
+  if (!FunctionIsLibExist(conn, ctx, libname, false, read_only)) {
     return {Status::NotOK, "Please register some function in FUNCTION LOAD"};
   }
 
   return need_to_store ? srv->FunctionSetCode(libname, script) : Status::OK();
 }
 
-bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, bool need_check_storage, bool read_only) {
+bool FunctionIsLibExist(redis::Connection *conn, engine::Context *ctx, const std::string &libname,
+                        bool need_check_storage, bool read_only) {
   auto srv = conn->GetServer();
   auto lua = conn->Owner()->Lua();
 
@@ -373,14 +374,15 @@ bool FunctionIsLibExist(redis::Connection *conn, const std::string &libname, boo
   if (!s) return false;
 
   std::string lib_name;
-  s = FunctionLoad(conn, code, false, false, &lib_name, read_only);
+  s = FunctionLoad(conn, ctx, code, false, false, &lib_name, read_only);
   return static_cast<bool>(s);
 }
 
 // FunctionCall will firstly find the function in the lua runtime,
 // if it is not found, it will try to load the library where the function is located from storage
-Status FunctionCall(redis::Connection *conn, const std::string &name, const std::vector<std::string> &keys,
-                    const std::vector<std::string> &argv, std::string *output, bool read_only) {
+Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::string &name,
+                    const std::vector<std::string> &keys, const std::vector<std::string> &argv, std::string *output,
+                    bool read_only) {
   auto srv = conn->GetServer();
   auto lua = conn->Owner()->Lua();
 
@@ -397,7 +399,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
     std::string libcode;
     s = srv->FunctionGetCode(libname, &libcode);
     if (!s) return s;
-    s = FunctionLoad(conn, libcode, false, false, &libname, read_only);
+    s = FunctionLoad(conn, ctx, libcode, false, false, &libname, read_only);
     if (!s) return s;
 
     lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
@@ -405,6 +407,7 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
 
   ScriptRunCtx script_run_ctx;
   script_run_ctx.conn = conn;
+  script_run_ctx.ctx = ctx;
   script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + name).c_str());
   if (!lua_isnil(lua, -1)) {
@@ -447,13 +450,12 @@ Status FunctionCall(redis::Connection *conn, const std::string &name, const std:
 }
 
 // list all library names and their code (enabled via `with_code`)
-Status FunctionList(Server *srv, const redis::Connection *conn, const std::string &libname, bool with_code,
-                    std::string *output) {
+Status FunctionList(Server *srv, const redis::Connection *conn, engine::Context &ctx, const std::string &libname,
+                    bool with_code, std::string *output) {
   std::string start_key = engine::kLuaLibCodePrefix + libname;
   std::string end_key = start_key;
   end_key.back()++;
 
-  engine::Context ctx(srv->storage);
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -487,12 +489,12 @@ Status FunctionList(Server *srv, const redis::Connection *conn, const std::strin
 
 // extension to Redis Function
 // list all function names and their corresponding library names
-Status FunctionListFunc(Server *srv, const redis::Connection *conn, const std::string &funcname, std::string *output) {
+Status FunctionListFunc(Server *srv, const redis::Connection *conn, engine::Context &ctx, const std::string &funcname,
+                        std::string *output) {
   std::string start_key = engine::kLuaFuncLibPrefix + funcname;
   std::string end_key = start_key;
   end_key.back()++;
 
-  engine::Context ctx(srv->storage);
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice upper_bound(end_key);
   read_options.iterate_upper_bound = &upper_bound;
@@ -603,8 +605,9 @@ Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::
   return Status::OK();
 }
 
-Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sha, const std::vector<std::string> &keys,
-                          const std::vector<std::string> &argv, bool evalsha, std::string *output, bool read_only) {
+Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const std::string &body_or_sha,
+                          const std::vector<std::string> &keys, const std::vector<std::string> &argv, bool evalsha,
+                          std::string *output, bool read_only) {
   Server *srv = conn->GetServer();
   // Use the worker's private Lua VM when entering the read-only mode
   lua_State *lua = conn->Owner()->Lua();
@@ -652,6 +655,7 @@ Status EvalGenericCommand(redis::Connection *conn, const std::string &body_or_sh
 
   ScriptRunCtx current_script_run_ctx;
   current_script_run_ctx.conn = conn;
+  current_script_run_ctx.ctx = ctx;
   current_script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
   lua_getglobal(lua, fmt::format(REDIS_LUA_FUNC_SHA_FLAGS, funcname + 2).c_str());
   if (!lua_isnil(lua, -1)) {
@@ -820,14 +824,10 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   std::string output;
-  // TODO: make it possible for multiple redis commands in lua script to use the same txn context.
-  {
-    engine::Context ctx(srv->storage);
-    s = conn->ExecuteCommand(ctx, cmd_name, args, cmd.get(), &output);
-    if (!s) {
-      PushError(lua, s.Msg().data());
-      return raise_error ? RaiseError(lua) : 1;
-    }
+  s = conn->ExecuteCommand(*script_run_ctx->ctx, cmd_name, args, cmd.get(), &output);
+  if (!s) {
+    PushError(lua, s.Msg().data());
+    return raise_error ? RaiseError(lua) : 1;
   }
 
   srv->FeedMonitorConns(conn, args);

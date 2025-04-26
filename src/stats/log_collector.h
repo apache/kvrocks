@@ -70,13 +70,13 @@ class LogCollector {
   void PushEntry(std::unique_ptr<T> &&entry);
   std::string GetLatestEntries(int64_t cnt);
   void SetLogLevel(spdlog::level::level_enum level);
-  void SetSaveToLogfile(bool flag);
+  void SetDumpToLogfile(bool flag);
 
  private:
   std::mutex mu_;
   uint64_t id_ = 0;
   int64_t max_entries_ = 128;
   std::deque<std::unique_ptr<T>> entries_;
-  bool save_to_logfile_ = false;
+  bool dump_to_logfile_ = false;
   spdlog::level::level_enum log_level_ = spdlog::level::info;
 };

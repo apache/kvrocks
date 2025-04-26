@@ -85,9 +85,9 @@ void LogCollector<T>::SetLogLevel(spdlog::level::level_enum level) {
 }
 
 template <class T>
-void LogCollector<T>::SetSaveToLogfile(bool flag) {
+void LogCollector<T>::SetDumpToLogfile(bool flag) {
   std::lock_guard<std::mutex> guard(mu_);
-  save_to_logfile_ = flag;
+  dump_to_logfile_ = flag;
 }
 
 template <class T>
@@ -110,7 +110,7 @@ void LogCollector<SlowEntry>::PushEntry(std::unique_ptr<SlowEntry> &&entry) {
     entries_.pop_back();
   }
 
-  if (save_to_logfile_) {
+  if (dump_to_logfile_) {
     std::string cmd;
     if (entry->args.size() > 0) {
       for (const auto &arg : entry->args) {
@@ -118,12 +118,12 @@ void LogCollector<SlowEntry>::PushEntry(std::unique_ptr<SlowEntry> &&entry) {
       }
       cmd.pop_back();
     }
-    auto log = fmt::format("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}",
-                           entry->id, entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
     if (log_level_ == spdlog::level::info) {
-      LOG(INFO) << log;
+      info("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", entry->id,
+           entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
     } else {
-      LOG(WARNING) << log;
+      warn("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", entry->id,
+           entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
     }
   }
 

@@ -209,7 +209,7 @@ Config::Config() {
       {"slowlog-max-len", false, new IntField(&slowlog_max_len, 128, 0, INT_MAX)},
       {"slowlog-log-level", false,
        new EnumField<spdlog::level::level_enum>(&slowlog_log_level, slowlog_log_levels, spdlog::level::info)},
-      {"slowlog-save-to-logfile", false, new YesNoField(&slowlog_save_to_logfile, false)},
+      {"slowlog-dump-to-logfile", false, new YesNoField(&slowlog_dump_to_logfile, false)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
@@ -541,10 +541,10 @@ void Config::initFieldCallback() {
          srv->GetSlowLog()->SetMaxEntries(slowlog_max_len);
          return Status::OK();
        }},
-      {"slowlog-save-to-logfile",
+      {"slowlog-dump-to-logfile",
        [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
          if (!srv) return Status::OK();
-         srv->GetSlowLog()->SetSaveToLogfile(slowlog_save_to_logfile);
+         srv->GetSlowLog()->SetDumpToLogfile(slowlog_dump_to_logfile);
          return Status::OK();
        }},
       {"slowlog-log-level",

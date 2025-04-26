@@ -109,7 +109,7 @@ struct Config {
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
-  bool slowlog_save_to_logfile = false;
+  bool slowlog_dump_to_logfile = false;
   spdlog::level::level_enum slowlog_log_level = spdlog::level::info;
   uint64_t proto_max_bulk_len = 512 * 1024 * 1024;
   bool daemonize = false;

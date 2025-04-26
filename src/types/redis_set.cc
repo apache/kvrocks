@@ -38,7 +38,7 @@ rocksdb::Status Set::Overwrite(engine::Context &ctx, Slice user_key, const std::
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   SetMetadata metadata;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisSet);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -66,7 +66,7 @@ rocksdb::Status Set::Add(engine::Context &ctx, const Slice &user_key, const std:
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -103,7 +103,7 @@ rocksdb::Status Set::Remove(engine::Context &ctx, const Slice &user_key, const s
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -219,7 +219,7 @@ rocksdb::Status Set::Take(engine::Context &ctx, const Slice &user_key, std::vect
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  ObserverOrUniquePtr<rocksdb::WriteBatchBase> batch = storage_->GetWriteBatchBase();
+  ObserverOrUniquePtr<rocksdb::WriteBatchBase> batch = storage_->GetWriteBatchBase(ctx);
   if (pop) {
     WriteBatchLogData log_data(kRedisSet);
     s = batch->PutLogData(log_data.Encode());

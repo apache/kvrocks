@@ -128,7 +128,7 @@ rocksdb::Status Database::Expire(engine::Context &ctx, const Slice &user_key, ui
   } else {
     EncodeFixed32(value.data() + 1, Metadata::ExpireMsToS(timestamp));
   }
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdExpire)});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
@@ -168,7 +168,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     ns_keys.emplace_back(std::move(ns_key));
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisNone);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
@@ -668,7 +668,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
 
   if (key == new_key) return rocksdb::Status::OK();
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(type);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {

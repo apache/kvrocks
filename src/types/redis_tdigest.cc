@@ -130,7 +130,7 @@ rocksdb::Status TDigest::Create(engine::Context& ctx, const Slice& digest_name, 
     return status;
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisTDigest);
   if (status = batch->PutLogData(log_data.Encode()); !status.ok()) {
     return status;
@@ -153,7 +153,7 @@ rocksdb::Status TDigest::Add(engine::Context& ctx, const Slice& digest_name, con
     return status;
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisTDigest);
   if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
     return status;
@@ -197,7 +197,7 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     }
 
     if (metadata.unmerged_nodes > 0) {
-      auto batch = storage_->GetWriteBatchBase();
+      auto batch = storage_->GetWriteBatchBase(ctx);
       WriteBatchLogData log_data(kRedisTDigest);
       if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
         return status;
@@ -246,7 +246,7 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
     return status;
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisTDigest);
   if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
     return status;

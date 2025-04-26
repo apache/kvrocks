@@ -93,7 +93,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   }
 
   *new_value = old_value + increment;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -140,7 +140,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   }
 
   *new_value = n;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -205,7 +205,7 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata(false);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHash);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -252,7 +252,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
     ttl_updated = true;
   }
   int added = 0;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

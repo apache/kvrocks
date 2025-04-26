@@ -52,7 +52,7 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   redis::HnswNodeFieldMetadata metadata2(0, {4, 5, 6});
   redis::HnswNodeFieldMetadata metadata3(0, {7, 8, 9});
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   auto s = node1.PutMetadata(&metadata1, search_key, storage_.get(), batch.Get());
   ASSERT_TRUE(s.IsOK());
   s = node2.PutMetadata(&metadata2, search_key, storage_.get(), batch.Get());
@@ -79,7 +79,7 @@ TEST_F(NodeTest, PutAndDecodeMetadata) {
   ASSERT_EQ(decoded_metadata3.GetValue().vector, std::vector<double>({7, 8, 9}));
 
   // Prepare edges between node1 and node2
-  batch = storage_->GetWriteBatchBase();
+  batch = storage_->GetWriteBatchBase(ctx);
   auto edge1 = search_key.ConstructHnswEdge(layer, "node1", "node2");
   auto edge2 = search_key.ConstructHnswEdge(layer, "node2", "node1");
   auto edge3 = search_key.ConstructHnswEdge(layer, "node2", "node3");
@@ -124,7 +124,7 @@ TEST_F(NodeTest, ModifyNeighbours) {
   redis::HnswNodeFieldMetadata metadata4(0, {10, 11, 12});
 
   // Add Nodes
-  auto batch1 = storage_->GetWriteBatchBase();
+  auto batch1 = storage_->GetWriteBatchBase(ctx);
   auto put_meta_data = node1.PutMetadata(&metadata1, search_key, storage_.get(), batch1.Get());
   ASSERT_TRUE(put_meta_data.IsOK());
   put_meta_data = node2.PutMetadata(&metadata2, search_key, storage_.get(), batch1.Get());
@@ -138,7 +138,7 @@ TEST_F(NodeTest, ModifyNeighbours) {
   ASSERT_TRUE(s.ok());
 
   // Add Edges
-  auto batch2 = storage_->GetWriteBatchBase();
+  auto batch2 = storage_->GetWriteBatchBase(ctx);
   auto s1 = node1.AddNeighbour(ctx, "node2", search_key, batch2.Get());
   ASSERT_TRUE(s1.IsOK());
   auto s2 = node2.AddNeighbour(ctx, "node1", search_key, batch2.Get());
@@ -165,7 +165,7 @@ TEST_F(NodeTest, ModifyNeighbours) {
   EXPECT_EQ(node3.neighbours[0], "node2");
 
   // Remove Edges
-  auto batch3 = storage_->GetWriteBatchBase();
+  auto batch3 = storage_->GetWriteBatchBase(ctx);
   auto s5 = node2.RemoveNeighbour(ctx, "node3", search_key, batch3.Get());
   ASSERT_TRUE(s5.IsOK());
 

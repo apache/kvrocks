@@ -223,7 +223,7 @@ Status IndexUpdater::UpdateTagIndex(engine::Context &ctx, std::string_view key, 
   }
 
   auto *storage = indexer->storage;
-  auto batch = storage->GetWriteBatchBase();
+  auto batch = storage->GetWriteBatchBase(ctx);
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
 
   for (const auto &tag : tags_to_delete) {
@@ -256,7 +256,7 @@ Status IndexUpdater::UpdateNumericIndex(engine::Context &ctx, std::string_view k
   CHECK(current.IsNull() || current.Is<kqir::Numeric>());
 
   auto *storage = indexer->storage;
-  auto batch = storage->GetWriteBatchBase();
+  auto batch = storage->GetWriteBatchBase(ctx);
   auto cf_handle = storage->GetCFHandle(ColumnFamilyID::Search);
 
   if (!original.IsNull()) {
@@ -295,14 +295,14 @@ Status IndexUpdater::UpdateHnswVectorIndex(engine::Context &ctx, std::string_vie
   auto hnsw = HnswIndex(search_key, vector, storage);
 
   if (!original.IsNull()) {
-    auto batch = storage->GetWriteBatchBase();
+    auto batch = storage->GetWriteBatchBase(ctx);
     GET_OR_RET(hnsw.DeleteVectorEntry(ctx, key, batch));
     auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
 
   if (!current.IsNull()) {
-    auto batch = storage->GetWriteBatchBase();
+    auto batch = storage->GetWriteBatchBase(ctx);
     GET_OR_RET(hnsw.InsertVectorEntry(ctx, key, current.Get<kqir::NumericArray>(), batch));
     auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return {Status::NotOK, s.ToString()};

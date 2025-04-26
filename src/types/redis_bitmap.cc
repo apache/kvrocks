@@ -210,7 +210,7 @@ rocksdb::Status Bitmap::SetBit(engine::Context &ctx, const Slice &user_key, uint
   auto *data_ptr = reinterpret_cast<uint8_t *>(value.data());
   *old_bit = util::lsb::GetBit(data_ptr, bit_offset_in_segment);
   util::lsb::SetBitTo(data_ptr, bit_offset_in_segment, new_bit);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisBitmap, {std::to_string(kRedisCmdSetBit), std::to_string(bit_offset)});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -483,7 +483,7 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
   }
   size_t num_keys = meta_pairs.size();
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   if (max_bitmap_size == 0) {
     /* Compute the bit operation, if all bitmap is empty. cleanup the dest bitmap. */
     auto s = batch->Delete(metadata_cf_handle_, ns_key);
@@ -850,7 +850,7 @@ rocksdb::Status Bitmap::bitfield(engine::Context &ctx, const Slice &user_key, co
 
   if constexpr (!ReadOnly) {
     // Write changes into storage.
-    auto batch = storage_->GetWriteBatchBase();
+    auto batch = storage_->GetWriteBatchBase(ctx);
     if (bitfieldWriteAheadLog(batch, ops)) {
       auto s = cache.BatchForFlush(batch);
       if (!s.ok()) {

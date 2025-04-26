@@ -48,7 +48,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
 
   int added = 0;
   int changed = 0;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -172,7 +172,7 @@ rocksdb::Status ZSet::Pop(engine::Context &ctx, const Slice &user_key, int count
   std::string next_version_prefix_key =
       InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -252,7 +252,7 @@ rocksdb::Status ZSet::RangeByRank(engine::Context &ctx, const Slice &user_key, c
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -362,7 +362,7 @@ rocksdb::Status ZSet::RangeByScore(engine::Context &ctx, const Slice &user_key, 
 
   int pos = 0;
   auto iter = util::UniqueIterator(ctx, read_options, score_cf_handle_);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -444,7 +444,7 @@ rocksdb::Status ZSet::RangeByLex(engine::Context &ctx, const Slice &user_key, co
 
   int pos = 0;
   auto iter = util::UniqueIterator(ctx, read_options);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -523,7 +523,7 @@ rocksdb::Status ZSet::Remove(engine::Context &ctx, const Slice &user_key, const 
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -614,7 +614,7 @@ rocksdb::Status ZSet::Overwrite(engine::Context &ctx, const Slice &user_key, con
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   ZSetMetadata metadata;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisZSet);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

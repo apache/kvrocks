@@ -106,7 +106,7 @@ std::vector<rocksdb::Status> String::getValues(engine::Context &ctx, const std::
 }
 
 rocksdb::Status String::updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value) {
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisString);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -170,7 +170,7 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
   }
   metadata.Encode(&raw_data);
   raw_data.append(value->data(), value->size());
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisString);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -394,7 +394,7 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
 }
 
 rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms) {
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisString);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

@@ -157,7 +157,7 @@ class CommandFlushAll : public Commander {
     if (srv->GetConfig()->cluster_enabled) {
       if (srv->slot_migrator->IsMigrationInProgress()) {
         srv->slot_migrator->SetStopMigrationFlag(true);
-        info("Stop migration task for flushdb");
+        info("Stop migration task for flushall");
       }
     }
 

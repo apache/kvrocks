@@ -93,17 +93,15 @@ class CommandNamespace : public Commander {
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = srv->GetNamespace()->Set(args_[2], args_[3]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      LOG(WARNING) << "Updated namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
-                   << ", result: " << s.Msg();
+      warn("Updated namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = srv->GetNamespace()->Add(args_[2], args_[3]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      LOG(WARNING) << "New namespace: " << args_[2] << " with token: " << args_[3] << ", addr: " << conn->GetAddr()
-                   << ", result: " << s.Msg();
+      warn("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      LOG(WARNING) << "Deleted namespace: " << args_[2] << ", addr: " << conn->GetAddr() << ", result: " << s.Msg();
+      warn("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
     } else {
       return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD"};
     }
@@ -137,13 +135,13 @@ class CommandFlushDB : public Commander {
     if (srv->GetConfig()->cluster_enabled) {
       if (srv->slot_migrator->IsMigrationInProgress()) {
         srv->slot_migrator->SetStopMigrationFlag(true);
-        LOG(INFO) << "Stop migration task for flushdb";
+        info("Stop migration task for flushdb");
       }
     }
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     auto s = redis.FlushDB(ctx);
-    LOG(WARNING) << "DB keys in namespace: " << conn->GetNamespace() << " was flushed, addr: " << conn->GetAddr();
+    warn("DB keys in namespace: {} was flushed, addr: {}", conn->GetNamespace(), conn->GetAddr());
     if (s.ok()) {
       *output = redis::RESP_OK;
       return Status::OK();
@@ -159,7 +157,7 @@ class CommandFlushAll : public Commander {
     if (srv->GetConfig()->cluster_enabled) {
       if (srv->slot_migrator->IsMigrationInProgress()) {
         srv->slot_migrator->SetStopMigrationFlag(true);
-        LOG(INFO) << "Stop migration task for flushall";
+        info("Stop migration task for flushall");
       }
     }
 
@@ -167,7 +165,7 @@ class CommandFlushAll : public Commander {
 
     auto s = redis.FlushAll(ctx);
     if (s.ok()) {
-      LOG(WARNING) << "All DB keys was flushed, addr: " << conn->GetAddr();
+      warn("All DB keys was flushed, addr: {}", conn->GetAddr());
       *output = redis::RESP_OK;
       return Status::OK();
     }
@@ -215,7 +213,7 @@ class CommandConfig : public Commander {
       if (!s.IsOK()) return s;
 
       *output = redis::RESP_OK;
-      LOG(INFO) << "# CONFIG REWRITE executed with success";
+      info("# CONFIG REWRITE executed with success");
     } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
@@ -529,7 +527,7 @@ class CommandShutdown : public Commander {
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  [[maybe_unused]] std::string *output) override {
     if (!srv->IsStopped()) {
-      LOG(INFO) << "SHUTDOWN command received, stopping the server";
+      info("SHUTDOWN command received, stopping the server");
       srv->Stop();
     }
     return Status::OK();
@@ -879,7 +877,7 @@ class CommandCompact : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    LOG(INFO) << "Compact was triggered by manual with executed success";
+    info("Compact was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -892,7 +890,7 @@ class CommandBGSave : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    LOG(INFO) << "BGSave was triggered by manual with executed success";
+    info("BGSave was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -905,7 +903,7 @@ class CommandFlushBackup : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    LOG(INFO) << "flushbackup was triggered by manual with executed success";
+    info("flushbackup was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -963,8 +961,7 @@ class CommandSlaveOf : public Commander {
       }
 
       *output = redis::RESP_OK;
-      LOG(WARNING) << "MASTER MODE enabled (user request from '" << conn->GetAddr() << "')";
-
+      warn("MASTER MODE enabled (user request from '{}')", conn->GetAddr());
       return Status::OK();
     }
 
@@ -973,11 +970,9 @@ class CommandSlaveOf : public Commander {
     s = srv->AddMaster(host_, port_, false);
     if (s.IsOK()) {
       *output = redis::RESP_OK;
-      LOG(WARNING) << "SLAVE OF " << host_ << ":" << port_ << " enabled (user request from '" << conn->GetAddr()
-                   << "')";
+      warn("SLAVE OF {}:{} enabled (user request from '{}')", host_, port_, conn->GetAddr());
     } else {
-      LOG(ERROR) << "SLAVE OF " << host_ << ":" << port_ << " (user request from '" << conn->GetAddr()
-                 << "') encounter error: " << s.Msg();
+      error("SLAVE OF {}:{} (user request from '{}') encounter error: {}", host_, port_, conn->GetAddr(), s.Msg());
     }
 
     return s;

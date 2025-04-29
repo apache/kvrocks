@@ -69,6 +69,7 @@ class BlockingCommander : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
+    bool done{false};
     {
       // The blocking command should not be executed when the server is in exclusive state,
       // because it might have the data race when the server is in transaction mode and run
@@ -76,10 +77,7 @@ class BlockingCommander : public Commander,
       //
       // For more context, please refer to: https://github.com/apache/kvrocks/issues/2900
       auto concurrency = conn_->GetServer()->WorkConcurrencyGuard();
-    }
 
-    bool done{false};
-    {
       auto guard = GetLocks();
       done = OnBlockingWrite();
     }

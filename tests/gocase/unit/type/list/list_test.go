@@ -1551,7 +1551,8 @@ func TestPotentialDataRaceInBlockingCommand(t *testing.T) {
 	for i := 0; i < 64; i++ {
 		pipe := rdb.TxPipeline()
 		pipe.LPush(ctx, listKey, "element")
-		pipe.Exec(ctx)
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
 		time.Sleep(time.Millisecond * 100)
 	}
 

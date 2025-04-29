@@ -169,9 +169,9 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
   error("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
-void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info_) {
-  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", info_.db_name, info_.file_path,
-       info_.status.ToString());
+void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) {
+  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
+       table_info.status.ToString());
 }
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
@@ -179,10 +179,10 @@ void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info
        info.cf_name, StallConditionType2String(info.condition.prev), StallConditionType2String(info.condition.cur));
 }
 
-void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &info_) {
+void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &table_info) {
   info(
       "[event_listener/table_file_created] column family: {}, file path: {}, file size: {}, job_id: {}, reason: {}, "
       "status: {}",
-      info_.cf_name, info_.file_path, info_.file_size, info_.job_id, FileCreatedReason2String(info_.reason),
-      info_.status.ToString());
+      table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id, FileCreatedReason2String(table_info.reason),
+      table_info.status.ToString());
 }

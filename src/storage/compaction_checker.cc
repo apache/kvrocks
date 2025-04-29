@@ -111,7 +111,8 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
         delete_ratio >= force_compact_min_ratio) {
       info("[compaction checker] Going to compact the key in file (force compact policy): {}", iter.first);
       auto s = storage_->Compact(cf, &start_key, &stop_key);
-      info("[compaction checker] Compact the key in file (force compact policy): {} finished, result: {}", iter.first, s.ToString());
+      info("[compaction checker] Compact the key in file (force compact policy): {} finished, result: {}", iter.first,
+           s.ToString());
       max_files_to_compact--;
       continue;
     }
@@ -130,7 +131,8 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
     }
   }
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
-    info("[compaction checker] Going to compact the key in file: {}, delete ration: {}", best_filename, best_delete_ratio);
+    info("[compaction checker] Going to compact the key in file: {}, delete ration: {}", best_filename,
+         best_delete_ratio);
     auto s = storage_->Compact(cf, &best_start_key, &best_stop_key);
     if (!s.ok()) {
       error("[compaction checker] Failed to do compaction: {}", s.ToString());

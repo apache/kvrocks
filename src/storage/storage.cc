@@ -1218,7 +1218,7 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &
 Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf,
                                                   Storage::ReplDataManager::MetaInfo *meta) {
   auto meta_file = "meta/" + std::to_string(meta_id);
-  DLOG(INFO) << "[meta] id: " << meta_id;
+  debug("[meta] id: {}", meta_id);
 
   // Save the meta to tmp file
   auto wf = NewTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
@@ -1228,28 +1228,27 @@ Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::Bac
 
   // timestamp;
   UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] timestamp: " << line.get();
+  debug("[meta] timestamp: {}", line.get());
   meta->timestamp = std::strtoll(line.get(), nullptr, 10);
   // sequence
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
-  DLOG(INFO) << "[meta] seq:" << line.get();
+  debug("[meta] seq: {}", line.get());
   meta->seq = std::strtoull(line.get(), nullptr, 10);
   // optional metadata
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   if (strncmp(line.get(), "metadata", 8) == 0) {
-    DLOG(INFO) << "[meta] meta: " << line.get();
+    debug("[meta] meta: {}", line.get());
     meta->meta_data = std::string(line.get(), line.length);
     line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   }
-  DLOG(INFO) << "[meta] file count: " << line.get();
+  debug("[meta] file count: {}", line.get());
   // file list
   while (true) {
     line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
     if (!line) {
       break;
     }
-
-    DLOG(INFO) << "[meta] file info: " << line.get();
+    debug("[meta] file info: {}", line.get());
     auto cptr = line.get();
     while (*(cptr++) != ' ') {
     }

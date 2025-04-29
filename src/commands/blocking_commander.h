@@ -24,6 +24,7 @@
 #include "common/lock_manager.h"
 #include "event_util.h"
 #include "server/redis_connection.h"
+#include "server/server.h"
 
 namespace redis {
 
@@ -68,6 +69,15 @@ class BlockingCommander : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
+    {
+      // The blocking command should not be executed when the server is in exclusive state,
+      // because it might have the data race when the server is in transaction mode and run
+      // the callback here might cause the current execution also in transaction mode.
+      //
+      // For more context, please refer to: https://github.com/apache/kvrocks/issues/2900
+      auto concurrency = conn_->GetServer()->WorkConcurrencyGuard();
+    }
+
     bool done{false};
     {
       auto guard = GetLocks();
@@ -125,7 +135,7 @@ class BlockingCommander : public Commander,
     UnblockKeys();
     auto bev = conn_->GetBufferEvent();
     conn_->SetCB(bev);
-    bufferevent_enable(bev, EV_READ);
+    bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 
  protected:

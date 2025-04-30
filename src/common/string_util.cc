@@ -101,9 +101,18 @@ std::vector<std::string> Split2KV(const std::string &in, const std::string &deli
   return out;
 }
 
-bool HasPrefix(const std::string &str, const std::string &prefix) {
-  if (str.empty() || prefix.empty()) return false;
-  return !strncasecmp(str.data(), prefix.data(), prefix.size());
+bool StartsWith(std::string_view str, std::string_view prefix) {
+  return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
+}
+bool StartsWithICase(std::string_view str, std::string_view prefix) {
+  return str.size() >= prefix.size() && EqualICase(str.substr(0, prefix.size()), prefix);
+}
+
+bool EndsWith(std::string_view str, std::string_view suffix) {
+  return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+bool EndsWithICase(std::string_view str, std::string_view suffix) {
+  return str.size() >= suffix.size() && EqualICase(str.substr(str.size() - suffix.size()), suffix);
 }
 
 Status ValidateGlob(std::string_view glob) {

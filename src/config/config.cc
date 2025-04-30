@@ -94,8 +94,9 @@ const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", M
                                                              {"raw-key-value", MigrationType::kRawKeyValue}};
 
 std::string TrimRocksDbPrefix(std::string s) {
-  if (strncasecmp(s.data(), "rocksdb.", 8) != 0) return s;
-  return s.substr(8, s.size() - 8);
+  constexpr std::string_view prefix = "rocksdb.";
+  if (!util::StartsWithICase(s, prefix)) return s;
+  return s.substr(prefix.size());
 }
 
 Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compression,
@@ -793,12 +794,11 @@ void Config::ClearMaster() {
 
 Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number) {
   std::string field_key = util::ToLower(input.first);
-  constexpr const char ns_str[] = "namespace.";
-  size_t ns_str_size = sizeof(ns_str) - 1;
-  if (strncasecmp(input.first.data(), ns_str, ns_str_size) == 0) {
+  constexpr std::string_view ns_str = "namespace.";
+  if (util::StartsWithICase(input.first, ns_str)) {
     // namespace should keep key case-sensitive
     field_key = input.first;
-    load_tokens[input.second] = input.first.substr(ns_str_size);
+    load_tokens[input.second] = input.first.substr(ns_str.size());
     return Status::OK();
   }
 
@@ -997,7 +997,7 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
         continue;
       }
       auto kv = std::move(*parsed);
-      if (util::HasPrefix(kv.first, namespace_prefix)) {
+      if (util::StartsWith(kv.first, namespace_prefix)) {
         // Ignore namespace fields here since we would always rewrite them
         continue;
       }

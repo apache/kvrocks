@@ -183,6 +183,6 @@ void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &tab
   info(
       "[event_listener/table_file_created] column family: {}, file path: {}, file size: {}, job_id: {}, reason: {}, "
       "status: {}",
-      table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id, FileCreatedReason2String(table_info.reason),
-      table_info.status.ToString());
+      table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id,
+      FileCreatedReason2String(table_info.reason), table_info.status.ToString());
 }

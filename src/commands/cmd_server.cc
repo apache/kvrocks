@@ -428,31 +428,31 @@ class CommandClient : public Commander {
 
       while (i < args.size()) {
         bool more_args = i < args.size();
-        if (!strcasecmp(args[i].c_str(), "addr") && more_args) {
+        if (util::EqualICase(args[i], "addr") && more_args) {
           addr_ = args[i + 1];
-        } else if (!strcasecmp(args[i].c_str(), "id") && more_args) {
+        } else if (util::EqualICase(args[i], "id") && more_args) {
           auto parse_result = ParseInt<uint64_t>(args[i + 1], 10);
           if (!parse_result) {
             return {Status::RedisParseErr, errValueNotInteger};
           }
 
           id_ = *parse_result;
-        } else if (!strcasecmp(args[i].c_str(), "skipme") && more_args) {
-          if (!strcasecmp(args[i + 1].c_str(), "yes")) {
+        } else if (util::EqualICase(args[i], "skipme") && more_args) {
+          if (util::EqualICase(args[i + 1], "yes")) {
             skipme_ = true;
-          } else if (!strcasecmp(args[i + 1].c_str(), "no")) {
+          } else if (util::EqualICase(args[i + 1], "no")) {
             skipme_ = false;
           } else {
             return {Status::RedisParseErr, errInvalidSyntax};
           }
-        } else if (!strcasecmp(args[i].c_str(), "type") && more_args) {
-          if (!strcasecmp(args[i + 1].c_str(), "normal")) {
+        } else if (util::EqualICase(args[i], "type") && more_args) {
+          if (util::EqualICase(args[i + 1], "normal")) {
             kill_type_ |= kTypeNormal;
-          } else if (!strcasecmp(args[i + 1].c_str(), "pubsub")) {
+          } else if (util::EqualICase(args[i + 1], "pubsub")) {
             kill_type_ |= kTypePubsub;
-          } else if (!strcasecmp(args[i + 1].c_str(), "master")) {
+          } else if (util::EqualICase(args[i + 1], "master")) {
             kill_type_ |= kTypeMaster;
-          } else if (!strcasecmp(args[i + 1].c_str(), "replica") || !strcasecmp(args[i + 1].c_str(), "slave")) {
+          } else if (util::EqualICase(args[i + 1], "replica") || util::EqualICase(args[i + 1], "slave")) {
             kill_type_ |= kTypeSlave;
           } else {
             return {Status::RedisParseErr, errInvalidSyntax};

@@ -40,7 +40,11 @@ std::string BytesToHuman(uint64_t n);
 std::string Trim(std::string in, std::string_view chars);
 std::vector<std::string> Split(std::string_view in, std::string_view delim);
 std::vector<std::string> Split2KV(const std::string &in, const std::string &delim);
-bool HasPrefix(const std::string &str, const std::string &prefix);
+
+bool StartsWith(std::string_view str, std::string_view prefix);
+bool EndsWith(std::string_view str, std::string_view suffix);
+bool StartsWithICase(std::string_view str, std::string_view prefix);
+bool EndsWithICase(std::string_view str, std::string_view suffix);
 
 template <typename Iter>
 Iter FindICase(Iter begin, Iter end, std::string_view expected) {

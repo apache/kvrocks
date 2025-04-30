@@ -78,11 +78,19 @@ TEST(StringUtil, TokenizeRedisProtocol) {
   ASSERT_EQ(expected, array);
 }
 
-TEST(StringUtil, HasPrefix) {
-  ASSERT_TRUE(util::HasPrefix("has_prefix_is_true", "has_prefix"));
-  ASSERT_FALSE(util::HasPrefix("has_prefix_is_false", "_has_prefix"));
-  ASSERT_TRUE(util::HasPrefix("has_prefix", "has_prefix"));
-  ASSERT_FALSE(util::HasPrefix("has", "has_prefix"));
+TEST(StringUtil, StartsEndsWith) {
+  ASSERT_TRUE(util::StartsWith("has_prefix_is_true", "has_prefix"));
+  ASSERT_FALSE(util::StartsWith("has_prefix_is_false", "_has_prefix"));
+  ASSERT_TRUE(util::StartsWith("has_prefix", "has_prefix"));
+  ASSERT_FALSE(util::StartsWith("has", "has_prefix"));
+  ASSERT_TRUE(util::EndsWith("has_suffix_is_true", "_is_true"));
+  ASSERT_FALSE(util::EndsWith("has_suffix_is_false", "has_suffix"));
+  ASSERT_TRUE(util::EndsWith("has_suffix", "has_suffix"));
+  ASSERT_FALSE(util::EndsWith("has", "has_suffix"));
+  ASSERT_TRUE(util::StartsWithICase("has_prefix_is_true", "has_PREfix"));
+  ASSERT_FALSE(util::StartsWithICase("has_prefix_is_false", "_has_prefix"));
+  ASSERT_TRUE(util::EndsWithICase("has_suffix_IS_true", "_is_true"));
+  ASSERT_FALSE(util::EndsWithICase("has_suffix_is_false", "has_suffix"));
 }
 
 TEST(StringUtil, ValidateGlob) {

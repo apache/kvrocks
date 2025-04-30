@@ -21,10 +21,12 @@ package list
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1512,4 +1514,48 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
 		})
 	}
+}
+
+// TestPotentialDataRaceInBlockingCommand is to test blocking command's callback
+// shouldn't have data race with concurrent transaction behavior.
+//
+// For more information, please refer to: https://github.com/apache/kvrocks/issues/2900
+func TestPotentialDataRaceInBlockingCommand(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	listKey := "mylist"
+	rdb.Del(ctx, listKey)
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				err := rdb.BLPop(ctx, 3500*time.Millisecond, listKey).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}()
+	}
+
+	for i := 0; i < 64; i++ {
+		pipe := rdb.TxPipeline()
+		pipe.LPush(ctx, listKey, "element")
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	cancelFn()
+	wg.Wait()
 }

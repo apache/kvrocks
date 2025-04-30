@@ -104,7 +104,7 @@ void LogCollector<SlowEntry>::PushEntry(std::unique_ptr<SlowEntry> &&entry) {
     entries_.pop_back();
   }
 
-  if (dump_to_logfile_level_ == spdlog::level::info || dump_to_logfile_level_ == spdlog::level::warn) {
+  if (dump_to_logfile_level_ != spdlog::level::off) {
     std::string cmd;
     if (entry->args.size() > 0) {
       for (const auto &arg : entry->args) {

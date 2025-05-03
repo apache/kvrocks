@@ -314,32 +314,54 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("tdigest.quantile with different arguments", func(t *testing.T) {
 		keyPrefix := "t_qt_"
 
-		//Testing with no arguments
+		// No arguments
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE").Err(), errMsgWrongNumberArg)
 
-		// Quantile on a non existent key
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", keyPrefix+"iDoNotExist").Err(), errMsgKeyNotExist)
+		// Non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", keyPrefix+"iDoNotExist", "0.5").Err(), errMsgKeyNotExist)
 
-		// Creating a key
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", keyPrefix+"01", "compression", "100").Err())
+		// Quantiles on positive data
+		key1 := keyPrefix + "01"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key1, "compression", "100").Err())
 
-		key := keyPrefix + "01"
-		//Adding some data to tdigest 1 2 2 3 3 3 4 4 4 4 5 5 5 5 5
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "2", "3", "3", "3", "4", "4", "4", "4", "5", "5", "5", "5", "5").Err())
+		// Add positive values: 1, 2 (x2), 3 (x3), 4 (x4), 5 (x5)
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key1, "1", "2", "2", "3", "3", "3", "4", "4", "4", "4", "5", "5", "5", "5", "5").Err())
 
-		// Getting quantiles 0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
-		rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key, "0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1")
+		// Query quantiles 0 - 1 in steps of 0.1
+		rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key1, "0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1")
 		require.NoError(t, rsp.Err())
 
 		vals, err := rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 11)
 
-		// Expected values
-		expected := []float64{
-			1.0, 2.0, 2.5, 3.0, 3.5,
-			4.0, 4.0, 5.0, 5.0, 5.0, 5.0,
+		expected := []float64{1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0}
+		for i, v := range vals {
+			str, ok := v.(string)
+			require.True(t, ok, "expected string but got %T at index %d", v, i)
+
+			got, err := strconv.ParseFloat(str, 64)
+			require.NoError(t, err, "could not parse value at index %d", i)
+
+			require.InEpsilon(t, expected[i], got, 0.0001, "mismatch at index %d", i)
 		}
+
+		// Quantiles on negative data
+		key2 := keyPrefix + "02"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
+
+		// Add negative values -1 to -10
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key2, "-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "-10").Err())
+
+		// Query specific quantiles
+		rsp = rdb.Do(ctx, "TDIGEST.QUANTILE", key2, "0", "0.25", "0.5", "0.75", "1")
+		require.NoError(t, rsp.Err())
+
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 5)
+
+		expected = []float64{-10.0, -8.0, -5.5, -3.0, -1.0}
 		for i, v := range vals {
 			str, ok := v.(string)
 			require.True(t, ok, "expected string but got %T at index %d", v, i)
@@ -350,4 +372,5 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.InEpsilon(t, expected[i], got, 0.0001, "mismatch at index %d", i)
 		}
 	})
+
 }

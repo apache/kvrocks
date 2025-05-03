@@ -265,6 +265,9 @@ class CommandTDigestQuantile : public Commander {
       }
       return {Status::RedisExecErr, s.ToString()};
     }
+    if (values_.empty()) {
+      return {Status::RedisExecErr, "invalid quantile or empty tdigest"};
+    }
     std::vector<std::string> quantile_strings;
     quantile_strings.reserve(result.quantiles.size());
     for (const auto &q : result.quantiles) {

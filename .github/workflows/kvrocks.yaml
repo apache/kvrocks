@@ -485,6 +485,9 @@ jobs:
           pacman -Sy --noconfirm autoconf automake python3 python-redis git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
+          # FIXME: Workaround for gcc 15 issue for rocksdb https://github.com/apache/kvrocks/issues/2927
+          echo "CXXFLAGS=$CXXFLAGS -include cstdint" >> $GITHUB_ENV
+
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |

@@ -199,7 +199,7 @@ Status Server::Start() {
   }
 
   if (auto s = task_runner_.Start(); !s) {
-    warn("Failed to start task runner: ", s.Msg());
+    warn("Failed to start task runner: {}", s.Msg());
   }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(util::CreateThread("server-cron", [this] { this->cron(); }));

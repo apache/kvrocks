@@ -80,6 +80,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   std::map<int, redis::Connection *> GetConnections() const { return conns_; }
   Server *srv;
 
+  static std::string GetTidStr(std::thread::id tid);
+
  private:
   Status listenFD(int fd, uint32_t expected_port, int backlog);
   Status listenTCP(const std::string &host, uint32_t port, int backlog);

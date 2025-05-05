@@ -107,18 +107,14 @@ void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
 
 void Connection::OnEvent(bufferevent *bev, int16_t events) {
   if (events & BEV_EVENT_ERROR) {
-    error(
-        "[connection] Going to remove the client: {}, while encounter error: {}"
 #ifdef ENABLE_OPENSSL
-        ", SSL Error: {}"  // NOLINT
+    error("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
+          evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()),
+          SSLError(bufferevent_get_openssl_error(bev)));  // NOLINT
+#else
+    error("[connection] Removing client: {}, error: {}", GetAddr(),
+          evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 #endif
-        ,
-        GetAddr(), evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
-#ifdef ENABLE_OPENSSL
-                       ,
-        SSLError(bufferevent_get_openssl_error(bev))  // NOLINT
-#endif
-    );  // NOLINT
     Close();
     return;
   }

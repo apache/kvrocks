@@ -35,7 +35,7 @@ struct SortLimitFuse : Visitor {
     node = Node::MustAs<Limit>(Visitor::Visit(std::move(node)));
 
     if (auto sort = Node::As<Sort>(std::move(node->op))) {
-      return std::make_unique<TopNSort>(std::move(sort->op), std::move(sort->order), std::move(node->limit));
+      return std::make_unique<TopN>(std::move(sort->op), std::move(sort->order), std::move(node->limit));
     }
 
     return node;

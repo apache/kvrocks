@@ -114,7 +114,7 @@ void Worker::TimerCB(int, [[maybe_unused]] int16_t events) {
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
                               [[maybe_unused]] int socklen) {
   int local_port = util::GetLocalPort(fd);  // NOLINT
-  debug("[worker] New connection: fd={} from port: {} thread #{}", fd, local_port, GetTidStr(tid_));
+  debug("[worker] New connection: fd={} from port: {} thread #{}", fd, local_port, fmt::streamed(tid_));
 
   auto s = util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
@@ -195,7 +195,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
 void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
                                      [[maybe_unused]] int socklen) {
   debug("[worker] New connection: fd={} from unixsocket: {} thread #{}", fd, srv->GetConfig()->unixsocket,
-        GetTidStr(tid_));
+        fmt::streamed(tid_));
   event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
       BEV_OPT_THREADSAFE | BEV_OPT_DEFER_CALLBACKS | BEV_OPT_UNLOCK_CALLBACKS | BEV_OPT_CLOSE_ON_FREE;
@@ -581,12 +581,6 @@ void Worker::KickoutIdleClients(int timeout) {
   }
 }
 
-std::string Worker::GetTidStr(std::thread::id tid) {
-  std::stringstream ss;
-  ss << tid;
-  return ss.str();
-}
-
 void WorkerThread::Start() {
   auto s = util::CreateThread("worker", [this] { this->worker_->Run(std::this_thread::get_id()); });
 
@@ -597,7 +591,7 @@ void WorkerThread::Start() {
     return;
   }
 
-  info("[worker] Thread #{} started", Worker::GetTidStr(t_.get_id()));
+  info("[worker] Thread #{} started", fmt::streamed(t_.get_id()));
 }
 
 void WorkerThread::Stop(uint32_t wait_seconds) { worker_->Stop(wait_seconds); }

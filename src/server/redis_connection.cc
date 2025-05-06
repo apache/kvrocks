@@ -110,7 +110,7 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 #ifdef ENABLE_OPENSSL
     error("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()),
-          SSLError(bufferevent_get_openssl_error(bev)));  // NOLINT
+          fmt::streamed(SSLError(bufferevent_get_openssl_error(bev))));  // NOLINT
 #else
     error("[connection] Removing client: {}, error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));

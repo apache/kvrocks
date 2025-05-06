@@ -123,7 +123,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
 
   auto ssl_ctx = UniqueSSLContext(method);
   if (!ssl_ctx) {
-    error("Failed to construct SSL context: {}", SSLErrors{});
+    error("Failed to construct SSL context: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 
@@ -176,7 +176,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   auto ca_dir = config->tls_ca_cert_dir.empty() ? nullptr : config->tls_ca_cert_dir.c_str();
   if (ca_file || ca_dir) {
     if (SSL_CTX_load_verify_locations(ssl_ctx.get(), ca_file, ca_dir) != 1) {
-      error("Failed to load CA certificates: {}", SSLErrors{});
+      error("Failed to load CA certificates: {}", fmt::streamed(SSLErrors{}));
       return nullptr;
     }
   } else if (config->tls_auth_clients != TLS_AUTH_CLIENTS_NO) {
@@ -185,7 +185,7 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
   if (SSL_CTX_use_certificate_chain_file(ssl_ctx.get(), config->tls_cert_file.c_str()) != 1) {
-    error("Failed to load SSL certificate file: {}", SSLErrors{});
+    error("Failed to load SSL certificate file: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 
@@ -199,23 +199,23 @@ UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method
   }
 
   if (SSL_CTX_use_PrivateKey_file(ssl_ctx.get(), config->tls_key_file.c_str(), SSL_FILETYPE_PEM) != 1) {
-    error("Failed to load SSL private key file: {}", SSLErrors{});
+    error("Failed to load SSL private key file: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 
   if (SSL_CTX_check_private_key(ssl_ctx.get()) != 1) {
-    error("Failed to check the loaded private key: {}", SSLErrors{});
+    error("Failed to check the loaded private key: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 
   if (!config->tls_ciphers.empty() && !SSL_CTX_set_cipher_list(ssl_ctx.get(), config->tls_ciphers.c_str())) {
-    error("Failed to set SSL ciphers: {}", SSLErrors{});
+    error("Failed to set SSL ciphers: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 
 #ifdef SSL_OP_NO_TLSv1_3
   if (!config->tls_ciphersuites.empty() && !SSL_CTX_set_ciphersuites(ssl_ctx.get(), config->tls_ciphersuites.c_str())) {
-    error("Failed to set SSL ciphersuites: {}", SSLErrors{});
+    error("Failed to set SSL ciphersuites: {}", fmt::streamed(SSLErrors{}));
     return nullptr;
   }
 #endif

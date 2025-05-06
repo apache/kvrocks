@@ -267,7 +267,7 @@ void Server::Join() {
     warn("Compaction checker thread operation failed: {}", s.Msg());
   }
   if (auto s = task_runner_.Join(); !s) {
-    warn(s.Msg());
+    warn("{}", s.Msg());
   }
   for (const auto &worker : worker_threads_) {
     worker->Join();
@@ -672,7 +672,7 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     auto conn_ctx = iter->second.front();
     auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
     if (!s.IsOK()) {
-      error("[server] Failed to enable write event on blocked client {}:{}", conn_ctx.fd, s.Msg());
+      error("[server] Failed to enable write event on blocked client {}: {}", conn_ctx.fd, s.Msg());
     }
     iter->second.pop_front();
   }

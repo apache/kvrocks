@@ -130,12 +130,12 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  // CLIENT REPLY logic: OFF disables all replies, SKIP skips one reply
-  if (reply_mode_ == ReplyMode::OFF) {
+  // CLIENT REPLY SKIP: skip the next reply only
+  if (GetAndClearSkipNextReply()) {
     return;
   }
-  if (reply_mode_ == ReplyMode::SKIP) {
-    reply_mode_ = ReplyMode::ON;  // Only skip one reply
+  // CLIENT REPLY OFF disables all replies
+  if (reply_mode_ == ReplyMode::OFF) {
     return;
   }
   owner_->srv->stats.IncrOutboundBytes(msg.size());

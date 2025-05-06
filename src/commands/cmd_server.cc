@@ -514,7 +514,7 @@ class CommandClient : public Commander {
       } else if (reply_mode_arg_ == "off") {
         conn->SetReplyMode(Connection::ReplyMode::OFF);
       } else if (reply_mode_arg_ == "skip") {
-        conn->SetReplyMode(Connection::ReplyMode::SKIP);
+        conn->SetSkipNextReply(true);
       }
       *output = redis::RESP_OK;
       return Status::OK();

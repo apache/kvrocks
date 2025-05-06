@@ -140,7 +140,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   if (uint32_t(local_port) == srv->GetConfig()->tls_port) {
     ssl = SSL_new(srv->ssl_ctx.get());
     if (!ssl) {
-      error("[worker] Failed to construct SSL structure for new connection: {}", SSLErrors{});
+      error("[worker] Failed to construct SSL structure for new connection: {}", fmt::streamed(SSLErrors{}));
       evutil_closesocket(fd);
       return;
     }
@@ -154,7 +154,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   if (!bev) {
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
 #ifdef ENABLE_OPENSSL
-    error("[worker] Failed to construct socket for new connection: {}, SSL error: {}", socket_err, SSLErrors{});
+    error("[worker] Failed to construct socket for new connection: {}, SSL error: {}", socket_err, fmt::streamed(SSLErrors{}));
     if (ssl) SSL_free(ssl);
 #else
     error("[worker] Failed to construct socket for new connection: {}", socket_err);

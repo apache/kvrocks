@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.31.0
+        uses: crate-ci/typos@v1.32.0
         with:
           config: .github/config/typos.toml
 
@@ -484,6 +484,9 @@ jobs:
           pacman -Syu --noconfirm
           pacman -Sy --noconfirm autoconf automake python3 python-redis git wget which cmake make gcc
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+          # FIXME: Workaround for gcc 15 issue for rocksdb https://github.com/apache/kvrocks/issues/2927
+          echo "CXXFLAGS=$CXXFLAGS -include cstdint" >> $GITHUB_ENV
 
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}

@@ -38,13 +38,11 @@ bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const 
   rocksdb::Status s = metadata.Decode(value);
   auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
   if (!s.ok()) {
-    LOG(WARNING) << "[compact_filter/metadata] Failed to decode,"
-                 << ", namespace: " << ns << ", key: " << user_key << ", err: " << s.ToString();
+    warn("[compact_filter/metadata] Failed to decode, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
     return false;
   }
-  DLOG(INFO) << "[compact_filter/metadata] "
-             << "namespace: " << ns << ", key: " << user_key
-             << ", result: " << (metadata.Expired() ? "deleted" : "reserved");
+  debug("[compact_filter/metadata] namespace: {}, key: {}, result: {}", ns, user_key,
+        (metadata.Expired() ? "deleted" : "reserved"));
   return metadata.Expired();
 }
 
@@ -104,8 +102,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
     return rocksdb::CompactionFilter::Decision::kRemove;
   }
   if (!s.IsOK()) {
-    LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
-               << ", namespace: " << ikey.GetNamespace() << ", key: " << ikey.GetKey() << ", err: " << s.Msg();
+    error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
+          ikey.GetKey(), s.Msg());
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
   // bitmap will be checked in Filter
@@ -126,8 +124,8 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     return true;
   }
   if (!s.IsOK()) {
-    LOG(ERROR) << "[compact_filter/subkey] Failed to get metadata"
-               << ", namespace: " << ikey.GetNamespace() << ", key: " << ikey.GetKey() << ", err: " << s.Msg();
+    error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
+          ikey.GetKey(), s.Msg());
     return false;
   }
 

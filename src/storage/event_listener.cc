@@ -80,58 +80,61 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 }
 
 void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  LOG(INFO) << "[event_listener/compaction_begin] column family: " << ci.cf_name << ", job_id: " << ci.job_id
-            << ", compaction reason: " << rocksdb::GetCompactionReasonString(ci.compaction_reason)
-            << ", output compression type: " << CompressType2String(ci.compression)
-            << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
-            << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
-            << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes
-            << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no");
+  info(
+      "[event_listener/compaction_begin] column family: {}, job_id: {}, compaction reason: {}, output compression "
+      "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "
+      "is_manual_compaction: {}",
+      ci.cf_name, ci.job_id, rocksdb::GetCompactionReasonString(ci.compaction_reason),
+      CompressType2String(ci.compression), ci.base_input_level, ci.input_files.size(), ci.output_level,
+      ci.output_files.size(), ci.stats.total_input_bytes, ci.stats.total_output_bytes,
+      ci.stats.is_manual_compaction ? "yes" : "no");
 }
 
 void EventListener::OnCompactionCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  LOG(INFO) << "[event_listener/compaction_completed] column family: " << ci.cf_name << ", job_id: " << ci.job_id
-            << ", compaction reason: " << rocksdb::GetCompactionReasonString(ci.compaction_reason)
-            << ", output compression type: " << CompressType2String(ci.compression)
-            << ", base input level(files): " << ci.base_input_level << "(" << ci.input_files.size() << ")"
-            << ", output level(files): " << ci.output_level << "(" << ci.output_files.size() << ")"
-            << ", input bytes: " << ci.stats.total_input_bytes << ", output bytes:" << ci.stats.total_output_bytes
-            << ", is_manual_compaction:" << (ci.stats.is_manual_compaction ? "yes" : "no")
-            << ", elapsed(micro): " << ci.stats.elapsed_micros;
+  info(
+      "[event_listener/compaction_completed] column family: {}, job_id: {}, compaction reason: {}, output compression "
+      "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "
+      "is_manual_compaction: {}, elapsed(micro): {}",
+      ci.cf_name, ci.job_id, rocksdb::GetCompactionReasonString(ci.compaction_reason),
+      CompressType2String(ci.compression), ci.base_input_level, ci.input_files.size(), ci.output_level,
+      ci.output_files.size(), ci.stats.total_input_bytes, ci.stats.total_output_bytes,
+      ci.stats.is_manual_compaction ? "yes" : "no", ci.stats.elapsed_micros);
   storage_->RecordStat(engine::StatType::CompactionCount, 1);
   storage_->CheckDBSizeLimit();
 }
 
 void EventListener::OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si) {
-  LOG(INFO) << "[event_listener/subcompaction_begin] column family: " << si.cf_name << ", job_id: " << si.job_id
-            << ", compaction reason: " << rocksdb::GetCompactionReasonString(si.compaction_reason)
-            << ", output compression type: " << CompressType2String(si.compression);
+  info(
+      "[event_listener/subcompaction_begin] column family: {}, job_id: {}, compaction reason: {}, output compression "
+      "type: {}",
+      si.cf_name, si.job_id, rocksdb::GetCompactionReasonString(si.compaction_reason),
+      CompressType2String(si.compression));
 }
 
 void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) {
-  LOG(INFO) << "[event_listener/subcompaction_completed] column family: " << si.cf_name << ", job_id: " << si.job_id
-            << ", compaction reason: " << rocksdb::GetCompactionReasonString(si.compaction_reason)
-            << ", output compression type: " << CompressType2String(si.compression)
-            << ", base input level(files): " << si.base_input_level << ", output level(files): " << si.output_level
-            << ", input bytes: " << si.stats.total_input_bytes << ", output bytes:" << si.stats.total_output_bytes
-            << ", is_manual_compaction:" << (si.stats.is_manual_compaction ? "yes" : "no")
-            << ", elapsed(micro): " << si.stats.elapsed_micros;
+  info(
+      "[event_listener/subcompaction_completed] column family: {}, job_id: {}, compaction reason: {}, output "
+      "compression type: {}, base input level(files): {}, output level(files): {}, input bytes: {}, output bytes: {}, "
+      "is_manual_compaction: {}, elapsed(micro): {}",
+      si.cf_name, si.job_id, rocksdb::GetCompactionReasonString(si.compaction_reason),
+      CompressType2String(si.compression), si.base_input_level, si.output_level, si.stats.total_input_bytes,
+      si.stats.total_output_bytes, si.stats.is_manual_compaction ? "yes" : "no", si.stats.elapsed_micros);
 }
 
 void EventListener::OnFlushBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
-  LOG(INFO) << "[event_listener/flush_begin] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id
-            << ", job_id: " << fi.job_id << ", reason: " << rocksdb::GetFlushReasonString(fi.flush_reason);
+  info("[event_listener/flush_begin] column family: {}, thread_id: {}, job_id: {}, reason: {}", fi.cf_name,
+       fi.thread_id, fi.job_id, rocksdb::GetFlushReasonString(fi.flush_reason));
 }
 
 void EventListener::OnFlushCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   storage_->RecordStat(engine::StatType::FlushCount, 1);
   storage_->CheckDBSizeLimit();
-  LOG(INFO) << "[event_listener/flush_completed] column family: " << fi.cf_name << ", thread_id: " << fi.thread_id
-            << ", job_id: " << fi.job_id << ", file: " << fi.file_path
-            << ", reason: " << static_cast<int>(fi.flush_reason)
-            << ", is_write_slowdown: " << (fi.triggered_writes_slowdown ? "yes" : "no")
-            << ", is_write_stall: " << (fi.triggered_writes_stop ? "yes" : "no")
-            << ", largest seqno: " << fi.largest_seqno << ", smallest seqno: " << fi.smallest_seqno;
+  info(
+      "[event_listener/flush_completed] column family: {}, thread_id: {}, job_id: {}, file: {}, reason: {}, "
+      "is_write_slowdown: {}, is_write_stall: {}, largest seqno: {}, smallest seqno: {}",
+      fi.cf_name, fi.thread_id, fi.job_id, fi.file_path, static_cast<int>(fi.flush_reason),
+      fi.triggered_writes_slowdown ? "yes" : "no", fi.triggered_writes_stop ? "yes" : "no", fi.largest_seqno,
+      fi.smallest_seqno);
 }
 
 void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *bg_error) {
@@ -149,7 +152,7 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
       auto s = storage_->GetDB()->GetLiveFiles(live_files, &manifest_size, false /* flush_memtable */);
       if (s.ok() && std::find(live_files.begin(), live_files.end(), corrupt_sst) == live_files.end()) {
         *bg_error = rocksdb::Status::OK();
-        LOG(WARNING) << fmt::format(
+        warn(
             "[event_listener/background_error] ignore no-fatal background error about sst file, reason: {}, bg_error: "
             "{}",
             reason_str, error_str);
@@ -163,22 +166,23 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
     storage_->SetDBInRetryableIOError(true);
   }
 
-  LOG(ERROR) << fmt::format("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
+  error("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
-void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) {
-  LOG(INFO) << "[event_listener/table_file_deleted] db: " << info.db_name << ", sst file: " << info.file_path
-            << ", status: " << info.status.ToString();
+void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) {
+  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
+       table_info.status.ToString());
 }
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
-  LOG(WARNING) << "[event_listener/stall_cond_changed] column family: " << info.cf_name
-               << " write stall condition was changed, from " << StallConditionType2String(info.condition.prev)
-               << " to " << StallConditionType2String(info.condition.cur);
+  warn("[event_listener/stall_cond_changed] column family: {} write stall condition was changed, from {} to {}",
+       info.cf_name, StallConditionType2String(info.condition.prev), StallConditionType2String(info.condition.cur));
 }
 
-void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) {
-  LOG(INFO) << "[event_listener/table_file_created] column family: " << info.cf_name
-            << ", file path: " << info.file_path << ", file size: " << info.file_size << ", job_id: " << info.job_id
-            << ", reason: " << FileCreatedReason2String(info.reason) << ", status: " << info.status.ToString();
+void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &table_info) {
+  info(
+      "[event_listener/table_file_created] column family: {}, file path: {}, file size: {}, job_id: {}, reason: {}, "
+      "status: {}",
+      table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id,
+      FileCreatedReason2String(table_info.reason), table_info.status.ToString());
 }

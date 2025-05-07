@@ -38,6 +38,22 @@ std::string SlowEntry::ToRedisString() const {
   return output;
 }
 
+void SlowEntry::DumpToLogFile(spdlog::level::level_enum level) const {
+  if (level == spdlog::level::off) {
+    return;
+  }
+
+  std::string cmd;
+  if (args.size() > 0) {
+    for (const auto &arg : args) {
+      cmd.append(arg).append(" ");
+    }
+    cmd.pop_back();
+  }
+  log(level, "[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", id, time,
+      duration, cmd, ip, port, client_name);
+}
+
 std::string PerfEntry::ToRedisString() const {
   std::string output;
   output.append(redis::MultiLen(6));
@@ -92,35 +108,9 @@ void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     entries_.pop_back();
   }
-  entries_.push_front(std::move(entry));
-}
-
-template <>
-void LogCollector<SlowEntry>::PushEntry(std::unique_ptr<SlowEntry> &&entry) {
-  std::lock_guard<std::mutex> guard(mu_);
-  entry->id = ++id_;
-  entry->time = util::GetTimeStamp();
-  if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
-    entries_.pop_back();
-  }
-
   if (dump_to_logfile_level_ != spdlog::level::off) {
-    std::string cmd;
-    if (entry->args.size() > 0) {
-      for (const auto &arg : entry->args) {
-        cmd.append(arg).append(" ");
-      }
-      cmd.pop_back();
-    }
-    if (dump_to_logfile_level_ == spdlog::level::info) {
-      info("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", entry->id,
-           entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
-    } else {
-      warn("[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", entry->id,
-           entry->time, entry->duration, cmd, entry->ip, entry->port, entry->client_name);
-    }
+    entry->DumpToLogFile(dump_to_logfile_level_);
   }
-
   entries_.push_front(std::move(entry));
 }
 

@@ -46,6 +46,11 @@ struct FormatMessageWithLoc {
 };
 
 template <typename... Args>
+inline void log(spdlog::level::level_enum lvl, FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
+  spdlog::default_logger_raw()->log(fmt.current_loc, lvl, fmt.fmt, std::forward<Args>(args)...);
+}
+
+template <typename... Args>
 inline void debug(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::debug, fmt.fmt, std::forward<Args>(args)...);
 }

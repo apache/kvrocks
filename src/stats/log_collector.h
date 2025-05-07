@@ -43,6 +43,7 @@ class SlowEntry {
   std::string ip;
   uint32_t port;
   std::string ToRedisString() const;
+  void DumpToLogFile(spdlog::level::level_enum) const;
 };
 
 class PerfEntry {
@@ -55,6 +56,7 @@ class PerfEntry {
   std::string iostats_context;
 
   std::string ToRedisString() const;
+  void DumpToLogFile(spdlog::level::level_enum) const {};
 };
 
 template <class T>

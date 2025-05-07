@@ -1109,9 +1109,9 @@ class CommandZMScore : public Commander {
       for (const auto &member : members) {
         auto iter = mscores.find(member.ToString());
         if (iter == mscores.end()) {
-          values.emplace_back(conn->NilString());
+          values.emplace_back("");
         } else {
-          values.emplace_back(conn->Double(iter->second));
+          values.emplace_back(util::Float2String(iter->second));
         }
       }
     }
@@ -1451,7 +1451,7 @@ class CommandZRandMember : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : result_entries[0];
     else
       *output = Array(result_entries);
     return Status::OK();

@@ -1303,12 +1303,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 			{Score: 3, Member: "c"},
 		})
 
-		require.Equal(t, int64(1), rdb.ZMScore(ctx, "zset", "a").Val())
-		require.Equal(t, int64(2), rdb.ZMScore(ctx, "zset", "b").Val())
+		require.Equal(t, int64(1), int64(rdb.ZMScore(ctx, "zset", "a").Val()[0]))
+		require.Equal(t, int64(2), int64(rdb.ZMScore(ctx, "zset", "b").Val()[0]))
 
-		res := rdb.ZMScore(ctx, "zset", "b").Val()
-		require.Equal(t, int64(1), res[0])
-		require.Equal(t, int64(2), res[1])
+		res := rdb.ZMScore(ctx, "zset", "a", "b").Val()
+		require.Equal(t, int64(1), int64(res[0]))
+		require.Equal(t, int64(2), int64(res[1]))
 	})
 
 	t.Run(fmt.Sprintf("ZRANDMEMBER without scores - %s", encoding), func(t *testing.T) {
@@ -1325,9 +1325,8 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		createZset(rdb, ctx, "zset", z)
 
 		// ZRANDMEMBER zset
-		str := rdb.Do(ctx, "zset").Val()
-		str = str.(string)
-		require.Contains(t, members, str)
+		str := rdb.Do(ctx, "ZRANDMEMBER", "zset").Val()
+		require.Contains(t, members, str.(string))
 
 		// ZRANDMEMBER zset len(members)
 		res := rdb.ZRandMember(ctx, "zset", len(members)).Val()

@@ -265,13 +265,16 @@ class CommandTDigestQuantile : public Commander {
       }
       return {Status::RedisExecErr, s.ToString()};
     }
-    if (values_.empty()) {
-      return {Status::RedisExecErr, "invalid quantile or empty tdigest"};
-    }
     std::vector<std::string> quantile_strings;
     quantile_strings.reserve(result.quantiles.size());
-    for (const auto &q : result.quantiles) {
-      quantile_strings.push_back(std::to_string(q));
+    if (!result.has_centroids) {
+      for (size_t i = 0; i < values_.size(); ++i) {
+        quantile_strings.push_back("nan");
+      }
+    } else {
+      for (const auto &q : result.quantiles) {
+        quantile_strings.push_back(std::to_string(q));
+      }
     }
     *output = conn->MultiBulkString(quantile_strings);
     return Status::OK();

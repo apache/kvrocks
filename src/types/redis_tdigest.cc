@@ -225,6 +225,10 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
   if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
     return status;
   }
+  if (centroids.empty()) {
+    result->has_centroids = false;
+    return rocksdb::Status::OK();
+  }
 
   auto dump_centroids = DummyCentroids(metadata, centroids);
 

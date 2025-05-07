@@ -44,6 +44,7 @@ struct TDigestCreateOptions {
 };
 
 struct TDigestQuantitleResult {
+  bool has_centroids = true;
   std::vector<double> quantiles;
 };
 

@@ -132,11 +132,14 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  // CLIENT REPLY SKIP: skip the next reply only
-  if (GetAndClearSkipNextReply()) {
+  if (reply_mode_ == ReplyMode::SKIP_NEXT) {
+    reply_mode_ = ReplyMode::SKIP_THIS;
     return;
   }
-  // CLIENT REPLY OFF disables all replies
+  if (reply_mode_ == ReplyMode::SKIP_THIS) {
+    reply_mode_ = ReplyMode::ON;
+    return;
+  }
   if (reply_mode_ == ReplyMode::OFF) {
     return;
   }

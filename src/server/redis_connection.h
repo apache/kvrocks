@@ -50,7 +50,7 @@ class Connection : public EvbufCallbackBase<Connection> {
     kAsking = 1 << 10,
   };
 
-  enum class ReplyMode { ON, OFF };
+  enum class ReplyMode { ON, OFF, SKIP_NEXT, SKIP_THIS };
 
   explicit Connection(bufferevent *bev, Worker *owner);
   ~Connection();
@@ -187,13 +187,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetReplyMode(ReplyMode mode) { reply_mode_ = mode; }
   ReplyMode GetReplyMode() const { return reply_mode_; }
 
-  void SetSkipNextReply(bool skip) { skip_next_reply_ = skip; }
-  bool GetAndClearSkipNextReply() {
-    bool ret = skip_next_reply_;
-    skip_next_reply_ = false;
-    return ret;
-  }
-
  private:
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
@@ -230,7 +223,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   RESP protocol_version_ = RESP::v2;
 
   ReplyMode reply_mode_ = ReplyMode::ON;
-  bool skip_next_reply_ = false;
 };
 
 }  // namespace redis

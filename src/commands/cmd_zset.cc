@@ -1109,13 +1109,13 @@ class CommandZMScore : public Commander {
       for (const auto &member : members) {
         auto iter = mscores.find(member.ToString());
         if (iter == mscores.end()) {
-          values.emplace_back("");
+          values.emplace_back(conn->NilString());
         } else {
-          values.emplace_back(util::Float2String(iter->second));
+          values.emplace_back(conn->Double(iter->second));
         }
       }
     }
-    *output = conn->MultiBulkString(values);
+    *output = Array(values);
     return Status::OK();
   }
 };

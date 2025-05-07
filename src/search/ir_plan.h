@@ -231,8 +231,7 @@ struct TopN : PlanOperator {
   std::unique_ptr<SortByClause> order;
   std::unique_ptr<LimitClause> limit;
 
-  TopN(std::unique_ptr<PlanOperator> &&op, std::unique_ptr<SortByClause> &&order,
-           std::unique_ptr<LimitClause> &&limit)
+  TopN(std::unique_ptr<PlanOperator> &&op, std::unique_ptr<SortByClause> &&order, std::unique_ptr<LimitClause> &&limit)
       : op(std::move(op)), order(std::move(order)), limit(std::move(limit)) {}
 
   std::string_view Name() const override { return "TopN"; };
@@ -248,9 +247,8 @@ struct TopN : PlanOperator {
   NodeIterator ChildEnd() override { return NodeIterator(this, ChildMap.end()); }
 
   std::unique_ptr<Node> Clone() const override {
-    return std::make_unique<TopN>(Node::MustAs<PlanOperator>(op->Clone()),
-                                      Node::MustAs<SortByClause>(order->Clone()),
-                                      Node::MustAs<LimitClause>(limit->Clone()));
+    return std::make_unique<TopN>(Node::MustAs<PlanOperator>(op->Clone()), Node::MustAs<SortByClause>(order->Clone()),
+                                  Node::MustAs<LimitClause>(limit->Clone()));
   }
 };
 

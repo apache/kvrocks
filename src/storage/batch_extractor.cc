@@ -37,7 +37,7 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   } else {
     // Redis type log data
     if (auto s = log_data_.Decode(blob); !s.IsOK()) {
-      LOG(WARNING) << "Failed to decode Redis type log: " << s.Msg();
+      warn("Failed to decode Redis type log: {}", s.Msg());
     }
   }
 }
@@ -139,8 +139,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       case kRedisList: {
         auto args = log_data_.GetArguments();
         if (args->empty()) {
-          LOG(ERROR)
-              << "Failed to parse write_batch in PutCF. Type=List: no arguments, at least should contain a command";
+          error("Failed to parse write_batch in PutCF. Type=List: no arguments, at least should contain a command");
           return rocksdb::Status::OK();
         }
 
@@ -154,8 +153,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         switch (cmd) {
           case kRedisCmdLSet:
             if (args->size() < 2) {
-              LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=LSET: no enough arguments, at least should "
-                            "contain an index";
+              error(
+                  "Failed to parse write_batch in PutCF. Command=LSET: no enough arguments, at least should contain an "
+                  "index");
               return rocksdb::Status::OK();
             }
 
@@ -164,8 +164,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           case kRedisCmdLInsert:
             if (first_seen_) {
               if (args->size() < 4) {
-                LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=LINSERT: no enough arguments, should "
-                              "contain before pivot value";
+                error(
+                    "Failed to parse write_batch in PutCF. Command=LINSERT: no enough arguments, should contain before "
+                    "pivot values");
                 return rocksdb::Status::OK();
               }
 
@@ -186,8 +187,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
             // LMOVE will be parsed in DeleteCF, so ignore it here
             break;
           default:
-            LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=List: unhandled command with code "
-                       << *parse_result;
+            error("Failed to parse write_batch in PutCF. Type=List: unhandled command with code {}", *parse_result);
         }
         break;
       }
@@ -202,8 +202,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       case kRedisBitmap: {
         auto args = log_data_.GetArguments();
         if (args->empty()) {
-          LOG(ERROR)
-              << "Failed to parse write_batch in PutCF. Type=Bitmap: no arguments, at least should contain a command";
+          error("Failed to parse write_batch in PutCF. Type=Bitmap: no arguments, at least should contain a command");
           return rocksdb::Status::OK();
         }
 
@@ -217,8 +216,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         switch (cmd) {
           case kRedisCmdSetBit: {
             if (args->size() < 2) {
-              LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=SETBIT: no enough arguments, should contain "
-                            "an offset";
+              error(
+                  "Failed to parse write_batch in PutCF. Command=SETBIT: no enough arguments, should contain an "
+                  "offset");
               return rocksdb::Status::OK();
             }
 
@@ -234,8 +234,9 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
           case kRedisCmdBitOp:
             if (first_seen_) {
               if (args->size() < 4) {
-                LOG(ERROR) << "Failed to parse write_batch in PutCF. Command=BITOP: no enough arguments, at least "
-                              "should contain srckey";
+                error(
+                    "Failed to parse write_batch in PutCF. Command=BITOP: no enough arguments, at least should contain "
+                    "srckey");
                 return rocksdb::Status::OK();
               }
 
@@ -249,8 +250,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
             command_args.insert(command_args.end(), args->begin() + 1, args->end());
             break;
           default:
-            LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Bitmap: unhandled command with code "
-                       << *parsed_cmd;
+            error("Failed to parse write_batch in PutCF. Type=Bitmap: unhandled command with code {}", *parsed_cmd);
             return rocksdb::Status::OK();
         }
         break;
@@ -268,7 +268,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
   } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
     auto s = ExtractStreamAddCommand(is_slot_id_encoded_, key, value, &command_args);
     if (!s.IsOK()) {
-      LOG(ERROR) << "Failed to parse write_batch in PutCF. Type=Stream: " << s.Msg();
+      error("Failed to parse write_batch in PutCF. Type=Stream: {}", s.Msg());
       return rocksdb::Status::OK();
     }
   }
@@ -322,8 +322,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       case kRedisList: {
         auto args = log_data_.GetArguments();
         if (args->empty()) {
-          LOG(ERROR)
-              << "Failed to parse write_batch in DeleteCF. Type=List: no arguments, at least should contain a command";
+          error("Failed to parse write_batch in DeleteCF. Type=List: no arguments, at least should contain a command");
           return rocksdb::Status::OK();
         }
 
@@ -338,8 +337,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           case kRedisCmdLTrim:
             if (first_seen_) {
               if (args->size() < 3) {
-                LOG(ERROR) << "Failed to parse write_batch in DeleteCF; Command=LTRIM: no enough arguments, should "
-                              "contain start and stop";
+                error(
+                    "Failed to parse write_batch in DeleteCF; Command=LTRIM: no enough arguments, should contain start "
+                    "and stop");
                 return rocksdb::Status::OK();
               }
 
@@ -350,8 +350,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           case kRedisCmdLRem:
             if (first_seen_) {
               if (args->size() < 3) {
-                LOG(ERROR) << "Failed to parse write_batch in DeleteCF. Command=LREM: no enough arguments, should "
-                              "contain count and value";
+                error(
+                    "Failed to parse write_batch in DeleteCF. Command=LREM: no enough arguments, should "
+                    "contain count and value");
                 return rocksdb::Status::OK();
               }
 
@@ -368,8 +369,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           case kRedisCmdLMove:
             if (first_seen_) {
               if (args->size() < 5) {
-                LOG(ERROR) << "Failed to parse write_batch in DeleteCF; Command=LMOVE: no enough arguments, should "
-                              "contain source, destination and where/from arguments";
+                error(
+                    "Failed to parse write_batch in DeleteCF; Command=LMOVE: no enough arguments, should "
+                    "contain source, destination and where/from arguments");
                 return rocksdb::Status::OK();
               }
               command_args = {"LMOVE", (*args)[1], (*args)[2], (*args)[3], (*args)[4]};
@@ -377,8 +379,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
             }
             break;
           default:
-            LOG(ERROR) << "Failed to parse write_batch in DeleteCF. Type=List: unhandled command with code "
-                       << *parse_result;
+            error("Failed to parse write_batch in DeleteCF. Type=List: unhandled command with code {}", *parse_result);
         }
         break;
       }

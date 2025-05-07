@@ -272,28 +272,33 @@ func TestIntrospection(t *testing.T) {
 		defer func() { require.NoError(t, c.Close()) }()
 
 		// Should reply by default
-		require.NoError(t, c.WriteArgs("PING"))
-		c.MustRead(t, "+PONG")
+		require.NoError(t, c.WriteArgs("ECHO", "default"))
+		c.MustRead(t, `"default"`)
 
 		// Set to OFF, following commands should not reply
 		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "OFF"))
 		c.MustRead(t, "+OK")
-		require.NoError(t, c.WriteArgs("PING"))
+		require.NoError(t, c.WriteArgs("ECHO", "off"))
 		// No reply expected here, do not read
 
 		// Set back to ON, commands should reply again
 		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "ON"))
 		c.MustRead(t, "+OK")
-		require.NoError(t, c.WriteArgs("PING"))
-		c.MustRead(t, "+PONG")
+		require.NoError(t, c.WriteArgs("ECHO", "on"))
+		c.MustRead(t, `"on"`)
 
 		// Set to SKIP, next command should not reply, then reply resumes
 		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "SKIP"))
 		// No reply expected here, do not read
-		require.NoError(t, c.WriteArgs("PING"))
-		// Skip one reply, do not read
-		require.NoError(t, c.WriteArgs("PING"))
-		c.MustRead(t, "+PONG")
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip1"))
+		// No reply expected here, do not read
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip2"))
+		c.MustRead(t, `"skip2"`)
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip3"))
+		c.MustRead(t, `"skip3"`)
 	})
 }
 

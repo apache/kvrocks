@@ -132,11 +132,11 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
-  if (reply_mode_ == ReplyMode::SKIP_NEXT) {
-    reply_mode_ = ReplyMode::SKIP_THIS;
+  if (reply_mode_ == ReplyMode::SKIP_ONCE_PENDING) {
+    reply_mode_ = ReplyMode::SKIP_ONCE_ACTIVE;
     return;
   }
-  if (reply_mode_ == ReplyMode::SKIP_THIS) {
+  if (reply_mode_ == ReplyMode::SKIP_ONCE_ACTIVE) {
     reply_mode_ = ReplyMode::ON;
     return;
   }

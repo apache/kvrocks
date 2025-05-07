@@ -50,7 +50,12 @@ class Connection : public EvbufCallbackBase<Connection> {
     kAsking = 1 << 10,
   };
 
-  enum class ReplyMode { ON, OFF, SKIP_NEXT, SKIP_THIS };
+  enum class ReplyMode {
+    ON,                // Always reply to every command (default)
+    OFF,               // Never reply to any command
+    SKIP_ONCE_PENDING, // The next command will NOT send a reply, then switch to SKIP_ONCE_ACTIVE
+    SKIP_ONCE_ACTIVE   // This command does NOT send a reply, then automatically switch back to ON
+  };
 
   explicit Connection(bufferevent *bev, Worker *owner);
   ~Connection();

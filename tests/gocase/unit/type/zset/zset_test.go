@@ -1295,6 +1295,22 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 	})
 
+	t.Run(fmt.Sprintf("ZMSCORE - %s", encoding), func(t *testing.T) {
+		rdb.Del(ctx, "zset")
+		createZset(rdb, ctx, "zset", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+		})
+
+		require.Equal(t, int64(1), int64(rdb.ZMScore(ctx, "zset", "a").Val()[0]))
+		require.Equal(t, int64(2), int64(rdb.ZMScore(ctx, "zset", "b").Val()[0]))
+
+		res := rdb.ZMScore(ctx, "zset", "a", "b").Val()
+		require.Equal(t, int64(1), int64(res[0]))
+		require.Equal(t, int64(2), int64(res[1]))
+	})
+
 	t.Run(fmt.Sprintf("ZRANDMEMBER without scores - %s", encoding), func(t *testing.T) {
 		// create a zset with 6 elements
 		members := []string{"a", "b", "c", "d", "e", "f"}
@@ -1307,6 +1323,10 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 			z[i] = redis.Z{Score: scores[i], Member: members[i]}
 		}
 		createZset(rdb, ctx, "zset", z)
+
+		// ZRANDMEMBER zset
+		str := rdb.Do(ctx, "ZRANDMEMBER", "zset").Val()
+		require.Contains(t, members, str.(string))
 
 		// ZRANDMEMBER zset len(members)
 		res := rdb.ZRandMember(ctx, "zset", len(members)).Val()

@@ -131,7 +131,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
     }
   }
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
-    info("[compaction checker] Going to compact the key in file: {}, delete ration: {}", best_filename,
+    info("[compaction checker] Going to compact the key in file: {}, delete ratio: {}", best_filename,
          best_delete_ratio);
     auto s = storage_->Compact(cf, &best_start_key, &best_stop_key);
     if (!s.ok()) {

@@ -37,6 +37,7 @@ constexpr auto kInfoMergedWeight = "Merged weight";
 constexpr auto kInfoUnmergedWeight = "Unmerged weight";
 constexpr auto kInfoObservations = "Observations";
 constexpr auto kInfoTotalCompressions = "Total compressions";
+constexpr auto kNan = "nan";
 }  // namespace
 
 class CommandTDigestCreate : public Commander {
@@ -269,7 +270,7 @@ class CommandTDigestQuantile : public Commander {
     quantile_strings.reserve(result.quantiles.size());
     if (!result.has_centroids) {
       for (size_t i = 0; i < values_.size(); ++i) {
-        quantile_strings.emplace_back("nan");
+        quantile_strings.emplace_back(kNan);
       }
     } else {
       for (const auto &q : result.quantiles) {

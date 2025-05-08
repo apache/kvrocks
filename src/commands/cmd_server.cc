@@ -422,7 +422,7 @@ class CommandClient : public Commander {
       } else if (mode_str == "off") {
         reply_mode_ = redis::Connection::ReplyMode::OFF;
       } else if (mode_str == "skip") {
-        reply_mode_ = redis::Connection::ReplyMode::SKIP_ONCE_PENDING;
+        reply_mode_ = redis::Connection::ReplyMode::SKIP;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -516,7 +516,9 @@ class CommandClient : public Commander {
       return Status::OK();
     } else if (subcommand_ == "reply") {
       conn->SetReplyMode(reply_mode_);
-      *output = redis::RESP_OK;
+      if (reply_mode_ != redis::Connection::ReplyMode::SKIP) {
+        *output = redis::RESP_OK;
+      }
       return Status::OK();
     }
 

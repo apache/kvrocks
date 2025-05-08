@@ -34,7 +34,7 @@
 #include "search/executors/projection_executor.h"
 #include "search/executors/sort_executor.h"
 #include "search/executors/tag_field_scan_executor.h"
-#include "search/executors/topn_sort_executor.h"
+#include "search/executors/topn_executor.h"
 #include "search/indexer.h"
 #include "search/ir_plan.h"
 
@@ -70,7 +70,7 @@ struct ExecutorContextVisitor {
       return Visit(v);
     }
 
-    if (auto v = dynamic_cast<TopNSort *>(op)) {
+    if (auto v = dynamic_cast<TopN *>(op)) {
       return Visit(v);
     }
 
@@ -128,8 +128,8 @@ struct ExecutorContextVisitor {
     Transform(op->source.get());
   }
 
-  void Visit(TopNSort *op) {
-    ctx->nodes[op] = std::make_unique<TopNSortExecutor>(ctx, op);
+  void Visit(TopN *op) {
+    ctx->nodes[op] = std::make_unique<TopNExecutor>(ctx, op);
     Transform(op->op.get());
   }
 

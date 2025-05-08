@@ -90,7 +90,7 @@ struct Visitor : Pass {
       return Visit(std::move(v));
     } else if (auto v = Node::As<Sort>(std::move(node))) {
       return Visit(std::move(v));
-    } else if (auto v = Node::As<TopNSort>(std::move(node))) {
+    } else if (auto v = Node::As<TopN>(std::move(node))) {
       return Visit(std::move(v));
     } else if (auto v = Node::As<Projection>(std::move(node))) {
       return Visit(std::move(v));
@@ -223,7 +223,7 @@ struct Visitor : Pass {
     return node;
   }
 
-  virtual std::unique_ptr<Node> Visit(std::unique_ptr<TopNSort> node) {
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<TopN> node) {
     node->op = TransformAs<PlanOperator>(std::move(node->op));
     node->limit = VisitAs<LimitClause>(std::move(node->limit));
     node->order = VisitAs<SortByClause>(std::move(node->order));

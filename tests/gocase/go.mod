@@ -3,7 +3,6 @@ module github.com/apache/kvrocks/tests/gocase
 go 1.23.0
 
 require (
-	github.com/linxGnu/grocksdb v1.9.9
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/shirou/gopsutil/v4 v4.25.2
 	github.com/stretchr/testify v1.10.0

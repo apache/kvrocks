@@ -62,6 +62,12 @@ const std::vector<ConfigEnum<spdlog::level::level_enum>> log_levels{
     {"error", spdlog::level::err},   {"fatal", spdlog::level::critical},
 };
 
+const std::vector<ConfigEnum<spdlog::level::level_enum>> slowlog_dump_logfile_levels{
+    {"info", spdlog::level::info},
+    {"warning", spdlog::level::warn},
+    {"off", spdlog::level::off},
+};
+
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
 struct CLIOptions {
@@ -104,6 +110,7 @@ struct Config {
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
+  spdlog::level::level_enum slowlog_dump_logfile_level = spdlog::level::off;
   uint64_t proto_max_bulk_len = 512 * 1024 * 1024;
   bool daemonize = false;
   SupervisedMode supervised_mode = kSupervisedNone;

@@ -95,7 +95,7 @@ static auto N(double n) { return MakeValue<Numeric>(n); }
 static auto T(const std::string& v) { return MakeValue<StringArray>(util::Split(v, ",")); }
 static auto V(const std::vector<double>& vals) { return MakeValue<NumericArray>(vals); }
 
-TEST(PlanExecutorTest, TopNSort) {
+TEST(PlanExecutorTest, TopN) {
   std::vector<ExecutorNode::RowType> data{
       {"a", {{FieldI("f3"), N(4)}}, IndexI()}, {"b", {{FieldI("f3"), N(2)}}, IndexI()},
       {"c", {{FieldI("f3"), N(7)}}, IndexI()}, {"d", {{FieldI("f3"), N(3)}}, IndexI()},
@@ -103,7 +103,7 @@ TEST(PlanExecutorTest, TopNSort) {
       {"g", {{FieldI("f3"), N(8)}}, IndexI()},
   };
   {
-    auto op = std::make_unique<TopNSort>(
+    auto op = std::make_unique<TopN>(
         std::make_unique<Mock>(data),
         std::make_unique<SortByClause>(SortByClause::ASC, std::make_unique<FieldRef>("f3", FieldI("f3"))),
         std::make_unique<LimitClause>(0, 4));
@@ -116,7 +116,7 @@ TEST(PlanExecutorTest, TopNSort) {
     ASSERT_EQ(ctx.Next().GetValue(), exe_end);
   }
   {
-    auto op = std::make_unique<TopNSort>(
+    auto op = std::make_unique<TopN>(
         std::make_unique<Mock>(data),
         std::make_unique<SortByClause>(SortByClause::ASC, std::make_unique<FieldRef>("f3", FieldI("f3"))),
         std::make_unique<LimitClause>(1, 4));

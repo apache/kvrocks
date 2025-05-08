@@ -46,6 +46,11 @@ struct FormatMessageWithLoc {
 };
 
 template <typename... Args>
+inline void log(spdlog::level::level_enum lvl, FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
+  spdlog::default_logger_raw()->log(fmt.current_loc, lvl, fmt.fmt, std::forward<Args>(args)...);
+}
+
+template <typename... Args>
 inline void debug(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
   spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::debug, fmt.fmt, std::forward<Args>(args)...);
 }
@@ -74,49 +79,6 @@ template <typename... Args>
 [[noreturn]] inline void unreachable(spdlog::source_loc loc = CurrentLocation()) {  // NOLINT
   fatal({"UNREACHABLE REACHED: please submit a bug report with the stacktrace below.", loc});
 }
-
-// This is a simulation of glog API, with a spdlog backend.
-// TODO: We use it as a transition from glog to spdlog,
-// and it will be removed when the migration is complete.
-template <spdlog::level::level_enum level>
-struct GlogInterface {  // NOLINT
-  explicit GlogInterface(spdlog::source_loc loc = CurrentLocation()) : loc(loc) {}
-
-  template <typename T>
-  friend GlogInterface &&operator<<(GlogInterface &&self, const T &v) {
-    fmt::format_to(std::back_inserter(self.os), "{}", fmt::streamed(v));
-    return std::move(self);
-  }
-
-  ~GlogInterface() {
-    spdlog::default_logger_raw()->log(loc, level, "{}", os);
-    if constexpr (level == spdlog::level::critical) {
-      std::abort();
-    }
-  }
-
-  std::string os;
-  spdlog::source_loc loc;
-};
-
-using GlogInterface_INFO = GlogInterface<spdlog::level::info>;       // NOLINT
-using GlogInterface_WARNING = GlogInterface<spdlog::level::warn>;    // NOLINT
-using GlogInterface_ERROR = GlogInterface<spdlog::level::err>;       // NOLINT
-using GlogInterface_FATAL = GlogInterface<spdlog::level::critical>;  // NOLINT
-
-inline constexpr bool GLOG_IN_DEBUG =
-#ifdef NDEBUG
-    false;
-#else
-    true;
-#endif
-
-// NOLINTNEXTLINE
-#define LOG(level) GlogInterface_##level()
-
-// NOLINTNEXTLINE
-#define DLOG(level) \
-  if constexpr (GLOG_IN_DEBUG) LOG(level)
 
 // NOLINTNEXTLINE
 #define CHECK(cond) \

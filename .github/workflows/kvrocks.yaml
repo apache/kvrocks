@@ -143,7 +143,6 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc
-            enable_grocksdb: -tags=enable_grocksdb
           - name: SonarCloud with Coverage
             os: ubuntu-22.04
             compiler: gcc
@@ -327,7 +326,6 @@ jobs:
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
-          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           if [[ -n "${{ matrix.with_openssl }}" ]] && [[ "${{ matrix.os }}" == ubuntu* ]]; then
             git clone https://github.com/jsha/minica
@@ -338,7 +336,7 @@ jobs:
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
-          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}} ${{ matrix.enable_grocksdb }}
+          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
 
       - name: Install redis-py
         run: pip3 install redis==5.2.0
@@ -491,7 +489,7 @@ jobs:
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}
         run: |
-          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go zlib-devel
+          zypper install -y gcc11 gcc11-c++ make wget git autoconf automake python3 python3-pip curl tar gzip cmake go
           update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
           update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 100
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
@@ -503,7 +501,7 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled powertools
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel gcc-toolset-12-libstdc++-devel
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -516,7 +514,7 @@ jobs:
         run: |
           dnf install -y epel-release
           dnf config-manager --set-enabled crb
-          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake zlib-devel
+          dnf install -y git gcc-toolset-12 autoconf automake libtool python3 python3-pip openssl-devel which cmake
           source /opt/rh/gcc-toolset-12/enable
           update-alternatives --install /usr/bin/gcc gcc /opt/rh/gcc-toolset-12/root/usr/bin/gcc 100
           update-alternatives --install /usr/bin/g++ g++ /opt/rh/gcc-toolset-12/root/usr/bin/g++ 100
@@ -535,7 +533,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis zlib-dev
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -582,7 +580,6 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
-          export CGO_ENABLED=1
           GOCASE_RUN_ARGS=""
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
 

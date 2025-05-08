@@ -75,8 +75,8 @@ constexpr const int MinRdbVersionToVerifyChecksum = 5;
 template <typename T>
 T LogWhenError(T &&s) {
   if (!s) {
-    LOG(WARNING) << "Short read or unsupported type loading DB. Unrecoverable error, aborting now.";
-    LOG(ERROR) << "Unexpected EOF reading RDB file";
+    warn("Short read or unsupported type loading DB. Unrecoverable error, aborting now.");
+    error("Unexpected EOF reading RDB file");
   }
   return std::forward<T>(s);
 }
@@ -560,13 +560,13 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
   buf[9] = '\0';
 
   if (memcmp(buf, "REDIS", 5) != 0) {
-    LOG(WARNING) << "Wrong signature trying to load DB from file";
+    warn("Wrong signature trying to load DB from file");
     return {Status::NotOK, "Wrong signature trying to load DB from file"};
   }
 
   auto rdb_ver = std::atoi(buf + 5);
   if (rdb_ver < 1 || rdb_ver > SupportedRDBVersion) {
-    LOG(WARNING) << "Can't handle RDB format version " << rdb_ver;
+    warn("Can't handle RDB format version {}", rdb_ver);
     return {Status::NotOK, fmt::format("Can't handle RDB format version {}", rdb_ver)};
   }
 
@@ -611,14 +611,14 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
       auto value = GET_OR_RET(LogWhenError(LoadStringObject()));
       continue;
     } else if (type == RDBOpcodeModuleAux) {
-      LOG(WARNING) << "RDB module not supported";
+      warn("RDB module not supported");
       return {Status::NotOK, "RDB module not supported"};
     } else if (type == RDBOpcodeFunction || type == RDBOpcodeFunction2) {
-      LOG(WARNING) << "RDB function not supported";
+      warn("RDB function not supported");
       return {Status::NotOK, "RDB function not supported"};
     } else {
       if (!isObjectType(type)) {
-        LOG(WARNING) << "Invalid or Not supported object type: " << type;
+        warn("Invalid or Not supported object type: {}", (int)type);
         return {Status::NotOK, fmt::format("Invalid or Not supported object type {}", type)};
       }
     }
@@ -636,7 +636,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
        * in an RDB file, instead we will silently discard it and
        * continue loading. */
       if (empty_keys_skipped++ < 10) {  // only log 10 empty keys, just as redis does.
-        LOG(WARNING) << "skipping empty key: " << key;
+        warn("skipping empty key: {}", key);
       }
       continue;
     } else if (expire_time_ms != 0 &&
@@ -651,7 +651,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
       if (!s.IsNotFound()) {
         skip_exist_keys++;  // skip it even it's not okay
         if (!s.ok()) {
-          LOG(ERROR) << "check key " << key << " exist failed: " << s.ToString();
+          error("check key {} exist failed: {}", key, s.ToString());
         }
         continue;
       }
@@ -659,7 +659,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
 
     auto ret = saveRdbObject(ctx, type, key, value, expire_time_ms);
     if (!ret.IsOK()) {
-      LOG(WARNING) << "save rdb object key " << key << " failed: " << ret.Msg();
+      warn("save rdb object key {} failed: {}", key, ret.Msg());
     } else {
       load_keys++;
     }
@@ -671,17 +671,17 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
     auto expected = GET_OR_RET(LogWhenError(stream_->GetCheckSum()));
     GET_OR_RET(LogWhenError(stream_->Read(reinterpret_cast<char *>(&chk_sum), RDBCheckSumLen)));
     if (chk_sum == 0) {
-      LOG(WARNING) << "RDB file was saved with checksum disabled: no check performed.";
+      warn("RDB file was saved with checksum disabled: no check performed.");
     } else if (chk_sum != expected) {
-      LOG(WARNING) << "Wrong RDB checksum expected: " << chk_sum << " got: " << expected;
+      warn("Wrong RDB checksum expected: {} got: {}", chk_sum, expected);
       return {Status::NotOK, "All objects were processed and loaded but the checksum is unexpected!"};
     }
   }
 
   std::string skip_info = (overwrite_exist_key ? ", exist keys skipped: " + std::to_string(skip_exist_keys) : "");
 
-  LOG(INFO) << "Done loading RDB,  keys loaded: " << load_keys << ", keys expired:" << expire_keys
-            << ", empty keys skipped: " << empty_keys_skipped << skip_info;
+  info("Done loading RDB, keys loaded: {}, keys expired: {}, empty keys skipped: {}{}", load_keys, expire_keys,
+       empty_keys_skipped, skip_info);
 
   return Status::OK();
 }
@@ -731,7 +731,7 @@ Status RDB::SaveObjectType(const RedisType type) {
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
   } else {
-    LOG(WARNING) << "Invalid or Not supported object type: " << type;
+    warn("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
   }
   return stream_->Write((const char *)(&robj_type), 1);
@@ -794,7 +794,7 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
     }
     return SaveStringObject(value);
   } else {
-    LOG(WARNING) << "Invalid or Not supported object type: " << type;
+    warn("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
   }
 }
@@ -871,7 +871,7 @@ Status RDB::SaveListObject(const std::vector<std::string> &elems) {
       if (!status.IsOK()) return status;
     }
   } else {
-    LOG(WARNING) << "the size of elems is zero";
+    warn("the size of elems is zero");
     return {Status::NotOK, "the size of elems is zero"};
   }
   return Status::OK();
@@ -887,7 +887,7 @@ Status RDB::SaveSetObject(const std::vector<std::string> &members) {
       if (!status.IsOK()) return status;
     }
   } else {
-    LOG(WARNING) << "the size of elems is zero";
+    warn("the size of elems is zero");
     return {Status::NotOK, "the size of elems is zero"};
   }
   return Status::OK();
@@ -906,7 +906,7 @@ Status RDB::SaveZSetObject(const std::vector<MemberScore> &member_scores) {
       if (!status.IsOK()) return status;
     }
   } else {
-    LOG(WARNING) << "the size of member_scores is zero";
+    warn("the size of member_scores is zero");
     return {Status::NotOK, "the size of ZSet is 0"};
   }
   return Status::OK();
@@ -925,7 +925,7 @@ Status RDB::SaveHashObject(const std::vector<FieldValue> &field_values) {
       if (!status.IsOK()) return status;
     }
   } else {
-    LOG(WARNING) << "the size of field_values is zero";
+    warn("the size of field_values is zero");
     return {Status::NotOK, "the size of Hash is 0"};
   }
   return Status::OK();

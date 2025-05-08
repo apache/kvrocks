@@ -416,8 +416,14 @@ class CommandClient : public Commander {
       if (args.size() != 3) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
-      reply_mode_arg_ = util::ToLower(args[2]);
-      if (reply_mode_arg_ != "on" && reply_mode_arg_ != "off" && reply_mode_arg_ != "skip") {
+      auto mode_str = util::ToLower(args[2]);
+      if (mode_str == "on") {
+        reply_mode_ = redis::Connection::ReplyMode::ON;
+      } else if (mode_str == "off") {
+        reply_mode_ = redis::Connection::ReplyMode::OFF;
+      } else if (mode_str == "skip") {
+        reply_mode_ = redis::Connection::ReplyMode::SKIP_ONCE_PENDING;
+      } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
       return Status::OK();
@@ -509,13 +515,7 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     } else if (subcommand_ == "reply") {
-      if (reply_mode_arg_ == "on") {
-        conn->SetReplyMode(Connection::ReplyMode::ON);
-      } else if (reply_mode_arg_ == "off") {
-        conn->SetReplyMode(Connection::ReplyMode::OFF);
-      } else if (reply_mode_arg_ == "skip") {
-        conn->SetReplyMode(Connection::ReplyMode::SKIP_ONCE_PENDING);
-      }
+      conn->SetReplyMode(reply_mode_);
       *output = redis::RESP_OK;
       return Status::OK();
     }
@@ -527,7 +527,7 @@ class CommandClient : public Commander {
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
-  std::string reply_mode_arg_;
+  redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;
   uint64_t id_ = 0;

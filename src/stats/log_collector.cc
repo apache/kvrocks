@@ -38,6 +38,22 @@ std::string SlowEntry::ToRedisString() const {
   return output;
 }
 
+void SlowEntry::DumpToLogFile(spdlog::level::level_enum level) const {
+  if (level == spdlog::level::off) {
+    return;
+  }
+
+  std::string cmd;
+  if (args.size() > 0) {
+    for (const auto &arg : args) {
+      cmd.append(arg).append(" ");
+    }
+    cmd.pop_back();
+  }
+  log(level, "[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", id, time,
+      duration, cmd, ip, port, client_name);
+}
+
 std::string PerfEntry::ToRedisString() const {
   std::string output;
   output.append(redis::MultiLen(6));
@@ -79,12 +95,21 @@ void LogCollector<T>::SetMaxEntries(int64_t max_entries) {
 }
 
 template <class T>
+void LogCollector<T>::SetDumpToLogfileLevel(spdlog::level::level_enum level) {
+  std::lock_guard<std::mutex> guard(mu_);
+  dump_to_logfile_level_ = level;
+}
+
+template <class T>
 void LogCollector<T>::PushEntry(std::unique_ptr<T> &&entry) {
   std::lock_guard<std::mutex> guard(mu_);
   entry->id = ++id_;
   entry->time = util::GetTimeStamp();
   if (max_entries_ > 0 && !entries_.empty() && entries_.size() >= static_cast<size_t>(max_entries_)) {
     entries_.pop_back();
+  }
+  if (dump_to_logfile_level_ != spdlog::level::off) {
+    entry->DumpToLogFile(dump_to_logfile_level_);
   }
   entries_.push_front(std::move(entry));
 }

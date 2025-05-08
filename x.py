@@ -223,21 +223,6 @@ def clang_tidy(dir: str, jobs: Optional[int], clang_tidy_path: str, run_clang_ti
     run(run_command, *options, *regexes, verbose=True, cwd=basedir)
 
 
-def env_with_cgo_flags(build_dir: Path):
-    rocksdb_inc = build_dir.joinpath('_deps/rocksdb-src/include')
-    rocksdb_lib = build_dir.joinpath('_deps/rocksdb-build')
-    zlib_lib = build_dir.joinpath('_deps/zstd-src/lib')
-    lz4_lib = build_dir.joinpath('_deps/lz4-src/lib')
-    snappy_lib = build_dir.joinpath('_deps/snappy-build')
-
-    env = os.environ.copy()
-    env.update({
-        "CGO_CFLAGS": f"-I{rocksdb_inc} {env.get('CGO_CFLAGS', '')}",
-        "CGO_LDFLAGS": f"-L{rocksdb_lib} -L{zlib_lib} -L{lz4_lib} -L{snappy_lib} {env.get('CGO_LDFLAGS', '')}",
-    })
-    return env
-
-
 def golangci_lint(golangci_lint_path: str) -> None:
     def get_gopath() -> Tuple[Path, Path]:
         go = find_command('go', msg='go is required for testing')
@@ -337,7 +322,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
         *rest
     ]
 
-    run(go, *args, cwd=str(basedir), verbose=True, env=env_with_cgo_flags(Path(dir).absolute()))
+    run(go, *args, cwd=str(basedir), verbose=True)
 
 
 if __name__ == '__main__':

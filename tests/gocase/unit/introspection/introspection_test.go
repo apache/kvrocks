@@ -265,6 +265,40 @@ func TestIntrospection(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "SET", "key", "value").Err())
 		require.EqualValues(t, 1, rdb.Do(ctx, "MOVE", "key", "0").Val())
 	})
+
+	// Test CLIENT REPLY subcommand behaviors
+	t.Run("CLIENT REPLY mode switching", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+
+		// Should reply by default
+		require.NoError(t, c.WriteArgs("ECHO", "default"))
+		c.MustReadBulkString(t, "default")
+
+		// Set to OFF, following commands should not reply
+		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "OFF"))
+		require.NoError(t, c.WriteArgs("ECHO", "off"))
+		// No reply expected here, do not read
+
+		// Set back to ON, commands should reply again
+		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "ON"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("ECHO", "on"))
+		c.MustReadBulkString(t, "on")
+
+		// Set to SKIP, next command should not reply, then reply resumes
+		require.NoError(t, c.WriteArgs("CLIENT", "REPLY", "SKIP"))
+		// No reply expected here, do not read
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip1"))
+		// No reply expected here, do not read
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip2"))
+		c.MustReadBulkString(t, "skip2")
+
+		require.NoError(t, c.WriteArgs("ECHO", "skip3"))
+		c.MustReadBulkString(t, "skip3")
+	})
 }
 
 func TestMultiServerIntrospection(t *testing.T) {

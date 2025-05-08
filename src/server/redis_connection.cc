@@ -132,6 +132,13 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
+  if (reply_mode_ == ReplyMode::SKIP) {
+    reply_mode_ = ReplyMode::ON;
+    return;
+  }
+  if (reply_mode_ == ReplyMode::OFF) {
+    return;
+  }
   owner_->srv->stats.IncrOutboundBytes(msg.size());
   redis::Reply(bufferevent_get_output(bev_), msg);
 }

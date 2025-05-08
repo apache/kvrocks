@@ -392,7 +392,7 @@ class CommandClient : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     subcommand_ = util::ToLower(args[1]);
-    // subcommand: getname id kill list info setname
+    // subcommand: getname id kill list info setname reply
     if ((subcommand_ == "id" || subcommand_ == "getname" || subcommand_ == "list" || subcommand_ == "info") &&
         args.size() == 2) {
       return Status::OK();
@@ -409,6 +409,23 @@ class CommandClient : public Commander {
       }
 
       conn_name_ = args[2];
+      return Status::OK();
+    }
+
+    if (subcommand_ == "reply") {
+      if (args.size() != 3) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      auto mode_str = util::ToLower(args[2]);
+      if (mode_str == "on") {
+        reply_mode_ = redis::Connection::ReplyMode::ON;
+      } else if (mode_str == "off") {
+        reply_mode_ = redis::Connection::ReplyMode::OFF;
+      } else if (mode_str == "skip") {
+        reply_mode_ = redis::Connection::ReplyMode::SKIP;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
       return Status::OK();
     }
 
@@ -464,7 +481,7 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME"};
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -497,15 +514,22 @@ class CommandClient : public Commander {
           *output = redis::RESP_OK;
       }
       return Status::OK();
+    } else if (subcommand_ == "reply") {
+      conn->SetReplyMode(reply_mode_);
+      if (reply_mode_ != redis::Connection::ReplyMode::SKIP) {
+        *output = redis::RESP_OK;
+      }
+      return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME"};
+    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
   }
 
  private:
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
+  redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;
   uint64_t id_ = 0;

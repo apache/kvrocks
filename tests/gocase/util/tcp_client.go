@@ -87,6 +87,16 @@ func (c *TCPClient) MustReadStrings(t testing.TB, s []string) {
 	}
 }
 
+func (c *TCPClient) MustReadBulkString(t testing.TB, s string) {
+	r, err := c.ReadLine()
+	require.NoError(t, err)
+	require.Equal(t, "$"+strconv.Itoa(len(s)), r)
+
+	r, err = c.ReadLine()
+	require.NoError(t, err)
+	require.Equal(t, s, r)
+}
+
 func (c *TCPClient) MustReadStringsWithKey(t testing.TB, key string, s []string) {
 	r, err := c.ReadLine()
 	require.NoError(t, err)

@@ -279,3 +279,20 @@ TEST_F(RedisTDigestTest, Add_100_times_same_value) {
     EXPECT_NEAR(got, expect_result[i], 0.5) << fmt::format("quantile is {}, should be {}", qs[i], expect_result[i]);
   }
 }
+TEST_F(RedisTDigestTest, Quantile_returns_nan_on_empty_tdigest) {
+  std::string test_digest_name = "test_digest_nan" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> qs = {0.3, 0.1, 0.2, 0.56, 0.44, 0.12, 0.11};
+  redis::TDigestQuantitleResult result;
+
+  status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_EQ(result.quantiles.size(), 0);
+
+  ASSERT_EQ(result.has_centroids, false);
+}

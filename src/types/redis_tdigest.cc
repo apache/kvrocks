@@ -220,7 +220,10 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
       ctx.RefreshLatestSnapshot();
     }
   }
-
+  if (metadata.total_observations == 0) {
+    result->has_centroids = false;
+    return rocksdb::Status::OK();
+  }
   std::vector<Centroid> centroids;
   if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
     return status;

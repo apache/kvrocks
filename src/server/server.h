@@ -65,6 +65,20 @@ struct DBScanInfo {
   bool is_scanning = false;
 };
 
+struct SlotStats {
+  uint16_t slot_id = 0;
+  uint64_t n_key = 0;
+  uint64_t n_unexpected_key = 0;
+};
+
+struct SlotScanInfo {
+  // Last scan system clock in seconds
+  int64_t last_scan_time_secs = 0;
+  std::map<uint16_t, SlotStats> slot_stats;
+  bool is_scanning = false;
+  int scanning_slot_id = -1;
+};
+
 struct ConnContext {
   Worker *owner;
   int fd;
@@ -283,6 +297,10 @@ class Server {
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
 
+  Status GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vector<std::string> *v_stats);
+  Status AsyncScanSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges);
+  Status ClearSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges);
+
   int DecrClientNum();
   int IncrClientNum();
   int IncrMonitorClientNum();
@@ -385,6 +403,7 @@ class Server {
   int64_t last_bgsave_duration_secs_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
+  SlotScanInfo slot_scan_infos_;
 
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;

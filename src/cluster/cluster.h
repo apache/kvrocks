@@ -83,6 +83,7 @@ class Cluster {
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot) const;
+  bool IsSlotOnMyself(int slot) const;
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx = nullptr);
   Status SetMasterSlaveRepl();

@@ -853,6 +853,8 @@ bool Cluster::IsWriteForbiddenSlot(int slot) const {
   return srv_->slot_migrator->GetForbiddenSlotRange().Contains(slot);
 }
 
+bool Cluster::IsSlotOnMyself(int slot) const { return myself_ && slots_nodes_[slot] == myself_; }
+
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx) {
   std::vector<int> key_indexes;

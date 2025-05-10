@@ -46,6 +46,7 @@
 #include "redis_connection.h"
 #include "rocksdb/version.h"
 #include "storage/compaction_checker.h"
+#include "storage/iterator.h"
 #include "storage/redis_db.h"
 #include "storage/scripting.h"
 #include "storage/storage.h"
@@ -2125,4 +2126,124 @@ AuthResult Server::AuthenticateUser(const std::string &user_password, std::strin
   }
   *ns = kDefaultNamespace;
   return AuthResult::IS_ADMIN;
+}
+
+Status Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vector<std::string> *v_stats) {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
+  std::bitset<HASH_SLOTS_SIZE> checked_slots;
+  uint64_t total_keys = 0;
+  uint64_t total_unexpected_keys = 0;
+  for (auto slot_range : slot_ranges) {
+    for (int slot = slot_range.start; slot <= slot_range.end; slot++) {
+      if (checked_slots.test(slot)) {
+        continue;
+      } else {
+        checked_slots.set(slot);
+      }
+
+      if (slot_scan_infos_.slot_stats.find(slot) == slot_scan_infos_.slot_stats.end()) {
+        v_stats->emplace_back(fmt::format("slot: {}, keys: {}, unexpected keys: {}", slot, 0, 0));
+      } else {
+        SlotStats ss = slot_scan_infos_.slot_stats[slot];
+        v_stats->emplace_back(
+            fmt::format("slot: {}, keys: {}, unexpected keys: {}", slot, ss.n_key, ss.n_unexpected_key));
+        total_keys += ss.n_key;
+        total_unexpected_keys += ss.n_unexpected_key;
+      }
+    }
+  }
+  v_stats->emplace_back(fmt::format("total keys: {}, total unexpected keys: {}", total_keys, total_unexpected_keys));
+  return Status::OK();
+}
+
+Status Server::AsyncScanSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges) {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
+  if (slot_scan_infos_.is_scanning) {
+    return {Status::NotOK, fmt::format("scanning the slot {} now", slot_scan_infos_.scanning_slot_id)};
+  }
+  slot_scan_infos_.is_scanning = true;
+
+  return task_runner_.TryPublish([ns, slot_ranges, this] {
+    rocksdb::ReadOptions read_options = storage->DefaultScanOptions();
+    auto snapshot = storage->GetDB()->GetSnapshot();
+    if (!snapshot) {
+      error("[slotsize] Get DB Snapshot error");
+      return;
+    }
+    read_options.snapshot = snapshot;
+    auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+    bool is_slot_id_encoded = storage->IsSlotIdEncoded();
+    std::bitset<HASH_SLOTS_SIZE> checked_slots;
+    std::vector<SlotStats> slot_stats;
+    for (auto slot_range : slot_ranges) {
+      for (int slot = slot_range.start; slot <= slot_range.end; slot++) {
+        if (checked_slots.test(slot)) {
+          continue;
+        } else {
+          checked_slots.set(slot);
+          slot_scan_infos_.scanning_slot_id = slot;
+        }
+
+        uint64_t start_ts = util::GetTimeStampUS();
+        auto prefix = ComposeSlotKeyPrefix(ns, slot);
+        auto upper_bound = ComposeSlotKeyUpperBound(ns, slot);
+        rocksdb::Slice prefix_slice(prefix);
+        rocksdb::Slice upper_bound_slice(upper_bound);
+        read_options.iterate_lower_bound = &prefix_slice;
+        read_options.iterate_upper_bound = &upper_bound_slice;
+        engine::DBIterator iter(no_txn_ctx, read_options);
+        uint64_t n_keys = 0;
+        uint64_t unexpected_keys = 0;
+        for (iter.Seek(prefix); iter.Valid(); iter.Next()) {
+          auto key_slot_id = ExtractSlotId(iter.Key());
+          auto [_, user_key] = ExtractNamespaceKey<std::string>(iter.Key(), is_slot_id_encoded);
+          if (slot != key_slot_id) {
+            unexpected_keys++;
+            error("[slotsize] Slot {} has an unexpected key: {}", slot, user_key);
+          } else {
+            n_keys++;
+          }
+        }
+        slot_stats.emplace_back(SlotStats{static_cast<uint16_t>(slot), n_keys, unexpected_keys});
+        auto elapsed = util::GetTimeStampUS() - start_ts;
+        info("[slotsize] Succeed to check slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", slot, elapsed,
+             n_keys, unexpected_keys);
+      }
+    }
+    storage->GetDB()->ReleaseSnapshot(snapshot);
+
+    std::lock_guard<std::mutex> lg(db_job_mu_);
+    for (SlotStats ss : slot_stats) {
+      slot_scan_infos_.slot_stats[ss.slot_id] = ss;
+    }
+    slot_scan_infos_.last_scan_time_secs = util::GetTimeStamp();
+    slot_scan_infos_.is_scanning = false;
+    slot_scan_infos_.scanning_slot_id = -1;
+  });
+}
+
+Status Server::ClearSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges) {
+  if (!storage->IsSlotIdEncoded()) {
+    return {Status::NotOK, "it is not in cluster mode"};
+  }
+
+  for (auto slot_range : slot_ranges) {
+    for (int slot = slot_range.start; slot <= slot_range.end; slot++) {
+      if (cluster->IsSlotOnMyself(slot)) {
+        return {Status::NotOK, fmt::format("slot {} is on myself, cannot clear", slot)};
+      }
+    }
+  }
+
+  engine::Context ctx(storage);
+  for (auto slot_range : slot_ranges) {
+    auto lower_bound = ComposeSlotKeyPrefix(ns, slot_range.start);
+    auto upper_bound = ComposeSlotKeyUpperBound(ns, slot_range.end);
+    rocksdb::Status s = storage->DeleteRange(ctx, lower_bound, upper_bound);
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("clear keys of slots {} error: {}", slot_range.String(), s.ToString())};
+    }
+  }
+
+  return Status::OK();
 }

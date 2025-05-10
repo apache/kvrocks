@@ -309,6 +309,58 @@ class CommandDBSize : public Commander {
   }
 };
 
+class CommandSlotSize : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2 || args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    if (args.size() == 3 && !util::EqualICase(args[2], "scan") && !util::EqualICase(args[2], "clear")) {
+      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|clear}"};
+    }
+    return Status::OK();
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (!srv->storage->IsSlotIdEncoded()) {
+      return {Status::RedisExecErr, "It is not in cluster mode"};
+    }
+
+    std::vector<SlotRange> slot_ranges;
+    Status s = CommandTable::ParseSlotRanges(args_[1], slot_ranges);
+    if (!s.IsOK()) {
+      return s;
+    }
+
+    std::string ns = conn->GetNamespace();
+    if (args_.size() == 2) {
+      std::vector<std::string> stats;
+      s = srv->GetSlotStats(slot_ranges, &stats);
+      if (!s.IsOK()) {
+        return s;
+      }
+      *output = redis::ArrayOfBulkStrings(stats);
+    } else if (args_.size() == 3 && util::EqualICase(args_[2], "scan")) {
+      s = srv->AsyncScanSlots(ns, slot_ranges);
+      if (s.IsOK()) {
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
+    } else if (args_.size() == 3 && util::EqualICase(args_[2], "clear")) {
+      s = srv->ClearSlots(ns, slot_ranges);
+      if (s.IsOK()) {
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
+    } else {
+      return {Status::RedisExecErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|clear}"};
+    }
+    return Status::OK();
+  }
+};
+
 class CommandPerfLog : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1449,6 +1501,7 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
                         MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandSlotSize>("slotsize", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandClient>("client", -2, "read-only", NO_KEY),

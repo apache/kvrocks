@@ -140,8 +140,8 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 
 ### Supported platforms
 
-* Linux
-* macOS
+* OS: Linux and macOS
+* arch: x86_64 and ARM
 
 ## Namespace
 
@@ -170,7 +170,7 @@ OK
 
 ## Cluster
 
-Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with the Redis cluster client. You can use Redis cluster SDKs to access the kvrocks cluster. More details, please see: [Kvrocks Cluster Introduction](https://kvrocks.apache.org/docs/cluster/)
+Kvrocks implements a proxyless centralized cluster solution but its accessing method is completely compatible with Redis cluster clients. You can use Redis cluster SDKs to access the kvrocks cluster. For more details, please refer to [Kvrocks Cluster Introduction](https://kvrocks.apache.org/docs/cluster/).
 
 ## Documents
 
@@ -193,7 +193,7 @@ Kvrocks community welcomes all forms of contribution and you can find out how to
 
 ## License
 
-Apache Kvrocks is licensed under the Apache License Version 2.0. See the [LICENSE](LICENSE) file for details.
+Apache Kvrocks is licensed under the Apache License Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
 
 ## Social Media
 

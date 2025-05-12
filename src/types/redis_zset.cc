@@ -884,7 +884,7 @@ rocksdb::Status ZSet::RandMember(engine::Context &ctx, const Slice &user_key, in
   std::string ns_key = AppendNamespacePrefix(user_key);
   ZSetMetadata metadata(false);
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
-  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  if (!s.ok()) return s;
   if (metadata.size == 0) return rocksdb::Status::OK();
 
   return ExtractRandMemberFromSet<MemberScore>(

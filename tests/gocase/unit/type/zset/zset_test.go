@@ -1325,8 +1325,8 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		createZset(rdb, ctx, "zset", z)
 
 		// ZRANDMEMBER key_not_exist
-		str := rdb.Do(ctx, "ZRANDMEMBER", "key_not_exist").Val()
-		require.Equal(t, redis.Nil, str.(string))
+		nil_reply := rdb.Do(ctx, "ZRANDMEMBER", "key_not_exist").Val()
+		require.Equal(t, redis.Nil, nil_reply)
 
 		// ZRANDMEMBER zset
 		str := rdb.Do(ctx, "ZRANDMEMBER", "zset").Val()

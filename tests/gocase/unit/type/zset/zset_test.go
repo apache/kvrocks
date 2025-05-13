@@ -1329,7 +1329,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, redis.Nil, str.(string))
 
 		// ZRANDMEMBER zset
-		str = rdb.Do(ctx, "ZRANDMEMBER", "zset").Val()
+		str := rdb.Do(ctx, "ZRANDMEMBER", "zset").Val()
 		require.Contains(t, members, str.(string))
 
 		// ZRANDMEMBER zset len(members)

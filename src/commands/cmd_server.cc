@@ -321,7 +321,7 @@ class CommandSlotSize : public Commander {
     return Status::OK();
   }
 
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
     if (!srv->storage->IsSlotIdEncoded()) {
       return {Status::RedisExecErr, "It is not in cluster mode"};
     }
@@ -332,7 +332,6 @@ class CommandSlotSize : public Commander {
       return s;
     }
 
-    std::string ns = conn->GetNamespace();
     if (args_.size() == 2) {
       std::vector<std::string> stats;
       s = srv->GetSlotStats(slot_ranges, &stats);
@@ -341,14 +340,14 @@ class CommandSlotSize : public Commander {
       }
       *output = redis::ArrayOfBulkStrings(stats);
     } else if (args_.size() == 3 && util::EqualICase(args_[2], "scan")) {
-      s = srv->AsyncScanSlots(ns, slot_ranges);
+      s = srv->AsyncScanSlots(slot_ranges);
       if (s.IsOK()) {
         *output = redis::RESP_OK;
       } else {
         return s;
       }
     } else if (args_.size() == 3 && util::EqualICase(args_[2], "clear")) {
-      s = srv->ClearSlots(ns, slot_ranges);
+      s = srv->ClearSlots(slot_ranges);
       if (s.IsOK()) {
         *output = redis::RESP_OK;
       } else {

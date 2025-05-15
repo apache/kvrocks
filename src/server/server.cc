@@ -2156,14 +2156,14 @@ Status Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vect
   return Status::OK();
 }
 
-Status Server::AsyncScanSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges) {
+Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   if (slot_scan_infos_.is_scanning) {
     return {Status::NotOK, fmt::format("scanning the slot {} now", slot_scan_infos_.scanning_slot_id)};
   }
   slot_scan_infos_.is_scanning = true;
 
-  return task_runner_.TryPublish([ns, slot_ranges, this] {
+  return task_runner_.TryPublish([slot_ranges, this] {
     rocksdb::ReadOptions read_options = storage->DefaultScanOptions();
     auto snapshot = storage->GetDB()->GetSnapshot();
     if (!snapshot) {
@@ -2184,9 +2184,9 @@ Status Server::AsyncScanSlots(const std::string &ns, const std::vector<SlotRange
           slot_scan_infos_.scanning_slot_id = slot;
         }
 
-        uint64_t start_ts = util::GetTimeStampUS();
-        auto prefix = ComposeSlotKeyPrefix(ns, slot);
-        auto upper_bound = ComposeSlotKeyUpperBound(ns, slot);
+        uint64_t start_ts = util::GetTimeStampMS();
+        auto prefix = ComposeSlotKeyPrefix(kDefaultNamespace, slot);
+        auto upper_bound = ComposeSlotKeyUpperBound(kDefaultNamespace, slot);
         rocksdb::Slice prefix_slice(prefix);
         rocksdb::Slice upper_bound_slice(upper_bound);
         read_options.iterate_lower_bound = &prefix_slice;
@@ -2205,7 +2205,7 @@ Status Server::AsyncScanSlots(const std::string &ns, const std::vector<SlotRange
           }
         }
         slot_stats.emplace_back(SlotStats{static_cast<uint16_t>(slot), n_keys, unexpected_keys});
-        auto elapsed = util::GetTimeStampUS() - start_ts;
+        auto elapsed = util::GetTimeStampMS() - start_ts;
         info("[slotsize] Succeed to check slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", slot, elapsed,
              n_keys, unexpected_keys);
       }
@@ -2222,7 +2222,7 @@ Status Server::AsyncScanSlots(const std::string &ns, const std::vector<SlotRange
   });
 }
 
-Status Server::ClearSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges) {
+Status Server::ClearSlots(const std::vector<SlotRange> &slot_ranges) {
   if (!storage->IsSlotIdEncoded()) {
     return {Status::NotOK, "it is not in cluster mode"};
   }
@@ -2237,8 +2237,8 @@ Status Server::ClearSlots(const std::string &ns, const std::vector<SlotRange> &s
 
   engine::Context ctx(storage);
   for (auto slot_range : slot_ranges) {
-    auto lower_bound = ComposeSlotKeyPrefix(ns, slot_range.start);
-    auto upper_bound = ComposeSlotKeyUpperBound(ns, slot_range.end);
+    auto lower_bound = ComposeSlotKeyPrefix(kDefaultNamespace, slot_range.start);
+    auto upper_bound = ComposeSlotKeyUpperBound(kDefaultNamespace, slot_range.end);
     rocksdb::Status s = storage->DeleteRange(ctx, lower_bound, upper_bound);
     if (!s.ok()) {
       return {Status::NotOK, fmt::format("clear keys of slots {} error: {}", slot_range.String(), s.ToString())};

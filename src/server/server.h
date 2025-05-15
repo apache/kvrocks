@@ -298,8 +298,8 @@ class Server {
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
 
   Status GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vector<std::string> *v_stats);
-  Status AsyncScanSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges);
-  Status ClearSlots(const std::string &ns, const std::vector<SlotRange> &slot_ranges);
+  Status AsyncScanSlots(const std::vector<SlotRange> &slot_ranges);
+  Status ClearSlots(const std::vector<SlotRange> &slot_ranges);
 
   int DecrClientNum();
   int IncrClientNum();

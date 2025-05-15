@@ -321,7 +321,8 @@ class CommandSlotSize : public Commander {
     return Status::OK();
   }
 
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn, std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
     if (!srv->storage->IsSlotIdEncoded()) {
       return {Status::RedisExecErr, "It is not in cluster mode"};
     }

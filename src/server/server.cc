@@ -2222,7 +2222,7 @@ Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
   });
 }
 
-Status Server::ClearSlots(const std::vector<SlotRange> &slot_ranges) {
+Status Server::ClearSlots(const std::vector<SlotRange> &slot_ranges) const {
   if (!storage->IsSlotIdEncoded()) {
     return {Status::NotOK, "it is not in cluster mode"};
   }

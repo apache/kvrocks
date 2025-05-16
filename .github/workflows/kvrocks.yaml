@@ -215,9 +215,13 @@ jobs:
             os: ubuntu-22.04
             compiler: clang
             new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu Arm64
+          - name: Ubuntu ARM GCC
             os: ubuntu-24.04-arm
-            compiler: auto
+            compiler: gcc
+            arm_linux: true
+          - name: Ubuntu ARM Clang
+            os: ubuntu-24.04-arm
+            compiler: clang
             arm_linux: true
 
     runs-on: ${{ matrix.os }}

@@ -195,7 +195,10 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
       return status;
     }
-
+    if (metadata.total_observations == 0) {
+      result->has_centroids = false;
+      return rocksdb::Status::OK();
+    }
     if (metadata.unmerged_nodes > 0) {
       auto batch = storage_->GetWriteBatchBase();
       WriteBatchLogData log_data(kRedisTDigest);

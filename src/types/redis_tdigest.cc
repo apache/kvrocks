@@ -195,10 +195,11 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
       return status;
     }
+
     if (metadata.total_observations == 0) {
-      result->has_centroids = false;
       return rocksdb::Status::OK();
     }
+
     if (metadata.unmerged_nodes > 0) {
       auto batch = storage_->GetWriteBatchBase();
       WriteBatchLogData log_data(kRedisTDigest);
@@ -223,28 +224,25 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
       ctx.RefreshLatestSnapshot();
     }
   }
-  if (metadata.total_observations == 0) {
-    result->has_centroids = false;
-    return rocksdb::Status::OK();
-  }
+
   std::vector<Centroid> centroids;
   if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
     return status;
   }
-  if (centroids.empty()) {
-    result->has_centroids = false;
-    return rocksdb::Status::OK();
-  }
 
   auto dump_centroids = DummyCentroids(metadata, centroids);
+
+  auto quantile_results = std::vector<double>();
+  quantile_results.reserve(qs.size());
 
   for (auto q : qs) {
     auto status_or_value = TDigestQuantile(dump_centroids, q);
     if (!status_or_value) {
       return rocksdb::Status::InvalidArgument(status_or_value.Msg());
     }
-    result->quantiles.push_back(*status_or_value);
+    quantile_results.push_back(*status_or_value);
   }
+  result->quantiles = std::move(quantile_results);
 
   return rocksdb::Status::OK();
 }

@@ -24,6 +24,7 @@
 #include <rocksdb/slice.h>
 #include <rocksdb/status.h>
 
+#include <optional>
 #include <vector>
 
 #include "storage/redis_db.h"
@@ -44,7 +45,7 @@ struct TDigestCreateOptions {
 };
 
 struct TDigestQuantitleResult {
-  std::vector<double> quantiles;
+  std::optional<std::vector<double>> quantiles;
 };
 
 class TDigest : public SubKeyScanner {

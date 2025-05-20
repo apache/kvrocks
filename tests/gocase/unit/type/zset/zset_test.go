@@ -1309,6 +1309,9 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		res := rdb.ZMScore(ctx, "zset", "a", "b").Val()
 		require.Equal(t, int64(1), int64(res[0]))
 		require.Equal(t, int64(2), int64(res[1]))
+
+		require.Equal(t, redis.Nil, int64(rdb.ZMScore(ctx, "non-existent-zset", "a", "b").Val()[0]))
+		require.Equal(t, redis.Nil, int64(rdb.ZMScore(ctx, "non-existent-zset", "a", "b").Val()[1]))
 	})
 
 	t.Run(fmt.Sprintf("ZRANDMEMBER without scores - %s", encoding), func(t *testing.T) {

@@ -1516,6 +1516,113 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 	}
 }
 
+type kMetadataResponse struct {
+	size    int64  `redis:"size"`
+	ktype   string `redis:"type"`
+	flags   int64  `redis:"flags"`
+	expire  int64  `redis:"expire"`
+	version int64  `redis:"version"`
+}
+
+func toInt64(val interface{}) (int64, error) {
+	switch v := val.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("value is not a number, got %T", val)
+	}
+}
+
+func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
+	resultMap, ok := result.(map[interface{}]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected map[interface{}]interface{}, got %T", result)
+	}
+
+	response := &kMetadataResponse{}
+
+	// Convert numeric fields
+	for field, target := range map[string]*int64{
+		"size":    &response.size,
+		"flags":   &response.flags,
+		"expire":  &response.expire,
+		"version": &response.version,
+	} {
+		if val, ok := resultMap[field]; ok {
+			converted, err := toInt64(val)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", field, err)
+			}
+			*target = converted
+		}
+	}
+
+	// Extract Type field
+	if val, ok := resultMap["type"]; ok {
+		if strVal, ok := val.(string); ok {
+			response.ktype = strVal
+		} else {
+			return nil, fmt.Errorf("type is not a string, got %T", val)
+		}
+	}
+
+	return response, nil
+}
+
+func TestRPOPLPUSH(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		testRpoplpush(t, configs)
+	}
+}
+
+func testRpoplpush(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	createList := func(key string, entries ...interface{}) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		for _, entry := range entries {
+			require.NoError(t, rdb.RPush(ctx, key, entry).Err())
+		}
+	}
+
+	t.Run("RPOPLPUSH against non existing dst key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "srclist", "dstlist").Err())
+		createList("srclist", []string{"a", "b", "c", "d"})
+		require.Equal(t, "d", rdb.RPopLPush(ctx, "srclist", "dstlist").Val())
+
+		result, err := rdb.Do(ctx, "kmetadata", "dstlist").Result()
+		if err != nil {
+			t.Fatalf("Command failed: %v", err)
+		}
+		metaResponse, err := ExtractKMetadataResponse(result)
+		if err != nil {
+			t.Fatalf("Failed to extract response: %v", err)
+		}
+		require.Equal(t, "list", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+	})
+
+}
+
 // TestPotentialDataRaceInBlockingCommand is to test blocking command's callback
 // shouldn't have data race with concurrent transaction behavior.
 //

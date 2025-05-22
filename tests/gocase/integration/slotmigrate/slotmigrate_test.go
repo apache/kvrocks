@@ -232,11 +232,15 @@ func TestSlotMigrateSourceServerFlushedOrKilled(t *testing.T) {
 
 	t.Run("MIGRATE - Fail to migrate slot because source server is flushed", func(t *testing.T) {
 		slot := 11
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "32").Err())
+		// FLUSHDB only allowed in `redis-command` migrate type
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", "redis-command").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", "raw-key-value").Err())
+		}()
 		for i := 0; i < 20000; i++ {
 			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
 		}
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "32").Err())
-		require.Equal(t, map[string]string{"migrate-speed": "32"}, rdb0.ConfigGet(ctx, "migrate-speed").Val())
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
 		waitForMigrateState(t, rdb0, slot, SlotMigrationStateStarted)
 		require.NoError(t, rdb0.FlushDB(ctx).Err())
@@ -245,12 +249,14 @@ func TestSlotMigrateSourceServerFlushedOrKilled(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Fail to migrate slot because source server is killed while migrating", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+
 		slot := 20
+		value := strings.Repeat("a", 512)
 		for i := 0; i < 20000; i++ {
-			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
+			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], value).Err())
 		}
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "32").Err())
-		require.Equal(t, map[string]string{"migrate-speed": "32"}, rdb0.ConfigGet(ctx, "migrate-speed").Val())
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
 		require.Eventually(t, func() bool {
 			return slices.Contains(rdb1.Keys(ctx, "*").Val(), util.SlotTable[slot])
@@ -483,10 +489,14 @@ func TestSlotMigrateSync(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Migrate sync timeout", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+
 		slot++
-		cnt := 200000
+		cnt := 100000
+		value := strings.Repeat("a", 512)
 		for i := 0; i < cnt; i++ {
-			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
+			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], value).Err())
 		}
 
 		timeout := 1

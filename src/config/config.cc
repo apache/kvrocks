@@ -131,6 +131,8 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
 };
 
 Config::Config() {
+  deprecated_fields_ = {"rocksdb.row_cache_size"};
+
   struct FieldWrapper {
     std::string name;
     bool readonly;
@@ -273,7 +275,6 @@ Config::Config() {
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
        new YesNoField(&rocks_db.share_metadata_and_subkey_block_cache, true)},
-      {"rocksdb.row_cache_size", true, new IntField(&rocks_db.row_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.compaction_readahead_size", false,
        new IntField(&rocks_db.compaction_readahead_size, 2 * MiB, 0, 64 * MiB)},
       {"rocksdb.level0_slowdown_writes_trigger", false,
@@ -817,6 +818,9 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
     field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+  } else if (deprecated_fields_.find(field_key) != deprecated_fields_.end()) {
+    std::cout << fmt::format("WARNING: '{}' at line {} is deprecated and does not take effect.", field_key, line_number)
+              << std::endl;
   } else {
     std::cout << fmt::format("WARNING: '{}' at line {} is not a valid configuration key.", field_key, line_number)
               << std::endl;

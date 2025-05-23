@@ -66,9 +66,6 @@ constexpr bool kRocksdbCacheStrictCapacityLimit = false;
 // used as the default argument for `high_pri_pool_ratio` in creating block cache.
 constexpr double kRocksdbLRUBlockCacheHighPriPoolRatio = 0.75;
 
-// used as the default argument for `high_pri_pool_ratio` in creating row cache.
-constexpr double kRocksdbLRURowCacheHighPriPoolRatio = 0.5;
-
 // used in creating rocksdb::HyperClockCache, set`estimated_entry_charge` to 0 means let rocksdb dynamically and
 // automatically adjust the table size for the cache.
 constexpr size_t kRockdbHCCAutoAdjustCharge = 0;
@@ -184,11 +181,6 @@ rocksdb::Options Storage::InitRocksDBOptions() {
     } else {
       options.compression_per_level[i] = config_->rocks_db.compression;
     }
-  }
-
-  if (config_->rocks_db.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB, kRocksdbLRUAutoAdjustShardBits,
-                                             kRocksdbCacheStrictCapacityLimit, kRocksdbLRURowCacheHighPriPoolRatio);
   }
 
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;

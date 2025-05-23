@@ -190,9 +190,13 @@ func TestSlotMigrateDestServerKilledAgain(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Fail to migrate slot because destination server is killed while migrating", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+
 		slot := 8
+		value := strings.Repeat("a", 512)
 		for i := 0; i < 20000; i++ {
-			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
+			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], value).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
 		requireMigrateState(t, rdb0, slot, SlotMigrationStateStarted)
@@ -415,8 +419,9 @@ func TestSlotMigrateThreeNodes(t *testing.T) {
 
 	t.Run("MIGRATE - Fail to migrate slot because source server is changed to slave during migrating", func(t *testing.T) {
 		slot := 10
-		for i := 0; i < 10000; i++ {
-			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], i).Err())
+		value := strings.Repeat("a", 512)
+		for i := 0; i < 20000; i++ {
+			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[slot], value).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id2).Val())
 		requireMigrateState(t, rdb0, slot, SlotMigrationStateStarted)
@@ -455,6 +460,9 @@ func TestSlotMigrateSync(t *testing.T) {
 	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383", id1, srv1.Host(), srv1.Port())
 	require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+	require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
 
 	slot := -1
 	t.Run("MIGRATE - Cannot migrate async with timeout", func(t *testing.T) {
@@ -1218,6 +1226,7 @@ func waitForImportState(t testing.TB, client *redis.Client, n int, state SlotImp
 			strings.Contains(i, fmt.Sprintf("import_state: %s", state))
 	}, 10*time.Second, 100*time.Millisecond)
 }
+
 func migrateSlotRangeAndSetSlot(t *testing.T, ctx context.Context, source *redis.Client, dest *redis.Client, destID string, slotRange string) {
 	require.Equal(t, "OK", source.Do(ctx, "clusterx", "migrate", slotRange, destID).Val())
 	waitForMigrateSlotRangeState(t, source, slotRange, SlotMigrationStateSuccess)
@@ -1358,9 +1367,13 @@ func TestSlotRangeMigrate(t *testing.T) {
 	})
 
 	t.Run("MIGRATE - Failure cases", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+
 		largeSlot := 210
+		value := strings.Repeat("a", 512)
 		for i := 0; i < 20000; i++ {
-			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[largeSlot], i).Err())
+			require.NoError(t, rdb0.LPush(ctx, util.SlotTable[largeSlot], value).Err())
 		}
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "200-220", id1).Val())
 		requireMigrateSlotRangeState(t, rdb0, "200-220", SlotMigrationStateStarted)

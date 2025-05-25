@@ -2199,14 +2199,16 @@ Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
           auto [_, user_key] = ExtractNamespaceKey<std::string>(iter.Key(), is_slot_id_encoded);
           if (slot != key_slot_id) {
             unexpected_keys++;
-            error("[slotsize] Slot {} has an unexpected key: {}", slot, user_key);
           } else {
             n_keys++;
           }
         }
+        if (unexpected_keys > 0) {
+          error("[slotsize] Slot {} has {} unexpected key(s)", slot, unexpected_keys);
+        }
         slot_stats.emplace_back(SlotStats{static_cast<uint16_t>(slot), n_keys, unexpected_keys});
         auto elapsed = util::GetTimeStampMS() - start_ts;
-        info("[slotsize] Succeed to check slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", slot, elapsed,
+        info("[slotsize] Succeed to scan slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", slot, elapsed,
              n_keys, unexpected_keys);
       }
     }
@@ -2222,28 +2224,52 @@ Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
   });
 }
 
-Status Server::ClearSlots(const std::vector<SlotRange> &slot_ranges) const {
-  if (!storage->IsSlotIdEncoded()) {
-    return {Status::NotOK, "it is not in cluster mode"};
-  }
-
+Status Server::DumpSlotKeys(const std::vector<SlotRange> &slot_ranges) const {
+  // only supports one slot a time
+  int dump_slot = slot_ranges[0].start;
   for (auto slot_range : slot_ranges) {
     for (int slot = slot_range.start; slot <= slot_range.end; slot++) {
-      if (cluster->IsSlotOnMyself(slot)) {
-        return {Status::NotOK, fmt::format("slot {} is on myself, cannot clear", slot)};
+      if (slot != dump_slot) {
+        return {Status::NotOK, "only supports one slot a time"};
       }
     }
   }
 
-  engine::Context ctx(storage);
-  for (auto slot_range : slot_ranges) {
-    auto lower_bound = ComposeSlotKeyPrefix(kDefaultNamespace, slot_range.start);
-    auto upper_bound = ComposeSlotKeyUpperBound(kDefaultNamespace, slot_range.end);
-    rocksdb::Status s = storage->DeleteRange(ctx, lower_bound, upper_bound);
-    if (!s.ok()) {
-      return {Status::NotOK, fmt::format("clear keys of slots {} error: {}", slot_range.String(), s.ToString())};
+  uint64_t start_ts = util::GetTimeStampMS();
+  spdlog::level::level_enum level = config_->log_level;
+  rocksdb::ReadOptions read_options = storage->DefaultScanOptions();
+  auto snapshot = storage->GetDB()->GetSnapshot();
+  if (!snapshot) {
+    error("[slotsize] Get DB Snapshot error");
+    return {Status::NotOK, "get db snapshot error"};
+  }
+  read_options.snapshot = snapshot;
+  auto no_txn_ctx = engine::Context::NoTransactionContext(storage);
+  bool is_slot_id_encoded = storage->IsSlotIdEncoded();
+  auto prefix = ComposeSlotKeyPrefix(kDefaultNamespace, dump_slot);
+  auto upper_bound = ComposeSlotKeyUpperBound(kDefaultNamespace, dump_slot);
+  rocksdb::Slice prefix_slice(prefix);
+  rocksdb::Slice upper_bound_slice(upper_bound);
+  read_options.iterate_lower_bound = &prefix_slice;
+  read_options.iterate_upper_bound = &upper_bound_slice;
+  engine::DBIterator iter(no_txn_ctx, read_options);
+  uint64_t n_keys = 0;
+  uint64_t unexpected_keys = 0;
+  for (iter.Seek(prefix); iter.Valid(); iter.Next()) {
+    auto key_slot_id = ExtractSlotId(iter.Key());
+    auto [_, user_key] = ExtractNamespaceKey<std::string>(iter.Key(), is_slot_id_encoded);
+    if (dump_slot != key_slot_id) {
+      unexpected_keys++;
+      warn("[slotsize] Slot {} has an unexpected key: {}", dump_slot, user_key);
+    } else {
+      n_keys++;
+      log(level, "[slotsize] dump slot: {}, type: {}, key: {}", dump_slot, RedisTypeNames[iter.Type()], user_key);
     }
   }
+  storage->GetDB()->ReleaseSnapshot(snapshot);
+  auto elapsed = util::GetTimeStampMS() - start_ts;
+  info("[slotsize] Succeed to dump slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", dump_slot, elapsed, n_keys,
+       unexpected_keys);
 
   return Status::OK();
 }

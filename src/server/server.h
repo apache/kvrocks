@@ -299,7 +299,7 @@ class Server {
 
   Status GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vector<std::string> *v_stats);
   Status AsyncScanSlots(const std::vector<SlotRange> &slot_ranges);
-  Status ClearSlots(const std::vector<SlotRange> &slot_ranges) const;
+  Status DumpSlotKeys(const std::vector<SlotRange> &slot_ranges) const;
 
   int DecrClientNum();
   int IncrClientNum();

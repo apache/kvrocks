@@ -312,19 +312,19 @@ class CommandDBSize : public Commander {
 class CommandSlotSize : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 2 || args.size() > 3) {
+    if (args.size() > 3) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    if (args.size() == 3 && !util::EqualICase(args[2], "scan") && !util::EqualICase(args[2], "clear")) {
-      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|clear}"};
+    if (args.size() == 3 && !util::EqualICase(args[2], "scan") && !util::EqualICase(args[2], "dump")) {
+      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|dump}"};
     }
     return Status::OK();
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
-    if (!srv->storage->IsSlotIdEncoded()) {
-      return {Status::RedisExecErr, "It is not in cluster mode"};
+    if (!srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "the command is only allowed in cluster mode"};
     }
 
     std::vector<SlotRange> slot_ranges;
@@ -340,22 +340,14 @@ class CommandSlotSize : public Commander {
         return s;
       }
       *output = redis::ArrayOfBulkStrings(stats);
-    } else if (args_.size() == 3 && util::EqualICase(args_[2], "scan")) {
-      s = srv->AsyncScanSlots(slot_ranges);
-      if (s.IsOK()) {
-        *output = redis::RESP_OK;
-      } else {
-        return s;
-      }
-    } else if (args_.size() == 3 && util::EqualICase(args_[2], "clear")) {
-      s = srv->ClearSlots(slot_ranges);
-      if (s.IsOK()) {
-        *output = redis::RESP_OK;
-      } else {
-        return s;
-      }
     } else {
-      return {Status::RedisExecErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|clear}"};
+      auto scan = util::EqualICase(args_[2], "scan");
+      s = scan ? srv->AsyncScanSlots(slot_ranges) : srv->DumpSlotKeys(slot_ranges);
+      if (s.IsOK()) {
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
     }
     return Status::OK();
   }

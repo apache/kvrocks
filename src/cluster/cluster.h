@@ -75,6 +75,7 @@ class Cluster {
   StatusOr<std::string> GetReplicas(const std::string &node_id);
   Status SetNodeId(const std::string &node_id);
   Status SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const std::string &node_id, int64_t version);
+  Status ClearSlotRanges(const std::vector<SlotRange> &slot_ranges) const;
   Status SetSlotRangeMigrated(const SlotRange &slot_range, const std::string &ip_port);
   Status SetSlotRangeImported(const SlotRange &slot_range);
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
@@ -83,7 +84,6 @@ class Cluster {
   static bool IsValidSlot(int slot) { return slot >= 0 && slot < kClusterSlots; }
   bool IsNotMaster();
   bool IsWriteForbiddenSlot(int slot) const;
-  bool IsSlotOnMyself(int slot) const;
   Status CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                          redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx = nullptr);
   Status SetMasterSlaveRepl();

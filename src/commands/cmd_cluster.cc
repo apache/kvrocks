@@ -237,7 +237,17 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
+    // CLUSTERX CLEARSLOT $SLOT_ID
+    if (subcommand_ == "clearslot" && args_.size() == 3) {
+      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
+      if (!s.IsOK()) {
+        return s;
+      }
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr,
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|CLEARSLOT|MIGRATE"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -285,6 +295,13 @@ class CommandClusterX : public Commander {
         if (sync_migrate_) {
           return {Status::BlockingCmd};
         }
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
+    } else if (subcommand_ == "clearslot") {
+      Status s = srv->cluster->ClearSlotRanges(slot_ranges_);
+      if (s.IsOK()) {
         *output = redis::RESP_OK;
       } else {
         return s;

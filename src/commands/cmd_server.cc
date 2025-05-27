@@ -315,8 +315,8 @@ class CommandSlotSize : public Commander {
     if (args.size() > 3) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    if (args.size() == 3 && !util::EqualICase(args[2], "scan") && !util::EqualICase(args[2], "dump")) {
-      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan|dump}"};
+    if (args.size() == 3 && !util::EqualICase(args[2], "scan")) {
+      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan}"};
     }
     return Status::OK();
   }
@@ -334,15 +334,9 @@ class CommandSlotSize : public Commander {
     }
 
     if (args_.size() == 2) {
-      std::vector<std::string> stats;
-      s = srv->GetSlotStats(slot_ranges, &stats);
-      if (!s.IsOK()) {
-        return s;
-      }
-      *output = redis::ArrayOfBulkStrings(stats);
+      *output = srv->GetSlotStats(slot_ranges);
     } else {
-      auto scan = util::EqualICase(args_[2], "scan");
-      s = scan ? srv->AsyncScanSlots(slot_ranges) : srv->DumpSlotKeys(slot_ranges);
+      s = srv->AsyncScanSlots(slot_ranges);
       if (s.IsOK()) {
         *output = redis::RESP_OK;
       } else {

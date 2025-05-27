@@ -145,6 +145,28 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
   return Status::OK();
 }
 
+Status Cluster::ClearSlotRanges(const std::vector<SlotRange> &slot_ranges) const {
+  for (auto slot_range : slot_ranges) {
+    for (int slot = slot_range.start; slot <= slot_range.end; slot++) {
+      if (myself_ != nullptr && slots_nodes_[slot] == myself_) {
+        return {Status::NotOK, fmt::format("slot {} is on myself, cannot clear", slot)};
+      }
+    }
+  }
+
+  engine::Context ctx(srv_->storage);
+  for (auto slot_range : slot_ranges) {
+    auto lower_bound = ComposeSlotKeyPrefix(kDefaultNamespace, slot_range.start);
+    auto upper_bound = ComposeSlotKeyUpperBound(kDefaultNamespace, slot_range.end);
+    rocksdb::Status s = srv_->storage->DeleteRange(ctx, lower_bound, upper_bound);
+    if (!s.ok()) {
+      return {Status::NotOK, fmt::format("clear keys of slots {} error: {}", slot_range.String(), s.ToString())};
+    }
+  }
+
+  return Status::OK();
+}
+
 // cluster setnodes $all_nodes_info $version $force
 // one line of $all_nodes: $node_id $host $port $role $master_node_id $slot_range
 Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, bool force) {
@@ -852,8 +874,6 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 bool Cluster::IsWriteForbiddenSlot(int slot) const {
   return srv_->slot_migrator->GetForbiddenSlotRange().Contains(slot);
 }
-
-bool Cluster::IsSlotOnMyself(int slot) const { return myself_ && slots_nodes_[slot] == myself_; }
 
 Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, const std::vector<std::string> &cmd_tokens,
                                 redis::Connection *conn, lua::ScriptRunCtx *script_run_ctx) {

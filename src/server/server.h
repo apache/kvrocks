@@ -297,9 +297,8 @@ class Server {
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
   std::string GetKeyNameFromCursor(const std::string &cursor, CursorType cursor_type);
 
-  Status GetSlotStats(const std::vector<SlotRange> &slot_ranges, std::vector<std::string> *v_stats);
+  std::string GetSlotStats(const std::vector<SlotRange> &slot_ranges);
   Status AsyncScanSlots(const std::vector<SlotRange> &slot_ranges);
-  Status DumpSlotKeys(const std::vector<SlotRange> &slot_ranges) const;
 
   int DecrClientNum();
   int IncrClientNum();

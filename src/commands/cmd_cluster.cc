@@ -238,7 +238,10 @@ class CommandClusterX : public Commander {
     }
 
     // CLUSTERX CLEARSLOT $SLOT_ID
-    if (subcommand_ == "clearslot" && args_.size() == 3) {
+    if (subcommand_ == "clearslot") {
+      if (args_.size() != 3) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
       Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
       if (!s.IsOK()) {
         return s;

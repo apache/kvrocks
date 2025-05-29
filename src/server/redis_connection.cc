@@ -372,7 +372,8 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 
 static bool IsCmdForIndexing(uint64_t cmd_flags, CommandCategory cmd_cat) {
   return (cmd_flags & redis::kCmdWrite) &&
-         (cmd_cat == CommandCategory::Hash || cmd_cat == CommandCategory::JSON || cmd_cat == CommandCategory::Key);
+         (cmd_cat == CommandCategory::Hash || cmd_cat == CommandCategory::JSON || cmd_cat == CommandCategory::Key ||
+          cmd_cat == CommandCategory::Script || cmd_cat == CommandCategory::Function);
 }
 
 static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {

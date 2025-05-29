@@ -246,8 +246,23 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
+    // CLUSTERX SLOTSIZE $SLOT_ID SCAN
+    if (subcommand_ == "slotsize") {
+      if (args_.size() < 3 || args_.size() > 4) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      if (args_.size() == 4 && !util::EqualICase(args_[3], "scan")) {
+        return {Status::RedisParseErr, "Invalid slotsize options"};
+      }
+      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
+      if (!s.IsOK()) {
+        return s;
+      }
+      return Status::OK();
+    }
+
     return {Status::RedisParseErr,
-            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|CLEARSLOT|MIGRATE"};
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|SLOTSIZE|CLEARSLOT|MIGRATE"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -306,8 +321,19 @@ class CommandClusterX : public Commander {
       } else {
         return s;
       }
+    } else if (subcommand_ == "slotsize") {
+      if (args_.size() == 3) {
+        *output = srv->GetSlotStats(slot_ranges_);
+      } else {
+        Status s = srv->AsyncScanSlots(slot_ranges_);
+        if (s.IsOK()) {
+          *output = redis::RESP_OK;
+        } else {
+          return s;
+        }
+      }
     } else {
-      return {Status::RedisExecErr, "Invalid cluster command options"};
+      return {Status::RedisExecErr, "Invalid clusterx command options"};
     }
     if (need_persist_nodes_info && srv->GetConfig()->persist_cluster_nodes_enabled) {
       return srv->cluster->DumpClusterNodes(srv->GetConfig()->NodesFilePath());

@@ -2129,7 +2129,7 @@ AuthResult Server::AuthenticateUser(const std::string &user_password, std::strin
 }
 
 std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
-  size_t n = 0;
+  size_t slot_count = 0;
   std::string output;
 
   std::lock_guard<std::mutex> lg(db_job_mu_);
@@ -2143,23 +2143,26 @@ std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
         checked_slots.set(slot);
       }
 
-      ++n;
-      std::string slotstat;
-      slotstat.append(redis::MultiLen(3));
-      slotstat.append(redis::Integer(slot));
+      ++slot_count;
+      slotstats.append(redis::MultiLen(6));
+      slotstats.append(redis::SimpleString("slot"));
+      slotstats.append(redis::Integer(slot));
       if (slot_scan_infos_.slot_stats.find(slot) == slot_scan_infos_.slot_stats.end()) {
-        slotstat.append(redis::Integer(0));
-        slotstat.append(redis::Integer(0));
+        slotstats.append(redis::SimpleString("key_num"));
+        slotstats.append(redis::Integer(0));
+        slotstats.append(redis::SimpleString("unexpected_key_num"));
+        slotstats.append(redis::Integer(0));
       } else {
         SlotStats ss = slot_scan_infos_.slot_stats[slot];
-        slotstat.append(redis::Integer(ss.n_key));
-        slotstat.append(redis::Integer(ss.n_unexpected_key));
+        slotstats.append(redis::SimpleString("key_num"));
+        slotstats.append(redis::Integer(ss.n_key));
+        slotstats.append(redis::SimpleString("unexpected_key_num"));
+        slotstats.append(redis::Integer(ss.n_unexpected_key));
       }
-      slotstats.append(slotstat);
     }
   }
 
-  output.append(redis::MultiLen(n));
+  output.append(redis::MultiLen(slot_count));
   output.append(slotstats);
   return output;
 }

@@ -309,44 +309,6 @@ class CommandDBSize : public Commander {
   }
 };
 
-class CommandSlotSize : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 3) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    if (args.size() == 3 && !util::EqualICase(args[2], "scan")) {
-      return {Status::RedisParseErr, "Invalid slotsize command, eg: slotsize {SlotRange} {scan}"};
-    }
-    return Status::OK();
-  }
-
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
-                 std::string *output) override {
-    if (!srv->GetConfig()->cluster_enabled) {
-      return {Status::RedisExecErr, "the command is only allowed in cluster mode"};
-    }
-
-    std::vector<SlotRange> slot_ranges;
-    Status s = CommandTable::ParseSlotRanges(args_[1], slot_ranges);
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    if (args_.size() == 2) {
-      *output = srv->GetSlotStats(slot_ranges);
-    } else {
-      s = srv->AsyncScanSlots(slot_ranges);
-      if (s.IsOK()) {
-        *output = redis::RESP_OK;
-      } else {
-        return s;
-      }
-    }
-    return Status::OK();
-  }
-};
-
 class CommandPerfLog : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1487,7 +1449,6 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
                         MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandSlotSize>("slotsize", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandClient>("client", -2, "read-only", NO_KEY),

@@ -139,9 +139,16 @@ void Connection::Reply(const std::string &msg) {
   if (reply_mode_ == ReplyMode::OFF) {
     return;
   }
+
   owner_->srv->stats.IncrOutboundBytes(msg.size());
-  redis::Reply(bufferevent_get_output(bev_), msg);
+  if (in_exec_) {
+    queued_replies_.push_back(msg);
+  } else {
+    redis::Reply(bufferevent_get_output(bev_), msg);
+  }
 }
+
+const std::vector<std::string> &Connection::GetQueuedReplies() const { return queued_replies_; }
 
 void Connection::SendFile(int fd) {
   // NOTE: we don't need to close the fd, the libevent will do that
@@ -392,6 +399,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
+    auto multi_error_exit = MakeScopeExit([&] {
+      if (is_multi_exec) multi_error_ = true;
+    });
 
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
@@ -403,7 +413,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         EnableFlag(kCloseAsync);
         return;
       }
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error(
           {Status::NotOK,
            fmt::format("unknown command `{}`, with args beginning with: {}", cmd_name,
@@ -418,7 +427,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
       continue;
     }
@@ -452,21 +460,18 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
       Reply(redis::Error({Status::RedisLoading, errRestoringBackup}));
-      if (is_multi_exec) multi_error_ = true;
       continue;
     }
 
     current_cmd->SetArgs(cmd_tokens);
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error(s));
       continue;
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
       Reply(redis::Error({Status::NotOK, fmt::format("{} inside MULTI is not allowed", util::ToUpper(cmd_name))}));
-      multi_error_ = true;
       continue;
     }
 
@@ -478,7 +483,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (config->cluster_enabled) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
-        if (is_multi_exec) multi_error_ = true;
         Reply(redis::Error(s));
         continue;
       }
@@ -489,6 +493,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       DisableFlag(kAsking);
     }
 
+    multi_error_exit.Disable();
     // We don't execute commands, but queue them, and then execute in EXEC command
     if (is_multi_exec && !in_exec_ && !(cmd_flags & kCmdBypassMulti)) {
       multi_cmds_.emplace_back(std::move(cmd_tokens));

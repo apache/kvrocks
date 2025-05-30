@@ -71,6 +71,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string ToString();
 
   void Reply(const std::string &msg);
+  const std::vector<std::string> &GetQueuedReplies() const;
+  void ClearQueuedReplies() { queued_replies_.clear(); }
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
   std::string Bool(bool b) const { return redis::Bool(protocol_version_, b); }
@@ -227,6 +229,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   RESP protocol_version_ = RESP::v2;
 
   ReplyMode reply_mode_ = ReplyMode::ON;
+  std::vector<std::string> queued_replies_;
 };
 
 }  // namespace redis

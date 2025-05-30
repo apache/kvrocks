@@ -25,7 +25,9 @@ endif()
 
 if (NOT DISABLE_JEMALLOC_PROFILING)
   set(ENABLE_JEMALLOC_PROFILING "--enable-prof")
-  set (JEMALLOC_CONFIG_MALLOC_CONF "prof:true,prof_active:false")
+  # jemalloc profiling is enabled by default, but we can disable it and
+  # enable it at runtime by setting the environment variable.
+  set(JEMALLOC_CONFIG_MALLOC_CONF "prof:true,prof_active:false")
 else()
   set(ENABLE_JEMALLOC_PROFILING "")
 endif()

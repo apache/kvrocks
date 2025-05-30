@@ -23,6 +23,13 @@ else()
   set(DISABLE_CACHE_OBLIVIOUS "--disable-cache-oblivious")
 endif()
 
+if (NOT DISABLE_JEMALLOC_PROFILING)
+  set(ENABLE_JEMALLOC_PROFILING "--enable-prof")
+  set (JEMALLOC_CONFIG_MALLOC_CONF "prof:true,prof_active:false")
+else()
+  set(ENABLE_JEMALLOC_PROFILING "")
+endif()
+
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(jemalloc
@@ -38,7 +45,8 @@ if(NOT jemalloc_POPULATED)
     WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
   )
   execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C --enable-autogen
-                    --disable-shared --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} --with-jemalloc-prefix=""
+                    --disable-shared --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} ${ENABLE_JEMALLOC_PROFILING}
+                    --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
   add_custom_target(make_jemalloc 

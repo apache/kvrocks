@@ -34,10 +34,18 @@ std::string BackgroundErrorReason2String(const rocksdb::BackgroundErrorReason re
   return "unknown";
 }
 
-std::string FileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
+std::string TableFileCreatedReason2String(const rocksdb::TableFileCreationReason reason) {
   std::vector<std::string> file_created_reason = {"flush", "compaction", "recovery", "misc"};
   if (static_cast<size_t>(reason) < file_created_reason.size()) {
     return file_created_reason[static_cast<size_t>(reason)];
+  }
+  return "unknown";
+}
+
+std::string BlobFileCreatedReason2String(const rocksdb::BlobFileCreationReason reason) {
+  std::vector<std::string> blob_file_created_reason = {"flush", "compaction", "recovery"};
+  if (static_cast<size_t>(reason) < blob_file_created_reason.size()) {
+    return blob_file_created_reason[static_cast<size_t>(reason)];
   }
   return "unknown";
 }
@@ -169,11 +177,6 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
   error("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
-void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) {
-  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
-       table_info.status.ToString());
-}
-
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
   warn("[event_listener/stall_cond_changed] column family: {} write stall condition was changed, from {} to {}",
        info.cf_name, StallConditionType2String(info.condition.prev), StallConditionType2String(info.condition.cur));
@@ -184,5 +187,23 @@ void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &tab
       "[event_listener/table_file_created] column family: {}, file path: {}, file size: {}, job_id: {}, reason: {}, "
       "status: {}",
       table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id,
-      FileCreatedReason2String(table_info.reason), table_info.status.ToString());
+      TableFileCreatedReason2String(table_info.reason), table_info.status.ToString());
+}
+
+void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) {
+  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
+       table_info.status.ToString());
+}
+
+void EventListener::OnBlobFileCreated(const rocksdb::BlobFileCreationInfo &blob_info) {
+  info(
+      "[event_listener/blob_file_created] column family: {}, file path: {}, blob count: {}, blob bytes: {}, job_id: {}"
+      ", reason: {}, status: {}",
+      blob_info.cf_name, blob_info.file_path, blob_info.total_blob_count, blob_info.total_blob_bytes, blob_info.job_id,
+      BlobFileCreatedReason2String(blob_info.reason), blob_info.status.ToString());
+}
+
+void EventListener::OnBlobFileDeleted(const rocksdb::BlobFileDeletionInfo &blob_info) {
+  info("[event_listener/blob_file_deleted] db: {}, blob file: {}, status: {}", blob_info.db_name, blob_info.file_path,
+       blob_info.status.ToString());
 }

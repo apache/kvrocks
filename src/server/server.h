@@ -44,6 +44,7 @@
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
 #include "lua.hpp"
+#include "memory_profiler.h"
 #include "namespace.h"
 #include "search/index_manager.h"
 #include "search/indexer.h"
@@ -318,6 +319,7 @@ class Server {
 
   Stats stats;
   engine::Storage *storage;
+  MemoryProfiler memory_profiler;
   std::unique_ptr<Cluster> cluster;
   static inline std::atomic<int64_t> unix_time_secs = 0;
   std::unique_ptr<SlotMigrator> slot_migrator;

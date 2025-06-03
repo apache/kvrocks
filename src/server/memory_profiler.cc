@@ -27,7 +27,7 @@
 
 #ifdef ENABLE_JEMALLOC
 template <typename T>
-Status setJemallocOption(const char *name, T value) {
+Status SetJemallocOption(const char *name, T value) {
   T old_value;
   size_t old_value_size = sizeof(T);
   int ret = mallctl(name, &old_value, &old_value_size, reinterpret_cast<void *>(&value), sizeof(T));
@@ -38,7 +38,7 @@ Status setJemallocOption(const char *name, T value) {
 }
 
 template <typename T>
-Status getJemallocOption(const char *name, T *value) {
+Status GetJemallocOption(const char *name, T *value) {
   size_t value_size = sizeof(T);
   if (mallctl(name, value, &value_size, nullptr, 0) != 0) {
     return {Status::NotOK, fmt::format("unable to get the jemalloc option: {}, error: {}", name, strerror(errno))};
@@ -46,7 +46,7 @@ Status getJemallocOption(const char *name, T *value) {
   return Status::OK();
 }
 
-Status checkIfProfilingEnabled() {
+Status CheckIfProfilingEnabled() {
   bool enabled = false;
   size_t enabled_size = sizeof(enabled);
   if (mallctl("opt.prof", &enabled, &enabled_size, nullptr, 0) != 0) {
@@ -61,7 +61,7 @@ Status checkIfProfilingEnabled() {
 }
 #endif
 
-std::string MemoryProfiler::AllocatorName() const {
+std::string MemoryProfiler::AllocatorName() {
 #ifdef ENABLE_JEMALLOC
   return "jemalloc";
 #else
@@ -71,31 +71,31 @@ std::string MemoryProfiler::AllocatorName() const {
 
 Status MemoryProfiler::SetProfiling(bool enabled) {
 #ifdef ENABLE_JEMALLOC
-  if (auto s = checkIfProfilingEnabled(); !s.IsOK()) {
+  if (auto s = CheckIfProfilingEnabled(); !s.IsOK()) {
     return s;
   }
-  return setJemallocOption("prof.active", enabled);
+  return SetJemallocOption("prof.active", enabled);
 #else
   (void)enabled;
   return {Status::NotOK, "memory profiling is not supported in this build"};
 #endif
 }
 
-Status MemoryProfiler::Dump(std::string_view dir) const {
+Status MemoryProfiler::Dump(std::string_view dir) {
 #ifdef ENABLE_JEMALLOC
-  if (auto s = checkIfProfilingEnabled(); !s.IsOK()) {
+  if (auto s = CheckIfProfilingEnabled(); !s.IsOK()) {
     return s;
   }
 
   bool is_prof_active = false;
-  if (auto s = getJemallocOption("prof.active", &is_prof_active); !s.IsOK()) {
+  if (auto s = GetJemallocOption("prof.active", &is_prof_active); !s.IsOK()) {
     return s;
   }
   if (!is_prof_active) {
     return {Status::NotOK, "jemalloc profiling is not active, please enable it first"};
   }
 
-  char *prefix_buffer;
+  char *prefix_buffer = nullptr;
   size_t prefix_size = sizeof(prefix_buffer);
   int ret = mallctl("opt.prof_prefix", &prefix_buffer, &prefix_size, nullptr, 0);
   if (!ret && std::string_view(prefix_buffer) != "jeprof") {

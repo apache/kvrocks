@@ -27,7 +27,7 @@ class MemoryProfiler {
   MemoryProfiler() = default;
   ~MemoryProfiler() = default;
 
-  std::string AllocatorName() const;
-  Status SetProfiling(bool enabled);
-  Status Dump(std::string_view dir) const;
+  static std::string AllocatorName();
+  static Status SetProfiling(bool enabled);
+  static Status Dump(std::string_view dir);
 };

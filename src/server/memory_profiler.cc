@@ -83,6 +83,18 @@ Status MemoryProfiler::SetProfiling(bool enabled) {
 
 Status MemoryProfiler::Dump(std::string_view dir) const {
 #ifdef ENABLE_JEMALLOC
+  if (auto s = checkIfProfilingEnabled(); !s.IsOK()) {
+    return s;
+  }
+
+  bool is_prof_active = false;
+  if (auto s = getJemallocOption("prof.active", &is_prof_active); !s.IsOK()) {
+    return s;
+  }
+  if (!is_prof_active) {
+    return {Status::NotOK, "jemalloc profiling is not active, please enable it first"};
+  }
+
   char *prefix_buffer;
   size_t prefix_size = sizeof(prefix_buffer);
   int ret = mallctl("opt.prof_prefix", &prefix_buffer, &prefix_size, nullptr, 0);

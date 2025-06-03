@@ -324,7 +324,7 @@ class CommandKProfile : public Commander {
       if (!parser.Good()) return {Status::NotOK, errWrongNumOfArguments};
       dump_dir_ = GET_OR_RET(parser.TakeStr());
     } else {
-      return {Status::NotOK, "MEMORY subcommand must be one of ENABLED, DISABLED, DUMP"};
+      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, DUMP"};
     }
     if (parser.Good()) {
       return {Status::NotOK, errWrongNumOfArguments};

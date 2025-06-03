@@ -71,6 +71,15 @@ func TestKProfile(t *testing.T) {
 		}
 		require.NoError(t, err)
 
+		_, err = rdb.Do(ctx, "KPROFILE", "MEMORY", "DISABLE").Result()
+		require.NoError(t, err)
+
+		_, err = rdb.Do(ctx, "KPROFILE", "MEMORY", "DUMP", "/tmp/").Result()
+		require.Contains(t, err.Error(), "jemalloc profiling is not active, please enable it first")
+
+		_, err = rdb.Do(ctx, "KPROFILE", "MEMORY", "ENABLE").Result()
+		require.NoError(t, err)
+
 		require.Eventually(t, func() bool {
 			matchedFiles, err := fs.Glob(os.DirFS("/tmp"), "jeprof.*")
 			require.NoError(t, err)

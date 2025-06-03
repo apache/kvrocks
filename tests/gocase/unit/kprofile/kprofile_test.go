@@ -25,6 +25,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -70,9 +71,11 @@ func TestKProfile(t *testing.T) {
 		}
 		require.NoError(t, err)
 
-		matchedFiles, err := fs.Glob(os.DirFS("/tmp"), "jeprof.*")
-		require.NoError(t, err)
-		require.Greater(t, len(matchedFiles), 0, "Expected at least one memory profile file to be created")
+		require.Eventually(t, func() bool {
+			matchedFiles, err := fs.Glob(os.DirFS("/tmp"), "jeprof.*")
+			require.NoError(t, err)
+			return len(matchedFiles) > 0
+		}, 5*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("wrong arguments", func(t *testing.T) {

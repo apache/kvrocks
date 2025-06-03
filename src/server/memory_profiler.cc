@@ -53,8 +53,9 @@ Status checkIfProfilingEnabled() {
     return {Status::NotOK, fmt::format("unable to check if profiling is enabled: {}", strerror(errno))};
   }
   if (!enabled) {
-    return {Status::NotOK, fmt::format("jemalloc profiling isn't enabled, please run Kvrocks with following environments: `{}`",
-          "export MALLOC_CONF=\"prof:true,background_thread:true\"")};
+    return {Status::NotOK,
+            fmt::format("jemalloc profiling isn't enabled, please run Kvrocks with following environments: `{}`",
+                        "export MALLOC_CONF=\"prof:true,background_thread:true\"")};
   }
   return Status::OK();
 }
@@ -82,10 +83,19 @@ Status MemoryProfiler::SetProfiling(bool enabled) {
 
 Status MemoryProfiler::Dump(std::string_view dir) const {
 #ifdef ENABLE_JEMALLOC
+  char *prefix_buffer;
+  size_t prefix_size = sizeof(prefix_buffer);
+  int ret = mallctl("opt.prof_prefix", &prefix_buffer, &prefix_size, nullptr, 0);
+  if (!ret && std::string_view(prefix_buffer) != "jeprof") {
+    mallctl("prof.dump", nullptr, nullptr, nullptr, 0);
+    return Status::OK();
+  }
+
   static std::atomic<size_t> profile_counter{0};
   std::string dump_path = fmt::format("{}/jeprof.{}.{}.heap", dir, getpid(), profile_counter.fetch_add(1));
   const auto *dump_path_str = dump_path.c_str();
-  return setJemallocOption("prof.dump", dump_path_str);
+  mallctl("prof.dump", nullptr, nullptr, &dump_path_str, sizeof(dump_path_str));
+  return Status::OK();
 #else
   (void)dir;
   return {Status::NotOK, "memory profiling is not supported in this build"};

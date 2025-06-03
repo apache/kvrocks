@@ -48,13 +48,13 @@ Status getJemallocOption(const char *name, T *value) {
 
 Status checkIfProfilingEnabled() {
   bool enabled = false;
-  size_t value_size = sizeof(enabled);
+  size_t enabled_size = sizeof(enabled);
   if (mallctl("opt.prof", &enabled, &enabled_size, nullptr, 0) != 0) {
     return {Status::NotOK, fmt::format("unable to check if profiling is enabled: {}", strerror(errno))};
   }
   if (!enabled) {
-    return {Status::NotOK, "jemalloc profiling isn't enabled, please run Kvrocks with following environments: `{}`",
-            "export MALLOC_CONF=\"prof:true,background_thread:true\""};
+    return {Status::NotOK, fmt::format("jemalloc profiling isn't enabled, please run Kvrocks with following environments: `{}`",
+          "export MALLOC_CONF=\"prof:true,background_thread:true\"")};
   }
   return Status::OK();
 }

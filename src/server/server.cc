@@ -1031,6 +1031,7 @@ Server::InfoEntries Server::GetMemoryInfo() {
   entries.emplace_back("used_memory_lua", memory_lua);
   entries.emplace_back("used_memory_lua_human", used_memory_lua_human);
   entries.emplace_back("used_memory_startup", memory_startup_use_.load(std::memory_order_relaxed));
+  entries.emplace_back("mem_allocator", memory_profiler.AllocatorName());
   return entries;
 }
 

@@ -21,8 +21,8 @@
 #include "memory_profiler.h"
 
 #ifdef ENABLE_JEMALLOC
-#include <unistd.h>
 #include <jemalloc/jemalloc.h>
+#include <unistd.h>
 #endif
 
 #ifdef ENABLE_JEMALLOC
@@ -53,12 +53,20 @@ Status checkIfProfilingEnabled() {
     return {Status::NotOK, fmt::format("unable to check if profiling is enabled: {}", strerror(errno))};
   }
   if (!enabled) {
-    return {Status::NotOK, "jemalloc profiling isn't enabled, please run Kvrocks with following enviroments: `{}`",
+    return {Status::NotOK, "jemalloc profiling isn't enabled, please run Kvrocks with following environments: `{}`",
             "export MALLOC_CONF=\"prof:true,background_thread:true\""};
   }
   return Status::OK();
 }
 #endif
+
+std::string MemoryProfiler::AllocatorName() const {
+#ifdef ENABLE_JEMALLOC
+  return "jemalloc";
+#else
+  return "libc";
+#endif
+}
 
 Status MemoryProfiler::SetProfiling(bool enabled) {
 #ifdef ENABLE_JEMALLOC

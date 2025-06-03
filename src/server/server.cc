@@ -256,7 +256,6 @@ void Server::Stop() {
     worker->Stop(0 /* immediately terminate  */);
   }
 
-  rocksdb::CancelAllBackgroundWork(storage->GetDB(), true);
   task_runner_.Cancel();
 }
 

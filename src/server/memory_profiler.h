@@ -22,11 +22,7 @@
 
 #include "status.h"
 
-class MemoryProfiler {
- public:
-  MemoryProfiler() = default;
-  ~MemoryProfiler() = default;
-
+struct MemoryProfiler {
   static std::string AllocatorName();
   static Status SetProfiling(bool enabled);
   static Status Dump(std::string_view dir);

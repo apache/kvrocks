@@ -25,5 +25,6 @@
 struct MemoryProfiler {
   static std::string AllocatorName();
   static Status SetProfiling(bool enabled);
+  static StatusOr<bool> GetProfilingStatus();
   static Status Dump(std::string_view dir);
 };

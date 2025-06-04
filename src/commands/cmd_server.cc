@@ -317,14 +317,17 @@ class CommandKProfile : public Commander {
       return {Status::NotOK, "only supports MEMORY subcommand"};
     }
     if (parser.EatEqICase("enable")) {
-      enabled_ = true;
+      op_ = "enable";
     } else if (parser.EatEqICase("disable")) {
-      enabled_ = false;
+      op_ = "disable";
+    } else if (parser.EatEqICase("status")) {
+      op_ = "status";
     } else if (parser.EatEqICase("dump")) {
+      op_ = "dump";
       if (!parser.Good()) return {Status::NotOK, errWrongNumOfArguments};
       dump_dir_ = GET_OR_RET(parser.TakeStr());
     } else {
-      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, DUMP"};
+      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, STATUS, DUMP"};
     }
     if (parser.Good()) {
       return {Status::NotOK, errWrongNumOfArguments};
@@ -335,16 +338,20 @@ class CommandKProfile : public Commander {
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
     Status s;
-    if (enabled_.has_value()) {
-      s = srv->memory_profiler.SetProfiling(enabled_.value());
-    } else if (dump_dir_.has_value()) {
+    if (op_ == "enable" || op_ == "disable") {
+      s = srv->memory_profiler.SetProfiling(op_ == "enable");
+    } else if (op_ == "status") {
+      auto enabled = GET_OR_RET(srv->memory_profiler.GetProfilingStatus());
+      *output = SimpleString(enabled ? "enabled" : "disabled");
+      return Status::OK();
+    } else if (op_ == "dump") {
       bool is_dir = false;
-      if (auto s = rocksdb::Env::Default()->IsDirectory(dump_dir_.value(), &is_dir); !s.ok()) {
-        return {Status::NotOK, fmt::format("\"{}\" is not a directory", dump_dir_.value())};
+      if (auto s = rocksdb::Env::Default()->IsDirectory(dump_dir_, &is_dir); !s.ok()) {
+        return {Status::NotOK, fmt::format("\"{}\" is not a directory", dump_dir_)};
       }
-      s = srv->memory_profiler.Dump(dump_dir_.value());
+      s = srv->memory_profiler.Dump(dump_dir_);
     } else {
-      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, DUMP"};
+      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, STATUS, DUMP"};
     }
 
     if (!s.IsOK()) return s;
@@ -353,8 +360,8 @@ class CommandKProfile : public Commander {
   }
 
  private:
-  std::optional<bool> enabled_;
-  std::optional<std::string> dump_dir_;
+  std::string op_;
+  std::string dump_dir_;
 };
 
 class CommandPerfLog : public Commander {
@@ -1498,7 +1505,7 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
                         MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandKProfile>("kprofile", -3, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandKProfile>("kprofile", -3, "read-only admin", NO_KEY),
                         MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandClient>("client", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi no-script", NO_KEY),

@@ -25,6 +25,8 @@
 #include <unistd.h>
 #endif
 
+inline constexpr char errProfilingUnsupported[] = "memory profiling is not supported in this build";
+
 #ifdef ENABLE_JEMALLOC
 template <typename T>
 Status SetJemallocOption(const char *name, T value) {
@@ -77,7 +79,25 @@ Status MemoryProfiler::SetProfiling(bool enabled) {
   return SetJemallocOption("prof.active", enabled);
 #else
   (void)enabled;
-  return {Status::NotOK, "memory profiling is not supported in this build"};
+  return {Status::NotOK, errProfilingUnsupported};
+#endif
+}
+
+StatusOr<bool> MemoryProfiler::GetProfilingStatus() {
+#ifdef ENABLE_JEMALLOC
+  bool is_prof_enabled = false;
+  if (auto s = GetJemallocOption("opt.prof", &is_prof_enabled); !s.IsOK()) {
+    return s;
+  }
+  if (!is_prof_enabled) return false;
+
+  bool is_prof_active = false;
+  if (auto s = GetJemallocOption("prof.active", &is_prof_active); !s.IsOK()) {
+    return s;
+  }
+  return is_prof_active;
+#else
+  return {Status::NotOK, errProfilingUnsupported};
 #endif
 }
 
@@ -110,6 +130,6 @@ Status MemoryProfiler::Dump(std::string_view dir) {
   return Status::OK();
 #else
   (void)dir;
-  return {Status::NotOK, "memory profiling is not supported in this build"};
+  return {Status::NotOK, errProfilingUnsupported};
 #endif
 }

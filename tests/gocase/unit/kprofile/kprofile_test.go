@@ -60,6 +60,14 @@ func TestKProfile(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			status, err := rdb.Do(ctx, "KPROFILE", "MEMORY", "STATUS").Result()
+			require.NoError(t, err)
+
+			if op == "DISABLE" {
+				require.EqualValues(t, "disabled", status)
+			} else {
+				require.EqualValues(t, "enabled", status)
+			}
 		}
 	})
 

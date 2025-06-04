@@ -700,6 +700,11 @@ rocksdb::Status Storage::Write(engine::Context &ctx, const rocksdb::WriteOptions
 
 rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                    rocksdb::WriteBatch *updates) {
+  // No point trying to commit an empty write batch: in fact this will fail on read-only DBs
+  // even if the write batch is empty.
+  if (updates->Count() == 0) {
+    return rocksdb::Status::OK();
+  }
   // Put replication id logdata at the end of `updates`.
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());

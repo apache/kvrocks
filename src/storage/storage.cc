@@ -169,7 +169,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_background_flushes = config_->rocks_db.max_background_flushes;
   options.max_background_compactions = config_->rocks_db.max_background_compactions;
   options.max_write_buffer_number = config_->rocks_db.max_write_buffer_number;
-  options.min_write_buffer_number_to_merge = 2;
+  options.min_write_buffer_number_to_merge = config_->rocks_db.min_write_buffer_number_to_merge;
   options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = KVROCKS_MAX_LSM_LEVEL;
   options.compression_opts.level = config_->rocks_db.compression_level;

@@ -344,7 +344,7 @@ class CommandKProfile : public Commander {
       }
       s = srv->memory_profiler.Dump(dump_dir_.value());
     } else {
-      return {Status::NotOK, "MEMORY subcommand must be one of ENABLED, DISABLED, DUMP"};
+      return {Status::NotOK, "MEMORY subcommand must be one of ENABLE, DISABLE, DUMP"};
     }
 
     if (!s.IsOK()) return s;

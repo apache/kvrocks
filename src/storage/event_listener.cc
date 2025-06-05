@@ -132,7 +132,7 @@ void EventListener::OnFlushCompleted([[maybe_unused]] rocksdb::DB *db, const roc
   info(
       "[event_listener/flush_completed] column family: {}, thread_id: {}, job_id: {}, file: {}, reason: {}, "
       "is_write_slowdown: {}, is_write_stall: {}, largest seqno: {}, smallest seqno: {}",
-      fi.cf_name, fi.thread_id, fi.job_id, fi.file_path, static_cast<int>(fi.flush_reason),
+      fi.cf_name, fi.thread_id, fi.job_id, fi.file_path, rocksdb::GetFlushReasonString(fi.flush_reason),
       fi.triggered_writes_slowdown ? "yes" : "no", fi.triggered_writes_stop ? "yes" : "no", fi.largest_seqno,
       fi.smallest_seqno);
 }

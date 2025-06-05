@@ -37,9 +37,11 @@ class EventListener : public rocksdb::EventListener {
   void OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) override;
 
   void OnBackgroundError(rocksdb::BackgroundErrorReason reason, rocksdb::Status *status) override;
-  void OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &info) override;
   void OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) override;
-  void OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) override;
+  void OnTableFileCreated(const rocksdb::TableFileCreationInfo &table_info) override;
+  void OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) override;
+  void OnBlobFileCreated(const rocksdb::BlobFileCreationInfo &blob_info) override;
+  void OnBlobFileDeleted(const rocksdb::BlobFileDeletionInfo &blob_info) override;
 
  private:
   engine::Storage *storage_ = nullptr;

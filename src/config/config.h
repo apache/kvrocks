@@ -203,6 +203,7 @@ struct Config {
     int max_open_files;
     int write_buffer_size;
     int max_write_buffer_number;
+    int min_write_buffer_number_to_merge;
     int max_background_compactions;
     int max_background_flushes;
     int max_subcompactions;

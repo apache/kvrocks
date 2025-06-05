@@ -65,6 +65,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_open_files", "1234"},
       {"rocksdb.write_buffer_size", "1234"},
       {"rocksdb.max_write_buffer_number", "1"},
+      {"rocksdb.min_write_buffer_number_to_merge", "1"},
       {"rocksdb.target_file_size_base", "100"},
       {"rocksdb.max_background_compactions", "-1"},
       {"rocksdb.max_subcompactions", "3"},

@@ -253,7 +253,7 @@ Config::Config() {
       {"rocksdb.write_buffer_size", false, new IntField(&rocks_db.write_buffer_size, 64, 0, 4096)},
       {"rocksdb.max_write_buffer_number", false, new IntField(&rocks_db.max_write_buffer_number, 4, 0, 256)},
       {"rocksdb.min_write_buffer_number_to_merge", false,
-       new IntField(&rocks_db.min_write_buffer_number_to_merge, 4, 1, 256)},
+       new IntField(&rocks_db.min_write_buffer_number_to_merge, 1, 1, 256)},
       {"rocksdb.target_file_size_base", false, new IntField(&rocks_db.target_file_size_base, 128, 1, 1024)},
       {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, 2, -1, 32)},
       {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},

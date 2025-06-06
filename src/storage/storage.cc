@@ -876,7 +876,9 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(ColumnFamilyID id) { return cf
 
 rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
-  compact_opts.change_level = true;
+  // See https://github.com/facebook/rocksdb/issues/13671
+  // change_level doesn't work well with level_compaction_dynamic_level_bytes
+  compact_opts.change_level = !config_->rocks_db.level_compaction_dynamic_level_bytes;
   // For the manual compaction, we would like to force the bottommost level to be compacted.
   // Or it may use the trivial mode and some expired key-values were still exist in the bottommost level.
   compact_opts.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForceOptimized;

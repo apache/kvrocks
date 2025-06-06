@@ -57,7 +57,7 @@ if (NOT lua_POPULATED)
   endif ()
 
   add_custom_target(make_luajit COMMAND ${MAKE_COMMAND} libluajit.a ${NINJA_MAKE_JOBS_FLAG}
-    "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+    "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET} CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
     BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
   )

@@ -883,6 +883,11 @@ rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *b
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Storage::FlushMemTable(rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::FlushOptions &options) {
+  const auto &cf_handles = cf_handle ? std::vector<rocksdb::ColumnFamilyHandle *>{cf_handle} : cf_handles_;
+  return db_->Flush(options, cf_handles);
+}
+
 uint64_t Storage::GetTotalSize(const std::string &ns) {
   if (ns == kDefaultNamespace) {
     return sst_file_manager_->GetTotalSize();

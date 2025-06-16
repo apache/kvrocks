@@ -2135,6 +2135,8 @@ std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   std::bitset<HASH_SLOTS_SIZE> checked_slots;
   std::string slotstats;
+  uint64_t total_key_num = 0;
+  uint64_t total_unexpected_key_num = 0;
   for (auto slot_range : slot_ranges) {
     for (int slot = slot_range.start; slot <= slot_range.end; ++slot) {
       if (checked_slots.test(slot)) {
@@ -2144,26 +2146,35 @@ std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
       }
 
       ++slot_count;
+      uint64_t key_num = 0, unexpected_key_num = 0;
+      if (slot_scan_infos_.slot_stats.find(slot) != slot_scan_infos_.slot_stats.end()) {
+        SlotStats ss = slot_scan_infos_.slot_stats[slot];
+        key_num = ss.n_key;
+        unexpected_key_num = ss.n_unexpected_key;
+      }
+      total_key_num += key_num;
+      total_unexpected_key_num += unexpected_key_num;
+
       slotstats.append(redis::MultiLen(6));
       slotstats.append(redis::SimpleString("slot"));
       slotstats.append(redis::Integer(slot));
-      if (slot_scan_infos_.slot_stats.find(slot) == slot_scan_infos_.slot_stats.end()) {
-        slotstats.append(redis::SimpleString("key_num"));
-        slotstats.append(redis::Integer(0));
-        slotstats.append(redis::SimpleString("unexpected_key_num"));
-        slotstats.append(redis::Integer(0));
-      } else {
-        SlotStats ss = slot_scan_infos_.slot_stats[slot];
-        slotstats.append(redis::SimpleString("key_num"));
-        slotstats.append(redis::Integer(ss.n_key));
-        slotstats.append(redis::SimpleString("unexpected_key_num"));
-        slotstats.append(redis::Integer(ss.n_unexpected_key));
-      }
+      slotstats.append(redis::SimpleString("key_num"));
+      slotstats.append(redis::Integer(key_num));
+      slotstats.append(redis::SimpleString("unexpected_key_num"));
+      slotstats.append(redis::Integer(unexpected_key_num));
     }
   }
 
-  output.append(redis::MultiLen(slot_count));
+  output.append(redis::MultiLen(++slot_count));
   output.append(slotstats);
+  // last scan timestamp, total key_num, total unexpected_key_num
+  output.append(redis::MultiLen(6));
+  output.append(redis::SimpleString("last_scan_timestamp"));
+  output.append(redis::Integer(slot_scan_infos_.last_scan_time_secs));
+  output.append(redis::SimpleString("total_key_num"));
+  output.append(redis::Integer(total_key_num));
+  output.append(redis::SimpleString("total_unexpected_key_num"));
+  output.append(redis::Integer(total_unexpected_key_num));
   return output;
 }
 

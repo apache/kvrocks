@@ -242,11 +242,7 @@ class CommandClusterX : public Commander {
       if (args_.size() != 3) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
-      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
-      if (!s.IsOK()) {
-        return s;
-      }
-      return Status::OK();
+      return CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
     }
 
     // CLUSTERX SLOTSIZE $SLOT_ID SCAN
@@ -319,21 +315,15 @@ class CommandClusterX : public Commander {
       }
     } else if (subcommand_ == "clearslot") {
       Status s = srv->cluster->ClearSlotRanges(slot_ranges_);
-      if (s.IsOK()) {
-        *output = redis::RESP_OK;
-      } else {
-        return s;
-      }
+      if (!s.IsOK()) return s;
+      *output = redis::RESP_OK;
     } else if (subcommand_ == "slotsize") {
       if (args_.size() == 3) {
         *output = srv->GetSlotStats(slot_ranges_);
       } else {
         Status s = srv->AsyncScanSlots(slot_ranges_);
-        if (s.IsOK()) {
-          *output = redis::RESP_OK;
-        } else {
-          return s;
-        }
+        if (!s.IsOK()) return s;
+        *output = redis::RESP_OK;
       }
     } else {
       return {Status::RedisExecErr, "Invalid clusterx command options"};

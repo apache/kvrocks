@@ -270,6 +270,8 @@ class Storage {
 
   [[nodiscard]] rocksdb::Status Compact(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice *begin,
                                         const rocksdb::Slice *end);
+  [[nodiscard]] rocksdb::Status FlushMemTable(rocksdb::ColumnFamilyHandle *cf_handle,
+                                              const rocksdb::FlushOptions &options);
   [[nodiscard]] StatusOr<int> IngestSST(const std::string &folder,
                                         const rocksdb::IngestExternalFileOptions &ingest_options);
 

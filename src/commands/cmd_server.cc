@@ -1493,6 +1493,40 @@ class CommandSST : public Commander {
   rocksdb::IngestExternalFileOptions ingest_options_;
 };
 
+// command format: flushmemtable [async]
+class CommandFlushMemTable : public Commander {
+ public:
+  Status Parse([[maybe_unused]] const std::vector<std::string> &args) override {
+    if (args.size() > 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    flush_options_.wait = true;
+    if (args.size() > 1) {
+      if (util::EqualICase(args[1], "async")) {
+        flush_options_.wait = false;
+      } else {
+        return {Status::RedisParseErr, "parameter must be 'ASYNC'"};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    const auto s = srv->storage->FlushMemTable(nullptr, flush_options_);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::RESP_OK;
+    info("FLUSHMEMTABLE is triggered and executed successfully");
+    return Status::OK();
+  }
+
+ private:
+  rocksdb::FlushOptions flush_options_;
+};
+
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
@@ -1535,5 +1569,6 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
                         MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1), )
+                        MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
+                        MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY), )
 }  // namespace redis

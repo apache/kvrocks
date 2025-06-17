@@ -866,14 +866,14 @@ Server::InfoEntries Server::GetRocksDBInfo() {
   uint64_t num_immutable_tables = 0, memtable_flush_pending = 0, compaction_pending = 0;
   uint64_t num_running_compaction = 0, num_live_versions = 0, num_super_version = 0, num_background_errors = 0;
 
-  db->GetAggregatedIntProperty("rocksdb.size-all-mem-tables", &memtable_sizes);
-  db->GetAggregatedIntProperty("rocksdb.cur-size-all-mem-tables", &cur_memtable_sizes);
-  db->GetAggregatedIntProperty("rocksdb.num-immutable-mem-table", &num_immutable_tables);
-  db->GetAggregatedIntProperty("rocksdb.mem-table-flush-pending", &memtable_flush_pending);
-  db->GetAggregatedIntProperty("rocksdb.current-super-version-number", &num_super_version);
-  db->GetAggregatedIntProperty("rocksdb.background-errors", &num_background_errors);
-  db->GetAggregatedIntProperty("rocksdb.compaction-pending", &compaction_pending);
-  db->GetAggregatedIntProperty("rocksdb.num-live-versions", &num_live_versions);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kSizeAllMemTables, &memtable_sizes);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kCurSizeAllMemTables, &cur_memtable_sizes);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kNumImmutableMemTable, &num_immutable_tables);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kMemTableFlushPending, &memtable_flush_pending);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kCurrentSuperVersionNumber, &num_super_version);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kBackgroundErrors, &num_background_errors);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kCompactionPending, &compaction_pending);
+  db->GetAggregatedIntProperty(rocksdb::DB::Properties::kNumLiveVersions, &num_live_versions);
 
   {
     // All column families share the same block cache, so it's good to count a single one.
@@ -1478,7 +1478,7 @@ Status Server::autoResizeBlockAndSST() {
   auto total_size = storage->GetTotalSize(kDefaultNamespace);
   uint64_t total_keys = 0, estimate_keys = 0;
   for (const auto &cf_handle : *storage->GetCFHandles()) {
-    storage->GetDB()->GetIntProperty(cf_handle, "rocksdb.estimate-num-keys", &estimate_keys);
+    storage->GetDB()->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateNumKeys, &estimate_keys);
     total_keys += estimate_keys;
   }
 

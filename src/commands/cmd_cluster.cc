@@ -253,11 +253,7 @@ class CommandClusterX : public Commander {
       if (args_.size() == 4 && !util::EqualICase(args_[3], "scan")) {
         return {Status::RedisParseErr, "Invalid slotsize options"};
       }
-      Status s = CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
-      if (!s.IsOK()) {
-        return s;
-      }
-      return Status::OK();
+      return CommandTable::ParseSlotRanges(args_[2], slot_ranges_);
     }
 
     return {Status::RedisParseErr,

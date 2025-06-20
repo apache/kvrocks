@@ -222,6 +222,7 @@ class Storage {
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
   rocksdb::Options InitRocksDBOptions();
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
+  Status SetOptionForAllColumnFamilies(const std::unordered_map<std::string, std::string> &options_map);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
   // The sequence_number will be pointed to the value of the sequence number in range of DB,

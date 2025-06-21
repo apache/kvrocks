@@ -601,3 +601,68 @@ func TestClusterReset(t *testing.T) {
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	})
 }
+
+func TestClusterSlotSize(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	nodeID := "07c37dfeb235213a872192d90877d0cd55635b91"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", nodeID, srv.Host(), srv.Port())
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+
+	slotKey := util.SlotTable[0]
+	require.NoError(t, rdb.Set(ctx, slotKey, 0, 0).Err())
+
+	require.ErrorContains(t, rdb.Do(ctx, "clusterx", "SLOTSIZE", "0-16384", "scan").Err(), "Invalid slot range")
+	require.Equal(t, "OK", rdb.Do(ctx, "clusterx", "SLOTSIZE", "0-16383", "scan").Val())
+
+	// wait for the scan to finish
+	require.Eventually(t, func() bool {
+		result, err := rdb.Do(ctx, "clusterx", "SLOTSIZE", "0-16383").Slice()
+		require.NoError(t, err)
+		require.Len(t, result, 16384)
+		require.Len(t, result[0], 8)
+		slotstat := result[0].([]interface{})
+		require.EqualValues(t, "slot", slotstat[0].(string))
+		require.EqualValues(t, 0, slotstat[1].(int64))
+		require.EqualValues(t, "key_num", slotstat[2].(string))
+		require.EqualValues(t, "unexpected_key_num", slotstat[4].(string))
+		require.EqualValues(t, 0, slotstat[5].(int64))
+		require.EqualValues(t, "last_scan_timestamp", slotstat[6].(string))
+
+		return slotstat[7].(int64) > 0 && slotstat[3].(int64) == 1
+	}, 3*time.Second, 100*time.Millisecond)
+}
+
+func TestClusterClearSlots(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv1.Close()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	nodeID1 := "07c37dfeb235213a872192d90877d0cd55635b91"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODEID", nodeID1).Err())
+
+	srv2 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv2.Close()
+	rdb2 := srv2.NewClient()
+	defer func() { require.NoError(t, rdb2.Close()) }()
+	nodeID2 := "07c37dfeb235213a872192d90877d0cd55635b92"
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODEID", nodeID2).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-8191\n", nodeID1, srv1.Host(), srv1.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master - 8192-16383\n", nodeID2, srv2.Host(), srv2.Port())
+	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+
+	require.ErrorContains(t, rdb1.Do(ctx, "clusterx", "CLEARSLOT", "0-8191").Err(), "cannot clear")
+	require.Equal(t, "OK", rdb1.Do(ctx, "clusterx", "CLEARSLOT", "8192-16383").Val())
+}

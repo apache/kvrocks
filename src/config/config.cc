@@ -292,7 +292,7 @@ Config::Config() {
       {"rocksdb.blob_garbage_collection_age_cutoff", false,
        new IntField(&rocks_db.blob_garbage_collection_age_cutoff, 25, 0, 100)},
       {"rocksdb.max_bytes_for_level_base", false,
-       new IntField(&rocks_db.max_bytes_for_level_base, 268435456, 0, INT_MAX)},
+       new UInt64Field(&rocks_db.max_bytes_for_level_base, 268435456ULL, 0ULL, UINT64_MAX)},
       {"rocksdb.max_bytes_for_level_multiplier", false,
        new IntField(&rocks_db.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes", false,

@@ -70,11 +70,11 @@ struct SlotStats {
   uint16_t slot_id = 0;
   uint64_t n_key = 0;
   uint64_t n_unexpected_key = 0;
+  // Last scan system clock in seconds
+  int64_t last_scan_time_secs = 0;
 };
 
 struct SlotScanInfo {
-  // Last scan system clock in seconds
-  int64_t last_scan_time_secs = 0;
   std::map<uint16_t, SlotStats> slot_stats;
   bool is_scanning = false;
   int scanning_slot_id = -1;

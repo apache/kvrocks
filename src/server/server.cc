@@ -2135,8 +2135,6 @@ std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   std::bitset<HASH_SLOTS_SIZE> checked_slots;
   std::string slotstats;
-  uint64_t total_key_num = 0;
-  uint64_t total_unexpected_key_num = 0;
   for (auto slot_range : slot_ranges) {
     for (int slot = slot_range.start; slot <= slot_range.end; ++slot) {
       if (checked_slots.test(slot)) {
@@ -2147,34 +2145,27 @@ std::string Server::GetSlotStats(const std::vector<SlotRange> &slot_ranges) {
 
       ++slot_count;
       uint64_t key_num = 0, unexpected_key_num = 0;
+      int64_t last_scan_time_secs = 0;
       if (slot_scan_infos_.slot_stats.find(slot) != slot_scan_infos_.slot_stats.end()) {
         SlotStats ss = slot_scan_infos_.slot_stats[slot];
         key_num = ss.n_key;
         unexpected_key_num = ss.n_unexpected_key;
+        last_scan_time_secs = ss.last_scan_time_secs;
       }
-      total_key_num += key_num;
-      total_unexpected_key_num += unexpected_key_num;
-
-      slotstats.append(redis::MultiLen(6));
+      slotstats.append(redis::MultiLen(8));
       slotstats.append(redis::SimpleString("slot"));
       slotstats.append(redis::Integer(slot));
       slotstats.append(redis::SimpleString("key_num"));
       slotstats.append(redis::Integer(key_num));
       slotstats.append(redis::SimpleString("unexpected_key_num"));
       slotstats.append(redis::Integer(unexpected_key_num));
+      slotstats.append(redis::SimpleString("last_scan_timestamp"));
+      slotstats.append(redis::Integer(last_scan_time_secs));
     }
   }
 
-  output.append(redis::MultiLen(++slot_count));
+  output.append(redis::MultiLen(slot_count));
   output.append(slotstats);
-  // last scan timestamp, total key_num, total unexpected_key_num
-  output.append(redis::MultiLen(6));
-  output.append(redis::SimpleString("last_scan_timestamp"));
-  output.append(redis::Integer(slot_scan_infos_.last_scan_time_secs));
-  output.append(redis::SimpleString("total_key_num"));
-  output.append(redis::Integer(total_key_num));
-  output.append(redis::SimpleString("total_unexpected_key_num"));
-  output.append(redis::Integer(total_unexpected_key_num));
   return output;
 }
 
@@ -2228,7 +2219,7 @@ Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
         if (unexpected_keys > 0) {
           error("[slotsize] Slot {} has {} unexpected key(s)", slot, unexpected_keys);
         }
-        slot_stats.emplace_back(SlotStats{static_cast<uint16_t>(slot), n_keys, unexpected_keys});
+        slot_stats.emplace_back(SlotStats{static_cast<uint16_t>(slot), n_keys, unexpected_keys, util::GetTimeStamp()});
         auto elapsed = util::GetTimeStampMS() - start_ts;
         info("[slotsize] Succeed to scan slot: {}, elapsed: {} ms, keys: {}, unexpected keys: {}", slot, elapsed,
              n_keys, unexpected_keys);
@@ -2240,7 +2231,6 @@ Status Server::AsyncScanSlots(const std::vector<SlotRange> &slot_ranges) {
     for (SlotStats ss : slot_stats) {
       slot_scan_infos_.slot_stats[ss.slot_id] = ss;
     }
-    slot_scan_infos_.last_scan_time_secs = util::GetTimeStamp();
     slot_scan_infos_.is_scanning = false;
     slot_scan_infos_.scanning_slot_id = -1;
   });

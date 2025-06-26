@@ -31,6 +31,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <shared_mutex>
 #include <string>
@@ -284,6 +285,7 @@ class Storage {
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
+  void SetSstFileDeleteRateBytesPerSecond(int64_t delete_rate);
   void CheckDBSizeLimit();
   bool ReachedDBSizeLimit() { return db_size_limit_reached_; }
   void SetDBSizeLimit(bool limit) { db_size_limit_reached_ = limit; }

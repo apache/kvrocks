@@ -302,6 +302,8 @@ Config::Config() {
       {"rocksdb.avoid_unnecessary_blocking_io", true, new YesNoField(&rocks_db.avoid_unnecessary_blocking_io, true)},
       {"rocksdb.partition_filters", true, new YesNoField(&rocks_db.partition_filters, true)},
       {"rocksdb.max_compaction_bytes", false, new Int64Field(&rocks_db.max_compaction_bytes, 0, 0, INT64_MAX)},
+      {"rocksdb.sst_file_delete_rate_bytes_per_sec", false,
+       new Int64Field(&rocks_db.sst_file_delete_rate_bytes_per_sec, 0, 0, INT64_MAX)},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db.write_options.sync, false)},
@@ -719,6 +721,12 @@ void Config::initFieldCallback() {
            return {Status::NotOK, errLevelCompactionDynamicLevelBytesNotSet};
          }
          return srv->storage->SetOptionForAllColumnFamilies(TrimRocksDbPrefix(k), v);
+       }},
+      {"rocksdb.sst_file_delete_rate_bytes_per_sec",
+       [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+         if (!srv) return Status::OK();
+         srv->storage->SetSstFileDeleteRateBytesPerSecond(rocks_db.sst_file_delete_rate_bytes_per_sec);
+         return Status::OK();
        }},
       {"rocksdb.max_open_files", set_db_option_cb},
       {"rocksdb.stats_dump_period_sec", set_db_option_cb},

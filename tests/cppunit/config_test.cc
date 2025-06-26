@@ -84,6 +84,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.level_compaction_dynamic_level_bytes", "yes"},
       {"rocksdb.max_background_jobs", "4"},
       {"rocksdb.compression_start_level", "2"},
+      {"rocksdb.sst_file_delete_rate_bytes_per_sec", "0"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

@@ -194,7 +194,8 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_total_wal_size = static_cast<uint64_t>(config_->rocks_db.max_total_wal_size * MiB);
   options.listeners.emplace_back(new EventListener(this));
   options.dump_malloc_stats = config_->rocks_db.dump_malloc_stats;
-  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
+  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(
+      rocksdb::Env::Default(), nullptr, "", config_->rocks_db.sst_file_delete_rate_bytes_per_sec));
   options.sst_file_manager = sst_file_manager_;
   int64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
@@ -920,6 +921,10 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   }
 
   return total_size;
+}
+
+void Storage::SetSstFileDeleteRateBytesPerSecond(int64_t delete_rate) {
+  sst_file_manager_->SetDeleteRateBytesPerSecond(delete_rate);
 }
 
 void Storage::CheckDBSizeLimit() {

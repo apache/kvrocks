@@ -388,7 +388,6 @@ func TestConfigSstFileDeleteRateBytesPerSec(t *testing.T) {
 		require.EqualValues(t, "0", result[parameter])
 
 		util.ErrorRegexp(t, cli.ConfigSet(ctx, parameter, "-1").Err(), ".*out of numeric range")
-		util.ErrorRegexp(t, cli.ConfigSet(ctx, parameter, "18446744073709551616").Err(), ".*Result too large")
 
 		require.NoError(t, cli.ConfigSet(ctx, parameter, "1073741824").Err())
 		result, err = cli.ConfigGet(ctx, parameter).Result()

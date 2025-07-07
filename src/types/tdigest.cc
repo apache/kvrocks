@@ -421,6 +421,33 @@ StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>&
 
   return digest.DumpCentroids();
 }
+
+StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<double>& buffer, const std::vector<CentroidsWithDelta>& centroids_lists, uint64_t delta) {
+  if (centroids_lists.empty()) {
+    return Status{Status::InvalidArgument, "centroids_list is empty"};
+  }
+  if (centroids_lists.size() == 1 && delta == centroids_lists.front().delta) {
+    return TDigestMerge(buffer, centroids_lists.front());
+  }
+
+  TDigest digest{delta};
+  digest.Reset(centroids_lists.front());
+
+  std::vector<TDigest> others;
+  others.reserve(centroids_lists.size() - 1);
+
+  for (size_t i = 1; i < centroids_lists.size(); ++i) {
+    TDigest d{centroids_lists[i].delta};
+    digest.Reset(centroids_lists[i]);
+    others.emplace_back(std::move(d));
+  }
+
+  digest.Add(buffer);
+  digest.Merge(others);
+
+  return digest.DumpCentroids();
+}
+
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<double>& buffer, const CentroidsWithDelta& centroid_list) {
   TDigest digest{centroid_list.delta};
   digest.Reset(centroid_list);

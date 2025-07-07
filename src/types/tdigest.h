@@ -51,6 +51,7 @@ struct CentroidsWithDelta {
 };
 
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>& centroids_list);
+StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<double>& buffer, const std::vector<CentroidsWithDelta>& centroids_lists, uint64_t delta);
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<double>& buffer, const CentroidsWithDelta& centroid_list);
 
 /**

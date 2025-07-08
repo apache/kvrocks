@@ -23,6 +23,7 @@
 
 #include "command_parser.h"
 #include "commander.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
@@ -32,6 +33,7 @@
 namespace redis {
 namespace {
 constexpr auto kCompressionArg = "compression";
+constexpr auto kOverrideArg = "override";
 
 constexpr auto kInfoCompression = "Compression";
 constexpr auto kInfoCapacity = "Capacity";
@@ -281,6 +283,77 @@ class CommandTDigestQuantile : public Commander {
   std::string key_name_;
   std::vector<double> quantiles_;
 };
+
+class CommandTDigestMerge : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    dest_key_ = GET_OR_RET(parser.TakeStr());
+    auto numkeys = parser.TakeInt();
+    if (!numkeys) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    if (args.size() < 3 + *numkeys) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    for (auto i = 3; i < 3 + *numkeys; i++) {
+      source_keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    if (!parser.Good()) {
+      return Status::OK();
+    }
+
+    auto keyword = GET_OR_RET(parser.TakeStr());
+    if (keyword == kCompressionArg) {
+      if (!parser.Good()) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+      auto compression = GET_OR_RET(parser.TakeInt<uint32_t>());
+      if (compression <= 0 || compression > kTDigestMaxCompression) {
+        return {Status::RedisParseErr, errCompressionOutOfRange};
+      }
+      options_.compression = compression;
+    } else if (keyword == kOverrideArg) {
+      options_.override = true;
+    } else {
+      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+    }
+
+    if (!parser.Good()) {
+      return Status::OK();
+    }
+
+    if (options_.override) {
+      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+    }
+
+    if (GET_OR_RET(parser.TakeStr()) != kOverrideArg) {
+      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+    }
+
+    options_.override = true;
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    auto s = tdigest.Merge(ctx, dest_key_, source_keys_, options_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::RESP_OK;
+    return Status::OK();
+  }
+
+ private:
+  std::string dest_key_;
+  std::vector<Slice> source_keys_;
+  TDigestMergeOptions options_;
+};
+
 REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),

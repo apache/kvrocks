@@ -275,6 +275,7 @@ class Storage {
                                               const rocksdb::FlushOptions &options);
   [[nodiscard]] StatusOr<int> IngestSST(const std::string &folder,
                                         const rocksdb::IngestExternalFileOptions &ingest_options);
+  void FlushBlockCache();
 
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }

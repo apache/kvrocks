@@ -837,6 +837,10 @@ rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
   return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
+void Storage::FlushBlockCache() {
+  shared_block_cache_->EraseUnRefEntries();
+}
+
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {
   return applyWriteBatch(default_write_opts_, batch);
 }

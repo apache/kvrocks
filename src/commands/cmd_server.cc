@@ -1527,6 +1527,18 @@ class CommandFlushMemTable : public Commander {
   rocksdb::FlushOptions flush_options_;
 };
 
+class CommandFlushBlockCache : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    srv->storage->FlushBlockCache();
+
+    *output = redis::RESP_OK;
+    info("FLUSHBLOCKCACHE is triggered and executed successfully");
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
                         MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
@@ -1570,5 +1582,6 @@ REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only o
                         MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
                         MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
-                        MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY), )
+                        MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
+                        MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
 }  // namespace redis

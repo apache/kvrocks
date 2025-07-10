@@ -47,7 +47,7 @@ func TestFlushBlockCache(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("flushblockcache", func(t *testing.T) {
-		_, err := rdb.Do(ctx, "SET", "A", "ABCDE").Result()
+		_, err := rdb.Do(ctx, "SET", "A", "KVROCKS").Result()
 		require.NoError(t, err)
 		_, err = rdb.Do(ctx, "FLUSHMEMTABLE").Result()
 		require.NoError(t, err)
@@ -58,7 +58,9 @@ func TestFlushBlockCache(t *testing.T) {
 		_, err = rdb.Do(ctx, "FLUSHBLOCKCACHE").Result()
 		require.NoError(t, err)
 		cacheSize, err := getBlockCacheSize(rdb)
+		require.NoError(t, err)
 		require.Less(t, cacheSize, initCacheSize)
+		require.Equal(t, "KVROCKS", rdb.Do(ctx, "GET", "A").Val())
 	})
 }
 

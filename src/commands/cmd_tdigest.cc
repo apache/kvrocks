@@ -18,11 +18,13 @@
  *
  */
 
+#include <cmath>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include "command_parser.h"
 #include "commander.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -293,12 +295,14 @@ class CommandTDigestMerge : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
-    if (args.size() < 3 + *numkeys) {
+    if (static_cast<int64_t>(args.size()) < (3 + *numkeys)) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    for (auto i = 3; i < 3 + *numkeys; i++) {
-      source_keys_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    for (auto i = 3; i < (3 + *numkeys); i++) {
+      auto src_digest = GET_OR_RET(parser.TakeStr());
+      warn("read source digest: {}", src_digest);
+      source_keys_.emplace_back(src_digest);
     }
 
     if (!parser.Good()) {
@@ -350,7 +354,7 @@ class CommandTDigestMerge : public Commander {
 
  private:
   std::string dest_key_;
-  std::vector<Slice> source_keys_;
+  std::vector<std::string> source_keys_;
   TDigestMergeOptions options_;
 };
 
@@ -360,5 +364,7 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", 1, 1, 1)
+                      );
 }  // namespace redis

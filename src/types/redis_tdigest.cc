@@ -287,8 +287,8 @@ rocksdb::Status TDigest::Reset(engine::Context& ctx, const Slice& digest_name) {
   return status;
 }
 
-rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<Slice>& source_digests,
-                               const TDigestMergeOptions& options) {
+rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
+                               const std::vector<std::string>& source_digests, const TDigestMergeOptions& options) {
   if (options.compression != 0 && options.compression > kTDigestMaxCompression) {
     return rocksdb::Status::InvalidArgument(fmt::format("compression should be less than {}", kTDigestMaxCompression));
   }
@@ -301,25 +301,44 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest, c
     return status;
   } else if (status.ok()) {
     dest_digest_existed = true;
-  } else if (!options.override) {
-    return rocksdb::Status::InvalidArgument(fmt::format("target tdigest {} existed", dest_digest.ToString()));
+    if (!options.override) {
+      return rocksdb::Status::InvalidArgument(fmt::format("target tdigest {} existed", dest_digest.ToString()));
+    }
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTDigest);
+  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+    return status;
   }
 
   uint32_t compression = 0;
-  uint32_t total_buffer_size = 0;
   uint64_t total_observations = 0;
   std::vector<TDigestMetadata> source_metadatas;
   source_metadatas.reserve(source_digests.size());
   for (const auto& tdigest : source_digests) {
     TDigestMetadata metadata;
-    if (auto status = getMetaDataByNsKey(ctx, AppendNamespacePrefix(tdigest), &metadata); !status.ok()) {
+    auto source_ns_key = AppendNamespacePrefix(tdigest);
+    if (auto status = getMetaDataByNsKey(ctx, source_ns_key, &metadata); !status.ok()) {
       if (status.IsNotFound()) {
-        return rocksdb::Status::InvalidArgument(fmt::format("source tdigest {} not found", tdigest.ToString()));
+        return rocksdb::Status::InvalidArgument(fmt::format("source tdigest {} not found", tdigest));
       }
       return status;
     }
+
+    if (metadata.unmerged_nodes > 0) {
+      if (auto status = mergeCurrentBuffer(ctx, source_ns_key, batch, &metadata); !status.ok()) {
+        return status;
+      }
+
+      std::string metadata_bytes;
+      metadata.Encode(&metadata_bytes);
+      if (auto status = batch->Put(metadata_cf_handle_, source_ns_key, metadata_bytes); !status.ok()) {
+        return status;
+      }
+    }
+
     source_metadatas.push_back(metadata);
-    total_buffer_size += metadata.unmerged_nodes;
     total_observations += metadata.total_observations;
     compression = std::max(compression, metadata.compression);
   }
@@ -330,9 +349,10 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest, c
 
   std::vector<CentroidsWithDelta> source_centroids_data;
   source_centroids_data.reserve(source_metadatas.size());
-  std::vector<double> total_buffer;
-  total_buffer.reserve(total_buffer_size);
   for (const auto& metadata : source_metadatas) {
+    warn("merging tdigest with compression {}, total weight {}, min {}, max {}, unmerged nodes {}, merged nodes {}",
+         metadata.compression, metadata.total_weight, metadata.minimum, metadata.maximum, metadata.unmerged_nodes,
+         metadata.merged_nodes);
     std::vector<Centroid> centroids;
     std::vector<double> buffer;
     if (auto status = dumpCentroidsAndBuffer(ctx, AppendNamespacePrefix(source_digests[0]), metadata, &centroids,
@@ -349,19 +369,11 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest, c
           .total_weight = static_cast<double>(metadata.merged_weight),
       });
     }
-
-    std::copy(buffer.cbegin(), buffer.cend(), std::back_inserter(total_buffer));
   }
 
-  auto merged_data = TDigestMerge(total_buffer, source_centroids_data, compression);
+  auto merged_data = TDigestMerge(source_centroids_data, compression);
   if (!merged_data.IsOK()) {
     return rocksdb::Status::InvalidArgument(merged_data.Msg());
-  }
-
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisTDigest);
-  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
-    return status;
   }
 
   if (dest_digest_existed) {

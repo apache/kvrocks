@@ -75,7 +75,7 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status Reset(engine::Context& ctx, const Slice& digest_name);
 
-  rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<Slice>& source_digests,
+  rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<std::string>& source_digests,
                         const TDigestMergeOptions& options);
 
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);

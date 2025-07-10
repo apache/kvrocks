@@ -208,7 +208,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->rocks_db.delayed_write_rate);
   options.compaction_readahead_size = static_cast<size_t>(config_->rocks_db.compaction_readahead_size);
-  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger;
+  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger == 0
+                                               ? config_->rocks_db.level0_stop_writes_trigger
+                                               : config_->rocks_db.level0_slowdown_writes_trigger;
   options.level0_stop_writes_trigger = config_->rocks_db.level0_stop_writes_trigger;
   options.level0_file_num_compaction_trigger = config_->rocks_db.level0_file_num_compaction_trigger;
   options.max_bytes_for_level_base = config_->rocks_db.max_bytes_for_level_base;
@@ -224,8 +226,12 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 }
 
 Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std::string &value) {
+  return SetOptionForAllColumnFamilies({{key, value}});
+}
+
+Status Storage::SetOptionForAllColumnFamilies(const std::unordered_map<std::string, std::string> &options_map) {
   for (auto &cf_handle : cf_handles_) {
-    auto s = db_->SetOptions(cf_handle, {{key, value}});
+    auto s = db_->SetOptions(cf_handle, options_map);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
   return Status::OK();

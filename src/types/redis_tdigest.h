@@ -119,7 +119,8 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status mergeCurrentBuffer(engine::Context& ctx, const std::string& ns_key,
                                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,
-                                     const std::vector<double>* additional_buffer = nullptr);
+                                     const std::vector<double>* additional_buffer = nullptr,
+                                     std::vector<Centroid>* dump_centroids = nullptr);
   std::string internalBufferKey(const std::string& ns_key, const TDigestMetadata& metadata) const;
   std::string internalKeyFromCentroid(const std::string& ns_key, const TDigestMetadata& metadata,
                                       const Centroid& centroid, uint32_t seq) const;

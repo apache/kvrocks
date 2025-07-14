@@ -24,7 +24,7 @@
 
 #include "command_parser.h"
 #include "commander.h"
-#include "logging.h"
+#include "commands/error_constants.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -292,7 +292,11 @@ class CommandTDigestMerge : public Commander {
     dest_key_ = GET_OR_RET(parser.TakeStr());
     auto numkeys = parser.TakeInt();
     if (!numkeys) {
-      return {Status::RedisParseErr, errValueNotInteger};
+      return {Status::RedisParseErr, errParsingNumkeys};
+    }
+
+    if (*numkeys <= 0) {
+      return {Status::RedisParseErr, errCompressionMustBePositive};
     }
 
     if (static_cast<int64_t>(args.size()) < (3 + *numkeys)) {
@@ -301,7 +305,6 @@ class CommandTDigestMerge : public Commander {
 
     for (auto i = 3; i < (3 + *numkeys); i++) {
       auto src_digest = GET_OR_RET(parser.TakeStr());
-      warn("read source digest: {}", src_digest);
       source_keys_.emplace_back(src_digest);
     }
 
@@ -322,7 +325,7 @@ class CommandTDigestMerge : public Commander {
     } else if (keyword == kOverrideArg) {
       options_.override = true;
     } else {
-      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+      return {Status::RedisParseErr, errWrongKeyword};
     }
 
     if (!parser.Good()) {
@@ -330,11 +333,11 @@ class CommandTDigestMerge : public Commander {
     }
 
     if (options_.override) {
-      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+      return {Status::RedisParseErr, errWrongKeyword};
     }
 
     if (GET_OR_RET(parser.TakeStr()) != kOverrideArg) {
-      return {Status::RedisParseErr, fmt::format("unknown option: {}", keyword)};
+      return {Status::RedisParseErr, errWrongKeyword};
     }
 
     options_.override = true;
@@ -346,7 +349,7 @@ class CommandTDigestMerge : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     auto s = tdigest.Merge(ctx, dest_key_, source_keys_, options_);
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return {Status::RedisExecErr, s.IsNotFound() ? errKeyNotFound : s.ToString()};
     }
     *output = redis::RESP_OK;
     return Status::OK();
@@ -365,6 +368,5 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", 1, 1, 1)
-                      );
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", 1, 1, 1));
 }  // namespace redis

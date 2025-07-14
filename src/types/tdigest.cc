@@ -28,16 +28,12 @@ refer to https://github.com/apache/arrow/blob/27bbd593625122a4a25d9471c8aaf5df54
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <functional>
 #include <iterator>
 #include <queue>
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include "common/status.h"
-#include "logging.h"
-#include "range/v3/range/conversion.hpp"
-#include "range/v3/view/join.hpp"
 
 namespace {
 // scale function K1
@@ -416,14 +412,14 @@ StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>&
   }
 
   TDigest digest{delta};
-  digest.Reset(centroids_list.front());
-
   std::vector<TDigest> others;
-  others.reserve(centroids_list.size() - 1);
-
-  for (size_t i = 1; i < centroids_list.size(); ++i) {
-    TDigest d{centroids_list[i].delta};
-    digest.Reset(centroids_list[i]);
+  others.reserve(centroids_list.size());
+  for (const auto& centroids : centroids_list) {
+    if (centroids.centroids.empty()) {
+      continue;  // skip empty centroids
+    }
+    TDigest d{centroids.delta};
+    d.Reset(centroids);
     others.emplace_back(std::move(d));
   }
 
@@ -434,25 +430,20 @@ StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>&
 
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<double>& buffer,
                                           const std::vector<CentroidsWithDelta>& centroids_lists, uint64_t delta) {
-  warn("TDigestMerge: merging {} centroids lists with {} items", centroids_lists.size(), buffer.size());
   TDigest digest{delta};
-  warn("merge buffer is {}",(buffer | ranges::views::transform([](double v) { return fmt::format("{:.2f}", v); }) |
-                                 ranges::views::join(", ") | ranges::to<std::string>()));
-                                 
-  digest.Reset(CentroidsWithDelta{});                                 
+
+  digest.Reset(CentroidsWithDelta{});
   digest.Add(buffer);
 
   std::vector<TDigest> others;
   others.reserve(centroids_lists.size());
 
-  for (size_t i = 1; i < centroids_lists.size(); ++i) {
-    auto& centroids = centroids_lists[i];
-    warn("TDigestMerge: merging centroids list {} with {} items", i, centroids.centroids.size());
+  for (const auto& centroids : centroids_lists) {
     if (centroids.centroids.empty()) {
       continue;  // skip empty centroids
     }
     TDigest d{centroids.delta};
-    digest.Reset(centroids);
+    d.Reset(centroids);
     others.emplace_back(std::move(d));
   }
   digest.Merge(others);

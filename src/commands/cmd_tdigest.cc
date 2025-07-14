@@ -368,6 +368,11 @@ class CommandTDigestMerge : public Commander {
   TDigestMergeOptions options_;
 };
 
+std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
+  auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
+  return {{1}, {3, 2 + numkeys, 1}};
+}
+
 REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
@@ -375,5 +380,5 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
 }  // namespace redis

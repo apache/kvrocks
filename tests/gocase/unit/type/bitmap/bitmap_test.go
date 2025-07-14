@@ -74,7 +74,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 	for _, value := range values {
 		buf := bytes.NewBuffer([]byte{})
 		for _, v := range value {
-			buf.WriteString(fmt.Sprintf("%08b", v))
+			_, _ = fmt.Fprintf(buf, "%08b", v)
 		}
 		tmp := buf.String() + strings.Repeat("0", maxlen-len(buf.String()))
 		binaryArray = append(binaryArray, tmp)

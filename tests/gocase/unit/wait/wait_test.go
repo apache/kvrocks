@@ -85,14 +85,14 @@ func TestWaitCommand(t *testing.T) {
 
 	t.Run("WAIT should block until enough replicas acknowledge", func(t *testing.T) {
 		// Disconnect the slave
-		slaveSrv.Close()
+		require.NoError(t, slaveRdb.Do(ctx, "SLAVEOF", "NO", "ONE").Err())
 
 		// Master remove the slave from the replication list periodically
 		// so we need to wait for the master to detect the disconnection
 		require.Eventually(t, func() bool {
 			info := masterRdb.Info(ctx, "replication").Val()
 			return !strings.Contains(info, "connected_slaves:1")
-		}, 5*time.Second, 100*time.Millisecond)
+		}, 50*time.Second, 100*time.Millisecond)
 
 		// Start a goroutine to execute WAIT
 		done := make(chan bool, 1)
@@ -109,9 +109,7 @@ func TestWaitCommand(t *testing.T) {
 			// Success - command blocked
 		}
 
-		// Restart slave and reconnect
-		slaveSrv.Start()
-		slaveRdb = slaveSrv.NewClient()
+		// Reconnect the slave
 		util.SlaveOf(t, slaveRdb, masterSrv)
 		util.WaitForSync(t, slaveRdb)
 

@@ -303,7 +303,7 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
   } else if (status.ok()) {
     dest_digest_existed = true;
     if (!options.override) {
-      return rocksdb::Status::InvalidArgument(fmt::format("{}: {}", errKeyNotFound, dest_digest.ToString()));
+      return rocksdb::Status::InvalidArgument(fmt::format("{}: {}", errKeyAlreadyExists, dest_digest.ToString()));
     }
   }
 
@@ -322,7 +322,7 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
     auto source_ns_key = AppendNamespacePrefix(tdigest);
     if (auto status = getMetaDataByNsKey(ctx, source_ns_key, &metadata); !status.ok()) {
       if (status.IsNotFound()) {
-        return rocksdb::Status::InvalidArgument(fmt::format("source tdigest {} not found", tdigest));
+        return rocksdb::Status::InvalidArgument(fmt::format("{}: {}", errKeyNotFound, tdigest));
       }
       return status;
     }
@@ -443,14 +443,14 @@ rocksdb::Status TDigest::mergeCurrentBuffer(engine::Context& ctx, const std::str
     return status;
   }
 
-  if (dump_centroids != nullptr) {
-    *dump_centroids = std::move(merged_centroids->centroids);
-  }
-
   metadata->merge_times++;
   metadata->merged_nodes = merged_centroids->centroids.size();
   metadata->unmerged_nodes = 0;
   metadata->merged_weight = static_cast<uint64_t>(merged_centroids->total_weight);
+
+  if (dump_centroids != nullptr) {
+    *dump_centroids = std::move(merged_centroids->centroids);
+  }
 
   return rocksdb::Status::OK();
 }

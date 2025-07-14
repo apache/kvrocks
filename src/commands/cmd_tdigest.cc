@@ -317,11 +317,14 @@ class CommandTDigestMerge : public Commander {
       if (!parser.Good()) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
-      auto compression = GET_OR_RET(parser.TakeInt<uint32_t>());
-      if (compression <= 0 || compression > kTDigestMaxCompression) {
+      auto compression = parser.TakeInt<uint32_t>();
+      if (!compression) {
+        return {Status::RedisParseErr, errParseCompression};
+      }
+      if (*compression <= 0 || *compression > kTDigestMaxCompression) {
         return {Status::RedisParseErr, errCompressionOutOfRange};
       }
-      options_.compression = compression;
+      options_.compression = *compression;
     } else if (keyword == kOverrideArg) {
       options_.override = true;
     } else {
@@ -341,6 +344,10 @@ class CommandTDigestMerge : public Commander {
     }
 
     options_.override = true;
+
+    if (parser.Good()) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
 
     return Status::OK();
   }

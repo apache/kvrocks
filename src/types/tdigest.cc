@@ -400,7 +400,7 @@ void TDigest::Add(const std::vector<double>& items) { impl_.MergeInput(items); }
 
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>& centroids_list, uint64_t delta) {
   if (centroids_list.empty()) {
-    return Status{Status::InvalidArgument, "centroids_list is empty"};
+    return CentroidsWithDelta{.delta = delta};
   }
   if (centroids_list.size() == 1) {
     if (centroids_list.front().delta == delta) {

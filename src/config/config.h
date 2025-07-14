@@ -123,6 +123,7 @@ struct Config {
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
+  bool enable_blob_cache = false;
   int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
@@ -200,10 +201,10 @@ struct Config {
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;
-    int row_cache_size;
     int max_open_files;
     int write_buffer_size;
     int max_write_buffer_number;
+    int min_write_buffer_number_to_merge;
     int max_background_compactions;
     int max_background_flushes;
     int max_subcompactions;
@@ -229,7 +230,7 @@ struct Config {
     int blob_file_size;
     bool enable_blob_garbage_collection;
     int blob_garbage_collection_age_cutoff;
-    int max_bytes_for_level_base;
+    uint64_t max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
     int max_background_jobs;
@@ -237,6 +238,7 @@ struct Config {
     bool avoid_unnecessary_blocking_io = true;
     bool partition_filters;
     int64_t max_compaction_bytes;
+    int64_t sst_file_delete_rate_bytes_per_sec = 0;
 
     struct WriteOptions {
       bool sync;
@@ -278,6 +280,7 @@ struct Config {
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
   std::string histogram_bucket_boundaries_str_;
+  std::set<std::string> deprecated_fields_;
 
   void initFieldValidator();
   void initFieldCallback();

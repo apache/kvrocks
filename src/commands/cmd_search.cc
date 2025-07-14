@@ -386,6 +386,11 @@ static StatusOr<std::unique_ptr<kqir::Node>> ParseRediSearchQuery(const std::vec
 
         param_map.emplace(key, val);
       }
+    } else if (parser.EatEqICase("DIALECT")) {
+      auto ver = GET_OR_RET(parser.TakeInt<size_t>());
+      if (ver != 2) {
+        return {Status::NotOK, "only DIALECT 2 is supported currently"};
+      }
     } else {
       return parser.InvalidSyntax();
     }

@@ -1104,7 +1104,7 @@ class CommandZMScore : public Commander {
 
     std::vector<std::string> values;
     if (s.IsNotFound()) {
-      values.resize(members.size(), "");
+      values.resize(members.size(), conn->NilString());
     } else {
       for (const auto &member : members) {
         auto iter = mscores.find(member.ToString());

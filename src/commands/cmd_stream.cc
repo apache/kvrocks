@@ -673,7 +673,7 @@ class CommandXInfo : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto val = util::ToLower(args[1]);
-    if (val == "stream" && args.size() >= 2) {
+    if (val == "stream" && args.size() >= 3) {
       subcommand_ = "stream";
 
       if (args.size() > 3 && util::ToLower(args[3]) == "full") {

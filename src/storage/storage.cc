@@ -66,9 +66,6 @@ constexpr bool kRocksdbCacheStrictCapacityLimit = false;
 // used as the default argument for `high_pri_pool_ratio` in creating block cache.
 constexpr double kRocksdbLRUBlockCacheHighPriPoolRatio = 0.75;
 
-// used as the default argument for `high_pri_pool_ratio` in creating row cache.
-constexpr double kRocksdbLRURowCacheHighPriPoolRatio = 0.5;
-
 // used in creating rocksdb::HyperClockCache, set`estimated_entry_charge` to 0 means let rocksdb dynamically and
 // automatically adjust the table size for the cache.
 constexpr size_t kRockdbHCCAutoAdjustCharge = 0;
@@ -105,8 +102,8 @@ void Storage::CloseDB() {
 
   db_closing_ = true;
   db_->SyncWAL();
-  rocksdb::CancelAllBackgroundWork(db_.get(), true);
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
+  db_->Close();
   db_ = nullptr;
 }
 
@@ -149,6 +146,7 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
 
 void Storage::SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options) {
   cf_options->enable_blob_files = config_->rocks_db.enable_blob_files;
+  cf_options->blob_cache = config_->enable_blob_cache ? shared_block_cache_ : nullptr;
   cf_options->min_blob_size = config_->rocks_db.min_blob_size;
   cf_options->blob_file_size = config_->rocks_db.blob_file_size;
   cf_options->blob_compression_type = config_->rocks_db.compression;
@@ -172,7 +170,7 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_background_flushes = config_->rocks_db.max_background_flushes;
   options.max_background_compactions = config_->rocks_db.max_background_compactions;
   options.max_write_buffer_number = config_->rocks_db.max_write_buffer_number;
-  options.min_write_buffer_number_to_merge = 2;
+  options.min_write_buffer_number_to_merge = config_->rocks_db.min_write_buffer_number_to_merge;
   options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = KVROCKS_MAX_LSM_LEVEL;
   options.compression_opts.level = config_->rocks_db.compression_level;
@@ -186,11 +184,6 @@ rocksdb::Options Storage::InitRocksDBOptions() {
     }
   }
 
-  if (config_->rocks_db.row_cache_size) {
-    options.row_cache = rocksdb::NewLRUCache(config_->rocks_db.row_cache_size * MiB, kRocksdbLRUAutoAdjustShardBits,
-                                             kRocksdbCacheStrictCapacityLimit, kRocksdbLRURowCacheHighPriPoolRatio);
-  }
-
   options.enable_pipelined_write = config_->rocks_db.enable_pipelined_write;
   options.target_file_size_base = config_->rocks_db.target_file_size_base * MiB;
   options.max_manifest_file_size = 64 * MiB;
@@ -201,7 +194,8 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_total_wal_size = static_cast<uint64_t>(config_->rocks_db.max_total_wal_size * MiB);
   options.listeners.emplace_back(new EventListener(this));
   options.dump_malloc_stats = config_->rocks_db.dump_malloc_stats;
-  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
+  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(
+      rocksdb::Env::Default(), nullptr, "", config_->rocks_db.sst_file_delete_rate_bytes_per_sec));
   options.sst_file_manager = sst_file_manager_;
   int64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
@@ -214,7 +208,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->rocks_db.delayed_write_rate);
   options.compaction_readahead_size = static_cast<size_t>(config_->rocks_db.compaction_readahead_size);
-  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger;
+  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger == 0
+                                               ? config_->rocks_db.level0_stop_writes_trigger
+                                               : config_->rocks_db.level0_slowdown_writes_trigger;
   options.level0_stop_writes_trigger = config_->rocks_db.level0_stop_writes_trigger;
   options.level0_file_num_compaction_trigger = config_->rocks_db.level0_file_num_compaction_trigger;
   options.max_bytes_for_level_base = config_->rocks_db.max_bytes_for_level_base;
@@ -230,8 +226,12 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 }
 
 Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std::string &value) {
+  return SetOptionForAllColumnFamilies({{key, value}});
+}
+
+Status Storage::SetOptionForAllColumnFamilies(const std::unordered_map<std::string, std::string> &options_map) {
   for (auto &cf_handle : cf_handles_) {
-    auto s = db_->SetOptions(cf_handle, {{key, value}});
+    auto s = db_->SetOptions(cf_handle, options_map);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
   return Status::OK();
@@ -708,6 +708,11 @@ rocksdb::Status Storage::Write(engine::Context &ctx, const rocksdb::WriteOptions
 
 rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                    rocksdb::WriteBatch *updates) {
+  // No point trying to commit an empty write batch: in fact this will fail on read-only DBs
+  // even if the write batch is empty.
+  if (updates->Count() == 0) {
+    return rocksdb::Status::OK();
+  }
   // Put replication id logdata at the end of `updates`.
   if (replid_.length() == kReplIdLength) {
     updates->PutLogData(ServerLogData(kReplIdLog, replid_).Encode());
@@ -838,6 +843,8 @@ rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
   return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
+void Storage::FlushBlockCache() { shared_block_cache_->EraseUnRefEntries(); }
+
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {
   return applyWriteBatch(default_write_opts_, batch);
 }
@@ -879,7 +886,9 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(ColumnFamilyID id) { return cf
 
 rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
-  compact_opts.change_level = true;
+  // See https://github.com/facebook/rocksdb/issues/13671
+  // change_level doesn't work well with level_compaction_dynamic_level_bytes
+  compact_opts.change_level = !config_->rocks_db.level_compaction_dynamic_level_bytes;
   // For the manual compaction, we would like to force the bottommost level to be compacted.
   // Or it may use the trivial mode and some expired key-values were still exist in the bottommost level.
   compact_opts.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForceOptimized;
@@ -889,6 +898,11 @@ rocksdb::Status Storage::Compact(rocksdb::ColumnFamilyHandle *cf, const Slice *b
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status Storage::FlushMemTable(rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::FlushOptions &options) {
+  const auto &cf_handles = cf_handle ? std::vector<rocksdb::ColumnFamilyHandle *>{cf_handle} : cf_handles_;
+  return db_->Flush(options, cf_handles);
 }
 
 uint64_t Storage::GetTotalSize(const std::string &ns) {
@@ -915,6 +929,10 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   }
 
   return total_size;
+}
+
+void Storage::SetSstFileDeleteRateBytesPerSecond(int64_t delete_rate) {
+  sst_file_manager_->SetDeleteRateBytesPerSecond(delete_rate);
 }
 
 void Storage::CheckDBSizeLimit() {

@@ -88,7 +88,7 @@ zlib/libpng licenses
 The following components are provided under the zlib/libpng License. See project link for details.
 The text of each license is also included in licenses/LICENSE-[project].txt
 
-* zlib(https://github.com/madler/zlib)
+* zlib-ng(https://github.com/zlib-ng/zlib-ng)
 
 ================================================================
 Public Domain

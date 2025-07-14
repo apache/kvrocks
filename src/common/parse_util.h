@@ -73,7 +73,7 @@ using NumericRange = std::tuple<T, T>;
 // this overload accepts a range {min, max},
 // integer out of the range will trigger an error status
 template <typename T = long long>  // NOLINT
-StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 0) {
+StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 10) {
   auto res = ParseInt<T>(v, base);
 
   if (!res) return res;

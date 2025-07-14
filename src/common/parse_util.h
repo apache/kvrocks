@@ -89,7 +89,7 @@ StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 10) {
 StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 
 // we cannot use std::from_chars for floating-point numbers,
-// since it is available since gcc 11 and clang 20.
+// since it is available since gcc/libstdc++ 11 and libc++ 20.
 template <typename>
 struct ParseFloatFunc;
 

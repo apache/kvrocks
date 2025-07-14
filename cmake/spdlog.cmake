@@ -19,13 +19,11 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(glog
-  google/glog v0.7.1
-  MD5=fa30180d4284c454bdd324ad3baf7f5f
+FetchContent_DeclareGitHubWithMirror(spdlog
+  gabime/spdlog v1.15.3
+  MD5=f00dfa11fd9ee2f9b54d0315f4590e6b
 )
 
-FetchContent_MakeAvailableWithArgs(glog
-  WITH_GFLAGS=OFF
-  WITH_GTEST=OFF
-  BUILD_SHARED_LIBS=OFF
+FetchContent_MakeAvailableWithArgs(spdlog
+  SPDLOG_FMT_EXTERNAL=ON
 )

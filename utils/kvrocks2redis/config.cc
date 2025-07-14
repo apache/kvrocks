@@ -31,11 +31,14 @@
 
 #include "config/config.h"
 #include "config/config_util.h"
+#include "spdlog/common.h"
 #include "string_util.h"
 
 namespace kvrocks2redis {
 
 static constexpr const char *kLogLevels[] = {"info", "warning", "error", "fatal"};
+static constexpr spdlog::level::level_enum kLogLevelVals[] = {spdlog::level::info, spdlog::level::warn,
+                                                              spdlog::level::err, spdlog::level::critical};
 static constexpr size_t kNumLogLevel = std::size(kLogLevels);
 
 StatusOr<bool> Config::yesnotoi(const std::string &input) {
@@ -81,7 +84,7 @@ Status Config::parseConfigFromString(const std::string &input) {
   } else if (size == 1 && key == "log-level") {
     for (size_t i = 0; i < kNumLogLevel; i++) {
       if (util::ToLower(args[0]) == kLogLevels[i]) {
-        loglevel = static_cast<int>(i);
+        loglevel = kLogLevelVals[i];
         break;
       }
     }

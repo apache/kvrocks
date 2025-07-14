@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -65,6 +66,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.max_open_files", "1234"},
       {"rocksdb.write_buffer_size", "1234"},
       {"rocksdb.max_write_buffer_number", "1"},
+      {"rocksdb.min_write_buffer_number_to_merge", "1"},
       {"rocksdb.target_file_size_base", "100"},
       {"rocksdb.max_background_compactions", "-1"},
       {"rocksdb.max_subcompactions", "3"},
@@ -83,6 +85,7 @@ TEST(Config, GetAndSet) {
       {"rocksdb.level_compaction_dynamic_level_bytes", "yes"},
       {"rocksdb.max_background_jobs", "4"},
       {"rocksdb.compression_start_level", "2"},
+      {"rocksdb.sst_file_delete_rate_bytes_per_sec", "0"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {
@@ -221,4 +224,46 @@ TEST(Config, DumpConfigLine) {
   ASSERT_EQ(DumpConfigLine({"a", "x y"}), "a \"x y\"");
   ASSERT_EQ(DumpConfigLine({"a", "xy"}), "a xy");
   ASSERT_EQ(DumpConfigLine({"a", "x\n"}), "a \"x\\n\"");
+}
+
+TEST(Config, DisableL0Slowdown) {
+  Config config;
+  config.db_dir = "test_l0_slowdown_dir";
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  ASSERT_TRUE(!ec);
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  ASSERT_TRUE(storage->Open().IsOK());
+
+  Server server(storage.get(), &config);
+
+  const std::string kL0SlowdownWritesTrigger = "rocksdb.level0_slowdown_writes_trigger";
+  const std::string kL0StopWritesTrigger = "rocksdb.level0_stop_writes_trigger";
+
+  const auto slowdown_is = [&storage](int value) {
+    return storage->GetDB()->GetOptions().level0_slowdown_writes_trigger == value;
+  };
+
+  const auto stop_is = [&storage](int value) {
+    return storage->GetDB()->GetOptions().level0_stop_writes_trigger == value;
+  };
+
+  ASSERT_TRUE(config.Set(&server, kL0StopWritesTrigger, "20").IsOK());
+  ASSERT_TRUE(config.Set(&server, kL0SlowdownWritesTrigger, "0").IsOK());
+  ASSERT_TRUE(slowdown_is(20));
+  ASSERT_TRUE(stop_is(20));
+
+  ASSERT_TRUE(config.Set(&server, kL0StopWritesTrigger, "50").IsOK());
+  ASSERT_TRUE(slowdown_is(50));
+  ASSERT_TRUE(stop_is(50));
+
+  ASSERT_TRUE(config.Set(&server, kL0SlowdownWritesTrigger, "20").IsOK());
+  ASSERT_TRUE(slowdown_is(20));
+  ASSERT_TRUE(stop_is(50));
+
+  ASSERT_TRUE(config.Set(&server, kL0SlowdownWritesTrigger, "0").IsOK());
+  ASSERT_TRUE(slowdown_is(50));
+  ASSERT_TRUE(stop_is(50));
 }

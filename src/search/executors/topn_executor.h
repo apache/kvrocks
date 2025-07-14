@@ -28,8 +28,8 @@
 
 namespace kqir {
 
-struct TopNSortExecutor : ExecutorNode {
-  TopNSort *sort;
+struct TopNExecutor : ExecutorNode {
+  TopN *topn;
 
   struct ComparedRow {
     RowType row;
@@ -44,20 +44,20 @@ struct TopNSortExecutor : ExecutorNode {
   decltype(rows)::iterator rows_iter;
   bool initialized = false;
 
-  TopNSortExecutor(ExecutorContext *ctx, TopNSort *sort) : ExecutorNode(ctx), sort(sort) {}
+  TopNExecutor(ExecutorContext *ctx, TopN *topn) : ExecutorNode(ctx), topn(topn) {}
 
   StatusOr<Result> Next() override {
     if (!initialized) {
-      auto total = sort->limit->offset + sort->limit->count;
+      auto total = topn->limit->offset + topn->limit->count;
       if (total == 0) return end;
 
-      auto v = GET_OR_RET(ctx->Get(sort->op)->Next());
+      auto v = GET_OR_RET(ctx->Get(topn->op)->Next());
 
       while (!std::holds_alternative<End>(v)) {
         auto &row = std::get<RowType>(v);
 
         auto get_order = [this](RowType &row) -> StatusOr<double> {
-          auto order_val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, sort->order->field->info));
+          auto order_val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, topn->order->field->info));
           CHECK(order_val.Is<kqir::Numeric>());
           return order_val.Get<kqir::Numeric>();
         };
@@ -79,15 +79,15 @@ struct TopNSortExecutor : ExecutorNode {
           }
         }
 
-        v = GET_OR_RET(ctx->Get(sort->op)->Next());
+        v = GET_OR_RET(ctx->Get(topn->op)->Next());
       }
 
-      if (rows.size() <= sort->limit->offset) {
+      if (rows.size() <= topn->limit->offset) {
         return end;
       }
 
       std::sort(rows.begin(), rows.end());
-      rows_iter = rows.begin() + static_cast<std::ptrdiff_t>(sort->limit->offset);
+      rows_iter = rows.begin() + static_cast<std::ptrdiff_t>(topn->limit->offset);
       initialized = true;
     }
 

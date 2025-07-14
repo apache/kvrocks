@@ -28,6 +28,8 @@
 namespace kqir {
 
 struct PushDownNotExpr : Visitor {
+  std::string_view Name() override { return "NOT Expr Pushing-down"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<NotExpr> node) override {
     std::unique_ptr<Node> res;
 

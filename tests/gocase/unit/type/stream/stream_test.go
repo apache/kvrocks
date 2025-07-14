@@ -266,6 +266,26 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Zero(t, rdb.Exists(ctx, "otherstream").Val())
 	})
 
+	t.Run("XADD with empty string, for issue #2830", func(t *testing.T) {
+		streamName := "empty-string-stream"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			Values: []string{"a", "b", "c", "", "", "d"},
+		}).Err())
+
+		messages, err := rdb.XRange(ctx, streamName, "-", "+").Result()
+		require.NoError(t, err)
+		require.Len(t, messages, 1)
+		require.EqualValues(t, map[string]interface{}{"a": "b", "c": "", "": "d"}, messages[0].Values)
+
+		result, err := rdb.XRead(ctx, &redis.XReadArgs{Streams: []string{streamName, "0"}, Count: 100}).Result()
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Len(t, result[0].Messages, 1)
+		require.EqualValues(t, map[string]interface{}{"a": "b", "c": "", "": "d"}, result[0].Messages[0].Values)
+	})
+
 	t.Run("XRANGE COUNT works as expected", func(t *testing.T) {
 		require.Len(t, rdb.XRangeN(ctx, "mystream", "-", "+", 10).Val(), 10)
 	})

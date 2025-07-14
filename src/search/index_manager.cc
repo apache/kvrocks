@@ -27,6 +27,7 @@
 #include "search/ir.h"
 #include "search/ir_sema_checker.h"
 #include "search/passes/manager.h"
+#include "search/passes/recorder.h"
 #include "search/plan_executor.h"
 #include "search/search_encoding.h"
 #include "search/value.h"
@@ -198,6 +199,19 @@ StatusOr<std::unique_ptr<kqir::PlanOperator>> IndexManager::GeneratePlan(std::un
   }
 
   return plan_op;
+}
+
+StatusOr<std::vector<kqir::Recorder::Result>> IndexManager::DebugPlan(std::unique_ptr<kqir::Node> ir,
+                                                                      const std::string &ns) const {
+  kqir::SemaChecker sema_checker(index_map);
+  sema_checker.ns = ns;
+
+  GET_OR_RET(sema_checker.Check(ir.get()));
+
+  std::vector<kqir::Recorder::Result> results;
+  kqir::PassManager::Execute(kqir::PassManager::Debug(results), std::move(ir));
+
+  return results;
 }
 
 StatusOr<std::vector<kqir::ExecutorContext::RowType>> IndexManager::Search(std::unique_ptr<kqir::Node> ir,

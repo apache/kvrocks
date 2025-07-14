@@ -31,6 +31,7 @@
 
 #include "config_type.h"
 #include "cron.h"
+#include "spdlog/common.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
 
@@ -55,6 +56,17 @@ constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
+
+const std::vector<ConfigEnum<spdlog::level::level_enum>> log_levels{
+    {"debug", spdlog::level::debug}, {"info", spdlog::level::info},      {"warning", spdlog::level::warn},
+    {"error", spdlog::level::err},   {"fatal", spdlog::level::critical},
+};
+
+const std::vector<ConfigEnum<spdlog::level::level_enum>> slowlog_dump_logfile_levels{
+    {"info", spdlog::level::info},
+    {"warning", spdlog::level::warn},
+    {"off", spdlog::level::off},
+};
 
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
@@ -91,13 +103,14 @@ struct Config {
 
   int workers = 0;
   int timeout = 0;
-  int log_level = 0;
+  spdlog::level::level_enum log_level = spdlog::level::info;
   int backlog = 511;
   int maxclients = 10000;
   int max_backup_to_keep = 1;
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
   int slowlog_max_len = 128;
+  spdlog::level::level_enum slowlog_dump_logfile_level = spdlog::level::off;
   uint64_t proto_max_bulk_len = 512 * 1024 * 1024;
   bool daemonize = false;
   SupervisedMode supervised_mode = kSupervisedNone;
@@ -110,6 +123,7 @@ struct Config {
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
+  bool enable_blob_cache = false;
   int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
@@ -187,10 +201,10 @@ struct Config {
     int metadata_block_cache_size;
     int subkey_block_cache_size;
     bool share_metadata_and_subkey_block_cache;
-    int row_cache_size;
     int max_open_files;
     int write_buffer_size;
     int max_write_buffer_number;
+    int min_write_buffer_number_to_merge;
     int max_background_compactions;
     int max_background_flushes;
     int max_subcompactions;
@@ -216,7 +230,7 @@ struct Config {
     int blob_file_size;
     bool enable_blob_garbage_collection;
     int blob_garbage_collection_age_cutoff;
-    int max_bytes_for_level_base;
+    uint64_t max_bytes_for_level_base;
     int max_bytes_for_level_multiplier;
     bool level_compaction_dynamic_level_bytes;
     int max_background_jobs;
@@ -224,6 +238,7 @@ struct Config {
     bool avoid_unnecessary_blocking_io = true;
     bool partition_filters;
     int64_t max_compaction_bytes;
+    int64_t sst_file_delete_rate_bytes_per_sec = 0;
 
     struct WriteOptions {
       bool sync;
@@ -265,6 +280,7 @@ struct Config {
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
   std::string histogram_bucket_boundaries_str_;
+  std::set<std::string> deprecated_fields_;
 
   void initFieldValidator();
   void initFieldCallback();

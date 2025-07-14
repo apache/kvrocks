@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <random>
 
 #include "test_base.h"
 #include "types/redis_bloom_chain.h"
@@ -110,4 +111,37 @@ TEST_F(RedisBloomChainTest, DuplicateInsert) {
   }
   s = sb_chain_->MAdd(*ctx_, key_, arrays, &results);
   EXPECT_TRUE(s.ok());
+}
+
+TEST_F(RedisBloomChainTest, MultiThreadInsert) {
+  // Concurrent insert, every task would insert 100 random values
+  std::mutex mu;
+
+  std::default_random_engine gen(42);
+  std::uniform_int_distribution<uint32_t> dist;
+  auto insert_task = [&]() {
+    // Generate 100 random keys
+    std::vector<std::string> arrays;
+    for (size_t idx = 0; idx < 100; ++idx) {
+      arrays.push_back("itemx" + std::to_string(dist(gen)));
+    }
+    engine::Context ctx(storage_.get());
+    // Call madd
+    std::vector<redis::BloomFilterAddResult> results;
+    results.resize(arrays.size());
+    auto s = sb_chain_->MAdd(ctx, key_, arrays, &results);
+    EXPECT_TRUE(s.ok());
+  };
+
+  std::vector<std::thread> threads;
+  threads.reserve(10);
+  for (int32_t thread_idx = 0; thread_idx < 10; ++thread_idx) {
+    threads.emplace_back([&]() {
+      std::lock_guard<std::mutex> lock(mu);
+      insert_task();
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
 }

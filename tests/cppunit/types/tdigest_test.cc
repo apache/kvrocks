@@ -21,7 +21,6 @@
 #include "types/tdigest.h"
 
 #include <fmt/format.h>
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -37,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "logging.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "time_util.h"
@@ -173,10 +173,11 @@ TEST_F(RedisTDigestTest, Quantile) {
   redis::TDigestQuantitleResult result;
   status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
-  ASSERT_EQ(result.quantiles.size(), qs.size());
-  EXPECT_NEAR(result.quantiles[0], 50.5, 0.01);
-  EXPECT_NEAR(result.quantiles[1], 90.5, 0.01);
-  EXPECT_NEAR(result.quantiles[2], 100, 0.01);
+  ASSERT_TRUE(result.quantiles);
+  ASSERT_EQ(result.quantiles->size(), qs.size());
+  EXPECT_NEAR((*result.quantiles)[0], 50.5, 0.01);
+  EXPECT_NEAR((*result.quantiles)[1], 90.5, 0.01);
+  EXPECT_NEAR((*result.quantiles)[2], 100, 0.01);
 }
 
 TEST_F(RedisTDigestTest, PlentyQuantile_10000_144) {
@@ -201,9 +202,10 @@ TEST_F(RedisTDigestTest, PlentyQuantile_10000_144) {
   redis::TDigestQuantitleResult tdigest_result;
   status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &tdigest_result);
   ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(tdigest_result.quantiles);
 
   for (int i = 0; i < quantile_count; i++) {
-    EXPECT_NEAR(tdigest_result.quantiles[i], result[i], error_double) << "quantile is: " << qs[i];
+    EXPECT_NEAR((*tdigest_result.quantiles)[i], result[i], error_double) << "quantile is: " << qs[i];
   }
 }
 
@@ -234,13 +236,65 @@ TEST_F(RedisTDigestTest, Add_2_times) {
   redis::TDigestQuantitleResult tdigest_result;
   status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &tdigest_result);
   ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(tdigest_result.quantiles);
 
   for (int i = 0; i < quantile_count; i++) {
     auto &[expect_down, expect_upper] = expect_result[i];
-    auto got = tdigest_result.quantiles[i];
+    auto got = (*tdigest_result.quantiles)[i];
     EXPECT_GE(got, expect_down) << fmt::format("quantile is {}, should in interval [{}, {}]", qs[i], expect_down,
                                                expect_upper);
     EXPECT_LE(got, expect_upper) << fmt::format("quantile is {}, should in interval [{}, {}]", qs[i], expect_down,
                                                 expect_upper);
   }
+}
+
+TEST_F(RedisTDigestTest, Add_100_times_same_value) {
+  std::string test_digest_name = "test_digest_quantile" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  auto samples = std::vector<double>{-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  auto qs = std::vector<double>{0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99};
+
+  auto repeat_times = 100;
+
+  for (auto i = 0; i < repeat_times; ++i) {
+    std::shuffle(samples.begin(), samples.end(), std::mt19937(kSeed));
+    status = tdigest_->Add(*ctx_, test_digest_name, samples);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+  }
+
+  redis::TDigestQuantitleResult tdigest_result;
+  status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &tdigest_result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(tdigest_result.quantiles);
+
+  auto expect_result = std::vector<double>{
+      -10, -9, -8, -5, 1, 7, 10, 11, 12,
+  };
+
+  EXPECT_EQ(tdigest_result.quantiles->size(), qs.size());
+
+  for (size_t i = 0; i < qs.size(); i++) {
+    auto got = (*tdigest_result.quantiles)[i];
+    EXPECT_NEAR(got, expect_result[i], 0.5) << fmt::format("quantile is {}, should be {}", qs[i], expect_result[i]);
+  }
+}
+TEST_F(RedisTDigestTest, Quantile_returns_nan_on_empty_tdigest) {
+  std::string test_digest_name = "test_digest_nan" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> qs = {0.3, 0.1, 0.2, 0.56, 0.44, 0.12, 0.11};
+  redis::TDigestQuantitleResult result;
+
+  status = tdigest_->Quantile(*ctx_, test_digest_name, qs, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_FALSE(result.quantiles) << "should not have quantiles with empty tdigest";
 }

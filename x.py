@@ -113,7 +113,7 @@ def prepare() -> None:
             dst.symlink_to(hook)
             print(f"{hook.name} installed at {dst}.")
 
-def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
+def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
           skip_build: bool) -> None:
     basedir = Path(__file__).parent.absolute()
 
@@ -129,8 +129,6 @@ def build(dir: str, jobs: Optional[int], ghproxy: bool, ninja: bool, unittest: b
     os.makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
-    if ghproxy:
-        cmake_options.append("-DDEPS_FETCH_PROXY=https://mirror.ghproxy.com/")
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':
@@ -387,8 +385,6 @@ if __name__ == '__main__':
     parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                               help="directory to store cmake-generated and build files")
     parser_build.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
-    parser_build.add_argument('--ghproxy', default=False, action='store_true',
-                              help='use https://mirror.ghproxy.com to fetch dependencies')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),

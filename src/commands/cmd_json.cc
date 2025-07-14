@@ -661,7 +661,7 @@ class CommandJsonDebug : public Commander {
     std::string path = "$";
 
     if (!util::EqualICase(args_[1], "memory")) {
-      return {Status::RedisExecErr, "ERR wrong number of arguments for 'json.debug' command"};
+      return {Status::RedisExecErr, "Wrong number of arguments for 'json.debug' command"};
     }
 
     if (args_.size() == 4) {

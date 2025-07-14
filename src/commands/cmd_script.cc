@@ -43,7 +43,7 @@ class CommandEvalImpl : public Commander {
     }
 
     return lua::EvalGenericCommand(
-        conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
+        conn, &ctx, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
         std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), evalsha, output, read_only);
   }
 };
@@ -69,18 +69,18 @@ class CommandScript : public Commander {
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
     if (srv->IsSlave() && subcommand_ != "exists") {
-      return {Status::NotOK, "READONLY You can't write against a read only slave"};
+      return {Status::RedisReadOnly, "You can't write against a read only slave"};
     }
 
     if (args_.size() == 2 && subcommand_ == "flush") {
       auto s = srv->ScriptFlush();
       if (!s) {
-        LOG(ERROR) << "Failed to flush scripts: " << s.Msg();
+        error("Failed to flush scripts: {}", s.Msg());
         return s;
       }
       s = srv->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s) {
-        LOG(ERROR) << "Failed to propagate script command: " << s.Msg();
+        error("Failed to propagate script command: {}", s.Msg());
         return s;
       }
       *output = redis::RESP_OK;

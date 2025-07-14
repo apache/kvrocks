@@ -21,7 +21,6 @@
 #pragma once
 
 #include <fmt/format.h>
-#include <glog/logging.h>
 
 #include <algorithm>
 #include <memory>
@@ -29,6 +28,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "logging.h"
 #include "rocksdb/status.h"
 #include "type_util.h"
 

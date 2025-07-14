@@ -78,8 +78,6 @@ class CommandExec : public Commander {
     }
 
     auto storage = srv->storage;
-    // Reply multi length first
-    conn->Reply(redis::MultiLen(conn->GetMultiExecCommands()->size()));
     // Execute multi-exec commands
     conn->SetInExec();
     auto s = storage->BeginTxn();
@@ -91,7 +89,18 @@ class CommandExec : public Commander {
       // So, if conn->IsMultiError(), the transaction should still be committed.
       s = storage->CommitTxn();
     }
-    return s;
+
+    conn->ResetMultiExec();
+    reset_multiexec.Disable();
+
+    if (s) {
+      conn->Reply(Array(conn->GetQueuedReplies()));
+    } else {
+      conn->Reply(Array(std::vector<std::string>(conn->GetQueuedReplies().size(), redis::Error(s))));
+    }
+
+    conn->ClearQueuedReplies();
+    return Status::OK();
   }
 };
 

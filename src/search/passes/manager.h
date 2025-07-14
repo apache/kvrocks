@@ -62,13 +62,14 @@ struct PassManager {
     return result;
   }
 
-  static PassSequence FullRecord(PassSequence &&seq, std::vector<std::unique_ptr<Node>> &results) {
+  static PassSequence FullRecord(PassSequence &&seq, std::vector<Recorder::Result> &results) {
     PassSequence res_seq;
-    res_seq.push_back(std::make_unique<Recorder>(results));
+    res_seq.push_back(std::make_unique<Recorder>("", results));
 
     for (auto &p : seq) {
+      auto name = p->Name();
       res_seq.push_back(std::move(p));
-      res_seq.push_back(std::make_unique<Recorder>(results));
+      res_seq.push_back(std::make_unique<Recorder>(name, results));
     }
 
     return res_seq;
@@ -94,7 +95,7 @@ struct PassManager {
   static PassSequence PlanPasses() { return Create(LowerToPlan{}, IndexSelection{}, SortLimitFuse{}); }
 
   static PassSequence Default() { return Merge(ExprPasses(), NumericPasses(), PlanPasses()); }
-  static PassSequence Debug(std::vector<std::unique_ptr<Node>> &recorded) { return FullRecord(Default(), recorded); }
+  static PassSequence Debug(std::vector<Recorder::Result> &recorded) { return FullRecord(Default(), recorded); }
 };
 
 }  // namespace kqir

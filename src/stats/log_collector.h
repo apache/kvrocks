@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+#include "spdlog/common.h"
+
 class SlowEntry {
  public:
   uint64_t id;
@@ -41,6 +43,7 @@ class SlowEntry {
   std::string ip;
   uint32_t port;
   std::string ToRedisString() const;
+  void DumpToLogFile(spdlog::level::level_enum) const;
 };
 
 class PerfEntry {
@@ -53,6 +56,7 @@ class PerfEntry {
   std::string iostats_context;
 
   std::string ToRedisString() const;
+  void DumpToLogFile(spdlog::level::level_enum) const {};
 };
 
 template <class T>
@@ -67,10 +71,12 @@ class LogCollector {
   void SetMaxEntries(int64_t max_entries);
   void PushEntry(std::unique_ptr<T> &&entry);
   std::string GetLatestEntries(int64_t cnt);
+  void SetDumpToLogfileLevel(spdlog::level::level_enum level);
 
  private:
   std::mutex mu_;
   uint64_t id_ = 0;
   int64_t max_entries_ = 128;
   std::deque<std::unique_ptr<T>> entries_;
+  spdlog::level::level_enum dump_to_logfile_level_ = spdlog::level::off;
 };

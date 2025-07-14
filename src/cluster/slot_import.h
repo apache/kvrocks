@@ -20,14 +20,13 @@
 
 #pragma once
 
-#include <glog/logging.h>
-
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "cluster_defs.h"
 #include "config/config.h"
+#include "logging.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
 

@@ -35,6 +35,7 @@ func TestConnection(t *testing.T) {
 	t.Run("HTTP requests will be dropped", func(t *testing.T) {
 		_, err := http.Get(fmt.Sprintf("http://%s", srv.HostPort())) //nolint:bodyclose
 		require.Error(t, err)
+		srv.Restart()
 		require.True(t, srv.LogFileMatches(t, "HTTP request.*Connection aborted"), "should contain HTTP drop log")
 
 		c := srv.NewTCPClient()

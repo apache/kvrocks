@@ -23,6 +23,7 @@
 #include "search/index_info.h"
 #include "search/indexer.h"
 #include "search/ir.h"
+#include "search/passes/recorder.h"
 #include "search/plan_executor.h"
 #include "status.h"
 #include "storage/storage.h"
@@ -42,6 +43,7 @@ struct IndexManager {
 
   StatusOr<std::unique_ptr<kqir::PlanOperator>> GeneratePlan(std::unique_ptr<kqir::Node> ir,
                                                              const std::string &ns) const;
+  StatusOr<std::vector<kqir::Recorder::Result>> DebugPlan(std::unique_ptr<kqir::Node> ir, const std::string &ns) const;
   StatusOr<std::vector<kqir::ExecutorContext::RowType>> Search(std::unique_ptr<kqir::Node> ir,
                                                                const std::string &ns) const;
 

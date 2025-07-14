@@ -70,7 +70,7 @@ Status RdbFileStream::Read(char *buf, size_t len) {
     }
     check_sum_ = crc64(check_sum_, reinterpret_cast<const unsigned char *>(buf), read_bytes);
     buf = buf + read_bytes;
-    DCHECK(len >= read_bytes);
+    CHECK(len >= read_bytes);
     len -= read_bytes;
     total_read_bytes_ += read_bytes;
   }

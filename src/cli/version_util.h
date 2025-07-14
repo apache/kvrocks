@@ -21,19 +21,22 @@
 #pragma once
 
 #include <iostream>
+#include <iterator>
 
+#include "fmt/base.h"
 #include "version.h"
 
-inline std::ostream &PrintVersion(std::ostream &os) {
+inline std::string PrintVersion() {
+  std::string result;
   if (VERSION != "unstable") {
-    os << "version ";
+    result += "version ";
   }
 
-  os << VERSION;
+  result += VERSION;
 
   if (!GIT_COMMIT.empty()) {
-    os << " (commit " << GIT_COMMIT << ")";
+    fmt::format_to(std::back_inserter(result), " (commit {})", GIT_COMMIT);
   }
 
-  return os;
+  return result;
 }

@@ -28,7 +28,7 @@
 /// ```
 /// WriteBatchInspector inspector;
 /// status = write_batch.Iterate(&inspector);
-/// LOG(INFO) << inspector.seen << ", cnt: " << inspector.cnt;
+/// info("{}, cnt: {}", inspector.seen, inspector.cnt);
 /// ```
 struct WriteBatchInspector : public rocksdb::WriteBatch::Handler {
   std::string seen;

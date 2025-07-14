@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "spdlog/common.h"
 #include "status.h"
 
 namespace kvrocks2redis {
@@ -37,7 +38,7 @@ struct RedisServer {
 
 struct Config {
  public:
-  int loglevel = 0;
+  spdlog::level::level_enum loglevel = spdlog::level::info;
   bool daemonize = false;
 
   std::string data_dir = "./data";

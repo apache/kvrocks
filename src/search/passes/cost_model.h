@@ -55,7 +55,8 @@ struct CostModel {
       return Visit(v);
     }
 
-    CHECK(false) << "plan operator type not supported";
+    // plan operator type not supported
+    unreachable();
   }
 
   static size_t Visit([[maybe_unused]] const FullIndexScan *node) { return 100; }

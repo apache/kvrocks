@@ -208,7 +208,7 @@ rocksdb::Status Set::Take(engine::Context &ctx, const Slice &user_key, std::vect
   bool unique = true;
   if (count == 0) return rocksdb::Status::OK();
   if (count < 0) {
-    DCHECK(!pop);
+    CHECK(!pop);
     count = -count;
     unique = false;
   }

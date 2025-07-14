@@ -20,11 +20,10 @@
 
 #include "redis_bitmap_string.h"
 
-#include <glog/logging.h>
-
 #include <cstdint>
 
 #include "common/bit_util.h"
+#include "logging.h"
 #include "redis_string.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
@@ -196,7 +195,7 @@ std::pair<int64_t, int64_t> BitmapString::NormalizeToByteRangeWithPaddingMask(bo
                                                                               int64_t origin_end,
                                                                               uint8_t *first_byte_neg_mask,
                                                                               uint8_t *last_byte_neg_mask) {
-  DCHECK(origin_start <= origin_end);
+  CHECK(origin_start <= origin_end);
   if (is_bit) {
     *first_byte_neg_mask = ~((1 << (8 - (origin_start & 7))) - 1) & 0xFF;
     *last_byte_neg_mask = (1 << (7 - (origin_end & 7))) - 1;

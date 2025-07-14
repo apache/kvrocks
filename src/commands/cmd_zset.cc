@@ -1104,7 +1104,7 @@ class CommandZMScore : public Commander {
 
     std::vector<std::string> values;
     if (s.IsNotFound()) {
-      values.resize(members.size(), "");
+      values.resize(members.size(), conn->NilString());
     } else {
       for (const auto &member : members) {
         auto iter = mscores.find(member.ToString());
@@ -1115,7 +1115,7 @@ class CommandZMScore : public Commander {
         }
       }
     }
-    *output = conn->MultiBulkString(values);
+    *output = Array(values);
     return Status::OK();
   }
 };
@@ -1451,7 +1451,7 @@ class CommandZRandMember : public Commander {
     }
 
     if (no_parameters_)
-      *output = s.IsNotFound() ? conn->NilString() : redis::BulkString(result_entries[0]);
+      *output = s.IsNotFound() ? conn->NilString() : result_entries[0];
     else
       *output = Array(result_entries);
     return Status::OK();

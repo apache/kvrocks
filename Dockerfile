@@ -49,6 +49,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
 COPY ./LICENSE ./NOTICE ./licenses /kvrocks/
 COPY ./kvrocks.conf /var/lib/kvrocks/
 
+ENV MALLOC_CONF="prof:true,prof_active:false,background_thread:true"
+
 EXPOSE 6666:6666
 
 ENTRYPOINT ["kvrocks", "-c", "/var/lib/kvrocks/kvrocks.conf", "--dir", "/var/lib/kvrocks", "--pidfile", "/var/run/kvrocks/kvrocks.pid", "--bind", "0.0.0.0"]

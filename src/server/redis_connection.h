@@ -50,6 +50,12 @@ class Connection : public EvbufCallbackBase<Connection> {
     kAsking = 1 << 10,
   };
 
+  enum class ReplyMode {
+    ON,   // Always reply to every command (default)
+    OFF,  // Never reply to any command
+    SKIP  // Skip reply for the next command, then automatically switch back to ON
+  };
+
   explicit Connection(bufferevent *bev, Worker *owner);
   ~Connection();
 
@@ -65,6 +71,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::string ToString();
 
   void Reply(const std::string &msg);
+  const std::vector<std::string> &GetQueuedReplies() const;
+  void ClearQueuedReplies() { queued_replies_.clear(); }
   RESP GetProtocolVersion() const { return protocol_version_; }
   void SetProtocolVersion(RESP version) { protocol_version_ = version; }
   std::string Bool(bool b) const { return redis::Bool(protocol_version_, b); }
@@ -181,6 +189,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::set<std::string> watched_keys;
   std::atomic<bool> watched_keys_modified = false;
 
+  // Reply mode getter/setter
+  void SetReplyMode(ReplyMode mode) { reply_mode_ = mode; }
+  ReplyMode GetReplyMode() const { return reply_mode_; }
+
  private:
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
@@ -215,6 +227,9 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   bool importing_ = false;
   RESP protocol_version_ = RESP::v2;
+
+  ReplyMode reply_mode_ = ReplyMode::ON;
+  std::vector<std::string> queued_replies_;
 };
 
 }  // namespace redis

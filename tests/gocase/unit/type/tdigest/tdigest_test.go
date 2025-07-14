@@ -23,6 +23,7 @@ package tdigest
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -309,5 +310,109 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rsp.Err())
 		infoAfterEmptyReset := toTdigestInfo(t, rsp.Val())
 		require.EqualValues(t, 100, infoAfterEmptyReset.Compression)
+	})
+	t.Run("tdigest.quantile with different arguments", func(t *testing.T) {
+		keyPrefix := "t_qt_"
+
+		// No arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE").Err(), errMsgWrongNumberArg)
+
+		// Non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.QUANTILE", keyPrefix+"iDoNotExist", "0.5").Err(), errMsgKeyNotExist)
+
+		{
+			// Quantile on empry tdigest
+			key0 := keyPrefix + "00"
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key0, "compression", "100").Err())
+			rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key0, "0.4", "0.1", "0.2", "0.3", "0.7", "0.5")
+			require.NoError(t, rsp.Err())
+			vals, err := rsp.Slice()
+			require.NoError(t, err)
+			require.Equal(t, 6, len(vals))
+			for _, v := range vals {
+				s, ok := v.(string)
+				require.True(t, ok, "Expected string but got %T", v)
+				require.Equal(t, "nan", s, "Expected value to be 'nan'")
+			}
+		}
+		{
+			// Quantiles on positive data
+			key1 := keyPrefix + "01"
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key1, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key1, "1", "2", "2", "3", "3", "3", "4", "4", "4", "4", "5", "5", "5", "5", "5").Err())
+			rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key1, "0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1")
+			require.NoError(t, rsp.Err())
+			vals, err := rsp.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 11)
+			expected := []float64{1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0}
+			for i, v := range vals {
+				str, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+
+				got, err := strconv.ParseFloat(str, 64)
+				require.NoError(t, err, "could not parse value at index %d", i)
+
+				require.InEpsilon(t, expected[i], got, 0.0001, "mismatch at index %d", i)
+			}
+		}
+		{
+			// Quantiles on negative data
+			key2 := keyPrefix + "02"
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key2, "-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "-10").Err())
+			rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key2, "0", "0.25", "0.5", "0.75", "1")
+			require.NoError(t, rsp.Err())
+
+			vals, err := rsp.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 5)
+
+			expected := []float64{-10.0, -8.0, -5.5, -3.0, -1.0}
+			for i, v := range vals {
+				str, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+
+				got, err := strconv.ParseFloat(str, 64)
+				require.NoError(t, err, "could not parse value at index %d", i)
+
+				require.InEpsilon(t, expected[i], got, 0.0001, "mismatch at index %d", i)
+			}
+		}
+		{
+			// Query with unordered quantiles
+			key3 := keyPrefix + "03"
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key3, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key3,
+				"3", "12", "-3", "-19", "13", "4", "14", "18", "-1", "-5", "15", "-10", "33", "17", "-20",
+			).Err())
+			rsp := rdb.Do(ctx, "TDIGEST.QUANTILE", key3,
+				"0.9", "0.1", "0.7", "0.3", "0.6", "0.0", "0.55", "0.65", "0.34", "0.88",
+			)
+			require.NoError(t, rsp.Err())
+			vals, err := rsp.Slice()
+			require.NoError(t, err)
+			require.Equal(t, 10, len(vals))
+
+			expected := []float64{
+				18.0,
+				-19.0,
+				14.0,
+				-3.0,
+				12.5,
+				-20.0,
+				12.0,
+				13.0,
+				-1.0,
+				18.0,
+			}
+			for i, v := range vals {
+				strVal, ok := v.(string)
+				require.True(t, ok, "Expected string at index %d but got %T", i, v)
+				numVal, err := strconv.ParseFloat(strVal, 64)
+				require.NoError(t, err, "Failed to parse value at index %d: %s", i, strVal)
+				require.InDelta(t, expected[i], numVal, 1e-6, "Mismatch at index %d", i)
+			}
+		}
 	})
 }

@@ -568,7 +568,7 @@ rocksdb::Status List::lmoveOnTwoLists(engine::Context &ctx, const rocksdb::Slice
     return s;
   }
 
-  ListMetadata dst_metadata(false);
+  ListMetadata dst_metadata(true);
   s = GetMetadata(ctx, dst_ns_key, &dst_metadata);
   if (!s.ok() && !s.IsNotFound()) {
     return s;

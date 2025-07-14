@@ -29,6 +29,8 @@
 namespace kqir {
 
 struct LowerToPlan : Visitor {
+  std::string_view Name() override { return "Syntax to Plan Lowering"; }
+
   std::unique_ptr<Node> Visit(std::unique_ptr<SearchExpr> node) override {
     auto scan = std::make_unique<FullIndexScan>(node->index->CloneAs<IndexRef>());
 

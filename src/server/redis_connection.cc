@@ -18,7 +18,6 @@
  *
  */
 
-#include <glog/logging.h>
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
 
@@ -28,6 +27,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "logging.h"
 #include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"
@@ -89,7 +89,7 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
     Reply(redis::Error(s));
-    LOG(INFO) << "[connection] Failed to tokenize the request. Error: " << s.Msg();
+    info("[connection] Failed to tokenize the request. Error: {}", s.Msg());
     return;
   }
 
@@ -107,32 +107,48 @@ void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
 
 void Connection::OnEvent(bufferevent *bev, int16_t events) {
   if (events & BEV_EVENT_ERROR) {
-    LOG(ERROR) << "[connection] Going to remove the client: " << GetAddr()
-               << ", while encounter error: " << evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())
 #ifdef ENABLE_OPENSSL
-               << ", SSL Error: " << SSLError(bufferevent_get_openssl_error(bev))  // NOLINT
+    error("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
+          evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()),
+          fmt::streamed(SSLError(bufferevent_get_openssl_error(bev))));  // NOLINT
+#else
+    error("[connection] Removing client: {}, error: {}", GetAddr(),
+          evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 #endif
-        ;  // NOLINT
     Close();
     return;
   }
 
   if (events & BEV_EVENT_EOF) {
-    DLOG(INFO) << "[connection] Going to remove the client: " << GetAddr() << ", while closed by client";
+    debug("[connection] Going to remove the client: {}, while closed by client", GetAddr());
     Close();
     return;
   }
 
   if (events & BEV_EVENT_TIMEOUT) {
-    DLOG(INFO) << "[connection] The client: " << GetAddr() << "] reached timeout";
+    debug("[connection] The client: {} reached timeout", GetAddr());
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
 
 void Connection::Reply(const std::string &msg) {
+  if (reply_mode_ == ReplyMode::SKIP) {
+    reply_mode_ = ReplyMode::ON;
+    return;
+  }
+  if (reply_mode_ == ReplyMode::OFF) {
+    return;
+  }
+
   owner_->srv->stats.IncrOutboundBytes(msg.size());
-  redis::Reply(bufferevent_get_output(bev_), msg);
+  if (in_exec_) {
+    queued_replies_.push_back(msg);
+  } else {
+    redis::Reply(bufferevent_get_output(bev_), msg);
+  }
 }
+
+const std::vector<std::string> &Connection::GetQueuedReplies() const { return queued_replies_; }
 
 void Connection::SendFile(int fd) {
   // NOTE: we don't need to close the fd, the libevent will do that
@@ -363,7 +379,8 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 
 static bool IsCmdForIndexing(uint64_t cmd_flags, CommandCategory cmd_cat) {
   return (cmd_flags & redis::kCmdWrite) &&
-         (cmd_cat == CommandCategory::Hash || cmd_cat == CommandCategory::JSON || cmd_cat == CommandCategory::Key);
+         (cmd_cat == CommandCategory::Hash || cmd_cat == CommandCategory::JSON || cmd_cat == CommandCategory::Key ||
+          cmd_cat == CommandCategory::Script || cmd_cat == CommandCategory::Function);
 }
 
 static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {
@@ -373,7 +390,7 @@ static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
-  std::string password = config->requirepass;
+  const std::string &password = config->requirepass;
 
   while (!to_process_cmds->empty()) {
     CommandTokens cmd_tokens = std::move(to_process_cmds->front());
@@ -382,17 +399,20 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
+    auto multi_error_exit = MakeScopeExit([&] {
+      if (is_multi_exec) multi_error_ = true;
+    });
 
     auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
     if (!cmd_s.IsOK()) {
       auto cmd_name = cmd_tokens.front();
       if (util::EqualICase(cmd_name, "host:") || util::EqualICase(cmd_name, "post")) {
-        LOG(WARNING) << "A likely HTTP request is detected in the RESP connection, indicating a potential "
-                        "Cross-Protocol Scripting attack. Connection aborted.";
+        warn(
+            "[connection] A likely HTTP request is detected in the RESP connection, indicating a potential "
+            "Cross-Protocol Scripting attack. Connection aborted.");
         EnableFlag(kCloseAsync);
         return;
       }
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error(
           {Status::NotOK,
            fmt::format("unknown command `{}`, with args beginning with: {}", cmd_name,
@@ -407,7 +427,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error({Status::NotOK, "wrong number of arguments"}));
       continue;
     }
@@ -441,21 +460,18 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (srv_->IsLoading() && !(cmd_flags & kCmdLoading)) {
       Reply(redis::Error({Status::RedisLoading, errRestoringBackup}));
-      if (is_multi_exec) multi_error_ = true;
       continue;
     }
 
     current_cmd->SetArgs(cmd_tokens);
     auto s = current_cmd->Parse();
     if (!s.IsOK()) {
-      if (is_multi_exec) multi_error_ = true;
       Reply(redis::Error(s));
       continue;
     }
 
     if (is_multi_exec && (cmd_flags & kCmdNoMulti)) {
       Reply(redis::Error({Status::NotOK, fmt::format("{} inside MULTI is not allowed", util::ToUpper(cmd_name))}));
-      multi_error_ = true;
       continue;
     }
 
@@ -467,7 +483,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (config->cluster_enabled) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
-        if (is_multi_exec) multi_error_ = true;
         Reply(redis::Error(s));
         continue;
       }
@@ -478,6 +493,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       DisableFlag(kAsking);
     }
 
+    multi_error_exit.Disable();
     // We don't execute commands, but queue them, and then execute in EXEC command
     if (is_multi_exec && !in_exec_ && !(cmd_flags & kCmdBypassMulti)) {
       multi_cmds_.emplace_back(std::move(cmd_tokens));
@@ -540,7 +556,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
                     if (res.IsOK()) {
                       index_records.push_back(*res);
                     } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
-                      LOG(WARNING) << "index recording failed for key: " << key;
+                      warn("[connection] index recording failed for key: {}", key);
                     }
                   },
                   args);
@@ -552,7 +568,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       for (const auto &record : index_records) {
         auto s = GlobalIndexer::Update(ctx, record);
         if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
-          LOG(WARNING) << "index updating failed for key: " << record.key;
+          warn("[connection] index updating failed for key: {}", record.key);
         }
       }
     }

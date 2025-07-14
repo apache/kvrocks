@@ -39,7 +39,7 @@ struct CommandFunction : Commander {
       }
 
       std::string libname;
-      auto s = lua::FunctionLoad(conn, GET_OR_RET(parser.TakeStr()), true, replace, &libname);
+      auto s = lua::FunctionLoad(conn, &ctx, GET_OR_RET(parser.TakeStr()), true, replace, &libname);
       if (!s) return s;
 
       *output = SimpleString(libname);
@@ -55,21 +55,21 @@ struct CommandFunction : Commander {
         with_code = true;
       }
 
-      return lua::FunctionList(srv, conn, libname, with_code, output);
+      return lua::FunctionList(srv, conn, ctx, libname, with_code, output);
     } else if (parser.EatEqICase("listfunc")) {
       std::string funcname;
       if (parser.EatEqICase("funcname")) {
         funcname = GET_OR_RET(parser.TakeStr());
       }
 
-      return lua::FunctionListFunc(srv, conn, funcname, output);
+      return lua::FunctionListFunc(srv, conn, ctx, funcname, output);
     } else if (parser.EatEqICase("listlib")) {
       auto libname = GET_OR_RET(parser.TakeStr().Prefixed("expect a library name"));
 
       return lua::FunctionListLib(conn, libname, output);
     } else if (parser.EatEqICase("delete")) {
       auto libname = GET_OR_RET(parser.TakeStr());
-      if (!lua::FunctionIsLibExist(conn, libname)) {
+      if (!lua::FunctionIsLibExist(conn, &ctx, libname)) {
         return {Status::NotOK, "no such library"};
       }
       auto s = lua::FunctionDelete(ctx, conn, libname);
@@ -94,7 +94,8 @@ struct CommandFCall : Commander {
       return {Status::NotOK, "Number of keys can't be negative"};
     }
 
-    return lua::FunctionCall(conn, args_[1], std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
+    return lua::FunctionCall(conn, &ctx, args_[1],
+                             std::vector<std::string>(args_.begin() + 3, args_.begin() + 3 + numkeys),
                              std::vector<std::string>(args_.begin() + 3 + numkeys, args_.end()), output, read_only);
   }
 };

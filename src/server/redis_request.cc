@@ -20,7 +20,6 @@
 
 #include "redis_request.h"
 
-#include <glog/logging.h>
 #include <rocksdb/perf_context.h>
 
 #include <chrono>
@@ -29,6 +28,7 @@
 
 #include "cluster/redis_slot.h"
 #include "event_util.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "redis_connection.h"
 #include "redis_reply.h"
@@ -54,7 +54,7 @@ Status Request::Tokenize(evbuffer *input) {
 
         if (!line || line.length <= 0) {
           if (pipeline_size > 128) {
-            LOG(INFO) << "Large pipeline detected: " << pipeline_size;
+            info("[request] Large pipeline detected: {}", pipeline_size);
           }
           if (line) {
             continue;
@@ -86,7 +86,11 @@ Status Request::Tokenize(evbuffer *input) {
             return {Status::NotOK, "Protocol error: invalid bulk length"};
           }
 
-          tokens_ = util::Split(std::string(line.get(), line.length), " \t");
+          auto arguments = util::SplitArguments(line.get());
+          if (!arguments.IsOK()) {
+            return {Status::NotOK, "Protocol error: " + arguments.Msg()};
+          }
+          tokens_ = std::move(arguments.GetValue());
           if (tokens_.empty()) continue;
           commands_.emplace_back(std::move(tokens_));
           state_ = ArrayLen;

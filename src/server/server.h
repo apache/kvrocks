@@ -44,6 +44,7 @@
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
 #include "lua.hpp"
+#include "memory_profiler.h"
 #include "namespace.h"
 #include "search/index_manager.h"
 #include "search/indexer.h"
@@ -228,6 +229,13 @@ class Server {
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
+  size_t GetReplicaCount() {
+    slave_threads_mu_.lock();
+    auto replica_count = slave_threads_.size();
+    slave_threads_mu_.unlock();
+    return replica_count;
+  }
+
   std::string GetLastRandomKeyCursor();
   void SetLastRandomKeyCursor(const std::string &cursor);
 
@@ -311,6 +319,7 @@ class Server {
 
   Stats stats;
   engine::Storage *storage;
+  MemoryProfiler memory_profiler;
   std::unique_ptr<Cluster> cluster;
   static inline std::atomic<int64_t> unix_time_secs = 0;
   std::unique_ptr<SlotMigrator> slot_migrator;

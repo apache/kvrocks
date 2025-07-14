@@ -226,31 +226,29 @@ struct Sort : PlanOperator {
 };
 
 // operator fusion: Sort + Limit
-struct TopNSort : PlanOperator {
+struct TopN : PlanOperator {
   std::unique_ptr<PlanOperator> op;
   std::unique_ptr<SortByClause> order;
   std::unique_ptr<LimitClause> limit;
 
-  TopNSort(std::unique_ptr<PlanOperator> &&op, std::unique_ptr<SortByClause> &&order,
-           std::unique_ptr<LimitClause> &&limit)
+  TopN(std::unique_ptr<PlanOperator> &&op, std::unique_ptr<SortByClause> &&order, std::unique_ptr<LimitClause> &&limit)
       : op(std::move(op)), order(std::move(order)), limit(std::move(limit)) {}
 
-  std::string_view Name() const override { return "TopNSort"; };
+  std::string_view Name() const override { return "TopN"; };
   std::string Dump() const override {
     return fmt::format("(top-n sort {}, {}, {}, {}: {})", order->field->Dump(), order->OrderToString(order->order),
                        limit->offset, limit->count, op->Dump());
   }
 
   static inline const std::vector<std::function<Node *(Node *)>> ChildMap = {
-      NodeIterator::MemFn<&TopNSort::op>, NodeIterator::MemFn<&TopNSort::order>, NodeIterator::MemFn<&TopNSort::limit>};
+      NodeIterator::MemFn<&TopN::op>, NodeIterator::MemFn<&TopN::order>, NodeIterator::MemFn<&TopN::limit>};
 
   NodeIterator ChildBegin() override { return NodeIterator(this, ChildMap.begin()); }
   NodeIterator ChildEnd() override { return NodeIterator(this, ChildMap.end()); }
 
   std::unique_ptr<Node> Clone() const override {
-    return std::make_unique<TopNSort>(Node::MustAs<PlanOperator>(op->Clone()),
-                                      Node::MustAs<SortByClause>(order->Clone()),
-                                      Node::MustAs<LimitClause>(limit->Clone()));
+    return std::make_unique<TopN>(Node::MustAs<PlanOperator>(op->Clone()), Node::MustAs<SortByClause>(order->Clone()),
+                                  Node::MustAs<LimitClause>(limit->Clone()));
   }
 };
 

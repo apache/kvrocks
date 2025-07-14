@@ -88,19 +88,41 @@ StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 10) {
 // available units: K, M, G, T, P
 StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 
+// we cannot use std::from_chars for floating-point numbers,
+// since it is available since gcc 11 and clang 20.
+template <typename>
+struct ParseFloatFunc;
+
+template <>
+struct ParseFloatFunc<float> {
+  constexpr static const auto value = strtof;
+};
+
+template <>
+struct ParseFloatFunc<double> {
+  constexpr static const auto value = strtod;
+};
+
+template <>
+struct ParseFloatFunc<long double> {
+  constexpr static const auto value = strtold;
+};
+
 // TryParseFloat parses a string to a floating-point number,
 // it returns the first unmatched character position instead of an error status
-template <typename T = double, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>  // float or double
-StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view str) {
-  T result = 0;
-  auto [end, ec] = std::from_chars(str.data(), str.data() + str.size(), result, std::chars_format::general);
+template <typename T = double>  // float or double
+StatusOr<ParseResultAndPos<T>> TryParseFloat(const char *str) {
+  char *end = nullptr;
+
+  errno = 0;
+  T result = ParseFloatFunc<T>::value(str, &end);
 
   if (str == end) {
     return {Status::NotOK, "not started as a number"};
   }
 
-  if (auto e = std::make_error_code(ec)) {
-    return {Status::NotOK, fmt::format("failed to parse number: {}", e.message())};
+  if (errno) {
+    return Status::FromErrno();
   }
 
   return {result, end};
@@ -108,10 +130,11 @@ StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view str) {
 
 // ParseFloat parses a string to a floating-point number
 template <typename T = double>  // float or double
-StatusOr<T> ParseFloat(std::string_view str) {
-  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(str));
+StatusOr<T> ParseFloat(const std::string &str) {
+  const char *begin = str.c_str();
+  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(begin));
 
-  if (pos != str.data() + str.size()) {
+  if (pos != begin + str.size()) {
     return {Status::NotOK, "encounter non-number characters"};
   }
 

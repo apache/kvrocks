@@ -20,70 +20,11 @@
 
 #pragma once
 
-#include <cstdlib>
-#include <limits>
-#include <string>
+#include <charconv>
 #include <tuple>
+#include <type_traits>
 
 #include "status.h"
-#include "string_util.h"
-
-namespace details {
-
-template <typename>
-struct ParseIntFunc;
-
-template <>
-struct ParseIntFunc<char> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<short> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<int> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<long> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<long long> {  // NOLINT
-  constexpr static const auto value = std::strtoll;
-};
-
-template <>
-struct ParseIntFunc<unsigned char> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned short> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned long> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned long long> {  // NOLINT
-  constexpr static const auto value = std::strtoull;
-};
-
-}  // namespace details
 
 template <typename T>
 using ParseResultAndPos = std::tuple<T, const char *>;
@@ -94,24 +35,17 @@ using ParseResultAndPos = std::tuple<T, const char *>;
 // e.g. TryParseInt("100MB") -> {100, "MB"}
 // if no integer can be parsed or out of type range, an error will be returned
 // base can be in {0, 2, ..., 36}, refer to strto* in standard c for more details
-template <typename T = long long>  // NOLINT
-StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
-  char *end = nullptr;
-
-  errno = 0;
-  auto res = details::ParseIntFunc<T>::value(v, &end, base);
+template <typename T = long long, std::enable_if_t<std::is_integral_v<T>, int> = 0>  // NOLINT
+StatusOr<ParseResultAndPos<T>> TryParseInt(std::string_view v, int base = 10) {
+  T res = 0;
+  auto [end, ec] = std::from_chars(v.data(), v.data() + v.size(), res, base);
 
   if (v == end) {
     return {Status::NotOK, "not started as an integer"};
   }
 
-  if (errno) {
-    return Status::FromErrno();
-  }
-
-  if (!std::is_same<T, decltype(res)>::value &&
-      (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
-    return {Status::NotOK, "out of range of integer type"};
+  if (auto e = std::make_error_code(ec)) {
+    return {Status::NotOK, fmt::format("failed to parse integer: {}", e.message())};
   }
 
   return ParseResultAndPos<T>{res, end};
@@ -121,13 +55,12 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
 // not like TryParseInt, the whole string need to be parsed as an integer,
 // e.g. ParseInt("100MB") -> error status
 template <typename T = long long>  // NOLINT
-StatusOr<T> ParseInt(const std::string &v, int base = 0) {
-  const char *begin = v.c_str();
-  auto res = TryParseInt<T>(begin, base);
+StatusOr<T> ParseInt(std::string_view v, int base = 10) {
+  auto res = TryParseInt<T>(v, base);
 
   if (!res) return res;
 
-  if (std::get<1>(*res) != begin + v.size()) {
+  if (std::get<1>(*res) != v.data() + v.size()) {
     return {Status::NotOK, "encounter non-integer characters"};
   }
 
@@ -140,7 +73,7 @@ using NumericRange = std::tuple<T, T>;
 // this overload accepts a range {min, max},
 // integer out of the range will trigger an error status
 template <typename T = long long>  // NOLINT
-StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) {
+StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 0) {
   auto res = ParseInt<T>(v, base);
 
   if (!res) return res;
@@ -153,41 +86,21 @@ StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) 
 }
 
 // available units: K, M, G, T, P
-StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v);
-
-template <typename>
-struct ParseFloatFunc;
-
-template <>
-struct ParseFloatFunc<float> {
-  constexpr static const auto value = strtof;
-};
-
-template <>
-struct ParseFloatFunc<double> {
-  constexpr static const auto value = strtod;
-};
-
-template <>
-struct ParseFloatFunc<long double> {
-  constexpr static const auto value = strtold;
-};
+StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 
 // TryParseFloat parses a string to a floating-point number,
 // it returns the first unmatched character position instead of an error status
-template <typename T = double>  // float or double
-StatusOr<ParseResultAndPos<T>> TryParseFloat(const char *str) {
-  char *end = nullptr;
-
-  errno = 0;
-  T result = ParseFloatFunc<T>::value(str, &end);
+template <typename T = double, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>  // float or double
+StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view str) {
+  T result = 0;
+  auto [end, ec] = std::from_chars(str.data(), str.data() + str.size(), result, std::chars_format::general);
 
   if (str == end) {
     return {Status::NotOK, "not started as a number"};
   }
 
-  if (errno) {
-    return Status::FromErrno();
+  if (auto e = std::make_error_code(ec)) {
+    return {Status::NotOK, fmt::format("failed to parse number: {}", e.message())};
   }
 
   return {result, end};
@@ -195,11 +108,10 @@ StatusOr<ParseResultAndPos<T>> TryParseFloat(const char *str) {
 
 // ParseFloat parses a string to a floating-point number
 template <typename T = double>  // float or double
-StatusOr<T> ParseFloat(const std::string &str) {
-  const char *begin = str.c_str();
-  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(begin));
+StatusOr<T> ParseFloat(std::string_view str) {
+  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(str));
 
-  if (pos != begin + str.size()) {
+  if (pos != str.data() + str.size()) {
     return {Status::NotOK, "encounter non-number characters"};
   }
 

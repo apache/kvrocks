@@ -40,12 +40,15 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(std::string_view v, int base = 10) {
   T res = 0;
   auto [end, ec] = std::from_chars(v.data(), v.data() + v.size(), res, base);
 
-  if (v == end) {
+  if (v.data() == end) {
     return {Status::NotOK, "not started as an integer"};
   }
 
-  if (auto e = std::make_error_code(ec)) {
-    return {Status::NotOK, fmt::format("failed to parse integer: {}", e.message())};
+  if (ec != std::errc()) {
+    if (ec == std::errc::result_out_of_range) {
+      return {Status::NotOK, "out of range of integer type"};
+    }
+    return {Status::NotOK, std::make_error_code(ec).message()};
   }
 
   return ParseResultAndPos<T>{res, end};

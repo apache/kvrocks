@@ -1662,11 +1662,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {
 	var elements int
 	switch encoding {
-		case "ziplist":
-			elements = 128
-		case "skiplist":
-			elements = 100
-		default: {
+	case "ziplist":
+		elements = 128
+	case "skiplist":
+		elements = 100
+	default:
+		{
 			fmt.Println("Unknown sorted set encoding")
 			return
 		}

@@ -302,10 +302,13 @@ class CommandTDigestMerge : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
+    std::set<std::string> unique_source_keys;
+
     for (auto i = 3; i < (3 + *numkeys); i++) {
       auto src_digest = GET_OR_RET(parser.TakeStr());
-      source_keys_.emplace_back(src_digest);
+      unique_source_keys.emplace(std::move(src_digest));
     }
+    source_keys_ = ranges::to_vector(unique_source_keys);
 
     if (!parser.Good()) {
       return Status::OK();
@@ -379,5 +382,5 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
 }  // namespace redis

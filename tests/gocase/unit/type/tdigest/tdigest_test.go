@@ -467,8 +467,12 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2, "override").Err())
 
 		// merge to a new destination key
-		newDestKey := keyPrefix + "new_dest"
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", newDestKey, 2, sourceKey1, sourceKey2).Err())
+		newDestKey1 := keyPrefix + "new_dest"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", newDestKey1, 2, sourceKey1, sourceKey2).Err())
+
+		// merge with same source keys
+		newDestKey2 := keyPrefix + "new_dest2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", newDestKey2, 4, sourceKey1, sourceKey2, sourceKey1, sourceKey2).Err())
 
 		validation := func(destMergeKey string) {
 			rsp := rdb.Do(ctx, "TDIGEST.INFO", destMergeKey)
@@ -510,6 +514,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			}
 		}
 		validation(destKey)
-		validation(newDestKey)
+		validation(newDestKey1)
+		validation(newDestKey2)
 	})
 }

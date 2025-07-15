@@ -426,6 +426,7 @@ void Worker::FreeConnection(redis::Connection *conn) {
 
   removeConnection(conn->GetFD());
   srv->ResetWatchedKeys(conn);
+  srv->CleanupWaitConnection(conn);
   if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }

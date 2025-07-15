@@ -43,6 +43,7 @@
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
+#include "common/time_util.h"
 #include "lua.hpp"
 #include "memory_profiler.h"
 #include "namespace.h"
@@ -229,6 +230,14 @@ class Server {
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
+  // WAIT command infrastructure
+  void BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas);
+  void WakeupWaitConnections(rocksdb::SequenceNumber seq);
+  void CleanupWaitConnection(redis::Connection *conn);
+
+  // Helper methods for WAIT command
+  size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
+
   size_t GetReplicaCount() {
     slave_threads_mu_.lock();
     auto replica_count = slave_threads_.size();
@@ -403,6 +412,18 @@ class Server {
 
   std::mutex blocked_stream_consumers_mu_;
   std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
+
+  // WAIT command blocking infrastructure
+  struct WaitContext {
+    redis::Connection *conn;
+    rocksdb::SequenceNumber target_seq;
+    uint64_t num_replicas;
+
+    WaitContext(redis::Connection *c, rocksdb::SequenceNumber seq, uint64_t replicas)
+        : conn(c), target_seq(seq), num_replicas(replicas) {}
+  };
+  std::list<WaitContext> wait_contexts_;
+  std::mutex wait_contexts_mu_;
 
   // threads
   std::shared_mutex works_concurrency_rw_lock_;

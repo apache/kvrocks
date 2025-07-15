@@ -30,8 +30,6 @@ refer to https://github.com/apache/arrow/blob/27bbd593625122a4a25d9471c8aaf5df54
 #include <algorithm>
 #include <iterator>
 #include <queue>
-#include <range/v3/view/filter.hpp>
-#include <range/v3/view/transform.hpp>
 
 #include "common/status.h"
 

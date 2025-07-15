@@ -18,7 +18,6 @@
  *
  */
 
-#include <cmath>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/transform.hpp>
 
@@ -326,7 +325,7 @@ class CommandTDigestMerge : public Commander {
       }
       options_.compression = *compression;
     } else if (keyword == kOverrideArg) {
-      options_.override = true;
+      options_.override_flag = true;
     } else {
       return {Status::RedisParseErr, errWrongKeyword};
     }
@@ -335,7 +334,7 @@ class CommandTDigestMerge : public Commander {
       return Status::OK();
     }
 
-    if (options_.override) {
+    if (options_.override_flag) {
       return {Status::RedisParseErr, errWrongKeyword};
     }
 
@@ -343,7 +342,7 @@ class CommandTDigestMerge : public Commander {
       return {Status::RedisParseErr, errWrongKeyword};
     }
 
-    options_.override = true;
+    options_.override_flag = true;
 
     if (parser.Good()) {
       return {Status::RedisParseErr, errWrongNumOfArguments};

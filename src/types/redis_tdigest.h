@@ -46,7 +46,7 @@ struct TDigestCreateOptions {
 
 struct TDigestMergeOptions {
   uint32_t compression = 0;
-  bool override = false;
+  bool override_flag = false;
 };
 
 struct TDigestQuantitleResult {

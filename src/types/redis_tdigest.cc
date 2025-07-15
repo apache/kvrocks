@@ -302,7 +302,7 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
     return status;
   } else if (status.ok()) {
     dest_digest_existed = true;
-    if (!options.override) {
+    if (!options.override_flag) {
       return rocksdb::Status::InvalidArgument(fmt::format("{}: {}", errKeyAlreadyExists, dest_digest.ToString()));
     }
   }

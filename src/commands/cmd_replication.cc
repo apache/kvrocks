@@ -344,10 +344,54 @@ class CommandDBName : public Commander {
   }
 };
 
+class CommandWait : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto num_replicas_result = ParseInt<int64_t>(args[1], 10);
+    if (!num_replicas_result || *num_replicas_result <= 0) {
+      return {Status::RedisParseErr, "numreplicas should be a positive integer"};
+    }
+
+    num_replicas_ = *num_replicas_result;
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    // Only master can execute WAIT command
+    if (srv->IsSlave()) {
+      return {Status::RedisExecErr, "WAIT command can only be executed on master"};
+    }
+
+    // Get current sequence number
+    auto current_seq = srv->storage->LatestSeqNumber();
+
+    // Check if we already have enough replicas at the current sequence
+    size_t reached_replicas = srv->GetReplicasReachedSequence(current_seq);
+
+    // If we already have enough replicas, return immediately
+    if (reached_replicas >= num_replicas_) {
+      *output = redis::Integer(reached_replicas);
+      return Status::OK();
+    }
+
+    // Block the connection and wait for replicas to catch up
+    srv->BlockOnWait(conn, current_seq, num_replicas_);
+
+    // The connection will be woken up by WakeupWaitConnections when enough replicas
+    // have reached the target sequence
+    return {Status::BlockingCmd};
+  }
+
+ private:
+  uint64_t num_replicas_ = 0;
+};
+
 REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only no-script", NO_KEY),
                         MakeCmdAttr<CommandPSync>("psync", -2, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only no-multi no-script", NO_KEY),
-                        MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi", NO_KEY), )
+                        MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi", NO_KEY),
+                        MakeCmdAttr<CommandWait>("wait", 2, "read-only no-multi no-script blocking", NO_KEY), )
 
 }  // namespace redis

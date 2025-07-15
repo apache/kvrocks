@@ -20,70 +20,11 @@
 
 #pragma once
 
-#include <cstdlib>
-#include <limits>
-#include <string>
+#include <charconv>
 #include <tuple>
+#include <type_traits>
 
 #include "status.h"
-#include "string_util.h"
-
-namespace details {
-
-template <typename>
-struct ParseIntFunc;
-
-template <>
-struct ParseIntFunc<char> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<short> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<int> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<long> {  // NOLINT
-  constexpr static const auto value = std::strtol;
-};
-
-template <>
-struct ParseIntFunc<long long> {  // NOLINT
-  constexpr static const auto value = std::strtoll;
-};
-
-template <>
-struct ParseIntFunc<unsigned char> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned short> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned long> {  // NOLINT
-  constexpr static const auto value = std::strtoul;
-};
-
-template <>
-struct ParseIntFunc<unsigned long long> {  // NOLINT
-  constexpr static const auto value = std::strtoull;
-};
-
-}  // namespace details
 
 template <typename T>
 using ParseResultAndPos = std::tuple<T, const char *>;
@@ -94,24 +35,20 @@ using ParseResultAndPos = std::tuple<T, const char *>;
 // e.g. TryParseInt("100MB") -> {100, "MB"}
 // if no integer can be parsed or out of type range, an error will be returned
 // base can be in {0, 2, ..., 36}, refer to strto* in standard c for more details
-template <typename T = long long>  // NOLINT
-StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
-  char *end = nullptr;
+template <typename T = long long, std::enable_if_t<std::is_integral_v<T>, int> = 0>  // NOLINT
+StatusOr<ParseResultAndPos<T>> TryParseInt(std::string_view v, int base = 10) {
+  T res = 0;
+  auto [end, ec] = std::from_chars(v.data(), v.data() + v.size(), res, base);
 
-  errno = 0;
-  auto res = details::ParseIntFunc<T>::value(v, &end, base);
-
-  if (v == end) {
+  if (v.data() == end) {
     return {Status::NotOK, "not started as an integer"};
   }
 
-  if (errno) {
-    return Status::FromErrno();
-  }
-
-  if (!std::is_same<T, decltype(res)>::value &&
-      (res < std::numeric_limits<T>::min() || res > std::numeric_limits<T>::max())) {
-    return {Status::NotOK, "out of range of integer type"};
+  if (ec != std::errc()) {
+    if (ec == std::errc::result_out_of_range) {
+      return {Status::NotOK, "out of range of integer type"};
+    }
+    return {Status::NotOK, std::make_error_code(ec).message()};
   }
 
   return ParseResultAndPos<T>{res, end};
@@ -121,13 +58,12 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(const char *v, int base = 0) {
 // not like TryParseInt, the whole string need to be parsed as an integer,
 // e.g. ParseInt("100MB") -> error status
 template <typename T = long long>  // NOLINT
-StatusOr<T> ParseInt(const std::string &v, int base = 0) {
-  const char *begin = v.c_str();
-  auto res = TryParseInt<T>(begin, base);
+StatusOr<T> ParseInt(std::string_view v, int base = 10) {
+  auto res = TryParseInt<T>(v, base);
 
   if (!res) return res;
 
-  if (std::get<1>(*res) != begin + v.size()) {
+  if (std::get<1>(*res) != v.data() + v.size()) {
     return {Status::NotOK, "encounter non-integer characters"};
   }
 
@@ -140,7 +76,7 @@ using NumericRange = std::tuple<T, T>;
 // this overload accepts a range {min, max},
 // integer out of the range will trigger an error status
 template <typename T = long long>  // NOLINT
-StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) {
+StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 10) {
   auto res = ParseInt<T>(v, base);
 
   if (!res) return res;
@@ -153,8 +89,10 @@ StatusOr<T> ParseInt(const std::string &v, NumericRange<T> range, int base = 0) 
 }
 
 // available units: K, M, G, T, P
-StatusOr<std::uint64_t> ParseSizeAndUnit(const std::string &v);
+StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 
+// we cannot use std::from_chars for floating-point numbers,
+// since it is available since gcc/libstdc++ 11 and libc++ 20.
 template <typename>
 struct ParseFloatFunc;
 

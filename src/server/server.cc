@@ -39,6 +39,7 @@
 #include <utility>
 
 #include "commands/commander.h"
+#include "common/cmd_options.h"
 #include "common/string_util.h"
 #include "config/config.h"
 #include "fmt/format.h"
@@ -1474,7 +1475,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
   });
 }
 
-Status Server::AsyncBgSaveDB() {
+Status Server::AsyncBgSaveDB(BGSaveCmdOptions *options) {
   std::lock_guard<std::mutex> lg(db_job_mu_);
   if (is_bgsave_in_progress_) {
     return {Status::NotOK, "bgsave in-progress"};
@@ -1482,9 +1483,9 @@ Status Server::AsyncBgSaveDB() {
 
   is_bgsave_in_progress_ = true;
 
-  return task_runner_.TryPublish([this] {
+  return task_runner_.TryPublish([this, options] {
     auto start_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
-    Status s = storage->CreateBackup();
+    Status s = storage->CreateBackup(options);
     auto stop_bgsave_time_secs = util::GetTimeStamp<std::chrono::seconds>();
 
     std::lock_guard<std::mutex> lg(db_job_mu_);

@@ -35,6 +35,7 @@
 #include <memory>
 #include <random>
 
+#include "common/cmd_options.h"
 #include "compact_filter.h"
 #include "db_util.h"
 #include "event_listener.h"
@@ -398,10 +399,16 @@ Status Storage::Open(DBOpenMode mode) {
   return Status::OK();
 }
 
-Status Storage::CreateBackup(uint64_t *sequence_number) {
+Status Storage::CreateBackup(const BGSaveCmdOptions *options) {
   info("[storage] Start to create new backup");
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
+
+  const BGSaveCmdOptions default_opts{
+      .sequence_number = nullptr,
+      .lightweight = false,
+  };
+  const BGSaveCmdOptions &opts = options ? *options : default_opts;
 
   std::string tmpdir = task_backup_dir + ".tmp";
   // Maybe there is a dirty tmp checkpoint, try to clean it
@@ -416,7 +423,18 @@ Status Storage::CreateBackup(uint64_t *sequence_number) {
   }
 
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
-  s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB, sequence_number);
+
+  if (opts.lightweight) {
+    s = db_->Flush(rocksdb::FlushOptions());
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to flush memtables before lightweight checkpoint. Error: " << s.ToString();
+      return {Status::NotOK, s.ToString()};
+    }
+    s = checkpoint->CreateCheckpoint(tmpdir);
+  } else {
+    s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB, opts.sequence_number);
+  }
+
   if (!s.ok()) {
     warn("Failed to create checkpoint (snapshot) for backup. Error: {}", s.ToString());
     return {Status::DBBackupErr, s.ToString()};

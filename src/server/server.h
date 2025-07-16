@@ -283,7 +283,7 @@ class Server {
   bool PrepareRestoreDB();
   void WaitNoMigrateProcessing();
   Status AsyncCompactDB(const std::string &begin_key = "", const std::string &end_key = "");
-  Status AsyncBgSaveDB();
+  Status AsyncBgSaveDB(BGSaveCmdOptions *backup_options = nullptr);
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);

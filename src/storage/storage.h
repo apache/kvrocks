@@ -228,7 +228,7 @@ class Storage {
   // The sequence_number will be pointed to the value of the sequence number in range of DB,
   // but can't promise it's the latest sequence number. So you must check it by yourself before
   // using it.
-  Status CreateBackup(uint64_t *sequence_number = nullptr);
+  Status CreateBackup(const BGSaveCmdOptions *options = nullptr);
   void DestroyBackup();
   Status RestoreFromBackup();
   Status RestoreFromCheckpoint();

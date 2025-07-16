@@ -25,6 +25,7 @@
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
+#include "common/cmd_options.h"
 #include "common/io_util.h"
 #include "common/rdb_stream.h"
 #include "common/string_util.h"
@@ -963,15 +964,40 @@ class CommandCompact : public Commander {
 
 class CommandBGSave : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    // Parse optional lightweight flag
+    while (parsr.Good()) {
+      if (parser.EatEqICase("lightweight")) {
+        std::string lightweight = GET_OR_RET(parser.TakeStr());
+        if (util::EqualICase(lightweight, "yes")) {
+          backup_options_.lightweight = true;
+        } else if (util::EqualICase(lightweight, "no")) {
+          backup_options_.lightweight = false;
+        } else {
+          return {Status::RedisParseErr, "lightweight value must be 'yes' or 'no'"};
+        }
+      } else {
+        return {Status::RedisParseErr, "unknown option: " + parser.TakeStr().GetValue()};
+      }
+    }
+    return Commander::Parse(args);
+  }
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  std::string *output) override {
-    Status s = srv->AsyncBgSaveDB();
+    Status s = srv->AsyncBgSaveDB(&backup_options_);
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
     info("BGSave was triggered by manual with executed success");
     return Status::OK();
   }
+
+ private:
+  BGSaveCmdOptions backup_options_{
+      .sequence_number = nullptr,
+      .lightweight = false,
+  };
 };
 
 class CommandFlushBackup : public Commander {

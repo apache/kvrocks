@@ -427,7 +427,7 @@ Status Storage::CreateBackup(const BGSaveCmdOptions *options) {
   if (opts.lightweight) {
     s = db_->Flush(rocksdb::FlushOptions());
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to flush memtables before lightweight checkpoint. Error: " << s.ToString();
+      warn("Failed to flush memtables before lightweight checkpoint. Error: {}", s.ToString());
       return {Status::NotOK, s.ToString()};
     }
     s = checkpoint->CreateCheckpoint(tmpdir);

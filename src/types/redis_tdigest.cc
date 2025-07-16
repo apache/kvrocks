@@ -316,7 +316,18 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
   uint32_t compression = 0;
   uint64_t total_observations = 0;
   std::vector<CentroidsWithDelta> source_centroids_data;
+  source_centroids_data.reserve(source_digests.size());
+  // use map to avoid duplicate processing of the same tdigest
+  std::map<std::string, const CentroidsWithDelta*> unique_source_centroids;
   for (const auto& tdigest : source_digests) {
+    if (auto it = unique_source_centroids.find(tdigest); it != unique_source_centroids.end()) {
+      // skip if the tdigest has been processed
+      if (it->second != nullptr) {  // only store non-empty centroids
+        source_centroids_data.emplace_back(*it->second);
+      }
+      continue;
+    }
+
     TDigestMetadata metadata;
     std::vector<Centroid> source_centroids;
     auto source_ns_key = AppendNamespacePrefix(tdigest);
@@ -345,13 +356,15 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
     }
 
     if (!source_centroids.empty()) {
-      source_centroids_data.emplace_back(CentroidsWithDelta{
+      unique_source_centroids[tdigest] = &source_centroids_data.emplace_back(CentroidsWithDelta{
           .centroids = std::move(source_centroids),
           .delta = metadata.compression,
           .min = metadata.minimum,
           .max = metadata.maximum,
           .total_weight = static_cast<double>(metadata.merged_weight),
       });
+    } else {
+      unique_source_centroids[tdigest] = nullptr;  // use nullptr as a marker for empty centroids
     }
 
     total_observations += metadata.total_observations;

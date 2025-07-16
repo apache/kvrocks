@@ -37,6 +37,7 @@ const (
 	errMsgMustInRange                     = "compression must be between 1 and 1000"
 	errMsgKeyAlreadyExists                = "key already exists"
 	errMsgKeyNotExist                     = "key does not exist"
+	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
 )
 
@@ -433,7 +434,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key3", 3, "hahah").Err(), errMsgWrongNumberArg)
 
 		// merge with negative number of source keys
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key4", -1, "hahah").Err(), errCompressionParameterMustBePositive)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key4", -1, "hahah").Err(), errNumkeysMustBePositive)
 
 		// merge with non-existent source key
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key5", 1, keyPrefix+"nonexistent").Err(), errMsgKeyNotExist)

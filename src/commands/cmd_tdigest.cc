@@ -295,60 +295,49 @@ class CommandTDigestMerge : public Commander {
     }
 
     if (*numkeys <= 0) {
-      return {Status::RedisParseErr, errCompressionMustBePositive};
+      return {Status::RedisParseErr, errNumkeysMustBePositive};
     }
 
     if (static_cast<int64_t>(args.size()) < (3 + *numkeys)) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    std::set<std::string> unique_source_keys;
+    source_keys_.reserve(*numkeys);
 
     for (auto i = 3; i < (3 + *numkeys); i++) {
       auto src_digest = GET_OR_RET(parser.TakeStr());
-      unique_source_keys.emplace(std::move(src_digest));
-    }
-    source_keys_ = ranges::to_vector(unique_source_keys);
-
-    if (!parser.Good()) {
-      return Status::OK();
+      source_keys_.emplace_back(std::move(src_digest));
     }
 
-    auto keyword = GET_OR_RET(parser.TakeStr());
-    if (keyword == kCompressionArg) {
-      if (!parser.Good()) {
+    while (parser.Good()) {
+      // more arguments than expected compression and override
+      if (options_.compression > 0 && options_.override_flag) {
         return {Status::RedisParseErr, errWrongNumOfArguments};
       }
-      auto compression = parser.TakeInt<uint32_t>();
-      if (!compression) {
-        return {Status::RedisParseErr, errParseCompression};
+
+      if (parser.EatEqICase(kCompressionArg)) {
+        // compression already set or without a compression value
+        if (options_.compression > 0 || !parser.Good()) {
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+
+        if (auto compression = parser.TakeInt<uint32_t>(); !compression) {
+          return {Status::RedisParseErr, errParseCompression};
+        } else if (*compression <= 0 || *compression > kTDigestMaxCompression) {
+          return {Status::RedisParseErr, errCompressionOutOfRange};
+        } else {
+          options_.compression = *compression;
+        }
       }
-      if (*compression <= 0 || *compression > kTDigestMaxCompression) {
-        return {Status::RedisParseErr, errCompressionOutOfRange};
+
+      if (parser.EatEqICase(kOverrideArg)) {
+        if (options_.override_flag) {  // override already set
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+        options_.override_flag = true;
+      } else {
+        return {Status::RedisParseErr, errWrongKeyword};
       }
-      options_.compression = *compression;
-    } else if (keyword == kOverrideArg) {
-      options_.override_flag = true;
-    } else {
-      return {Status::RedisParseErr, errWrongKeyword};
-    }
-
-    if (!parser.Good()) {
-      return Status::OK();
-    }
-
-    if (options_.override_flag) {
-      return {Status::RedisParseErr, errWrongKeyword};
-    }
-
-    if (GET_OR_RET(parser.TakeStr()) != kOverrideArg) {
-      return {Status::RedisParseErr, errWrongKeyword};
-    }
-
-    options_.override_flag = true;
-
-    if (parser.Good()) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
     return Status::OK();

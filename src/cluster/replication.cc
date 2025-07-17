@@ -147,7 +147,6 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
   // Clear processed commands to avoid reprocessing them
   commands->clear();
 
-  info("[replication] debug max seq: {}", max_seq);
   if (max_seq != 0) {
     ack_seq_.store(max_seq);
 
@@ -209,6 +208,14 @@ void FeedSlaveThread::loop() {
       batches_bulk.clear();
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
+
+      // if the wait command is blocked, send _get_ack to the slave so WAIT command can be unblocked ASAP
+      if (srv_->IsWaitCommandBlocked()) {
+        auto s = util::SockSend(conn_->GetFD(), redis::BulkString("_getack"), conn_->GetBufferEvent());
+        if (!s.IsOK()) {
+          error("Write error while sending _get_ack to slave: {}", s.Msg());
+        }
+      }
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
@@ -613,6 +620,8 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
+  bool force_send_ack = false;
+
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
@@ -645,6 +654,11 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           goto AGAIN_LABEL;  // NOLINT
         }
 
+        if (bulk_string == "_getack") {
+          force_send_ack = true;
+          goto AGAIN_LABEL;  // NOLINT
+        }
+
         rocksdb::WriteBatch batch(std::move(bulk_string));
 
         auto s = storage_->ReplicaApplyWriteBatch(&batch);
@@ -667,7 +681,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
 
 AGAIN_LABEL:  // NOLINT
   auto now = std::chrono::steady_clock::now();
-  if (now - last_ack_time_ >= std::chrono::seconds(1)) {
+  if (force_send_ack || now - last_ack_time_ >= std::chrono::seconds(1)) {
     SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
     last_ack_time_ = now;
   }

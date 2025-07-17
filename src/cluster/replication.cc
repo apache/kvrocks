@@ -561,6 +561,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
 }
 
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
+  bool data_written = false;
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
   while (true) {
@@ -568,7 +569,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_size: {
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return CBState::AGAIN;
+        if (!line) goto AGAIN_LABEL; // NOLINT
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (incr_bulk_len_ == 0) {
           error("[replication] Invalid increment data size");
@@ -580,7 +581,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
-          return CBState::AGAIN;
+          goto AGAIN_LABEL; // NOLINT
         }
 
         const char *bulk_data =
@@ -592,7 +593,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
-          return CBState::AGAIN;
+          goto AGAIN_LABEL; // NOLINT
         }
 
         rocksdb::WriteBatch batch(std::move(bulk_string));
@@ -603,6 +604,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                 util::StringToHex(batch.Data()));
           return CBState::RESTART;
         }
+        data_written = true;
 
         s = parseWriteBatch(batch);
         if (!s.IsOK()) {
@@ -614,6 +616,19 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         break;
     }
   }
+
+  AGAIN_LABEL: // NOLINT
+  // send ack when there is data written and it has been 1 second since last ack to reduce the number of ack packets.
+  if (!data_written) {
+    return CBState::AGAIN;
+  }
+
+  auto now = std::chrono::steady_clock::now();
+  if (now - last_ack_time_ >= std::chrono::seconds(1)) {
+    SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
+    last_ack_time_ = now;
+  }
+  return CBState::AGAIN;
 }
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(bufferevent *bev) {

@@ -160,6 +160,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   std::atomic<int64_t> last_io_time_secs_ = 0;
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
+  std::chrono::steady_clock::time_point last_ack_time_ = std::chrono::steady_clock::now();
 
   std::function<bool()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;

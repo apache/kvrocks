@@ -70,6 +70,12 @@ Status FeedSlaveThread::Start() {
       error("failed to send OK response to the replica: {}", s.Msg());
       return;
     }
+
+    // Re-enable the bufferevent and set up callbacks after detachment
+    auto bev = conn_->GetBufferEvent();
+    bufferevent_enable(bev, EV_READ);
+    bufferevent_setcb(bev, &FeedSlaveThread::staticReadCallback, nullptr, nullptr, this);
+
     this->loop();
   });
 
@@ -101,6 +107,47 @@ void FeedSlaveThread::checkLivenessIfNeed() {
     error("Ping slave [{}] err: {}, would stop the thread", conn_->GetAddr(), s.Msg());
     Stop();
   }
+}
+
+void FeedSlaveThread::staticReadCallback(bufferevent *bev, void *ctx) {
+  auto *thread = static_cast<FeedSlaveThread *>(ctx);
+  thread->readCallback(bev, ctx);
+}
+
+// for now, the only command that the master receive from the slave on this connection should be ack.
+// the callback find the ack with largest sequence number and store it.
+void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx) {
+  auto input = bufferevent_get_input(bev);
+  auto s = req_.Tokenize(input);
+  if (!s.IsOK()) {
+    error("[replication] failed to tokenize request: {}", s.Msg());
+    return;
+  }
+
+  uint64_t max_seq = 0;
+  auto commands = req_.GetCommands();
+  for (const auto &command : *commands) {
+    // Validate replconf ack command format
+    if (command.size() != 3 || command[0] != "replconf" || command[1] != "ack") {
+      error("[replication] invalid command: {}", util::StringJoin(command, std::string_view(",")));
+      continue;
+    }
+
+    auto seq = ParseInt<uint64_t>(command[2], 10);
+    if (!seq) {
+      error("[replication] invalid sequence number: {}", util::StringJoin(command, std::string_view(",")));
+      continue;
+    }
+
+    if (*seq > max_seq) {
+      max_seq = *seq;
+    }
+  }
+
+  // Clear processed commands to avoid reprocessing them
+  commands->clear();
+
+  info("[replication] max seq: {}", max_seq);
 }
 
 void FeedSlaveThread::loop() {

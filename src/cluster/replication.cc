@@ -149,6 +149,9 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
 
   if (max_seq != 0) {
     ack_seq_.store(max_seq);
+    
+    // Wake up any WAIT connections that might be waiting for this sequence
+    srv_->WakeupWaitConnections(max_seq);
   }
 }
 
@@ -208,9 +211,6 @@ void FeedSlaveThread::loop() {
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
-
-    // Wake up any WAIT connections that might be waiting for this sequence
-    srv_->WakeupWaitConnections(curr_seq);
 
     while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);

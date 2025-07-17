@@ -611,7 +611,6 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
 }
 
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
-  bool data_written = false;
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
   while (true) {
@@ -654,7 +653,6 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                 util::StringToHex(batch.Data()));
           return CBState::RESTART;
         }
-        data_written = true;
 
         s = parseWriteBatch(batch);
         if (!s.IsOK()) {
@@ -668,11 +666,6 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
   }
 
 AGAIN_LABEL:  // NOLINT
-  // send ack when there is data written and it has been 1 second since last ack to reduce the number of ack packets.
-  if (!data_written) {
-    return CBState::AGAIN;
-  }
-
   auto now = std::chrono::steady_clock::now();
   if (now - last_ack_time_ >= std::chrono::seconds(1)) {
     SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));

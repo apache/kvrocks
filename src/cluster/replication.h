@@ -23,6 +23,7 @@
 #include <event2/bufferevent.h>
 
 #include <atomic>
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -162,7 +163,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   std::atomic<int64_t> last_io_time_secs_ = 0;
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
-  std::chrono::steady_clock::time_point last_ack_time_ = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point last_ack_time_ = std::chrono::steady_clock::time_point(std::chrono::seconds(0));
 
   std::function<bool()> pre_fullsync_cb_;
   std::function<void()> post_fullsync_cb_;

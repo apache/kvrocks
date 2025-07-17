@@ -124,7 +124,7 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
     return;
   }
 
-  uint64_t max_seq = 0;
+  rocksdb::SequenceNumber max_seq = 0;
   auto commands = req_.GetCommands();
   for (const auto &command : *commands) {
     // Validate replconf ack command format
@@ -133,7 +133,7 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
       continue;
     }
 
-    auto seq = ParseInt<uint64_t>(command[2], 10);
+    auto seq = ParseInt<rocksdb::SequenceNumber>(command[2], 10);
     if (!seq) {
       error("[replication] invalid sequence number: {}", util::StringJoin(command, std::string_view(",")));
       continue;
@@ -147,7 +147,9 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
   // Clear processed commands to avoid reprocessing them
   commands->clear();
 
-  info("[replication] max seq: {}", max_seq);
+  if (max_seq != 0) {
+    ack_seq_.store(max_seq);
+  }
 }
 
 void FeedSlaveThread::loop() {

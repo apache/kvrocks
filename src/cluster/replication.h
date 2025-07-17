@@ -72,10 +72,7 @@ class FeedSlaveThread {
   void Join();
   bool IsStopped() { return stop_; }
   redis::Connection *GetConn() { return conn_.get(); }
-  rocksdb::SequenceNumber GetCurrentReplSeq() {
-    auto seq = next_repl_seq_.load();
-    return seq == 0 ? 0 : seq - 1;
-  }
+  rocksdb::SequenceNumber GetAckSeq() { return ack_seq_.load(); }
 
  private:
   uint64_t interval_ = 0;
@@ -87,6 +84,7 @@ class FeedSlaveThread {
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
   // used to parse the ack response from the slave
   redis::Request req_;
+  std::atomic<rocksdb::SequenceNumber> ack_seq_ = 0;
 
   static const size_t kMaxDelayUpdates = 16;
   static const size_t kMaxDelayBytes = 16 * 1024;

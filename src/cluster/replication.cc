@@ -71,16 +71,16 @@ Status FeedSlaveThread::Start() {
       return;
     }
 
-    // Re-enable the bufferevent and set up callbacks after detachment
-    auto bev = conn_->GetBufferEvent();
-    bufferevent_enable(bev, EV_READ);
-    bufferevent_setcb(bev, &FeedSlaveThread::staticReadCallback, nullptr, nullptr, this);
-
     this->loop();
   });
 
   if (s) {
     t_ = std::move(*s);
+
+    // Re-enable the bufferevent and set up callbacks after detachment
+    auto bev = conn_->GetBufferEvent();
+    bufferevent_enable(bev, EV_READ);
+    bufferevent_setcb(bev, &FeedSlaveThread::staticReadCallback, nullptr, nullptr, this);
   } else {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
   }
@@ -147,9 +147,10 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
   // Clear processed commands to avoid reprocessing them
   commands->clear();
 
+  info("[replication] debug max seq: {}", max_seq);
   if (max_seq != 0) {
     ack_seq_.store(max_seq);
-    
+
     // Wake up any WAIT connections that might be waiting for this sequence
     srv_->WakeupWaitConnections(max_seq);
   }
@@ -618,7 +619,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_size: {
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) goto AGAIN_LABEL; // NOLINT
+        if (!line) goto AGAIN_LABEL;  // NOLINT
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (incr_bulk_len_ == 0) {
           error("[replication] Invalid increment data size");
@@ -630,7 +631,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
-          goto AGAIN_LABEL; // NOLINT
+          goto AGAIN_LABEL;                                     // NOLINT
         }
 
         const char *bulk_data =
@@ -642,7 +643,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
-          goto AGAIN_LABEL; // NOLINT
+          goto AGAIN_LABEL;  // NOLINT
         }
 
         rocksdb::WriteBatch batch(std::move(bulk_string));
@@ -666,7 +667,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
     }
   }
 
-  AGAIN_LABEL: // NOLINT
+AGAIN_LABEL:  // NOLINT
   // send ack when there is data written and it has been 1 second since last ack to reduce the number of ack packets.
   if (!data_written) {
     return CBState::AGAIN;

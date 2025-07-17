@@ -1118,10 +1118,10 @@ Server::InfoEntries Server::GetReplicationInfo() {
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
 
-    entries.emplace_back("slave" + std::to_string(idx),
-                         fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
-                                     slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(),
-                                     latest_seq - slave->GetAckSeq()));
+    entries.emplace_back(
+        "slave" + std::to_string(idx),
+        fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
+                    slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
     ++idx;
   }
   slave_threads_mu_.unlock();

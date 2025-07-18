@@ -185,8 +185,6 @@ void FeedSlaveThread::loop() {
     }
     updates_in_batches += batch.writeBatchPtr->Count();
     batches_bulk += redis::BulkString(batch.writeBatchPtr->Data());
-    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
-
     // 1. We must send the first replication batch, as said above.
     // 2. To avoid frequently calling 'write' system call to send replication stream,
     //    we pack multiple batches into one big bulk if possible, and only send once.
@@ -209,17 +207,8 @@ void FeedSlaveThread::loop() {
       batches_bulk.clear();
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
-
-      // if the wait command is blocked by the current batch, send _get_ack to the slave so WAIT command can be
-      // unblocked ASAP. Note we use curr_seq - 1 because the wait command is blocked by last sequence number when WAIT
-      // command is executed, curr_seq is the next sequence number.
-      if (srv_->HasBlockedWaitCommands(curr_seq - 1)) {
-        auto s = util::SockSend(conn_->GetFD(), redis::BulkString("_getack"), conn_->GetBufferEvent());
-        if (!s.IsOK()) {
-          error("Write error while sending _get_ack to slave: {}", s.Msg());
-        }
-      }
     }
+    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
 
     while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {
@@ -622,8 +611,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
-  bool force_send_ack = false;
-
+  bool data_written = false;
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
@@ -656,11 +644,6 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           goto AGAIN_LABEL;  // NOLINT
         }
 
-        if (bulk_string == "_getack") {
-          force_send_ack = true;
-          goto AGAIN_LABEL;  // NOLINT
-        }
-
         rocksdb::WriteBatch batch(std::move(bulk_string));
 
         auto s = storage_->ReplicaApplyWriteBatch(&batch);
@@ -669,6 +652,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                 util::StringToHex(batch.Data()));
           return CBState::RESTART;
         }
+        data_written = true;
 
         s = parseWriteBatch(batch);
         if (!s.IsOK()) {
@@ -682,10 +666,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
   }
 
 AGAIN_LABEL:  // NOLINT
-  auto now = std::chrono::steady_clock::now();
-  if (force_send_ack || now - last_ack_time_ >= std::chrono::seconds(1)) {
+  if (data_written) {
     SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
-    last_ack_time_ = now;
   }
   return CBState::AGAIN;
 }

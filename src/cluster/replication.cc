@@ -209,15 +209,17 @@ void FeedSlaveThread::loop() {
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
 
-      // if the wait command is blocked, send _get_ack to the slave so WAIT command can be unblocked ASAP
-      if (srv_->IsWaitCommandBlocked()) {
+      curr_seq = batch.sequence + batch.writeBatchPtr->Count();
+      // if the wait command is blocked by the current batch, send _get_ack to the slave so WAIT command can be
+      // unblocked ASAP. Note we use curr_seq - 1 because the wait command is blocked by last sequence number when WAIT
+      // command is executed, curr_seq is the next sequence number.
+      if (srv_->HasBlockedWaitCommands(curr_seq - 1)) {
         auto s = util::SockSend(conn_->GetFD(), redis::BulkString("_getack"), conn_->GetBufferEvent());
         if (!s.IsOK()) {
           error("Write error while sending _get_ack to slave: {}", s.Msg());
         }
       }
     }
-    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
 
     while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {

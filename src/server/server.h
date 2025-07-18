@@ -237,7 +237,7 @@ class Server {
 
   // Helper methods for WAIT command
   size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
-  bool IsWaitCommandBlocked();
+  bool HasBlockedWaitCommands(rocksdb::SequenceNumber seq);
 
   size_t GetReplicaCount() {
     slave_threads_mu_.lock();

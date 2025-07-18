@@ -747,9 +747,10 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
   }
 }
 
-bool Server::IsWaitCommandBlocked() {
+bool Server::HasBlockedWaitCommands(rocksdb::SequenceNumber seq) {
   std::lock_guard<std::mutex> guard(wait_contexts_mu_);
-  return !wait_contexts_.empty();
+  return std::any_of(wait_contexts_.begin(), wait_contexts_.end(),
+                     [seq](const auto &context) { return context.target_seq <= seq; });
 }
 
 size_t Server::GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq) {

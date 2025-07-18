@@ -70,7 +70,6 @@ Status FeedSlaveThread::Start() {
       error("failed to send OK response to the replica: {}", s.Msg());
       return;
     }
-
     this->loop();
   });
 
@@ -186,6 +185,8 @@ void FeedSlaveThread::loop() {
     }
     updates_in_batches += batch.writeBatchPtr->Count();
     batches_bulk += redis::BulkString(batch.writeBatchPtr->Data());
+    curr_seq = batch.sequence + batch.writeBatchPtr->Count();
+
     // 1. We must send the first replication batch, as said above.
     // 2. To avoid frequently calling 'write' system call to send replication stream,
     //    we pack multiple batches into one big bulk if possible, and only send once.
@@ -209,7 +210,6 @@ void FeedSlaveThread::loop() {
       if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
 
-      curr_seq = batch.sequence + batch.writeBatchPtr->Count();
       // if the wait command is blocked by the current batch, send _get_ack to the slave so WAIT command can be
       // unblocked ASAP. Note we use curr_seq - 1 because the wait command is blocked by last sequence number when WAIT
       // command is executed, curr_seq is the next sequence number.

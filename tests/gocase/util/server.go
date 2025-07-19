@@ -244,7 +244,7 @@ func StartServerWithCLIOptions(
 		defer func() { require.NoError(t, f.Close()) }()
 
 		for k := range configs {
-			_, err := f.WriteString(fmt.Sprintf("%s %s\n", k, configs[k]))
+			_, err := fmt.Fprintf(f, "%s %s\n", k, configs[k])
 			require.NoError(t, err)
 		}
 		cmd.Args = append(cmd.Args, "-c", f.Name())

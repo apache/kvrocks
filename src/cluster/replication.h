@@ -214,6 +214,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   static bool isUnknownOption(std::string_view err);
 
   Status parseWriteBatch(const rocksdb::WriteBatch &write_batch);
+  std::tuple<CBState, bool> processIncrementalData(bufferevent *bev);
 };
 
 /*

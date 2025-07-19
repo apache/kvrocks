@@ -50,4 +50,7 @@ inline constexpr const char *errCompressionMustBePositive = "compression paramet
 inline constexpr const char *errCompressionOutOfRange = "compression must be between 1 and 1000";
 inline constexpr const char *errKeyNotFound = "key does not exist";
 inline constexpr const char *errKeyAlreadyExists = "key already exists";
+inline constexpr const char *errParsingNumkeys = "error parsing numkeys";
+inline constexpr const char *errNumkeysMustBePositive = "numkeys need to be a positive integer";
+inline constexpr const char *errWrongKeyword = "wrong keyword";
 }  // namespace redis

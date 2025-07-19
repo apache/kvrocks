@@ -15,28 +15,49 @@
 # specific language governing permissions and limitations
 # under the License.
 
+version: "2"
 run:
-  timeout: 10m
   concurrency: 4
   allow-parallel-runners: true
   allow-serial-runners: true
 linters:
-  disable-all: true
+  default: none
   enable:
     - asciicheck
     - bodyclose
+    - copyloopvar
     - durationcheck
     - errcheck
-    - copyloopvar
-    - gofmt
-    - goimports
-    - gosimple
     - ineffassign
     - makezero
     - prealloc
     - predeclared
     - rowserrcheck
     - staticcheck
-    - stylecheck
-    - typecheck
     - unused
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+linters-settings:
+  staticcheck:
+    checks:
+      - all
+      - '-QF1012' # disable the rule QF1012: Use fmt.Fprintf(...) instead of WriteString(fmt.Sprintf(...))

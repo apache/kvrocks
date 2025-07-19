@@ -31,12 +31,14 @@ import (
 )
 
 const (
-	errMsgWrongNumberArg   = "wrong number of arguments"
-	errMsgParseCompression = "error parsing compression parameter"
-	errMsgNeedToBePositive = "compression parameter needs to be a positive integer"
-	errMsgMustInRange      = "compression must be between 1 and 1000"
-	errMsgKeyAlreadyExists = "key already exists"
-	errMsgKeyNotExist      = "key does not exist"
+	errMsgWrongNumberArg                  = "wrong number of arguments"
+	errMsgParseCompression                = "error parsing compression parameter"
+	errMsgNeedToBePositive                = "compression parameter needs to be a positive integer"
+	errMsgMustInRange                     = "compression must be between 1 and 1000"
+	errMsgKeyAlreadyExists                = "key already exists"
+	errMsgKeyNotExist                     = "key does not exist"
+	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
+	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
 )
 
 type tdigestInfo struct {
@@ -414,5 +416,106 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 				require.InDelta(t, expected[i], numVal, 1e-6, "Mismatch at index %d", i)
 			}
 		}
+	})
+
+	t.Run("tdigest.merge with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_"
+
+		// no arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE").Err(), errMsgWrongNumberArg)
+
+		// merge with no source keys
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key1").Err(), errMsgWrongNumberArg)
+
+		// merge with invalid number of source keys
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key2", "hahah").Err(), errMsgWrongNumberArg)
+
+		// merge with not matching number of source keys
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key3", 3, "hahah").Err(), errMsgWrongNumberArg)
+
+		// merge with negative number of source keys
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key4", -1, "hahah").Err(), errNumkeysMustBePositive)
+
+		// merge with non-existent source key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key5", 1, keyPrefix+"nonexistent").Err(), errMsgKeyNotExist)
+
+		// merge with invalid compression keyword
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key6", 1, keyPrefix+"nonexistent", "compression").Err(), errMsgWrongNumberArg)
+
+		// merge with invalid compression value
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key7", 1, keyPrefix+"nonexistent", "compression", "hahah").Err(), errMsgParseCompression)
+
+		// merge with more than one override
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", keyPrefix+"key8", 1, keyPrefix+"nonexistent", "compression", "100", "override", "override").Err(), errMsgWrongNumberArg)
+
+		// create a source digest and add some data
+		sourceKey1 := keyPrefix + "source1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", sourceKey1, "compression", "101").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", sourceKey1, "1.0", "2.0", "3.0").Err())
+
+		sourceKey2 := keyPrefix + "source2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", sourceKey2, "compression", "30").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", sourceKey2, "4.0", "5.0", "6.0", "100", "-200").Err())
+
+		// create a destination digest
+		destKey := keyPrefix + "dest"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+
+		// merge the source into the destination without override
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2).Err(), errMsgKeyAlreadyExists)
+
+		// merge the source into the destination with override
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2, "override").Err())
+
+		// merge to a new destination key
+		newDestKey1 := keyPrefix + "new_dest"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", newDestKey1, 2, sourceKey1, sourceKey2).Err())
+
+		// merge with same source keys
+		newDestKey2 := keyPrefix + "new_dest2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", newDestKey2, 4, sourceKey1, sourceKey2, sourceKey1, sourceKey2).Err())
+
+		validation := func(destMergeKey string) {
+			rsp := rdb.Do(ctx, "TDIGEST.INFO", destMergeKey)
+			require.NoError(t, rsp.Err())
+			info := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 101, info.Compression)
+			require.EqualValues(t, 8, info.Observations)
+
+			rsp = rdb.Do(ctx, "TDIGEST.MAX", destMergeKey)
+			require.NoError(t, rsp.Err())
+			{
+				rspval, err := rsp.Float64()
+				require.NoError(t, err)
+				require.InEpsilon(t, 100, rspval, 0.001)
+			}
+
+			rsp = rdb.Do(ctx, "TDIGEST.MIN", destMergeKey)
+			require.NoError(t, rsp.Err())
+			{
+				rspval, err := rsp.Float64()
+				require.NoError(t, err)
+				require.InEpsilon(t, -200, rspval, 0.001)
+			}
+
+			rsp = rdb.Do(ctx, "TDIGEST.QUANTILE", destMergeKey, "0.1", "0.5", "0.75", "0.9", "0.99", "1")
+			require.NoError(t, rsp.Err())
+			vals, err := rsp.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 6)
+			expected := []float64{-200.0, 4.0, 6.0, 100.0, 100.0, 100.0}
+			for i, v := range vals {
+				str, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+
+				got, err := strconv.ParseFloat(str, 64)
+				require.NoError(t, err, "could not parse value at index %d", i)
+
+				require.InEpsilon(t, expected[i], got, 0.2, "mismatch at index %d", i)
+			}
+		}
+		validation(destKey)
+		validation(newDestKey1)
+		validation(newDestKey2)
 	})
 }

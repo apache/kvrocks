@@ -48,7 +48,7 @@ const (
 func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string, bs []byte) {
 	buf := bytes.NewBuffer([]byte{})
 	for _, v := range bs {
-		buf.WriteString(fmt.Sprintf("%08b", v))
+		_, _ = fmt.Fprintf(buf, "%08b", v)
 	}
 	for index, value := range buf.String() {
 		require.NoError(t, rdb.SetBit(ctx, key, int64(index), int(value)-int('0')).Err())
@@ -74,7 +74,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 	for _, value := range values {
 		buf := bytes.NewBuffer([]byte{})
 		for _, v := range value {
-			buf.WriteString(fmt.Sprintf("%08b", v))
+			_, _ = fmt.Fprintf(buf, "%08b", v)
 		}
 		tmp := buf.String() + strings.Repeat("0", maxlen-len(buf.String()))
 		binaryArray = append(binaryArray, tmp)

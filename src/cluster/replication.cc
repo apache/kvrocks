@@ -669,7 +669,7 @@ AGAIN_LABEL:  // NOLINT
   if (data_written) {
     SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
   }
-  return CBState::AGAIN;
+ return CBState::AGAIN;
 }
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(bufferevent *bev) {

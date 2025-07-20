@@ -202,7 +202,8 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   CBState fullSyncWriteCB(bufferevent *bev);
   CBState fullSyncReadCB(bufferevent *bev);
 
-  // Synchronized-Blocking ops
+  void sendReplConfAck(bufferevent *bev);
+
   Status sendAuth(int sock_fd, ssl_st *ssl);
   Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file, uint32_t crc,
                    const FetchFileCallback &fn, ssl_st *ssl);

@@ -608,6 +608,10 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
   }
 }
 
+void ReplicationThread::sendReplConfAck(bufferevent *bev) {
+  SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
+}
+
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
@@ -617,7 +621,12 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_size: {
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) goto AGAIN_LABEL;  // NOLINT
+        if (!line) {
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
+          return CBState::AGAIN;
+        }
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (incr_bulk_len_ == 0) {
           error("[replication] Invalid increment data size");
@@ -629,7 +638,10 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
-          goto AGAIN_LABEL;                                     // NOLINT
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
+          return CBState::AGAIN;
         }
 
         const char *bulk_data =
@@ -641,7 +653,10 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
-          goto AGAIN_LABEL;  // NOLINT
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
+          return CBState::AGAIN;
         }
 
         rocksdb::WriteBatch batch(std::move(bulk_string));
@@ -664,12 +679,6 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         break;
     }
   }
-
-AGAIN_LABEL:  // NOLINT
-  if (data_written) {
-    SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
-  }
- return CBState::AGAIN;
 }
 
 ReplicationThread::CBState ReplicationThread::fullSyncWriteCB(bufferevent *bev) {

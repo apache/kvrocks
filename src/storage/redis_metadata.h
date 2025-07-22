@@ -388,13 +388,12 @@ class TimeSeriesMetadata : public Metadata {
   TSDuplicatePolicy duplicate_policy;
   Slice source_key;
 
-  TimeSeriesMetadata(uint64_t chunk_size, uint64_t retention_time = 0, bool generate_version = true)
+  explicit TimeSeriesMetadata(uint64_t chunk_size, uint64_t retention_time = 0, bool generate_version = true)
       : Metadata(kRedisTimeSeries, generate_version),
-        chunk_size(chunk_size),
         retention_time(retention_time),
+        chunk_size(chunk_size),
         chunk_type(ChunkType::UNCOMPRESSED),
-        duplicate_policy(TSDuplicatePolicy::BLOCK),
-        source_key(Slice()) {}
+        duplicate_policy(TSDuplicatePolicy::BLOCK) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

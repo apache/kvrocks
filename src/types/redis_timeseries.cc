@@ -35,7 +35,7 @@ void TSDownStreamMeta::Encode(std::string *dst) const {
 }
 
 rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
-  if (input->size() < sizeof(uint8_t) + sizeof(uint64_t) * 3) {
+  if (input->size() < sizeof(uint8_t) * 2 + sizeof(uint64_t) * 3) {
     return rocksdb::Status::InvalidArgument("TSDownStreamMeta size is too short");
   }
 
@@ -43,7 +43,7 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   GetFixed64(input, &bucket_duration);
   GetFixed64(input, &alignment);
   GetFixed64(input, &latest_bucket_idx);
-  uint8_t u64_auxs_size;
+  uint8_t u64_auxs_size = 0;
   GetFixed8(input, &u64_auxs_size);
 
   if (input->size() < sizeof(uint64_t) * u64_auxs_size || input->size() % sizeof(uint64_t)) {
@@ -51,15 +51,13 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   }
 
   for (uint8_t i = 0; i < u64_auxs_size; i++) {
-    uint64_t aux;
+    uint64_t aux = 0;
     GetFixed64(input, &aux);
     u64_auxs.push_back(std::move(aux));
   }
   while (input->size() > 0) {
-    double aux;
-    if (!GetDouble(input, &aux)) {
-      return rocksdb::Status::InvalidArgument("Invalid auxinfo size");
-    }
+    double aux = NAN;
+    GetDouble(input, &aux);
     f64_auxs.push_back(std::move(aux));
   }
 
@@ -68,13 +66,12 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
 
 namespace redis {
 TSRevLabelKey::TSRevLabelKey(Slice ns_key, Slice label_key, Slice label_value, bool slot_id_encoded)
-    : label_key(label_key), label_value(label_value) {
+    : label_key(label_key), label_value(label_value), slot_id_encoded_(slot_id_encoded) {
   uint8_t namespace_size = 0;
   GetFixed8(&ns_key, &namespace_size);
   ns = Slice(ns_key.data(), namespace_size);
   ns_key.remove_prefix(namespace_size);
 
-  slot_id_encoded_ = slot_id_encoded;
   if (slot_id_encoded_) {
     GetFixed16(&ns_key, &slot_id);
   }
@@ -98,7 +95,7 @@ std::string TSRevLabelKey::Encode() const {
   buf = EncodeBuffer(buf, label_key);
   buf = EncodeFixed32(buf, static_cast<uint32_t>(label_value.size()));
   buf = EncodeBuffer(buf, label_value);
-  buf = EncodeBuffer(buf, user_key);
+  EncodeBuffer(buf, user_key);
 
   return encoded;
 }
@@ -118,7 +115,7 @@ std::string TimeSeries::internalKeyFromLabelKey(const std::string &ns_key, const
   sub_key.resize(1 + label_key.size());
   auto buf = sub_key.data();
   buf = EncodeFixed8(buf, static_cast<uint8_t>(TSubkeyType::LABEL));
-  buf = EncodeBuffer(buf, label_key);
+  EncodeBuffer(buf, label_key);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 }
@@ -129,7 +126,7 @@ std::string TimeSeries::internalKeyFromDownstreamKey(const std::string &ns_key, 
   sub_key.resize(1 + downstream_key.size());
   auto buf = sub_key.data();
   buf = EncodeFixed8(buf, static_cast<uint8_t>(TSubkeyType::DOWNSTREAM));
-  buf = EncodeBuffer(buf, downstream_key);
+  EncodeBuffer(buf, downstream_key);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 }

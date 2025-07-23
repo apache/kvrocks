@@ -59,12 +59,12 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   for (uint8_t i = 0; i < u64_auxs_size; i++) {
     uint64_t aux = 0;
     GetFixed64(input, &aux);
-    u64_auxs.push_back(std::move(aux));
+    u64_auxs.push_back(aux);
   }
   for (uint8_t i = 0; i < f64_auxs_size; i++) {
     double aux = 0;
     GetDouble(input, &aux);
-    f64_auxs.push_back(std::move(aux));
+    f64_auxs.push_back(aux);
   }
 
   return rocksdb::Status::OK();

@@ -70,32 +70,15 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
-TSRevLabelKey::TSRevLabelKey(Slice ns_key, Slice label_key, Slice label_value, bool slot_id_encoded)
-    : label_key(label_key), label_value(label_value), slot_id_encoded_(slot_id_encoded) {
-  uint8_t namespace_size = 0;
-  GetFixed8(&ns_key, &namespace_size);
-  ns = Slice(ns_key.data(), namespace_size);
-  ns_key.remove_prefix(namespace_size);
-
-  if (slot_id_encoded_) {
-    GetFixed16(&ns_key, &slot_id);
-  }
-  user_key = ns_key;
-}
-
 std::string TSRevLabelKey::Encode() const {
   std::string encoded;
-  size_t total = 1 + ns.size() + 4 + label_key.size() + 4 + label_value.size() + user_key.size();
-  if (slot_id_encoded_) {
-    total += 2;
-  }
+  size_t total = 1 + ns.size() + 1 + 4 + label_key.size() + 4 + label_value.size() + user_key.size();
+
   encoded.resize(total);
   auto buf = encoded.data();
   buf = EncodeFixed8(buf, static_cast<uint8_t>(ns.size()));
   buf = EncodeBuffer(buf, ns);
-  if (slot_id_encoded_) {
-    buf = EncodeFixed16(buf, slot_id);
-  }
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(IndexKeyType::TS_LABEL));
   buf = EncodeFixed32(buf, static_cast<uint32_t>(label_key.size()));
   buf = EncodeBuffer(buf, label_key);
   buf = EncodeFixed32(buf, static_cast<uint32_t>(label_value.size()));

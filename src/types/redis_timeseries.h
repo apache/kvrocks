@@ -33,6 +33,11 @@ enum class TSSubkeyType : uint8_t {
   DOWNSTREAM = 2,
 };
 
+// Enum prefix for new CF.
+enum class IndexKeyType : uint8_t {
+  TS_LABEL = 0,
+};
+
 enum class TSAggregatorType : uint8_t {
   AVG = 0,
   SUM = 1,
@@ -71,20 +76,16 @@ struct TSDownStreamMeta {
   rocksdb::Status Decode(Slice *input);
 };
 
-class TSRevLabelKey {
- public:
+struct TSRevLabelKey {
   Slice ns;
-  uint16_t slot_id;
   Slice label_key;
   Slice label_value;
   Slice user_key;
 
-  TSRevLabelKey(Slice ns_key, Slice label_key, Slice label_value, bool slot_id_encoded);
+  TSRevLabelKey(Slice ns, Slice label_key, Slice label_value, Slice user_key = Slice())
+      : ns(ns), label_key(label_key), label_value(label_value), user_key(user_key) {}
 
   [[nodiscard]] std::string Encode() const;
-
- private:
-  bool slot_id_encoded_;
 };
 
 class TimeSeries : public SubKeyScanner {

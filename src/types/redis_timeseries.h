@@ -89,7 +89,8 @@ class TSRevLabelKey {
 
 class TimeSeries : public SubKeyScanner {
  public:
-  // TODO:
+  TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+
  private:
   std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,

@@ -28,6 +28,7 @@ void TSDownStreamMeta::Encode(std::string *dst) const {
   PutFixed64(dst, alignment);
   PutFixed64(dst, latest_bucket_idx);
   PutFixed8(dst, static_cast<uint8_t>(u64_auxs.size()));
+  PutFixed8(dst, static_cast<uint8_t>(f64_auxs.size()));
   for (const auto &aux : u64_auxs) {
     PutFixed64(dst, aux);
   }
@@ -37,7 +38,7 @@ void TSDownStreamMeta::Encode(std::string *dst) const {
 }
 
 rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
-  if (input->size() < sizeof(uint8_t) * 2 + sizeof(uint64_t) * 3) {
+  if (input->size() < sizeof(uint8_t) * 3 + sizeof(uint64_t) * 3) {
     return rocksdb::Status::InvalidArgument("TSDownStreamMeta size is too short");
   }
 
@@ -47,8 +48,11 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   GetFixed64(input, &latest_bucket_idx);
   uint8_t u64_auxs_size = 0;
   GetFixed8(input, &u64_auxs_size);
+  uint8_t f64_auxs_size = 0;
+  GetFixed8(input, &f64_auxs_size);
 
-  if (input->size() < sizeof(uint64_t) * u64_auxs_size || input->size() % sizeof(uint64_t)) {
+  // Strict checking to prevent accidental overwrites
+  if (input->size() != sizeof(uint64_t) * u64_auxs_size + sizeof(double) * f64_auxs_size) {
     return rocksdb::Status::InvalidArgument("Invalid auxinfo size");
   }
 
@@ -57,8 +61,8 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
     GetFixed64(input, &aux);
     u64_auxs.push_back(std::move(aux));
   }
-  while (input->size() > 0) {
-    double aux = NAN;
+  for (uint8_t i = 0; i < f64_auxs_size; i++) {
+    double aux = 0;
     GetDouble(input, &aux);
     f64_auxs.push_back(std::move(aux));
   }

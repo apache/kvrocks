@@ -373,7 +373,7 @@ class TimeSeriesMetadata : public Metadata {
     COMPRESSED = 1,
   };
 
-  enum class TSDuplicatePolicy : uint8_t {
+  enum class DuplicatePolicy : uint8_t {
     BLOCK = 0,
     FIRST = 1,
     LAST = 2,

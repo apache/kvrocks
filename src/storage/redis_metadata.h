@@ -395,7 +395,7 @@ class TimeSeriesMetadata : public Metadata {
         chunk_type(ChunkType::UNCOMPRESSED),
         duplicate_policy(DuplicatePolicy::BLOCK) {}
   TimeSeriesMetadata(uint64_t retention_time, uint64_t chunk_size, ChunkType chunk_type,
-                     TSDuplicatePolicy duplicate_policy, bool generate_version = true)
+                     DuplicatePolicy duplicate_policy, bool generate_version = true)
       : Metadata(kRedisTimeSeries, generate_version),
         retention_time(retention_time),
         chunk_size(chunk_size),

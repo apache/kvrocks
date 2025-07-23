@@ -538,6 +538,8 @@ rocksdb::Status TDigestMetadata::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
+void TimeSeriesMetadata::SetSourceKey(Slice key) { source_key = key.ToString(); }
+
 void TimeSeriesMetadata::Encode(std::string *dst) const {
   Metadata::Encode(dst);
   PutFixed64(dst, retention_time);

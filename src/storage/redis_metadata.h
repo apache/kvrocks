@@ -385,7 +385,7 @@ class TimeSeriesMetadata : public Metadata {
   uint64_t retention_time;
   uint64_t chunk_size;
   ChunkType chunk_type;
-  TSDuplicatePolicy duplicate_policy;
+  DuplicatePolicy duplicate_policy;
   std::string source_key;
 
   explicit TimeSeriesMetadata(bool generate_version = true)

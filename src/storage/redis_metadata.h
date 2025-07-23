@@ -366,15 +366,6 @@ class TDigestMetadata : public Metadata {
   double Delta() const { return 1. / static_cast<double>(compression); }
 };
 
-enum class TSDuplicatePolicy : uint8_t {
-  BLOCK = 0,
-  FIRST = 1,
-  LAST = 2,
-  MIN = 3,
-  MAX = 4,
-  SUM = 5,
-};
-
 class TimeSeriesMetadata : public Metadata {
  public:
   enum class ChunkType : uint8_t {
@@ -382,11 +373,20 @@ class TimeSeriesMetadata : public Metadata {
     COMPRESSED = 1,
   };
 
+  enum class TSDuplicatePolicy : uint8_t {
+    BLOCK = 0,
+    FIRST = 1,
+    LAST = 2,
+    MIN = 3,
+    MAX = 4,
+    SUM = 5,
+  };
+
   uint64_t retention_time;
   uint64_t chunk_size;
   ChunkType chunk_type;
   TSDuplicatePolicy duplicate_policy;
-  Slice source_key;
+  std::string source_key;
 
   explicit TimeSeriesMetadata(uint64_t chunk_size, uint64_t retention_time = 0, bool generate_version = true)
       : Metadata(kRedisTimeSeries, generate_version),

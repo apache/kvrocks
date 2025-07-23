@@ -20,6 +20,8 @@
 
 #include "redis_timeseries.h"
 
+namespace redis {
+
 void TSDownStreamMeta::Encode(std::string *dst) const {
   PutFixed8(dst, static_cast<uint8_t>(aggregator));
   PutFixed64(dst, bucket_duration);
@@ -64,7 +66,6 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
-namespace redis {
 TSRevLabelKey::TSRevLabelKey(Slice ns_key, Slice label_key, Slice label_value, bool slot_id_encoded)
     : label_key(label_key), label_value(label_value), slot_id_encoded_(slot_id_encoded) {
   uint8_t namespace_size = 0;
@@ -103,7 +104,7 @@ std::string TSRevLabelKey::Encode() const {
 std::string TimeSeries::internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
-  PutFixed8(&sub_key, static_cast<uint8_t>(TSubkeyType::CHUNK));
+  PutFixed8(&sub_key, static_cast<uint8_t>(TSSubkeyType::CHUNK));
   PutFixed64(&sub_key, id);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -114,7 +115,7 @@ std::string TimeSeries::internalKeyFromLabelKey(const std::string &ns_key, const
   std::string sub_key;
   sub_key.resize(1 + label_key.size());
   auto buf = sub_key.data();
-  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSubkeyType::LABEL));
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::LABEL));
   EncodeBuffer(buf, label_key);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -125,7 +126,7 @@ std::string TimeSeries::internalKeyFromDownstreamKey(const std::string &ns_key, 
   std::string sub_key;
   sub_key.resize(1 + downstream_key.size());
   auto buf = sub_key.data();
-  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSubkeyType::DOWNSTREAM));
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::DOWNSTREAM));
   EncodeBuffer(buf, downstream_key);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();

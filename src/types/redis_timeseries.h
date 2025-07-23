@@ -25,7 +25,9 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-enum class TSubkeyType : uint8_t {
+namespace redis {
+
+enum class TSSubkeyType : uint8_t {
   CHUNK = 0,
   LABEL = 1,
   DOWNSTREAM = 2,
@@ -69,8 +71,6 @@ struct TSDownStreamMeta {
   rocksdb::Status Decode(Slice *input);
 };
 
-namespace redis {
-
 class TSRevLabelKey {
  public:
   Slice ns;
@@ -91,9 +91,7 @@ class TimeSeries : public SubKeyScanner {
  public:
   // TODO:
  private:
-  rocksdb::ColumnFamilyHandle *timeseries_cf_handle_;
-
-  std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t ts) const;
+  std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                       Slice label_key) const;
   std::string internalKeyFromDownstreamKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,

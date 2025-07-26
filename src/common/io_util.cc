@@ -314,17 +314,19 @@ StatusOr<std::string> SockReadLine(int fd) {
     int ret = evbuffer_read(evbuf.get(), fd, -1);
     if (ret > 0) {
       break;
-    } else if (ret == 0) {
-      return Status::FromErrno("read response err: connection closed");
-    } else {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // Resource temporarily unavailable, sleep for a while
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
-      } else {
-        return Status::FromErrno("read response err");
-      }
     }
+
+    if (ret == 0) {
+      return Status::FromErrno("read response err: connection closed");
+    }
+
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      // Resource temporarily unavailable, sleep for a while
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      continue;
+    }
+
+    return Status::FromErrno("read response err");
   }
 
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);

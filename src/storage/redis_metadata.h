@@ -53,6 +53,7 @@ enum RedisType : uint8_t {
   kRedisJson = 10,
   kRedisHyperLogLog = 11,
   kRedisTDigest = 12,
+  kRedisTimeSeries = 13,
 };
 
 struct RedisTypes {
@@ -94,9 +95,9 @@ enum RedisCommand {
   kRedisCmdLMove,
 };
 
-const std::vector<std::string> RedisTypeNames = {"none",      "string",      "hash",      "list",   "set",
-                                                 "zset",      "bitmap",      "sortedint", "stream", "MBbloom--",
-                                                 "ReJSON-RL", "hyperloglog", "TDIS-TYPE"};
+const std::vector<std::string> RedisTypeNames = {"none",      "string",      "hash",      "list",      "set",
+                                                 "zset",      "bitmap",      "sortedint", "stream",    "MBbloom--",
+                                                 "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -363,4 +364,46 @@ class TDigestMetadata : public Metadata {
   uint64_t TotalNodes() const { return merged_nodes + unmerged_nodes; }
 
   double Delta() const { return 1. / static_cast<double>(compression); }
+};
+
+class TimeSeriesMetadata : public Metadata {
+ public:
+  enum class ChunkType : uint8_t {
+    UNCOMPRESSED = 0,
+    COMPRESSED = 1,
+  };
+
+  enum class DuplicatePolicy : uint8_t {
+    BLOCK = 0,
+    FIRST = 1,
+    LAST = 2,
+    MIN = 3,
+    MAX = 4,
+    SUM = 5,
+  };
+
+  uint64_t retention_time;
+  uint64_t chunk_size;
+  ChunkType chunk_type;
+  DuplicatePolicy duplicate_policy;
+  std::string source_key;
+
+  explicit TimeSeriesMetadata(bool generate_version = true)
+      : Metadata(kRedisTimeSeries, generate_version),
+        retention_time(0),
+        chunk_size(0),
+        chunk_type(ChunkType::UNCOMPRESSED),
+        duplicate_policy(DuplicatePolicy::BLOCK) {}
+  TimeSeriesMetadata(uint64_t retention_time, uint64_t chunk_size, ChunkType chunk_type,
+                     DuplicatePolicy duplicate_policy, bool generate_version = true)
+      : Metadata(kRedisTimeSeries, generate_version),
+        retention_time(retention_time),
+        chunk_size(chunk_size),
+        chunk_type(chunk_type),
+        duplicate_policy(duplicate_policy) {}
+
+  void SetSourceKey(Slice key);
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
 };

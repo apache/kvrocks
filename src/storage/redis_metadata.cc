@@ -537,3 +537,33 @@ rocksdb::Status TDigestMetadata::Decode(Slice *input) {
 
   return rocksdb::Status::OK();
 }
+
+void TimeSeriesMetadata::SetSourceKey(Slice key) { source_key = key.ToString(); }
+
+void TimeSeriesMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  PutFixed64(dst, retention_time);
+  PutFixed64(dst, chunk_size);
+  PutFixed8(dst, static_cast<uint8_t>(chunk_type));
+  PutFixed8(dst, static_cast<uint8_t>(duplicate_policy));
+  PutSizedString(dst, source_key);
+}
+
+rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+  if (input->size() < sizeof(uint64_t) * 2 + sizeof(uint8_t) * 2 + sizeof(uint32_t)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(input, &retention_time);
+  GetFixed64(input, &chunk_size);
+  GetFixed8(input, reinterpret_cast<uint8_t *>(&chunk_type));
+  GetFixed8(input, reinterpret_cast<uint8_t *>(&duplicate_policy));
+  Slice source_key_slice;
+  GetSizedString(input, &source_key_slice);
+  source_key = source_key_slice.ToString();
+
+  return rocksdb::Status::OK();
+}

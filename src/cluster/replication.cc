@@ -75,6 +75,11 @@ Status FeedSlaveThread::Start() {
 
   if (s) {
     t_ = std::move(*s);
+
+    // Re-enable the bufferevent and set up callbacks after detachment
+    auto bev = conn_->GetBufferEvent();
+    bufferevent_enable(bev, EV_READ);
+    bufferevent_setcb(bev, &FeedSlaveThread::staticReadCallback, nullptr, nullptr, this);
   } else {
     conn_ = nullptr;  // prevent connection was freed when failed to start the thread
   }
@@ -100,6 +105,52 @@ void FeedSlaveThread::checkLivenessIfNeed() {
   if (!s.IsOK()) {
     error("Ping slave [{}] err: {}, would stop the thread", conn_->GetAddr(), s.Msg());
     Stop();
+  }
+}
+
+void FeedSlaveThread::staticReadCallback(bufferevent *bev, void *ctx) {
+  auto *thread = static_cast<FeedSlaveThread *>(ctx);
+  thread->readCallback(bev, ctx);
+}
+
+// for now, the only command that the master receive from the slave on this connection should be ack.
+// the callback find the ack with largest sequence number and store it.
+void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx) {
+  auto input = bufferevent_get_input(bev);
+  auto s = req_.Tokenize(input);
+  if (!s.IsOK()) {
+    error("[replication] failed to tokenize request: {}", s.Msg());
+    return;
+  }
+
+  rocksdb::SequenceNumber max_seq = 0;
+  auto commands = req_.GetCommands();
+  for (const auto &command : *commands) {
+    // Validate replconf ack command format
+    if (command.size() != 3 || command[0] != "replconf" || command[1] != "ack") {
+      error("[replication] invalid command: {}", util::StringJoin(command, std::string_view(",")));
+      continue;
+    }
+
+    auto seq = ParseInt<rocksdb::SequenceNumber>(command[2], 10);
+    if (!seq) {
+      error("[replication] invalid sequence number: {}", util::StringJoin(command, std::string_view(",")));
+      continue;
+    }
+
+    if (*seq > max_seq) {
+      max_seq = *seq;
+    }
+  }
+
+  // Clear processed commands to avoid reprocessing them
+  commands->clear();
+
+  if (max_seq != 0) {
+    ack_seq_.store(max_seq);
+
+    // Wake up any WAIT connections that might be waiting for this sequence
+    srv_->WakeupWaitConnections(max_seq);
   }
 }
 
@@ -159,9 +210,6 @@ void FeedSlaveThread::loop() {
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();
     next_repl_seq_.store(curr_seq);
-
-    // Wake up any WAIT connections that might be waiting for this sequence
-    srv_->WakeupWaitConnections(curr_seq);
 
     while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);
@@ -560,15 +608,25 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
   }
 }
 
+void ReplicationThread::sendReplConfAck(bufferevent *bev) {
+  SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
+}
+
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
+  bool data_written = false;
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
-        if (!line) return CBState::AGAIN;
+        if (!line) {
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
+          return CBState::AGAIN;
+        }
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
         if (incr_bulk_len_ == 0) {
           error("[replication] Invalid increment data size");
@@ -580,6 +638,9 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
           return CBState::AGAIN;
         }
 
@@ -592,6 +653,9 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
+          if (data_written) {
+            sendReplConfAck(bev);
+          }
           return CBState::AGAIN;
         }
 
@@ -603,6 +667,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                 util::StringToHex(batch.Data()));
           return CBState::RESTART;
         }
+        data_written = true;
 
         s = parseWriteBatch(batch);
         if (!s.IsOK()) {

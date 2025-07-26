@@ -23,6 +23,7 @@
 #include <event2/bufferevent.h>
 
 #include <atomic>
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -64,7 +65,7 @@ using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 class FeedSlaveThread {
  public:
   explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
-      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq) {}
+      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq), req_(srv) {}
   ~FeedSlaveThread() = default;
 
   Status Start();
@@ -72,10 +73,7 @@ class FeedSlaveThread {
   void Join();
   bool IsStopped() { return stop_; }
   redis::Connection *GetConn() { return conn_.get(); }
-  rocksdb::SequenceNumber GetCurrentReplSeq() {
-    auto seq = next_repl_seq_.load();
-    return seq == 0 ? 0 : seq - 1;
-  }
+  rocksdb::SequenceNumber GetAckSeq() { return ack_seq_.load(); }
 
  private:
   uint64_t interval_ = 0;
@@ -85,12 +83,17 @@ class FeedSlaveThread {
   std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
+  // used to parse the ack response from the slave
+  redis::Request req_;
+  std::atomic<rocksdb::SequenceNumber> ack_seq_ = 0;
 
   static const size_t kMaxDelayUpdates = 16;
   static const size_t kMaxDelayBytes = 16 * 1024;
 
   void loop();
   void checkLivenessIfNeed();
+  void readCallback(bufferevent *bev, void *ctx);
+  static void staticReadCallback(bufferevent *bev, void *ctx);
 };
 
 class ReplicationThread : private EventCallbackBase<ReplicationThread> {
@@ -199,7 +202,8 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   CBState fullSyncWriteCB(bufferevent *bev);
   CBState fullSyncReadCB(bufferevent *bev);
 
-  // Synchronized-Blocking ops
+  void sendReplConfAck(bufferevent *bev);
+
   Status sendAuth(int sock_fd, ssl_st *ssl);
   Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file, uint32_t crc,
                    const FetchFileCallback &fn, ssl_st *ssl);

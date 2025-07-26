@@ -752,7 +752,7 @@ size_t Server::GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq) {
   std::lock_guard<std::mutex> slave_guard(slave_threads_mu_);
   size_t reached_replicas = 0;
   for (const auto &slave : slave_threads_) {
-    if (!slave->IsStopped() && slave->GetCurrentReplSeq() >= target_seq) {
+    if (!slave->IsStopped() && slave->GetAckSeq() >= target_seq) {
       reached_replicas++;
     }
   }
@@ -1119,10 +1119,10 @@ Server::InfoEntries Server::GetReplicationInfo() {
   for (const auto &slave : slave_threads_) {
     if (slave->IsStopped()) continue;
 
-    entries.emplace_back("slave" + std::to_string(idx),
-                         fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
-                                     slave->GetConn()->GetAnnouncePort(), slave->GetCurrentReplSeq(),
-                                     latest_seq - slave->GetCurrentReplSeq()));
+    entries.emplace_back(
+        "slave" + std::to_string(idx),
+        fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
+                    slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
     ++idx;
   }
   slave_threads_mu_.unlock();
@@ -1159,7 +1159,7 @@ std::string Server::GetRoleInfo() {
       list.emplace_back(redis::ArrayOfBulkStrings({
           slave->GetConn()->GetAnnounceIP(),
           std::to_string(slave->GetConn()->GetListeningPort()),
-          std::to_string(slave->GetCurrentReplSeq()),
+          std::to_string(slave->GetAckSeq()),
       }));
     }
     slave_threads_mu_.unlock();

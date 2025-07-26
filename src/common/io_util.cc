@@ -310,8 +310,21 @@ Status SockSetBlocking(int fd, int blocking) {
 
 StatusOr<std::string> SockReadLine(int fd) {
   UniqueEvbuf evbuf;
-  if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
-    return Status::FromErrno("read response err");
+  while (true) {
+    int ret = evbuffer_read(evbuf.get(), fd, -1);
+    if (ret > 0) {
+      break;
+    } else if (ret == 0) {
+      return Status::FromErrno("read response err: connection closed");
+    } else {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Resource temporarily unavailable, sleep for a while
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        continue;
+      } else {
+        return Status::FromErrno("read response err");
+      }
+    }
   }
 
   UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);

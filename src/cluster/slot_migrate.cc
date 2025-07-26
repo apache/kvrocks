@@ -1296,6 +1296,9 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     auto subkey_iter = iter.GetSubKeyIterator();
     if (!subkey_iter) {
+      if (batch_sender.IsFull()) {
+        GET_OR_RET(sendMigrationBatch(&batch_sender));
+      }
       continue;
     }
 

@@ -164,3 +164,114 @@ size_t TSChunk::SampleBatchSlice::GetUniqueCount() const {
   }
   return count;
 }
+
+class UncompTSChunkIterator : public TSChunkIterator {
+ public:
+  explicit UncompTSChunkIterator(nonstd::span<TSSample> data, uint64_t count) : TSChunkIterator(count), data_(data) {}
+  std::optional<TSSample*> next() override {
+    if (idx_ >= count_) return std::nullopt;
+    return &data_[idx_++];
+  }
+
+ private:
+  nonstd::span<TSSample> data_;
+};
+
+UncompTSChunk::UncompTSChunk(std::string* data) : TSChunk(data) {
+  // count_ is stored in the first 4 bytes
+  count_ = *reinterpret_cast<const uint64_t*>(data->data());
+  auto data_ptr = reinterpret_cast<char*>(data->data()) + sizeof(count_);
+  samples_ = nonstd::span<TSSample>(reinterpret_cast<TSSample*>(data_ptr), count_);
+}
+
+std::unique_ptr<TSChunkIterator> UncompTSChunk::create_iterator() const {
+  return std::make_unique<UncompTSChunkIterator>(samples_, count_);
+}
+
+void UncompTSChunk::MAddSample(SampleBatchSlice batch) {
+  const auto& new_samples = batch.GetSampleSpan();
+  DuplicatePolicy policy = batch.GetPolicy();
+  const size_t existing_count = count_;
+
+  // Calculate buffer size: header + existing samples + unique new samples
+  const size_t header_size = sizeof(uint64_t);
+  const size_t required_size = header_size + (existing_count + batch.GetUniqueCount()) * sizeof(TSSample);
+
+  // Prepare new buffer
+  std::string new_buffer;
+  new_buffer.resize(required_size);
+  TSSample* merged_data = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
+
+  // Prepare iterators for merging
+  auto new_sample_iter = new_samples.begin();
+  auto existing_sample_iter = std::upper_bound(samples_.begin(), samples_.end(), *new_sample_iter);
+
+  // Copy existing samples that are before the first new sample
+  const size_t preserved_count = std::distance(samples_.begin(), existing_sample_iter);
+  size_t current_index = preserved_count;
+  if (preserved_count > 0) {
+    std::memcpy(merged_data, samples_.data(), preserved_count * sizeof(TSSample));
+    current_index--;  // Point to last copied sample
+  } else {
+    current_index = -1;  // Special case: no preserved samples
+  }
+
+  // Merge samples from both sources
+  while (new_sample_iter != new_samples.end() && existing_sample_iter != samples_.end()) {
+    const TSSample* candidate;
+    bool from_new_batch = false;
+
+    // Select next sample by earliest timestamp
+    if (existing_sample_iter->ts <= new_sample_iter->ts) {
+      candidate = &(*existing_sample_iter++);
+    } else {
+      candidate = &(*new_sample_iter++);
+      from_new_batch = true;
+    }
+
+    // Handle first sample case
+    if (current_index == static_cast<size_t>(-1)) {
+      merged_data[0] = *candidate;
+      current_index = 0;
+      continue;
+    }
+
+    // Append or merge based on timestamp
+    if (candidate->ts > merged_data[current_index].ts) {
+      merged_data[++current_index] = *candidate;
+    } else {
+      if (from_new_batch) {
+        MergeSamplesValue(merged_data[current_index], *candidate, policy);
+      } else {
+        // Existing samples should be strictly increasing
+        assert(candidate->ts > merged_data[current_index].ts);
+      }
+    }
+  }
+
+  // Copy remaining existing samples
+  if (existing_sample_iter != samples_.end()) {
+    const size_t remaining_count = std::distance(existing_sample_iter, samples_.end());
+    std::memcpy(&merged_data[current_index + 1], &(*existing_sample_iter), remaining_count * sizeof(TSSample));
+    current_index += remaining_count;
+  }
+
+  // Process remaining new samples
+  while (new_sample_iter != new_samples.end()) {
+    if (new_sample_iter->ts > merged_data[current_index].ts) {
+      merged_data[++current_index] = *new_sample_iter;
+    } else {
+      MergeSamplesValue(merged_data[current_index], *new_sample_iter, policy);
+    }
+    ++new_sample_iter;
+  }
+
+  // Update sample count in buffer header
+  const size_t final_count = current_index + 1;
+  *reinterpret_cast<uint64_t*>(new_buffer.data()) = final_count;
+
+  // Commit the new data
+  data_->swap(new_buffer);
+  count_ = final_count;
+  samples_ = nonstd::span<TSSample>(merged_data, final_count);
+}

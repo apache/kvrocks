@@ -123,3 +123,14 @@ class TSChunk {
   std::string* data_;
   uint64_t count_;
 };
+
+class UncompTSChunk : public TSChunk {
+ public:
+  explicit UncompTSChunk(std::string* data);
+  std::unique_ptr<TSChunkIterator> create_iterator() const override;
+
+  void MAddSample(SampleBatchSlice samples) override;
+
+ private:
+  nonstd::span<TSSample> samples_;
+};

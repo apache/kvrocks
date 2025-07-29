@@ -109,7 +109,19 @@ class TSChunk {
     void EnsureSorted();
   };
 
-  explicit TSChunk(std::string* data) : data_(data), count_(0) {}
+  struct MetaData {
+    constexpr static size_t kEncodedSize = 2 * sizeof(uint32_t);
+
+    bool is_compressed;
+    uint32_t count;
+
+    MetaData() = default;
+    MetaData(bool is_compressed, uint32_t count) : is_compressed(is_compressed), count(count) {}
+    std::string Encode();
+    void Decode(Slice* input);
+  };
+
+  explicit TSChunk(std::string* data);
 
   virtual ~TSChunk() = default;
 
@@ -121,7 +133,7 @@ class TSChunk {
 
  protected:
   std::string* data_;
-  uint64_t count_;
+  MetaData metadata_;
 };
 
 class UncompTSChunk : public TSChunk {

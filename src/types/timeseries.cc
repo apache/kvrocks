@@ -182,8 +182,8 @@ void TSChunk::MetaData::Decode(Slice* input) {
   GetFixed32(input, &count);
 }
 
-TSChunk::TSChunk(std::string* data) : data_(data) {
-  Slice input(data_->data(), data_->size());
+TSChunk::TSChunk(nonstd::span<char> data) : data_(data) {
+  Slice input(data_.data(), data_.size());
   metadata_.Decode(&input);
 }
 
@@ -199,9 +199,8 @@ class UncompTSChunkIterator : public TSChunkIterator {
   nonstd::span<TSSample> data_;
 };
 
-UncompTSChunk::UncompTSChunk(std::string* data) : TSChunk(data) {
-  // count_ is stored in the first 4 bytes
-  auto data_ptr = reinterpret_cast<char*>(data->data()) + TSChunk::MetaData::kEncodedSize;
+UncompTSChunk::UncompTSChunk(nonstd::span<char> data) : TSChunk(data) {
+  auto data_ptr = reinterpret_cast<char*>(data.data()) + TSChunk::MetaData::kEncodedSize;
   samples_ = nonstd::span<TSSample>(reinterpret_cast<TSSample*>(data_ptr), metadata_.count);
 }
 
@@ -209,13 +208,13 @@ std::unique_ptr<TSChunkIterator> UncompTSChunk::create_iterator() const {
   return std::make_unique<UncompTSChunkIterator>(samples_, metadata_.count);
 }
 
-void UncompTSChunk::MAddSample(SampleBatchSlice batch) {
+std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
   const auto& new_samples = batch.GetSampleSpan();
   DuplicatePolicy policy = batch.GetPolicy();
   const size_t existing_count = metadata_.count;
 
   // Calculate buffer size: header + existing samples + unique new samples
-  const size_t header_size = sizeof(uint64_t);
+  const size_t header_size = TSChunk::MetaData::kEncodedSize;
   const size_t required_size = header_size + (existing_count + batch.GetUniqueCount()) * sizeof(TSSample);
 
   // Prepare new buffer
@@ -293,7 +292,5 @@ void UncompTSChunk::MAddSample(SampleBatchSlice batch) {
   auto str = metadata_.Encode();
   EncodeBuffer(new_buffer.data(), str);
 
-  // Commit the new data
-  data_->swap(new_buffer);
-  samples_ = nonstd::span<TSSample>(merged_data, final_count);
+  return new_buffer;
 }

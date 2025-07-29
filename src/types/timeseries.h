@@ -121,7 +121,7 @@ class TSChunk {
     void Decode(Slice* input);
   };
 
-  explicit TSChunk(std::string* data);
+  explicit TSChunk(nonstd::span<char> data);
 
   virtual ~TSChunk() = default;
 
@@ -129,19 +129,19 @@ class TSChunk {
 
   virtual std::unique_ptr<TSChunkIterator> create_iterator() const = 0;
 
-  virtual void MAddSample(SampleBatchSlice samples) = 0;
+  virtual std::string MAddSample(SampleBatchSlice samples) = 0;
 
  protected:
-  std::string* data_;
+  nonstd::span<char> data_;
   MetaData metadata_;
 };
 
 class UncompTSChunk : public TSChunk {
  public:
-  explicit UncompTSChunk(std::string* data);
+  explicit UncompTSChunk(nonstd::span<char> data);
   std::unique_ptr<TSChunkIterator> create_iterator() const override;
 
-  void MAddSample(SampleBatchSlice samples) override;
+  std::string MAddSample(SampleBatchSlice samples) override;
 
  private:
   nonstd::span<TSSample> samples_;

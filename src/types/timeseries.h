@@ -55,6 +55,7 @@ class TSChunk {
     kNone,
     kOk,
     kBlock,
+    kOld,
   };
 
   class SampleBatchSlice {
@@ -70,7 +71,7 @@ class TSChunk {
     uint64_t GetFirstTimestamp();
     uint64_t GetLastTimestamp();
 
-    size_t GetUniqueCount() const;
+    size_t GetValidCount() const;
 
     DuplicatePolicy GetPolicy() const { return policy_; }
     size_t Size() const { return sample_span_.size(); }

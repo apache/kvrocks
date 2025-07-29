@@ -155,7 +155,7 @@ uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() {
   return sample_span_[sample_span_.size() - 1].ts;
 }
 
-size_t TSChunk::SampleBatchSlice::GetUniqueCount() const {
+size_t TSChunk::SampleBatchSlice::GetValidCount() const {
   size_t count = 0;
   for (auto res : add_result_span_) {
     if (res == AddResult::kNone) {
@@ -209,13 +209,19 @@ std::unique_ptr<TSChunkIterator> UncompTSChunk::create_iterator() const {
 }
 
 std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
-  const auto& new_samples = batch.GetSampleSpan();
+  const auto new_valid_count = batch.GetValidCount();
+  if (new_valid_count == 0) {
+    return "";
+  }
+
+  auto new_samples = batch.GetSampleSpan();
+  auto add_results = batch.GetAddResultSpan();
   DuplicatePolicy policy = batch.GetPolicy();
   const size_t existing_count = metadata_.count;
 
   // Calculate buffer size: header + existing samples + unique new samples
   const size_t header_size = TSChunk::MetaData::kEncodedSize;
-  const size_t required_size = header_size + (existing_count + batch.GetUniqueCount()) * sizeof(TSSample);
+  const size_t required_size = header_size + (existing_count + new_valid_count) * sizeof(TSSample);
 
   // Prepare new buffer
   std::string new_buffer;
@@ -223,8 +229,8 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
   TSSample* merged_data = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
 
   // Prepare iterators for merging
-  auto new_sample_iter = new_samples.begin();
-  auto existing_sample_iter = std::upper_bound(samples_.begin(), samples_.end(), *new_sample_iter);
+  size_t new_sample_idx = 0;
+  auto existing_sample_iter = std::upper_bound(samples_.begin(), samples_.end(), new_samples[0]);
 
   // Copy existing samples that are before the first new sample
   const size_t preserved_count = std::distance(samples_.begin(), existing_sample_iter);
@@ -237,16 +243,20 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
   }
 
   // Merge samples from both sources
-  while (new_sample_iter != new_samples.end() && existing_sample_iter != samples_.end()) {
+  while (new_valid_count != new_samples.size() && existing_sample_iter != samples_.end()) {
     const TSSample* candidate;
     bool from_new_batch = false;
 
     // Select next sample by earliest timestamp
-    if (existing_sample_iter->ts <= new_sample_iter->ts) {
-      candidate = &(*existing_sample_iter++);
+    if (existing_sample_iter->ts <= new_samples[new_sample_idx].ts) {
+      candidate = &(*existing_sample_iter);
     } else {
-      candidate = &(*new_sample_iter++);
+      candidate = &new_samples[new_sample_idx];
       from_new_batch = true;
+    }
+    if (from_new_batch && add_results[new_sample_idx] != AddResult::kNone) {
+      new_sample_idx++;
+      continue;
     }
 
     // Handle first sample case
@@ -261,11 +271,16 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
       merged_data[++current_index] = *candidate;
     } else {
       if (from_new_batch) {
-        MergeSamplesValue(merged_data[current_index], *candidate, policy);
-      } else {
-        // Existing samples should be strictly increasing
-        assert(candidate->ts > merged_data[current_index].ts);
+        auto add_res = MergeSamplesValue(merged_data[current_index], *candidate, policy);
+        add_results[new_sample_idx] = add_res;
       }
+    }
+
+    // Update the index
+    if (from_new_batch) {
+      new_sample_idx++;
+    } else {
+      existing_sample_iter++;
     }
   }
 
@@ -277,13 +292,18 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {
   }
 
   // Process remaining new samples
-  while (new_sample_iter != new_samples.end()) {
-    if (new_sample_iter->ts > merged_data[current_index].ts) {
-      merged_data[++current_index] = *new_sample_iter;
-    } else {
-      MergeSamplesValue(merged_data[current_index], *new_sample_iter, policy);
+  while (new_sample_idx != new_samples.size()) {
+    if (add_results[new_sample_idx] != AddResult::kNone) {
+      ++new_sample_idx;
+      continue;
     }
-    ++new_sample_iter;
+    if (new_samples[new_sample_idx].ts > merged_data[current_index].ts) {
+      merged_data[++current_index] = new_samples[new_sample_idx];
+    } else {
+      auto add_res = MergeSamplesValue(merged_data[current_index], new_samples[new_sample_idx], policy);
+      add_results[new_sample_idx] = add_res;
+    }
+    ++new_sample_idx;
   }
 
   // Update metadata in buffer header

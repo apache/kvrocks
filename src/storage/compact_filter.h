@@ -128,22 +128,26 @@ class PubSubFilterFactory : public rocksdb::CompactionFilterFactory {
 
 class SearchFilter : public rocksdb::CompactionFilter {
  public:
+  explicit SearchFilter(Storage *storage) : stor_(storage) {}
+
   const char *Name() const override { return "SearchFilter"; }
-  bool Filter([[maybe_unused]] int level, [[maybe_unused]] const Slice &key, [[maybe_unused]] const Slice &value,
-              [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const override {
-    // TODO: just a dummy one here
-    return false;
-  }
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
+
+ private:
+  engine::Storage *stor_ = nullptr;
 };
 
 class SearchFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  SearchFilterFactory() = default;
+  explicit SearchFilterFactory(engine::Storage *storage) : stor_(storage) {}
   const char *Name() const override { return "SearchFilterFactory"; }
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
-    return std::unique_ptr<rocksdb::CompactionFilter>(new SearchFilter());
+    return std::unique_ptr<rocksdb::CompactionFilter>(new SearchFilter(stor_));
   }
+
+ private:
+  engine::Storage *stor_ = nullptr;
 };
 
 }  // namespace engine

@@ -210,7 +210,7 @@ bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_
 
   if (metadata.Expired()) {
     // metadata is expired, so we can remove the field data
-    return true;
+    return true;  // NOLINT
   }
 
   return false;

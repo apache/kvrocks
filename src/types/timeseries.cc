@@ -28,26 +28,32 @@ using AddResult = TSChunk::AddResult;
 using SampleBatch = TSChunk::SampleBatch;
 using SampleBatchSlice = TSChunk::SampleBatchSlice;
 
-TSChunk::SampleBatch::SampleBatch(size_t size, DuplicatePolicy policy)
-    : policy_(policy), unique_count_(0), is_sorted_(false) {
-  samples_.reserve(size);
+TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy)
+    : samples_(std::move(samples)), policy_(policy), unique_count_(0), is_sorted_(false) {
+  size_t count = samples_.size();
+  add_results_.resize(count, AddResult::kNone);
+  indexes_.resize(count);
+  for (size_t i = 0; i < count; ++i) {
+    indexes_[i] = i;
+  }
 }
 
-void TSChunk::SampleBatch::Push(const TSSample& sample) {
-  is_sorted_ = false;
-  samples_.push_back(sample);
+void TSChunk::SampleBatch::Expire(uint64_t last_ts, uint64_t retention) {
+  EnsureSorted();
+  if (retention == 0) return;
+  for (auto idx : indexes_) {
+    if (samples_[idx].ts + retention < last_ts) {
+      add_results_[idx] = AddResult::kOld;
+    } else {
+      last_ts = samples_[idx].ts;
+    }
+  }
 }
 
 void TSChunk::SampleBatch::SortAndOrganize() {
   if (is_sorted_) return;
   auto count = samples_.size();
   if (0 == count) return;
-
-  add_results_.resize(count, AddResult::kNone);
-  indexes_.resize(count);
-  for (size_t i = 0; i < count; ++i) {
-    indexes_[i] = i;
-  }
 
   // should be stable sort
   std::stable_sort(indexes_.begin(), indexes_.end(), [this](size_t a, size_t b) { return samples_[a] < samples_[b]; });

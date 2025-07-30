@@ -85,11 +85,9 @@ class TSChunk {
 
   class SampleBatch {
    public:
-    SampleBatch(size_t size, DuplicatePolicy policy);
+    SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy);
 
-    void Push(const TSSample& sample);
-
-    void SortAndOrganize();
+    void Expire(uint64_t last_ts, uint64_t retention);
 
     // Slice samples by timestamp.
     // Note: timestamps must be sorted and timestamp[0] <= this->GetfirstTimestamp()
@@ -104,9 +102,9 @@ class TSChunk {
     std::vector<AddResult> add_results_;
     DuplicatePolicy policy_;
     size_t unique_count_;  // unique samples
-
     bool is_sorted_;
 
+    void SortAndOrganize();
     void EnsureSorted();
   };
 

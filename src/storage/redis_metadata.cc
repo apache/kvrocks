@@ -222,7 +222,7 @@ bool Metadata::operator==(const Metadata &that) const {
 
 RedisType Metadata::Type() const { return static_cast<RedisType>(flags & METADATA_TYPE_MASK); }
 
-const std::string &Metadata::TypeName() const { return RedisTypeNames[Type()]; }
+std::string_view Metadata::TypeName() const { return RedisTypeNames[Type()]; }
 
 size_t Metadata::GetOffsetAfterExpire(uint8_t flags) {
   if (flags & METADATA_64BIT_ENCODING_MASK) {
@@ -334,7 +334,7 @@ bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() 
 
 bool Metadata::IsEmptyableType() const {
   return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisTDigest;
+         Type() == kRedisTDigest || Type() == kRedisTimeSeries;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }

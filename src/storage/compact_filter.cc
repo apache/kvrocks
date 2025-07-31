@@ -138,7 +138,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
 bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_unused]] const Slice &value,
                           [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
   auto db = stor_->GetDB();
-  // storage close the would delete the column family handler and DB
+  // It would delete the column family handler and DB when closing.
   if (!db || stor_->GetCFHandles()->size() < 2) return false;
 
   auto [ns, rest_key] = ExtractNamespaceKey(key, false);

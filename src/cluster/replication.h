@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 
+#include "config/config.h"
 #include "event_util.h"
 #include "io_util.h"
 #include "rocksdb/write_batch.h"
@@ -64,8 +65,7 @@ using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 
 class FeedSlaveThread {
  public:
-  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
-      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq), req_(srv) {}
+  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   ~FeedSlaveThread() = default;
 
   Status Start();
@@ -87,8 +87,9 @@ class FeedSlaveThread {
   redis::Request req_;
   std::atomic<rocksdb::SequenceNumber> ack_seq_ = 0;
 
-  static const size_t kMaxDelayUpdates = 16;
-  static const size_t kMaxDelayBytes = 16 * 1024;
+  // Configurable delay limits
+  size_t max_delay_bytes_ = 16 * 1024;
+  size_t max_delay_updates_ = 16;
 
   void loop();
   void checkLivenessIfNeed();

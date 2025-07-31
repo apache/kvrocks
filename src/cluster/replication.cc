@@ -50,17 +50,6 @@
 #include "time_util.h"
 #include "unique_fd.h"
 
-<<<<<<< HEAD
-=======
-// Forward declaration
-void SendString(bufferevent *bev, const std::string &data);
-
-FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
-    : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq), req_(srv),
-      max_delay_bytes_(srv->GetConfig()->max_replication_delay_bytes),
-      max_delay_updates_(srv->GetConfig()->max_replication_delay_updates) {}
-
->>>>>>> c6c230a4 (add replication-delay-bytes and replication-delay-updates)
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>

@@ -892,7 +892,7 @@ Status Config::finish() {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (log_dir.empty()) log_dir = dir;
+  if (log_dir.empty()) log_dir = dir + ",stdout";
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);

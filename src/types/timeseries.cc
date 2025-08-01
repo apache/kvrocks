@@ -28,6 +28,24 @@ using AddResult = TSChunk::AddResult;
 using SampleBatch = TSChunk::SampleBatch;
 using SampleBatchSlice = TSChunk::SampleBatchSlice;
 
+TSChunkPtr createTSChunkFromData(nonstd::span<char> data) {
+  auto chunk_meta = TSChunk::MetaData();
+  Slice input(data.data(), TSChunk::MetaData::kEncodedSize);
+  chunk_meta.Decode(&input);
+  if (!chunk_meta.is_compressed) {
+    return std::make_unique<UncompTSChunk>(std::move(data));
+  } else {
+    // TODO: compressed chunk
+    return std::make_unique<UncompTSChunk>(std::move(data));
+  }
+}
+
+OwnedTSChunk createEmptyOwnedTSChunk(bool is_compressed) {
+  auto metadata = TSChunk::MetaData(is_compressed, 0);
+  std::string data = metadata.Encode();
+  return {createTSChunkFromData(data), std::move(data)};
+}
+
 TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy)
     : samples_(std::move(samples)), policy_(policy), unique_count_(0), is_sorted_(false) {
   size_t count = samples_.size();
@@ -79,38 +97,90 @@ void TSChunk::SampleBatch::SortAndOrganize() {
   is_sorted_ = true;
 }
 
-std::vector<SampleBatchSlice> TSChunk::SampleBatch::SliceByTimestamps(const std::vector<uint64_t>& timestamps) {
-  EnsureSorted();
-  std::vector<SampleBatchSlice> slices(timestamps.size());
-  if (samples_.empty()) return slices;
-
-  // Precompute timestamps for binary search
-  std::vector<uint64_t> s_ts;
-  s_ts.reserve(samples_.size());
-  for (const auto& sample : samples_) {
-    s_ts.push_back(sample.ts);
+SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int count, uint64_t* last_ts) {
+  if (sample_span_.empty()) {
+    return SampleBatchSlice();
   }
+
+  auto start_it = std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{first, 0.0});
+  if (start_it == sample_span_.end()) {
+    return SampleBatchSlice();
+  }
+
+  size_t start_idx = start_it - sample_span_.begin();
+
+  if (count < 0) {
+    if (last_ts) {
+      *last_ts = sample_span_.back().ts;
+    }
+    return createSampleSlice(start_idx, sample_span_.size());
+  }
+
+  size_t end_idx = start_idx;
+  while (end_idx < sample_span_.size() && count > 0) {
+    if (add_result_span_[end_idx] == AddResult::kNone) {
+      if (last_ts) {
+        *last_ts = sample_span_[end_idx].ts;
+      }
+      count--;
+    }
+    end_idx++;
+  }
+
+  return createSampleSlice(start_idx, end_idx);
+}
+
+SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last) {
+  if (sample_span_.empty()) {
+    return SampleBatchSlice();
+  }
+
+  auto start_it = std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{first, 0.0});
+  auto end_it = contain_last ? std::upper_bound(sample_span_.begin(), sample_span_.end(), TSSample{last, 0.0})
+                             : std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{last, 0.0});
+
+  size_t start_idx = start_it - sample_span_.begin();
+  size_t end_idx = end_it - sample_span_.begin();
+
+  if (start_idx < end_idx) {
+    return createSampleSlice(start_idx, end_idx);
+  }
+  return SampleBatchSlice();
+}
+
+std::vector<SampleBatchSlice> TSChunk::SampleBatchSlice::SliceByTimestamps(const std::vector<uint64_t>& timestamps) {
+  std::vector<SampleBatchSlice> slices(timestamps.size());
+  if (sample_span_.empty()) return slices;
 
   // Calculate insertion points for each timestamp
   std::vector<size_t> pos;
   pos.reserve(timestamps.size());
   for (auto t : timestamps) {
-    auto it = std::lower_bound(s_ts.begin(), s_ts.end(), t);
-    pos.push_back(std::distance(s_ts.begin(), it));
+    auto it = std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{t, 0.0});
+    pos.push_back(std::distance(sample_span_.begin(), it));
   }
 
   // Generate slices based on calculated positions
   for (size_t i = 0; i < timestamps.size(); ++i) {
     size_t start_idx = pos[i];
-    size_t end_idx = (i == timestamps.size() - 1) ? samples_.size() : pos[i + 1];
+    size_t end_idx = (i == timestamps.size() - 1) ? sample_span_.size() : pos[i + 1];
 
     if (start_idx < end_idx) {
-      size_t count = end_idx - start_idx;
-      slices[i] = SampleBatchSlice(nonstd::span<TSSample>(&samples_[start_idx], count),
-                                   nonstd::span<AddResult>(&add_results_[start_idx], count), policy_);
+      slices[i] = createSampleSlice(start_idx, end_idx);
     }
   }
   return slices;
+}
+
+SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, size_t end_idx) {
+  if (end_idx > sample_span_.size()) {
+    end_idx = sample_span_.size();
+  }
+  if (end_idx - start_idx == 0) {
+    return SampleBatchSlice();
+  }
+  return SampleBatchSlice(nonstd::span<const TSSample>(&sample_span_[start_idx], end_idx - start_idx),
+                          nonstd::span<AddResult>(&add_result_span_[start_idx], end_idx - start_idx), policy_);
 }
 
 SampleBatchSlice TSChunk::SampleBatch::AsSlice() {
@@ -151,14 +221,28 @@ AddResult TSChunk::MergeSamplesValue(TSSample& to, const TSSample& from, Duplica
   return AddResult::kNone;
 }
 
+uint32_t TSChunk::GetCount() const { return metadata_.count; }
+
 uint64_t TSChunk::SampleBatchSlice::GetFirstTimestamp() {
   if (sample_span_.size() == 0) return 0;
-  return sample_span_[0].ts;
+  uint64_t ts = 0;
+  for (size_t i = 0; i < sample_span_.size(); i++) {
+    if (add_result_span_[i] != AddResult::kNone) {
+      ts = sample_span_[i].ts;
+    }
+  }
+  return ts;
 }
 
 uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() {
   if (sample_span_.size() == 0) return 0;
-  return sample_span_[sample_span_.size() - 1].ts;
+  uint64_t ts = 0;
+  for (auto i = sample_span_.size() - 1; i >= 0; i--) {
+    if (add_result_span_[i] != AddResult::kNone) {
+      ts = sample_span_[i].ts;
+    }
+  }
+  return ts;
 }
 
 size_t TSChunk::SampleBatchSlice::GetValidCount() const {
@@ -210,8 +294,22 @@ UncompTSChunk::UncompTSChunk(nonstd::span<char> data) : TSChunk(data) {
   samples_ = nonstd::span<TSSample>(reinterpret_cast<TSSample*>(data_ptr), metadata_.count);
 }
 
-std::unique_ptr<TSChunkIterator> UncompTSChunk::create_iterator() const {
+std::unique_ptr<TSChunkIterator> UncompTSChunk::CreateIterator() const {
   return std::make_unique<UncompTSChunkIterator>(samples_, metadata_.count);
+}
+
+uint64_t UncompTSChunk::GetFirstTimestamp() const {
+  if (metadata_.count == 0) {
+    return 0;
+  }
+  return samples_[0].ts;
+}
+
+uint64_t UncompTSChunk::GetLastTimestamp() const {
+  if (metadata_.count == 0) {
+    return 0;
+  }
+  return samples_[metadata_.count - 1].ts;
 }
 
 std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) {

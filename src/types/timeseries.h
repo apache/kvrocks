@@ -25,6 +25,16 @@
 
 #include "storage/redis_metadata.h"
 
+class TSChunk;
+class UncompTSChunk;
+
+using TSChunkPtr = std::shared_ptr<TSChunk>;
+using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
+
+TSChunkPtr createTSChunkFromData(nonstd::span<char> data);
+
+OwnedTSChunk createEmptyOwnedTSChunk(bool is_compressed = false);
+
 struct TSSample {
   uint64_t ts;
   double v;
@@ -68,6 +78,16 @@ class TSChunk {
     nonstd::span<AddResult> GetAddResultSpan() { return add_result_span_; }
     nonstd::span<const AddResult> GetAddResultSpan() const { return add_result_span_; }
 
+    SampleBatchSlice SliceByCount(uint64_t first, int count, uint64_t* last_ts = nullptr);
+
+    // Slice samples by timestamp.
+    // e.g. samples: {10,20,30,40}, first=20, last=40 -> Slice:{20,30}
+    SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
+
+    // Slice samples by timestamp.
+    // e.g. samples: {10,20,30,40}, timestamps: {5,15,30} -> Slice1:{10}, Slice2:{20},Slice3:{30, 40}
+    std::vector<SampleBatchSlice> SliceByTimestamps(const std::vector<uint64_t>& timestamps);
+
     uint64_t GetFirstTimestamp();
     uint64_t GetLastTimestamp();
 
@@ -81,6 +101,8 @@ class TSChunk {
     nonstd::span<const TSSample> sample_span_;
     nonstd::span<AddResult> add_result_span_;
     DuplicatePolicy policy_;
+
+    SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx);
   };
 
   class SampleBatch {
@@ -88,11 +110,6 @@ class TSChunk {
     SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy);
 
     void Expire(uint64_t last_ts, uint64_t retention);
-
-    // Slice samples by timestamp.
-    // Note: timestamps must be sorted and timestamp[0] <= this->GetfirstTimestamp()
-    // e.g. samples: {10,20,30,40}, timestamps: {5,15,30} -> Slice1:{10}, Slice2:{20},Sl
-    std::vector<SampleBatchSlice> SliceByTimestamps(const std::vector<uint64_t>& timestamps);
 
     SampleBatchSlice AsSlice();
 
@@ -126,7 +143,11 @@ class TSChunk {
 
   static AddResult MergeSamplesValue(TSSample& a, const TSSample& b, DuplicatePolicy policy);
 
-  virtual std::unique_ptr<TSChunkIterator> create_iterator() const = 0;
+  virtual std::unique_ptr<TSChunkIterator> CreateIterator() const = 0;
+
+  uint32_t GetCount() const;
+  virtual uint64_t GetFirstTimestamp() const = 0;
+  virtual uint64_t GetLastTimestamp() const = 0;
 
   virtual std::string MAddSample(SampleBatchSlice samples) = 0;
 
@@ -138,7 +159,10 @@ class TSChunk {
 class UncompTSChunk : public TSChunk {
  public:
   explicit UncompTSChunk(nonstd::span<char> data);
-  std::unique_ptr<TSChunkIterator> create_iterator() const override;
+  std::unique_ptr<TSChunkIterator> CreateIterator() const override;
+
+  uint64_t GetFirstTimestamp() const override;
+  uint64_t GetLastTimestamp() const override;
 
   std::string MAddSample(SampleBatchSlice samples) override;
 

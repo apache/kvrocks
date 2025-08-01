@@ -350,7 +350,7 @@ Status Storage::Open(DBOpenMode mode) {
   rocksdb::BlockBasedTableOptions search_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions search_opts(options);
   search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(search_table_opts));
-  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>();
+  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>(this);
   search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&search_opts);
 

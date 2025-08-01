@@ -54,7 +54,12 @@ enum RedisType : uint8_t {
   kRedisHyperLogLog = 11,
   kRedisTDigest = 12,
   kRedisTimeSeries = 13,
+  kRedisTypeMax
 };
+
+inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
+    "none",      "string", "hash",      "list",      "set",         "zset",      "bitmap",
+    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -94,10 +99,6 @@ enum RedisCommand {
   kRedisCmdBitfield,
   kRedisCmdLMove,
 };
-
-const std::vector<std::string> RedisTypeNames = {"none",      "string",      "hash",      "list",      "set",
-                                                 "zset",      "bitmap",      "sortedint", "stream",    "MBbloom--",
-                                                 "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
@@ -177,7 +178,7 @@ class Metadata {
   void PutExpire(std::string *dst) const;
 
   RedisType Type() const;
-  const std::string &TypeName() const;
+  std::string_view TypeName() const;
   size_t CommonEncodedSize() const;
   int64_t TTL() const;
   timeval Time() const;

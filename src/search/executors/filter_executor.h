@@ -78,6 +78,7 @@ struct QueryExprEvaluator {
 
   StatusOr<bool> Visit(TagContainExpr *v) const {
     auto val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, v->field->info));
+    if (val.IsNull()) return false;
 
     CHECK(val.Is<kqir::StringArray>());
     auto tags = val.Get<kqir::StringArray>();
@@ -93,6 +94,7 @@ struct QueryExprEvaluator {
 
   StatusOr<bool> Visit(NumericCompareExpr *v) const {
     auto l_val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, v->field->info));
+    if (l_val.IsNull()) return false;
 
     CHECK(l_val.Is<kqir::Numeric>());
     auto l = l_val.Get<kqir::Numeric>();
@@ -118,6 +120,7 @@ struct QueryExprEvaluator {
 
   StatusOr<bool> Visit(VectorRangeExpr *v) const {
     auto val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, v->field->info));
+    if (val.IsNull()) return false;
 
     CHECK(val.Is<kqir::NumericArray>());
     auto l_values = val.Get<kqir::NumericArray>();

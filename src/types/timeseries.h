@@ -68,12 +68,9 @@ class TSChunk {
     kOld,
   };
 
+  class SampleBatch;
   class SampleBatchSlice {
    public:
-    SampleBatchSlice() = default;
-    SampleBatchSlice(nonstd::span<const TSSample> samples, nonstd::span<AddResult> results, DuplicatePolicy policy)
-        : sample_span_(samples), add_result_span_(results), policy_(policy) {}
-
     nonstd::span<const TSSample> GetSampleSpan() const { return sample_span_; }
     nonstd::span<AddResult> GetAddResultSpan() { return add_result_span_; }
     nonstd::span<const AddResult> GetAddResultSpan() const { return add_result_span_; }
@@ -84,10 +81,6 @@ class TSChunk {
     // e.g. samples: {10,20,30,40}, first=20, last=40 -> Slice:{20,30}
     SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
 
-    // Slice samples by timestamp.
-    // e.g. samples: {10,20,30,40}, timestamps: {5,15,30} -> Slice1:{10}, Slice2:{20},Slice3:{30, 40}
-    std::vector<SampleBatchSlice> SliceByTimestamps(const std::vector<uint64_t>& timestamps);
-
     uint64_t GetFirstTimestamp();
     uint64_t GetLastTimestamp();
 
@@ -97,10 +90,16 @@ class TSChunk {
     size_t Size() const { return sample_span_.size(); }
     bool Empty() const { return sample_span_.empty(); }
 
+    friend class TSChunk::SampleBatch;
+
    private:
     nonstd::span<const TSSample> sample_span_;
     nonstd::span<AddResult> add_result_span_;
     DuplicatePolicy policy_;
+
+    SampleBatchSlice() = default;
+    SampleBatchSlice(nonstd::span<const TSSample> samples, nonstd::span<AddResult> results, DuplicatePolicy policy)
+        : sample_span_(samples), add_result_span_(results), policy_(policy) {}
 
     SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx);
   };
@@ -113,16 +112,15 @@ class TSChunk {
 
     SampleBatchSlice AsSlice();
 
+    std::vector<AddResult> GetFinalResults() const;
+
    private:
     std::vector<TSSample> samples_;
     std::vector<size_t> indexes_;  // Record original index cause of sorting
     std::vector<AddResult> add_results_;
     DuplicatePolicy policy_;
-    size_t unique_count_;  // unique samples
-    bool is_sorted_;
 
     void SortAndOrganize();
-    void EnsureSorted();
   };
 
   struct MetaData {
@@ -149,7 +147,7 @@ class TSChunk {
   virtual uint64_t GetFirstTimestamp() const = 0;
   virtual uint64_t GetLastTimestamp() const = 0;
 
-  virtual std::string MAddSample(SampleBatchSlice samples) = 0;
+  virtual std::string MAddSample(SampleBatchSlice samples) const = 0;
 
  protected:
   nonstd::span<char> data_;
@@ -164,7 +162,7 @@ class UncompTSChunk : public TSChunk {
   uint64_t GetFirstTimestamp() const override;
   uint64_t GetLastTimestamp() const override;
 
-  std::string MAddSample(SampleBatchSlice samples) override;
+  std::string MAddSample(SampleBatchSlice samples) const override;
 
  private:
   nonstd::span<TSSample> samples_;

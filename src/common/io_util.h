@@ -38,6 +38,7 @@ Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
 Status SockSend(int fd, const std::string &data);
 StatusOr<std::string> SockReadLine(int fd);
+StatusOr<std::string> SockReadLineWithRetry(int fd, int retry_times, int retry_interval_ms);
 Status SockSendFile(int out_fd, int in_fd, size_t size);
 Status SockSetBlocking(int fd, int blocking);
 StatusOr<std::tuple<std::string, uint32_t>> GetPeerAddr(int fd);

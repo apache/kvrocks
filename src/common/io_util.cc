@@ -310,7 +310,25 @@ Status SockSetBlocking(int fd, int blocking) {
 
 StatusOr<std::string> SockReadLine(int fd) {
   UniqueEvbuf evbuf;
-  while (true) {
+  if (evbuffer_read(evbuf.get(), fd, -1) <= 0) {
+    return Status::FromErrno("read response err");
+  }
+
+  UniqueEvbufReadln line(evbuf.get(), EVBUFFER_EOL_CRLF_STRICT);
+  if (!line) {
+    return Status::FromErrno("read response err(empty)");
+  }
+
+  return std::string(line.get(), line.length);
+}
+
+StatusOr<std::string> SockReadLineWithRetry(int fd, int retry_times, int retry_interval_ms) {
+  if (retry_times <= 0 || retry_interval_ms <= 0) {
+    return SockReadLine(fd);
+  }
+
+  UniqueEvbuf evbuf;
+  while (retry_times-- > 0) {
     int ret = evbuffer_read(evbuf.get(), fd, -1);
     if (ret > 0) {
       break;
@@ -322,7 +340,7 @@ StatusOr<std::string> SockReadLine(int fd) {
 
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       // Resource temporarily unavailable, sleep for a while
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      std::this_thread::sleep_for(std::chrono::milliseconds(retry_interval_ms));
       continue;
     }
 

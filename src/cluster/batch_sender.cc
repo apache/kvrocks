@@ -100,7 +100,7 @@ Status BatchSender::sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_b
 
   GET_OR_RET(util::SockSend(fd, redis::ArrayOfBulkStrings({"APPLYBATCH", write_batch.Data()})));
 
-  std::string line = GET_OR_RET(util::SockReadLine(fd));
+  std::string line = GET_OR_RET(util::SockReadLineWithRetry(fd, 10, 500));
 
   if (line.compare(0, 1, "-") == 0) {
     return {Status::NotOK, line};

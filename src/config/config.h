@@ -120,6 +120,8 @@ struct Config {
   int slave_priority = 100;
   int replication_connect_timeout_ms = 3100;
   int replication_recv_timeout_ms = 3200;
+  int max_replication_delay_bytes = 16 * 1024;  // 16KB default
+  int max_replication_delay_updates = 16;       // 16 updates default
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;

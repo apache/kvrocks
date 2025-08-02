@@ -56,6 +56,14 @@
 #include <openssl/ssl.h>
 #endif
 
+FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
+    : srv_(srv),
+      conn_(conn),
+      next_repl_seq_(next_repl_seq),
+      req_(srv),
+      max_delay_bytes_(srv->GetConfig()->max_replication_delay_bytes),
+      max_delay_updates_(srv->GetConfig()->max_replication_delay_updates) {}
+
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
     sigset_t mask, omask;
@@ -194,8 +202,8 @@ void FeedSlaveThread::loop() {
     // 3. To avoid master don't send replication stream to slave since of packing
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
-    if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
-        srv_->storage->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
+    if (is_first_repl_batch || batches_bulk.size() >= max_delay_bytes_ || updates_in_batches >= max_delay_updates_ ||
+        srv_->storage->LatestSeqNumber() - batch.sequence <= max_delay_updates_) {
       // Send entire bulk which contain multiple batches
       auto s = util::SockSend(conn_->GetFD(), batches_bulk, conn_->GetBufferEvent());
       if (!s.IsOK()) {
@@ -205,7 +213,7 @@ void FeedSlaveThread::loop() {
       }
       is_first_repl_batch = false;
       batches_bulk.clear();
-      if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
+      if (batches_bulk.capacity() > max_delay_bytes_ * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();

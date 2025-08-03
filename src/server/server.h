@@ -237,6 +237,9 @@ class Server {
 
   // Helper methods for WAIT command
   size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
+  // Return the largest wait_context.target_seq that can wakeup given the seq.
+  // If no wait_context can wakeup, return 0.
+  rocksdb::SequenceNumber LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq);
 
   size_t GetReplicaCount() {
     slave_threads_mu_.lock();
@@ -422,7 +425,7 @@ class Server {
     WaitContext(redis::Connection *c, rocksdb::SequenceNumber seq, uint64_t replicas)
         : conn(c), target_seq(seq), num_replicas(replicas) {}
   };
-  std::list<WaitContext> wait_contexts_;
+  std::multimap<rocksdb::SequenceNumber, WaitContext> wait_contexts_;
   std::mutex wait_contexts_mu_;
 
   // threads

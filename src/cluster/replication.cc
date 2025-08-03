@@ -56,6 +56,14 @@
 #include <openssl/ssl.h>
 #endif
 
+FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
+    : srv_(srv),
+      conn_(conn),
+      next_repl_seq_(next_repl_seq),
+      req_(srv),
+      max_delay_bytes_(srv->GetConfig()->max_replication_delay_bytes),
+      max_delay_updates_(srv->GetConfig()->max_replication_delay_updates) {}
+
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
     sigset_t mask, omask;
@@ -154,6 +162,16 @@ void FeedSlaveThread::readCallback(bufferevent *bev, [[maybe_unused]] void *ctx)
   }
 }
 
+bool FeedSlaveThread::shouldSendGetAck(rocksdb::SequenceNumber seq) {
+  rocksdb::SequenceNumber largest_unblockable_seq = srv_->LargestTargetSeqToWakeup(seq);
+  if (largest_unblockable_seq > last_getack_seq_) {
+    last_getack_seq_ = largest_unblockable_seq;
+    return true;
+  }
+
+  return false;
+}
+
 void FeedSlaveThread::loop() {
   // is_first_repl_batch was used to fix that replication may be stuck in a dead loop
   // when some seqs might be lost in the middle of the WAL log, so forced to replicate
@@ -194,8 +212,12 @@ void FeedSlaveThread::loop() {
     // 3. To avoid master don't send replication stream to slave since of packing
     //    batches strategy, we still send batches if current batch sequence is less
     //    kMaxDelayUpdates than latest sequence.
-    if (is_first_repl_batch || batches_bulk.size() >= kMaxDelayBytes || updates_in_batches >= kMaxDelayUpdates ||
-        srv_->storage->LatestSeqNumber() - batch.sequence <= kMaxDelayUpdates) {
+    if (is_first_repl_batch || batches_bulk.size() >= max_delay_bytes_ || updates_in_batches >= max_delay_updates_ ||
+        srv_->storage->LatestSeqNumber() - batch.sequence <= max_delay_updates_) {
+      if (shouldSendGetAck(batch.sequence)) {
+        batches_bulk += redis::BulkString("_getack");
+      }
+
       // Send entire bulk which contain multiple batches
       auto s = util::SockSend(conn_->GetFD(), batches_bulk, conn_->GetBufferEvent());
       if (!s.IsOK()) {
@@ -203,9 +225,10 @@ void FeedSlaveThread::loop() {
         Stop();
         return;
       }
+
       is_first_repl_batch = false;
       batches_bulk.clear();
-      if (batches_bulk.capacity() > kMaxDelayBytes * 2) batches_bulk.shrink_to_fit();
+      if (batches_bulk.capacity() > max_delay_bytes_ * 2) batches_bulk.shrink_to_fit();
       updates_in_batches = 0;
     }
     curr_seq = batch.sequence + batch.writeBatchPtr->Count();
@@ -608,14 +631,21 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
   }
 }
 
-void ReplicationThread::sendReplConfAck(bufferevent *bev) {
-  SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
+void ReplicationThread::sendReplConfAck(bufferevent *bev, bool force) {
+  int64_t now = util::GetTimeStamp();
+
+  // If force is true, always send ack. Otherwise, check if it has been 1s from last ack
+  if (force || (now - last_ack_time_secs_) >= 1) {
+    SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
+    last_ack_time_secs_ = now;
+  }
 }
 
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
   bool data_written = false;
+  bool force_ack = false;
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
@@ -623,7 +653,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) {
           if (data_written) {
-            sendReplConfAck(bev);
+            sendReplConfAck(bev, force_ack);
           }
           return CBState::AGAIN;
         }
@@ -639,7 +669,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
           if (data_written) {
-            sendReplConfAck(bev);
+            sendReplConfAck(bev, force_ack);
           }
           return CBState::AGAIN;
         }
@@ -654,9 +684,16 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
           if (data_written) {
-            sendReplConfAck(bev);
+            sendReplConfAck(bev, force_ack);
           }
           return CBState::AGAIN;
+        }
+
+        if (bulk_string == "_getack") {
+          // master would send the _getack command to the master to get acknowledgment
+          // don't write _getack to db here.
+          force_ack = true;
+          continue;
         }
 
         rocksdb::WriteBatch batch(std::move(bulk_string));

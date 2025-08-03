@@ -102,12 +102,22 @@ class CommandNamespace : public Commander {
       Status s = srv->GetNamespace()->Del(args_[2]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
       warn("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
+    } else if (args_.size() == 2 && sub_command == "current") {
+      *output = redis::BulkString(conn->GetNamespace());
     } else {
-      return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD"};
+      return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD and CURRENT"};
     }
     return Status::OK();
   }
 };
+
+static uint64_t GenerateNamespaceFlag(uint64_t flags, const std::vector<std::string> &args) {
+  if (args.size() >= 2 && util::EqualICase(args[1], "current")) {
+    return flags & ~kCmdAdmin;
+  }
+
+  return flags;
+}
 
 class CommandKeys : public Commander {
  public:
@@ -1539,49 +1549,48 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
-REDIS_REGISTER_COMMANDS(Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
-                        MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),
-                        MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", NO_KEY),
-                        MakeCmdAttr<CommandConfig>("config", -2, "read-only admin", NO_KEY, GenerateConfigFlag),
-                        MakeCmdAttr<CommandNamespace>("namespace", -3, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandKeys>("keys", 2, "read-only slow", NO_KEY),
-                        MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
-                        MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
-                        MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandKProfile>("kprofile", -3, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandClient>("client", -2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi no-script", NO_KEY),
-                        MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only exclusive no-multi no-script admin",
-                                                     NO_KEY),
-                        MakeCmdAttr<CommandQuit>("quit", 1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandScan>("scan", -2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", NO_KEY, CommandDebug::FlagGen),
-                        MakeCmdAttr<CommandCommand>("command", -1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandEcho>("echo", 2, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTime>("time", 1, "read-only ok-loading", NO_KEY),
-                        MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 2, 2, 1),
-                        MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 2, 2, 1),
-                        MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading auth", NO_KEY),
-                        MakeCmdAttr<CommandRestore>("restore", -4, "write", 1, 1, 1),
+REDIS_REGISTER_COMMANDS(
+    Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
+    MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
+    MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),
+    MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", NO_KEY),
+    MakeCmdAttr<CommandConfig>("config", -2, "read-only admin", NO_KEY, GenerateConfigFlag),
+    MakeCmdAttr<CommandNamespace>("namespace", -2, "read-only admin", NO_KEY, GenerateNamespaceFlag),
+    MakeCmdAttr<CommandKeys>("keys", 2, "read-only slow", NO_KEY),
+    MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
+    MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
+    MakeCmdAttr<CommandDBSize>("dbsize", -1, "read-only", NO_KEY),
+    MakeCmdAttr<CommandSlowlog>("slowlog", -2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandKProfile>("kprofile", -3, "read-only admin", NO_KEY),
+    MakeCmdAttr<CommandPerfLog>("perflog", -2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandClient>("client", -2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandMonitor>("monitor", 1, "read-only no-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only exclusive no-multi no-script admin", NO_KEY),
+    MakeCmdAttr<CommandQuit>("quit", 1, "read-only", NO_KEY), MakeCmdAttr<CommandScan>("scan", -2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", NO_KEY),
+    MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", NO_KEY, CommandDebug::FlagGen),
+    MakeCmdAttr<CommandCommand>("command", -1, "read-only", NO_KEY),
+    MakeCmdAttr<CommandEcho>("echo", 2, "read-only", NO_KEY),
+    MakeCmdAttr<CommandTime>("time", 1, "read-only ok-loading", NO_KEY),
+    MakeCmdAttr<CommandDisk>("disk", 3, "read-only", 2, 2, 1),
+    MakeCmdAttr<CommandMemory>("memory", 3, "read-only", 2, 2, 1),
+    MakeCmdAttr<CommandHello>("hello", -1, "read-only ok-loading auth", NO_KEY),
+    MakeCmdAttr<CommandRestore>("restore", -4, "write", 1, 1, 1),
 
-                        MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", NO_KEY),
-                        MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandLastSave>("lastsave", -1, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandSlaveOf>("replicaof", 3, "read-only exclusive no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandStats>("stats", 1, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive admin", NO_KEY),
-                        MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script", NO_KEY),
-                        MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
-                        MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
-                        MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
-                        MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-                        MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandCompact>("compact", 1, "read-only no-script", NO_KEY),
+    MakeCmdAttr<CommandBGSave>("bgsave", 1, "read-only no-script admin", NO_KEY),
+    MakeCmdAttr<CommandLastSave>("lastsave", -1, "read-only admin", NO_KEY),
+    MakeCmdAttr<CommandFlushBackup>("flushbackup", 1, "read-only no-script admin", NO_KEY),
+    MakeCmdAttr<CommandSlaveOf>("slaveof", 3, "read-only exclusive no-script admin", NO_KEY),
+    MakeCmdAttr<CommandSlaveOf>("replicaof", 3, "read-only exclusive no-script admin", NO_KEY),
+    MakeCmdAttr<CommandStats>("stats", 1, "read-only", NO_KEY),
+    MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive admin", NO_KEY),
+    MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
+    MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
+    MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
+    MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
 }  // namespace redis

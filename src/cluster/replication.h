@@ -64,8 +64,7 @@ using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 
 class FeedSlaveThread {
  public:
-  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
-      : srv_(srv), conn_(conn), next_repl_seq_(next_repl_seq), req_(srv) {}
+  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   ~FeedSlaveThread() = default;
 
   Status Start();
@@ -86,14 +85,18 @@ class FeedSlaveThread {
   // used to parse the ack response from the slave
   redis::Request req_;
   std::atomic<rocksdb::SequenceNumber> ack_seq_ = 0;
+  rocksdb::SequenceNumber last_getack_seq_ = 0;
+  int64_t last_ack_time_secs_ = 0;
 
-  static const size_t kMaxDelayUpdates = 16;
-  static const size_t kMaxDelayBytes = 16 * 1024;
+  // Configurable delay limits
+  size_t max_delay_bytes_;
+  size_t max_delay_updates_;
 
   void loop();
   void checkLivenessIfNeed();
   void readCallback(bufferevent *bev, void *ctx);
   static void staticReadCallback(bufferevent *bev, void *ctx);
+  bool shouldSendGetAck(rocksdb::SequenceNumber seq);
 };
 
 class ReplicationThread : private EventCallbackBase<ReplicationThread> {
@@ -161,6 +164,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   engine::Storage *storage_ = nullptr;
   std::atomic<ReplState> repl_state_;
   std::atomic<int64_t> last_io_time_secs_ = 0;
+  int64_t last_ack_time_secs_ = 0;
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
 
@@ -202,8 +206,6 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   CBState fullSyncWriteCB(bufferevent *bev);
   CBState fullSyncReadCB(bufferevent *bev);
 
-  void sendReplConfAck(bufferevent *bev);
-
   Status sendAuth(int sock_fd, ssl_st *ssl);
   Status fetchFile(int sock_fd, evbuffer *evbuf, const std::string &dir, const std::string &file, uint32_t crc,
                    const FetchFileCallback &fn, ssl_st *ssl);
@@ -213,6 +215,8 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   static bool isRestoringError(std::string_view err);
   static bool isWrongPsyncNum(std::string_view err);
   static bool isUnknownOption(std::string_view err);
+
+  void sendReplConfAck(bufferevent *bev, bool force = false);
 
   Status parseWriteBatch(const rocksdb::WriteBatch &write_batch);
 };

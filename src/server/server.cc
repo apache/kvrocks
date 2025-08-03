@@ -704,34 +704,32 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
 void Server::BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas) {
   std::lock_guard<std::mutex> guard(wait_contexts_mu_);
 
-  wait_contexts_.emplace_back(conn, target_seq, num_replicas);
+  wait_contexts_.emplace(target_seq, WaitContext(conn, target_seq, num_replicas));
   IncrBlockedClientNum();
 }
 
 void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
   std::lock_guard<std::mutex> guard(wait_contexts_mu_);
 
-  for (auto it = wait_contexts_.begin(); it != wait_contexts_.end();) {
-    // Check if target sequence is reached
-    if (seq >= it->target_seq) {
-      // Count how many replicas have reached the target sequence
-      size_t reached_replicas = GetReplicasReachedSequence(it->target_seq);
+  // find the last entry with target_seq > seq, which cannot wakeup
+  auto end_it = wait_contexts_.upper_bound(seq);
+  for (auto it = wait_contexts_.begin(); it != end_it;) {
+    // Count how many replicas have reached the target sequence
+    size_t reached_replicas = GetReplicasReachedSequence(it->second.target_seq);
 
-      // If enough replicas have reached the target sequence, wake up the connection
-      if (reached_replicas >= it->num_replicas) {
-        // Send the response with the number of replicas that have reached the target sequence
-        it->conn->Reply(redis::Integer(reached_replicas));
+    // If enough replicas have reached the target sequence, wake up the connection
+    if (reached_replicas >= it->second.num_replicas) {
+      // Send the response with the number of replicas that have reached the target sequence
+      it->second.conn->Reply(redis::Integer(reached_replicas));
 
-        auto s = it->conn->Owner()->EnableWriteEvent(it->conn->GetFD());
-        if (!s.IsOK()) {
-          error("[server] Failed to enable write event on WAIT connection {}: {}", it->conn->GetFD(), s.Msg());
-        }
-        it = wait_contexts_.erase(it);
-        DecrBlockedClientNum();
-        continue;
+      auto s = it->second.conn->Owner()->EnableWriteEvent(it->second.conn->GetFD());
+      if (!s.IsOK()) {
+        error("[server] Failed to enable write event on WAIT connection {}: {}", it->second.conn->GetFD(), s.Msg());
       }
+      it = wait_contexts_.erase(it);
+      DecrBlockedClientNum();
+      continue;
     }
-
     ++it;
   }
 }
@@ -740,7 +738,7 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(wait_contexts_mu_);
 
   auto it = std::find_if(wait_contexts_.begin(), wait_contexts_.end(),
-                         [conn](const auto &context) { return context.conn == conn; });
+                         [conn](const auto &pair) { return pair.second.conn == conn; });
   if (it != wait_contexts_.end()) {
     wait_contexts_.erase(it);
     DecrBlockedClientNum();
@@ -756,6 +754,28 @@ size_t Server::GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq) {
     }
   }
   return reached_replicas;
+}
+
+rocksdb::SequenceNumber Server::LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq) {
+  std::lock_guard<std::mutex> guard(wait_contexts_mu_);
+  if (wait_contexts_.empty()) {
+    return 0;
+  }
+
+  // Use upper_bound to find the first entry with target_seq > seq
+  // the largest seq that can wakeup is the last element before it
+  auto it = wait_contexts_.upper_bound(seq);
+
+  // when wait_contexts_ is empty, it == wait_contexts_.begin().
+  // when all wait_contexts_.target_seq > seq, it == wait_contexts_.begin().
+  // both cases should return 0.
+  if (it == wait_contexts_.begin()) {
+    return 0;
+  }
+
+  // Return the largest target_seq that could potentially be unblocked
+  auto last_it = std::prev(it);
+  return last_it->second.target_seq;
 }
 
 void Server::updateCachedTime() { unix_time_secs.store(util::GetTimeStamp()); }

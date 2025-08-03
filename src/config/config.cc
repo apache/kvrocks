@@ -203,6 +203,8 @@ Config::Config() {
       {"slave-read-only", false, new YesNoField(&slave_readonly, true)},
       {"replication-connect-timeout-ms", false, new IntField(&replication_connect_timeout_ms, 3100, 0, INT_MAX)},
       {"replication-recv-timeout-ms", false, new IntField(&replication_recv_timeout_ms, 3200, 0, INT_MAX)},
+      {"replication-delay-bytes", false, new IntField(&max_replication_delay_bytes, 16 * 1024, 1, INT_MAX)},
+      {"replication-delay-updates", false, new IntField(&max_replication_delay_updates, 16, 1, INT_MAX)},
       {"use-rsid-psync", true, new YesNoField(&use_rsid_psync, false)},
       {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},
       {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
@@ -892,7 +894,7 @@ Status Config::finish() {
     return {Status::NotOK, "replication doesn't support unix socket"};
   }
   if (db_dir.empty()) db_dir = dir + "/db";
-  if (log_dir.empty()) log_dir = dir;
+  if (log_dir.empty()) log_dir = dir + ",stdout";
   std::vector<std::string> create_dirs = {dir};
   for (const auto &name : create_dirs) {
     auto s = rocksdb::Env::Default()->CreateDirIfMissing(name);

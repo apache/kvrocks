@@ -31,8 +31,10 @@ class UncompTSChunk;
 using TSChunkPtr = std::shared_ptr<TSChunk>;
 using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
 
+// Creates a TSChunk from the provided raw data buffer.
 TSChunkPtr createTSChunkFromData(nonstd::span<char> data);
 
+// Creates an empty owned time series chunk with specified compression option.
 OwnedTSChunk createEmptyOwnedTSChunk(bool is_compressed = false);
 
 struct TSSample {
@@ -46,6 +48,7 @@ struct TSSample {
   bool operator==(const TSSample& other) const { return ts == other.ts; }
 };
 
+// Simple TSChunk iterator base class providing basic traversal functionality
 class TSChunkIterator {
  public:
   TSChunkIterator(uint64_t count) : count_(count), idx_(0) {}
@@ -77,15 +80,18 @@ class TSChunk {
     nonstd::span<AddResult> GetAddResultSpan() { return add_result_span_; }
     nonstd::span<const AddResult> GetAddResultSpan() const { return add_result_span_; }
 
+    // Slice samples by count. Returns count valid samples starting from first timestamp
+    // e.g., samples: {100,200,300}, first=200, count=2 -> {200,300}
     SampleBatchSlice SliceByCount(uint64_t first, int count, uint64_t* last_ts = nullptr);
 
-    // Slice samples by timestamp.
-    // e.g. samples: {10,20,30,40}, first=20, last=40 -> Slice:{20,30}
+    // Slice samples by timestamp range [first, last)
+    // e.g., samples: {10,20,30,40}, first=20, last=40 -> {20,30}
     SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
 
     uint64_t GetFirstTimestamp();
     uint64_t GetLastTimestamp();
 
+    // Get number of valid samples (excluding duplicates and expired entries)
     size_t GetValidCount() const;
 
     DuplicatePolicy GetPolicy() const { return policy_; }
@@ -108,12 +114,17 @@ class TSChunk {
 
   class SampleBatch {
    public:
+    // Construct a batch of samples with duplicate policy
+    // Samples will be sorted and deduplicated according to policy
     SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy);
 
+    // Mark samples as expired if ts + retention < last_ts
+    // e.g., retention=3600, last_ts=5000 -> samples before 5000-3600 are expired
     void Expire(uint64_t last_ts, uint64_t retention);
 
     SampleBatchSlice AsSlice();
 
+    // Return add results by samples' order
     std::vector<AddResult> GetFinalResults() const;
 
    private:
@@ -141,7 +152,9 @@ class TSChunk {
 
   virtual ~TSChunk() = default;
 
-  static AddResult MergeSamplesValue(TSSample& a, const TSSample& b, DuplicatePolicy policy);
+  // Merge samples with duplicate policy handling
+  // Returns result status, updates 'to' value according to policy
+  static AddResult MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy);
 
   virtual std::unique_ptr<TSChunkIterator> CreateIterator() const = 0;
 
@@ -149,8 +162,16 @@ class TSChunk {
   virtual uint64_t GetFirstTimestamp() const = 0;
   virtual uint64_t GetLastTimestamp() const = 0;
 
+  // Add new samples to the chunk according to duplicate policy
+  // Returns new chunk data with merged samples
   virtual std::string MAddSample(SampleBatchSlice samples) const = 0;
+
+  // Delete samples in [from, to] timestamp range
+  // Returns new chunk data without deleted samples
   virtual std::string DelSampleInRange(uint64_t from, uint64_t to) const = 0;
+
+  // Update sample value at specified timestamp
+  // is_add_on controls whether to add to existing value or replace it
   virtual std::string UpdateSample(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:

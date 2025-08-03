@@ -28,7 +28,7 @@ using AddResult = TSChunk::AddResult;
 using SampleBatch = TSChunk::SampleBatch;
 using SampleBatchSlice = TSChunk::SampleBatchSlice;
 
-TSChunkPtr createTSChunkFromData(nonstd::span<char> data) {
+TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data) {
   auto chunk_meta = TSChunk::MetaData();
   Slice input(data.data(), TSChunk::MetaData::kEncodedSize);
   chunk_meta.Decode(&input);
@@ -40,10 +40,10 @@ TSChunkPtr createTSChunkFromData(nonstd::span<char> data) {
   }
 }
 
-OwnedTSChunk createEmptyOwnedTSChunk(bool is_compressed) {
+OwnedTSChunk CreateEmptyOwnedTSChunk(bool is_compressed) {
   auto metadata = TSChunk::MetaData(is_compressed, 0);
   std::string data = metadata.Encode();
-  return {createTSChunkFromData(data), std::move(data)};
+  return {CreateTSChunkFromData(data), std::move(data)};
 }
 
 TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy)
@@ -54,7 +54,7 @@ TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy
   for (size_t i = 0; i < count; ++i) {
     indexes_[i] = i;
   }
-  SortAndOrganize();
+  sortAndOrganize();
 }
 
 void TSChunk::SampleBatch::Expire(uint64_t last_ts, uint64_t retention) {
@@ -68,7 +68,7 @@ void TSChunk::SampleBatch::Expire(uint64_t last_ts, uint64_t retention) {
   }
 }
 
-void TSChunk::SampleBatch::SortAndOrganize() {
+void TSChunk::SampleBatch::sortAndOrganize() {
   auto count = samples_.size();
   if (0 == count) return;
 
@@ -95,12 +95,12 @@ void TSChunk::SampleBatch::SortAndOrganize() {
 
 SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int count, uint64_t* last_ts) {
   if (sample_span_.empty()) {
-    return SampleBatchSlice();
+    return {};
   }
 
   auto start_it = std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{first, 0.0});
   if (start_it == sample_span_.end()) {
-    return SampleBatchSlice();
+    return {};
   }
 
   size_t start_idx = start_it - sample_span_.begin();
@@ -128,7 +128,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int cou
 
 SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last) {
   if (sample_span_.empty()) {
-    return SampleBatchSlice();
+    return {};
   }
 
   auto start_it = std::lower_bound(sample_span_.begin(), sample_span_.end(), TSSample{first, 0.0});
@@ -141,7 +141,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, ui
   if (start_idx < end_idx) {
     return createSampleSlice(start_idx, end_idx);
   }
-  return SampleBatchSlice();
+  return {};
 }
 
 SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, size_t end_idx) {
@@ -149,10 +149,10 @@ SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, 
     end_idx = sample_span_.size();
   }
   if (end_idx - start_idx == 0) {
-    return SampleBatchSlice();
+    return {};
   }
-  return SampleBatchSlice(nonstd::span<const TSSample>(&sample_span_[start_idx], end_idx - start_idx),
-                          nonstd::span<AddResult>(&add_result_span_[start_idx], end_idx - start_idx), policy_);
+  return {nonstd::span<const TSSample>(&sample_span_[start_idx], end_idx - start_idx),
+          nonstd::span<AddResult>(&add_result_span_[start_idx], end_idx - start_idx), policy_};
 }
 
 SampleBatchSlice TSChunk::SampleBatch::AsSlice() { return {samples_, add_results_, policy_}; }
@@ -225,7 +225,7 @@ size_t TSChunk::SampleBatchSlice::GetValidCount() const {
   return count;
 }
 
-std::string TSChunk::MetaData::Encode() {
+std::string TSChunk::MetaData::Encode() const {
   std::string ret;
   // Reserved some bits for future
   uint32_t flag = 0;
@@ -250,7 +250,7 @@ TSChunk::TSChunk(nonstd::span<char> data) : data_(data) {
 class UncompTSChunkIterator : public TSChunkIterator {
  public:
   explicit UncompTSChunkIterator(nonstd::span<TSSample> data, uint64_t count) : TSChunkIterator(count), data_(data) {}
-  std::optional<TSSample*> next() override {
+  std::optional<TSSample*> Next() override {
     if (idx_ >= count_) return std::nullopt;
     return &data_[idx_++];
   }
@@ -282,7 +282,7 @@ uint64_t UncompTSChunk::GetLastTimestamp() const {
   return samples_[metadata_.count - 1].ts;
 }
 
-std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) const {
+std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
   const auto new_valid_count = batch.GetValidCount();
   if (new_valid_count == 0) {
     return "";
@@ -300,7 +300,7 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) const {
   // Prepare new buffer
   std::string new_buffer;
   new_buffer.resize(required_size);
-  TSSample* merged_data = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
+  auto* merged_data = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
 
   // Prepare iterators for merging
   size_t new_sample_idx = 0;
@@ -318,7 +318,7 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) const {
 
   // Merge samples from both sources
   while (new_sample_idx != new_samples.size() && existing_sample_iter != samples_.end()) {
-    const TSSample* candidate;
+    const TSSample* candidate = nullptr;
     bool from_new_batch = false;
 
     // Select next sample by earliest timestamp
@@ -393,9 +393,9 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) const {
   return new_buffer;
 }
 
-std::string UncompTSChunk::DelSampleInRange(uint64_t from, uint64_t to) const {
+std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) const {
   if (from > to) {
-    return std::string(data_.data(), data_.size());
+    return {data_.data(), data_.size()};
   }
 
   // Find the range of samples to delete using binary search
@@ -433,7 +433,7 @@ std::string UncompTSChunk::DelSampleInRange(uint64_t from, uint64_t to) const {
   return new_buffer;
 }
 
-std::string UncompTSChunk::UpdateSample(uint64_t ts, double value, bool is_add_on) const {
+std::string UncompTSChunk::UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const {
   std::string new_buffer;
   if (ts < GetFirstTimestamp() || ts > GetLastTimestamp()) {
     return new_buffer;

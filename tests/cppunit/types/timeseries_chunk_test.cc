@@ -90,7 +90,7 @@ TEST(RedisTimeSeriesChunkTest, TimestampSlicing) {
   EXPECT_EQ(result_slice.GetLastTimestamp(), 200);
 
   // Test SliceByCount
-  uint64_t last_ts;
+  uint64_t last_ts = 0;
   result_slice = slice.SliceByCount(200, 2, &last_ts);
   EXPECT_EQ(result_slice.GetValidCount(), 2);
   EXPECT_EQ(last_ts, 300);
@@ -143,7 +143,7 @@ TEST(RedisTimeSeriesChunkTest, BatchSortingAndDeduplication) {
 // Test MAddSample merging logic with additional samples and content validation
 TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleLogic) {
   // Create base chunk
-  auto [chunk, data] = createEmptyOwnedTSChunk(false);
+  auto [chunk, data] = CreateEmptyOwnedTSChunk(false);
 
   // Create test samples with multiple duplicates and new timestamps
   std::vector<TSSample> new_samples = {
@@ -154,43 +154,43 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleLogic) {
   SampleBatchSlice slice = batch.AsSlice();
 
   // Merge samples into chunk
-  std::string result = chunk->MAddSample(slice);
+  std::string result = chunk->UpsertSamples(slice);
   EXPECT_FALSE(result.empty());
 
   // Verify merged chunk metadata
-  auto new_chunk = createTSChunkFromData(result);
+  auto new_chunk = CreateTSChunkFromData(result);
   EXPECT_EQ(new_chunk->GetCount(), 4);  // 100, 200, 300, 400 (with duplicates removed)
   EXPECT_EQ(new_chunk->GetFirstTimestamp(), 100);
   EXPECT_EQ(new_chunk->GetLastTimestamp(), 400);
 
   // Validate content of merged chunk
   auto iter = new_chunk->CreateIterator();
-  auto* sample = iter->next().value();
+  auto* sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
   EXPECT_EQ(sample->v, 6.0);  // Latest value for 100
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 200);
   EXPECT_EQ(sample->v, 5.0);  // Latest value for 200
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 300);
   EXPECT_EQ(sample->v, 3.0);
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 400);
   EXPECT_EQ(sample->v, 4.0);
-  EXPECT_EQ(iter->has_next(), false);
-  EXPECT_EQ(iter->next(), std::nullopt);
+  EXPECT_EQ(iter->HasNext(), false);
+  EXPECT_EQ(iter->Next(), std::nullopt);
 }
 
-// Test MAddSample with a chunk that has existing samples
+// Test UpsertSamples with a chunk that has existing samples
 TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleWithExistingSamples) {
   // Create empty chunk
-  auto [chunk, data] = createEmptyOwnedTSChunk(false);
+  auto [chunk, data] = CreateEmptyOwnedTSChunk(false);
 
   // Initialize chunk with samples: 100, 200, 300
   std::vector<TSSample> initial_samples = {MakeSample(100, 1.0), MakeSample(200, 2.0), MakeSample(300, 3.0)};
   SampleBatch initial_batch(initial_samples, DuplicatePolicy::LAST);
   SampleBatchSlice initial_slice = initial_batch.AsSlice();
-  std::string merged_data = chunk->MAddSample(initial_slice);
+  std::string merged_data = chunk->UpsertSamples(initial_slice);
   ASSERT_FALSE(merged_data.empty());
 
   // New samples to add: 150, 200(update), 400
@@ -200,175 +200,175 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleWithExistingSamples) {
   SampleBatchSlice new_slice = new_batch.AsSlice();
 
   // Perform merge
-  merged_data = createTSChunkFromData(merged_data)->MAddSample(new_slice);
+  merged_data = CreateTSChunkFromData(merged_data)->UpsertSamples(new_slice);
   ASSERT_FALSE(merged_data.empty());
 
   // Validate final state
-  TSChunkPtr final_chunk = createTSChunkFromData(merged_data);
+  TSChunkPtr final_chunk = CreateTSChunkFromData(merged_data);
   EXPECT_EQ(final_chunk->GetCount(), 6);
   EXPECT_EQ(final_chunk->GetFirstTimestamp(), 50);
   EXPECT_EQ(final_chunk->GetLastTimestamp(), 400);
 
   // Verify content through iterator
   auto iter = final_chunk->CreateIterator();
-  auto* sample = iter->next().value();
+  auto* sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 50);
   EXPECT_EQ(sample->v, 0.5);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
   EXPECT_EQ(sample->v, 1.0);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 150);
   EXPECT_EQ(sample->v, 1.5);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 200);
   EXPECT_EQ(sample->v, 2.5);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 300);
   EXPECT_EQ(sample->v, 3.5);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 400);
   EXPECT_EQ(sample->v, 4.0);
 
-  EXPECT_FALSE(iter->has_next());
+  EXPECT_FALSE(iter->HasNext());
 }
 
-// Test DelSampleInRange with different deletion ranges and content validation
+// Test RemoveSamplesBetween with different deletion ranges and content validation
 TEST(RedisTimeSeriesChunkTest, UcompChunkDeletionRange) {
   // Create base chunk with samples: 100, 200, 300, 400, 500
-  auto [chunk, data] = createEmptyOwnedTSChunk(false);
+  auto [chunk, data] = CreateEmptyOwnedTSChunk(false);
   std::vector<TSSample> initial_samples = {MakeSample(100, 1.0), MakeSample(200, 2.0), MakeSample(300, 3.0),
                                            MakeSample(400, 4.0), MakeSample(500, 5.0)};
   SampleBatch initial_batch(initial_samples, DuplicatePolicy::LAST);
   SampleBatchSlice initial_slice = initial_batch.AsSlice();
-  std::string merged_data = chunk->MAddSample(initial_slice);
+  std::string merged_data = chunk->UpsertSamples(initial_slice);
   ASSERT_FALSE(merged_data.empty());
-  TSChunkPtr test_chunk = createTSChunkFromData(merged_data);
+  TSChunkPtr test_chunk = CreateTSChunkFromData(merged_data);
 
   // Test 1: Delete middle range (200-400 inclusive)
-  std::string deleted_data = test_chunk->DelSampleInRange(200, 400);
+  std::string deleted_data = test_chunk->RemoveSamplesBetween(200, 400);
   ASSERT_FALSE(deleted_data.empty());
-  TSChunkPtr result_chunk = createTSChunkFromData(deleted_data);
+  TSChunkPtr result_chunk = CreateTSChunkFromData(deleted_data);
   EXPECT_EQ(result_chunk->GetCount(), 2);
 
   auto iter = result_chunk->CreateIterator();
-  auto* sample = iter->next().value();
+  auto* sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
   EXPECT_EQ(sample->v, 1.0);
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 500);
   EXPECT_EQ(sample->v, 5.0);
-  EXPECT_FALSE(iter->has_next());
+  EXPECT_FALSE(iter->HasNext());
 
   // Test 2: Delete range (300,1000)
-  deleted_data = test_chunk->DelSampleInRange(300, 1000);
+  deleted_data = test_chunk->RemoveSamplesBetween(300, 1000);
   ASSERT_FALSE(deleted_data.empty());
-  result_chunk = createTSChunkFromData(deleted_data);
+  result_chunk = CreateTSChunkFromData(deleted_data);
   EXPECT_EQ(result_chunk->GetCount(), 2);
   EXPECT_EQ(result_chunk->GetFirstTimestamp(), 100);
   EXPECT_EQ(result_chunk->GetLastTimestamp(), 200);
 
   // Test 3: Delete range (0, 300)
-  deleted_data = test_chunk->DelSampleInRange(0, 300);
+  deleted_data = test_chunk->RemoveSamplesBetween(0, 300);
   ASSERT_FALSE(deleted_data.empty());
-  result_chunk = createTSChunkFromData(deleted_data);
+  result_chunk = CreateTSChunkFromData(deleted_data);
   EXPECT_EQ(result_chunk->GetCount(), 2);
   EXPECT_EQ(result_chunk->GetFirstTimestamp(), 400);
   EXPECT_EQ(result_chunk->GetLastTimestamp(), 500);
 
   // Test 4: Delete entire range (100-500)
-  deleted_data = test_chunk->DelSampleInRange(0, 1000);
+  deleted_data = test_chunk->RemoveSamplesBetween(0, 1000);
   ASSERT_FALSE(deleted_data.empty());
-  result_chunk = createTSChunkFromData(deleted_data);
+  result_chunk = CreateTSChunkFromData(deleted_data);
   EXPECT_EQ(result_chunk->GetCount(), 0);
   EXPECT_EQ(result_chunk->GetFirstTimestamp(), 0);
   EXPECT_EQ(result_chunk->GetLastTimestamp(), 0);
 
   // Test 5: Delete from > to (should return original data)
-  deleted_data = test_chunk->DelSampleInRange(500, 100);
+  deleted_data = test_chunk->RemoveSamplesBetween(500, 100);
   EXPECT_EQ(deleted_data, merged_data);
 
   // Test 6: Delete single timestamp (300)
-  deleted_data = test_chunk->DelSampleInRange(300, 300);
+  deleted_data = test_chunk->RemoveSamplesBetween(300, 300);
   ASSERT_FALSE(deleted_data.empty());
-  result_chunk = createTSChunkFromData(deleted_data);
+  result_chunk = CreateTSChunkFromData(deleted_data);
   EXPECT_EQ(result_chunk->GetCount(), 4);
 
   iter = result_chunk->CreateIterator();
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 200);
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 400);
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 500);
-  EXPECT_FALSE(iter->has_next());
+  EXPECT_FALSE(iter->HasNext());
 }
 
-// Test UpdateSample with different update scenarios and validation
+// Test UpdateSampleValue with different update scenarios and validation
 TEST(RedisTimeSeriesChunkTest, UpdateSampleBehavior) {
   // Initialize chunk with samples: 100, 200, 300
-  auto [chunk, data] = createEmptyOwnedTSChunk(false);
+  auto [chunk, data] = CreateEmptyOwnedTSChunk(false);
   std::vector<TSSample> initial_samples = {MakeSample(100, 1.0), MakeSample(200, 2.0), MakeSample(300, 3.0)};
   SampleBatch initial_batch(initial_samples, DuplicatePolicy::LAST);
   SampleBatchSlice initial_slice = initial_batch.AsSlice();
-  std::string merged_data = chunk->MAddSample(initial_slice);
+  std::string merged_data = chunk->UpsertSamples(initial_slice);
   ASSERT_FALSE(merged_data.empty());
-  TSChunkPtr test_chunk = createTSChunkFromData(merged_data);
+  TSChunkPtr test_chunk = CreateTSChunkFromData(merged_data);
 
   // Test 1: Update existing sample with replace (is_add_on = false)
-  std::string updated_data = test_chunk->UpdateSample(200, 5.0, false);
+  std::string updated_data = test_chunk->UpdateSampleValue(200, 5.0, false);
   ASSERT_FALSE(updated_data.empty());
-  TSChunkPtr result_chunk = createTSChunkFromData(updated_data);
+  TSChunkPtr result_chunk = CreateTSChunkFromData(updated_data);
   EXPECT_EQ(result_chunk->GetCount(), 3);
 
   auto iter = result_chunk->CreateIterator();
-  auto* sample = iter->next().value();
+  auto* sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
   EXPECT_EQ(sample->v, 1.0);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 200);
   EXPECT_EQ(sample->v, 5.0);  // Value should be replaced
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 300);
   EXPECT_EQ(sample->v, 3.0);
 
   // Test 2: Update existing sample with add-on (is_add_on = true)
-  updated_data = test_chunk->UpdateSample(200, 1.5, true);
+  updated_data = test_chunk->UpdateSampleValue(200, 1.5, true);
   ASSERT_FALSE(updated_data.empty());
-  result_chunk = createTSChunkFromData(updated_data);
+  result_chunk = CreateTSChunkFromData(updated_data);
 
   iter = result_chunk->CreateIterator();
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 100);
   EXPECT_EQ(sample->v, 1.0);
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 200);
   EXPECT_EQ(sample->v, 3.5);  // 2.0 + 1.5
 
-  sample = iter->next().value();
+  sample = iter->Next().value();
   EXPECT_EQ(sample->ts, 300);
   EXPECT_EQ(sample->v, 3.0);
 
   // Test 3: Update non-existent sample
-  updated_data = test_chunk->UpdateSample(400, 5.0, false);
+  updated_data = test_chunk->UpdateSampleValue(400, 5.0, false);
   EXPECT_TRUE(updated_data.empty());  // Should return empty buffer
 
   // Test 4: Update sample out of range (before first)
-  updated_data = test_chunk->UpdateSample(50, 0.5, false);
+  updated_data = test_chunk->UpdateSampleValue(50, 0.5, false);
   EXPECT_TRUE(updated_data.empty());
 
   // Test 5: Update sample out of range (after last)
-  updated_data = test_chunk->UpdateSample(500, 5.0, false);
+  updated_data = test_chunk->UpdateSampleValue(500, 5.0, false);
   EXPECT_TRUE(updated_data.empty());
 }
 

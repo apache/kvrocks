@@ -32,10 +32,10 @@ using TSChunkPtr = std::shared_ptr<TSChunk>;
 using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
 
 // Creates a TSChunk from the provided raw data buffer.
-TSChunkPtr createTSChunkFromData(nonstd::span<char> data);
+TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data);
 
 // Creates an empty owned time series chunk with specified compression option.
-OwnedTSChunk createEmptyOwnedTSChunk(bool is_compressed = false);
+OwnedTSChunk CreateEmptyOwnedTSChunk(bool is_compressed = false);
 
 struct TSSample {
   uint64_t ts;
@@ -51,11 +51,11 @@ struct TSSample {
 // Simple TSChunk iterator base class providing basic traversal functionality
 class TSChunkIterator {
  public:
-  TSChunkIterator(uint64_t count) : count_(count), idx_(0) {}
+  explicit TSChunkIterator(uint64_t count) : count_(count), idx_(0) {}
   virtual ~TSChunkIterator() = default;
 
-  virtual std::optional<TSSample*> next() = 0;
-  virtual bool has_next() const { return idx_ < count_; }
+  virtual std::optional<TSSample*> Next() = 0;
+  virtual bool HasNext() const { return idx_ < count_; }
 
  protected:
   uint64_t count_;
@@ -133,7 +133,7 @@ class TSChunk {
     std::vector<AddResult> add_results_;
     DuplicatePolicy policy_;
 
-    void SortAndOrganize();
+    void sortAndOrganize();
   };
 
   struct MetaData {
@@ -144,7 +144,7 @@ class TSChunk {
 
     MetaData() = default;
     MetaData(bool is_compressed, uint32_t count) : is_compressed(is_compressed), count(count) {}
-    std::string Encode();
+    std::string Encode() const;
     void Decode(Slice* input);
   };
 
@@ -164,15 +164,15 @@ class TSChunk {
 
   // Add new samples to the chunk according to duplicate policy
   // Returns new chunk data with merged samples
-  virtual std::string MAddSample(SampleBatchSlice samples) const = 0;
+  virtual std::string UpsertSamples(SampleBatchSlice samples) const = 0;
 
   // Delete samples in [from, to] timestamp range
   // Returns new chunk data without deleted samples
-  virtual std::string DelSampleInRange(uint64_t from, uint64_t to) const = 0;
+  virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const = 0;
 
   // Update sample value at specified timestamp
   // is_add_on controls whether to add to existing value or replace it
-  virtual std::string UpdateSample(uint64_t ts, double value, bool is_add_on) const = 0;
+  virtual std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:
   nonstd::span<char> data_;
@@ -187,9 +187,9 @@ class UncompTSChunk : public TSChunk {
   uint64_t GetFirstTimestamp() const override;
   uint64_t GetLastTimestamp() const override;
 
-  std::string MAddSample(SampleBatchSlice samples) const override;
-  std::string DelSampleInRange(uint64_t from, uint64_t to) const override;
-  std::string UpdateSample(uint64_t ts, double value, bool is_add_on) const override;
+  std::string UpsertSamples(SampleBatchSlice samples) const override;
+  std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
+  std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
 
  private:
   nonstd::span<TSSample> samples_;

@@ -392,3 +392,43 @@ std::string UncompTSChunk::MAddSample(SampleBatchSlice batch) const {
 
   return new_buffer;
 }
+
+std::string UncompTSChunk::DelSampleInRange(uint64_t from, uint64_t to) const {
+  if (from > to) {
+    return std::string(data_.data(), data_.size());
+  }
+
+  // Find the range of samples to delete using binary search
+  auto start_it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{from, 0.0});
+  auto end_it = std::upper_bound(samples_.begin(), samples_.end(), TSSample{to, 0.0});
+
+  size_t start_idx = std::distance(samples_.begin(), start_it);
+  size_t end_idx = std::distance(samples_.begin(), end_it);
+
+  // Calculate buffer size: header + remaining samples
+  const size_t header_size = TSChunk::MetaData::kEncodedSize;
+  const size_t remaining_count = metadata_.count - (end_idx - start_idx);
+  const size_t required_size = header_size + remaining_count * sizeof(TSSample);
+
+  // Prepare new buffer
+  std::string new_buffer;
+  new_buffer.resize(required_size);
+
+  // Copy header + samples before deletion range
+  size_t part_size = header_size + start_idx * sizeof(TSSample);
+  std::memcpy(new_buffer.data(), data_.data(), part_size);
+
+  // Copy samples after deletion range
+  if (end_idx < metadata_.count) {
+    std::memcpy(new_buffer.data() + part_size,
+                reinterpret_cast<const char*>(samples_.data()) + end_idx * sizeof(TSSample),
+                (metadata_.count - end_idx) * sizeof(TSSample));
+  }
+
+  // Update metadata in buffer header
+  auto metadata = TSChunk::MetaData(false, remaining_count);
+  auto str = metadata.Encode();
+  EncodeBuffer(new_buffer.data(), str);
+
+  return new_buffer;
+}

@@ -148,6 +148,7 @@ class TSChunk {
   virtual uint64_t GetLastTimestamp() const = 0;
 
   virtual std::string MAddSample(SampleBatchSlice samples) const = 0;
+  virtual std::string DelSampleInRange(uint64_t from, uint64_t to) const = 0;
 
  protected:
   nonstd::span<char> data_;
@@ -163,6 +164,7 @@ class UncompTSChunk : public TSChunk {
   uint64_t GetLastTimestamp() const override;
 
   std::string MAddSample(SampleBatchSlice samples) const override;
+  std::string DelSampleInRange(uint64_t from, uint64_t to) const override;
 
  private:
   nonstd::span<TSSample> samples_;

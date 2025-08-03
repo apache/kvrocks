@@ -432,3 +432,26 @@ std::string UncompTSChunk::DelSampleInRange(uint64_t from, uint64_t to) const {
 
   return new_buffer;
 }
+
+std::string UncompTSChunk::UpdateSample(uint64_t ts, double value, bool is_add_on) const {
+  std::string new_buffer;
+  if (ts < GetFirstTimestamp() || ts > GetLastTimestamp()) {
+    return new_buffer;
+  }
+
+  // Find the position of the sample to update
+  auto it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{ts, 0.0});
+  if (it == samples_.end() || it->ts != ts) {
+    return new_buffer;  // Sample not found
+  }
+  auto cur_value = it->v;
+
+  new_buffer = std::string(data_.data(), data_.size());
+  size_t header_size = TSChunk::MetaData::kEncodedSize;
+  auto* new_samples = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
+  auto idx = std::distance(samples_.begin(), it);
+  double new_value = is_add_on ? cur_value + value : value;
+  new_samples[idx] = TSSample{ts, new_value};
+
+  return new_buffer;
+}

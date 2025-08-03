@@ -39,6 +39,8 @@ struct TSSample {
   uint64_t ts;
   double v;
 
+  static constexpr uint64_t MAX_TIMESTAMP = std::numeric_limits<uint64_t>::max();
+
   // Custom comparison operator for sorting by ts
   bool operator<(const TSSample& other) const { return ts < other.ts; }
   bool operator==(const TSSample& other) const { return ts == other.ts; }
@@ -149,6 +151,7 @@ class TSChunk {
 
   virtual std::string MAddSample(SampleBatchSlice samples) const = 0;
   virtual std::string DelSampleInRange(uint64_t from, uint64_t to) const = 0;
+  virtual std::string UpdateSample(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:
   nonstd::span<char> data_;
@@ -165,6 +168,7 @@ class UncompTSChunk : public TSChunk {
 
   std::string MAddSample(SampleBatchSlice samples) const override;
   std::string DelSampleInRange(uint64_t from, uint64_t to) const override;
+  std::string UpdateSample(uint64_t ts, double value, bool is_add_on) const override;
 
  private:
   nonstd::span<TSSample> samples_;

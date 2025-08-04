@@ -163,15 +163,16 @@ class TSChunk {
   virtual uint64_t GetLastTimestamp() const = 0;
 
   // Add new samples to the chunk according to duplicate policy
-  // Returns new chunk data with merged samples
+  // Returns new chunk data with merged samples. Returns empty string if no changes
   virtual std::string UpsertSamples(SampleBatchSlice samples) const = 0;
 
   // Delete samples in [from, to] timestamp range
-  // Returns new chunk data without deleted samples
+  // Returns new chunk data without deleted samples. Returns empty string if no changes
   virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const = 0;
 
   // Update sample value at specified timestamp
   // is_add_on controls whether to add to existing value or replace it
+  // Returns empty string if no changes
   virtual std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:

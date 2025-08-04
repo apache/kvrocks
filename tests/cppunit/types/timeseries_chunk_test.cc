@@ -291,7 +291,7 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkDeletionRange) {
 
   // Test 5: Delete from > to (should return original data)
   deleted_data = test_chunk->RemoveSamplesBetween(500, 100);
-  EXPECT_EQ(deleted_data, merged_data);
+  EXPECT_TRUE(deleted_data.empty());
 
   // Test 6: Delete single timestamp (300)
   deleted_data = test_chunk->RemoveSamplesBetween(300, 300);

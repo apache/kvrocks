@@ -395,11 +395,14 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
 
 std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) const {
   if (from > to) {
-    return {data_.data(), data_.size()};
+    return "";
   }
 
   // Find the range of samples to delete using binary search
   auto start_it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{from, 0.0});
+  if (start_it == samples_.end()) {
+    return "";
+  }
   auto end_it = std::upper_bound(samples_.begin(), samples_.end(), TSSample{to, 0.0});
 
   size_t start_idx = std::distance(samples_.begin(), start_it);
@@ -434,19 +437,18 @@ std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) cons
 }
 
 std::string UncompTSChunk::UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const {
-  std::string new_buffer;
   if (ts < GetFirstTimestamp() || ts > GetLastTimestamp()) {
-    return new_buffer;
+    return "";
   }
 
   // Find the position of the sample to update
   auto it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{ts, 0.0});
   if (it == samples_.end() || it->ts != ts) {
-    return new_buffer;  // Sample not found
+    return "";  // Sample not found
   }
   auto cur_value = it->v;
 
-  new_buffer = std::string(data_.data(), data_.size());
+  std::string new_buffer = std::string(data_.data(), data_.size());
   size_t header_size = TSChunk::MetaData::kEncodedSize;
   auto* new_samples = reinterpret_cast<TSSample*>(new_buffer.data() + header_size);
   auto idx = std::distance(samples_.begin(), it);

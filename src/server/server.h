@@ -242,10 +242,8 @@ class Server {
   rocksdb::SequenceNumber LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq);
 
   size_t GetReplicaCount() {
-    slave_threads_mu_.lock();
-    auto replica_count = slave_threads_.size();
-    slave_threads_mu_.unlock();
-    return replica_count;
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    return slave_threads_.size();
   }
 
   std::string GetLastRandomKeyCursor();
@@ -383,7 +381,7 @@ class Server {
   std::atomic<uint64_t> total_clients_{0};
 
   // slave
-  std::mutex slave_threads_mu_;
+  std::shared_mutex slave_threads_mu_;
   std::list<std::unique_ptr<FeedSlaveThread>> slave_threads_;
   std::atomic<int> fetch_file_threads_num_ = 0;
 
@@ -426,7 +424,7 @@ class Server {
         : conn(c), target_seq(seq), num_replicas(replicas) {}
   };
   std::multimap<rocksdb::SequenceNumber, WaitContext> wait_contexts_;
-  std::mutex wait_contexts_mu_;
+  std::shared_mutex wait_contexts_mu_;
 
   // threads
   std::shared_mutex works_concurrency_rw_lock_;

@@ -28,7 +28,7 @@
 class TSChunk;
 class UncompTSChunk;
 
-using TSChunkPtr = std::shared_ptr<TSChunk>;
+using TSChunkPtr = std::unique_ptr<TSChunk>;
 using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
 
 // Creates a TSChunk from the provided raw data buffer.

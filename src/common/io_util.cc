@@ -335,7 +335,7 @@ StatusOr<std::string> SockReadLineWithRetry(int fd, int retry_times, int retry_i
     }
 
     if (ret == 0) {
-      return Status::FromErrno("read response err: connection closed");
+      return {Status::NotOK, "read response err: connection closed"};
     }
 
     if (errno == EAGAIN || errno == EWOULDBLOCK) {

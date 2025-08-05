@@ -88,8 +88,8 @@ class TSChunk {
     // e.g., samples: {10,20,30,40}, first=20, last=40 -> {20,30}
     SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
 
-    uint64_t GetFirstTimestamp();
-    uint64_t GetLastTimestamp();
+    uint64_t GetFirstTimestamp() const;
+    uint64_t GetLastTimestamp() const;
 
     // Get number of valid samples (excluding duplicates and expired entries)
     size_t GetValidCount() const;
@@ -109,7 +109,7 @@ class TSChunk {
     SampleBatchSlice(nonstd::span<const TSSample> samples, nonstd::span<AddResult> results, DuplicatePolicy policy)
         : sample_span_(samples), add_result_span_(results), policy_(policy) {}
 
-    SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx);
+    SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx) const;
   };
 
   class SampleBatch {

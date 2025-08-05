@@ -33,7 +33,7 @@ TSChunkPtr CreateTSChunkFromData(nonstd::span<const char> data) {
   Slice input(data.data(), TSChunk::MetaData::kEncodedSize);
   chunk_meta.Decode(&input);
   if (!chunk_meta.is_compressed) {
-    return std::make_unique<UncompTSChunk>(std::move(data));
+    return std::make_unique<UncompTSChunk>(data);
   } else {
     // TODO: compressed chunk
     unreachable();
@@ -59,7 +59,11 @@ TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy
 
 void TSChunk::SampleBatch::Expire(uint64_t last_ts, uint64_t retention) {
   if (retention == 0) return;
-  for (auto idx : indexes_) {
+  std::vector<size_t> inverse(indexes_.size());
+  for (size_t i = 0; i < indexes_.size(); ++i) {
+    inverse[indexes_[i]] = i;
+  }
+  for (auto idx : inverse) {
     if (samples_[idx].ts + retention < last_ts) {
       add_results_[idx] = AddResult::kOld;
     } else if (samples_[idx].ts > last_ts) {
@@ -144,7 +148,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, ui
   return {};
 }
 
-SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, size_t end_idx) {
+SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, size_t end_idx) const {
   if (end_idx > sample_span_.size()) {
     end_idx = sample_span_.size();
   }
@@ -195,7 +199,7 @@ AddResult TSChunk::MergeSamplesValue(TSSample& to, const TSSample& from, Duplica
 
 uint32_t TSChunk::GetCount() const { return metadata_.count; }
 
-uint64_t TSChunk::SampleBatchSlice::GetFirstTimestamp() {
+uint64_t TSChunk::SampleBatchSlice::GetFirstTimestamp() const {
   if (sample_span_.size() == 0) return 0;
   for (size_t i = 0; i < sample_span_.size(); i++) {
     if (add_result_span_[i] == AddResult::kNone) {
@@ -205,11 +209,12 @@ uint64_t TSChunk::SampleBatchSlice::GetFirstTimestamp() {
   return 0;
 }
 
-uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() {
+uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() const {
   if (sample_span_.size() == 0) return 0;
-  for (size_t i = sample_span_.size() - 1; i >= 0; i--) {
-    if (add_result_span_[i] == AddResult::kNone) {
-      return sample_span_[i].ts;
+  for (size_t i = 0; i < sample_span_.size(); i++) {
+    auto index = sample_span_.size() - i - 1;
+    if (add_result_span_[index] == AddResult::kNone) {
+      return sample_span_[index].ts;
     }
   }
   return 0;
@@ -324,7 +329,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
 
     // Select next sample by earliest timestamp
     if (existing_sample_iter->ts <= new_samples[new_sample_idx].ts) {
-      candidate = &(*existing_sample_iter);
+      candidate = existing_sample_iter;
     } else {
       candidate = &new_samples[new_sample_idx];
       from_new_batch = true;
@@ -362,7 +367,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
   // Copy remaining existing samples
   if (existing_sample_iter != samples_.end()) {
     const size_t remaining_count = std::distance(existing_sample_iter, samples_.end());
-    std::memcpy(&merged_data[current_index + 1], &(*existing_sample_iter), remaining_count * sizeof(TSSample));
+    std::memcpy(&merged_data[current_index + 1], existing_sample_iter, remaining_count * sizeof(TSSample));
     current_index += remaining_count;
   }
 

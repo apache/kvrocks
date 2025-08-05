@@ -32,7 +32,7 @@ using TSChunkPtr = std::unique_ptr<TSChunk>;
 using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
 
 // Creates a TSChunk from the provided raw data buffer.
-TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data);
+TSChunkPtr CreateTSChunkFromData(nonstd::span<const char> data);
 
 // Creates an empty owned time series chunk with specified compression option.
 OwnedTSChunk CreateEmptyOwnedTSChunk(bool is_compressed = false);
@@ -54,7 +54,7 @@ class TSChunkIterator {
   explicit TSChunkIterator(uint64_t count) : count_(count), idx_(0) {}
   virtual ~TSChunkIterator() = default;
 
-  virtual std::optional<TSSample*> Next() = 0;
+  virtual std::optional<const TSSample*> Next() = 0;
   virtual bool HasNext() const { return idx_ < count_; }
 
  protected:
@@ -148,7 +148,7 @@ class TSChunk {
     void Decode(Slice* input);
   };
 
-  explicit TSChunk(nonstd::span<char> data);
+  explicit TSChunk(nonstd::span<const char> data);
 
   virtual ~TSChunk() = default;
 
@@ -176,13 +176,13 @@ class TSChunk {
   virtual std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:
-  nonstd::span<char> data_;
+  nonstd::span<const char> data_;
   MetaData metadata_;
 };
 
 class UncompTSChunk : public TSChunk {
  public:
-  explicit UncompTSChunk(nonstd::span<char> data);
+  explicit UncompTSChunk(nonstd::span<const char> data);
   std::unique_ptr<TSChunkIterator> CreateIterator() const override;
 
   uint64_t GetFirstTimestamp() const override;
@@ -193,5 +193,5 @@ class UncompTSChunk : public TSChunk {
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
 
  private:
-  nonstd::span<TSSample> samples_;
+  nonstd::span<const TSSample> samples_;
 };

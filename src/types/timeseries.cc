@@ -28,7 +28,7 @@ using AddResult = TSChunk::AddResult;
 using SampleBatch = TSChunk::SampleBatch;
 using SampleBatchSlice = TSChunk::SampleBatchSlice;
 
-TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data) {
+TSChunkPtr CreateTSChunkFromData(nonstd::span<const char> data) {
   auto chunk_meta = TSChunk::MetaData();
   Slice input(data.data(), TSChunk::MetaData::kEncodedSize);
   chunk_meta.Decode(&input);
@@ -242,26 +242,27 @@ void TSChunk::MetaData::Decode(Slice* input) {
   GetFixed32(input, &count);
 }
 
-TSChunk::TSChunk(nonstd::span<char> data) : data_(data) {
+TSChunk::TSChunk(nonstd::span<const char> data) : data_(data) {
   Slice input(data_.data(), data_.size());
   metadata_.Decode(&input);
 }
 
 class UncompTSChunkIterator : public TSChunkIterator {
  public:
-  explicit UncompTSChunkIterator(nonstd::span<TSSample> data, uint64_t count) : TSChunkIterator(count), data_(data) {}
-  std::optional<TSSample*> Next() override {
+  explicit UncompTSChunkIterator(nonstd::span<const TSSample> data, uint64_t count)
+      : TSChunkIterator(count), data_(data) {}
+  std::optional<const TSSample*> Next() override {
     if (idx_ >= count_) return std::nullopt;
     return &data_[idx_++];
   }
 
  private:
-  nonstd::span<TSSample> data_;
+  nonstd::span<const TSSample> data_;
 };
 
-UncompTSChunk::UncompTSChunk(nonstd::span<char> data) : TSChunk(data) {
-  auto data_ptr = reinterpret_cast<char*>(data.data()) + TSChunk::MetaData::kEncodedSize;
-  samples_ = nonstd::span<TSSample>(reinterpret_cast<TSSample*>(data_ptr), metadata_.count);
+UncompTSChunk::UncompTSChunk(nonstd::span<const char> data) : TSChunk(data) {
+  auto data_ptr = reinterpret_cast<const char*>(data.data()) + TSChunk::MetaData::kEncodedSize;
+  samples_ = nonstd::span<const TSSample>(reinterpret_cast<const TSSample*>(data_ptr), metadata_.count);
 }
 
 std::unique_ptr<TSChunkIterator> UncompTSChunk::CreateIterator() const {

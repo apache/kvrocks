@@ -36,7 +36,7 @@ TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data) {
     return std::make_unique<UncompTSChunk>(std::move(data));
   } else {
     // TODO: compressed chunk
-    return std::make_unique<UncompTSChunk>(std::move(data));
+    unreachable();
   }
 }
 

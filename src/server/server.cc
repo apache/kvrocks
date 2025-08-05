@@ -336,13 +336,13 @@ Status Server::AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_re
     return s;
   }
 
-  std::lock_guard<std::mutex> lg(slave_threads_mu_);
+  std::unique_lock<std::shared_mutex> lg(slave_threads_mu_);
   slave_threads_.emplace_back(std::move(t));
   return Status::OK();
 }
 
 void Server::DisconnectSlaves() {
-  std::lock_guard<std::mutex> lg(slave_threads_mu_);
+  std::unique_lock<std::shared_mutex> lg(slave_threads_mu_);
 
   for (auto &slave_thread : slave_threads_) {
     if (!slave_thread->IsStopped()) slave_thread->Stop();
@@ -356,7 +356,7 @@ void Server::DisconnectSlaves() {
 }
 
 void Server::CleanupExitedSlaves() {
-  std::lock_guard<std::mutex> lg(slave_threads_mu_);
+  std::unique_lock<std::shared_mutex> lg(slave_threads_mu_);
 
   for (auto it = slave_threads_.begin(); it != slave_threads_.end();) {
     if ((*it)->IsStopped()) {
@@ -702,14 +702,14 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
 }
 
 void Server::BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas) {
-  std::lock_guard<std::mutex> guard(wait_contexts_mu_);
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
 
   wait_contexts_.emplace(target_seq, WaitContext(conn, target_seq, num_replicas));
   IncrBlockedClientNum();
 }
 
 void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
-  std::lock_guard<std::mutex> guard(wait_contexts_mu_);
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
 
   // find the last entry with target_seq > seq, which cannot wakeup
   auto end_it = wait_contexts_.upper_bound(seq);
@@ -735,7 +735,7 @@ void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
 }
 
 void Server::CleanupWaitConnection(redis::Connection *conn) {
-  std::lock_guard<std::mutex> guard(wait_contexts_mu_);
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
 
   auto it = std::find_if(wait_contexts_.begin(), wait_contexts_.end(),
                          [conn](const auto &pair) { return pair.second.conn == conn; });
@@ -746,7 +746,7 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
 }
 
 size_t Server::GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq) {
-  std::lock_guard<std::mutex> slave_guard(slave_threads_mu_);
+  std::shared_lock<std::shared_mutex> slave_guard(slave_threads_mu_);
   size_t reached_replicas = 0;
   for (const auto &slave : slave_threads_) {
     if (!slave->IsStopped() && slave->GetAckSeq() >= target_seq) {
@@ -757,7 +757,7 @@ size_t Server::GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq) {
 }
 
 rocksdb::SequenceNumber Server::LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq) {
-  std::lock_guard<std::mutex> guard(wait_contexts_mu_);
+  std::shared_lock<std::shared_mutex> guard(wait_contexts_mu_);
   if (wait_contexts_.empty()) {
     return 0;
   }
@@ -1133,18 +1133,19 @@ Server::InfoEntries Server::GetReplicationInfo() {
   int idx = 0;
   rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
 
-  slave_threads_mu_.lock();
-  entries.emplace_back("connected_slaves", slave_threads_.size());
-  for (const auto &slave : slave_threads_) {
-    if (slave->IsStopped()) continue;
+  {
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    entries.emplace_back("connected_slaves", slave_threads_.size());
+    for (const auto &slave : slave_threads_) {
+      if (slave->IsStopped()) continue;
 
-    entries.emplace_back(
-        "slave" + std::to_string(idx),
-        fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
-                    slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
-    ++idx;
+      entries.emplace_back(
+          "slave" + std::to_string(idx),
+          fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
+                      slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
+      ++idx;
+    }
   }
-  slave_threads_mu_.unlock();
 
   entries.emplace_back("master_repl_offset", latest_seq);
 
@@ -1171,17 +1172,18 @@ std::string Server::GetRoleInfo() {
   } else {
     std::vector<std::string> list;
 
-    slave_threads_mu_.lock();
-    for (const auto &slave : slave_threads_) {
-      if (slave->IsStopped()) continue;
+    {
+      std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+      for (const auto &slave : slave_threads_) {
+        if (slave->IsStopped()) continue;
 
-      list.emplace_back(redis::ArrayOfBulkStrings({
-          slave->GetConn()->GetAnnounceIP(),
-          std::to_string(slave->GetConn()->GetListeningPort()),
-          std::to_string(slave->GetAckSeq()),
-      }));
+        list.emplace_back(redis::ArrayOfBulkStrings({
+            slave->GetConn()->GetAnnounceIP(),
+            std::to_string(slave->GetConn()->GetListeningPort()),
+            std::to_string(slave->GetAckSeq()),
+        }));
+      }
     }
-    slave_threads_mu_.unlock();
 
     auto multi_len = 2;
     if (list.size() > 0) {
@@ -1717,7 +1719,7 @@ std::string Server::GetClientsStr() {
     clients.append(t->GetWorker()->GetClientsStr());
   }
 
-  std::lock_guard<std::mutex> guard(slave_threads_mu_);
+  std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
 
   for (const auto &st : slave_threads_) {
     clients.append(st->GetConn()->ToString());
@@ -1738,16 +1740,17 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   }
 
   // Slave clients
-  slave_threads_mu_.lock();
-  for (const auto &st : slave_threads_) {
-    if ((type & kTypeSlave) ||
-        (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetAnnounceAddr() == addr)) ||
-        (id != 0 && st->GetConn()->GetID() == id)) {
-      st->Stop();
-      (*killed)++;
+  {
+    std::unique_lock<std::shared_mutex> guard(slave_threads_mu_);
+    for (const auto &st : slave_threads_) {
+      if ((type & kTypeSlave) ||
+          (!addr.empty() && (st->GetConn()->GetAddr() == addr || st->GetConn()->GetAnnounceAddr() == addr)) ||
+          (id != 0 && st->GetConn()->GetID() == id)) {
+        st->Stop();
+        (*killed)++;
+      }
     }
   }
-  slave_threads_mu_.unlock();
 
   // Master client
   if (IsSlave() &&
@@ -2125,14 +2128,15 @@ void Server::ResetWatchedKeys(redis::Connection *conn) {
 
 std::list<std::pair<std::string, uint32_t>> Server::GetSlaveHostAndPort() {
   std::list<std::pair<std::string, uint32_t>> result;
-  slave_threads_mu_.lock();
-  for (const auto &slave : slave_threads_) {
-    if (slave->IsStopped()) continue;
-    std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(),
-                                                  slave->GetConn()->GetListeningPort()};
-    result.emplace_back(host_port_pair);
+  {
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    for (const auto &slave : slave_threads_) {
+      if (slave->IsStopped()) continue;
+      std::pair<std::string, int> host_port_pair = {slave->GetConn()->GetAnnounceIP(),
+                                                    slave->GetConn()->GetListeningPort()};
+      result.emplace_back(host_port_pair);
+    }
   }
-  slave_threads_mu_.unlock();
   return result;
 }
 

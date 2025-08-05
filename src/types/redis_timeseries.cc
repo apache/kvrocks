@@ -20,7 +20,16 @@
 
 #include "redis_timeseries.h"
 
+#include "commands/error_constants.h"
+#include "db_util.h"
+
 namespace redis {
+
+// TODO: make it configurable
+constexpr uint64_t kDefaultRetentionTime = 0;
+constexpr uint64_t kDefaultChunkSize = 1024;
+constexpr auto kDefaultChunkType = TimeSeriesMetadata::ChunkType::UNCOMPRESSED;
+constexpr auto kDefaultDuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy::BLOCK;
 
 void TSDownStreamMeta::Encode(std::string *dst) const {
   PutFixed8(dst, static_cast<uint8_t>(aggregator));
@@ -88,6 +97,31 @@ std::string TSRevLabelKey::Encode() const {
   return encoded;
 }
 
+rocksdb::Status TimeSeries::getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key,
+                                                  TimeSeriesMetadata *metadata) {
+  return Database::GetMetadata(ctx, {kRedisTimeSeries}, ns_key, metadata);
+}
+
+rocksdb::Status TimeSeries::createTimeSeries(engine::Context &ctx, const Slice &ns_key,
+                                             const TimeSeriesMetadata &metadata, const LabelKVList *labels) {
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries, {"createTimeSeries"});
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  std::string bytes;
+  metadata.Encode(&bytes);
+  s = batch->Put(metadata_cf_handle_, ns_key, bytes);
+  if (!s.ok()) return s;
+
+  if (!labels && !labels->empty()) {
+    // TODO: Add labels write
+    unreachable();
+  }
+
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 std::string TimeSeries::internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
@@ -117,6 +151,154 @@ std::string TimeSeries::internalKeyFromDownstreamKey(const std::string &ns_key, 
   EncodeBuffer(buf, downstream_key);
 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+}
+
+uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) const {
+  auto size = internal_key.size();
+  internal_key.remove_prefix(size - sizeof(uint64_t));
+  return DecodeFixed64(internal_key.data());
+}
+
+rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
+                                   const LabelKVList &labels) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  TimeSeriesMetadata metadata_;
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata_);
+  if (s.ok()) {
+    return rocksdb::Status::InvalidArgument(errKeyAlreadyExists);
+  }
+  if (!s.IsNotFound()) {
+    return s;
+  }
+  return createTimeSeries(ctx, ns_key, metadata, &labels);
+}
+
+rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &all_sample_batch) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata;
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+
+  if (s.IsNotFound()) {
+    // auto create if not exist
+    metadata.retention_time = 0;
+    metadata.chunk_size = kDefaultChunkSize;
+    metadata.chunk_type = kDefaultChunkType;
+    metadata.duplicate_policy = kDefaultDuplicatePolicy;
+
+    s = createTimeSeries(ctx, ns_key, metadata);
+  }
+  if (!s.ok()) return s;
+
+  auto all_batch_slice = all_sample_batch.AsSlice();
+
+  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  read_options.pin_data = true;
+
+  // Get the latest chunk
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  TSChunkPtr latest_chunk;
+  std::string latest_chunk_key, latest_chunk_value;
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    // Create a new empty chunk if there is no chunk
+    auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
+    latest_chunk_value = std::move(data_);
+    latest_chunk = std::move(chunk_ptr_);
+  } else {
+    latest_chunk_key = iter->key().ToString();
+    latest_chunk_value = iter->value().ToString();
+    latest_chunk = CreateTSChunkFromData(latest_chunk_value);
+  }
+
+  // Filter out samples older than retention time
+  all_sample_batch.Expire(latest_chunk->GetLastTimestamp(), metadata.retention_time);
+  if (all_batch_slice.GetValidCount() == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries);
+  s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  // Get the first chunk
+  auto start_key = internalKeyFromChunkID(ns_key, metadata, all_batch_slice.GetFirstTimestamp());
+  iter->SeekForPrev(start_key);
+  if (!iter->Valid()) {
+    iter->Seek(start_key);
+  } else if (!iter->key().starts_with(prefix)) {
+    iter->Next();
+  }
+
+  // Process samples added to sealed chunks
+  uint64_t start_ts = 0;
+  uint64_t end_ts = TSSample::MAX_TIMESTAMP;
+  bool is_chunk = (iter->Valid() && iter->key().starts_with(prefix));
+  while (is_chunk) {
+    auto cur_chunk_data = iter->value();
+    auto cur_chunk_key = iter->key();
+    iter->Next();
+    is_chunk = (iter->Valid() && iter->key().starts_with(prefix));
+    if (!is_chunk) {
+      // Process last chunk
+      break;
+    }
+    end_ts = chunkIDFromInternalKey(iter->key());
+
+    auto chunk = CreateTSChunkFromData(cur_chunk_data);
+    auto sample_slice = all_batch_slice.SliceByTimestamps(start_ts, end_ts);
+    if (sample_slice.GetValidCount() == 0) {
+      continue;
+    }
+    start_ts = end_ts;
+    auto new_data = chunk->UpsertSamples(sample_slice);
+    auto new_chunk = CreateTSChunkFromData(new_data);
+    auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
+    if (new_key != cur_chunk_key) {
+      s = batch->Delete(cur_chunk_key);
+      if (!s.ok()) return s;
+    }
+    s = batch->Put(new_key, new_data);
+    if (!s.ok()) return s;
+  }
+
+  // Process samples added to latest chunk(unseal)
+  auto remained_samples = all_batch_slice.SliceByTimestamps(start_ts, TSSample::MAX_TIMESTAMP, true);
+  for (uint64_t first_ts = 0, last_ts = 0; remained_samples.GetValidCount(); first_ts = last_ts + 1) {
+    if (latest_chunk->GetCount() >= metadata.chunk_size) {
+      auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
+      latest_chunk_value = std::move(data_);
+      latest_chunk = std::move(chunk_ptr_);
+      latest_chunk_key.clear();
+    }
+    auto remain = metadata.chunk_size - latest_chunk->GetCount();
+    auto sample_slice = remained_samples.SliceByCount(first_ts, remain, &last_ts);
+    if (sample_slice.GetValidCount() == 0) break;
+
+    auto new_chunk_data = latest_chunk->UpsertSamples(sample_slice);
+    auto new_chunk = CreateTSChunkFromData(new_chunk_data);
+    auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
+    if (!latest_chunk_key.empty() && new_key != latest_chunk_key) {
+      s = batch->Delete(latest_chunk_key);
+      if (!s.ok()) return s;
+    }
+    latest_chunk_key = new_key;
+    s = batch->Put(new_key, new_chunk_data);
+    if (!s.ok()) return s;
+  }
+
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 }  // namespace redis

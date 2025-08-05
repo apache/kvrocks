@@ -24,6 +24,7 @@
 
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+#include "types/timeseries.h"
 
 namespace redis {
 
@@ -76,6 +77,12 @@ struct TSDownStreamMeta {
   rocksdb::Status Decode(Slice *input);
 };
 
+struct LabelKVPair {
+  std::string k;
+  std::string v;
+};
+using LabelKVList = std::vector<LabelKVPair>;
+
 struct TSRevLabelKey {
   Slice ns;
   Slice label_key;
@@ -90,14 +97,23 @@ struct TSRevLabelKey {
 
 class TimeSeries : public SubKeyScanner {
  public:
+  using SampleBatch = TSChunk::SampleBatch;
+
   TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
+                         const LabelKVList &labels);
+  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &batch);
 
  private:
+  rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
+  rocksdb::Status createTimeSeries(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                   const LabelKVList *labels = nullptr);
   std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                       Slice label_key) const;
   std::string internalKeyFromDownstreamKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                            Slice downstream_key) const;
+  uint64_t chunkIDFromInternalKey(Slice internal_key) const;
 };
 
 }  // namespace redis

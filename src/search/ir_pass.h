@@ -96,6 +96,8 @@ struct Visitor : Pass {
       return Visit(std::move(v));
     } else if (auto v = Node::As<Noop>(std::move(node))) {
       return Visit(std::move(v));
+    } else if (auto v = Node::As<TextContainExpr>(std::move(node))) {
+      return Visit(std::move(v));
     }
 
     unreachable();
@@ -149,6 +151,12 @@ struct Visitor : Pass {
   virtual std::unique_ptr<Node> Visit(std::unique_ptr<TagContainExpr> node) {
     node->field = VisitAs<FieldRef>(std::move(node->field));
     node->tag = VisitAs<StringLiteral>(std::move(node->tag));
+    return node;
+  }
+
+  virtual std::unique_ptr<Node> Visit(std::unique_ptr<TextContainExpr> node) {
+    node->field = VisitAs<FieldRef>(std::move(node->field));
+    node->word = VisitAs<StringLiteral>(std::move(node->word));
     return node;
   }
 

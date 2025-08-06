@@ -671,6 +671,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           if (data_written) {
             sendReplConfAck(bev, force_ack);
           }
+          // set a watermark so the callback won't be called again until the data is enough
+          bufferevent_setwatermark(bev, EV_READ, incr_bulk_len_ + 2, 0);
           return CBState::AGAIN;
         }
 

@@ -108,11 +108,12 @@ TEST(RedisTimeSeriesChunkTest, ExpirationLogic) {
   batch.Expire(300, 150);
   auto results = batch.GetFinalResults();
 
-  // Only samples with ts >= 150 should be kept
-  EXPECT_EQ(results[0], AddResult::kNone);
-  EXPECT_EQ(results[1], AddResult::kNone);
-  EXPECT_EQ(results[2], AddResult::kOld);
-  EXPECT_EQ(results[3], AddResult::kOld);
+  EXPECT_EQ(results[0].first, AddResult::kNone);
+  EXPECT_EQ(results[0].second, 200);
+  EXPECT_EQ(results[1].first, AddResult::kNone);
+  EXPECT_EQ(results[1].second, 400);
+  EXPECT_EQ(results[2].first, AddResult::kOld);
+  EXPECT_EQ(results[3].first, AddResult::kOld);
 }
 
 // Test SampleBatch construction and sorting
@@ -133,11 +134,14 @@ TEST(RedisTimeSeriesChunkTest, BatchSortingAndDeduplication) {
   // Verify deduplication
   EXPECT_EQ(slice.GetValidCount(), 3);
   auto results = batch.GetFinalResults();
-  EXPECT_EQ(results[0], AddResult::kNone);
-  EXPECT_EQ(results[1], AddResult::kNone);
-  EXPECT_EQ(results[2], AddResult::kNone);
-  EXPECT_EQ(results[3], AddResult::kBlock);
-  EXPECT_EQ(results[4], AddResult::kBlock);
+  EXPECT_EQ(results[0].first, AddResult::kNone);
+  EXPECT_EQ(results[0].second, 300);
+  EXPECT_EQ(results[1].first, AddResult::kNone);
+  EXPECT_EQ(results[1].second, 100);
+  EXPECT_EQ(results[2].first, AddResult::kNone);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kBlock);
+  EXPECT_EQ(results[4].first, AddResult::kBlock);
 }
 
 // Test MAddSample merging logic with additional samples and content validation

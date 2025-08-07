@@ -125,7 +125,7 @@ class TSChunk {
     SampleBatchSlice AsSlice();
 
     // Return add results by samples' order
-    std::vector<AddResult> GetFinalResults() const;
+    std::vector<std::pair<AddResult, uint64_t>> GetFinalResults() const;
 
    private:
     std::vector<TSSample> samples_;

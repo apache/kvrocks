@@ -77,12 +77,6 @@ struct TSDownStreamMeta {
   rocksdb::Status Decode(Slice *input);
 };
 
-struct LabelKVPair {
-  std::string k;
-  std::string v;
-};
-using LabelKVList = std::vector<LabelKVPair>;
-
 struct TSRevLabelKey {
   Slice ns;
   Slice label_key;
@@ -95,19 +89,39 @@ struct TSRevLabelKey {
   [[nodiscard]] std::string Encode() const;
 };
 
+struct LabelKVPair {
+  std::string k;
+  std::string v;
+};
+using LabelKVList = std::vector<LabelKVPair>;
+
+struct TSCreateOption {
+  uint64_t retention_time;
+  uint64_t chunk_size;
+  TimeSeriesMetadata::ChunkType chunk_type;
+  TimeSeriesMetadata::DuplicatePolicy duplicate_policy;
+  std::string source_key;
+  LabelKVList labels;
+
+  TSCreateOption();
+};
+
+TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
+
 class TimeSeries : public SubKeyScanner {
  public:
   using SampleBatch = TSChunk::SampleBatch;
 
   TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
-  rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
-                         const LabelKVList &labels);
-  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &batch);
+  rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
+  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &sample_batch,
+                       const TSCreateOption &option);
 
  private:
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
-  rocksdb::Status createTimeSeries(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
-                                   const LabelKVList *labels = nullptr);
+  rocksdb::Status getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
+                                        const TSCreateOption *option = nullptr);
+
   std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
                                       Slice label_key) const;

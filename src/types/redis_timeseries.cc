@@ -97,24 +97,47 @@ std::string TSRevLabelKey::Encode() const {
   return encoded;
 }
 
+TSCreateOption::TSCreateOption()
+    : retention_time(kDefaultRetentionTime),
+      chunk_size(kDefaultChunkSize),
+      chunk_type(kDefaultChunkType),
+      duplicate_policy(kDefaultDuplicatePolicy) {}
+
+TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
+  TimeSeriesMetadata metadata;
+  metadata.retention_time = option.retention_time;
+  metadata.chunk_size = option.chunk_size;
+  metadata.chunk_type = option.chunk_type;
+  metadata.duplicate_policy = option.duplicate_policy;
+  metadata.SetSourceKey(option.source_key);
+
+  return metadata;
+}
+
 rocksdb::Status TimeSeries::getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key,
                                                   TimeSeriesMetadata *metadata) {
   return Database::GetMetadata(ctx, {kRedisTimeSeries}, ns_key, metadata);
 }
 
-rocksdb::Status TimeSeries::createTimeSeries(engine::Context &ctx, const Slice &ns_key,
-                                             const TimeSeriesMetadata &metadata, const LabelKVList *labels) {
+rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key,
+                                                  TimeSeriesMetadata *metadata_out, const TSCreateOption *option) {
+  auto s = getTimeSeriesMetadata(ctx, ns_key, metadata_out);
+  if (s.ok() && !s.IsNotFound()) {
+    return s;
+  }
+
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisTimeSeries, {"createTimeSeries"});
-  auto s = batch->PutLogData(log_data.Encode());
+  WriteBatchLogData log_data(kRedisTimeSeries, {"getOrCreateTimeSeries"});
+  s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
+  *metadata_out = CreateMetadataFromOption(option ? *option : TSCreateOption{});
   std::string bytes;
-  metadata.Encode(&bytes);
+  metadata_out->Encode(&bytes);
   s = batch->Put(metadata_cf_handle_, ns_key, bytes);
   if (!s.ok()) return s;
 
-  if (!labels && !labels->empty()) {
+  if (!option && !option->labels.empty()) {
     // TODO: Add labels write
     unreachable();
   }
@@ -159,38 +182,22 @@ uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) const {
   return DecodeFixed64(internal_key.data());
 }
 
-rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
-                                   const LabelKVList &labels) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-  TimeSeriesMetadata metadata_;
-  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata_);
-  if (s.ok()) {
-    return rocksdb::Status::InvalidArgument(errKeyAlreadyExists);
-  }
-  if (!s.IsNotFound()) {
-    return s;
-  }
-  return createTimeSeries(ctx, ns_key, metadata, &labels);
-}
-
-rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &all_sample_batch) {
+rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   TimeSeriesMetadata metadata;
-  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+  return getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
+}
 
-  if (s.IsNotFound()) {
-    // auto create if not exist
-    metadata.retention_time = 0;
-    metadata.chunk_size = kDefaultChunkSize;
-    metadata.chunk_type = kDefaultChunkType;
-    metadata.duplicate_policy = kDefaultDuplicatePolicy;
+rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &sample_batch,
+                                 const TSCreateOption &option) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
 
-    s = createTimeSeries(ctx, ns_key, metadata);
-  }
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
   if (!s.ok()) return s;
 
-  auto all_batch_slice = all_sample_batch.AsSlice();
+  auto all_batch_slice = sample_batch.AsSlice();
 
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
@@ -222,7 +229,7 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, Sa
   }
 
   // Filter out samples older than retention time
-  all_sample_batch.Expire(latest_chunk->GetLastTimestamp(), metadata.retention_time);
+  sample_batch.Expire(latest_chunk->GetLastTimestamp(), metadata.retention_time);
   if (all_batch_slice.GetValidCount() == 0) {
     return rocksdb::Status::OK();
   }

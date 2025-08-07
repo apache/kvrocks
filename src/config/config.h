@@ -195,6 +195,16 @@ struct Config {
 
   std::vector<double> histogram_bucket_boundaries;
 
+  // hotkey analyze
+  bool hotkey_bootstrap = false;
+  int hotkey_init_lru_capacity = 200000;
+  int hotkey_max_lru_capacity = 500000;
+  int hotkey_init_deque_size = 500000;
+  int hotkey_max_deque_size = 1000000;
+  int hotkey_init_threshold = 5000;
+  int hotkey_max_threshold = 50000;
+  int hotkey_max_fetch_entries = 10000;
+
   struct RocksDB {
     int block_size;
     bool cache_index_and_filter_blocks;

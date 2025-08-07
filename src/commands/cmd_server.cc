@@ -1549,6 +1549,160 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
+// hotkey enable {capacity} {deque_size} {threshold}
+// hotkey disable
+// hotkey stats
+// hotkey threshold {threshold}
+// hotkey getbykey {key} {begin_timestamp_ms} {end_timestamp_ms}
+// hotkey getbythreshold {threshold} {begin_timestamp_ms} {end_timestamp_ms}
+// hotkey dumplogfile {off|info|warning}
+// hotkey timerange {begin_timestamp_ms} {end_timestamp_ms}
+class CommandHotkey : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    std::string sub_command = util::ToLower(args_[1]);
+    if ((sub_command == "enable" && args_.size() != 5) || (sub_command == "disable" && args_.size() != 2) ||
+        (sub_command == "stats" && args_.size() != 2) || (sub_command == "threshold" && args_.size() != 3) ||
+        (sub_command == "getbykey" && args_.size() != 3 && args_.size() != 5) ||
+        (sub_command == "getbythreshold" && args_.size() != 3 && args_.size() != 5) ||
+        (sub_command == "dumplogfile" && args_.size() != 3) ||
+        (sub_command == "timerange" && args_.size() != 2 && args_.size() != 4)) {
+      return {Status::RedisExecErr, errWrongNumOfArguments};
+    }
+
+    Config *config = srv->GetConfig();
+    int min_capacity = 100000, min_deque_size = 100000, min_threshold = 1;
+    if (sub_command == "enable") {
+      auto capacity = ParseInt<int>(args_[2], 10);
+      if (!capacity || *capacity < min_capacity || *capacity > config->hotkey_max_lru_capacity) {
+        return {Status::RedisParseErr, fmt::format("capacity must be an integer between {} and {}", min_capacity,
+                                                   config->hotkey_max_lru_capacity)};
+      }
+      auto deque_size = ParseInt<int>(args_[3], 10);
+      if (!deque_size || *deque_size < min_deque_size || *deque_size > config->hotkey_max_deque_size) {
+        return {Status::RedisParseErr, fmt::format("deque size must be an integer between {} and {}", min_deque_size,
+                                                   config->hotkey_max_deque_size)};
+      }
+      auto threshold = ParseInt<int>(args_[4], 10);
+      if (!threshold || *threshold < min_threshold || *threshold > config->hotkey_max_threshold) {
+        return {Status::RedisParseErr, fmt::format("threshold must be an integer between {} and {}", min_threshold,
+                                                   config->hotkey_max_threshold)};
+      }
+      auto s = srv->hotkey.Enable(*capacity, *deque_size, *threshold);
+      if (!s.IsOK()) {
+        return s;
+      }
+      *output = redis::RESP_OK;
+    } else if (sub_command == "disable") {
+      auto s = srv->hotkey.Disable();
+      if (!s.IsOK()) {
+        return s;
+      }
+      *output = redis::RESP_OK;
+    } else if (sub_command == "stats") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      *output = srv->hotkey.GetStats();
+    } else if (sub_command == "threshold") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      auto threshold = ParseInt<int>(args_[2], 10);
+      if (!threshold || *threshold < min_threshold || *threshold > config->hotkey_max_threshold) {
+        return {Status::RedisParseErr, fmt::format("threshold must be an integer between {} and {}", min_threshold,
+                                                   config->hotkey_max_threshold)};
+      }
+      srv->hotkey.SetThreshold(*threshold);
+      *output = redis::RESP_OK;
+    } else if (sub_command == "timerange") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      if (args_.size() == 2) {
+        auto now = util::GetTimeStamp();
+        uint64_t begin_timestamp_ms = (now - 1) * 1000;
+        uint64_t end_timestamp_ms = now * 1000;
+        *output = srv->hotkey.SearchByTimeRange(config->hotkey_max_fetch_entries, begin_timestamp_ms, end_timestamp_ms);
+      } else {
+        auto begin_timestamp_ms = ParseInt<int64_t>(args_[2], 10);
+        if (!begin_timestamp_ms || *begin_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "begin timestamp invalid"};
+        }
+        auto end_timestamp_ms = ParseInt<int64_t>(args_[3], 10);
+        if (!end_timestamp_ms || *end_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "end timestamp invalid"};
+        }
+        *output =
+            srv->hotkey.SearchByTimeRange(config->hotkey_max_fetch_entries, *begin_timestamp_ms, *end_timestamp_ms);
+      }
+    } else if (sub_command == "getbykey") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      if (args_.size() == 3) {
+        *output = srv->hotkey.GetByKeyOrThreshold(config->hotkey_max_fetch_entries, args_[2], 0, 0, 0);
+      } else {
+        auto begin_timestamp_ms = ParseInt<int64_t>(args_[3], 10);
+        if (!begin_timestamp_ms || *begin_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "begin timestamp invalid"};
+        }
+        auto end_timestamp_ms = ParseInt<int64_t>(args_[4], 10);
+        if (!end_timestamp_ms || *end_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "end timestamp invalid"};
+        }
+        *output = srv->hotkey.GetByKeyOrThreshold(config->hotkey_max_fetch_entries, args_[2], 0, *begin_timestamp_ms,
+                                                  *end_timestamp_ms);
+      }
+    } else if (sub_command == "getbythreshold") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      auto threshold = ParseInt<int>(args_[2], 10);
+      if (!threshold || *threshold < min_threshold || *threshold > config->hotkey_max_threshold) {
+        return {Status::RedisParseErr, fmt::format("threshold must be an integer between {} and {}", min_threshold,
+                                                   config->hotkey_max_threshold)};
+      }
+      if (args_.size() == 3) {
+        *output = srv->hotkey.GetByKeyOrThreshold(config->hotkey_max_fetch_entries, "", *threshold, 0, 0);
+      } else {
+        auto begin_timestamp_ms = ParseInt<int64_t>(args_[3], 10);
+        if (!begin_timestamp_ms || *begin_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "begin timestamp invalid"};
+        }
+        auto end_timestamp_ms = ParseInt<int64_t>(args_[4], 10);
+        if (!end_timestamp_ms || *end_timestamp_ms < 1) {
+          return {Status::RedisExecErr, "end timestamp invalid"};
+        }
+        *output = srv->hotkey.GetByKeyOrThreshold(config->hotkey_max_fetch_entries, "", *threshold, *begin_timestamp_ms,
+                                                  *end_timestamp_ms);
+      }
+    } else if (sub_command == "dumplogfile") {
+      if (!srv->hotkey.enable_analyze) {
+        return {Status::RedisExecErr, "please enable hotkey analyze at first"};
+      }
+      spdlog::level::level_enum level = spdlog::level::off;
+      if (args_[2] == "info") {
+        level = spdlog::level::info;
+      } else if (args_[2] == "warning") {
+        level = spdlog::level::warn;
+      } else if (args_[2] == "off") {
+        level = spdlog::level::off;
+      } else {
+        return {Status::RedisExecErr, "dump logfile level should be one of off,info,warning"};
+      }
+      srv->hotkey.SetDumpToLogfileLevel(level);
+      *output = redis::RESP_OK;
+    } else {
+      return {Status::RedisExecErr,
+              "HOTKEY subcommand must be one of ENABLE, DISABLE, TIMERANGE, THRESHOLD, GETBYKEY, GETBYTHRESHOLD, "
+              "DUMPLOGFILE, STATS"};
+    }
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
@@ -1592,5 +1746,6 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
+    MakeCmdAttr<CommandHotkey>("hotkey", -2, "read-only", NO_KEY), )
 }  // namespace redis

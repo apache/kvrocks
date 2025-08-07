@@ -243,6 +243,14 @@ Config::Config() {
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
       {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},
+      {"hotkey-bootstrap", false, new YesNoField(&hotkey_bootstrap, false)},
+      {"hotkey-init-lru-capacity", false, new IntField(&hotkey_init_lru_capacity, 200000, 100000, INT_MAX)},
+      {"hotkey-max-lru-capacity", false, new IntField(&hotkey_max_lru_capacity, 500000, 100000, INT_MAX)},
+      {"hotkey-init-deque-size", false, new IntField(&hotkey_init_deque_size, 500000, 100000, INT_MAX)},
+      {"hotkey-max-deque-size", false, new IntField(&hotkey_max_deque_size, 1000000, 100000, INT_MAX)},
+      {"hotkey-init-threshold", false, new IntField(&hotkey_init_threshold, 5000, 1, INT_MAX)},
+      {"hotkey-max-threshold", false, new IntField(&hotkey_max_threshold, 50000, 1, INT_MAX)},
+      {"hotkey-max-fetch-entries", false, new IntField(&hotkey_max_fetch_entries, 10000, 1, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -466,6 +474,31 @@ void Config::initFieldCallback() {
         return {Status::NotOK, "should be between 0 and 65535"};
       }
       master_port = *parse_result;
+    }
+    return Status::OK();
+  };
+
+  auto set_hotkey_cb = [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,
+                              [[maybe_unused]] const std::string &v) -> Status {
+    if ((k == "hotkey-init-lru-capacity" || k == "hotkey-max-lru-capacity") &&
+        hotkey_init_lru_capacity > hotkey_max_lru_capacity) {
+      if (k == "hotkey-init-lru-capacity") {
+        return {Status::NotOK, "hotkey-init-lru-capacity should <= hotkey-max-lru-capacity"};
+      }
+      return {Status::NotOK, "hotkey-max-lru-capacity should >= hotkey-init-lru-capacity"};
+    }
+    if ((k == "hotkey-init-deque-size" || k == "hotkey-max-deque-size") &&
+        hotkey_init_deque_size > hotkey_max_deque_size) {
+      if (k == "hotkey-init-deque-size") {
+        return {Status::NotOK, "hotkey-init-deque-size should <= hotkey-max-deque-size"};
+      }
+      return {Status::NotOK, "hotkey-max-deque-size should >= hotkey-init-deque-size"};
+    }
+    if ((k == "hotkey-init-threshold" || k == "hotkey-max-threshold") && hotkey_init_threshold > hotkey_max_threshold) {
+      if (k == "hotkey-init-threshold") {
+        return {Status::NotOK, "hotkey-init-threshold should <= hotkey-max-threshold"};
+      }
+      return {Status::NotOK, "hotkey-max-threshold should >= hotkey-init-threshold"};
     }
     return Status::OK();
   };
@@ -803,6 +836,12 @@ void Config::initFieldCallback() {
              }
              return Status::OK();
            }},
+          {"hotkey-init-lru-capacity", set_hotkey_cb},
+          {"hotkey-max-lru-capacity", set_hotkey_cb},
+          {"hotkey-init-deque-size", set_hotkey_cb},
+          {"hotkey-max-deque-size", set_hotkey_cb},
+          {"hotkey-init-threshold", set_hotkey_cb},
+          {"hotkey-max-threshold", set_hotkey_cb},
       };
   for (const auto &iter : callbacks) {
     auto field_iter = fields_.find(iter.first);

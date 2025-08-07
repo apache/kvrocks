@@ -50,6 +50,7 @@
 #include "search/index_manager.h"
 #include "search/indexer.h"
 #include "server/redis_connection.h"
+#include "stats/hot_key.h"
 #include "stats/log_collector.h"
 #include "stats/stats.h"
 #include "storage/redis_metadata.h"
@@ -326,6 +327,8 @@ class Server {
 
   std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
+
+  Hotkey hotkey;
 
   Stats stats;
   engine::Storage *storage;

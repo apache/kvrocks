@@ -167,6 +167,23 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleLogic) {
   EXPECT_EQ(new_chunk->GetFirstTimestamp(), 100);
   EXPECT_EQ(new_chunk->GetLastTimestamp(), 400);
 
+  // Verify add result
+  auto results = batch.GetFinalResults();
+  EXPECT_EQ(results[0].first, AddResult::kOk);
+  EXPECT_EQ(results[0].second, 300);
+  EXPECT_EQ(results[1].first, AddResult::kOk);
+  EXPECT_EQ(results[1].second, 100);
+  EXPECT_EQ(results[2].first, AddResult::kOk);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kOk);
+  EXPECT_EQ(results[3].second, 100);
+  EXPECT_EQ(results[4].first, AddResult::kOk);
+  EXPECT_EQ(results[4].second, 200);
+  EXPECT_EQ(results[5].first, AddResult::kOk);
+  EXPECT_EQ(results[5].second, 400);
+  EXPECT_EQ(results[6].first, AddResult::kOk);
+  EXPECT_EQ(results[6].second, 100);
+
   // Validate content of merged chunk
   auto iter = new_chunk->CreateIterator();
   auto* sample = iter->Next().value();
@@ -212,6 +229,19 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleWithExistingSamples) {
   EXPECT_EQ(final_chunk->GetCount(), 6);
   EXPECT_EQ(final_chunk->GetFirstTimestamp(), 50);
   EXPECT_EQ(final_chunk->GetLastTimestamp(), 400);
+
+  // Verify add result
+  auto results = new_batch.GetFinalResults();
+  EXPECT_EQ(results[0].first, AddResult::kOk);
+  EXPECT_EQ(results[0].second, 50);
+  EXPECT_EQ(results[1].first, AddResult::kOk);
+  EXPECT_EQ(results[1].second, 150);
+  EXPECT_EQ(results[2].first, AddResult::kOk);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kOk);
+  EXPECT_EQ(results[3].second, 300);
+  EXPECT_EQ(results[4].first, AddResult::kOk);
+  EXPECT_EQ(results[4].second, 400);
 
   // Verify content through iterator
   auto iter = final_chunk->CreateIterator();

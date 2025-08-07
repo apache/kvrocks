@@ -344,17 +344,21 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
     if (current_index == static_cast<size_t>(-1)) {
       merged_data[0] = *candidate;
       current_index = 0;
+      if (from_new_batch) {
+        add_results[new_sample_idx] = AddResult::kOk;
+      }
       continue;
     }
 
     // Append or merge based on timestamp
+    bool is_append = false;
     if (candidate->ts > merged_data[current_index].ts) {
       merged_data[++current_index] = *candidate;
-    } else {
-      if (from_new_batch) {
-        auto add_res = MergeSamplesValue(merged_data[current_index], *candidate, policy);
-        add_results[new_sample_idx] = add_res;
-      }
+      is_append = true;
+    }
+    if (from_new_batch) {
+      add_results[new_sample_idx] =
+          is_append ? AddResult::kOk : MergeSamplesValue(merged_data[current_index], *candidate, policy);
     }
 
     // Update the index
@@ -381,8 +385,10 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
     if (current_index == static_cast<size_t>(-1)) {
       current_index = 0;
       merged_data[current_index] = new_samples[new_sample_idx];
+      add_results[new_sample_idx] = AddResult::kOk;
     } else if (new_samples[new_sample_idx].ts > merged_data[current_index].ts) {
       merged_data[++current_index] = new_samples[new_sample_idx];
+      add_results[new_sample_idx] = AddResult::kOk;
     } else {
       auto add_res = MergeSamplesValue(merged_data[current_index], new_samples[new_sample_idx], policy);
       add_results[new_sample_idx] = add_res;

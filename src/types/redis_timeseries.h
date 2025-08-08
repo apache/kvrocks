@@ -111,21 +111,26 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 class TimeSeries : public SubKeyScanner {
  public:
   using SampleBatch = TSChunk::SampleBatch;
+  using AddResultWithTS = TSChunk::AddResultWithTS;
+  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 
   TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
   rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
-  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &sample_batch,
-                       const TSCreateOption &option);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
+                      AddResultWithTS *res, const DuplicatePolicy *on_dup_policy = nullptr);
+  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
+                       std::vector<AddResultWithTS> *res);
 
  private:
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
   rocksdb::Status getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
                                         const TSCreateOption *option = nullptr);
+  rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                               SampleBatch &sample_batch);
 
-  std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
-  std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
-                                      Slice label_key) const;
-  std::string internalKeyFromDownstreamKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
+  std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
+  std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
+  std::string internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                            Slice downstream_key) const;
   uint64_t chunkIDFromInternalKey(Slice internal_key) const;
 };

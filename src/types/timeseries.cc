@@ -161,8 +161,8 @@ SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, 
 
 SampleBatchSlice TSChunk::SampleBatch::AsSlice() { return {samples_, add_results_, policy_}; }
 
-std::vector<std::pair<AddResult, uint64_t>> TSChunk::SampleBatch::GetFinalResults() const {
-  std::vector<std::pair<AddResult, uint64_t>> res;
+std::vector<TSChunk::AddResultWithTS> TSChunk::SampleBatch::GetFinalResults() const {
+  std::vector<AddResultWithTS> res;
   res.resize(add_results_.size());
   for (size_t idx = 0; idx < add_results_.size(); idx++) {
     res[indexes_[idx]].first = add_results_[idx];

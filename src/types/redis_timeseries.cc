@@ -145,58 +145,8 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-std::string TimeSeries::internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata,
-                                               uint64_t id) const {
-  std::string sub_key;
-  PutFixed8(&sub_key, static_cast<uint8_t>(TSSubkeyType::CHUNK));
-  PutFixed64(&sub_key, id);
-
-  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-}
-
-std::string TimeSeries::internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
-                                                Slice label_key) const {
-  std::string sub_key;
-  sub_key.resize(1 + label_key.size());
-  auto buf = sub_key.data();
-  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::LABEL));
-  EncodeBuffer(buf, label_key);
-
-  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-}
-
-std::string TimeSeries::internalKeyFromDownstreamKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
-                                                     Slice downstream_key) const {
-  std::string sub_key;
-  sub_key.resize(1 + downstream_key.size());
-  auto buf = sub_key.data();
-  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::DOWNSTREAM));
-  EncodeBuffer(buf, downstream_key);
-
-  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-}
-
-uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) const {
-  auto size = internal_key.size();
-  internal_key.remove_prefix(size - sizeof(uint64_t));
-  return DecodeFixed64(internal_key.data());
-}
-
-rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  TimeSeriesMetadata metadata;
-  return getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
-}
-
-rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, SampleBatch &sample_batch,
-                                 const TSCreateOption &option) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  TimeSeriesMetadata metadata(false);
-  rocksdb::Status s = getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
-  if (!s.ok()) return s;
-
+rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                         SampleBatch &sample_batch) {
   auto all_batch_slice = sample_batch.AsSlice();
 
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
@@ -236,7 +186,7 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, Sa
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTimeSeries);
-  s = batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   // Get the first chunk
@@ -306,6 +256,86 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, Sa
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                               uint64_t id) const {
+  std::string sub_key;
+  PutFixed8(&sub_key, static_cast<uint8_t>(TSSubkeyType::CHUNK));
+  PutFixed64(&sub_key, id);
+
+  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+}
+
+std::string TimeSeries::internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                                Slice label_key) const {
+  std::string sub_key;
+  sub_key.resize(1 + label_key.size());
+  auto buf = sub_key.data();
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::LABEL));
+  EncodeBuffer(buf, label_key);
+
+  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+}
+
+std::string TimeSeries::internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                                     Slice downstream_key) const {
+  std::string sub_key;
+  sub_key.resize(1 + downstream_key.size());
+  auto buf = sub_key.data();
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(TSSubkeyType::DOWNSTREAM));
+  EncodeBuffer(buf, downstream_key);
+
+  return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+}
+
+uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) const {
+  auto size = internal_key.size();
+  internal_key.remove_prefix(size - sizeof(uint64_t));
+  return DecodeFixed64(internal_key.data());
+}
+
+rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata;
+  return getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
+}
+
+rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSSample sample,
+                                const TSCreateOption &option, AddResultWithTS *res,
+                                const DuplicatePolicy *on_dup_policy) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
+  if (!s.ok()) return s;
+  auto sample_batch = SampleBatch({sample}, on_dup_policy ? *on_dup_policy : metadata.duplicate_policy);
+
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch);
+  if (!s.ok()) {
+    return s;
+  }
+  *res = sample_batch.GetFinalResults()[0];
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
+                                 std::vector<AddResultWithTS> *res) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s;
+  }
+  auto sample_batch = SampleBatch(std::move(samples), metadata.duplicate_policy);
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch);
+  if (!s.ok()) {
+    return s;
+  }
+  *res = sample_batch.GetFinalResults();
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

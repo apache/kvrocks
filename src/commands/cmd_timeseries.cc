@@ -204,57 +204,55 @@ class CommandTSAdd : public CommandTSCreateBase {
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
-    std::vector<TSSample> sample{{ts_, value_}};
-    auto option = getCreateOption();
-    TSChunk::SampleBatch batch(std::move(sample),
-                               is_on_duplicate_policy_set_ ? on_duplicate_policy_ : option.duplicate_policy);
-    auto s = timeseries_db.MAdd(ctx, user_key_, batch, option);
+    const auto &option = getCreateOption();
+
+    using AddResult = TSChunk::AddResult;
+    TSChunk::AddResultWithTS res;
+    auto s = timeseries_db.Add(ctx, user_key_, {ts_, value_}, option, &res,
+                               is_on_dup_policy_set_ ? &on_dup_policy_ : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    auto results = batch.GetFinalResults();
-    using AddResult = TSChunk::AddResult;
-    for (auto res : results) {
-      switch (res.first) {
-        case AddResult::kOk:
-          *output += redis::Integer(res.second);
-          break;
-        case AddResult::kOld:
-          *output += redis::Error({Status::NotOK, errOldTimestamp});
-          break;
-        case AddResult::kBlock:
-          *output += redis::Error({Status::NotOK, errDupBlock});
-          break;
-        default:
-          unreachable();
-      }
+    switch (res.first) {
+      case AddResult::kOk:
+        *output += redis::Integer(res.second);
+        break;
+      case AddResult::kOld:
+        *output += redis::Error({Status::NotOK, errOldTimestamp});
+        break;
+      case AddResult::kBlock:
+        *output += redis::Error({Status::NotOK, errDupBlock});
+        break;
+      default:
+        unreachable();
     }
+
     return Status::OK();
   }
 
  private:
-  DuplicatePolicy on_duplicate_policy_ = DuplicatePolicy::BLOCK;
-  bool is_on_duplicate_policy_set_ = false;
+  DuplicatePolicy on_dup_policy_ = DuplicatePolicy::BLOCK;
+  bool is_on_dup_policy_set_ = false;
   std::string user_key_;
   uint64_t ts_ = 0;
   double value_ = 0;
 
   Status HandleOnDuplicatePolicy(TSOptionsParser &parser) {
     if (parser.EatEqICase("BLOCK")) {
-      on_duplicate_policy_ = DuplicatePolicy::BLOCK;
+      on_dup_policy_ = DuplicatePolicy::BLOCK;
     } else if (parser.EatEqICase("FIRST")) {
-      on_duplicate_policy_ = DuplicatePolicy::FIRST;
+      on_dup_policy_ = DuplicatePolicy::FIRST;
     } else if (parser.EatEqICase("LAST")) {
-      on_duplicate_policy_ = DuplicatePolicy::LAST;
+      on_dup_policy_ = DuplicatePolicy::LAST;
     } else if (parser.EatEqICase("MAX")) {
-      on_duplicate_policy_ = DuplicatePolicy::MAX;
+      on_dup_policy_ = DuplicatePolicy::MAX;
     } else if (parser.EatEqICase("MIN")) {
-      on_duplicate_policy_ = DuplicatePolicy::MIN;
+      on_dup_policy_ = DuplicatePolicy::MIN;
     } else if (parser.EatEqICase("SUM")) {
-      on_duplicate_policy_ = DuplicatePolicy::SUM;
+      on_dup_policy_ = DuplicatePolicy::SUM;
     } else {
       return {Status::RedisParseErr, errDuplicatePolicy};
     }
-    is_on_duplicate_policy_set_ = true;
+    is_on_dup_policy_set_ = true;
     return Status::OK();
   }
 };

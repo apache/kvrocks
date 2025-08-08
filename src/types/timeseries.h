@@ -72,6 +72,7 @@ class TSChunk {
     kBlock,
     kOld,
   };
+  using AddResultWithTS = std::pair<AddResult, uint64_t>;
 
   class SampleBatch;
   class SampleBatchSlice {
@@ -125,7 +126,7 @@ class TSChunk {
     SampleBatchSlice AsSlice();
 
     // Return add results by samples' order
-    std::vector<std::pair<AddResult, uint64_t>> GetFinalResults() const;
+    std::vector<AddResultWithTS> GetFinalResults() const;
 
    private:
     std::vector<TSSample> samples_;

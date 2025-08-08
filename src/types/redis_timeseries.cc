@@ -160,8 +160,6 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
-  read_options.pin_data = true;
-
   // Get the latest chunk
   auto iter = util::UniqueIterator(ctx, read_options);
   iter->SeekForPrev(end_key);
@@ -203,8 +201,8 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   uint64_t end_ts = TSSample::MAX_TIMESTAMP;
   bool is_chunk = (iter->Valid() && iter->key().starts_with(prefix));
   while (is_chunk) {
-    auto cur_chunk_data = iter->value();
-    auto cur_chunk_key = iter->key();
+    auto cur_chunk_data = iter->value().ToString();
+    auto cur_chunk_key = iter->key().ToString();
     iter->Next();
     is_chunk = (iter->Valid() && iter->key().starts_with(prefix));
     if (!is_chunk) {
@@ -222,6 +220,7 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
     auto new_data = chunk->UpsertSamples(sample_slice);
     auto new_chunk = CreateTSChunkFromData(new_data);
     auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
+    // Process samples older than the first chunk, should update the key
     if (new_key != cur_chunk_key) {
       s = batch->Delete(cur_chunk_key);
       if (!s.ok()) return s;

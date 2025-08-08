@@ -34,6 +34,22 @@ constexpr const char *errInvalidValue = "invalid value";
 constexpr const char *errOldTimestamp = "Timestamp is older than retention";
 constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
+constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
+
+std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
+  using AddResult = TSChunk::AddResult;
+  switch (res.first) {
+    case AddResult::kOk:
+      return redis::Integer(res.second);
+    case AddResult::kOld:
+      return redis::Error({Status::NotOK, errOldTimestamp});
+    case AddResult::kBlock:
+      return redis::Error({Status::NotOK, errDupBlock});
+    default:
+      unreachable();
+  }
+  return "";
+}
 
 }  // namespace
 
@@ -73,6 +89,10 @@ class KeywordCommandBase : public Commander {
   void RegisterHandler(const std::string &keyword, Handler &&handler) {
     handlers_.emplace_back(keyword, std::forward<Handler>(handler));
   }
+
+  void setSkipNum(size_t num) { skip_num_ = num; }
+
+  void setTailSkipNum(size_t num) { tail_skip_num_ = num; }
 
  private:
   size_t skip_num_ = 0;
@@ -206,25 +226,12 @@ class CommandTSAdd : public CommandTSCreateBase {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
-    using AddResult = TSChunk::AddResult;
     TSChunk::AddResultWithTS res;
     auto s = timeseries_db.Add(ctx, user_key_, {ts_, value_}, option, &res,
                                is_on_dup_policy_set_ ? &on_dup_policy_ : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    switch (res.first) {
-      case AddResult::kOk:
-        *output += redis::Integer(res.second);
-        break;
-      case AddResult::kOld:
-        *output += redis::Error({Status::NotOK, errOldTimestamp});
-        break;
-      case AddResult::kBlock:
-        *output += redis::Error({Status::NotOK, errDupBlock});
-        break;
-      default:
-        unreachable();
-    }
+    *output += FormatAddResultAsRedisReply(res);
 
     return Status::OK();
   }
@@ -257,7 +264,66 @@ class CommandTSAdd : public CommandTSCreateBase {
   }
 };
 
+class CommandTSMAdd : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4 || (args.size() - 1) % 3 != 0) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    CommandParser parser(args, 1);
+    for (size_t i = 1; i < args.size(); i += 3) {
+      const auto &user_key = args[i];
+      parser.Skip(1);
+      auto ts_parse = parser.TakeInt<uint64_t>();
+      if (!ts_parse.IsOK()) {
+        return Status(Status::RedisParseErr, errInvalidTimestamp);
+      }
+      auto value_parse = parser.TakeFloat<double>();
+      if (!value_parse.IsOK()) {
+        return Status(Status::RedisParseErr, errInvalidValue);
+      }
+      userkey_samples_map_[user_key].push_back({ts_parse.GetValue(), value_parse.GetValue()});
+      userkey_indexes_map_[user_key].push_back(i / 3);
+      samples_count_ += 1;
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+
+    auto replies = std::vector<std::string>(samples_count_);
+    for (auto &[user_key, samples] : userkey_samples_map_) {
+      std::vector<TSChunk::AddResultWithTS> res;
+      auto count = samples.size();
+      auto s = timeseries_db.MAdd(ctx, user_key, std::move(samples), &res);
+      std::string err_reply;
+      if (!s.ok()) {
+        err_reply = s.IsNotFound() ? redis::Error({Status::NotOK, errTSKeyNotFound})
+                                   : redis::Error({Status::NotOK, s.ToString()});
+      }
+      for (size_t i = 0; i < count; i++) {
+        size_t idx = userkey_indexes_map_[user_key][i];
+        replies[idx] = s.ok() ? FormatAddResultAsRedisReply(res[i]) : err_reply;
+      }
+    }
+    *output = redis::MultiLen(samples_count_);
+    for (auto &reply : replies) {
+      if (reply.empty()) continue;
+      *output += reply;
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+  size_t samples_count_ = 0;
+  std::unordered_map<std::string_view, std::vector<TSSample>> userkey_samples_map_;
+  std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
+  std::unordered_map<std::string_view, std::string> userkey_status_map_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1), );
 
 }  // namespace redis

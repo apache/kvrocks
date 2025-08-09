@@ -127,7 +127,9 @@ class TimeSeries : public SubKeyScanner {
                                         const TSCreateOption *option = nullptr);
   rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                SampleBatch &sample_batch);
-
+  rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                          ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                          const LabelKVList &labels);
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
   std::string internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,

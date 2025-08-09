@@ -138,8 +138,7 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
   if (!s.ok()) return s;
 
   if (!option && !option->labels.empty()) {
-    // TODO: Add labels write
-    unreachable();
+    createLabelIndexInBatch(ns_key, *metadata_out, batch, option->labels);
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -255,6 +254,17 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                                    const LabelKVList &labels) {
+  for (auto &label : labels) {
+    auto internal_key = internalKeyFromLabelKey(ns_key, metadata, label.k);
+    auto s = batch->Put(internal_key, label.v);
+    if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
 }
 
 std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,

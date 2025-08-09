@@ -58,10 +58,10 @@ namespace redis {
 class KeywordCommandBase : public Commander {
  public:
   KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {}
-  virtual ~KeywordCommandBase() = default;
 
   Status Parse(const std::vector<std::string> &args) override {
-    TSOptionsParser parser(args.begin() + skip_num_, args.end() - tail_skip_num_);
+    TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),
+                           std::prev(args.end(), static_cast<std::ptrdiff_t>(tail_skip_num_)));
 
     while (parser.Good()) {
       bool handled = false;
@@ -86,7 +86,7 @@ class KeywordCommandBase : public Commander {
   using TSOptionsParser = CommandParser<CommandTokens::const_iterator>;
 
   template <typename Handler>
-  void RegisterHandler(const std::string &keyword, Handler &&handler) {
+  void registerHandler(const std::string &keyword, Handler &&handler) {
     handlers_.emplace_back(keyword, std::forward<Handler>(handler));
   }
 
@@ -104,11 +104,11 @@ class KeywordCommandBase : public Commander {
 class CommandTSCreateBase : public KeywordCommandBase {
  public:
   CommandTSCreateBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {
-    RegisterHandler("RETENTION", [this](TSOptionsParser &parser) { return HandleRetention(parser); });
-    RegisterHandler("CHUNK_SIZE", [this](TSOptionsParser &parser) { return HandleChunkSize(parser); });
-    RegisterHandler("ENCODING", [this](TSOptionsParser &parser) { return HandleEncoding(parser); });
-    RegisterHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) { return HandleDuplicatePolicy(parser); });
-    RegisterHandler("LABELS", [this](TSOptionsParser &parser) { return HandleLabels(parser); });
+    registerHandler("RETENTION", [this](TSOptionsParser &parser) { return handleRetention(parser); });
+    registerHandler("CHUNK_SIZE", [this](TSOptionsParser &parser) { return handleChunkSize(parser); });
+    registerHandler("ENCODING", [this](TSOptionsParser &parser) { return handleEncoding(parser); });
+    registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) { return handleDuplicatePolicy(parser); });
+    registerHandler("LABELS", [this](TSOptionsParser &parser) { return handleLabels(parser); });
   }
 
  protected:
@@ -119,7 +119,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
  private:
   TSCreateOption create_option_;
 
-  Status HandleRetention(TSOptionsParser &parser) {
+  Status handleRetention(TSOptionsParser &parser) {
     auto parse_retention = parser.TakeInt<uint64_t>();
     if (!parse_retention.IsOK()) {
       return {Status::RedisParseErr, errBadRetention};
@@ -128,7 +128,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status HandleChunkSize(TSOptionsParser &parser) {
+  Status handleChunkSize(TSOptionsParser &parser) {
     auto parse_chunk_size = parser.TakeInt<uint64_t>();
     if (!parse_chunk_size.IsOK()) {
       return {Status::RedisParseErr, errBadChunkSize};
@@ -137,7 +137,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status HandleEncoding(TSOptionsParser &parser) {
+  Status handleEncoding(TSOptionsParser &parser) {
     using ChunkType = TimeSeriesMetadata::ChunkType;
     if (parser.EatEqICase("UNCOMPRESSED")) {
       create_option_.chunk_type = ChunkType::UNCOMPRESSED;
@@ -149,7 +149,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status HandleDuplicatePolicy(TSOptionsParser &parser) {
+  Status handleDuplicatePolicy(TSOptionsParser &parser) {
     if (parser.EatEqICase("BLOCK")) {
       create_option_.duplicate_policy = DuplicatePolicy::BLOCK;
     } else if (parser.EatEqICase("FIRST")) {
@@ -168,7 +168,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status HandleLabels(TSOptionsParser &parser) {
+  Status handleLabels(TSOptionsParser &parser) {
     while (parser.Good()) {
       auto parse_key = parser.TakeStr();
       auto parse_value = parser.TakeStr();
@@ -202,7 +202,7 @@ class CommandTSCreate : public CommandTSCreateBase {
 class CommandTSAdd : public CommandTSCreateBase {
  public:
   CommandTSAdd() : CommandTSCreateBase(4, 0) {
-    RegisterHandler("ON_DUPLICATE", [this](TSOptionsParser &parser) { return HandleOnDuplicatePolicy(parser); });
+    registerHandler("ON_DUPLICATE", [this](TSOptionsParser &parser) { return handleOnDuplicatePolicy(parser); });
   }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
@@ -243,7 +243,7 @@ class CommandTSAdd : public CommandTSCreateBase {
   uint64_t ts_ = 0;
   double value_ = 0;
 
-  Status HandleOnDuplicatePolicy(TSOptionsParser &parser) {
+  Status handleOnDuplicatePolicy(TSOptionsParser &parser) {
     if (parser.EatEqICase("BLOCK")) {
       on_dup_policy_ = DuplicatePolicy::BLOCK;
     } else if (parser.EatEqICase("FIRST")) {
@@ -276,11 +276,11 @@ class CommandTSMAdd : public Commander {
       parser.Skip(1);
       auto ts_parse = parser.TakeInt<uint64_t>();
       if (!ts_parse.IsOK()) {
-        return Status(Status::RedisParseErr, errInvalidTimestamp);
+        return {Status::RedisParseErr, errInvalidTimestamp};
       }
       auto value_parse = parser.TakeFloat<double>();
       if (!value_parse.IsOK()) {
-        return Status(Status::RedisParseErr, errInvalidValue);
+        return Status{Status::RedisParseErr, errInvalidValue};
       }
       userkey_samples_map_[user_key].push_back({ts_parse.GetValue(), value_parse.GetValue()});
       userkey_indexes_map_[user_key].push_back(i / 3);

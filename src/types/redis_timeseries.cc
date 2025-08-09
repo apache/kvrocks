@@ -238,7 +238,7 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
       latest_chunk_key.clear();
     }
     auto remain = metadata.chunk_size - latest_chunk->GetCount();
-    auto sample_slice = remained_samples.SliceByCount(first_ts, remain, &last_ts);
+    auto sample_slice = remained_samples.SliceByCount(first_ts, static_cast<int>(remain), &last_ts);
     if (sample_slice.GetValidCount() == 0) break;
 
     auto new_chunk_data = latest_chunk->UpsertSamples(sample_slice);
@@ -298,7 +298,7 @@ std::string TimeSeries::internalKeyFromDownstreamKey(const Slice &ns_key, const 
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 }
 
-uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) const {
+uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) {
   auto size = internal_key.size();
   internal_key.remove_prefix(size - sizeof(uint64_t));
   return DecodeFixed64(internal_key.data());

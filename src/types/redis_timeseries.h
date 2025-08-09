@@ -134,7 +134,7 @@ class TimeSeries : public SubKeyScanner {
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
   std::string internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                            Slice downstream_key) const;
-  uint64_t chunkIDFromInternalKey(Slice internal_key) const;
+  static uint64_t chunkIDFromInternalKey(Slice internal_key);
 };
 
 }  // namespace redis

@@ -142,6 +142,6 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "ts.create", "existent").Err())
 		res := rdb.Do(ctx, "ts.madd", "nonexistent", "1000", "12.3", "existent", "1000", "13.4").Val().([]interface{})
 		assert.Contains(t, res[0], "the key is not a TSDB key")
-		assert.Equal(t, res[1], int64(1000))  
+		assert.Equal(t, res[1], int64(1000))
 	})
 }

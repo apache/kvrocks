@@ -39,7 +39,7 @@ struct Field : seq<one<'@'>, Identifier> {};
 
 struct Param : seq<one<'$'>, Identifier> {};
 
-struct Tag : sor<Identifier, StringL, Param> {};
+struct Tag : sor<Identifier, StringL, Param, Number> {};
 struct TagList : seq<one<'{'>, WSPad<Tag>, star<seq<one<'|'>, WSPad<Tag>>>, one<'}'>> {};
 
 struct NumberOrParam : sor<Number, Param> {};

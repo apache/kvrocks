@@ -125,7 +125,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
   rocksdb::Status getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
                                         const TSCreateOption *option = nullptr);
-  rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+  rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                SampleBatch &sample_batch);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,

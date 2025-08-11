@@ -144,7 +144,7 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                          SampleBatch &sample_batch) {
   auto all_batch_slice = sample_batch.AsSlice();
 
@@ -230,16 +230,22 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
 
   // Process samples added to latest chunk(unseal)
   auto remained_samples = all_batch_slice.SliceByTimestamps(start_ts, TSSample::MAX_TIMESTAMP, true);
+  uint64_t chunk_count = metadata.size;
   for (uint64_t first_ts = 0, last_ts = 0; remained_samples.GetValidCount(); first_ts = last_ts + 1) {
+    bool is_created = false;
     if (latest_chunk->GetCount() >= metadata.chunk_size) {
       auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
       latest_chunk_value = std::move(data_);
       latest_chunk = std::move(chunk_ptr_);
       latest_chunk_key.clear();
+      is_created = true;
     }
     auto remain = metadata.chunk_size - latest_chunk->GetCount();
     auto sample_slice = remained_samples.SliceByCount(first_ts, static_cast<int>(remain), &last_ts);
     if (sample_slice.GetValidCount() == 0) break;
+    if (is_created) {
+      chunk_count++;
+    }
 
     auto new_chunk_data = latest_chunk->UpsertSamples(sample_slice);
     auto new_chunk = CreateTSChunkFromData(new_chunk_data);
@@ -248,8 +254,17 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
       s = batch->Delete(latest_chunk_key);
       if (!s.ok()) return s;
     }
-    latest_chunk_key = new_key;
     s = batch->Put(new_key, new_chunk_data);
+    latest_chunk_key = std::move(new_key);
+    latest_chunk_value = std::move(new_chunk_data);
+    latest_chunk = std::move(new_chunk);
+    if (!s.ok()) return s;
+  }
+  if (chunk_count != metadata.size) {
+    metadata.size = chunk_count;
+    std::string bytes;
+    metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
 

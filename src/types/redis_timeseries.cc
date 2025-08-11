@@ -132,7 +132,7 @@ rocksdb::Status TimeSeries::createTimeSeries(engine::Context &ctx, const Slice &
   s = batch->Put(metadata_cf_handle_, ns_key, bytes);
   if (!s.ok()) return s;
 
-  if (!option && !option->labels.empty()) {
+  if (option && !option->labels.empty()) {
     createLabelIndexInBatch(ns_key, *metadata_out, batch, option->labels);
   }
 
@@ -275,6 +275,26 @@ rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const T
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::getLabelKVList(engine::Context &ctx, const Slice &ns_key,
+                                           const TimeSeriesMetadata &metadata, LabelKVList *labels) {
+  // In the emun `TSSubkeyType`, `DOWNSTREAM` is the next of `LABEL`
+  std::string label_upper_bound = internalKeyFromDownstreamKey(ns_key, metadata, "");
+  std::string prefix = internalKeyFromLabelKey(ns_key, metadata, "");
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(label_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  labels->clear();
+  for (iter->Seek(lower_bound); iter->Valid(); iter->Next()) {
+    labels->push_back({labelKeyFromInternalKey(iter->key()), iter->value().ToString()});
+  }
+  return rocksdb::Status::OK();
+}
+
 std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
@@ -310,6 +330,13 @@ uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) {
   auto size = internal_key.size();
   internal_key.remove_prefix(size - sizeof(uint64_t));
   return DecodeFixed64(internal_key.data());
+}
+
+std::string TimeSeries::labelKeyFromInternalKey(Slice internal_key) const {
+  auto key = InternalKey(internal_key, storage_->IsSlotIdEncoded());
+  auto label_key = key.GetSubKey();
+  label_key.remove_prefix(sizeof(TSSubkeyType));
+  return label_key.ToString();
 }
 
 rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
@@ -417,7 +444,8 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
       }
     }
   }
-  // TODO: Retrieve downstream downstream_rules
+  getLabelKVList(ctx, ns_key, metadata, &res->labels);
+  //TODO: Retrieve downstream downstream_rules
 
   return rocksdb::Status::OK();
 }

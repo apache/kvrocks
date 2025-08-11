@@ -106,6 +106,16 @@ struct TSCreateOption {
   TSCreateOption();
 };
 
+struct TSInfoResult {
+  TimeSeriesMetadata metadata;
+  uint64_t total_samples;
+  uint64_t memory_usage;
+  uint64_t first_timestamp;
+  uint64_t last_timestamp;
+  std::vector<std::pair<std::string, TSDownStreamMeta>> downstream_rules;
+  LabelKVList labels;
+};
+
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 
 class TimeSeries : public SubKeyScanner {
@@ -120,6 +130,7 @@ class TimeSeries : public SubKeyScanner {
                       AddResultWithTS *res, const DuplicatePolicy *on_dup_policy = nullptr);
   rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
                        std::vector<AddResultWithTS> *res);
+  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, TSInfoResult *res);
 
  private:
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);

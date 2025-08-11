@@ -51,6 +51,73 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   return "";
 }
 
+std::string FormatChunkTypeAsRedisReply(TimeSeriesMetadata::ChunkType chunk_type) {
+  using ChunkType = TimeSeriesMetadata::ChunkType;
+  switch (chunk_type) {
+    case ChunkType::COMPRESSED:
+      return "compressed";
+    case ChunkType::UNCOMPRESSED:
+      return "uncompressed";
+    default:
+      unreachable();
+  }
+  return "";
+}
+
+std::string FormatDuplicatePolicyAsRedisReply(TimeSeriesMetadata::DuplicatePolicy policy) {
+  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
+  switch (policy) {
+    case DuplicatePolicy::BLOCK:
+      return "block";
+    case DuplicatePolicy::FIRST:
+      return "first";
+    case DuplicatePolicy::LAST:
+      return "last";
+    case DuplicatePolicy::MIN:
+      return "min";
+    case DuplicatePolicy::MAX:
+      return "max";
+    case DuplicatePolicy::SUM:
+      return "sum";
+    default:
+      unreachable();
+      return "unknown";
+  }
+}
+
+std::string FormatAggregatorTypeAsRedisReply(redis::TSAggregatorType aggregator) {
+  using TSAggregatorType = redis::TSAggregatorType;
+  switch (aggregator) {
+    case TSAggregatorType::AVG:
+      return "avg";
+    case TSAggregatorType::SUM:
+      return "sum";
+    case TSAggregatorType::MIN:
+      return "min";
+    case TSAggregatorType::MAX:
+      return "max";
+    case TSAggregatorType::RANGE:
+      return "range";
+    case TSAggregatorType::COUNT:
+      return "count";
+    case TSAggregatorType::FIRST:
+      return "first";
+    case TSAggregatorType::LAST:
+      return "last";
+    case TSAggregatorType::STD_P:
+      return "std.p";
+    case TSAggregatorType::STD_S:
+      return "std.s";
+    case TSAggregatorType::VAR_P:
+      return "var.p";
+    case TSAggregatorType::VAR_S:
+      return "var.s";
+    default:
+      unreachable();
+      return "";
+  }
+}
+
 }  // namespace
 
 namespace redis {
@@ -200,6 +267,65 @@ class CommandTSCreate : public CommandTSCreateBase {
   }
 };
 
+class CommandTSInfo : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    user_key_ = args[1];
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    TSInfoResult info;
+    auto s = timeseries_db.Info(ctx, user_key_, &info);
+    if (s.IsNotFound()) return {Status::RedisExecErr, errTSKeyNotFound};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = redis::MultiLen(24);
+    *output += redis::SimpleString("totalSamples");
+    *output += redis::Integer(info.total_samples);
+    *output += redis::SimpleString("memoryUsage");
+    *output += redis::Integer(info.memory_usage);
+    *output += redis::SimpleString("firstTimestamp");
+    *output += redis::Integer(info.first_timestamp);
+    *output += redis::SimpleString("lastTimestamp");
+    *output += redis::Integer(info.last_timestamp);
+    *output += redis::SimpleString("retentionTime");
+    *output += redis::Integer(info.metadata.retention_time);
+    *output += redis::SimpleString("chunkCount");
+    *output += redis::Integer(info.metadata.size);
+    *output += redis::SimpleString("chunkSize");
+    *output += redis::Integer(info.metadata.chunk_size);
+    *output += redis::SimpleString("chunkType");
+    *output += redis::SimpleString(FormatChunkTypeAsRedisReply(info.metadata.chunk_type));
+    *output += redis::SimpleString("duplicatePolicy");
+    *output += redis::SimpleString(FormatDuplicatePolicyAsRedisReply(info.metadata.duplicate_policy));
+    *output += redis::SimpleString("labels");
+    std::vector<std::string> labels_str;
+    labels_str.reserve(info.labels.size());
+    for (const auto &label : info.labels) {
+      auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
+      labels_str.push_back(str);
+    }
+    *output += redis::Array(labels_str);
+    *output += redis::SimpleString("sourceKey");
+    *output += info.metadata.source_key.empty() ? redis::NilString(redis::RESP::v3)
+                                                : redis::BulkString(info.metadata.source_key);
+    *output += redis::SimpleString("rules");
+    std::vector<std::string> rules_str;
+    rules_str.reserve(info.downstream_rules.size());
+    for (const auto &rule : info.downstream_rules) {
+      auto str = redis::Array({redis::BulkString(rule.first), redis::Integer(rule.second.bucket_duration),
+                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(rule.second.aggregator)),
+                               redis::Integer(rule.second.alignment)});
+      rules_str.push_back(str);
+    }
+    *output += redis::Array(rules_str);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+};
+
 class CommandTSAdd : public CommandTSCreateBase {
  public:
   CommandTSAdd() : CommandTSCreateBase(4, 0) {
@@ -324,6 +450,7 @@ class CommandTSMAdd : public Commander {
 
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1), );
+                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+                        MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1));
 
 }  // namespace redis

@@ -272,7 +272,7 @@ rocksdb::Status Set::Move(engine::Context &ctx, const Slice &src, const Slice &d
 
 rocksdb::Status Set::Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                           const std::string &member_prefix, std::vector<std::string> *members) {
-  return SubKeyScanner::Scan(ctx, kRedisSet, user_key, cursor, limit, member_prefix, members);
+  return SubKeyScanner::Scan(ctx, kRedisSet, user_key, cursor, limit, false, member_prefix, members);
 }
 
 /*

@@ -179,7 +179,7 @@ class SubKeyScanner : public redis::Database {
  public:
   explicit SubKeyScanner(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
   rocksdb::Status Scan(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
-                       uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
+                       uint64_t limit, bool no_values_, const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
 };
 

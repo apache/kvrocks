@@ -802,7 +802,7 @@ rocksdb::Status ZSet::Scan(engine::Context &ctx, const Slice &user_key, const st
                            std::vector<double> *scores) {
   if (scores != nullptr) {
     std::vector<std::string> values;
-    auto s = SubKeyScanner::Scan(ctx, kRedisZSet, user_key, cursor, limit, member_prefix, members, &values);
+    auto s = SubKeyScanner::Scan(ctx, kRedisZSet, user_key, cursor, limit, false, member_prefix, members, &values);
     if (!s.ok()) return s;
 
     for (const auto &value : values) {
@@ -811,7 +811,7 @@ rocksdb::Status ZSet::Scan(engine::Context &ctx, const Slice &user_key, const st
     }
     return s;
   }
-  return SubKeyScanner::Scan(ctx, kRedisZSet, user_key, cursor, limit, member_prefix, members);
+  return SubKeyScanner::Scan(ctx, kRedisZSet, user_key, cursor, limit, false, member_prefix, members);
 }
 
 rocksdb::Status ZSet::MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,

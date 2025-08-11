@@ -385,9 +385,9 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 }
 
 rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
-                           const std::string &field_prefix, std::vector<std::string> *fields,
+                           bool no_values_, const std::string &field_prefix, std::vector<std::string> *fields,
                            std::vector<std::string> *values) {
-  return SubKeyScanner::Scan(ctx, kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
+  return SubKeyScanner::Scan(ctx, kRedisHash, user_key, cursor, limit, no_values_, field_prefix, fields, values);
 }
 
 rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,

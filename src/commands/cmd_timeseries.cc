@@ -193,6 +193,7 @@ class CommandTSCreate : public CommandTSCreateBase {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     auto s = timeseries_db.Create(ctx, args_[1], getCreateOption());
+    if (!s.ok() && s.IsInvalidArgument()) return {Status::RedisExecErr, errKeyAlreadyExists};
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::RESP_OK;
     return Status::OK();

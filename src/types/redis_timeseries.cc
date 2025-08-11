@@ -119,16 +119,11 @@ rocksdb::Status TimeSeries::getTimeSeriesMetadata(engine::Context &ctx, const Sl
   return Database::GetMetadata(ctx, {kRedisTimeSeries}, ns_key, metadata);
 }
 
-rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key,
-                                                  TimeSeriesMetadata *metadata_out, const TSCreateOption *option) {
-  auto s = getTimeSeriesMetadata(ctx, ns_key, metadata_out);
-  if (s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-
+rocksdb::Status TimeSeries::createTimeSeries(engine::Context &ctx, const Slice &ns_key,
+                                             TimeSeriesMetadata *metadata_out, const TSCreateOption *option) {
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisTimeSeries, {"getOrCreateTimeSeries"});
-  s = batch->PutLogData(log_data.Encode());
+  WriteBatchLogData log_data(kRedisTimeSeries, {"createTimeSeries"});
+  auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   *metadata_out = CreateMetadataFromOption(option ? *option : TSCreateOption{});
@@ -142,6 +137,15 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key,
+                                                  TimeSeriesMetadata *metadata_out, const TSCreateOption *option) {
+  auto s = getTimeSeriesMetadata(ctx, ns_key, metadata_out);
+  if (s.ok()) {
+    return s;
+  }
+  return createTimeSeries(ctx, ns_key, metadata_out, option);
 }
 
 rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
@@ -164,11 +168,13 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   iter->SeekForPrev(end_key);
   TSChunkPtr latest_chunk;
   std::string latest_chunk_key, latest_chunk_value;
+  bool is_latest_chunk_created = false;
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     // Create a new empty chunk if there is no chunk
     auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
     latest_chunk_value = std::move(data_);
     latest_chunk = std::move(chunk_ptr_);
+    is_latest_chunk_created = true;
   } else {
     latest_chunk_key = iter->key().ToString();
     latest_chunk_value = iter->value().ToString();
@@ -232,18 +238,17 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   auto remained_samples = all_batch_slice.SliceByTimestamps(start_ts, TSSample::MAX_TIMESTAMP, true);
   uint64_t chunk_count = metadata.size;
   for (uint64_t first_ts = 0, last_ts = 0; remained_samples.GetValidCount(); first_ts = last_ts + 1) {
-    bool is_created = false;
     if (latest_chunk->GetCount() >= metadata.chunk_size) {
       auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
       latest_chunk_value = std::move(data_);
       latest_chunk = std::move(chunk_ptr_);
       latest_chunk_key.clear();
-      is_created = true;
+      is_latest_chunk_created = true;
     }
     auto remain = metadata.chunk_size - latest_chunk->GetCount();
     auto sample_slice = remained_samples.SliceByCount(first_ts, static_cast<int>(remain), &last_ts);
     if (sample_slice.GetValidCount() == 0) break;
-    if (is_created) {
+    if (is_latest_chunk_created) {
       chunk_count++;
     }
 
@@ -323,7 +328,11 @@ rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   TimeSeriesMetadata metadata;
-  return getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
+  auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+  if (s.ok()) {
+    return rocksdb::Status::InvalidArgument("key already exists");
+  }
+  return createTimeSeries(ctx, ns_key, &metadata, &option);
 }
 
 rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSSample sample,

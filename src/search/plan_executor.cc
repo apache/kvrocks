@@ -37,6 +37,7 @@
 #include "search/executors/topn_executor.h"
 #include "search/indexer.h"
 #include "search/ir_plan.h"
+#include "status.h"
 
 namespace kqir {
 
@@ -167,10 +168,20 @@ auto ExecutorContext::Retrieve(engine::Context &ctx, RowType &row, const FieldIn
     return iter->second;
   }
 
-  auto retriever = GET_OR_RET(
-      redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns));
+  auto s_retriever =
+      redis::FieldValueRetriever::Create(field->index->metadata.on_data_type, row.key, storage, field->index->ns);
+
+  if (s_retriever.Is<Status::NotFound>()) {
+    row.fields.emplace(field, kqir::Null{});
+    return kqir::Null{};
+  }
+  auto retriever = GET_OR_RET(std::move(s_retriever));
 
   auto s = retriever.Retrieve(ctx, field->name, field->metadata.get());
+  if (s.Is<Status::NotFound>()) {
+    row.fields.emplace(field, kqir::Null{});
+    return kqir::Null{};
+  }
   if (!s) return s;
 
   row.fields.emplace(field, *s);

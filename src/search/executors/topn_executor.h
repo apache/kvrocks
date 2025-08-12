@@ -58,6 +58,9 @@ struct TopNExecutor : ExecutorNode {
 
         auto get_order = [this](RowType &row) -> StatusOr<double> {
           auto order_val = GET_OR_RET(ctx->Retrieve(ctx->db_ctx, row, topn->order->field->info));
+          // TODO(twice): here we return NaN if this field is not found,
+          // but we should consider to just skip this row instead.
+          if (order_val.IsNull()) return std::nan("");
           CHECK(order_val.Is<kqir::Numeric>());
           return order_val.Get<kqir::Numeric>();
         };

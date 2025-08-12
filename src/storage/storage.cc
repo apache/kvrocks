@@ -194,7 +194,8 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.max_total_wal_size = static_cast<uint64_t>(config_->rocks_db.max_total_wal_size * MiB);
   options.listeners.emplace_back(new EventListener(this));
   options.dump_malloc_stats = config_->rocks_db.dump_malloc_stats;
-  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(rocksdb::Env::Default()));
+  sst_file_manager_ = std::shared_ptr<rocksdb::SstFileManager>(rocksdb::NewSstFileManager(
+      rocksdb::Env::Default(), nullptr, "", config_->rocks_db.sst_file_delete_rate_bytes_per_sec));
   options.sst_file_manager = sst_file_manager_;
   int64_t max_io_mb = kIORateLimitMaxMb;
   if (config_->max_io_mb > 0) max_io_mb = config_->max_io_mb;
@@ -207,7 +208,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.rate_limiter = rate_limiter_;
   options.delayed_write_rate = static_cast<uint64_t>(config_->rocks_db.delayed_write_rate);
   options.compaction_readahead_size = static_cast<size_t>(config_->rocks_db.compaction_readahead_size);
-  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger;
+  options.level0_slowdown_writes_trigger = config_->rocks_db.level0_slowdown_writes_trigger == 0
+                                               ? config_->rocks_db.level0_stop_writes_trigger
+                                               : config_->rocks_db.level0_slowdown_writes_trigger;
   options.level0_stop_writes_trigger = config_->rocks_db.level0_stop_writes_trigger;
   options.level0_file_num_compaction_trigger = config_->rocks_db.level0_file_num_compaction_trigger;
   options.max_bytes_for_level_base = config_->rocks_db.max_bytes_for_level_base;
@@ -223,8 +226,12 @@ rocksdb::Options Storage::InitRocksDBOptions() {
 }
 
 Status Storage::SetOptionForAllColumnFamilies(const std::string &key, const std::string &value) {
+  return SetOptionForAllColumnFamilies({{key, value}});
+}
+
+Status Storage::SetOptionForAllColumnFamilies(const std::unordered_map<std::string, std::string> &options_map) {
   for (auto &cf_handle : cf_handles_) {
-    auto s = db_->SetOptions(cf_handle, {{key, value}});
+    auto s = db_->SetOptions(cf_handle, options_map);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
   }
   return Status::OK();
@@ -343,7 +350,7 @@ Status Storage::Open(DBOpenMode mode) {
   rocksdb::BlockBasedTableOptions search_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions search_opts(options);
   search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(search_table_opts));
-  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>();
+  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>(this);
   search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&search_opts);
 
@@ -836,6 +843,8 @@ rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
   return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
+void Storage::FlushBlockCache() { shared_block_cache_->EraseUnRefEntries(); }
+
 Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {
   return applyWriteBatch(default_write_opts_, batch);
 }
@@ -920,6 +929,10 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   }
 
   return total_size;
+}
+
+void Storage::SetSstFileDeleteRateBytesPerSecond(int64_t delete_rate) {
+  sst_file_manager_->SetDeleteRateBytesPerSecond(delete_rate);
 }
 
 void Storage::CheckDBSizeLimit() {

@@ -163,18 +163,18 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
+  uint64_t chunk_count = metadata.size;
+
   // Get the latest chunk
   auto iter = util::UniqueIterator(ctx, read_options);
   iter->SeekForPrev(end_key);
   TSChunkPtr latest_chunk;
   std::string latest_chunk_key, latest_chunk_value;
-  bool is_latest_chunk_created = false;
   if (!iter->Valid() || !iter->key().starts_with(prefix)) {
     // Create a new empty chunk if there is no chunk
     auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
     latest_chunk_value = std::move(data_);
     latest_chunk = std::move(chunk_ptr_);
-    is_latest_chunk_created = true;
   } else {
     latest_chunk_key = iter->key().ToString();
     latest_chunk_value = iter->value().ToString();
@@ -221,50 +221,38 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
     if (sample_slice.GetValidCount() == 0) {
       continue;
     }
-    start_ts = end_ts;
-    auto new_data = chunk->UpsertSamples(sample_slice);
+    auto new_data_list = chunk->UpsertSampleAndSplit(sample_slice, metadata.chunk_size, false);
+    for (size_t i = 0; i < new_data_list.size(); i++) {
+      auto &new_data = new_data_list[i];
+      auto new_chunk = CreateTSChunkFromData(new_data);
+      auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
+      // Process samples older than the first chunk, should update the key
+      if (i == 0 && new_key != cur_chunk_key) {
+        s = batch->Delete(cur_chunk_key);
+        if (!s.ok()) return s;
+      }
+      s = batch->Put(new_key, new_data);
+      if (!s.ok()) return s;
+    }
+    chunk_count += new_data_list.size() - 1;
+  }
+
+  // Process samples added to latest chunk(unseal)
+  auto remained_samples = all_batch_slice.SliceByTimestamps(start_ts, TSSample::MAX_TIMESTAMP, true);
+
+  auto new_data_list = latest_chunk->UpsertSampleAndSplit(remained_samples, metadata.chunk_size, true);
+  for (size_t i = 0; i < new_data_list.size(); i++) {
+    auto &new_data = new_data_list[i];
     auto new_chunk = CreateTSChunkFromData(new_data);
     auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
-    // Process samples older than the first chunk, should update the key
-    if (new_key != cur_chunk_key) {
-      s = batch->Delete(cur_chunk_key);
+    if (i == 0 && new_key != latest_chunk_key) {
+      s = batch->Delete(latest_chunk_key);
       if (!s.ok()) return s;
     }
     s = batch->Put(new_key, new_data);
     if (!s.ok()) return s;
   }
-
-  // Process samples added to latest chunk(unseal)
-  auto remained_samples = all_batch_slice.SliceByTimestamps(start_ts, TSSample::MAX_TIMESTAMP, true);
-  uint64_t chunk_count = metadata.size;
-  for (uint64_t first_ts = 0, last_ts = 0; remained_samples.GetValidCount(); first_ts = last_ts + 1) {
-    if (latest_chunk->GetCount() >= metadata.chunk_size) {
-      auto [chunk_ptr_, data_] = CreateEmptyOwnedTSChunk();
-      latest_chunk_value = std::move(data_);
-      latest_chunk = std::move(chunk_ptr_);
-      latest_chunk_key.clear();
-      is_latest_chunk_created = true;
-    }
-    auto remain = metadata.chunk_size - latest_chunk->GetCount();
-    auto sample_slice = remained_samples.SliceByCount(first_ts, static_cast<int>(remain), &last_ts);
-    if (sample_slice.GetValidCount() == 0) break;
-    if (is_latest_chunk_created) {
-      chunk_count++;
-    }
-
-    auto new_chunk_data = latest_chunk->UpsertSamples(sample_slice);
-    auto new_chunk = CreateTSChunkFromData(new_chunk_data);
-    auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
-    if (!latest_chunk_key.empty() && new_key != latest_chunk_key) {
-      s = batch->Delete(latest_chunk_key);
-      if (!s.ok()) return s;
-    }
-    s = batch->Put(new_key, new_chunk_data);
-    latest_chunk_key = std::move(new_key);
-    latest_chunk_value = std::move(new_chunk_data);
-    latest_chunk = std::move(new_chunk);
-    if (!s.ok()) return s;
-  }
+  chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
   if (chunk_count != metadata.size) {
     metadata.size = chunk_count;
     std::string bytes;

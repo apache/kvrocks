@@ -406,6 +406,64 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
   return new_buffer;
 }
 
+std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t prefered_chunk_size,
+                                                             bool is_fix_split_mode) const {
+  auto whole_chunk_data = UpsertSamples(batch);
+  // Return empty if no changes
+  if (whole_chunk_data.empty()) {
+    return {};
+  }
+  auto whole_chunk = CreateTSChunkFromData(whole_chunk_data);
+
+  // Split
+  std::vector<size_t> split_size;
+  auto total_count = whole_chunk->GetCount();
+  if (is_fix_split_mode) {
+    // Fixed split
+    size_t remaining = total_count;
+    while (remaining > 0) {
+      auto size = std::min(remaining, prefered_chunk_size);
+      split_size.push_back(size);
+      remaining -= size;
+    }
+  } else if (total_count > 2 * prefered_chunk_size) {
+    // Equal split
+    auto split_count = total_count / prefered_chunk_size;
+    auto chunk_size = total_count / split_count;
+    auto remainder = total_count % split_count;
+    split_size.resize(split_count);
+    std::fill(split_size.begin(), split_size.end(), chunk_size);
+    for (uint32_t i = 0; i < remainder; ++i) {
+      split_size[i] += 1;
+    }
+  }
+  if (split_size.empty()) {
+    split_size.push_back(total_count);
+  }
+  // Return if only one chunk
+  if (split_size.size() == 1) {
+    return {std::move(whole_chunk_data)};
+  }
+
+  constexpr size_t header_size = TSChunk::MetaData::kEncodedSize;
+  const char* data_ptr = whole_chunk_data.data() + header_size;
+  std::vector<std::string> res;
+  for (size_t i = 0; i < split_size.size(); ++i) {
+    auto sample_bytes = split_size[i] * sizeof(TSSample);
+    const size_t required_size = header_size + sample_bytes;
+    std::string buffer;
+    buffer.resize(required_size);
+    auto metadata = TSChunk::MetaData(false, 0);
+    metadata.count = split_size[i];
+    auto str = metadata.Encode();
+    EncodeBuffer(buffer.data(), str);
+    std::memcpy(buffer.data() + header_size, data_ptr, sample_bytes);
+    data_ptr += sample_bytes;
+    res.push_back(std::move(buffer));
+  }
+  return res;
+}
+
 std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) const {
   if (from > to) {
     return "";

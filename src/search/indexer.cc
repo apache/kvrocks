@@ -44,7 +44,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     HashMetadata metadata(false);
 
     auto s = db.GetMetadata(ctx, ns_key, &metadata);
-    if (!s.ok()) return {Status::NotOK, s.ToString()};
+    if (!s.ok()) return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
     return FieldValueRetriever(db, metadata, key);
   } else if (type == IndexOnDataType::JSON) {
     Json db(storage, ns);
@@ -52,7 +52,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     JsonMetadata metadata(false);
     JsonValue value;
     auto s = db.read(ctx, ns_key, &metadata, &value);
-    if (!s.ok()) return {Status::NotOK, s.ToString()};
+    if (!s.ok()) return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
     unreachable();

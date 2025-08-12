@@ -30,11 +30,16 @@ option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled"
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
-option(ENABLE_IPO "enable interprocedural optimization" ON)
+option(ENABLE_LTO "enable link-time optimization" ON)
 set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrace (libbacktrace, libdwarf, or empty)")
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 # TODO: set ENABLE_NEW_ENCODING to ON when we are ready
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
+
+# to save build time in debug mode
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(ENABLE_LTO OFF)
+endif()
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -136,7 +141,7 @@ endif()
 
 if (CMAKE_HOST_APPLE)
     set(DISABLE_JEMALLOC ON)
-    set(ENABLE_IPO OFF)
+    set(ENABLE_LTO OFF)
 endif ()
 
 if(NOT DISABLE_JEMALLOC)
@@ -271,10 +276,10 @@ endif()
 
 # disable LTO on GCC <= 9 due to an ICE
 if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
-    set(ENABLE_IPO OFF)
+    set(ENABLE_LTO OFF)
 endif()
 
-if(ENABLE_IPO)
+if(ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_result OUTPUT ipo_output LANGUAGES CXX)
 
@@ -284,7 +289,7 @@ if(ENABLE_IPO)
             target_link_libraries(kvrocks_objs PUBLIC "-fuse-ld=lld")
         endif()
     else()
-        message(WARNING "IPO is not supported: ${ipo_output}")
+        message(WARNING "LTO is not supported: ${ipo_output}")
     endif()
 endif()
 

@@ -99,6 +99,8 @@ struct Transformer : ir::TreeTransformer {
             tag_str = GET_OR_RET(UnescapeString(tag->string()));
           } else if (Is<Param>(tag)) {
             tag_str = GET_OR_RET(GetParam(tag));
+          } else if (Is<Number>(tag)) {
+            tag_str = tag->string();
           } else {
             return {Status::NotOK, "encountered invalid tag"};
           }

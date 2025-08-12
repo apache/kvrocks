@@ -31,6 +31,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <shared_mutex>
 #include <string>
@@ -221,6 +222,7 @@ class Storage {
   void SetBlobDB(rocksdb::ColumnFamilyOptions *cf_options);
   rocksdb::Options InitRocksDBOptions();
   Status SetOptionForAllColumnFamilies(const std::string &key, const std::string &value);
+  Status SetOptionForAllColumnFamilies(const std::unordered_map<std::string, std::string> &options_map);
   Status SetDBOption(const std::string &key, const std::string &value);
   Status CreateColumnFamilies(const rocksdb::Options &options);
   // The sequence_number will be pointed to the value of the sequence number in range of DB,
@@ -274,6 +276,7 @@ class Storage {
                                               const rocksdb::FlushOptions &options);
   [[nodiscard]] StatusOr<int> IngestSST(const std::string &folder,
                                         const rocksdb::IngestExternalFileOptions &ingest_options);
+  void FlushBlockCache();
 
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
@@ -284,6 +287,7 @@ class Storage {
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
+  void SetSstFileDeleteRateBytesPerSecond(int64_t delete_rate);
   void CheckDBSizeLimit();
   bool ReachedDBSizeLimit() { return db_size_limit_reached_; }
   void SetDBSizeLimit(bool limit) { db_size_limit_reached_ = limit; }

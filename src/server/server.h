@@ -43,6 +43,7 @@
 #include "cluster/slot_import.h"
 #include "cluster/slot_migrate.h"
 #include "commands/commander.h"
+#include "common/time_util.h"
 #include "lua.hpp"
 #include "memory_profiler.h"
 #include "namespace.h"
@@ -229,11 +230,20 @@ class Server {
   void WakeupBlockingConns(const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
+  // WAIT command infrastructure
+  void BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas);
+  void WakeupWaitConnections(rocksdb::SequenceNumber seq);
+  void CleanupWaitConnection(redis::Connection *conn);
+
+  // Helper methods for WAIT command
+  size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
+  // Return the largest wait_context.target_seq that can wakeup given the seq.
+  // If no wait_context can wakeup, return 0.
+  rocksdb::SequenceNumber LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq);
+
   size_t GetReplicaCount() {
-    slave_threads_mu_.lock();
-    auto replica_count = slave_threads_.size();
-    slave_threads_mu_.unlock();
-    return replica_count;
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    return slave_threads_.size();
   }
 
   std::string GetLastRandomKeyCursor();
@@ -371,7 +381,7 @@ class Server {
   std::atomic<uint64_t> total_clients_{0};
 
   // slave
-  std::mutex slave_threads_mu_;
+  std::shared_mutex slave_threads_mu_;
   std::list<std::unique_ptr<FeedSlaveThread>> slave_threads_;
   std::atomic<int> fetch_file_threads_num_ = 0;
 
@@ -403,6 +413,18 @@ class Server {
 
   std::mutex blocked_stream_consumers_mu_;
   std::map<std::string, std::set<std::shared_ptr<StreamConsumer>>> blocked_stream_consumers_;
+
+  // WAIT command blocking infrastructure
+  struct WaitContext {
+    redis::Connection *conn;
+    rocksdb::SequenceNumber target_seq;
+    uint64_t num_replicas;
+
+    WaitContext(redis::Connection *c, rocksdb::SequenceNumber seq, uint64_t replicas)
+        : conn(c), target_seq(seq), num_replicas(replicas) {}
+  };
+  std::multimap<rocksdb::SequenceNumber, WaitContext> wait_contexts_;
+  std::shared_mutex wait_contexts_mu_;
 
   // threads
   std::shared_mutex works_concurrency_rw_lock_;

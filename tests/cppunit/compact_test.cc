@@ -20,8 +20,11 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <filesystem>
 
+#include "search/index_info.h"
+#include "search/indexer.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
@@ -126,6 +129,76 @@ TEST(Compact, Filter) {
   }
 
   db->ReleaseSnapshot(read_options.snapshot);
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST(Compact, SearchFilter) {
+  Config config;
+  config.db_dir = "compactdb";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  uint64_t ret = 0;
+  std::string ns = "test_compact_search";
+  auto hash = std::make_unique<redis::Hash>(storage.get(), ns);
+
+  redis::IndexMetadata hash_field_meta;
+  hash_field_meta.on_data_type = redis::IndexOnDataType::HASH;
+
+  auto hash_info = std::make_unique<kqir::IndexInfo>("hashtest", hash_field_meta, ns);
+  hash_info->Add(kqir::FieldInfo("f1", std::make_unique<redis::TagFieldMetadata>()));
+  hash_info->Add(kqir::FieldInfo("f2", std::make_unique<redis::NumericFieldMetadata>()));
+
+  redis::GlobalIndexer indexer(storage.get());
+  kqir::IndexMap map;
+  map.Insert(std::move(hash_info));
+
+  auto hash_updater = std::make_unique<redis::IndexUpdater>(map.at(ComposeNamespaceKey(ns, "hashtest", false)).get());
+  indexer.Add(std::move(hash_updater));
+
+  engine::Context ctx(storage.get());
+  std::string hash_key = "hash_key";
+
+  auto sr = indexer.Record(ctx, hash_key, ns);
+  ASSERT_EQ(sr.Msg(), Status::ok_msg);
+  auto record = *sr;
+
+  hash->Set(ctx, hash_key, "f1", "hello", &ret);
+  hash->Set(ctx, hash_key, "f2", "233", &ret);
+
+  auto su = indexer.Update(ctx, record);
+  ASSERT_TRUE(su);
+
+  auto tag_search_key = redis::SearchKey(ns, "hashtest", "f1").ConstructTagFieldData("hello", hash_key);
+  std::string search_value;
+  auto sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), tag_search_key,
+                         &search_value);
+  ASSERT_TRUE(sg.ok());
+
+  auto num_search_key = redis::SearchKey(ns, "hashtest", "f2").ConstructNumericFieldData(233, hash_key);
+  sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), num_search_key,
+                    &search_value);
+  ASSERT_TRUE(sg.ok());
+
+  auto st = hash->Expire(ctx, hash_key, 1);
+
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+
+  sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), tag_search_key,
+                    &search_value);
+  ASSERT_TRUE(sg.IsNotFound());
+
+  sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), num_search_key,
+                    &search_value);
+  ASSERT_TRUE(sg.IsNotFound());
+
   std::error_code ec;
   std::filesystem::remove_all(config.db_dir, ec);
   if (ec) {

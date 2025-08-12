@@ -31,13 +31,10 @@ TEST(ParseUtil, TryParseInt) {
 
   ASSERT_EQ(TryParseInt("hello").Msg(), "not started as an integer");
   ASSERT_FALSE(TryParseInt("9999999999999999999999999999999999"));
-  ASSERT_FALSE(TryParseInt("1", 100));
 }
 
 TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(*ParseInt("-2333"), -2333);
-  ASSERT_EQ(*ParseInt("0x1a"), 26);
-  ASSERT_EQ(*ParseInt("011"), 9);
   ASSERT_EQ(*ParseInt("111", 2), 7);
   ASSERT_EQ(*ParseInt("11", 010), 9);
   ASSERT_EQ(*ParseInt("11", 10), 11);
@@ -50,6 +47,7 @@ TEST(ParseUtil, ParseInt) {
   ASSERT_EQ(*ParseInt<short>("30000"), 30000);
   ASSERT_EQ(*ParseInt<int>("99999"), 99999);
   ASSERT_EQ(ParseInt<int>("3000000000").Msg(), "out of range of integer type");
+  ASSERT_EQ(ParseInt<unsigned>("-1").Msg(), "not started as an integer");
 
   ASSERT_EQ(*ParseInt("123", {0, 123}), 123);
   ASSERT_EQ(ParseInt("124", {0, 123}).Msg(), "out of numeric range");

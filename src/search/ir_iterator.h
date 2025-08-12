@@ -49,7 +49,7 @@ struct NodeIterator {
 
   template <typename Iterator>
   static auto CastToNodeIter(Iterator *iter) {
-    auto res __attribute__((__may_alias__)) = reinterpret_cast<std::vector<std::unique_ptr<Node>>::iterator *>(iter);
+    auto res [[gnu::may_alias]] = reinterpret_cast<std::vector<std::unique_ptr<Node>>::iterator *>(iter);
     return res;
   }
 

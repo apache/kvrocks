@@ -222,7 +222,7 @@ bool Metadata::operator==(const Metadata &that) const {
 
 RedisType Metadata::Type() const { return static_cast<RedisType>(flags & METADATA_TYPE_MASK); }
 
-const std::string &Metadata::TypeName() const { return RedisTypeNames[Type()]; }
+std::string_view Metadata::TypeName() const { return RedisTypeNames[Type()]; }
 
 size_t Metadata::GetOffsetAfterExpire(uint8_t flags) {
   if (flags & METADATA_64BIT_ENCODING_MASK) {
@@ -334,7 +334,7 @@ bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() 
 
 bool Metadata::IsEmptyableType() const {
   return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisTDigest;
+         Type() == kRedisTDigest || Type() == kRedisTimeSeries;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -534,6 +534,36 @@ rocksdb::Status TDigestMetadata::Decode(Slice *input) {
   GetDouble(input, &maximum);
   GetFixed64(input, &total_observations);
   GetFixed64(input, &merge_times);
+
+  return rocksdb::Status::OK();
+}
+
+void TimeSeriesMetadata::SetSourceKey(Slice key) { source_key = key.ToString(); }
+
+void TimeSeriesMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  PutFixed64(dst, retention_time);
+  PutFixed64(dst, chunk_size);
+  PutFixed8(dst, static_cast<uint8_t>(chunk_type));
+  PutFixed8(dst, static_cast<uint8_t>(duplicate_policy));
+  PutSizedString(dst, source_key);
+}
+
+rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+  if (input->size() < sizeof(uint64_t) * 2 + sizeof(uint8_t) * 2 + sizeof(uint32_t)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed64(input, &retention_time);
+  GetFixed64(input, &chunk_size);
+  GetFixed8(input, reinterpret_cast<uint8_t *>(&chunk_type));
+  GetFixed8(input, reinterpret_cast<uint8_t *>(&duplicate_policy));
+  Slice source_key_slice;
+  GetSizedString(input, &source_key_slice);
+  source_key = source_key_slice.ToString();
 
   return rocksdb::Status::OK();
 }

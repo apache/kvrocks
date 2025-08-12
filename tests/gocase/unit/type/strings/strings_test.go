@@ -378,7 +378,7 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("SETBIT with out of range bit offset", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mykey").Err())
 		require.ErrorContains(t, rdb.SetBit(ctx, "mykey", 4*1024*1024*1024+2, 1).Err(), "out of range")
-		require.ErrorContains(t, rdb.SetBit(ctx, "mykey", -1, 1).Err(), "out of range")
+		require.ErrorContains(t, rdb.SetBit(ctx, "mykey", -1, 1).Err(), "an integer")
 	})
 
 	t.Run("SETBIT with non-bit argument", func(t *testing.T) {

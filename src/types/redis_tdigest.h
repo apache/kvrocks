@@ -44,6 +44,11 @@ struct TDigestCreateOptions {
   uint32_t compression;
 };
 
+struct TDigestMergeOptions {
+  uint32_t compression = 0;
+  bool override_flag = false;
+};
+
 struct TDigestQuantitleResult {
   std::optional<std::vector<double>> quantiles;
 };
@@ -69,6 +74,10 @@ class TDigest : public SubKeyScanner {
                            TDigestQuantitleResult* result);
 
   rocksdb::Status Reset(engine::Context& ctx, const Slice& digest_name);
+
+  rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<std::string>& source_digests,
+                        const TDigestMergeOptions& options);
+
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
 
  private:
@@ -110,7 +119,8 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status mergeCurrentBuffer(engine::Context& ctx, const std::string& ns_key,
                                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,
-                                     const std::vector<double>* additional_buffer = nullptr);
+                                     const std::vector<double>* additional_buffer = nullptr,
+                                     std::vector<Centroid>* dump_centroids = nullptr);
   std::string internalBufferKey(const std::string& ns_key, const TDigestMetadata& metadata) const;
   std::string internalKeyFromCentroid(const std::string& ns_key, const TDigestMetadata& metadata,
                                       const Centroid& centroid, uint32_t seq) const;

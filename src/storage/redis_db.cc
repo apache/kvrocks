@@ -546,9 +546,8 @@ rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key)
 }
 
 rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const Slice &user_key,
-                                    const std::string &cursor, uint64_t limit,
-                                    const std::string &subkey_prefix, std::vector<std::string> *keys,
-                                    std::vector<std::string> *values) {
+                                    const std::string &cursor, uint64_t limit, const std::string &subkey_prefix,
+                                    std::vector<std::string> *keys, std::vector<std::string> *values) {
   uint64_t cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
   Metadata metadata(type, false);

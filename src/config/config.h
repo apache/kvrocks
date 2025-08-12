@@ -120,6 +120,8 @@ struct Config {
   int slave_priority = 100;
   int replication_connect_timeout_ms = 3100;
   int replication_recv_timeout_ms = 3200;
+  int max_replication_delay_bytes = 16 * 1024;  // 16KB default
+  int max_replication_delay_updates = 16;       // 16 updates default
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
@@ -238,6 +240,7 @@ struct Config {
     bool avoid_unnecessary_blocking_io = true;
     bool partition_filters;
     int64_t max_compaction_bytes;
+    int64_t sst_file_delete_rate_bytes_per_sec = 0;
 
     struct WriteOptions {
       bool sync;

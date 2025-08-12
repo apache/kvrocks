@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/redis/go-redis/v9"
@@ -204,5 +205,52 @@ func TestSearch(t *testing.T) {
 
 		srv.Restart()
 		verify(t)
+	})
+
+	t.Run("FT.SEARCH with expired keys", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx_expired", "ON", "HASH", "PREFIX", "1", "test_expired:", "SCHEMA", "a", "TAG", "b", "NUMERIC").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "test_expired:k1", "a", "x,y", "b", "11").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "test_expired:k2", "a", "x,z", "b", "22").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "test_expired:k3", "a", "y,z", "b", "33").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "test_expired:k4", "a", "x,y,z", "b", "44").Err())
+
+		res := rdb.Do(ctx, "FT.SEARCHSQL", "select * from testidx_expired where a hastag \"z\" and b < 40")
+		require.NoError(t, res.Err())
+		// result should be [2 test_expired:k2 [a x,z b 22] test_expired:k3 [a y,z b 33]]
+		require.Equal(t, 5, len(res.Val().([]interface{})))
+		require.Equal(t, int64(2), res.Val().([]interface{})[0])
+		require.Equal(t, "test_expired:k2", res.Val().([]interface{})[1])
+		require.Equal(t, "test_expired:k3", res.Val().([]interface{})[3])
+
+		require.NoError(t, rdb.Do(ctx, "EXPIRE", "test_expired:k2", 1).Err())
+		time.Sleep(time.Millisecond * 1500) // wait for the key to expire
+
+		res = rdb.Do(ctx, "FT.SEARCHSQL", "select * from testidx_expired where a hastag \"z\" and b < 40")
+		require.NoError(t, res.Err())
+		// result should be [1 test_expired:k3 [a y,z b 33]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "test_expired:k3", res.Val().([]interface{})[1])
+	})
+}
+
+func TestSearchTag(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("FT.SEARCH with number literal tags", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx_number", "ON", "HASH", "PREFIX", "1", "testidx_number:", "SCHEMA", "a", "TAG").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_number:k1", "a", "3.1415926").Err())
+
+		res := rdb.Do(ctx, "FT.SEARCH", "testidx_number", `@a:{3.1415926}`)
+		require.NoError(t, res.Err())
+		// result should be [1 testidx_number:k1 [a 3.1415926]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "testidx_number:k1", res.Val().([]interface{})[1])
 	})
 }

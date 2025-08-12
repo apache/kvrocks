@@ -361,6 +361,10 @@ class CommandSetEX : public Commander {
     redis::String string_db(srv->storage, conn->GetNamespace());
 
     auto s = string_db.SetEX(ctx, args_[1], args_[3], expire_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
     *output = redis::RESP_OK;
     return Status::OK();
   }
@@ -388,6 +392,10 @@ class CommandPSetEX : public Commander {
     redis::String string_db(srv->storage, conn->GetNamespace());
 
     auto s = string_db.SetEX(ctx, args_[1], args_[3], expire_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
     *output = redis::RESP_OK;
     return Status::OK();
   }

@@ -23,6 +23,8 @@
 
 #include "command_parser.h"
 #include "commander.h"
+#include "commands/error_constants.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "status.h"
@@ -32,6 +34,7 @@
 namespace redis {
 namespace {
 constexpr auto kCompressionArg = "compression";
+constexpr auto kOverrideArg = "override";
 
 constexpr auto kInfoCompression = "Compression";
 constexpr auto kInfoCapacity = "Capacity";
@@ -281,11 +284,92 @@ class CommandTDigestQuantile : public Commander {
   std::string key_name_;
   std::vector<double> quantiles_;
 };
+
+class CommandTDigestMerge : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    dest_key_ = GET_OR_RET(parser.TakeStr());
+    auto numkeys = parser.TakeInt();
+    if (!numkeys) {
+      return {Status::RedisParseErr, errParsingNumkeys};
+    }
+
+    if (*numkeys <= 0) {
+      return {Status::RedisParseErr, errNumkeysMustBePositive};
+    }
+
+    if (static_cast<int64_t>(args.size()) < (3 + *numkeys)) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    source_keys_.reserve(*numkeys);
+
+    for (auto i = 3; i < (3 + *numkeys); i++) {
+      auto src_digest = GET_OR_RET(parser.TakeStr());
+      source_keys_.emplace_back(std::move(src_digest));
+    }
+
+    while (parser.Good()) {
+      // more arguments than expected compression and override
+      if (options_.compression > 0 && options_.override_flag) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      if (parser.EatEqICase(kCompressionArg)) {
+        // compression already set or without a compression value
+        if (options_.compression > 0 || !parser.Good()) {
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+
+        if (auto compression = parser.TakeInt<uint32_t>(); !compression) {
+          return {Status::RedisParseErr, errParseCompression};
+        } else if (*compression <= 0 || *compression > kTDigestMaxCompression) {
+          return {Status::RedisParseErr, errCompressionOutOfRange};
+        } else {
+          options_.compression = *compression;
+        }
+      }
+
+      if (parser.EatEqICase(kOverrideArg)) {
+        if (options_.override_flag) {  // override already set
+          return {Status::RedisParseErr, errWrongNumOfArguments};
+        }
+        options_.override_flag = true;
+      } else {
+        return {Status::RedisParseErr, errWrongKeyword};
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    auto s = tdigest.Merge(ctx, dest_key_, source_keys_, options_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.IsNotFound() ? errKeyNotFound : s.ToString()};
+    }
+    *output = redis::RESP_OK;
+    return Status::OK();
+  }
+
+ private:
+  std::string dest_key_;
+  std::vector<std::string> source_keys_;
+  TDigestMergeOptions options_;
+};
+
+std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
+  auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
+  return {{1, 1, 1}, {3, 2 + numkeys, 1}};
+}
+
 REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestInfo>("tdigest.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
 }  // namespace redis

@@ -546,7 +546,7 @@ rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key)
 }
 
 rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const Slice &user_key,
-                                    const std::string &cursor, uint64_t limit, bool no_values_,
+                                    const std::string &cursor, uint64_t limit,
                                     const std::string &subkey_prefix, std::vector<std::string> *keys,
                                     std::vector<std::string> *values) {
   uint64_t cnt = 0;
@@ -576,10 +576,8 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     keys->emplace_back(ikey.GetSubKey().ToString());
-    if (!no_values_) {
-      if (values != nullptr) {
-        values->emplace_back(iter->value().ToString());
-      }
+    if (values != nullptr) {
+      values->emplace_back(iter->value().ToString());
     }
     cnt++;
     if (limit > 0 && cnt >= limit) {

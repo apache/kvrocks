@@ -171,7 +171,7 @@ class TSChunk {
   // Split chunk and return new chunk. There two split modes:
   // 1. Fix split mode: used for unsealed chunk. 2. Equal split mode: used for sealed chunk.
   // Returns empty if no changes
-  virtual std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t prefered_chunk_size,
+  virtual std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
                                                         bool is_fix_split_mode) const = 0;
 
   // Delete samples in [from, to] timestamp range
@@ -197,7 +197,7 @@ class UncompTSChunk : public TSChunk {
   uint64_t GetLastTimestamp() const override;
 
   std::string UpsertSamples(SampleBatchSlice samples) const override;
-  std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t prefered_chunk_size,
+  std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
                                                 bool is_fix_split_mode) const override;
   std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;

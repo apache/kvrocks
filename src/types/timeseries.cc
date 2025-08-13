@@ -406,7 +406,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
   return new_buffer;
 }
 
-std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t prefered_chunk_size,
+std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
                                                              bool is_fix_split_mode) const {
   auto whole_chunk_data = UpsertSamples(batch);
   // Return empty if no changes
@@ -422,13 +422,13 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
     // Fixed split
     size_t remaining = total_count;
     while (remaining > 0) {
-      auto size = std::min(remaining, prefered_chunk_size);
+      auto size = std::min(remaining, preferred_chunk_size);
       split_size.push_back(size);
       remaining -= size;
     }
-  } else if (total_count > 2 * prefered_chunk_size) {
+  } else if (total_count > 2 * preferred_chunk_size) {
     // Equal split
-    auto split_count = total_count / prefered_chunk_size;
+    auto split_count = total_count / preferred_chunk_size;
     auto chunk_size = total_count / split_count;
     auto remainder = total_count % split_count;
     split_size.resize(split_count);

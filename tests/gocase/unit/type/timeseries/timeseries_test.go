@@ -144,4 +144,53 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.Contains(t, res[0], "the key is not a TSDB key")
 		assert.Equal(t, res[1], int64(1000))
 	})
+
+	t.Run("TS.RANGE Basic Query", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())
+		// Add sample data points
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", key, "1000", "12.3").Val())
+		require.Equal(t, int64(2000), rdb.Do(ctx, "ts.add", key, "2000", "13.4").Val())
+		require.Equal(t, int64(3000), rdb.Do(ctx, "ts.add", key, "3000", "14.5").Val())
+		
+		// Query full range
+		res := rdb.Do(ctx, "ts.range", key, "-", "+").Val()
+		assert.Len(t, res, 3)
+		assert.Equal(t, []interface{}{
+			[]interface{}{int64(1000), 12.3},
+			[]interface{}{int64(2000), 13.4},
+			[]interface{}{int64(3000), 14.5},
+		}, res)
+	})
+
+	t.Run("TS.RANGE Invalid Timestamp", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "ts.range", key, "abc", "1000").Err(), "wrong fromTimestamp")
+		require.ErrorContains(t, rdb.Do(ctx, "ts.range", key, "1000", "xyz").Err(), "wrong toTimestamp")
+	})
+
+	t.Run("TS.RANGE No Data", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())
+		res := rdb.Do(ctx, "ts.range", key, "0", "+").Val().([]interface{})
+		assert.Empty(t, res)
+	})
+
+	// t.Run("TS.RANGE Filter By TS", func(t *testing.T) {
+	// 	require.NoError(t, rdb.Del(ctx, key).Err())
+	// 	require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())
+	// 	require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", key, "1000", "12.3").Val())
+	// 	require.Equal(t, int64(2000), rdb.Do(ctx, "ts.add", key, "2000", "13.4").Val())
+	// 	require.Equal(t, int64(3000), rdb.Do(ctx, "ts.add", key, "3000", "14.5").Val())
+		
+	// 	// Filter by specific timestamps
+	// 	res := rdb.Do(ctx, "ts.range", key, "0", "+", "FILTER_BY_TS", "1000", "3000").Val().([]interface{})
+	// 	assert.Len(t, res, 2)
+	// 	assert.Equal(t, []interface{}{int64(1000), "12.3", int64(3000), "14.5"}, res)
+	// })
+
+	t.Run("TS.RANGE Nonexistent Key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "nonexistent").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "ts.range", "nonexistent", "-", "+").Err(), "key does not exist")
+	})
 }

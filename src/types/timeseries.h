@@ -42,6 +42,7 @@ struct TSSample {
   double v;
 
   static constexpr uint64_t MAX_TIMESTAMP = std::numeric_limits<uint64_t>::max();
+  static constexpr double NAN_VALUE = std::numeric_limits<double>::quiet_NaN();
 
   // Custom comparison operator for sorting by ts
   bool operator<(const TSSample& other) const { return ts < other.ts; }

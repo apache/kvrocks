@@ -359,4 +359,70 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                                  std::vector<TSSample> *res) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s;
+  }
+  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  // Get the latest chunk
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    return rocksdb::Status::OK();
+  }
+  auto chunk = CreateTSChunkFromData(iter->value());
+  uint64_t last_timestamp = chunk->GetLastTimestamp();
+  uint64_t retention_bound = (metadata.retention_time == 0 || last_timestamp <= metadata.retention_time)
+                                 ? 0
+                                 : last_timestamp - metadata.retention_time;
+  uint64_t start_timestamp = std::max(retention_bound, option.start_ts);
+  uint64_t end_timestamp = std::min(last_timestamp, option.end_ts);
+
+  // Update iterator options
+  auto start_key = internalKeyFromChunkID(ns_key, metadata, start_timestamp);
+  end_key = internalKeyFromChunkID(ns_key, metadata, end_timestamp);
+  upper_bound = Slice(end_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  iter = util::UniqueIterator(ctx, read_options);
+
+  iter->SeekForPrev(start_key);
+  if (!iter->Valid()) {
+    iter->Seek(start_key);
+  } else if (!iter->key().starts_with(start_key)) {
+    iter->Next();
+  }
+  if (iter->Valid()) {
+    chunk = CreateTSChunkFromData(iter->value());
+    auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
+    auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
+    res->reserve(estimate_chunks * metadata.chunk_size);
+  }
+  for (; iter->Valid(); iter->Next()) {
+    chunk = CreateTSChunkFromData(iter->value());
+    auto it = chunk->CreateIterator();
+    while (it->HasNext()) {
+      auto sample = it->Next().value();
+      if (sample->ts >= start_timestamp && sample->ts <= end_timestamp) {
+        res->push_back(*sample);
+      }
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

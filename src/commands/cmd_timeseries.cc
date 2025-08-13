@@ -51,6 +51,13 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   return "";
 }
 
+std::string FormatTSSampleAsRedisReply(TSSample sample) {
+  std::string res = redis::MultiLen(2);
+  res += redis::Integer(sample.ts);
+  res += redis::Double(redis::RESP::v3, sample.v);
+  return res;
+}
+
 }  // namespace
 
 namespace redis {
@@ -322,8 +329,188 @@ class CommandTSMAdd : public Commander {
   std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
 };
 
+class CommandTSRangeBase : public KeywordCommandBase {
+ public:
+  CommandTSRangeBase(size_t skip_num, size_t tail_skip_num)
+      : KeywordCommandBase(skip_num + 2, tail_skip_num), skip_num_(skip_num) {
+    registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser); });
+    registerHandler("FILTER_BY_TS", [this](TSOptionsParser &parser) { return handleFilterByTS(parser); });
+    registerHandler("FILTER_BY_VALUE", [this](TSOptionsParser &parser) { return handleFilterByValue(parser); });
+    registerHandler("COUNT", [this](TSOptionsParser &parser) { return handleCount(parser); });
+    registerHandler("ALIGN", [this](TSOptionsParser &parser) { return handleAlign(parser); });
+    registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser); });
+    registerHandler("BUCKETTIMESTAMP", [this](TSOptionsParser &parser) { return handleBucketTimestamp(parser); });
+    registerHandler("EMPTY", [this](TSOptionsParser &parser) { return handleEmpty(parser); });
+  }
+
+  Status Parse(const std::vector<std::string> &args) override {
+    TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)), args.end());
+    // Parse start timestamp
+    auto start_ts = parser.TakeInt<uint64_t>();
+    if (!start_ts.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      option_.start_ts = start_ts.GetValue();
+    }
+
+    // Parse end timestamp
+    auto end_ts = parser.TakeInt<uint64_t>();
+    if (!end_ts.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      option_.end_ts = end_ts.GetValue();
+    }
+
+    return Status::OK();
+  }
+
+  const TSRangeOption &getRangeOption() const { return option_; }
+
+ private:
+  TSRangeOption option_;
+  size_t skip_num_;
+
+  Status handleLatest([[maybe_unused]] TSOptionsParser &parser) {
+    option_.is_return_latest = true;
+    return Status::OK();
+  }
+
+  Status handleFilterByTS(TSOptionsParser &parser) {
+    option_.filter_by_ts.clear();
+    while (parser.Good()) {
+      auto ts = parser.TakeInt<uint64_t>();
+      if (!ts.IsOK()) break;
+      option_.filter_by_ts.push_back(ts.GetValue());
+    }
+    return Status::OK();
+  }
+
+  Status handleFilterByValue(TSOptionsParser &parser) {
+    auto min = parser.TakeFloat<double>();
+    auto max = parser.TakeFloat<double>();
+    if (!min.IsOK() || !max.IsOK()) {
+      return {Status::RedisParseErr, "Invalid min or max value"};
+    }
+    option_.filter_by_value = std::make_optional(std::make_pair(min.GetValue(), max.GetValue()));
+    return Status::OK();
+  }
+
+  Status handleCount(TSOptionsParser &parser) {
+    auto count = parser.TakeInt<uint64_t>();
+    if (!count.IsOK()) {
+      return {Status::RedisParseErr, "Invalid count limit"};
+    }
+    option_.count_limit = count.GetValue();
+    return Status::OK();
+  }
+
+  Status handleAlign(TSOptionsParser &parser) {
+    auto align = parser.TakeInt<uint64_t>();
+    if (!align.IsOK()) {
+      return {Status::RedisParseErr, "Invalid align value"};
+    }
+    option_.align = align.GetValue();
+    return Status::OK();
+  }
+
+  Status handleAggregation(TSOptionsParser &parser) {
+    if (parser.EatEqICase("AVG")) {
+      option_.aggregator = TSAggregatorType::AVG;
+    } else if (parser.EatEqICase("SUM")) {
+      option_.aggregator = TSAggregatorType::SUM;
+    } else if (parser.EatEqICase("MIN")) {
+      option_.aggregator = TSAggregatorType::MIN;
+    } else if (parser.EatEqICase("MAX")) {
+      option_.aggregator = TSAggregatorType::MAX;
+    } else if (parser.EatEqICase("RANGE")) {
+      option_.aggregator = TSAggregatorType::RANGE;
+    } else if (parser.EatEqICase("COUNT")) {
+      option_.aggregator = TSAggregatorType::COUNT;
+    } else if (parser.EatEqICase("FIRST")) {
+      option_.aggregator = TSAggregatorType::FIRST;
+    } else if (parser.EatEqICase("LAST")) {
+      option_.aggregator = TSAggregatorType::LAST;
+    } else if (parser.EatEqICase("STD.P")) {
+      option_.aggregator = TSAggregatorType::STD_P;
+    } else if (parser.EatEqICase("STD.S")) {
+      option_.aggregator = TSAggregatorType::STD_S;
+    } else if (parser.EatEqICase("VAR.P")) {
+      option_.aggregator = TSAggregatorType::VAR_P;
+    } else if (parser.EatEqICase("VAR.S")) {
+      option_.aggregator = TSAggregatorType::VAR_S;
+    } else {
+      return {Status::RedisParseErr, "Invalid aggregator type"};
+    }
+
+    auto duration = parser.TakeInt<uint64_t>();
+    if (!duration.IsOK()) {
+      return {Status::RedisParseErr, "Invalid bucket duration"};
+    }
+    option_.bucket_duration = duration.GetValue();
+    return Status::OK();
+  }
+
+  Status handleBucketTimestamp(TSOptionsParser &parser) {
+    if (parser.EatEqICase("START")) {
+      option_.bucket_timestamp_type = TSRangeOption::BucketTimestampType::Start;
+    } else if (parser.EatEqICase("END")) {
+      option_.bucket_timestamp_type = TSRangeOption::BucketTimestampType::End;
+    } else if (parser.EatEqICase("MID")) {
+      option_.bucket_timestamp_type = TSRangeOption::BucketTimestampType::Mid;
+    } else {
+      return {Status::RedisParseErr, "Invalid bucket timestamp type"};
+    }
+    return Status::OK();
+  }
+
+  Status handleEmpty([[maybe_unused]] TSOptionsParser &parser) {
+    option_.is_return_empty = true;
+    return Status::OK();
+  }
+};
+
+class CommandTSRange : public CommandTSRangeBase {
+ public:
+  CommandTSRange() : CommandTSRangeBase(2, 0) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
+    }
+
+    user_key_ = args[1];
+
+    return CommandTSRangeBase::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSSample> res;
+    auto s = timeseries_db.Range(ctx, user_key_, getRangeOption(), &res);
+    if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
+    std::vector<std::string> reply;
+    reply.reserve(res.size());
+    for (auto &sample : res) {
+      reply.push_back(FormatTSSampleAsRedisReply(sample));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1), );
+                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+                        MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1), );
 
 }  // namespace redis

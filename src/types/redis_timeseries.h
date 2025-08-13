@@ -40,18 +40,19 @@ enum class IndexKeyType : uint8_t {
 };
 
 enum class TSAggregatorType : uint8_t {
-  AVG = 0,
-  SUM = 1,
-  MIN = 2,
-  MAX = 3,
-  RANGE = 4,
-  COUNT = 5,
-  FIRST = 6,
-  LAST = 7,
-  STD_P = 8,
-  STD_S = 9,
-  VAR_P = 10,
-  VAR_S = 11,
+  NONE = 0,
+  AVG = 1,
+  SUM = 2,
+  MIN = 3,
+  MAX = 4,
+  RANGE = 5,
+  COUNT = 6,
+  FIRST = 7,
+  LAST = 8,
+  STD_P = 9,
+  STD_S = 10,
+  VAR_P = 11,
+  VAR_S = 12,
 };
 
 struct TSDownStreamMeta {
@@ -106,6 +107,27 @@ struct TSCreateOption {
   TSCreateOption();
 };
 
+struct TSRangeOption {
+  enum class BucketTimestampType : uint8_t {
+    Start = 0,
+    End = 1,
+    Mid = 2,
+  };
+  uint64_t start_ts = 0;
+  uint64_t end_ts = TSSample::MAX_TIMESTAMP;
+  uint64_t count_limit = 0;
+  std::vector<uint64_t> filter_by_ts;
+  std::optional<std::pair<double, double>> filter_by_value;
+
+  // Used for comapction
+  TSAggregatorType aggregator = TSAggregatorType::NONE;
+  bool is_return_latest = false;
+  bool is_return_empty = false;
+  uint64_t bucket_duration = 0;
+  uint64_t align = 0;
+  BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
+};
+
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 
 class TimeSeries : public SubKeyScanner {
@@ -120,6 +142,8 @@ class TimeSeries : public SubKeyScanner {
                       AddResultWithTS *res, const DuplicatePolicy *on_dup_policy = nullptr);
   rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
                        std::vector<AddResultWithTS> *res);
+  rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                        std::vector<TSSample> *res);
 
  private:
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);

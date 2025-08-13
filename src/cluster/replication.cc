@@ -399,6 +399,10 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port, Server *sr
       srv_(srv),
       storage_(srv->storage),
       repl_state_(kReplConnecting),
+      // replication_group_sync_ is only enabled when both replication-group-sync and rocksdb.write_options.sync are
+      // true
+      replication_group_sync_(srv->GetConfig()->replication_group_sync &&
+                              srv->GetConfig()->rocks_db.write_options.sync),
       psync_steps_(
           this,
           CallbacksStateMachine::CallbackList{
@@ -636,6 +640,14 @@ void ReplicationThread::sendReplConfAck(bufferevent *bev, bool force) {
 
   // If force is true, always send ack. Otherwise, check if it has been 1s from last ack
   if (force || (now - last_ack_time_secs_) >= 1) {
+    if (replication_group_sync_) {
+      auto s = storage_->SyncWAL();
+      if (!s.IsOK()) {
+        error("[replication] Failed to sync WAL before ack: {}", s.Msg());
+        return;
+      }
+    }
+
     SendString(bev, redis::ArrayOfBulkStrings({"replconf", "ack", std::to_string(storage_->LatestSeqNumber())}));
     last_ack_time_secs_ = now;
   }
@@ -646,6 +658,12 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
   auto input = bufferevent_get_input(bev);
   bool data_written = false;
   bool force_ack = false;
+  // Use replication-group-sync logic if enabled and rocksdb.write_options.sync is true
+  rocksdb::WriteOptions write_opts = storage_->DefaultWriteOptions();
+  if (replication_group_sync_) {
+    write_opts.sync = false;
+  }
+
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
@@ -700,7 +718,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
 
         rocksdb::WriteBatch batch(std::move(bulk_string));
 
-        auto s = storage_->ReplicaApplyWriteBatch(&batch);
+        auto s = storage_->ReplicaApplyWriteBatch(&batch, write_opts);
         if (!s.IsOK()) {
           error("[replication] CRITICAL - Failed to write batch to local, {}. batch: 0x{}", s.Msg(),
                 util::StringToHex(batch.Data()));

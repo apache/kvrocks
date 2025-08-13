@@ -622,3 +622,49 @@ func TestSlaveLostMaster(t *testing.T) {
 	duration := time.Since(start)
 	require.Less(t, duration, time.Second*6)
 }
+
+func TestReplicationGroupSyncConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	slave := util.StartServer(t, map[string]string{
+		"replication-group-sync":     "yes",
+		"rocksdb.write_options.sync": "yes",
+	})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	t.Run("Replication should work with replication-group-sync enabled", func(t *testing.T) {
+		util.SlaveOf(t, slaveClient, master)
+		util.WaitForSync(t, slaveClient)
+		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
+
+		require.NoError(t, masterClient.Set(ctx, "key1", "value1", 0).Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+		require.Equal(t, "value1", slaveClient.Get(ctx, "key1").Val())
+	})
+
+	// Test with replication-group-sync disabled
+	slave2 := util.StartServer(t, map[string]string{
+		"replication-group-sync": "no",
+	})
+	defer slave2.Close()
+	slaveClient2 := slave2.NewClient()
+	defer func() { require.NoError(t, slaveClient2.Close()) }()
+
+	t.Run("Replication should work with replication-group-sync disabled", func(t *testing.T) {
+		util.SlaveOf(t, slaveClient2, master)
+		util.WaitForSync(t, slaveClient2)
+		require.Equal(t, "slave", util.FindInfoEntry(slaveClient2, "role"))
+
+		require.NoError(t, masterClient.Set(ctx, "key2", "value2", 0).Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient2, 5*time.Second)
+		require.Equal(t, "value2", slaveClient2.Get(ctx, "key2").Val())
+	})
+}

@@ -163,6 +163,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   Server *srv_ = nullptr;
   engine::Storage *storage_ = nullptr;
   std::atomic<ReplState> repl_state_;
+  const bool replication_group_sync_ = false;
   std::atomic<int64_t> last_io_time_secs_ = 0;
   int64_t last_ack_time_secs_ = 0;
   bool next_try_old_psync_ = false;

@@ -845,8 +845,8 @@ rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
 
 void Storage::FlushBlockCache() { shared_block_cache_->EraseUnRefEntries(); }
 
-Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch) {
-  return applyWriteBatch(default_write_opts_, batch);
+Status Storage::ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch, const rocksdb::WriteOptions &options) {
+  return applyWriteBatch(options, batch);
 }
 
 Status Storage::applyWriteBatch(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *batch) {
@@ -863,6 +863,14 @@ Status Storage::applyWriteBatch(const rocksdb::WriteOptions &options, rocksdb::W
 Status Storage::ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch) {
   auto batch = rocksdb::WriteBatch(std::move(raw_batch));
   return applyWriteBatch(options, &batch);
+}
+
+Status Storage::SyncWAL() {
+  auto s = db_->SyncWAL();
+  if (!s.ok()) {
+    return {Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
 }
 
 void Storage::RecordStat(StatType type, uint64_t v) {

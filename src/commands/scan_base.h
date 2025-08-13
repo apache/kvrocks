@@ -64,6 +64,8 @@ class CommandScanBase : public Commander {
         } else {
           return {Status::RedisExecErr, "Invalid type"};
         }
+      } else if (parser.EatEqICase("novalues")) {
+        no_values_ = true;
       } else {
         return parser.InvalidSyntax();
       }
@@ -102,6 +104,7 @@ class CommandScanBase : public Commander {
   std::string suffix_glob_ = "*";
   int limit_ = 20;
   RedisType type_ = kRedisNone;
+  bool no_values_ = false;
 };
 
 class CommandSubkeyScanBase : public CommandScanBase {

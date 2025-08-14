@@ -35,6 +35,7 @@ constexpr const char *errOldTimestamp = "Timestamp is older than retention";
 constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
+constexpr const char *errTSInvalidAlign = "unknown ALIGN parameter";
 
 std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   using AddResult = TSChunk::AddResult;
@@ -354,6 +355,7 @@ class CommandTSRangeBase : public KeywordCommandBase {
       }
       // "-" means use default start timestamp: 0
     } else {
+      is_start_explicit_set_ = true;
       option_.start_ts = start_ts.GetValue();
     }
 
@@ -366,10 +368,16 @@ class CommandTSRangeBase : public KeywordCommandBase {
       }
       // "+" means use default end timestamp: MAX_TIMESTAMP
     } else {
+      is_end_explicit_set_ = true;
       option_.end_ts = end_ts.GetValue();
     }
 
-    return Status::OK();
+    auto s = KeywordCommandBase::Parse(args);
+    if (!s.IsOK()) return s;
+    if (is_alignment_explicit_set_ && option_.aggregator == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "ALIGN parameter can only be used with AGGREGATION"};
+    }
+    return s;
   }
 
   const TSRangeOption &getRangeOption() const { return option_; }
@@ -377,6 +385,9 @@ class CommandTSRangeBase : public KeywordCommandBase {
  private:
   TSRangeOption option_;
   size_t skip_num_;
+  bool is_start_explicit_set_ = false;
+  bool is_end_explicit_set_ = false;
+  bool is_alignment_explicit_set_ = false;
 
   Status handleLatest([[maybe_unused]] TSOptionsParser &parser) {
     option_.is_return_latest = true;
@@ -406,18 +417,42 @@ class CommandTSRangeBase : public KeywordCommandBase {
   Status handleCount(TSOptionsParser &parser) {
     auto count = parser.TakeInt<uint64_t>();
     if (!count.IsOK()) {
-      return {Status::RedisParseErr, "Invalid count limit"};
+      return {Status::RedisParseErr, "Couldn't parse COUNT"};
     }
     option_.count_limit = count.GetValue();
+    if (option_.count_limit == 0) {
+      return {Status::RedisParseErr, "Invalid COUNT value"};
+    }
     return Status::OK();
   }
 
   Status handleAlign(TSOptionsParser &parser) {
     auto align = parser.TakeInt<uint64_t>();
-    if (!align.IsOK()) {
-      return {Status::RedisParseErr, "Invalid align value"};
+    if (align.IsOK()) {
+      option_.alignment = align.GetValue();
+      return Status::OK();
     }
-    option_.align = align.GetValue();
+
+    auto align_str = parser.TakeStr();
+    if (!align_str.IsOK()) {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+
+    const auto &value = align_str.GetValue();
+    if (value == "-" || value == "+") {
+      bool is_explicit_set = value == "-" ? is_start_explicit_set_ : is_end_explicit_set_;
+      auto err_msg = value == "-" ? "start alignment can only be used with explicit start timestamp"
+                                  : "end alignment can only be used with explicit end timestamp";
+
+      if (!is_explicit_set) {
+        return {Status::RedisParseErr, err_msg};
+      }
+
+      option_.alignment = value == "-" ? option_.start_ts : option_.end_ts;
+    } else {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+    is_alignment_explicit_set_ = true;
     return Status::OK();
   }
 
@@ -452,13 +487,19 @@ class CommandTSRangeBase : public KeywordCommandBase {
 
     auto duration = parser.TakeInt<uint64_t>();
     if (!duration.IsOK()) {
-      return {Status::RedisParseErr, "Invalid bucket duration"};
+      return {Status::RedisParseErr, "Couldn't parse AGGREGATION"};
     }
     option_.bucket_duration = duration.GetValue();
+    if(option_.bucket_duration == 0){
+      return {Status::RedisParseErr, "bucketDuration must be greater than zero"};
+    }
     return Status::OK();
   }
 
   Status handleBucketTimestamp(TSOptionsParser &parser) {
+    if (option_.aggregator == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "BUCKETTIMESTAMP flag should be the 3rd or 4th flag after AGGREGATION flag"};
+    }
     if (parser.EatEqICase("START")) {
       option_.bucket_timestamp_type = TSRangeOption::BucketTimestampType::Start;
     } else if (parser.EatEqICase("END")) {
@@ -466,12 +507,15 @@ class CommandTSRangeBase : public KeywordCommandBase {
     } else if (parser.EatEqICase("MID")) {
       option_.bucket_timestamp_type = TSRangeOption::BucketTimestampType::Mid;
     } else {
-      return {Status::RedisParseErr, "Invalid bucket timestamp type"};
+      return {Status::RedisParseErr, "unknown BUCKETTIMESTAMP parameter"};
     }
     return Status::OK();
   }
 
   Status handleEmpty([[maybe_unused]] TSOptionsParser &parser) {
+    if (option_.aggregator == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "EMPTY flag should be the 3rd or 5th flag after AGGREGATION flag"};
+    }
     option_.is_return_empty = true;
     return Status::OK();
   }

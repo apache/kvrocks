@@ -448,13 +448,12 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
   constexpr size_t header_size = TSChunk::MetaData::kEncodedSize;
   const char* data_ptr = whole_chunk_data.data() + header_size;
   std::vector<std::string> res;
-  for (size_t i = 0; i < split_size.size(); ++i) {
-    auto sample_bytes = split_size[i] * sizeof(TSSample);
+  for (auto size : split_size) {
+    auto sample_bytes = size * sizeof(TSSample);
     const size_t required_size = header_size + sample_bytes;
     std::string buffer;
     buffer.resize(required_size);
-    auto metadata = TSChunk::MetaData(false, 0);
-    metadata.count = split_size[i];
+    auto metadata = TSChunk::MetaData(false, size);
     auto str = metadata.Encode();
     EncodeBuffer(buffer.data(), str);
     std::memcpy(buffer.data() + header_size, data_ptr, sample_bytes);

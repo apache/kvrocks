@@ -320,7 +320,6 @@ class CommandTSMAdd : public Commander {
   size_t samples_count_ = 0;
   std::unordered_map<std::string_view, std::vector<TSSample>> userkey_samples_map_;
   std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
-  std::unordered_map<std::string_view, std::string> userkey_status_map_;
 };
 
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),

@@ -408,17 +408,23 @@ class CommandHScan : public CommandSubkeyScanBase {
     std::vector<std::string> values;
     auto key_name = srv->GetKeyNameFromCursor(cursor_, CursorType::kTypeHash);
 
-    auto s = hash_db.Scan(ctx, key_, key_name, limit_, prefix_, &fields, &values);
+    auto s = hash_db.Scan(ctx, key_, key_name, limit_, prefix_, &fields, no_values_ ? nullptr : &values);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     auto cursor = GetNextCursor(srv, fields, CursorType::kTypeHash);
     std::vector<std::string> entries;
-    entries.reserve(2 * fields.size());
+    if (no_values_) {
+      entries.reserve(fields.size());
+    } else {
+      entries.reserve(2 * fields.size());
+    }
     for (size_t i = 0; i < fields.size(); i++) {
       entries.emplace_back(redis::BulkString(fields[i]));
-      entries.emplace_back(redis::BulkString(values[i]));
+      if (!no_values_) {
+        entries.emplace_back(redis::BulkString(values[i]));
+      }
     }
     *output = redis::Array({redis::BulkString(cursor), redis::Array(entries)});
     return Status::OK();

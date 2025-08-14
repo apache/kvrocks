@@ -53,4 +53,13 @@ struct WSPad : peg::pad<T, WhiteSpace> {};
 struct UnsignedInteger : Digits {};
 struct Integer : peg::seq<peg::opt<peg::one<'-'>>, Digits> {};
 
+struct Cntrl : peg::ranges<'\0', '\x1F', '\x7F'> {};
+struct Escape : peg::one<'\\'> {};
+struct Punct : peg::ranges<'!', '/', ':', '@', '[', '`', '{', '~'> {};
+struct EscapedCharacter : peg::seq<Escape, peg::sor<Punct, peg::space, Escape>> {};
+struct Term
+    : peg::plus<
+          peg::sor<peg::minus<peg::any, peg::sor<Punct, Cntrl, WhiteSpace, Escape>>, EscapedCharacter, peg::one<'_'>>> {
+};
+
 }  // namespace kqir

@@ -132,6 +132,7 @@ struct Config {
   bool auto_resize_block_and_sst = true;
   int fullsync_recv_file_delay = 0;
   bool use_rsid_psync = false;
+  bool replication_group_sync = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;

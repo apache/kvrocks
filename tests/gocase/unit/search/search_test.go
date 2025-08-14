@@ -253,4 +253,24 @@ func TestSearchTag(t *testing.T) {
 		require.Equal(t, int64(1), res.Val().([]interface{})[0])
 		require.Equal(t, "testidx_number:k1", res.Val().([]interface{})[1])
 	})
+
+	t.Run("FT.SEARCH with escaped characters in tags", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx_escape", "ON", "HASH", "PREFIX", "1", "testidx_escape:", "SCHEMA", "a", "TAG").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_escape:k1", "a", "email@example.com").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_escape:k2", "a", "Hello World").Err())
+
+		res := rdb.Do(ctx, "FT.SEARCH", "testidx_escape", `@a:{email\@example\.com}`)
+		require.NoError(t, res.Err())
+		// result should be [1 testidx_escape:k1 [a email@example.com]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "testidx_escape:k1", res.Val().([]interface{})[1])
+
+		res = rdb.Do(ctx, "FT.SEARCH", "testidx_escape", `@a:{Hello\ World}`)
+		require.NoError(t, res.Err())
+		// result should be [1 testidx_escape:k2 [b Hello World]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "testidx_escape:k2", res.Val().([]interface{})[1])
+	})
 }

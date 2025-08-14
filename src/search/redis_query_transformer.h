@@ -36,7 +36,7 @@ namespace ir = kqir;
 
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
-    Rule, parse_tree::store_content::on<Number, UnsignedInteger, StringL, Param, Identifier, Inf>,
+    Rule, parse_tree::store_content::on<Number, UnsignedInteger, StringL, Param, Identifier, Inf, Term>,
     parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
                                    OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>>;
 
@@ -93,8 +93,8 @@ struct Transformer : ir::TreeTransformer {
 
         for (const auto& tag : query->children) {
           std::string tag_str;
-          if (Is<Identifier>(tag)) {
-            tag_str = tag->string();
+          if (Is<Term>(tag)) {
+            tag_str = GET_OR_RET(UnescapeTerm(tag->string()));
           } else if (Is<StringL>(tag)) {
             tag_str = GET_OR_RET(UnescapeString(tag->string()));
           } else if (Is<Param>(tag)) {

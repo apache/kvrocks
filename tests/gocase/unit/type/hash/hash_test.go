@@ -775,6 +775,23 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "b", rdb.HGet(ctx, "hash", strings.Repeat("k", 336)).Val())
 	})
 
+	t.Run("HSCAN without NOVALUES", func(t *testing.T) {
+		rdb.Del(ctx, "langhash")
+		rdb.HMSet(ctx, "langhash", []string{"lang1", "C++", "lang2", "JavaScript", "lang3", "Python", "lang4", "GoLanguage"})
+		res, _, _ := rdb.HScan(ctx, "langhash", 0, "lang1", 0).Result()
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "lang1", res[0])
+		require.Equal(t, "C++", res[1])
+	})
+
+	t.Run("HSCAN with NOVALUES", func(t *testing.T) {
+		rdb.Del(ctx, "langhash")
+		rdb.HMSet(ctx, "langhash", []string{"lang1", "C++", "lang2", "JavaScript", "lang3", "Python", "lang4", "GoLanguage"})
+		res, _, _ := rdb.HScanNoValues(ctx, "langhash", 0, "lang1", 0).Result()
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "lang1", res[0])
+	})
+
 	for _, size := range []int64{10, 512} {
 		t.Run(fmt.Sprintf("Hash fuzzing #1 - %d fields", size), func(t *testing.T) {
 			for times := 0; times < 10; times++ {

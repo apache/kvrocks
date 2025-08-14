@@ -106,6 +106,25 @@ struct TreeTransformer {
     return result;
   }
 
+  static StatusOr<std::string> UnescapeTerm(std::string_view str) {
+    std::string result;
+    while (!str.empty()) {
+      if (str[0] == '\\') {
+        str.remove_prefix(1);
+        if (ispunct(str[0]) || isspace(str[0]) || str[0] == '\\') {
+          result.push_back(str[0]);
+        } else {
+          return {Status::NotOK, fmt::format("invalid escape sequence in term: {}", str)};
+        }
+        str.remove_prefix(1);
+      } else {
+        result.push_back(str[0]);
+        str.remove_prefix(1);
+      }
+    }
+    return result;
+  }
+
   template <typename T = double>
   static StatusOr<std::vector<T>> Binary2Vector(std::string_view str) {
     if (str.size() % sizeof(T) != 0) {

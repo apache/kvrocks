@@ -422,7 +422,7 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
     // Fixed split
     size_t remaining = total_count;
     while (remaining > 0) {
-      auto size = std::min(remaining, preferred_chunk_size);
+      auto size = std::min<size_t>(remaining, preferred_chunk_size);
       split_size.push_back(size);
       remaining -= size;
     }

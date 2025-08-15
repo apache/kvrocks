@@ -395,7 +395,9 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
 
   // Update iterator options
   auto start_key = internalKeyFromChunkID(ns_key, metadata, start_timestamp);
-  end_key = internalKeyFromChunkID(ns_key, metadata, end_timestamp);
+  if (end_timestamp != TSSample::MAX_TIMESTAMP) {
+    end_key = internalKeyFromChunkID(ns_key, metadata, end_timestamp + 1);
+  }
   upper_bound = Slice(end_key);
   read_options.iterate_upper_bound = &upper_bound;
   iter = util::UniqueIterator(ctx, read_options);

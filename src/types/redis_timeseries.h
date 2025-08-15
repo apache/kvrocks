@@ -124,7 +124,7 @@ struct TSRangeOption {
   bool is_return_latest = false;
   bool is_return_empty = false;
   uint64_t bucket_duration = 0;
-  uint64_t align = 0;
+  uint64_t alignment = 0;
   BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
 };
 

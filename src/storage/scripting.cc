@@ -42,6 +42,7 @@
 #include "server/server.h"
 #include "sha1.h"
 #include "storage/storage.h"
+#include "string_util.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
@@ -610,6 +611,22 @@ Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::
   // instead of resetting all libraries
   conn->GetServer()->ScriptReset();
 
+  return Status::OK();
+}
+
+Status FunctionFlush(redis::Connection *conn, engine::Context *ctx) {
+  auto storage = conn->GetServer()->storage;
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
+
+  auto s = storage->DeleteRange(*ctx, rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix,
+                                util::StringNext(engine::kLuaLibCodePrefix));
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+  s = storage->DeleteRange(*ctx, rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix,
+                           util::StringNext(engine::kLuaFuncLibPrefix));
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+  conn->GetServer()->ScriptReset();
   return Status::OK();
 }
 

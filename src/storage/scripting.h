@@ -82,6 +82,7 @@ Status FunctionListLib(redis::Connection *conn, const std::string &libname, std:
 Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::string &name);
 bool FunctionIsLibExist(redis::Connection *conn, engine::Context *ctx, const std::string &libname,
                         bool need_check_storage = true);
+Status FunctionFlush(redis::Connection *conn, engine::Context *ctx);
 
 const char *RedisProtocolToLuaType(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeInt(lua_State *lua, const char *reply);

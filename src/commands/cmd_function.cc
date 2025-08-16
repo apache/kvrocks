@@ -77,6 +77,12 @@ struct CommandFunction : Commander {
 
       *output = RESP_OK;
       return Status::OK();
+    } else if (parser.EatEqICase("flush")) {
+      auto s = lua::FunctionFlush(conn, &ctx);
+      if (!s) return s;
+
+      *output = RESP_OK;
+      return Status::OK();
     } else {
       return {Status::NotOK, "no such subcommand"};
     }

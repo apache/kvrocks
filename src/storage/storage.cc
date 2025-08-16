@@ -48,6 +48,7 @@
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "storage/batch_indexer.h"
+#include "string_util.h"
 #include "table_properties_collector.h"
 #include "time_util.h"
 #include "unique_fd.h"
@@ -760,10 +761,7 @@ rocksdb::Status Storage::DeleteRange(engine::Context &ctx, Slice begin, Slice en
 
 rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                       rocksdb::ColumnFamilyHandle *cf_handle) {
-  std::string begin_key = kLuaFuncSHAPrefix, end_key = begin_key;
-  // we need to increase one here since the DeleteRange api
-  // didn't contain the end key.
-  end_key[end_key.size() - 1] += 1;
+  std::string begin_key = kLuaFuncSHAPrefix, end_key = util::StringNext(kLuaFuncSHAPrefix);
 
   auto batch = GetWriteBatchBase();
   auto s = batch->DeleteRange(cf_handle, begin_key, end_key);

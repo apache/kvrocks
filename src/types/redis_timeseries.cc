@@ -32,9 +32,9 @@ constexpr auto kDefaultChunkType = TimeSeriesMetadata::ChunkType::UNCOMPRESSED;
 constexpr auto kDefaultDuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy::BLOCK;
 
 void TSDownStreamMeta::Encode(std::string *dst) const {
-  PutFixed8(dst, static_cast<uint8_t>(aggregator));
-  PutFixed64(dst, bucket_duration);
-  PutFixed64(dst, alignment);
+  PutFixed8(dst, static_cast<uint8_t>(aggregator.type));
+  PutFixed64(dst, aggregator.bucket_duration);
+  PutFixed64(dst, aggregator.alignment);
   PutFixed64(dst, latest_bucket_idx);
   PutFixed8(dst, static_cast<uint8_t>(u64_auxs.size()));
   PutFixed8(dst, static_cast<uint8_t>(f64_auxs.size()));
@@ -51,9 +51,9 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
     return rocksdb::Status::InvalidArgument("TSDownStreamMeta size is too short");
   }
 
-  GetFixed8(input, reinterpret_cast<uint8_t *>(&aggregator));
-  GetFixed64(input, &bucket_duration);
-  GetFixed64(input, &alignment);
+  GetFixed8(input, reinterpret_cast<uint8_t *>(&aggregator.type));
+  GetFixed64(input, &aggregator.bucket_duration);
+  GetFixed64(input, &aggregator.alignment);
   GetFixed64(input, &latest_bucket_idx);
   uint8_t u64_auxs_size = 0;
   GetFixed8(input, &u64_auxs_size);

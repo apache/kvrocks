@@ -55,10 +55,18 @@ enum class TSAggregatorType : uint8_t {
   VAR_S = 12,
 };
 
+struct TSAggregator {
+  TSAggregatorType type;
+  uint64_t bucket_duration = 0;
+  uint64_t alignment = 0;
+
+  TSAggregator() = default;
+  TSAggregator(TSAggregatorType type, uint64_t bucket_duration, uint64_t alignment)
+      : type(type), bucket_duration(bucket_duration), alignment(alignment) {}
+};
+
 struct TSDownStreamMeta {
-  TSAggregatorType aggregator;
-  uint64_t bucket_duration;
-  uint64_t alignment;
+  TSAggregator aggregator;
   uint64_t latest_bucket_idx;
 
   // store auxiliary info for each aggregator.
@@ -67,12 +75,9 @@ struct TSDownStreamMeta {
   std::vector<double> f64_auxs;
 
   TSDownStreamMeta() = default;
-  TSDownStreamMeta(TSAggregatorType aggregator, uint64_t bucket_duration, uint64_t alignment,
+  TSDownStreamMeta(TSAggregatorType agg_type, uint64_t bucket_duration, uint64_t alignment,
                    uint64_t latest_bucket_idx)
-      : aggregator(aggregator),
-        bucket_duration(bucket_duration),
-        alignment(alignment),
-        latest_bucket_idx(latest_bucket_idx) {}
+      : aggregator(agg_type, bucket_duration, alignment), latest_bucket_idx(latest_bucket_idx) {}
 
   void Encode(std::string *dst) const;
   rocksdb::Status Decode(Slice *input);
@@ -120,11 +125,9 @@ struct TSRangeOption {
   std::optional<std::pair<double, double>> filter_by_value;
 
   // Used for comapction
-  TSAggregatorType aggregator = TSAggregatorType::NONE;
+  TSAggregator aggregator;
   bool is_return_latest = false;
   bool is_return_empty = false;
-  uint64_t bucket_duration = 0;
-  uint64_t alignment = 0;
   BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
 };
 

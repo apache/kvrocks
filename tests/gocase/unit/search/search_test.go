@@ -287,4 +287,3 @@ func TestSearchTag(t *testing.T) {
 		require.Equal(t, "testidx_case_insensitive:k2", res.Val().([]interface{})[1])
 	})
 }
-

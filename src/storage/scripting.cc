@@ -49,6 +49,8 @@
  * This should be the size of the buffer given to doule to string */
 constexpr size_t MAX_LONG_DOUBLE_CHARS = 5 * 1024;
 
+constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
+
 enum {
   LL_DEBUG = 0,
   LL_VERBOSE,
@@ -443,7 +445,6 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
    * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
    * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
    * for every command uses too much CPU. */
-  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
   static int64_t gc_count = 0;
 
   gc_count++;
@@ -726,7 +727,6 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
    * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
    * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
    * for every command uses too much CPU. */
-  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
   static int64_t gc_count = 0;
 
   gc_count++;

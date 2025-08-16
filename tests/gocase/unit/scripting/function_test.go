@@ -302,8 +302,17 @@ var testFunctions = func(t *testing.T, config util.KvrocksServerConfigs) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "reverse", 0, "abc").Err(), ".*No such function name.*")
 		util.ErrorRegexp(t, rdb2.Do(ctx, "FCALL", "reverse", 0, "abc").Err(), ".*No such function name.*")
 
-		require.NoError(t, rdb.Do(ctx, "FCALL", "myset", 1, "func-test-tmp-a", 1).Err())
-		require.NoError(t, rdb2.Do(ctx, "FCALL", "myget", 1, "func-test-tmp-a").Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "myset", 1, "func-test-tmp-a", 123).Err())
+		require.Equal(t, rdb2.Do(ctx, "FCALL", "myget", 1, "func-test-tmp-a").Val(), "123")
+	})
+
+	t.Run("FUNCTION FLUSH", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FUNCTION", "FLUSH").Err())
+
+		// After flush, all functions should be gone
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", 0, 1).Err(), ".*No such function name.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "hello", 0, "x").Err(), ".*No such function name.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "myget", 1, "func-test-tmp-b").Err(), ".*No such function name.*")
 	})
 }
 

@@ -74,6 +74,9 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   res.reserve(spans.size());
   bucket_left = start_bucket;
   for (size_t i = 0; i < spans.size(); i++) {
+    if (option.count_limit && res.size() >= option.count_limit) {
+      break;
+    }
     TSSample sample;
     if (i != 0) {
       bucket_left += aggregator.bucket_duration;
@@ -605,10 +608,12 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   } else if (!iter->key().starts_with(prefix)) {
     iter->Next();
   }
-  // Prepare vector to store results
+  // Prepare to store results
   std::vector<TSSample> temp_results;
+  const auto &aggregator = option.aggregator;
+  bool has_aggregator = aggregator.type != TSAggregatorType::NONE;
   if (iter->Valid()) {
-    if (option.count_limit != 0) {
+    if (option.count_limit != 0 && !has_aggregator) {
       temp_results.reserve(option.count_limit);
     } else {
       chunk = CreateTSChunkFromData(iter->value());
@@ -618,18 +623,42 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
     }
   }
   // Get samples from chunks
-  for (; iter->Valid(); iter->Next()) {
+  uint64_t bucket_count = 0;
+  uint64_t last_bucket = 0;
+  bool is_not_enough = true;
+  for (; iter->Valid() && is_not_enough; iter->Next()) {
     chunk = CreateTSChunkFromData(iter->value());
     auto it = chunk->CreateIterator();
     while (it->HasNext()) {
       auto sample = it->Next().value();
-      bool is_in_time_range = (sample->ts >= start_timestamp && sample->ts <= end_timestamp);
-      bool is_not_filtered = option.filter_by_ts.empty() || !option.filter_by_ts.count(sample->ts);
-      bool value_passes_filter = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
-                                                             sample->v <= option.filter_by_value->second);
-      if (is_in_time_range && is_not_filtered && value_passes_filter) {
-        temp_results.push_back(*sample);
+      // Early termination check
+      if (!has_aggregator && option.count_limit && temp_results.size() >= option.count_limit) {
+        is_not_enough = false;
+        break;
       }
+      const bool in_time_range = sample->ts >= start_timestamp && sample->ts <= end_timestamp;
+      const bool not_time_filtered = option.filter_by_ts.empty() || !option.filter_by_ts.count(sample->ts);
+      const bool value_in_range = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
+                                                              sample->v <= option.filter_by_value->second);
+
+      if (!in_time_range || !not_time_filtered || !value_in_range) {
+        continue;
+      }
+
+      // Do checks for early termination when `count_limit` is set.
+      if (has_aggregator && option.count_limit > 0) {
+        const auto bucket = aggregator.CalculateAlignedBucket(sample->ts) + aggregator.bucket_duration;
+        const bool is_empty_count = (last_bucket > 0 && option.is_return_empty);
+        const size_t increment = is_empty_count ? (bucket - last_bucket) / aggregator.bucket_duration : 1;
+        bucket_count += increment;
+        last_bucket = bucket;
+        if (bucket_count > option.count_limit) {
+          is_not_enough = false;
+          temp_results.push_back(*sample);  // Ensure empty bucket is reported
+          break;
+        }
+      }
+      temp_results.push_back(*sample);
     }
   }
 

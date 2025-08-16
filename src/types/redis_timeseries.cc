@@ -623,7 +623,11 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
     auto it = chunk->CreateIterator();
     while (it->HasNext()) {
       auto sample = it->Next().value();
-      if (sample->ts >= start_timestamp && sample->ts <= end_timestamp) {
+      bool is_in_time_range = (sample->ts >= start_timestamp && sample->ts <= end_timestamp);
+      bool is_not_filtered = !option.filter_by_ts.count(sample->ts);
+      bool value_passes_filter = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
+                                                             sample->v <= option.filter_by_value->second);
+      if (is_in_time_range && is_not_filtered && value_passes_filter) {
         temp_results.push_back(*sample);
       }
     }

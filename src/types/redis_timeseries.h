@@ -128,7 +128,7 @@ struct TSRangeOption {
   uint64_t start_ts = 0;
   uint64_t end_ts = TSSample::MAX_TIMESTAMP;
   uint64_t count_limit = 0;
-  std::vector<uint64_t> filter_by_ts;
+  std::set<uint64_t> filter_by_ts;
   std::optional<std::pair<double, double>> filter_by_value;
 
   // Used for comapction

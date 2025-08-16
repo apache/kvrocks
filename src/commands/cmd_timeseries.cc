@@ -399,7 +399,7 @@ class CommandTSRangeBase : public KeywordCommandBase {
     while (parser.Good()) {
       auto ts = parser.TakeInt<uint64_t>();
       if (!ts.IsOK()) break;
-      option_.filter_by_ts.push_back(ts.GetValue());
+      option_.filter_by_ts.insert(ts.GetValue());
     }
     return Status::OK();
   }

@@ -31,6 +31,80 @@ constexpr uint64_t kDefaultChunkSize = 1024;
 constexpr auto kDefaultChunkType = TimeSeriesMetadata::ChunkType::UNCOMPRESSED;
 constexpr auto kDefaultDuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy::BLOCK;
 
+std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option) {
+  const auto &aggregator = option.aggregator;
+  std::vector<TSSample> res;
+  if (aggregator.type == TSAggregatorType::NONE || samples.empty()) {
+    res = std::move(samples);
+    return res;
+  }
+  uint64_t start_bucket = aggregator.CalculateAlignedBucket(samples.front().ts);
+  uint64_t end_bucket = aggregator.CalculateAlignedBucket(samples.back().ts);
+  uint64_t bucket_count = (end_bucket - start_bucket) / aggregator.bucket_duration;
+
+  std::vector<nonstd::span<const TSSample>> spans;
+  spans.reserve(bucket_count);
+  auto it = samples.begin();
+  const auto end = samples.end();
+  uint64_t bucket_left = start_bucket;
+  while (it != end) {
+    uint64_t bucket_right = bucket_left + aggregator.bucket_duration;
+    auto lower = std::lower_bound(it, end, TSSample{bucket_left, 0.0});
+    auto upper = std::lower_bound(lower, end, TSSample{bucket_right, 0.0});
+    spans.emplace_back(lower, upper);
+    it = upper;
+
+    bucket_left = bucket_right;
+  }
+
+  auto getBucketTs = [&](uint64_t left) -> uint64_t {
+    using BucketTimestampType = TSRangeOption::BucketTimestampType;
+    switch (option.bucket_timestamp_type) {
+      case BucketTimestampType::Start:
+        return left;
+      case BucketTimestampType::End:
+        return left + aggregator.bucket_duration;
+      case BucketTimestampType::Mid:
+        return left + aggregator.bucket_duration / 2;
+      default:
+        unreachable();
+    }
+    return 0;
+  };
+  res.reserve(spans.size());
+  bucket_left = start_bucket;
+  for (size_t i = 0; i < spans.size(); i++) {
+    TSSample sample;
+    if (i != 0) {
+      bucket_left += aggregator.bucket_duration;
+    }
+    sample.ts = getBucketTs(bucket_left);
+    if (option.is_return_empty && spans[i].empty()) {
+      switch (aggregator.type) {
+        case TSAggregatorType::SUM:
+        case TSAggregatorType::COUNT:
+          sample.v = 0;
+          break;
+        case TSAggregatorType::LAST:
+          if (i == 0 || spans[i - 1].empty()) {
+            sample.v = TSSample::NAN_VALUE;
+          } else {
+            sample.v = spans[i].back().v;
+          }
+          break;
+        default:
+          sample.v = TSSample::NAN_VALUE;
+      }
+    } else if (!spans[i].empty()) {
+      sample.v = aggregator.AggregateSamplesValue(spans[i]);
+    } else {
+      continue;
+    }
+    res.emplace_back(sample);
+  }
+  return res;
+}
+
 void TSDownStreamMeta::Encode(std::string *dst) const {
   PutFixed8(dst, static_cast<uint8_t>(aggregator.type));
   PutFixed64(dst, aggregator.bucket_duration);
@@ -112,6 +186,125 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   metadata.SetSourceKey(option.source_key);
 
   return metadata;
+}
+
+uint64_t TSAggregator::CalculateAlignedBucket(uint64_t ts) const {
+  uint64_t x = 0;
+
+  if (ts >= alignment) {
+    uint64_t diff = ts - alignment;
+    uint64_t k = diff / bucket_duration;
+    x = alignment + k * bucket_duration;
+  } else {
+    uint64_t diff = alignment - ts;
+    uint64_t m0 = diff / bucket_duration + (diff % bucket_duration == 0 ? 0 : 1);
+    x = (m0 > alignment / bucket_duration) ? 0 : alignment - m0 * bucket_duration;
+  }
+
+  return x;
+}
+
+double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples) const {
+  double res = TSSample::NAN_VALUE;
+  if (samples.empty()) {
+    return res;
+  }
+
+  switch (type) {
+    case TSAggregatorType::AVG: {
+      res = std::accumulate(samples.begin(), samples.end(), 0.0,
+                            [](double sum, const TSSample &sample) { return sum + sample.v; }) /
+            samples.size();
+      break;
+    }
+    case TSAggregatorType::SUM: {
+      res = std::accumulate(samples.begin(), samples.end(), 0.0,
+                            [](double sum, const TSSample &sample) { return sum + sample.v; });
+      break;
+    }
+    case TSAggregatorType::MIN: {
+      res = std::min_element(samples.begin(), samples.end(), [](const TSSample &a, const TSSample &b) {
+              return a.v < b.v;
+            })->v;
+      break;
+    }
+    case TSAggregatorType::MAX: {
+      res = std::max_element(samples.begin(), samples.end(), [](const TSSample &a, const TSSample &b) {
+              return a.v < b.v;
+            })->v;
+      break;
+    }
+    case TSAggregatorType::RANGE: {
+      auto [min_it, max_it] = std::minmax_element(samples.begin(), samples.end(),
+                                                  [](const TSSample &a, const TSSample &b) { return a.v < b.v; });
+      res = max_it->v - min_it->v;
+      break;
+    }
+    case TSAggregatorType::COUNT: {
+      res = samples.size();
+      break;
+    }
+    case TSAggregatorType::FIRST: {
+      res = samples.front().v;
+      break;
+    }
+    case TSAggregatorType::LAST: {
+      res = samples.back().v;
+      break;
+    }
+    case TSAggregatorType::STD_P: {
+      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
+                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
+                    samples.size();
+      double variance =
+          std::accumulate(samples.begin(), samples.end(), 0.0,
+                          [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
+          samples.size();
+      res = std::sqrt(variance);
+      break;
+    }
+    case TSAggregatorType::STD_S: {
+      if (samples.size() <= 1) {
+        res = 0.0;
+        break;
+      }
+      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
+                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
+                    samples.size();
+      double variance =
+          std::accumulate(samples.begin(), samples.end(), 0.0,
+                          [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
+          (samples.size() - 1);
+      res = std::sqrt(variance);
+      break;
+    }
+    case TSAggregatorType::VAR_P: {
+      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
+                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
+                    samples.size();
+      res = std::accumulate(samples.begin(), samples.end(), 0.0,
+                            [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
+            samples.size();
+      break;
+    }
+    case TSAggregatorType::VAR_S: {
+      if (samples.size() <= 1) {
+        res = 0.0;
+        break;
+      }
+      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
+                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
+                    samples.size();
+      res = std::accumulate(samples.begin(), samples.end(), 0.0,
+                            [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
+            (samples.size() - 1);
+      break;
+    }
+    default:
+      unreachable();
+  }
+
+  return res;
 }
 
 rocksdb::Status TimeSeries::getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key,
@@ -368,6 +561,10 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) {
     return s;
   }
+  if (option.end_ts < option.start_ts) {
+    return rocksdb::Status::OK();
+  }
+
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
   std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
@@ -408,22 +605,33 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   } else if (!iter->key().starts_with(start_key)) {
     iter->Next();
   }
+  // Prepare vector to store results
+  std::vector<TSSample> temp_results;
   if (iter->Valid()) {
-    chunk = CreateTSChunkFromData(iter->value());
-    auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
-    auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
-    res->reserve(estimate_chunks * metadata.chunk_size);
+    if (option.count_limit != 0) {
+      temp_results.reserve(option.count_limit);
+    } else {
+      chunk = CreateTSChunkFromData(iter->value());
+      auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
+      auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
+      temp_results.reserve(estimate_chunks * metadata.chunk_size);
+    }
   }
+  // Get samples from chunks
   for (; iter->Valid(); iter->Next()) {
     chunk = CreateTSChunkFromData(iter->value());
     auto it = chunk->CreateIterator();
     while (it->HasNext()) {
       auto sample = it->Next().value();
       if (sample->ts >= start_timestamp && sample->ts <= end_timestamp) {
-        res->push_back(*sample);
+        temp_results.push_back(*sample);
       }
     }
   }
+
+  // Process compaction logic
+  *res = AggregateSamplesByRangeOption(std::move(temp_results), option);
+
   return rocksdb::Status::OK();
 }
 

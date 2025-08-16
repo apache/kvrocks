@@ -63,6 +63,14 @@ struct TSAggregator {
   TSAggregator() = default;
   TSAggregator(TSAggregatorType type, uint64_t bucket_duration, uint64_t alignment)
       : type(type), bucket_duration(bucket_duration), alignment(alignment) {}
+
+  // Calculates the start timestamp of the aligned bucket that contains the given timestamp.
+  // E.g. `ts`=100, `duration`=30, `alignment`=20.
+  // The bucket containing `ts=100` starts at `80` (since 80 ≤ 100 < 110). Returns `80`.
+  uint64_t CalculateAlignedBucket(uint64_t ts) const;
+
+  // Calculates the aggregated value of the given samples according to the aggregator type
+  double AggregateSamplesValue(nonstd::span<const TSSample> samples) const;
 };
 
 struct TSDownStreamMeta {
@@ -75,8 +83,7 @@ struct TSDownStreamMeta {
   std::vector<double> f64_auxs;
 
   TSDownStreamMeta() = default;
-  TSDownStreamMeta(TSAggregatorType agg_type, uint64_t bucket_duration, uint64_t alignment,
-                   uint64_t latest_bucket_idx)
+  TSDownStreamMeta(TSAggregatorType agg_type, uint64_t bucket_duration, uint64_t alignment, uint64_t latest_bucket_idx)
       : aggregator(agg_type, bucket_duration, alignment), latest_bucket_idx(latest_bucket_idx) {}
 
   void Encode(std::string *dst) const;

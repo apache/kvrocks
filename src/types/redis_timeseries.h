@@ -56,7 +56,7 @@ enum class TSAggregatorType : uint8_t {
 };
 
 struct TSAggregator {
-  TSAggregatorType type;
+  TSAggregatorType type = TSAggregatorType::NONE;
   uint64_t bucket_duration = 0;
   uint64_t alignment = 0;
 

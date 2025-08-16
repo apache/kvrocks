@@ -289,6 +289,22 @@ var testFunctions = func(t *testing.T, config util.KvrocksServerConfigs) {
 			Name: "mylib3", Engine: "lua", Functions: []interface{}{"myget", "myset"},
 		}, decodeListLibResult(t, r))
 	})
+
+	t.Run("FUNCTION DELETE from multiple clients", func(t *testing.T) {
+		// we expect that rdb2 is accepted from another server thread,
+		// but it may not (and that's fine)
+		rdb2 := srv.NewClient()
+		defer func() { require.NoError(t, rdb2.Close()) }()
+
+		require.Equal(t, rdb.Do(ctx, "FCALL", "reverse", 0, "abc").Val(), "cba")
+
+		require.NoError(t, rdb2.Do(ctx, "FUNCTION", "DELETE", "mylib1").Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "reverse", 0, "abc").Err(), ".*No such function name.*")
+		util.ErrorRegexp(t, rdb2.Do(ctx, "FCALL", "reverse", 0, "abc").Err(), ".*No such function name.*")
+
+		require.NoError(t, rdb.Do(ctx, "FCALL", "myset", 1, "func-test-tmp-a", 1).Err())
+		require.NoError(t, rdb2.Do(ctx, "FCALL", "myget", 1, "func-test-tmp-a").Err())
+	})
 }
 
 func TestFunctionScriptFlags(t *testing.T) {

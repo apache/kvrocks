@@ -1891,7 +1891,7 @@ Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
   if (parser.EatEqICase("script")) {
     if (parser.EatEqICase("flush")) {
       // here we must acquire the global lock to guarantee that
-      // no EVAL or FCALL is executing while reseting lua state.
+      // no EVAL or FCALL is executing while resetting lua state.
       auto guard = WorkExclusivityGuard();
       ScriptReset();
     }

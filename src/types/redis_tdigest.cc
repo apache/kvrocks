@@ -186,6 +186,82 @@ rocksdb::Status TDigest::Add(engine::Context& ctx, const Slice& digest_name, con
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<uint64_t>* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result->resize(inputs.size(), 0);
+      return rocksdb::Status::OK();
+    }
+
+    if (metadata.unmerged_nodes > 0) {
+      auto batch = storage_->GetWriteBatchBase();
+      WriteBatchLogData log_data(kRedisTDigest);
+      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
+        return status;
+      }
+
+      std::string metadata_bytes;
+      metadata.Encode(&metadata_bytes);
+      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
+        return status;
+      }
+
+      ctx.RefreshLatestSnapshot();
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids(metadata, centroids);
+
+  result->clear();
+  result->reserve(inputs.size());
+
+  for (auto value : inputs) {
+    auto status_or_rank = TDigestRevRank(dump_centroids, value);
+    if (!status_or_rank) {
+      return rocksdb::Status::InvalidArgument(status_or_rank.Msg());
+    }
+    result->push_back(*status_or_rank);
+  }
+
+  return rocksdb::Status::OK();
+}
+
+StatusOr<uint64_t> TDigestRevRank(const DummyCentroids& centroids, double value) {
+  double rank = 0;
+  auto it = centroids.Begin();
+  while (it->Valid()) {
+    auto centroid_or = it->GetCentroid();
+    if (!centroid_or) return {::Status::NotOK, centroid_or.Msg()};
+    if (centroid_or->mean > value) {
+      rank += centroid_or->weight;
+    }
+    it->Next();
+  }
+  return static_cast<uint64_t>(rank);
+}
+
 rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                                   TDigestQuantitleResult* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);

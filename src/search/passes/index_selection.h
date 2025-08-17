@@ -146,6 +146,9 @@ struct IndexSelection : Visitor {
 
   std::unique_ptr<PlanOperator> VisitExpr(TagContainExpr *node) const {
     if (node->field->info->HasIndex()) {
+      if (!node->field->info->MetadataAs<redis::TagFieldMetadata>()->case_sensitive) {
+        return std::make_unique<TagFieldScan>(node->field->CloneAs<FieldRef>(), util::ToLower(node->tag->val));
+      }
       return std::make_unique<TagFieldScan>(node->field->CloneAs<FieldRef>(), node->tag->val);
     }
 

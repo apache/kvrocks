@@ -273,4 +273,17 @@ func TestSearchTag(t *testing.T) {
 		require.Equal(t, int64(1), res.Val().([]interface{})[0])
 		require.Equal(t, "testidx_escape:k2", res.Val().([]interface{})[1])
 	})
+
+	t.Run("FT.SEARCH with case insensitive tags", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx_case_insensitive", "ON", "HASH", "PREFIX", "1", "testidx_case_insensitive:", "SCHEMA", "a", "TAG").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_case_insensitive:k1", "a", "Aa").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_case_insensitive:k2", "a", "Ab").Err())
+
+		res := rdb.Do(ctx, "FT.SEARCH", "testidx_case_insensitive", `@a:{Ab}`)
+		require.NoError(t, res.Err())
+		// result should be [1 testidx_case_insensitive:k2 [a Ab]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "testidx_case_insensitive:k2", res.Val().([]interface{})[1])
+	})
 }

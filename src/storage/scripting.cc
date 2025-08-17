@@ -42,11 +42,14 @@
 #include "server/server.h"
 #include "sha1.h"
 #include "storage/storage.h"
+#include "string_util.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
  * This should be the size of the buffer given to doule to string */
 constexpr size_t MAX_LONG_DOUBLE_CHARS = 5 * 1024;
+
+constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
 
 enum {
   LL_DEBUG = 0,
@@ -282,7 +285,7 @@ int RedisRegisterFunction(lua_State *lua) {
 }
 
 Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::string &script, bool need_to_store,
-                    bool replace, [[maybe_unused]] std::string *lib_name, bool read_only) {
+                    bool replace, [[maybe_unused]] std::string *lib_name) {
   std::string first_line, lua_code;
   if (auto pos = script.find('\n'); pos != std::string::npos) {
     first_line = script.substr(0, pos);
@@ -293,10 +296,7 @@ Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::st
 
   const auto libname = GET_OR_RET(ExtractLibNameFromShebang(first_line));
 
-  auto srv = conn->GetServer();
-  auto lua = conn->Owner()->Lua();
-
-  if (FunctionIsLibExist(conn, ctx, libname, need_to_store, read_only)) {
+  if (FunctionIsLibExist(conn, ctx, libname, need_to_store)) {
     if (!replace) {
       return {Status::NotOK, "library already exists, please specify REPLACE to force load"};
     }
@@ -304,10 +304,17 @@ Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::st
     if (!s) return s;
   }
 
+  auto srv = conn->GetServer();
+  auto lua = conn->Owner()->Lua();
+
   ScriptRunCtx script_run_ctx;
   script_run_ctx.conn = conn;
   script_run_ctx.ctx = ctx;
-  script_run_ctx.flags = read_only ? ScriptFlagType::kScriptNoWrites : 0;
+  // in FunctionLoad(), the script MUST be read-only,
+  // because this function can be called multiple times
+  // for one script from multiple threads,
+  // and it is dangerous and unexpected to allow writes here.
+  script_run_ctx.flags = ScriptFlagType::kScriptNoWrites;
 
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &script_run_ctx);
 
@@ -339,7 +346,7 @@ Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::st
 
   RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
-  if (!FunctionIsLibExist(conn, ctx, libname, false, read_only)) {
+  if (!FunctionIsLibExist(conn, ctx, libname, false)) {
     return {Status::NotOK, "Please register some function in FUNCTION LOAD"};
   }
 
@@ -347,7 +354,7 @@ Status FunctionLoad(redis::Connection *conn, engine::Context *ctx, const std::st
 }
 
 bool FunctionIsLibExist(redis::Connection *conn, engine::Context *ctx, const std::string &libname,
-                        bool need_check_storage, bool read_only) {
+                        bool need_check_storage) {
   auto srv = conn->GetServer();
   auto lua = conn->Owner()->Lua();
 
@@ -374,7 +381,7 @@ bool FunctionIsLibExist(redis::Connection *conn, engine::Context *ctx, const std
   if (!s) return false;
 
   std::string lib_name;
-  s = FunctionLoad(conn, ctx, code, false, false, &lib_name, read_only);
+  s = FunctionLoad(conn, ctx, code, false, false, &lib_name);
   return static_cast<bool>(s);
 }
 
@@ -399,7 +406,7 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
     std::string libcode;
     s = srv->FunctionGetCode(libname, &libcode);
     if (!s) return s;
-    s = FunctionLoad(conn, ctx, libcode, false, false, &libname, read_only);
+    s = FunctionLoad(conn, ctx, libcode, false, false, &libname);
     if (!s) return s;
 
     lua_getglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + name).c_str());
@@ -438,7 +445,6 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
    * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
    * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
    * for every command uses too much CPU. */
-  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
   static int64_t gc_count = 0;
 
   gc_count++;
@@ -568,6 +574,11 @@ Status FunctionListLib(redis::Connection *conn, const std::string &libname, std:
 Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::string &name) {
   auto lua = conn->Owner()->Lua();
 
+  // load the library into this lua state
+  if (!FunctionIsLibExist(conn, &ctx, name, true)) {
+    return {Status::NotOK, "the library does not exist in lua environment"};
+  }
+
   lua_getglobal(lua, REDIS_FUNCTION_LIBRARIES);
   if (lua_isnil(lua, -1)) {
     lua_pop(lua, 1);
@@ -586,22 +597,37 @@ Status FunctionDelete(engine::Context &ctx, redis::Connection *conn, const std::
   for (size_t i = 1; i <= lua_objlen(lua, -1); ++i) {
     lua_rawgeti(lua, -1, static_cast<int>(i));
     std::string func = lua_tostring(lua, -1);
-    lua_pushnil(lua);
-    lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_PREFIX + func).c_str());
-    lua_pushnil(lua);
-    lua_setglobal(lua, (REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX + func).c_str());
     auto _ = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix + func);
     lua_pop(lua, 1);
   }
 
-  lua_pop(lua, 1);
-  lua_pushnil(lua);
-  lua_setfield(lua, -2, name.c_str());
-  lua_pop(lua, 1);
+  lua_pop(lua, 2);
 
   auto s = storage->Delete(ctx, rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix + name);
   if (!s.ok()) return {Status::NotOK, s.ToString()};
 
+  // reset all lua context from all workers
+  // to ensure the library is removed from all lua states
+  // TODO: optimize it to only delete this library
+  // instead of resetting all libraries
+  conn->GetServer()->ScriptReset();
+
+  return Status::OK();
+}
+
+Status FunctionFlush(redis::Connection *conn, engine::Context *ctx) {
+  auto storage = conn->GetServer()->storage;
+  auto cf = storage->GetCFHandle(ColumnFamilyID::Propagate);
+
+  auto s = storage->DeleteRange(*ctx, rocksdb::WriteOptions(), cf, engine::kLuaLibCodePrefix,
+                                util::StringNext(engine::kLuaLibCodePrefix));
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+  s = storage->DeleteRange(*ctx, rocksdb::WriteOptions(), cf, engine::kLuaFuncLibPrefix,
+                           util::StringNext(engine::kLuaFuncLibPrefix));
+  if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+  conn->GetServer()->ScriptReset();
   return Status::OK();
 }
 
@@ -701,7 +727,6 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
    * The call is performed every LUA_GC_CYCLE_PERIOD executed commands
    * (and for LUA_GC_CYCLE_PERIOD collection steps) because calling it
    * for every command uses too much CPU. */
-  constexpr int64_t LUA_GC_CYCLE_PERIOD = 50;
   static int64_t gc_count = 0;
 
   gc_count++;

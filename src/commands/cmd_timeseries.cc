@@ -429,6 +429,7 @@ class CommandTSRangeBase : public KeywordCommandBase {
   Status handleAlign(TSOptionsParser &parser) {
     auto align = parser.TakeInt<uint64_t>();
     if (align.IsOK()) {
+      is_alignment_explicit_set_ = true;
       option_.aggregator.alignment = align.GetValue();
       return Status::OK();
     }

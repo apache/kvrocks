@@ -80,7 +80,10 @@ It is as simple as:
 ```shell
 $ git clone https://github.com/apache/kvrocks.git
 $ cd kvrocks
-$ ./x.py build # `./x.py build -h` to check more options
+$ ./x.py build 
+# `./x.py build -h` to check more options
+#If you encounter "stdlib.h file not found" error in macOS, 
+#you can add '-DCMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk' to try again.
 ```
 
 To build with TLS support, you'll need OpenSSL development libraries (e.g. libssl-dev on Debian/Ubuntu) and run:

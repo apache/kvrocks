@@ -223,11 +223,21 @@ jobs:
             os: ubuntu-24.04-arm
             compiler: clang
             arm_linux: true
+          - name: Ubuntu RISC-V GCC without luaJIT (QEMU)
+            os: ubuntu-24.04
+            riscv_toolchain: true
+            toolchain_file: cmake/riscv64.cmake
+            riscv_toolchain_url: "https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.07.03/riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.07.03-nightly.tar.xz"
+            cmake_crosscompiling: -DCMAKE_CROSSCOMPILING=TRUE
+            cmake_system_name: -DCMAKE_SYSTEM_NAME=Linux
+            cmake_system_processor: -DCMAKE_SYSTEM_PROCESSOR=riscv64
+            without_luajit: -DENABLE_LUAJIT=OFF
 
     runs-on: ${{ matrix.os }}
     env:
       SONARCLOUD_OUTPUT_DIR: sonarcloud-data
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+      RISCV_PATH: "/opt/riscv"
     steps:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
@@ -253,6 +263,20 @@ jobs:
         if: ${{ matrix.arm_linux }}
         run: |
           sudo apt install -y git build-essential cmake libtool python3 python3-pip libssl-dev
+      - name: Setup RISC-V Toolchain
+        if: ${{ matrix.riscv_toolchain }}
+        run: |
+          sudo apt install -y wget build-essential cmake git python3 \
+            libgflags-dev libsnappy-dev zlib1g-dev liblz4-dev libzstd-dev \
+            qemu-user qemu-user-static
+          sudo mkdir -p $RISCV_PATH
+          wget "${{ matrix.riscv_toolchain_url }}" -O riscv-toolchain.tar.xz
+          sudo tar -xvf riscv-toolchain.tar.xz -C $RISCV_PATH --strip-components=1
+          sudo sed -i "s|libdir='/mnt/riscv/riscv64-unknown-linux-gnu/lib'|libdir='$RISCV_PATH/riscv64-unknown-linux-gnu/lib'|g" \
+            $RISCV_PATH/riscv64-unknown-linux-gnu/lib/libatomic.la
+          echo "PATH=$RISCV_PATH/bin:$PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/riscv/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "QEMU_LD_PREFIX=$RISCV_PATH/sysroot" >> $GITHUB_ENV
 
       - name: Cache redis
         id: cache-redis
@@ -298,7 +322,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
-        if: ${{ !matrix.sonarcloud }}
+        if: ${{ !matrix.sonarcloud && !matrix.riscv_toolchain }}
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
@@ -310,6 +334,11 @@ jobs:
           build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
           cp -r build _build
           build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+
+      - name: Build Kvrocks (RISC-V)
+        if: ${{ matrix.riscv_toolchain }}
+        run: |
+          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}

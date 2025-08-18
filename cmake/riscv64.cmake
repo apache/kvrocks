@@ -15,23 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR riscv64)
+set(CMAKE_CROSSCOMPILING TRUE)
 
-include(cmake/utils.cmake)
+set(CMAKE_C_COMPILER "riscv64-unknown-linux-gnu-gcc")
+set(CMAKE_CXX_COMPILER "riscv64-unknown-linux-gnu-g++")
 
-FetchContent_DeclareGitHubWithMirror(tbb
-  uxlfoundation/oneTBB v2022.1.0
-  MD5=4a8940795f7e414727a1c443b94fd686
+add_compile_options("-march=rv64gc")
+
+set(JEMALLOC_CROSS_FLAGS
+    "--host=riscv64-unknown-linux-gnu"
+    "--build=${CMAKE_HOST_SYSTEM_PROCESSOR}-pc-linux-gnu"
+    "--with-lg-vaddr=48"
+    CACHE STRING "jemalloc flags for RISC-V cross-compilation"
 )
-
-FetchContent_MakeAvailableWithArgs(tbb
-  TBB_STRICT=OFF
-  TBB_TEST=OFF
-  TBB_EXAMPLES=OFF
-  TBBMALLOC_BUILD=OFF
-  BUILD_SHARED_LIBS=OFF
-)
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
-    target_compile_options(tbb PRIVATE "-Wno-error=stringop-overflow")
-endif()
+set(ENABLE_LUAJIT OFF CACHE BOOL "Disable LuaJIT on RISC-V" FORCE)

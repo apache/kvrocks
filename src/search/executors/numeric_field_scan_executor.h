@@ -79,6 +79,8 @@ struct NumericFieldScanExecutor : ExecutorNode {
                                   ctx->storage->GetCFHandle(ColumnFamilyID::Search));
       if (scan->order == SortByClause::ASC) {
         iter->Seek(IndexKey(scan->range.l));
+      } else if (scan->range.r == std::numeric_limits<double>::infinity()) {
+        iter->SeekForPrev(IndexKey(scan->range.r));
       } else {
         iter->SeekForPrev(IndexKey(IntervalSet::PrevNum(scan->range.r)));
       }

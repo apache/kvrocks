@@ -735,9 +735,25 @@ void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
   }
 }
 
+void Server::WakeupWaitConnection(redis::Connection *conn, rocksdb::SequenceNumber seq) {
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+
+  size_t reached_replicas = GetReplicasReachedSequence(seq);
+  conn->Reply(redis::Integer(reached_replicas));
+
+  auto s = conn->Owner()->EnableWriteEvent(conn->GetFD());
+  if (!s.IsOK()) {
+    error("[server] Failed to enable write event on WAIT connection {}: {}", conn->GetFD(), s.Msg());
+  }
+}
+
 void Server::CleanupWaitConnection(redis::Connection *conn) {
   std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+}
 
+void Server::cleanupWaitConnection(redis::Connection *conn) {
   // Remove all wait contexts that match the given connection
   auto it = wait_contexts_.begin();
   int erased_count = 0;
@@ -754,7 +770,7 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
     }
   }
 
-  if (erased_count > 0) {
+  if (erased_count > 1) {
     warn("[server] {} wait contexts found for connection with fd {}, expect 1", erased_count, conn->GetFD());
   }
 }

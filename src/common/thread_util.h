@@ -20,9 +20,10 @@
 
 #pragma once
 
+#include <signal.h>
+
 #include <system_error>
 #include <thread>
-#include <signal.h>
 
 #include "fmt/core.h"
 #include "status.h"

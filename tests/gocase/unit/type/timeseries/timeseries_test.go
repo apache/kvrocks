@@ -142,8 +142,8 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("TS.INFO After Adding Data", func(t *testing.T) {
 		key := "test_info_key"
 		// Add samples
-		rdb.Do(ctx, "ts.madd", key, "1", "10", key, "3", "10", key, "2", "20",
-			key, "3", "20", key, "4", "20", key, "13", "20", key, "1", "20", key, "14", "20").Result()
+		require.NoError(t, rdb.Do(ctx, "ts.madd", key, "1", "10", key, "3", "10", key, "2", "20",
+			key, "3", "20", key, "4", "20", key, "13", "20", key, "1", "20", key, "14", "20").Err())
 
 		vals, err := rdb.Do(ctx, "ts.info", key).Slice()
 		require.NoError(t, err)

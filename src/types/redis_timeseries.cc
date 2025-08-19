@@ -445,7 +445,7 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
     }
   }
   getLabelKVList(ctx, ns_key, metadata, &res->labels);
-  //TODO: Retrieve downstream downstream_rules
+  // TODO: Retrieve downstream downstream_rules
 
   return rocksdb::Status::OK();
 }

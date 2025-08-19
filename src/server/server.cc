@@ -38,6 +38,7 @@
 #include <shared_mutex>
 #include <utility>
 
+#include "commands/command_parser.h"
 #include "commands/commander.h"
 #include "common/string_util.h"
 #include "config/config.h"
@@ -734,9 +735,25 @@ void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
   }
 }
 
+void Server::WakeupWaitConnection(redis::Connection *conn, rocksdb::SequenceNumber seq) {
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+
+  size_t reached_replicas = GetReplicasReachedSequence(seq);
+  conn->Reply(redis::Integer(reached_replicas));
+
+  auto s = conn->Owner()->EnableWriteEvent(conn->GetFD());
+  if (!s.IsOK()) {
+    error("[server] Failed to enable write event on WAIT connection {}: {}", conn->GetFD(), s.Msg());
+  }
+}
+
 void Server::CleanupWaitConnection(redis::Connection *conn) {
   std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+}
 
+void Server::cleanupWaitConnection(redis::Connection *conn) {
   // Remove all wait contexts that match the given connection
   auto it = wait_contexts_.begin();
   int erased_count = 0;
@@ -753,7 +770,7 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
     }
   }
 
-  if (erased_count > 0) {
+  if (erased_count > 1) {
     warn("[server] {} wait contexts found for connection with fd {}, expect 1", erased_count, conn->GetFD());
   }
 }
@@ -1885,20 +1902,21 @@ Status Server::Propagate(const std::string &channel, const std::vector<std::stri
   return storage->WriteToPropagateCF(ctx, channel, value);
 }
 
-Status Server::ExecPropagateScriptCommand(const std::vector<std::string> &tokens) {
-  auto subcommand = util::ToLower(tokens[1]);
-  if (subcommand == "flush") {
-    ScriptReset();
-  }
-  return Status::OK();
-}
-
 Status Server::ExecPropagatedCommand(const std::vector<std::string> &tokens) {
-  if (tokens.empty()) return Status::OK();
-
-  auto command = util::ToLower(tokens[0]);
-  if (command == "script" && tokens.size() >= 2) {
-    return ExecPropagateScriptCommand(tokens);
+  CommandParser parser(tokens);
+  if (parser.EatEqICase("script")) {
+    if (parser.EatEqICase("flush")) {
+      // here we must acquire the global lock to guarantee that
+      // no EVAL or FCALL is executing while resetting lua state.
+      auto guard = WorkExclusivityGuard();
+      ScriptReset();
+    }
+  } else if (parser.EatEqICase("function")) {
+    if (parser.EatEqICase("delete") || parser.EatEqICase("flush")) {
+      // same as above to acquire the global lock
+      auto guard = WorkExclusivityGuard();
+      ScriptReset();
+    }
   }
 
   return Status::OK();

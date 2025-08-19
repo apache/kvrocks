@@ -187,7 +187,7 @@ rocksdb::Status TDigest::Add(engine::Context& ctx, const Slice& digest_name, con
 }
 
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<uint64_t>* result) {
+                                 std::vector<int>* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;
   {
@@ -198,7 +198,7 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
     }
 
     if (metadata.total_observations == 0) {
-      result->resize(inputs.size(), 0);
+      result->resize(inputs.size(), -2);
       return rocksdb::Status::OK();
     }
 
@@ -244,23 +244,9 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
     }
     result->push_back(*status_or_rank);
   }
-
   return rocksdb::Status::OK();
 }
 
-StatusOr<uint64_t> TDigestRevRank(const DummyCentroids& centroids, double value) {
-  double rank = 0;
-  auto it = centroids.Begin();
-  while (it->Valid()) {
-    auto centroid_or = it->GetCentroid();
-    if (!centroid_or) return {::Status::NotOK, centroid_or.Msg()};
-    if (centroid_or->mean > value) {
-      rank += centroid_or->weight;
-    }
-    it->Next();
-  }
-  return static_cast<uint64_t>(rank);
-}
 
 rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                                   TDigestQuantitleResult* result) {

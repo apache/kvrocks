@@ -150,3 +150,22 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
   diff /= (lc.weight / 2 + rc.weight / 2);
   return Lerp(lc.mean, rc.mean, diff);
 }
+
+template <typename TD>
+inline StatusOr<int> TDigestRevRank(TD&& td, double value) {
+  if (value < td.Min()) {
+    return static_cast<int>(td.TotalWeight());
+  }
+  if (value > td.Max()) {
+    return static_cast<int>(-1);
+  }
+  double rank = 0;
+  for (auto iter = td.Begin(); iter->Valid(); iter->Next()) {
+    if (auto centroid = GET_OR_RET(iter->GetCentroid()); centroid.mean > value) {
+      rank += centroid.weight;
+    } else if (centroid.mean == value) {
+      rank += centroid.weight / 2;
+    }
+  }
+  return static_cast<int>(rank);
+}

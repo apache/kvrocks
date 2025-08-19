@@ -74,11 +74,15 @@ struct CommandFunction : Commander {
       }
       auto s = lua::FunctionDelete(ctx, conn, libname);
       if (!s) return s;
+      s = srv->Propagate(engine::kPropagateScriptCommand, args_);
+      if (!s) return s;
 
       *output = RESP_OK;
       return Status::OK();
     } else if (parser.EatEqICase("flush")) {
       auto s = lua::FunctionFlush(conn, &ctx);
+      if (!s) return s;
+      s = srv->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s) return s;
 
       *output = RESP_OK;

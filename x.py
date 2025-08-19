@@ -114,7 +114,7 @@ def prepare() -> None:
             print(f"{hook.name} installed at {dst}.")
 
 def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
-          skip_build: bool) -> None:
+          skip_build: bool, toolchain: Optional[str] = None) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -129,6 +129,8 @@ def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: 
     os.makedirs(dir, exist_ok=True)
 
     cmake_options = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
+    if toolchain:
+       cmake_options.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain}")
     if ninja:
         cmake_options.append("-G Ninja")
     if compiler == 'gcc':
@@ -389,6 +391,7 @@ if __name__ == '__main__':
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),
                               help="compiler used to build kvrocks")
+    parser_build.add_argument('--toolchain', metavar='FILE', help="path to CMake toolchain file for cross-compiling")
     parser_build.add_argument('--cmake-path', default='cmake', help="path of cmake binary used to build kvrocks")
     parser_build.add_argument('-D', action='append', metavar='key=value', help='extra CMake definitions')
     parser_build.add_argument('--skip-build', default=False, action='store_true',

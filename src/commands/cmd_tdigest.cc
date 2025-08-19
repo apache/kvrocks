@@ -176,6 +176,49 @@ class CommandTDigestAdd : public Commander {
   std::vector<double> values_;
 };
 
+class CommandTDigestRevRank : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    key_name_ = args[1];
+    inputs_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); i++) {
+      auto value = ParseFloat(args[i]);
+      if (!value) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      inputs_.push_back(*value);
+    }
+    return Status::OK();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    std::vector<int> result;
+    result.reserve(inputs_.size());
+    if (const auto s = tdigest.RevRank(ctx, key_name_, inputs_, &result); !s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (result.data()) {
+      std::vector<std::string> rev_ranks;
+      rev_ranks.reserve(result.size());
+      for (const auto v : result) {
+        rev_ranks.push_back(redis::Integer(v));
+      }
+      *output = redis::Array(rev_ranks);
+    } else {
+      *output = redis::BulkString("nan");
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  std::vector<double> inputs_;
+};
+
 class CommandTDigestMinMax : public Commander {
  public:
   explicit CommandTDigestMinMax(bool is_min) : is_min_(is_min) {}
@@ -369,6 +412,7 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestAdd>("tdigest.add", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestRevRank>("tdigest.revrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));

@@ -57,7 +57,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     bucket_left = bucket_right;
   }
 
-  auto getBucketTs = [&](uint64_t left) -> uint64_t {
+  auto get_bucket_ts = [&](uint64_t left) -> uint64_t {
     using BucketTimestampType = TSRangeOption::BucketTimestampType;
     switch (option.bucket_timestamp_type) {
       case BucketTimestampType::Start:
@@ -81,7 +81,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     if (i != 0) {
       bucket_left += aggregator.bucket_duration;
     }
-    sample.ts = getBucketTs(bucket_left);
+    sample.ts = get_bucket_ts(bucket_left);
     if (option.is_return_empty && spans[i].empty()) {
       switch (aggregator.type) {
         case TSAggregatorType::SUM:
@@ -212,12 +212,12 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
   if (samples.empty()) {
     return res;
   }
-
+  auto sample_size = static_cast<double>(samples.size());
   switch (type) {
     case TSAggregatorType::AVG: {
       res = std::accumulate(samples.begin(), samples.end(), 0.0,
                             [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-            samples.size();
+            sample_size;
       break;
     }
     case TSAggregatorType::SUM: {
@@ -244,7 +244,7 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       break;
     }
     case TSAggregatorType::COUNT: {
-      res = samples.size();
+      res = sample_size;
       break;
     }
     case TSAggregatorType::FIRST: {
@@ -258,11 +258,11 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
     case TSAggregatorType::STD_P: {
       double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
                                     [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    samples.size();
+                    sample_size;
       double variance =
           std::accumulate(samples.begin(), samples.end(), 0.0,
                           [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-          samples.size();
+          sample_size;
       res = std::sqrt(variance);
       break;
     }
@@ -273,21 +273,21 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       }
       double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
                                     [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    samples.size();
+                    sample_size;
       double variance =
           std::accumulate(samples.begin(), samples.end(), 0.0,
                           [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-          (samples.size() - 1);
+          (sample_size - 1.0);
       res = std::sqrt(variance);
       break;
     }
     case TSAggregatorType::VAR_P: {
       double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
                                     [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    samples.size();
+                    sample_size;
       res = std::accumulate(samples.begin(), samples.end(), 0.0,
                             [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-            samples.size();
+            sample_size;
       break;
     }
     case TSAggregatorType::VAR_S: {
@@ -297,10 +297,10 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       }
       double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
                                     [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    samples.size();
+                    sample_size;
       res = std::accumulate(samples.begin(), samples.end(), 0.0,
                             [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-            (samples.size() - 1);
+            (sample_size - 1.0);
       break;
     }
     default:

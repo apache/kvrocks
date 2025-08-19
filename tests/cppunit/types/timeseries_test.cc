@@ -225,11 +225,11 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_TRUE(std::isnan(res[3].v));
   EXPECT_EQ(res[4].ts, 2022);
   EXPECT_EQ(res[4].v, 220);
-  
+
   // Test filter by value
   res.clear();
   range_opt.aggregator.bucket_duration = 20;
-  range_opt.is_return_empty=false;
+  range_opt.is_return_empty = false;
   range_opt.filter_by_value = std::make_optional(std::make_pair(200.0, 300.0));
   s = ts_db_->Range(*ctx_, key_, range_opt, &res);
   EXPECT_TRUE(s.ok());

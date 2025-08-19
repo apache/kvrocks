@@ -380,7 +380,7 @@ class CommandTSRangeBase : public KeywordCommandBase {
     return s;
   }
 
-  const TSRangeOption &getRangeOption() const { return option_; }
+  const TSRangeOption &GetRangeOption() const { return option_; }
 
  private:
   TSRangeOption option_;
@@ -540,7 +540,7 @@ class CommandTSRange : public CommandTSRangeBase {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSSample> res;
-    auto s = timeseries_db.Range(ctx, user_key_, getRangeOption(), &res);
+    auto s = timeseries_db.Range(ctx, user_key_, GetRangeOption(), &res);
     if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
     std::vector<std::string> reply;
     reply.reserve(res.size());

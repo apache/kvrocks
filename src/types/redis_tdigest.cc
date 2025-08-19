@@ -247,7 +247,6 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   return rocksdb::Status::OK();
 }
 
-
 rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                                   TDigestQuantitleResult* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);

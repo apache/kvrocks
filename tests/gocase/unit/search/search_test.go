@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"math"
 	"testing"
 	"time"
 
@@ -285,5 +286,26 @@ func TestSearchTag(t *testing.T) {
 		require.Equal(t, 3, len(res.Val().([]interface{})))
 		require.Equal(t, int64(1), res.Val().([]interface{})[0])
 		require.Equal(t, "testidx_case_insensitive:k2", res.Val().([]interface{})[1])
+	})
+}
+
+func TestSearchNumeric(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("FT.SEARCH reverse scan DBL_MAX", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "FT.CREATE", "testidx_dbl_max", "ON", "HASH", "PREFIX", "1", "testidx_dbl_max:", "SCHEMA", "a", "NUMERIC").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "testidx_dbl_max:k1", "a", math.MaxFloat64).Err())
+
+		res := rdb.Do(ctx, "FT.SEARCH", "testidx_dbl_max", "*", "SORTBY", "a", "DESC")
+		require.NoError(t, res.Err())
+		// result should be [1 testidx_dbl_max:k1 [a 1.7976931348623157e+308]]
+		require.Equal(t, 3, len(res.Val().([]interface{})))
+		require.Equal(t, int64(1), res.Val().([]interface{})[0])
+		require.Equal(t, "testidx_dbl_max:k1", res.Val().([]interface{})[1])
 	})
 }

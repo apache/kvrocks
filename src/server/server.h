@@ -234,6 +234,7 @@ class Server {
   void BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas);
   void WakeupWaitConnections(rocksdb::SequenceNumber seq);
   void CleanupWaitConnection(redis::Connection *conn);
+  void WakeupWaitConnection(redis::Connection *conn, rocksdb::SequenceNumber seq);
 
   // Helper methods for WAIT command
   size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
@@ -362,6 +363,9 @@ class Server {
   void increaseWorkerThreads(size_t delta);
   void decreaseWorkerThreads(size_t delta);
   void cleanupExitedWorkerThreads(bool force);
+  // Helper function to clean up wait contexts for a given connection
+  // It would not hold the wait_contexts_mu_ and the caller should hold it.
+  void cleanupWaitConnection(redis::Connection *conn);
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;

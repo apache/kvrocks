@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "event_util.h"
 #include "io_util.h"
 #include "scope_exit.h"
 #include "server/redis_reply.h"
@@ -344,7 +345,9 @@ class CommandDBName : public Commander {
   }
 };
 
-class CommandWait : public Commander {
+class CommandWait : public Commander,
+                    private EventCallbackBase<CommandWait>,
+                    private EvbufCallbackBase<CommandWait, false> {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto num_replicas_result = ParseInt<int64_t>(args[1], 10);
@@ -353,6 +356,13 @@ class CommandWait : public Commander {
     }
 
     num_replicas_ = *num_replicas_result;
+
+    auto timeout_result = ParseInt<int64_t>(args[2], 10);
+    if (!timeout_result || *timeout_result < 0) {
+      return {Status::RedisParseErr, "timeout should be a non-negative integer"};
+    }
+
+    timeout_ = *timeout_result * 1000;
 
     return Commander::Parse(args);
   }
@@ -375,16 +385,101 @@ class CommandWait : public Commander {
       return Status::OK();
     }
 
+    conn_ = conn;
+    srv_ = srv;
+
     // Block the connection and wait for replicas to catch up
     srv->BlockOnWait(conn, current_seq, num_replicas_);
+
+    // set callback to use the callbacks defined in this class
+    SetCB(conn->GetBufferEvent());
+
+    // Disable read event so the connection will not process any other commands
+    // Disable write event so the connection will not send response
+    bufferevent_disable(conn->GetBufferEvent(), EV_READ | EV_WRITE);
+
+    if (timeout_ > 0) {
+      initTimer(current_seq, timeout_);
+    }
 
     // The connection will be woken up by WakeupWaitConnections when enough replicas
     // have reached the target sequence
     return {Status::BlockingCmd};
   }
 
+  void OnWrite(bufferevent *bev) {
+    // Before unblocking, we must confirm that the wait condition has actually been met or that a timeout occurred.
+    // Ideally, write callback is called after WAIT response is sent, but it may be called for previous commands.
+    // so we need to check if the connection is still waiting.
+    // For example, considering the following scenario:
+    // 1. SET k1 v1
+    // 2. WAIT 1 0
+    // 3. SET k1 v2
+    // After WAIT 1 0 is executed, the connection is blocked, and the write callback is called for SET k1 v1.
+    size_t reached_replicas = srv_->GetReplicasReachedSequence(target_seq_);
+    bool wait_condition_met = (reached_replicas >= num_replicas_);
+
+    // The timer is reset in the TimerCB before the connection is woken up.
+    // If the timer is null, it means we were woken up by a timeout.
+    bool timed_out = (timeout_ > 0 && timer_ == nullptr);
+
+    if (!wait_condition_met && !timed_out) {
+      return;  // This is a premature write, so we do nothing and keep the connection blocked.
+    }
+
+    if (timer_ != nullptr) {
+      timer_.reset();
+    }
+
+    conn_->SetCB(bev);
+
+    bufferevent_enable(bev, EV_READ);
+    // We need to manually trigger the read event since we will stop processing commands
+    // in connection after the blocking command, so there may have some commands to be processed.
+    // Related issue: https://github.com/apache/kvrocks/issues/831
+    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
+  }
+
+  void TimerCB(int, int16_t) {
+    timer_.reset();
+    // Wake up the connection upon timeout.
+    // WakeupWaitConnection will hold the lock of the connection during the execution,
+    // holding the lock is necessary to avoid race condition that timeout and replication ack happen at the same time.
+    srv_->WakeupWaitConnection(conn_, target_seq_);
+  }
+
+  void OnEvent(bufferevent *bev, int16_t events) {
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+      if (timer_ != nullptr) {
+        timer_.reset();
+      }
+    }
+
+    conn_->OnEvent(bev, events);
+  }
+
  private:
+  // variables used for timeout only
+  int64_t timeout_ = 0;  // microseconds
+  UniqueEvent timer_;
+  rocksdb::SequenceNumber target_seq_ = 0;
+
+  // variables used for all cases
+  Server *srv_ = nullptr;
   uint64_t num_replicas_ = 0;
+  Connection *conn_ = nullptr;
+
+  void initTimer(rocksdb::SequenceNumber target_seq, int64_t timeout) {
+    target_seq_ = target_seq;
+
+    // init timer
+    auto bev = conn_->GetBufferEvent();
+    timer_.reset(NewTimer(bufferevent_get_base(bev)));
+    int64_t timeout_second = timeout / 1000 / 1000;
+    int64_t timeout_microsecond = timeout % (1000 * 1000);
+    timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
+    evtimer_add(timer_.get(), &tm);
+  }
 };
 
 REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only no-script", NO_KEY),
@@ -392,6 +487,6 @@ REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3
                         MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi", NO_KEY),
-                        MakeCmdAttr<CommandWait>("wait", 2, "read-only no-multi no-script blocking", NO_KEY), )
+                        MakeCmdAttr<CommandWait>("wait", 3, "read-only no-multi no-script blocking", NO_KEY), )
 
 }  // namespace redis

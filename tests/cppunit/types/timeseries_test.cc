@@ -168,9 +168,77 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_EQ(res[5].ts, 3020);
   EXPECT_EQ(res[5].v, 320);
 
+  // Test different aggregators
+  res.clear();
+  range_opt.aggregator.type = redis::TSAggregatorType::AVG;
+  range_opt.aggregator.bucket_duration = 1000;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].v, 110);
+  EXPECT_EQ(res[1].v, 210);
+  EXPECT_EQ(res[2].v, 310);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::SUM;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].v, 330);
+  EXPECT_EQ(res[1].v, 630);
+  EXPECT_EQ(res[2].v, 930);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::COUNT;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].v, 3);
+  EXPECT_EQ(res[1].v, 3);
+  EXPECT_EQ(res[2].v, 3);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::RANGE;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].v, 20);
+  EXPECT_EQ(res[1].v, 20);
+  EXPECT_EQ(res[2].v, 20);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::FIRST;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].v, 100);
+  EXPECT_EQ(res[1].v, 200);
+  EXPECT_EQ(res[2].v, 300);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::STD_P;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_NEAR(res[0].v, 8.16496580927726, 1e-6);
+  EXPECT_NEAR(res[1].v, 8.16496580927726, 1e-6);
+  EXPECT_NEAR(res[2].v, 8.16496580927726, 1e-6);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::STD_S;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_NEAR(res[0].v, 10.0, 1e-6);
+  EXPECT_NEAR(res[1].v, 10.0, 1e-6);
+  EXPECT_NEAR(res[2].v, 10.0, 1e-6);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::VAR_P;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_NEAR(res[0].v, 66.666666, 1e-6);
+  EXPECT_NEAR(res[1].v, 66.666666, 1e-6);
+  EXPECT_NEAR(res[2].v, 66.666666, 1e-6);
+
+  range_opt.aggregator.type = redis::TSAggregatorType::VAR_S;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_NEAR(res[0].v, 100.0, 1e-6);
+  EXPECT_NEAR(res[1].v, 100.0, 1e-6);
+  EXPECT_NEAR(res[2].v, 100.0, 1e-6);
+
   // Test alignment
   res.clear();
+  range_opt.aggregator.type = redis::TSAggregatorType::MIN;
   range_opt.aggregator.alignment = 10;
+  range_opt.aggregator.bucket_duration = 20;
   s = ts_db_->Range(*ctx_, key_, range_opt, &res);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(res.size(), 6);

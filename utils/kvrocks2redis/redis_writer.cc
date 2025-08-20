@@ -24,23 +24,20 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <system_error>
-
 #include "io_util.h"
 #include "server/redis_reply.h"
 #include "thread_util.h"
 
 RedisWriter::RedisWriter(kvrocks2redis::Config *config) : Writer(config) {
-  try {
-    t_ = std::thread([this]() {
-      util::ThreadSetName("redis-writer");
-      this->sync();
-      assert(stop_flag_);
-    });
-  } catch (const std::system_error &e) {
-    error("Failed to create thread: {}", e.what());
+  auto t = util::CreateThread("redis-writer", [this]() {
+    this->sync();
+    assert(stop_flag_);
+  });
+  if (!t.IsOK()) {
+    error("Failed to create thread: {}", t.Msg());
     return;
   }
+  t_ = std::move(*t);
 }
 
 RedisWriter::~RedisWriter() {

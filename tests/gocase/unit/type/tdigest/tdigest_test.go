@@ -532,7 +532,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		// Test with empty tdigest
 		key := keyPrefix + "test1"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-		rsp := rdb.Do(ctx, "TDIGEST.REVRANK", key)
+		rsp := rdb.Do(ctx, "TDIGEST.REVRANK", key, "10")
 		require.NoError(t, rsp.Err())
 		require.EqualValues(t, rsp.Val(), -2)
 

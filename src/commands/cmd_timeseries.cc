@@ -51,71 +51,45 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   return "";
 }
 
-std::string FormatChunkTypeAsRedisReply(TimeSeriesMetadata::ChunkType chunk_type) {
+std::string_view FormatChunkTypeAsRedisReply(TimeSeriesMetadata::ChunkType chunk_type) {
   using ChunkType = TimeSeriesMetadata::ChunkType;
-  switch (chunk_type) {
-    case ChunkType::COMPRESSED:
-      return "compressed";
-    case ChunkType::UNCOMPRESSED:
-      return "uncompressed";
-    default:
-      unreachable();
+  static const std::unordered_map<ChunkType, std::string_view> map = {
+      {ChunkType::COMPRESSED, "compressed"},
+      {ChunkType::UNCOMPRESSED, "uncompressed"},
+  };
+  auto it = map.find(chunk_type);
+  if (it == map.end()) {
+    unreachable();
   }
-  return "";
+  return it->second;
 }
 
-std::string FormatDuplicatePolicyAsRedisReply(TimeSeriesMetadata::DuplicatePolicy policy) {
+std::string_view FormatDuplicatePolicyAsRedisReply(TimeSeriesMetadata::DuplicatePolicy policy) {
   using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
-  switch (policy) {
-    case DuplicatePolicy::BLOCK:
-      return "block";
-    case DuplicatePolicy::FIRST:
-      return "first";
-    case DuplicatePolicy::LAST:
-      return "last";
-    case DuplicatePolicy::MIN:
-      return "min";
-    case DuplicatePolicy::MAX:
-      return "max";
-    case DuplicatePolicy::SUM:
-      return "sum";
-    default:
-      unreachable();
-      return "unknown";
+  static const std::unordered_map<DuplicatePolicy, std::string_view> map = {
+      {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
+      {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
+  };
+  auto it = map.find(policy);
+  if (it == map.end()) {
+    unreachable();
   }
+  return it->second;
 }
 
-std::string FormatAggregatorTypeAsRedisReply(redis::TSAggregatorType aggregator) {
+std::string_view FormatAggregatorTypeAsRedisReply(redis::TSAggregatorType aggregator) {
   using TSAggregatorType = redis::TSAggregatorType;
-  switch (aggregator) {
-    case TSAggregatorType::AVG:
-      return "avg";
-    case TSAggregatorType::SUM:
-      return "sum";
-    case TSAggregatorType::MIN:
-      return "min";
-    case TSAggregatorType::MAX:
-      return "max";
-    case TSAggregatorType::RANGE:
-      return "range";
-    case TSAggregatorType::COUNT:
-      return "count";
-    case TSAggregatorType::FIRST:
-      return "first";
-    case TSAggregatorType::LAST:
-      return "last";
-    case TSAggregatorType::STD_P:
-      return "std.p";
-    case TSAggregatorType::STD_S:
-      return "std.s";
-    case TSAggregatorType::VAR_P:
-      return "var.p";
-    case TSAggregatorType::VAR_S:
-      return "var.s";
-    default:
-      unreachable();
-      return "";
+  static const std::unordered_map<TSAggregatorType, std::string_view> map = {
+      {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
+      {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
+      {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
+      {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+  };
+  auto it = map.find(aggregator);
+  if (it == map.end()) {
+    unreachable();
   }
+  return it->second;
 }
 
 }  // namespace

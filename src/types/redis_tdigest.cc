@@ -186,6 +186,35 @@ rocksdb::Status TDigest::Add(engine::Context& ctx, const Slice& digest_name, con
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_key, TDigestMetadata* metadata) {
+  if (metadata->unmerged_nodes == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTDigest);
+  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+    return status;
+  }
+
+  if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, metadata); !status.ok()) {
+    return status;
+  }
+
+  std::string metadata_bytes;
+  metadata->Encode(&metadata_bytes);
+  if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+    return status;
+  }
+
+  if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
+    return status;
+  }
+
+  ctx.RefreshLatestSnapshot();
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                                  std::vector<int>* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
@@ -202,28 +231,8 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
       return rocksdb::Status::OK();
     }
 
-    if (metadata.unmerged_nodes > 0) {
-      auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisTDigest);
-      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
-        return status;
-      }
-
-      std::string metadata_bytes;
-      metadata.Encode(&metadata_bytes);
-      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
-        return status;
-      }
-
-      ctx.RefreshLatestSnapshot();
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
     }
   }
 
@@ -262,28 +271,8 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
       return rocksdb::Status::OK();
     }
 
-    if (metadata.unmerged_nodes > 0) {
-      auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisTDigest);
-      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
-        return status;
-      }
-
-      std::string metadata_bytes;
-      metadata.Encode(&metadata_bytes);
-      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
-        return status;
-      }
-
-      ctx.RefreshLatestSnapshot();
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
     }
   }
 

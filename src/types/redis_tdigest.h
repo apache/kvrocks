@@ -118,6 +118,8 @@ class TDigest : public SubKeyScanner {
   std::string internalSegmentGuardPrefixKey(const TDigestMetadata& metadata, const std::string& ns_key,
                                             SegmentType seg) const;
 
+  rocksdb::Status mergeNodes(engine::Context& ctx, const std::string& ns_key, TDigestMetadata* metadata);
+
   rocksdb::Status mergeCurrentBuffer(engine::Context& ctx, const std::string& ns_key,
                                      ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,
                                      const std::vector<double>* additional_buffer = nullptr,

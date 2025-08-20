@@ -534,19 +534,27 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
 		rsp := rdb.Do(ctx, "TDIGEST.REVRANK", key, "10")
 		require.NoError(t, rsp.Err())
-		require.EqualValues(t, rsp.Val(), -2)
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 1)
+		expected := []int64{-2}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
 
 		// Test with set_contains several identical elements
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "10 10 10 20 20").Err())
 		rsp = rdb.Do(ctx, "TDIGEST.REVRANK", key, "10 20")
 		require.NoError(t, rsp.Err())
-		vals, err := rsp.Slice()
+		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 2)
-		expected := []int{3, 1}
+		expected = []int64{3, 1}
 		for i, v := range vals {
-			rank, ok := v.(int)
-			require.True(t, ok, "expected string but got %T at index %d", v, i)
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, rank, expected[i])
 		}
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "10").Err())
@@ -555,10 +563,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 2)
-		expected = []int{4, 1}
+		expected = []int64{4, 1}
 		for i, v := range vals {
-			rank, ok := v.(int)
-			require.True(t, ok, "expected string but got %T at index %d", v, i)
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, rank, expected[i])
 		}
 
@@ -571,10 +579,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 8)
-		expected = []int{6, 5, 4, 3, 2, 1, 0, -1}
+		expected = []int64{6, 5, 4, 3, 2, 1, 0, -1}
 		for i, v := range vals {
-			rank, ok := v.(int)
-			require.True(t, ok, "expected string but got %T at index %d", v, i)
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, rank, expected[i])
 		}
 	})

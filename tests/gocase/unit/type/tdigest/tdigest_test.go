@@ -524,7 +524,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		// Test invalid arguments
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.REVRANK").Err(), errMsgWrongNumberArg)
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.REVRANK", keyPrefix+"nonexistent").Err(), errMsgKeyNotExist)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.REVRANK", keyPrefix+"nonexistent").Err(), errMsgWrongNumberArg)
+
+		// Test Non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.REVRANK", keyPrefix+"nonexistent", "10").Err(), errMsgKeyNotExist)
 
 		// Test with empty tdigest
 		key := keyPrefix + "test1"

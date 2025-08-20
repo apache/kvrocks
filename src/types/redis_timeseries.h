@@ -24,6 +24,7 @@
 
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+#include "types/timeseries.h"
 
 namespace redis {
 
@@ -88,16 +89,54 @@ struct TSRevLabelKey {
   [[nodiscard]] std::string Encode() const;
 };
 
+struct LabelKVPair {
+  std::string k;
+  std::string v;
+};
+using LabelKVList = std::vector<LabelKVPair>;
+
+struct TSCreateOption {
+  uint64_t retention_time;
+  uint64_t chunk_size;
+  TimeSeriesMetadata::ChunkType chunk_type;
+  TimeSeriesMetadata::DuplicatePolicy duplicate_policy;
+  std::string source_key;
+  LabelKVList labels;
+
+  TSCreateOption();
+};
+
+TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
+
 class TimeSeries : public SubKeyScanner {
  public:
+  using SampleBatch = TSChunk::SampleBatch;
+  using AddResultWithTS = TSChunk::AddResultWithTS;
+  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
+
   TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
+                      AddResultWithTS *res, const DuplicatePolicy *on_dup_policy = nullptr);
+  rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
+                       std::vector<AddResultWithTS> *res);
 
  private:
-  std::string internalKeyFromChunkID(const std::string &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
-  std::string internalKeyFromLabelKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
-                                      Slice label_key) const;
-  std::string internalKeyFromDownstreamKey(const std::string &ns_key, const TimeSeriesMetadata &metadata,
+  rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
+  rocksdb::Status createTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
+                                   const TSCreateOption *options);
+  rocksdb::Status getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
+                                        const TSCreateOption *option = nullptr);
+  rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
+                               SampleBatch &sample_batch);
+  rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                          ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                          const LabelKVList &labels);
+  std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
+  std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
+  std::string internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                            Slice downstream_key) const;
+  static uint64_t chunkIDFromInternalKey(Slice internal_key);
 };
 
 }  // namespace redis

@@ -108,11 +108,12 @@ TEST(RedisTimeSeriesChunkTest, ExpirationLogic) {
   batch.Expire(300, 150);
   auto results = batch.GetFinalResults();
 
-  // Only samples with ts >= 150 should be kept
-  EXPECT_EQ(results[0], AddResult::kNone);
-  EXPECT_EQ(results[1], AddResult::kNone);
-  EXPECT_EQ(results[2], AddResult::kOld);
-  EXPECT_EQ(results[3], AddResult::kOld);
+  EXPECT_EQ(results[0].first, AddResult::kNone);
+  EXPECT_EQ(results[0].second, 200);
+  EXPECT_EQ(results[1].first, AddResult::kNone);
+  EXPECT_EQ(results[1].second, 400);
+  EXPECT_EQ(results[2].first, AddResult::kOld);
+  EXPECT_EQ(results[3].first, AddResult::kOld);
 }
 
 // Test SampleBatch construction and sorting
@@ -133,11 +134,14 @@ TEST(RedisTimeSeriesChunkTest, BatchSortingAndDeduplication) {
   // Verify deduplication
   EXPECT_EQ(slice.GetValidCount(), 3);
   auto results = batch.GetFinalResults();
-  EXPECT_EQ(results[0], AddResult::kNone);
-  EXPECT_EQ(results[1], AddResult::kNone);
-  EXPECT_EQ(results[2], AddResult::kNone);
-  EXPECT_EQ(results[3], AddResult::kBlock);
-  EXPECT_EQ(results[4], AddResult::kBlock);
+  EXPECT_EQ(results[0].first, AddResult::kNone);
+  EXPECT_EQ(results[0].second, 300);
+  EXPECT_EQ(results[1].first, AddResult::kNone);
+  EXPECT_EQ(results[1].second, 100);
+  EXPECT_EQ(results[2].first, AddResult::kNone);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kBlock);
+  EXPECT_EQ(results[4].first, AddResult::kBlock);
 }
 
 // Test MAddSample merging logic with additional samples and content validation
@@ -162,6 +166,23 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleLogic) {
   EXPECT_EQ(new_chunk->GetCount(), 4);  // 100, 200, 300, 400 (with duplicates removed)
   EXPECT_EQ(new_chunk->GetFirstTimestamp(), 100);
   EXPECT_EQ(new_chunk->GetLastTimestamp(), 400);
+
+  // Verify add result
+  auto results = batch.GetFinalResults();
+  EXPECT_EQ(results[0].first, AddResult::kOk);
+  EXPECT_EQ(results[0].second, 300);
+  EXPECT_EQ(results[1].first, AddResult::kOk);
+  EXPECT_EQ(results[1].second, 100);
+  EXPECT_EQ(results[2].first, AddResult::kOk);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kOk);
+  EXPECT_EQ(results[3].second, 100);
+  EXPECT_EQ(results[4].first, AddResult::kOk);
+  EXPECT_EQ(results[4].second, 200);
+  EXPECT_EQ(results[5].first, AddResult::kOk);
+  EXPECT_EQ(results[5].second, 400);
+  EXPECT_EQ(results[6].first, AddResult::kOk);
+  EXPECT_EQ(results[6].second, 100);
 
   // Validate content of merged chunk
   auto iter = new_chunk->CreateIterator();
@@ -208,6 +229,19 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleWithExistingSamples) {
   EXPECT_EQ(final_chunk->GetCount(), 6);
   EXPECT_EQ(final_chunk->GetFirstTimestamp(), 50);
   EXPECT_EQ(final_chunk->GetLastTimestamp(), 400);
+
+  // Verify add result
+  auto results = new_batch.GetFinalResults();
+  EXPECT_EQ(results[0].first, AddResult::kOk);
+  EXPECT_EQ(results[0].second, 50);
+  EXPECT_EQ(results[1].first, AddResult::kOk);
+  EXPECT_EQ(results[1].second, 150);
+  EXPECT_EQ(results[2].first, AddResult::kOk);
+  EXPECT_EQ(results[2].second, 200);
+  EXPECT_EQ(results[3].first, AddResult::kOk);
+  EXPECT_EQ(results[3].second, 300);
+  EXPECT_EQ(results[4].first, AddResult::kOk);
+  EXPECT_EQ(results[4].second, 400);
 
   // Verify content through iterator
   auto iter = final_chunk->CreateIterator();
@@ -370,6 +404,85 @@ TEST(RedisTimeSeriesChunkTest, UpdateSampleBehavior) {
   // Test 5: Update sample out of range (after last)
   updated_data = test_chunk->UpdateSampleValue(500, 5.0, false);
   EXPECT_TRUE(updated_data.empty());
+}
+
+// Test UpsertSampleAndSplit with different split modes and chunk size requirements
+TEST(RedisTimeSeriesChunkTest, UcompChunkUpsertAndSplitBehaviors) {
+  // Base chunk with 3 samples
+  auto [chunk, data] = CreateEmptyOwnedTSChunk(false);
+  std::vector<TSSample> base_samples = {MakeSample(100, 1.0), MakeSample(200, 2.0), MakeSample(300, 3.0)};
+  SampleBatch base_batch(base_samples, DuplicatePolicy::LAST);
+  std::string merged_data = chunk->UpsertSamples(base_batch.AsSlice());
+  ASSERT_FALSE(merged_data.empty());
+
+  // Test case 1: No split needed (chunk size exactly matches preferred)
+  auto test_chunk = CreateTSChunkFromData(merged_data);
+  std::vector<TSSample> new_samples = {MakeSample(400, 4.0)};
+  SampleBatch new_batch(new_samples, DuplicatePolicy::LAST);
+  auto result = test_chunk->UpsertSampleAndSplit(new_batch.AsSlice(), 4, false);
+  ASSERT_EQ(result.size(), 1);
+  auto result_chunk = CreateTSChunkFromData(result[0]);
+  EXPECT_EQ(result_chunk->GetCount(), 4);
+  EXPECT_EQ(result_chunk->GetFirstTimestamp(), 100);
+  EXPECT_EQ(result_chunk->GetLastTimestamp(), 400);
+
+  // Test case 2: Fixed split mode (7 samples into 3 chunks of 3,3 and 1)
+  test_chunk = CreateTSChunkFromData(merged_data);
+  new_samples = {MakeSample(400, 4.0), MakeSample(500, 5.0), MakeSample(600, 6.0), MakeSample(700, 7.0)};
+  new_batch = SampleBatch(new_samples, DuplicatePolicy::LAST);
+  result = test_chunk->UpsertSampleAndSplit(new_batch.AsSlice(), 3, true);
+  ASSERT_EQ(result.size(), 3);
+  EXPECT_EQ(result[0].size(), TSChunk::MetaData::kEncodedSize + 3 * sizeof(TSSample));
+  EXPECT_EQ(result[1].size(), TSChunk::MetaData::kEncodedSize + 3 * sizeof(TSSample));
+  EXPECT_EQ(result[2].size(), TSChunk::MetaData::kEncodedSize + 1 * sizeof(TSSample));
+
+  // Validate first chunk content
+  auto chunk1 = CreateTSChunkFromData(result[0]);
+  EXPECT_EQ(chunk1->GetCount(), 3);
+  auto iter = chunk1->CreateIterator();
+  EXPECT_EQ(iter->Next().value()->ts, 100);
+  EXPECT_EQ(iter->Next().value()->ts, 200);
+  EXPECT_EQ(iter->Next().value()->ts, 300);
+
+  // Validate second chunk content
+  auto chunk2 = CreateTSChunkFromData(result[1]);
+  EXPECT_EQ(chunk2->GetCount(), 3);
+  iter = chunk2->CreateIterator();
+  EXPECT_EQ(iter->Next().value()->ts, 400);
+  EXPECT_EQ(iter->Next().value()->ts, 500);
+  EXPECT_EQ(iter->Next().value()->ts, 600);
+
+  // Validate third chunk content
+  auto chunk3 = CreateTSChunkFromData(result[2]);
+  EXPECT_EQ(chunk3->GetCount(), 1);
+  iter = chunk3->CreateIterator();
+  EXPECT_EQ(iter->Next().value()->ts, 700);
+
+  // Test case 3: Equal split mode (7 samples into 2 chunks of 4 and 3)
+  test_chunk = CreateTSChunkFromData(merged_data);
+  new_samples = {MakeSample(400, 4.0), MakeSample(500, 5.0), MakeSample(600, 6.0), MakeSample(700, 7.0)};
+  new_batch = SampleBatch(new_samples, DuplicatePolicy::LAST);
+  result = test_chunk->UpsertSampleAndSplit(new_batch.AsSlice(), 3, false);
+  ASSERT_EQ(result.size(), 2);
+  EXPECT_EQ(result[0].size(), TSChunk::MetaData::kEncodedSize + 4 * sizeof(TSSample));
+  EXPECT_EQ(result[1].size(), TSChunk::MetaData::kEncodedSize + 3 * sizeof(TSSample));
+
+  // Validate split distribution
+  chunk1 = CreateTSChunkFromData(result[0]);
+  chunk2 = CreateTSChunkFromData(result[1]);
+  EXPECT_EQ(chunk1->GetCount(), 4);
+  EXPECT_EQ(chunk2->GetCount(), 3);
+  EXPECT_EQ(chunk1->GetFirstTimestamp(), 100);
+  EXPECT_EQ(chunk1->GetLastTimestamp(), 400);
+  EXPECT_EQ(chunk2->GetFirstTimestamp(), 500);
+  EXPECT_EQ(chunk2->GetLastTimestamp(), 700);
+
+  // Test case 4: Equal split mode (no split)
+  test_chunk = CreateTSChunkFromData(merged_data);
+  new_samples = {MakeSample(400, 4.0), MakeSample(500, 5.0), MakeSample(600, 6.0), MakeSample(700, 7.0)};
+  new_batch = SampleBatch(new_samples, DuplicatePolicy::LAST);
+  result = test_chunk->UpsertSampleAndSplit(new_batch.AsSlice(), 4, false);
+  EXPECT_EQ(result.size(), 1);
 }
 
 }  // namespace test

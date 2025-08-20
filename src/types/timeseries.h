@@ -32,7 +32,7 @@ using TSChunkPtr = std::unique_ptr<TSChunk>;
 using OwnedTSChunk = std::tuple<TSChunkPtr, std::string>;
 
 // Creates a TSChunk from the provided raw data buffer.
-TSChunkPtr CreateTSChunkFromData(nonstd::span<char> data);
+TSChunkPtr CreateTSChunkFromData(nonstd::span<const char> data);
 
 // Creates an empty owned time series chunk with specified compression option.
 OwnedTSChunk CreateEmptyOwnedTSChunk(bool is_compressed = false);
@@ -54,7 +54,7 @@ class TSChunkIterator {
   explicit TSChunkIterator(uint64_t count) : count_(count), idx_(0) {}
   virtual ~TSChunkIterator() = default;
 
-  virtual std::optional<TSSample*> Next() = 0;
+  virtual std::optional<const TSSample*> Next() = 0;
   virtual bool HasNext() const { return idx_ < count_; }
 
  protected:
@@ -72,6 +72,7 @@ class TSChunk {
     kBlock,
     kOld,
   };
+  using AddResultWithTS = std::pair<AddResult, uint64_t>;
 
   class SampleBatch;
   class SampleBatchSlice {
@@ -88,8 +89,8 @@ class TSChunk {
     // e.g., samples: {10,20,30,40}, first=20, last=40 -> {20,30}
     SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
 
-    uint64_t GetFirstTimestamp();
-    uint64_t GetLastTimestamp();
+    uint64_t GetFirstTimestamp() const;
+    uint64_t GetLastTimestamp() const;
 
     // Get number of valid samples (excluding duplicates and expired entries)
     size_t GetValidCount() const;
@@ -109,7 +110,7 @@ class TSChunk {
     SampleBatchSlice(nonstd::span<const TSSample> samples, nonstd::span<AddResult> results, DuplicatePolicy policy)
         : sample_span_(samples), add_result_span_(results), policy_(policy) {}
 
-    SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx);
+    SampleBatchSlice createSampleSlice(size_t start_idx, size_t end_idx) const;
   };
 
   class SampleBatch {
@@ -125,7 +126,7 @@ class TSChunk {
     SampleBatchSlice AsSlice();
 
     // Return add results by samples' order
-    std::vector<AddResult> GetFinalResults() const;
+    std::vector<AddResultWithTS> GetFinalResults() const;
 
    private:
     std::vector<TSSample> samples_;
@@ -148,7 +149,7 @@ class TSChunk {
     void Decode(Slice* input);
   };
 
-  explicit TSChunk(nonstd::span<char> data);
+  explicit TSChunk(nonstd::span<const char> data);
 
   virtual ~TSChunk() = default;
 
@@ -166,6 +167,13 @@ class TSChunk {
   // Returns new chunk data with merged samples. Returns empty string if no changes
   virtual std::string UpsertSamples(SampleBatchSlice samples) const = 0;
 
+  // Add new samples to the chunk according to duplicate policy
+  // Split chunk and return new chunk. There two split modes:
+  // 1. Fix split mode: used for unsealed chunk. 2. Equal split mode: used for sealed chunk.
+  // Returns empty if no changes
+  virtual std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
+                                                        bool is_fix_split_mode) const = 0;
+
   // Delete samples in [from, to] timestamp range
   // Returns new chunk data without deleted samples. Returns empty string if no changes
   virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const = 0;
@@ -176,22 +184,24 @@ class TSChunk {
   virtual std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const = 0;
 
  protected:
-  nonstd::span<char> data_;
+  nonstd::span<const char> data_;
   MetaData metadata_;
 };
 
 class UncompTSChunk : public TSChunk {
  public:
-  explicit UncompTSChunk(nonstd::span<char> data);
+  explicit UncompTSChunk(nonstd::span<const char> data);
   std::unique_ptr<TSChunkIterator> CreateIterator() const override;
 
   uint64_t GetFirstTimestamp() const override;
   uint64_t GetLastTimestamp() const override;
 
   std::string UpsertSamples(SampleBatchSlice samples) const override;
+  std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
+                                                bool is_fix_split_mode) const override;
   std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
 
  private:
-  nonstd::span<TSSample> samples_;
+  nonstd::span<const TSSample> samples_;
 };

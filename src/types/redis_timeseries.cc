@@ -234,7 +234,9 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
       s = batch->Put(new_key, new_data);
       if (!s.ok()) return s;
     }
-    chunk_count += new_data_list.size() - 1;
+    if (!new_data_list.empty()) {
+      chunk_count += new_data_list.size() - 1;
+    }
   }
 
   // Process samples added to latest chunk(unseal)
@@ -252,7 +254,9 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
     s = batch->Put(new_key, new_data);
     if (!s.ok()) return s;
   }
-  chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
+  if (!new_data_list.empty()) {
+    chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
+  }
   if (chunk_count != metadata.size) {
     metadata.size = chunk_count;
     std::string bytes;

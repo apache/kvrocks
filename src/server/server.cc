@@ -119,6 +119,19 @@ Server::Server(engine::Storage *storage, Config *config)
   slow_log_.SetMaxEntries(config->slowlog_max_len);
   slow_log_.SetDumpToLogfileLevel(config->slowlog_dump_logfile_level);
   perf_log_.SetMaxEntries(config->profiling_sample_record_max_len);
+
+  if (config->hotkey_bootstrap) {
+    uint32_t capacity = config->hotkey_init_lru_capacity, deque_size = config->hotkey_init_deque_size,
+             threshold = config->hotkey_init_threshold;
+    Status s = hotkey.Enable(capacity, deque_size, threshold);
+    if (!s.IsOK()) {
+      error("[server] Failed to enable hotkey analyze with capacity: {}, deque size: {}, threshold: {}", capacity,
+            deque_size, threshold);
+      exit(1);
+    }
+    info("[server] Enable hotkey analyze with capacity: {}, deque size: {}, threshold: {}", capacity, deque_size,
+         threshold);
+  }
 }
 
 Server::~Server() {

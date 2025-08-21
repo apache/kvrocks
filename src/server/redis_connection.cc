@@ -387,6 +387,39 @@ static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {
   return cmd_name == "info" || cmd_name == "slaveof" || cmd_name == "config";
 }
 
+static std::string GetRedisTypeOfUserKey([[maybe_unused]] const std::string &cmd_name, CommandCategory cmd_cat) {
+  switch (cmd_cat) {
+    case CommandCategory::Bit:
+      return "BitMap";
+    case CommandCategory::BloomFilter:
+      return "BloomFilter";
+    case CommandCategory::Geo:
+      return "Geo";
+    case CommandCategory::Hash:
+      return "Hash";
+    case CommandCategory::HLL:
+      return "HyperLogLog";
+    case CommandCategory::JSON:
+      return "JSON";
+    case CommandCategory::List:
+      return "List";
+    case CommandCategory::Set:
+      return "Set";
+    case CommandCategory::SortedInt:
+      return "SortedInt";
+    case CommandCategory::Stream:
+      return "Stream";
+    case CommandCategory::String:
+      return "String";
+    case CommandCategory::ZSet:
+      return "ZSet";
+    case CommandCategory::TDigest:
+      return "TDigest";
+    default:
+      return "none";
+  }
+}
+
 void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
@@ -596,6 +629,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     if (!reply.empty()) Reply(reply);
     reply.clear();
+
+    // Hotkey analyze
+    if (srv_->hotkey.enable_analyze) {
+      std::string redis_type = GetRedisTypeOfUserKey(cmd_name, attributes->category);
+      if (redis_type != "none") {
+        srv_->hotkey.UpdateCounter(cmd_tokens[1], redis_type);
+      }
+    }
   }
 }
 

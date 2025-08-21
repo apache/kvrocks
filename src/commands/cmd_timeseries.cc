@@ -36,6 +36,25 @@ constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
 
+using ChunkType = TimeSeriesMetadata::ChunkType;
+using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
+using TSAggregatorType = redis::TSAggregatorType;
+
+const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
+    {ChunkType::COMPRESSED, "compressed"},
+    {ChunkType::UNCOMPRESSED, "uncompressed"},
+};
+static const std::unordered_map<DuplicatePolicy, std::string_view> kDuplicatePolicyMap = {
+    {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
+    {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
+};
+static const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap = {
+    {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
+    {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
+    {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
+    {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+};
+
 std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   using AddResult = TSChunk::AddResult;
   switch (res.first) {
@@ -51,42 +70,25 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   return "";
 }
 
-std::string_view FormatChunkTypeAsRedisReply(TimeSeriesMetadata::ChunkType chunk_type) {
-  using ChunkType = TimeSeriesMetadata::ChunkType;
-  static const std::unordered_map<ChunkType, std::string_view> map = {
-      {ChunkType::COMPRESSED, "compressed"},
-      {ChunkType::UNCOMPRESSED, "uncompressed"},
-  };
-  auto it = map.find(chunk_type);
-  if (it == map.end()) {
+std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
+  auto it = kChunkTypeMap.find(chunk_type);
+  if (it == kChunkTypeMap.end()) {
     unreachable();
   }
   return it->second;
 }
 
-std::string_view FormatDuplicatePolicyAsRedisReply(TimeSeriesMetadata::DuplicatePolicy policy) {
-  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
-  static const std::unordered_map<DuplicatePolicy, std::string_view> map = {
-      {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
-      {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
-  };
-  auto it = map.find(policy);
-  if (it == map.end()) {
+std::string_view FormatDuplicatePolicyAsRedisReply(DuplicatePolicy policy) {
+  auto it = kDuplicatePolicyMap.find(policy);
+  if (it == kDuplicatePolicyMap.end()) {
     unreachable();
   }
   return it->second;
 }
 
-std::string_view FormatAggregatorTypeAsRedisReply(redis::TSAggregatorType aggregator) {
-  using TSAggregatorType = redis::TSAggregatorType;
-  static const std::unordered_map<TSAggregatorType, std::string_view> map = {
-      {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
-      {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
-      {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
-      {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
-  };
-  auto it = map.find(aggregator);
-  if (it == map.end()) {
+std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
+  auto it = kAggregatorTypeMap.find(aggregator);
+  if (it == kAggregatorTypeMap.end()) {
     unreachable();
   }
   return it->second;
@@ -153,8 +155,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
   }
 
  protected:
-  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
-
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
  private:
@@ -179,7 +179,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
   }
 
   Status handleEncoding(TSOptionsParser &parser) {
-    using ChunkType = TimeSeriesMetadata::ChunkType;
     if (parser.EatEqICase("UNCOMPRESSED")) {
       create_option_.chunk_type = ChunkType::UNCOMPRESSED;
     } else if (parser.EatEqICase("COMPRESSED")) {

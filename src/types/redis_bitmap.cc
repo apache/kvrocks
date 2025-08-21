@@ -589,11 +589,94 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;
             }
+          } else if (op_flag == kBitOpDiff
+            || op_flag == kBitOpDiff1
+            || op_flag == kBitOpAndOr) {
+            size_t processed = 0;
+            size_t k = 0;
+
+            while(frag_minlen >= sizeof(uint64_t)*4) {
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                lres[0] |= lp[i][k+0];
+                lres[1] |= lp[i][k+1];
+                lres[2] |= lp[i][k+2];
+                lres[3] |= lp[i][k+3];
+              }
+              k += 4;
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+              processed += sizeof(uint64_t) * 4;
+            }
+
+            lres = reinterpret_cast<uint64_t *>(frag_res.get());
+            auto *first_key = reinterpret_cast<const uint64_t *>(fragments[0].data());
+            switch (op_flag) {
+              case kBitOpDiff:
+                for (uint64_t i = 0; i < processed; i += sizeof(uint64_t) * 4) {
+                  lres[0] = (first_key[0] & ~lres[0]);
+                  lres[1] = (first_key[1] & ~lres[1]);
+                  lres[2] = (first_key[2] & ~lres[2]);
+                  lres[3] = (first_key[3] & ~lres[3]);
+                  lres+=4;
+                  first_key += 4;
+                }
+                break;
+              case kBitOpDiff1:
+                for (uint64_t i = 0; i < processed; i += sizeof(uint64_t) * 4) {
+                  lres[0] = (~first_key[0] & lres[0]);
+                  lres[1] = (~first_key[1] & lres[1]);
+                  lres[2] = (~first_key[2] & lres[2]);
+                  lres[3] = (~first_key[3] & lres[3]);
+                  lres += 4;
+                  first_key += 4;
+                }
+                break;
+              case kBitOpAndOr:
+                for (uint64_t i = 0; i < processed; i += sizeof(uint64_t) * 4) {
+                  lres[0] = (first_key[0] & lres[0]);
+                  lres[1] = (first_key[1] & lres[1]);
+                  lres[2] = (first_key[2] & lres[2]);
+                  lres[3] = (first_key[3] & lres[3]);
+                  lres += 4;
+                  first_key += 4;
+                }
+                break;
+            }
+          } else if (op_flag == kBitOpOne) {
+            uint64_t lcommon_bits[4];
+            size_t k = 0;
+
+            while(frag_minlen >= sizeof(uint64_t)*4) {
+              memset(lcommon_bits, 0, sizeof(lcommon_bits));
+
+              for (size_t i = 1; i < frag_numkeys; i++) {
+                lcommon_bits[0] |= (lres[0] & lp[i][k+0]);
+                lcommon_bits[1] |= (lres[1] & lp[i][k+1]);
+                lcommon_bits[2] |= (lres[2] & lp[i][k+2]);
+                lcommon_bits[3] |= (lres[3] & lp[i][k+3]);
+
+                lres[0] ^= lp[i][k+0];
+                lres[1] ^= lp[i][k+1];
+                lres[2] ^= lp[i][k+2];
+                lres[3] ^= lp[i][k+3];
+              }
+
+              lres[0] &= ~lcommon_bits[0];
+              lres[1] &= ~lcommon_bits[1];
+              lres[2] &= ~lcommon_bits[2];
+              lres[3] &= ~lcommon_bits[3];
+
+              k += 4;
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
           }
         }
 #endif
 
-        uint8_t output = 0, byte = 0;
+        uint8_t output = 0, byte = 0, disjunction = 0, common_bits = 0;
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
           if (op_flag == kBitOpNot) output = ~output;
@@ -609,11 +692,34 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
               case kBitOpXor:
                 output ^= byte;
                 break;
+              case kBitOpDiff:
+              case kBitOpDiff1:
+              case kBitOpAndOr:
+                disjunction |= byte;
+                break;
+              case kBitOpOne:
+                common_bits |= (output & byte);
+                output ^= byte;
+                output &= ~common_bits;
+                break;
               default:
                 break;
             }
           }
-          frag_res[j] = output;
+          switch(op_flag) {
+            case kBitOpDiff:
+              frag_res[j] = (output & ~disjunction);
+              break;
+            case kBitOpDiff1:
+              frag_res[j] = (~output & disjunction);
+              break;
+            case kBitOpAndOr:
+              frag_res[j] = (output & disjunction);
+              break;
+            default:
+              frag_res[j] = output;
+              break;
+          }
         }
 
         if (op_flag == kBitOpNot) {

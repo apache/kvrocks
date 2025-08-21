@@ -44,11 +44,11 @@ const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
     {ChunkType::COMPRESSED, "compressed"},
     {ChunkType::UNCOMPRESSED, "uncompressed"},
 };
-static const std::unordered_map<DuplicatePolicy, std::string_view> kDuplicatePolicyMap = {
+const std::unordered_map<DuplicatePolicy, std::string_view> kDuplicatePolicyMap = {
     {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
     {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
 };
-static const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap = {
+const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap = {
     {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
     {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
     {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},

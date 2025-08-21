@@ -111,6 +111,7 @@ enum class CommandCategory : uint8_t {
   TDigest,
   Txn,
   ZSet,
+  Timeseries,
 };
 
 class Commander {

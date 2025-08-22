@@ -129,7 +129,6 @@ struct Config {
   int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
-  bool auto_resize_block_and_sst = true;
   int fullsync_recv_file_delay = 0;
   bool use_rsid_psync = false;
   bool replication_group_sync = false;

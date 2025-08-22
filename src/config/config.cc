@@ -219,7 +219,6 @@ Config::Config() {
                                                 spdlog::level::off)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
-      {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},

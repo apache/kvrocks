@@ -81,6 +81,90 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "ts.create", key, "duplicate_policy", "invalid").Err(), "Unknown DUPLICATE_POLICY")
 	})
 
+	// Test non-existent key
+	t.Run("TS.INFO Non-Existent Key", func(t *testing.T) {
+		_, err := rdb.Do(ctx, "ts.info", "test_info_key").Result()
+		require.ErrorContains(t, err, "the key is not a TSDB key")
+	})
+
+	t.Run("TS.INFO Initial State", func(t *testing.T) {
+		key := "test_info_key"
+		// Create timeseries with custom options
+		require.NoError(t, rdb.Do(ctx, "ts.create", key, "retention", "10", "chunk_size", "3",
+			"labels", "k1", "v1", "k2", "v2").Err())
+		vals, err := rdb.Do(ctx, "ts.info", key).Slice()
+		require.NoError(t, err)
+		require.Equal(t, 24, len(vals))
+
+		// totalSamples = 0
+		require.Equal(t, "totalSamples", vals[0])
+		require.Equal(t, int64(0), vals[1])
+
+		// memoryUsage = 0
+		require.Equal(t, "memoryUsage", vals[2])
+		require.Equal(t, int64(0), vals[3])
+
+		// retentionTime = 10
+		require.Equal(t, "retentionTime", vals[8])
+		require.Equal(t, int64(10), vals[9])
+
+		// chunkSize = 3
+		require.Equal(t, "chunkSize", vals[12])
+		require.Equal(t, int64(3), vals[13])
+
+		// chunkType = uncompressed
+		require.Equal(t, "chunkType", vals[14])
+		require.Equal(t, "uncompressed", vals[15])
+
+		// duplicatePolicy = block
+		require.Equal(t, "duplicatePolicy", vals[16])
+		require.Equal(t, "block", vals[17])
+
+		// labels = [(k1,v1), (k2,v2)]
+		require.Equal(t, "labels", vals[18])
+		labels := vals[19].([]interface{})
+		require.Equal(t, 2, len(labels))
+		for i, expected := range [][]string{{"k1", "v1"}, {"k2", "v2"}} {
+			pair := labels[i].([]interface{})
+			require.Equal(t, expected[0], pair[0])
+			require.Equal(t, expected[1], pair[1])
+		}
+
+		// sourceKey = nil
+		require.Equal(t, "sourceKey", vals[20])
+		require.Nil(t, []byte(nil), vals[21])
+
+		// rules = empty array
+		require.Equal(t, "rules", vals[22])
+		require.Empty(t, vals[23])
+	})
+
+	t.Run("TS.INFO After Adding Data", func(t *testing.T) {
+		key := "test_info_key"
+		// Add samples
+		require.NoError(t, rdb.Do(ctx, "ts.madd", key, "1", "10", key, "3", "10", key, "2", "20",
+			key, "3", "20", key, "4", "20", key, "13", "20", key, "1", "20", key, "14", "20").Err())
+
+		vals, err := rdb.Do(ctx, "ts.info", key).Slice()
+		require.NoError(t, err)
+
+		// totalSamples = 6
+		require.Equal(t, "totalSamples", vals[0])
+		require.Equal(t, int64(6), vals[1])
+
+		// firstTimestamp = 4 (earliest after retention)
+		require.Equal(t, "firstTimestamp", vals[4])
+		require.Equal(t, int64(4), vals[5])
+
+		// lastTimestamp = 14
+		require.Equal(t, "lastTimestamp", vals[6])
+		require.Equal(t, int64(14), vals[7])
+
+		// chunkCount = 2
+		require.Equal(t, "chunkCount", vals[10])
+		require.Equal(t, int64(2), vals[11])
+	})
+
 	t.Run("TS.ADD Basic Add", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())

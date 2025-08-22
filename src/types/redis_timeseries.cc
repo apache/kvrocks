@@ -132,7 +132,7 @@ rocksdb::Status TimeSeries::createTimeSeries(engine::Context &ctx, const Slice &
   s = batch->Put(metadata_cf_handle_, ns_key, bytes);
   if (!s.ok()) return s;
 
-  if (!option && !option->labels.empty()) {
+  if (option && !option->labels.empty()) {
     createLabelIndexInBatch(ns_key, *metadata_out, batch, option->labels);
   }
 
@@ -234,7 +234,9 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
       s = batch->Put(new_key, new_data);
       if (!s.ok()) return s;
     }
-    chunk_count += new_data_list.size() - 1;
+    if (!new_data_list.empty()) {
+      chunk_count += new_data_list.size() - 1;
+    }
   }
 
   // Process samples added to latest chunk(unseal)
@@ -252,7 +254,9 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
     s = batch->Put(new_key, new_data);
     if (!s.ok()) return s;
   }
-  chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
+  if (!new_data_list.empty()) {
+    chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
+  }
   if (chunk_count != metadata.size) {
     metadata.size = chunk_count;
     std::string bytes;
@@ -271,6 +275,26 @@ rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const T
     auto internal_key = internalKeyFromLabelKey(ns_key, metadata, label.k);
     auto s = batch->Put(internal_key, label.v);
     if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::getLabelKVList(engine::Context &ctx, const Slice &ns_key,
+                                           const TimeSeriesMetadata &metadata, LabelKVList *labels) {
+  // In the emun `TSSubkeyType`, `DOWNSTREAM` is the next of `LABEL`
+  std::string label_upper_bound = internalKeyFromDownstreamKey(ns_key, metadata, "");
+  std::string prefix = internalKeyFromLabelKey(ns_key, metadata, "");
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(label_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  labels->clear();
+  for (iter->Seek(lower_bound); iter->Valid(); iter->Next()) {
+    labels->push_back({labelKeyFromInternalKey(iter->key()), iter->value().ToString()});
   }
   return rocksdb::Status::OK();
 }
@@ -310,6 +334,13 @@ uint64_t TimeSeries::chunkIDFromInternalKey(Slice internal_key) {
   auto size = internal_key.size();
   internal_key.remove_prefix(size - sizeof(uint64_t));
   return DecodeFixed64(internal_key.data());
+}
+
+std::string TimeSeries::labelKeyFromInternalKey(Slice internal_key) const {
+  auto key = InternalKey(internal_key, storage_->IsSlotIdEncoded());
+  auto label_key = key.GetSubKey();
+  label_key.remove_prefix(sizeof(TSSubkeyType));
+  return label_key.ToString();
 }
 
 rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
@@ -356,6 +387,70 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
     return s;
   }
   *res = sample_batch.GetFinalResults();
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TSInfoResult *res) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &res->metadata);
+  if (!s.ok()) {
+    return s;
+  }
+  auto chunk_count = res->metadata.size;
+  auto &metadata = res->metadata;
+  // Approximate total samples
+  res->total_samples = chunk_count * res->metadata.chunk_size;
+  // TODO: Estimate disk usage for the field `memoryUsage`
+  res->memory_usage = 0;
+  // Retrieve the first and last timestamp
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    // no chunk
+    res->first_timestamp = 0;
+    res->last_timestamp = 0;
+  } else {
+    auto chunk = CreateTSChunkFromData(iter->value());
+    res->last_timestamp = chunk->GetLastTimestamp();
+    uint64_t retention_bound = (metadata.retention_time > 0 && res->last_timestamp > metadata.retention_time)
+                                   ? res->last_timestamp - metadata.retention_time
+                                   : 0;
+    auto bound_key = internalKeyFromChunkID(ns_key, metadata, retention_bound);
+    iter->SeekForPrev(bound_key);
+    if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+      if (!iter->Valid()) {
+        iter->Seek(bound_key);
+      } else {
+        iter->Next();
+      }
+      chunk = CreateTSChunkFromData(iter->value());
+      res->first_timestamp = chunk->GetFirstTimestamp();
+    } else {
+      chunk = CreateTSChunkFromData(iter->value());
+      auto chunk_it = chunk->CreateIterator();
+      while (chunk_it->HasNext()) {
+        auto sample = chunk_it->Next().value();
+        if (sample->ts >= retention_bound) {
+          res->first_timestamp = sample->ts;
+          break;
+        }
+      }
+    }
+  }
+  getLabelKVList(ctx, ns_key, metadata, &res->labels);
+  // TODO: Retrieve downstream downstream_rules
+
   return rocksdb::Status::OK();
 }
 

@@ -357,7 +357,6 @@ class Server {
   void cron();
   void recordInstantaneousMetrics();
   static void updateCachedTime();
-  Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
   void updateAllWatchedKeys();
   void increaseWorkerThreads(size_t delta);

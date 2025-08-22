@@ -29,10 +29,19 @@ github:
     - namespace
     - redis
     - redis-cluster
+  pull_requests:
+    allow_auto_merge: true
+    allow_update_branch: true
   enabled_merge_buttons:
     squash:  true
+    squash_commit_message: PR_TITLE_AND_DESC
     merge:   false
     rebase:  true
+  features:
+    wiki: false
+    issues: true
+    projects: true
+    discussions: true
   protected_branches:
     unstable:
       required_pull_request_reviews:

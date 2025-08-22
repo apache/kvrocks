@@ -732,7 +732,7 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
         break;
       }
       const bool in_time_range = sample->ts >= start_timestamp && sample->ts <= end_timestamp;
-      const bool not_time_filtered = option.filter_by_ts.empty() || !option.filter_by_ts.count(sample->ts);
+      const bool not_time_filtered = option.filter_by_ts.empty() || option.filter_by_ts.count(sample->ts);
       const bool value_in_range = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
                                                               sample->v <= option.filter_by_value->second);
 

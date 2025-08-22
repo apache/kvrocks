@@ -396,6 +396,14 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			assert.True(t, val >= 200 && val <= 300)
 		}
 
+		// Test ts filtering
+		res = rdb.Do(ctx, "ts.range", key, "-", "+", "FILTER_BY_TS", "1000", "3000").Val().([]interface{})
+		assert.Equal(t, 2, len(res))
+		for _, arr := range res {
+			ts := arr.([]interface{})[0].(int64)
+			assert.True(t, ts == 1000 || ts == 3000)
+		}
+
 		// Test count limit
 		res = rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "MIN", 20, "COUNT", 1).Val().([]interface{})
 		assert.Equal(t, 1, len(res))

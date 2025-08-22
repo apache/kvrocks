@@ -36,6 +36,25 @@ constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
 
+using ChunkType = TimeSeriesMetadata::ChunkType;
+using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
+using TSAggregatorType = redis::TSAggregatorType;
+
+const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
+    {ChunkType::COMPRESSED, "compressed"},
+    {ChunkType::UNCOMPRESSED, "uncompressed"},
+};
+const std::unordered_map<DuplicatePolicy, std::string_view> kDuplicatePolicyMap = {
+    {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
+    {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
+};
+const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap = {
+    {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
+    {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
+    {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
+    {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+};
+
 std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   using AddResult = TSChunk::AddResult;
   switch (res.first) {
@@ -49,6 +68,30 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
       unreachable();
   }
   return "";
+}
+
+std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
+  auto it = kChunkTypeMap.find(chunk_type);
+  if (it == kChunkTypeMap.end()) {
+    unreachable();
+  }
+  return it->second;
+}
+
+std::string_view FormatDuplicatePolicyAsRedisReply(DuplicatePolicy policy) {
+  auto it = kDuplicatePolicyMap.find(policy);
+  if (it == kDuplicatePolicyMap.end()) {
+    unreachable();
+  }
+  return it->second;
+}
+
+std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
+  auto it = kAggregatorTypeMap.find(aggregator);
+  if (it == kAggregatorTypeMap.end()) {
+    unreachable();
+  }
+  return it->second;
 }
 
 }  // namespace
@@ -112,8 +155,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
   }
 
  protected:
-  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
-
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
  private:
@@ -138,7 +179,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
   }
 
   Status handleEncoding(TSOptionsParser &parser) {
-    using ChunkType = TimeSeriesMetadata::ChunkType;
     if (parser.EatEqICase("UNCOMPRESSED")) {
       create_option_.chunk_type = ChunkType::UNCOMPRESSED;
     } else if (parser.EatEqICase("COMPRESSED")) {
@@ -198,6 +238,65 @@ class CommandTSCreate : public CommandTSCreateBase {
     *output = redis::RESP_OK;
     return Status::OK();
   }
+};
+
+class CommandTSInfo : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    user_key_ = args[1];
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    TSInfoResult info;
+    auto s = timeseries_db.Info(ctx, user_key_, &info);
+    if (s.IsNotFound()) return {Status::RedisExecErr, errTSKeyNotFound};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = redis::MultiLen(24);
+    *output += redis::SimpleString("totalSamples");
+    *output += redis::Integer(info.total_samples);
+    *output += redis::SimpleString("memoryUsage");
+    *output += redis::Integer(info.memory_usage);
+    *output += redis::SimpleString("firstTimestamp");
+    *output += redis::Integer(info.first_timestamp);
+    *output += redis::SimpleString("lastTimestamp");
+    *output += redis::Integer(info.last_timestamp);
+    *output += redis::SimpleString("retentionTime");
+    *output += redis::Integer(info.metadata.retention_time);
+    *output += redis::SimpleString("chunkCount");
+    *output += redis::Integer(info.metadata.size);
+    *output += redis::SimpleString("chunkSize");
+    *output += redis::Integer(info.metadata.chunk_size);
+    *output += redis::SimpleString("chunkType");
+    *output += redis::SimpleString(FormatChunkTypeAsRedisReply(info.metadata.chunk_type));
+    *output += redis::SimpleString("duplicatePolicy");
+    *output += redis::SimpleString(FormatDuplicatePolicyAsRedisReply(info.metadata.duplicate_policy));
+    *output += redis::SimpleString("labels");
+    std::vector<std::string> labels_str;
+    labels_str.reserve(info.labels.size());
+    for (const auto &label : info.labels) {
+      auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
+      labels_str.push_back(str);
+    }
+    *output += redis::Array(labels_str);
+    *output += redis::SimpleString("sourceKey");
+    *output += info.metadata.source_key.empty() ? redis::NilString(redis::RESP::v3)
+                                                : redis::BulkString(info.metadata.source_key);
+    *output += redis::SimpleString("rules");
+    std::vector<std::string> rules_str;
+    rules_str.reserve(info.downstream_rules.size());
+    for (const auto &rule : info.downstream_rules) {
+      auto str = redis::Array({redis::BulkString(rule.first), redis::Integer(rule.second.bucket_duration),
+                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(rule.second.aggregator)),
+                               redis::Integer(rule.second.alignment)});
+      rules_str.push_back(str);
+    }
+    *output += redis::Array(rules_str);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
 };
 
 class CommandTSAdd : public CommandTSCreateBase {
@@ -324,6 +423,7 @@ class CommandTSMAdd : public Commander {
 
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1), );
+                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+                        MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1));
 
 }  // namespace redis

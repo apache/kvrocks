@@ -37,7 +37,7 @@ enum BitOpFlags {
   kBitOpDiff,
   kBitOpDiff1,
   kBitOpAndOr,
-  kBitOpOne
+  kBitOpOne,
 };
 
 namespace redis {

@@ -554,7 +554,9 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
           for (uint64_t i = 0; i < frag_numkeys; i++) {
             lp[i] = reinterpret_cast<const uint64_t *>(fragments[i].data());
           }
-          memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
+          if (op_flag != kBitOpDiff && op_flag != kBitOpDiff1 && op_flag != kBitOpAndOr) {
+            memcpy(frag_res.get(), fragments[0].data(), frag_minlen);
+          }
           auto apply_fast_path_op = [&](auto op) {
             // Note: kBitOpNot cannot use this op, it only applying
             // to kBitOpAnd, kBitOpOr, kBitOpXor.

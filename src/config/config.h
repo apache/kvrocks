@@ -193,6 +193,8 @@ struct Config {
 
   bool skip_block_cache_deallocation_on_close = false;
 
+  bool lua_strict_key_accessing = false;
+
   std::vector<double> histogram_bucket_boundaries;
 
   struct RocksDB {

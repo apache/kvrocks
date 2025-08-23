@@ -589,18 +589,16 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
               j += sizeof(uint64_t) * 4;
               frag_minlen -= sizeof(uint64_t) * 4;
             }
-          } else if (op_flag == kBitOpDiff
-            || op_flag == kBitOpDiff1
-            || op_flag == kBitOpAndOr) {
+          } else if (op_flag == kBitOpDiff || op_flag == kBitOpDiff1 || op_flag == kBitOpAndOr) {
             size_t processed = 0;
             size_t k = 0;
 
-            while(frag_minlen >= sizeof(uint64_t)*4) {
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
               for (uint64_t i = 1; i < frag_numkeys; i++) {
-                lres[0] |= lp[i][k+0];
-                lres[1] |= lp[i][k+1];
-                lres[2] |= lp[i][k+2];
-                lres[3] |= lp[i][k+3];
+                lres[0] |= lp[i][k + 0];
+                lres[1] |= lp[i][k + 1];
+                lres[2] |= lp[i][k + 2];
+                lres[3] |= lp[i][k + 3];
               }
               k += 4;
               lres += 4;
@@ -618,7 +616,7 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
                   lres[1] = (first_key[1] & ~lres[1]);
                   lres[2] = (first_key[2] & ~lres[2]);
                   lres[3] = (first_key[3] & ~lres[3]);
-                  lres+=4;
+                  lres += 4;
                   first_key += 4;
                 }
                 break;
@@ -647,19 +645,19 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
             uint64_t lcommon_bits[4];
             size_t k = 0;
 
-            while(frag_minlen >= sizeof(uint64_t)*4) {
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
               memset(lcommon_bits, 0, sizeof(lcommon_bits));
 
               for (size_t i = 1; i < frag_numkeys; i++) {
-                lcommon_bits[0] |= (lres[0] & lp[i][k+0]);
-                lcommon_bits[1] |= (lres[1] & lp[i][k+1]);
-                lcommon_bits[2] |= (lres[2] & lp[i][k+2]);
-                lcommon_bits[3] |= (lres[3] & lp[i][k+3]);
+                lcommon_bits[0] |= (lres[0] & lp[i][k + 0]);
+                lcommon_bits[1] |= (lres[1] & lp[i][k + 1]);
+                lcommon_bits[2] |= (lres[2] & lp[i][k + 2]);
+                lcommon_bits[3] |= (lres[3] & lp[i][k + 3]);
 
-                lres[0] ^= lp[i][k+0];
-                lres[1] ^= lp[i][k+1];
-                lres[2] ^= lp[i][k+2];
-                lres[3] ^= lp[i][k+3];
+                lres[0] ^= lp[i][k + 0];
+                lres[1] ^= lp[i][k + 1];
+                lres[2] ^= lp[i][k + 2];
+                lres[3] ^= lp[i][k + 3];
               }
 
               lres[0] &= ~lcommon_bits[0];
@@ -706,7 +704,7 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
                 break;
             }
           }
-          switch(op_flag) {
+          switch (op_flag) {
             case kBitOpDiff:
               frag_res[j] = (output & ~disjunction);
               break;

@@ -29,16 +29,7 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-enum BitOpFlags {
-  kBitOpAnd,
-  kBitOpOr,
-  kBitOpXor,
-  kBitOpNot,
-  kBitOpDiff,
-  kBitOpDiff1,
-  kBitOpAndOr,
-  kBitOpOne
-};
+enum BitOpFlags { kBitOpAnd, kBitOpOr, kBitOpXor, kBitOpNot, kBitOpDiff, kBitOpDiff1, kBitOpAndOr, kBitOpOne };
 
 namespace redis {
 

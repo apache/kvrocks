@@ -894,3 +894,34 @@ func TestEvalScriptFlags(t *testing.T) {
 
 	})
 }
+
+func TestEvalScriptInStrictMode(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Accessing undeclared keys in strict mode", func(t *testing.T) {
+		rdb.ConfigSet(ctx, "lua-strict-key-accessing", "yes")
+
+		util.ErrorRegexp(t, rdb.Eval(ctx, "return redis.call('set', 'a', 1)", []string{}).Err(), ".*'a'.*not in the allowed keys.*")
+		util.ErrorRegexp(t, rdb.Eval(ctx, "return redis.call('set', ARGV[1], 1)", []string{}, "a").Err(), ".*'a'.*not in the allowed keys.*")
+		util.ErrorRegexp(t, rdb.Eval(ctx, "return redis.call('set', 'b', 1)", []string{"a"}).Err(), ".*'b'.*not in the allowed keys.*")
+		util.ErrorRegexp(t, rdb.Eval(ctx, "return redis.call('set', KEYS[1]..'b', 1)", []string{"a"}).Err(), ".*'ab'.*not in the allowed keys.*")
+
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', KEYS[1], 1)", []string{"a"}).Err())
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', KEYS[2], 1)", []string{"a", "b"}).Err())
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', 'a', 1)", []string{"a", "b"}).Err())
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', 'b', 1)", []string{"a", "b"}).Err())
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', ARGV[1]..ARGV[2], 1)", []string{"ab"}, "a", "b").Err())
+
+		// read-only commands are allowed as an exception
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('get', 'a')", []string{}).Err())
+
+		rdb.ConfigSet(ctx, "lua-strict-key-accessing", "no")
+
+		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', 'a', 1)", []string{}).Err())
+	})
+}

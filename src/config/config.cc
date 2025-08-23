@@ -243,6 +243,7 @@ Config::Config() {
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
       {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},
+      {"lua-strict-key-accessing", false, new YesNoField(&lua_strict_key_accessing, false)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,

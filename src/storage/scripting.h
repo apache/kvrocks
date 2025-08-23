@@ -39,7 +39,8 @@ inline constexpr const char REDIS_LUA_REGISTER_FUNC_FLAGS_PREFIX[] = "__redis_re
 inline constexpr const char REDIS_FUNCTION_LIBNAME[] = "REDIS_FUNCTION_LIBNAME";
 inline constexpr const char REDIS_FUNCTION_NEEDSTORE[] = "REDIS_FUNCTION_NEEDSTORE";
 inline constexpr const char REDIS_FUNCTION_LIBRARIES[] = "REDIS_FUNCTION_LIBRARIES";
-inline constexpr const char REGISTRY_SCRIPT_RUN_CTX_NAME[] = "SCRIPT_RUN_CTX";
+inline constexpr const char REGISTRY_SCRIPT_RUN_CTX_NAME[] = "__SCRIPT_RUN_CTX";
+inline constexpr const char REGISTRY_KEYS_NAME[] = "__CURRENT_KEYS";
 
 namespace lua {
 
@@ -165,7 +166,7 @@ template <typename T>
 void SaveOnRegistry(lua_State *lua, const char *name, T *ptr) {
   lua_pushstring(lua, name);
   if (ptr) {
-    lua_pushlightuserdata(lua, ptr);
+    lua_pushlightuserdata(lua, (void *)ptr);
   } else {
     lua_pushnil(lua);
   }

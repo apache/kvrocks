@@ -426,6 +426,9 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
 
   SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &script_run_ctx);
 
+  // save keys on registry the to perform key touching check
+  SaveOnRegistry(lua, REGISTRY_KEYS_NAME, &keys);
+
   PushArray(lua, keys);
   PushArray(lua, argv);
   if (lua_pcall(lua, 2, 1, -4)) {
@@ -437,6 +440,7 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
     lua_pop(lua, 2);
   }
 
+  RemoveFromRegistry(lua, REGISTRY_KEYS_NAME);
   RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
@@ -704,6 +708,9 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
   SetGlobalArray(lua, "KEYS", keys);
   SetGlobalArray(lua, "ARGV", argv);
 
+  // save keys on registry the to perform key touching check
+  SaveOnRegistry(lua, REGISTRY_KEYS_NAME, &keys);
+
   if (lua_pcall(lua, 0, 1, -2)) {
     auto msg = fmt::format("running script (call to {}): {}", funcname, lua_tostring(lua, -1));
     *output = redis::Error({Status::NotOK, msg});
@@ -719,6 +726,7 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
   lua_setglobal(lua, "KEYS");
   lua_pushnil(lua);
   lua_setglobal(lua, "ARGV");
+  RemoveFromRegistry(lua, REGISTRY_KEYS_NAME);
   RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
@@ -812,6 +820,28 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   if (!s) {
     PushError(lua, s.Msg().data());
     return raise_error ? RaiseError(lua) : 1;
+  }
+
+  // if it is a write command and strict mode is enabled,
+  // we need to check if the input keys are all in allowed keys
+  if (config->lua_strict_key_accessing && !(cmd_flags & redis::kCmdReadOnly)) {
+    auto allowed_keys = GetFromRegistry<const std::vector<std::string>>(lua, REGISTRY_KEYS_NAME);
+
+    attributes->ForEachKeyRange(
+        [&](const std::vector<std::string> &args, const redis::CommandKeyRange &range) {
+          range.ForEachKey(
+              [&](const std::string &key) {
+                if (std::find(allowed_keys->begin(), allowed_keys->end(), key) == allowed_keys->end()) {
+                  PushError(lua, fmt::format("Script attempted to access key '{}' which is not in the allowed keys "
+                                             "(lua-strict-key-accessing)",
+                                             key)
+                                     .c_str());
+                  RaiseError(lua);
+                }
+              },
+              args);
+        },
+        args);
   }
 
   if (config->cluster_enabled) {
@@ -1582,9 +1612,9 @@ Status CreateFunction(Server *srv, const std::string &body, std::string *sha, lu
     libname = shebang_split_sv.substr(shebang_libname_prefix.size());
     if (libname.empty() ||
         std::any_of(libname.begin(), libname.end(), [](char v) { return !std::isalnum(v) && v != '_'; })) {
-      return {
-          Status::NotOK,
-          "Library names can only contain letters, numbers, or underscores(_) and must be at least one character long"};
+      return {Status::NotOK,
+              "Library names can only contain letters, numbers, or underscores(_) and must be at least one "
+              "character long"};
     }
     found_libname = true;
   }

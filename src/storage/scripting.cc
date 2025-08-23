@@ -27,7 +27,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <shared_mutex>
 #include <string>
 
 #include "commands/commander.h"

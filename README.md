@@ -20,6 +20,7 @@
 <img src="https://kvrocks.apache.org/img/kvrocks-featured.png" alt="kvrocks_logo" width="350"/>
 
 [![CI](https://github.com/apache/kvrocks/actions/workflows/kvrocks.yaml/badge.svg?branch=unstable)](https://github.com/apache/kvrocks/actions/workflows/kvrocks.yaml)
+[![FreeBSD CI](https://github.com/apache/kvrocks/actions/workflows/freebsd.yaml/badge.svg?branch=unstable)](https://github.com/apache/kvrocks/actions/workflows/freebsd.yaml)
 [![License](https://img.shields.io/github/license/apache/kvrocks)](https://github.com/apache/kvrocks/blob/unstable/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/apache/kvrocks)](https://github.com/apache/kvrocks/stargazers)
 
@@ -71,6 +72,11 @@ sudo pacman -Sy --noconfirm autoconf automake python3 git wget which cmake make 
 brew install git cmake autoconf automake libtool openssl
 # please link openssl by force if it still cannot be found after installing
 brew link --force openssl
+
+# FreeBSD
+sudo pkg update -f
+sudo pkg install -y git cmake ninja autoconf automake libtool pkgconf python3
+# Optional for TLS: sudo pkg install -y openssl
 ```
 
 ### Build
@@ -139,7 +145,7 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 
 ### Supported platforms
 
-* OS: Linux and macOS
+* OS: Linux, macOS, and FreeBSD
 * arch: x86_64, ARM and RISC-V
 
 ## Namespace

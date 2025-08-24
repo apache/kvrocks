@@ -67,7 +67,10 @@ struct TSAggregator {
   // Calculates the start timestamp of the aligned bucket that contains the given timestamp.
   // E.g. `ts`=100, `duration`=30, `alignment`=20.
   // The bucket containing `ts=100` starts at `80` (since 80 ≤ 100 < 110). Returns `80`.
-  uint64_t CalculateAlignedBucket(uint64_t ts) const;
+  uint64_t CalculateAlignedBucketLeft(uint64_t ts) const;
+
+  // Calculates the end timestamp of the aligned bucket that contains the given timestamp.
+  uint64_t CalculateAlignedBucketRight(uint64_t ts) const;
 
   // Calculates the aggregated value of the given samples according to the aggregator type
   double AggregateSamplesValue(nonstd::span<const TSSample> samples) const;

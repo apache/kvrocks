@@ -255,8 +255,26 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_EQ(res[5].ts, 3010);
   EXPECT_EQ(res[5].v, 310);
 
+  // Test alignment with irregular bucket
+  res.clear();
+  range_opt.aggregator.bucket_duration = 4000;
+  range_opt.aggregator.alignment = 2000;
+  range_opt.aggregator.type = redis::TSAggregatorType::SUM;
+  range_opt.start_ts = 1000;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 2);
+  EXPECT_EQ(res[0].ts, 0);
+  EXPECT_EQ(res[0].v, 330);
+  EXPECT_EQ(res[1].ts, 2000);
+  EXPECT_EQ(res[1].v, 1560);
+
   // Test bucket timestamp type
   res.clear();
+  range_opt.aggregator.type = redis::TSAggregatorType::MIN;
+  range_opt.aggregator.alignment = 10;
+  range_opt.aggregator.bucket_duration = 20;
+  range_opt.start_ts = 0;
   range_opt.bucket_timestamp_type = redis::TSRangeOption::BucketTimestampType::Mid;
   s = ts_db_->Range(*ctx_, key_, range_opt, &res);
   EXPECT_TRUE(s.ok());

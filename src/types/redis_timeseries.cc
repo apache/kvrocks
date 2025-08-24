@@ -38,9 +38,9 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     res = std::move(samples);
     return res;
   }
-  uint64_t start_bucket = aggregator.CalculateAlignedBucket(samples.front().ts);
-  uint64_t end_bucket = aggregator.CalculateAlignedBucket(samples.back().ts);
-  uint64_t bucket_count = (end_bucket - start_bucket) / aggregator.bucket_duration;
+  uint64_t start_bucket = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
+  uint64_t end_bucket = aggregator.CalculateAlignedBucketLeft(samples.back().ts);
+  uint64_t bucket_count = (end_bucket - start_bucket) / aggregator.bucket_duration + 1;
 
   std::vector<nonstd::span<const TSSample>> spans;
   spans.reserve(bucket_count);
@@ -48,7 +48,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   const auto end = samples.end();
   uint64_t bucket_left = start_bucket;
   while (it != end) {
-    uint64_t bucket_right = bucket_left + aggregator.bucket_duration;
+    uint64_t bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
     auto lower = std::lower_bound(it, end, TSSample{bucket_left, 0.0});
     auto upper = std::lower_bound(lower, end, TSSample{bucket_right, 0.0});
     spans.emplace_back(lower, upper);
@@ -79,7 +79,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     }
     TSSample sample;
     if (i != 0) {
-      bucket_left += aggregator.bucket_duration;
+      bucket_left = aggregator.CalculateAlignedBucketRight(bucket_left);
     }
     sample.ts = get_bucket_ts(bucket_left);
     if (option.is_return_empty && spans[i].empty()) {
@@ -191,7 +191,7 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   return metadata;
 }
 
-uint64_t TSAggregator::CalculateAlignedBucket(uint64_t ts) const {
+uint64_t TSAggregator::CalculateAlignedBucketLeft(uint64_t ts) const {
   uint64_t x = 0;
 
   if (ts >= alignment) {
@@ -201,7 +201,26 @@ uint64_t TSAggregator::CalculateAlignedBucket(uint64_t ts) const {
   } else {
     uint64_t diff = alignment - ts;
     uint64_t m0 = diff / bucket_duration + (diff % bucket_duration == 0 ? 0 : 1);
-    x = (m0 > alignment / bucket_duration) ? 0 : alignment - m0 * bucket_duration;
+    if (m0 <= alignment / bucket_duration) {
+      x = alignment - m0 * bucket_duration;
+    }
+  }
+
+  return x;
+}
+
+uint64_t TSAggregator::CalculateAlignedBucketRight(uint64_t ts) const {
+  uint64_t x = TSSample::MAX_TIMESTAMP;
+  if (ts < alignment) {
+    uint64_t diff = alignment - ts;
+    uint64_t k = diff / bucket_duration;
+    x = alignment - k * bucket_duration;
+  } else {
+    uint64_t diff = ts - alignment;
+    uint64_t m0 = diff / bucket_duration + 1;
+    if (m0 <= (TSSample::MAX_TIMESTAMP - alignment) / bucket_duration) {
+      x = alignment + m0 * bucket_duration;
+    }
   }
 
   return x;
@@ -742,7 +761,7 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
 
       // Do checks for early termination when `count_limit` is set.
       if (has_aggregator && option.count_limit > 0) {
-        const auto bucket = aggregator.CalculateAlignedBucket(sample->ts) + aggregator.bucket_duration;
+        const auto bucket = aggregator.CalculateAlignedBucketRight(sample->ts);
         const bool is_empty_count = (last_bucket > 0 && option.is_return_empty);
         const size_t increment = is_empty_count ? (bucket - last_bucket) / aggregator.bucket_duration : 1;
         bucket_count += increment;

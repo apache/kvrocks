@@ -431,4 +431,75 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		_, err := rdb.Do(ctx, "ts.get", "nonexistent_key").Result()
 		require.ErrorContains(t, err, "key does not exist")
 	})
+
+	t.Run("TS.CREATERULE Error Cases", func(t *testing.T) {
+		srcKey := "error_src"
+		dstKey := "error_dst"
+		anotherKey := "another_dst"
+		anotherSrc := "another_src"
+		srcOfSrc := "src_of_src"
+
+		// 1. Source key equals destination key
+		t.Run("SourceEqualsDestination", func(t *testing.T) {
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, srcKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the source key and destination key should be different")
+		})
+
+		// 2. Source key does not exist
+		t.Run("SourceNotExists", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, srcKey).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the key is not a TSDB key")
+		})
+
+		// Create source key
+		require.NoError(t, rdb.Do(ctx, "ts.create", srcKey).Err())
+
+		// 3. Destination key does not exist
+		t.Run("DestinationNotExists", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, dstKey).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the key is not a TSDB key")
+		})
+
+		// Create destination key
+		require.NoError(t, rdb.Do(ctx, "ts.create", dstKey).Err())
+
+		// 4. Source key already has a source rule
+		t.Run("SourceHasSourceRule", func(t *testing.T) {
+
+			require.NoError(t, rdb.Do(ctx, "ts.create", srcOfSrc).Err())
+
+			// Create a rule from srcOfSrc to srcKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", srcOfSrc, srcKey, "aggregation", "avg", "1000").Err())
+
+			require.NoError(t, rdb.Do(ctx, "ts.create", anotherKey).Err())
+			// Try to create rule from srcKey to anotherKey
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, anotherKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the source key already has a source rule")
+		})
+
+		// 5. Destination key already has a source rule
+		t.Run("DestinationHasSourceRule", func(t *testing.T) {
+			require.NoError(t, rdb.Do(ctx, "ts.create", "src_for_dst").Err())
+
+			// Create a rule from src_for_dst to dstKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", "src_for_dst", dstKey, "aggregation", "avg", "1000").Err())
+
+			// Try to create rule from another_src to dstKey
+			require.NoError(t, rdb.Do(ctx, "ts.create", anotherSrc).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the destination key already has a src rule")
+		})
+
+		// 6. Destination key already has downstream rules
+		t.Run("DestinationHasDownstreamRules", func(t *testing.T) {
+			// Create a rule from another_src to anotherKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", anotherSrc, anotherKey, "aggregation", "avg", "1000").Err())
+
+			// Try to create rule from another_src to srcOfSrc
+			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, srcOfSrc, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the destination key already has a dst rule")
+		})
+	})
 }

@@ -364,3 +364,106 @@ TEST_F(TimeSeriesTest, Get) {
   s = ts_db_->Get(*ctx_, "nonexistent_key", false, &empty_res);
   EXPECT_FALSE(s.ok());
 }
+
+TEST_F(TimeSeriesTest, CreateRuleErrorCases) {
+  std::string src_key = "error_src";
+  std::string dst_key = "error_dst";
+  std::string another_key = "another_dst";
+  std::string another_src = "another_src";
+  std::string src_of_src = "src_of_src";
+  redis::TSAggregator aggregator;
+  aggregator.type = redis::TSAggregatorType::AVG;
+  aggregator.bucket_duration = 1000;
+  aggregator.alignment = 0;
+
+  // 1. Source key equals destination key
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, src_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kSrcEqDst);
+  }
+
+  // 2. Source key does not exist
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, dst_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kSrcNotExist);
+  }
+
+  // Create source key
+  redis::TSCreateOption option;
+  auto s = ts_db_->Create(*ctx_, src_key, option);
+  EXPECT_TRUE(s.ok());
+
+  // 3. Destination key does not exist
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, dst_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kDstNotExist);
+  }
+
+  // Create destination key
+  s = ts_db_->Create(*ctx_, dst_key, option);
+  EXPECT_TRUE(s.ok());
+
+  // 4. Source key already has a source rule
+  {
+    s = ts_db_->Create(*ctx_, src_of_src, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, src_of_src, src_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    ts_db_->Create(*ctx_, another_key, option);
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    auto s2 = ts_db_->CreateRule(*ctx_, src_key, another_key, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kSrcHasSourceRule);
+  }
+
+  // 5. Destination key already has a source rule
+  {
+    std::string src_for_dst = "src_for_dst";
+    s = ts_db_->Create(*ctx_, src_for_dst, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, src_for_dst, dst_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    s = ts_db_->Create(*ctx_, another_src, option);
+    EXPECT_TRUE(s.ok());
+    auto s2 = ts_db_->CreateRule(*ctx_, another_src, dst_key, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kDstHasSourceRule);
+  }
+
+  // 6. Destination key already has downstream rules
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, another_src, another_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    auto s2 = ts_db_->CreateRule(*ctx_, another_src, src_of_src, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kDstHasDestRule);
+  }
+}

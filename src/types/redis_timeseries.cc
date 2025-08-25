@@ -191,6 +191,15 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   return metadata;
 }
 
+TSDownStreamMeta CreateDownStreamMetaFromAgg(const TSAggregator &aggregator) {
+  TSDownStreamMeta meta;
+  meta.aggregator = aggregator;
+  meta.latest_bucket_idx = 0;
+  // TODO: Add aux info
+
+  return meta;
+}
+
 uint64_t TSAggregator::CalculateAlignedBucketLeft(uint64_t ts) const {
   uint64_t x = 0;
 
@@ -514,6 +523,50 @@ rocksdb::Status TimeSeries::getLabelKVList(engine::Context &ctx, const Slice &ns
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::createDownStreamMetadataInBatch(engine::Context &ctx, const Slice &ns_src_key,
+                                                            const Slice &dst_key,
+                                                            const TimeSeriesMetadata &src_metadata,
+                                                            const TSAggregator &aggregator,
+                                                            ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                                            TSDownStreamMeta *ds_metadata) {
+  WriteBatchLogData log_data(kRedisTimeSeries, {"createDownStreamMetadata"});
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  *ds_metadata = CreateDownStreamMetaFromAgg(aggregator);
+  std::string bytes;
+  ds_metadata->Encode(&bytes);
+  auto ikey = internalKeyFromDownstreamKey(ns_src_key, src_metadata, dst_key);
+  s = batch->Put(ikey, bytes);
+  if (!s.ok()) return s;
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status TimeSeries::getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
+                                               const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
+                                               std::vector<TSDownStreamMeta> *metas) {
+  std::string prefix = internalKeyFromDownstreamKey(ns_src_key, src_metadata, "");
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  keys->clear();
+  if (metas != nullptr) {
+    metas->clear();
+  }
+  for (iter->Seek(lower_bound); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
+    keys->push_back(iter->key().ToString());
+    if (metas != nullptr) {
+      TSDownStreamMeta meta;
+      Slice slice = iter->value().ToStringView();
+      meta.Decode(&slice);
+      metas->push_back(meta);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
@@ -817,6 +870,63 @@ rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, boo
   }
   res->push_back(chunk->GetLatestSample(0));
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
+                                       const TSAggregator &aggregator, TSCreateRuleResult *res) {
+  if (src_key == dst_key) {
+    *res = TSCreateRuleResult::kSrcEqDst;
+    return rocksdb::Status::OK();
+  }
+  std::string ns_src_key = AppendNamespacePrefix(src_key);
+  TimeSeriesMetadata src_metadata;
+  auto s = getTimeSeriesMetadata(ctx, ns_src_key, &src_metadata);
+  if (!s.ok()) {
+    *res = TSCreateRuleResult::kSrcNotExist;
+    return rocksdb::Status::OK();
+  }
+  TimeSeriesMetadata dst_metadata;
+  std::string ns_dst_key = AppendNamespacePrefix(dst_key);
+  s = getTimeSeriesMetadata(ctx, ns_dst_key, &dst_metadata);
+  if (!s.ok()) {
+    *res = TSCreateRuleResult::kDstNotExist;
+    return rocksdb::Status::OK();
+  }
+
+  if (src_metadata.source_key.size()) {
+    *res = TSCreateRuleResult::kSrcHasSourceRule;
+    return rocksdb::Status::OK();
+  }
+  if (dst_metadata.source_key.size()) {
+    *res = TSCreateRuleResult::kDstHasSourceRule;
+    return rocksdb::Status::OK();
+  }
+  std::vector<std::string> dst_ds_keys;
+  s = getDownStreamRules(ctx, ns_src_key, src_metadata, &dst_ds_keys);
+  if (!s.ok()) return s;
+  if (dst_ds_keys.size()) {
+    *res = TSCreateRuleResult::kDstHasDestRule;
+    return rocksdb::Status::OK();
+  }
+
+  // Create downstream metadata
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries);
+  s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  TSDownStreamMeta downstream_metadata;
+  s = createDownStreamMetadataInBatch(ctx, ns_src_key, dst_key, src_metadata, aggregator, batch, &downstream_metadata);
+  if (!s.ok()) return s;
+  dst_metadata.SetSourceKey(src_key);
+
+  std::string bytes;
+  dst_metadata.Encode(&bytes);
+  s = batch->Put(metadata_cf_handle_, ns_dst_key, bytes);
+  if (!s.ok()) return s;
+
+  *res = TSCreateRuleResult::kOK;
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 }  // namespace redis

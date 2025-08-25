@@ -151,6 +151,16 @@ struct TSRangeOption {
   BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
 };
 
+enum class TSCreateRuleResult : uint8_t {
+  kOK = 0,
+  kSrcNotExist = 1,
+  kDstNotExist = 2,
+  kSrcHasSourceRule = 3,
+  kDstHasSourceRule = 4,
+  kDstHasDestRule = 5,
+  kSrcEqDst = 6,
+};
+
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 
 class TimeSeries : public SubKeyScanner {
@@ -169,6 +179,8 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
                         std::vector<TSSample> *res);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest, std::vector<TSSample> *res);
+  rocksdb::Status CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
+                             const TSAggregator &aggregator, TSCreateRuleResult *res);
 
  private:
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
@@ -183,6 +195,15 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);
+  rocksdb::Status createDownStreamMetadataInBatch(engine::Context &ctx, const Slice &ns_src_key, const Slice &dst_key,
+                                                  const TimeSeriesMetadata &src_metadata,
+                                                  const TSAggregator &aggregator,
+                                                  ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                                  TSDownStreamMeta *ds_metadata);
+  rocksdb::Status getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
+                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
+                                     std::vector<TSDownStreamMeta> *metas = nullptr);
+
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
   std::string internalKeyFromDownstreamKey(const Slice &ns_key, const TimeSeriesMetadata &metadata,

@@ -161,7 +161,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
  protected:
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
-  virtual void registerDefaultHandlers() override {
+  void registerDefaultHandlers() override {
     registerHandler("RETENTION",
                     [this](TSOptionsParser &parser) { return handleRetention(parser, create_option_.retention_time); });
     registerHandler("CHUNK_SIZE",
@@ -174,7 +174,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     registerHandler("LABELS", [this](TSOptionsParser &parser) { return handleLabels(parser, create_option_.labels); });
   }
 
-  Status handleRetention(TSOptionsParser &parser, uint64_t &retention_time) {
+  static Status handleRetention(TSOptionsParser &parser, uint64_t &retention_time) {
     auto parse_retention = parser.TakeInt<uint64_t>();
     if (!parse_retention.IsOK()) {
       return {Status::RedisParseErr, errBadRetention};
@@ -183,7 +183,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status handleChunkSize(TSOptionsParser &parser, uint64_t &chunk_size) {
+  static Status handleChunkSize(TSOptionsParser &parser, uint64_t &chunk_size) {
     auto parse_chunk_size = parser.TakeInt<uint64_t>();
     if (!parse_chunk_size.IsOK()) {
       return {Status::RedisParseErr, errBadChunkSize};
@@ -192,7 +192,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status handleEncoding(TSOptionsParser &parser, ChunkType &chunk_type) {
+  static Status handleEncoding(TSOptionsParser &parser, ChunkType &chunk_type) {
     if (parser.EatEqICase("UNCOMPRESSED")) {
       chunk_type = ChunkType::UNCOMPRESSED;
     } else if (parser.EatEqICase("COMPRESSED")) {
@@ -203,7 +203,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status handleDuplicatePolicy(TSOptionsParser &parser, DuplicatePolicy &duplicate_policy) {
+  static Status handleDuplicatePolicy(TSOptionsParser &parser, DuplicatePolicy &duplicate_policy) {
     if (parser.EatEqICase("BLOCK")) {
       duplicate_policy = DuplicatePolicy::BLOCK;
     } else if (parser.EatEqICase("FIRST")) {
@@ -222,7 +222,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  Status handleLabels(TSOptionsParser &parser, LabelKVList &labels) {
+  static Status handleLabels(TSOptionsParser &parser, LabelKVList &labels) {
     while (parser.Good()) {
       auto parse_key = parser.TakeStr();
       auto parse_value = parser.TakeStr();
@@ -448,14 +448,14 @@ class CommandTSAggregatorBase : public KeywordCommandBase {
   CommandTSAggregatorBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {}
 
  protected:
-  const TSAggregator &GetAggregator() const { return aggregator_; }
+  const TSAggregator &getAggregator() const { return aggregator_; }
 
-  virtual void registerDefaultHandlers() override {
+  void registerDefaultHandlers() override {
     registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser, aggregator_); });
     registerHandler("ALIGN", [this](TSOptionsParser &parser) { return handleAlignCommon(parser, aggregator_); });
   }
 
-  Status handleAggregation(TSOptionsParser &parser, TSAggregator &aggregator) {
+  static Status handleAggregation(TSOptionsParser &parser, TSAggregator &aggregator) {
     auto &type = aggregator.type;
     if (parser.EatEqICase("AVG")) {
       type = TSAggregatorType::AVG;
@@ -495,7 +495,7 @@ class CommandTSAggregatorBase : public KeywordCommandBase {
     }
     return Status::OK();
   }
-  Status handleAlignCommon(TSOptionsParser &parser, TSAggregator &aggregator) {
+  static Status handleAlignCommon(TSOptionsParser &parser, TSAggregator &aggregator) {
     auto align = parser.TakeInt<uint64_t>();
     if (!align.IsOK()) {
       return {Status::RedisParseErr, errTSInvalidAlign};
@@ -503,7 +503,7 @@ class CommandTSAggregatorBase : public KeywordCommandBase {
     aggregator.alignment = align.GetValue();
     return Status::OK();
   }
-  Status handleLatest([[maybe_unused]] TSOptionsParser &parser, bool &is_return_latest) {
+  static Status handleLatest([[maybe_unused]] TSOptionsParser &parser, bool &is_return_latest) {
     is_return_latest = true;
     return Status::OK();
   }
@@ -554,9 +554,9 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
   }
 
  protected:
-  const TSRangeOption &GetRangeOption() const { return option_; }
+  const TSRangeOption &getRangeOption() const { return option_; }
 
-  virtual void registerDefaultHandlers() override {
+  void registerDefaultHandlers() override {
     registerHandler("LATEST",
                     [this](TSOptionsParser &parser) { return handleLatest(parser, option_.is_return_latest); });
     registerHandler("FILTER_BY_TS",
@@ -572,7 +572,7 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
     registerHandler("EMPTY", [this](TSOptionsParser &parser) { return handleEmpty(parser, option_); });
   }
 
-  Status handleFilterByTS(TSOptionsParser &parser, std::set<uint64_t> &filter_by_ts) {
+  static Status handleFilterByTS(TSOptionsParser &parser, std::set<uint64_t> &filter_by_ts) {
     filter_by_ts.clear();
     while (parser.Good()) {
       auto ts = parser.TakeInt<uint64_t>();
@@ -582,7 +582,8 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
 
-  Status handleFilterByValue(TSOptionsParser &parser, std::optional<std::pair<double, double>> &filter_by_value) {
+  static Status handleFilterByValue(TSOptionsParser &parser,
+                                    std::optional<std::pair<double, double>> &filter_by_value) {
     auto min = parser.TakeFloat<double>();
     auto max = parser.TakeFloat<double>();
     if (!min.IsOK() || !max.IsOK()) {
@@ -592,7 +593,7 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
 
-  Status handleCount(TSOptionsParser &parser, uint64_t &count_limit) {
+  static Status handleCount(TSOptionsParser &parser, uint64_t &count_limit) {
     auto count = parser.TakeInt<uint64_t>();
     if (!count.IsOK()) {
       return {Status::RedisParseErr, "Couldn't parse COUNT"};
@@ -604,7 +605,7 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
 
-  Status handleBucketTimestamp(TSOptionsParser &parser, TSRangeOption &option) {
+  static Status handleBucketTimestamp(TSOptionsParser &parser, TSRangeOption &option) {
     if (option.aggregator.type == TSAggregatorType::NONE) {
       return {Status::RedisParseErr, "BUCKETTIMESTAMP flag should be the 3rd or 4th flag after AGGREGATION flag"};
     }
@@ -621,7 +622,7 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
 
-  Status handleEmpty([[maybe_unused]] TSOptionsParser &parser, TSRangeOption &option) {
+  static Status handleEmpty([[maybe_unused]] TSOptionsParser &parser, TSRangeOption &option) {
     if (option.aggregator.type == TSAggregatorType::NONE) {
       return {Status::RedisParseErr, "EMPTY flag should be the 3rd or 5th flag after AGGREGATION flag"};
     }
@@ -683,7 +684,7 @@ class CommandTSRange : public CommandTSRangeBase {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSSample> res;
-    auto s = timeseries_db.Range(ctx, user_key_, GetRangeOption(), &res);
+    auto s = timeseries_db.Range(ctx, user_key_, getRangeOption(), &res);
     if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
     std::vector<std::string> reply;
     reply.reserve(res.size());

@@ -815,7 +815,7 @@ rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, boo
   if (is_return_latest) {
     // TODO: need process `latest` option
   }
-  res->push_back(chunk->GetLatestSample());
+  res->push_back(chunk->GetLatestSample(0));
   return rocksdb::Status::OK();
 }
 

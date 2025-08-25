@@ -35,6 +35,7 @@ constexpr const char *errOldTimestamp = "Timestamp is older than retention";
 constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
+constexpr const char *errTSInvalidAlign = "unknown ALIGN parameter";
 
 using ChunkType = TimeSeriesMetadata::ChunkType;
 using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
@@ -68,6 +69,13 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
       unreachable();
   }
   return "";
+}
+
+std::string FormatTSSampleAsRedisReply(TSSample sample) {
+  std::string res = redis::MultiLen(2);
+  res += redis::Integer(sample.ts);
+  res += redis::Double(redis::RESP::v3, sample.v);
+  return res;
 }
 
 std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
@@ -285,10 +293,11 @@ class CommandTSInfo : public Commander {
     *output += redis::SimpleString("rules");
     std::vector<std::string> rules_str;
     rules_str.reserve(info.downstream_rules.size());
-    for (const auto &rule : info.downstream_rules) {
-      auto str = redis::Array({redis::BulkString(rule.first), redis::Integer(rule.second.bucket_duration),
-                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(rule.second.aggregator)),
-                               redis::Integer(rule.second.alignment)});
+    for (const auto &[key, rule] : info.downstream_rules) {
+      const auto &aggregator = rule.aggregator;
+      auto str = redis::Array({redis::BulkString(key), redis::Integer(aggregator.bucket_duration),
+                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(aggregator.type)),
+                               redis::Integer(aggregator.alignment)});
       rules_str.push_back(str);
     }
     *output += redis::Array(rules_str);
@@ -421,9 +430,235 @@ class CommandTSMAdd : public Commander {
   std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
 };
 
+class CommandTSRangeBase : public KeywordCommandBase {
+ public:
+  CommandTSRangeBase(size_t skip_num, size_t tail_skip_num)
+      : KeywordCommandBase(skip_num + 2, tail_skip_num), skip_num_(skip_num) {
+    registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser); });
+    registerHandler("FILTER_BY_TS", [this](TSOptionsParser &parser) { return handleFilterByTS(parser); });
+    registerHandler("FILTER_BY_VALUE", [this](TSOptionsParser &parser) { return handleFilterByValue(parser); });
+    registerHandler("COUNT", [this](TSOptionsParser &parser) { return handleCount(parser); });
+    registerHandler("ALIGN", [this](TSOptionsParser &parser) { return handleAlign(parser); });
+    registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser); });
+    registerHandler("BUCKETTIMESTAMP", [this](TSOptionsParser &parser) { return handleBucketTimestamp(parser); });
+    registerHandler("EMPTY", [this](TSOptionsParser &parser) { return handleEmpty(parser); });
+  }
+
+  Status Parse(const std::vector<std::string> &args) override {
+    TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)), args.end());
+    // Parse start timestamp
+    auto start_ts = parser.TakeInt<uint64_t>();
+    if (!start_ts.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      is_start_explicit_set_ = true;
+      option_.start_ts = start_ts.GetValue();
+    }
+
+    // Parse end timestamp
+    auto end_ts = parser.TakeInt<uint64_t>();
+    if (!end_ts.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      is_end_explicit_set_ = true;
+      option_.end_ts = end_ts.GetValue();
+    }
+
+    auto s = KeywordCommandBase::Parse(args);
+    if (!s.IsOK()) return s;
+    if (is_alignment_explicit_set_ && option_.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "ALIGN parameter can only be used with AGGREGATION"};
+    }
+    return s;
+  }
+
+  const TSRangeOption &GetRangeOption() const { return option_; }
+
+ private:
+  TSRangeOption option_;
+  size_t skip_num_;
+  bool is_start_explicit_set_ = false;
+  bool is_end_explicit_set_ = false;
+  bool is_alignment_explicit_set_ = false;
+
+  Status handleLatest([[maybe_unused]] TSOptionsParser &parser) {
+    option_.is_return_latest = true;
+    return Status::OK();
+  }
+
+  Status handleFilterByTS(TSOptionsParser &parser) {
+    option_.filter_by_ts.clear();
+    while (parser.Good()) {
+      auto ts = parser.TakeInt<uint64_t>();
+      if (!ts.IsOK()) break;
+      option_.filter_by_ts.insert(ts.GetValue());
+    }
+    return Status::OK();
+  }
+
+  Status handleFilterByValue(TSOptionsParser &parser) {
+    auto min = parser.TakeFloat<double>();
+    auto max = parser.TakeFloat<double>();
+    if (!min.IsOK() || !max.IsOK()) {
+      return {Status::RedisParseErr, "Invalid min or max value"};
+    }
+    option_.filter_by_value = std::make_optional(std::make_pair(min.GetValue(), max.GetValue()));
+    return Status::OK();
+  }
+
+  Status handleCount(TSOptionsParser &parser) {
+    auto count = parser.TakeInt<uint64_t>();
+    if (!count.IsOK()) {
+      return {Status::RedisParseErr, "Couldn't parse COUNT"};
+    }
+    option_.count_limit = count.GetValue();
+    if (option_.count_limit == 0) {
+      return {Status::RedisParseErr, "Invalid COUNT value"};
+    }
+    return Status::OK();
+  }
+
+  Status handleAlign(TSOptionsParser &parser) {
+    auto align = parser.TakeInt<uint64_t>();
+    if (align.IsOK()) {
+      is_alignment_explicit_set_ = true;
+      option_.aggregator.alignment = align.GetValue();
+      return Status::OK();
+    }
+
+    auto align_str = parser.TakeStr();
+    if (!align_str.IsOK()) {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+
+    const auto &value = align_str.GetValue();
+    if (value == "-" || value == "+") {
+      bool is_explicit_set = value == "-" ? is_start_explicit_set_ : is_end_explicit_set_;
+      auto err_msg = value == "-" ? "start alignment can only be used with explicit start timestamp"
+                                  : "end alignment can only be used with explicit end timestamp";
+
+      if (!is_explicit_set) {
+        return {Status::RedisParseErr, err_msg};
+      }
+
+      option_.aggregator.alignment = value == "-" ? option_.start_ts : option_.end_ts;
+    } else {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+    is_alignment_explicit_set_ = true;
+    return Status::OK();
+  }
+
+  Status handleAggregation(TSOptionsParser &parser) {
+    auto &type = option_.aggregator.type;
+    if (parser.EatEqICase("AVG")) {
+      type = TSAggregatorType::AVG;
+    } else if (parser.EatEqICase("SUM")) {
+      type = TSAggregatorType::SUM;
+    } else if (parser.EatEqICase("MIN")) {
+      type = TSAggregatorType::MIN;
+    } else if (parser.EatEqICase("MAX")) {
+      type = TSAggregatorType::MAX;
+    } else if (parser.EatEqICase("RANGE")) {
+      type = TSAggregatorType::RANGE;
+    } else if (parser.EatEqICase("COUNT")) {
+      type = TSAggregatorType::COUNT;
+    } else if (parser.EatEqICase("FIRST")) {
+      type = TSAggregatorType::FIRST;
+    } else if (parser.EatEqICase("LAST")) {
+      type = TSAggregatorType::LAST;
+    } else if (parser.EatEqICase("STD.P")) {
+      type = TSAggregatorType::STD_P;
+    } else if (parser.EatEqICase("STD.S")) {
+      type = TSAggregatorType::STD_S;
+    } else if (parser.EatEqICase("VAR.P")) {
+      type = TSAggregatorType::VAR_P;
+    } else if (parser.EatEqICase("VAR.S")) {
+      type = TSAggregatorType::VAR_S;
+    } else {
+      return {Status::RedisParseErr, "Invalid aggregator type"};
+    }
+
+    auto duration = parser.TakeInt<uint64_t>();
+    if (!duration.IsOK()) {
+      return {Status::RedisParseErr, "Couldn't parse AGGREGATION"};
+    }
+    option_.aggregator.bucket_duration = duration.GetValue();
+    if (option_.aggregator.bucket_duration == 0) {
+      return {Status::RedisParseErr, "bucketDuration must be greater than zero"};
+    }
+    return Status::OK();
+  }
+
+  Status handleBucketTimestamp(TSOptionsParser &parser) {
+    if (option_.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "BUCKETTIMESTAMP flag should be the 3rd or 4th flag after AGGREGATION flag"};
+    }
+    using BucketTimestampType = TSRangeOption::BucketTimestampType;
+    if (parser.EatEqICase("START")) {
+      option_.bucket_timestamp_type = BucketTimestampType::Start;
+    } else if (parser.EatEqICase("END")) {
+      option_.bucket_timestamp_type = BucketTimestampType::End;
+    } else if (parser.EatEqICase("MID")) {
+      option_.bucket_timestamp_type = BucketTimestampType::Mid;
+    } else {
+      return {Status::RedisParseErr, "unknown BUCKETTIMESTAMP parameter"};
+    }
+    return Status::OK();
+  }
+
+  Status handleEmpty([[maybe_unused]] TSOptionsParser &parser) {
+    if (option_.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "EMPTY flag should be the 3rd or 5th flag after AGGREGATION flag"};
+    }
+    option_.is_return_empty = true;
+    return Status::OK();
+  }
+};
+
+class CommandTSRange : public CommandTSRangeBase {
+ public:
+  CommandTSRange() : CommandTSRangeBase(2, 0) {}
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
+    }
+
+    user_key_ = args[1];
+
+    return CommandTSRangeBase::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSSample> res;
+    auto s = timeseries_db.Range(ctx, user_key_, GetRangeOption(), &res);
+    if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
+    std::vector<std::string> reply;
+    reply.reserve(res.size());
+    for (auto &sample : res) {
+      reply.push_back(FormatTSSampleAsRedisReply(sample));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+                        MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1));
 
 }  // namespace redis

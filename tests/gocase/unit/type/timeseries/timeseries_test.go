@@ -408,4 +408,27 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		res = rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "MIN", 20, "COUNT", 1).Val().([]interface{})
 		assert.Equal(t, 1, len(res))
 	})
+
+	t.Run("TS.GET Basic", func(t *testing.T) {
+		key := "test_get_key"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())
+		// Test GET on empty timeseries
+		res := rdb.Do(ctx, "ts.get", key).Val().([]interface{})
+		require.Equal(t, 0, len(res))
+
+		// Add samples
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", key, "1000", "12.3").Val())
+		require.Equal(t, int64(2000), rdb.Do(ctx, "ts.add", key, "2000", "15.6").Val())
+
+		// Test basic GET
+		res = rdb.Do(ctx, "ts.get", key).Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, int64(2000), res[0].([]interface{})[0])
+		require.Equal(t, 15.6, res[0].([]interface{})[1])
+
+		// Test GET on non-existent key
+		_, err := rdb.Do(ctx, "ts.get", "nonexistent_key").Result()
+		require.ErrorContains(t, err, "key does not exist")
+	})
 }

@@ -49,7 +49,7 @@ jobs:
           fetch-depth: 0
 
       - name: Build and Test on FreeBSD
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@05856381fab64eeee9b038a0818f6cec649ca17a
         with:
           release: ${{ matrix.freebsd-version }}
           usesh: true

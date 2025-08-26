@@ -527,3 +527,10 @@ std::string UncompTSChunk::UpdateSampleValue(uint64_t ts, double value, bool is_
 
   return new_buffer;
 }
+
+TSSample UncompTSChunk::GetLatestSample(uint32_t idx) const {
+  if (metadata_.count == 0 || idx >= metadata_.count) {
+    unreachable();
+  }
+  return samples_[metadata_.count - 1 - idx];
+}

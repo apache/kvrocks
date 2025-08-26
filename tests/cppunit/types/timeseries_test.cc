@@ -332,3 +332,35 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(res.size(), 1);
 }
+
+TEST_F(TimeSeriesTest, Get) {
+  redis::TSCreateOption option;
+  auto s = ts_db_->Create(*ctx_, key_, option);
+  EXPECT_TRUE(s.ok());
+
+  std::vector<TSSample> res;
+  // Test empty timeseries
+  s = ts_db_->Get(*ctx_, key_, false, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 0);
+
+  // Add multiple samples
+  std::vector<TSSample> samples = {{1, 10}, {2, 20}, {3, 30}};
+  std::vector<TSChunk::AddResultWithTS> results;
+  results.resize(samples.size());
+
+  s = ts_db_->MAdd(*ctx_, key_, samples, &results);
+  EXPECT_TRUE(s.ok());
+
+  // Test basic GET (returns latest sample)
+  s = ts_db_->Get(*ctx_, key_, false, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 1);
+  EXPECT_EQ(res[0].ts, 3);
+  EXPECT_EQ(res[0].v, 30);
+
+  // Test GET with empty timeseries
+  std::vector<TSSample> empty_res;
+  s = ts_db_->Get(*ctx_, "nonexistent_key", false, &empty_res);
+  EXPECT_FALSE(s.ok());
+}

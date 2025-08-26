@@ -782,4 +782,41 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest,
+                                std::vector<TSSample> *res) {
+  res->clear();
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  // Get the latest chunk
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    return rocksdb::Status::OK();
+  }
+  auto chunk = CreateTSChunkFromData(iter->value());
+
+  if (is_return_latest) {
+    // TODO: need process `latest` option
+  }
+  res->push_back(chunk->GetLatestSample(0));
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

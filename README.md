@@ -20,7 +20,6 @@
 <img src="https://kvrocks.apache.org/img/kvrocks-featured.png" alt="kvrocks_logo" width="350"/>
 
 [![CI](https://github.com/apache/kvrocks/actions/workflows/kvrocks.yaml/badge.svg?branch=unstable)](https://github.com/apache/kvrocks/actions/workflows/kvrocks.yaml)
-[![FreeBSD CI](https://github.com/apache/kvrocks/actions/workflows/freebsd.yaml/badge.svg?branch=unstable)](https://github.com/apache/kvrocks/actions/workflows/freebsd.yaml)
 [![License](https://img.shields.io/github/license/apache/kvrocks)](https://github.com/apache/kvrocks/blob/unstable/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/apache/kvrocks)](https://github.com/apache/kvrocks/stargazers)
 

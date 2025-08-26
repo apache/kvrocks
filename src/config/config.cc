@@ -299,7 +299,7 @@ Config::Config() {
       {"rocksdb.max_bytes_for_level_multiplier", false,
        new IntField(&rocks_db.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes", false,
-       new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, false)},
+       new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, true)},
       {"rocksdb.max_background_jobs", false, new IntField(&rocks_db.max_background_jobs, 4, 0, 32)},
       {"rocksdb.rate_limiter_auto_tuned", true, new YesNoField(&rocks_db.rate_limiter_auto_tuned, true)},
       {"rocksdb.avoid_unnecessary_blocking_io", true, new YesNoField(&rocks_db.avoid_unnecessary_blocking_io, true)},

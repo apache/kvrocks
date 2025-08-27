@@ -581,3 +581,37 @@ func TestFunctionScriptFlags(t *testing.T) {
 		util.ErrorRegexp(t, r.Err(), "ERR .* Script attempted to access a non local key in a cluster node script")
 	})
 }
+
+func TestFunctionInStrictMode(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Accessing undeclared keys in strict mode", func(t *testing.T) {
+		rdb.FunctionLoad(ctx, `#!lua name=tmplib
+			redis.register_function('set1', function(keys, args)
+				return redis.call('set', keys[1], args[1])
+			end)
+			redis.register_function('set2', function(keys, args)
+				return redis.call('set', args[1], args[2])
+			end)
+		`)
+
+		rdb.ConfigSet(ctx, "lua-strict-key-accessing", "yes")
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "set2", 0, "x", "1").Err(), ".*'x'.*not in the allowed keys.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "set2", 1, "y", "x", "1").Err(), ".*'x'.*not in the allowed keys.*")
+
+		require.NoError(t, rdb.Do(ctx, "FCALL", "set2", 1, "x", "x", "1").Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "set2", 2, "x", "y", "x", "1").Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "set1", 1, "x", "1").Err())
+
+		rdb.ConfigSet(ctx, "lua-strict-key-accessing", "no")
+
+		require.NoError(t, rdb.Do(ctx, "FCALL", "set2", 0, "x", "1").Err())
+		require.NoError(t, rdb.Do(ctx, "FCALL", "set1", 1, "x", "1").Err())
+	})
+}

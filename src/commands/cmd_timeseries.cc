@@ -35,6 +35,26 @@ constexpr const char *errOldTimestamp = "Timestamp is older than retention";
 constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
+constexpr const char *errTSInvalidAlign = "unknown ALIGN parameter";
+
+using ChunkType = TimeSeriesMetadata::ChunkType;
+using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
+using TSAggregatorType = redis::TSAggregatorType;
+
+const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
+    {ChunkType::COMPRESSED, "compressed"},
+    {ChunkType::UNCOMPRESSED, "uncompressed"},
+};
+const std::unordered_map<DuplicatePolicy, std::string_view> kDuplicatePolicyMap = {
+    {DuplicatePolicy::BLOCK, "block"}, {DuplicatePolicy::FIRST, "first"}, {DuplicatePolicy::LAST, "last"},
+    {DuplicatePolicy::MIN, "min"},     {DuplicatePolicy::MAX, "max"},     {DuplicatePolicy::SUM, "sum"},
+};
+const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap = {
+    {TSAggregatorType::AVG, "avg"},     {TSAggregatorType::SUM, "sum"},     {TSAggregatorType::MIN, "min"},
+    {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
+    {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
+    {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+};
 
 std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
   using AddResult = TSChunk::AddResult;
@@ -49,6 +69,37 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
       unreachable();
   }
   return "";
+}
+
+std::string FormatTSSampleAsRedisReply(TSSample sample) {
+  std::string res = redis::MultiLen(2);
+  res += redis::Integer(sample.ts);
+  res += redis::Double(redis::RESP::v3, sample.v);
+  return res;
+}
+
+std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
+  auto it = kChunkTypeMap.find(chunk_type);
+  if (it == kChunkTypeMap.end()) {
+    unreachable();
+  }
+  return it->second;
+}
+
+std::string_view FormatDuplicatePolicyAsRedisReply(DuplicatePolicy policy) {
+  auto it = kDuplicatePolicyMap.find(policy);
+  if (it == kDuplicatePolicyMap.end()) {
+    unreachable();
+  }
+  return it->second;
+}
+
+std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
+  auto it = kAggregatorTypeMap.find(aggregator);
+  if (it == kAggregatorTypeMap.end()) {
+    unreachable();
+  }
+  return it->second;
 }
 
 }  // namespace
@@ -90,6 +141,8 @@ class KeywordCommandBase : public Commander {
     handlers_.emplace_back(keyword, std::forward<Handler>(handler));
   }
 
+  virtual void registerDefaultHandlers() = 0;
+
   void setSkipNum(size_t num) { skip_num_ = num; }
 
   void setTailSkipNum(size_t num) { tail_skip_num_ = num; }
@@ -103,87 +156,91 @@ class KeywordCommandBase : public Commander {
 
 class CommandTSCreateBase : public KeywordCommandBase {
  public:
-  CommandTSCreateBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {
-    registerHandler("RETENTION", [this](TSOptionsParser &parser) { return handleRetention(parser); });
-    registerHandler("CHUNK_SIZE", [this](TSOptionsParser &parser) { return handleChunkSize(parser); });
-    registerHandler("ENCODING", [this](TSOptionsParser &parser) { return handleEncoding(parser); });
-    registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) { return handleDuplicatePolicy(parser); });
-    registerHandler("LABELS", [this](TSOptionsParser &parser) { return handleLabels(parser); });
-  }
+  CommandTSCreateBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {}
 
  protected:
-  using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
-
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
- private:
-  TSCreateOption create_option_;
+  void registerDefaultHandlers() override {
+    registerHandler("RETENTION",
+                    [this](TSOptionsParser &parser) { return handleRetention(parser, create_option_.retention_time); });
+    registerHandler("CHUNK_SIZE",
+                    [this](TSOptionsParser &parser) { return handleChunkSize(parser, create_option_.chunk_size); });
+    registerHandler("ENCODING",
+                    [this](TSOptionsParser &parser) { return handleEncoding(parser, create_option_.chunk_type); });
+    registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) {
+      return handleDuplicatePolicy(parser, create_option_.duplicate_policy);
+    });
+    registerHandler("LABELS", [this](TSOptionsParser &parser) { return handleLabels(parser, create_option_.labels); });
+  }
 
-  Status handleRetention(TSOptionsParser &parser) {
+  static Status handleRetention(TSOptionsParser &parser, uint64_t &retention_time) {
     auto parse_retention = parser.TakeInt<uint64_t>();
     if (!parse_retention.IsOK()) {
       return {Status::RedisParseErr, errBadRetention};
     }
-    create_option_.retention_time = parse_retention.GetValue();
+    retention_time = parse_retention.GetValue();
     return Status::OK();
   }
 
-  Status handleChunkSize(TSOptionsParser &parser) {
+  static Status handleChunkSize(TSOptionsParser &parser, uint64_t &chunk_size) {
     auto parse_chunk_size = parser.TakeInt<uint64_t>();
     if (!parse_chunk_size.IsOK()) {
       return {Status::RedisParseErr, errBadChunkSize};
     }
-    create_option_.chunk_size = parse_chunk_size.GetValue();
+    chunk_size = parse_chunk_size.GetValue();
     return Status::OK();
   }
 
-  Status handleEncoding(TSOptionsParser &parser) {
-    using ChunkType = TimeSeriesMetadata::ChunkType;
+  static Status handleEncoding(TSOptionsParser &parser, ChunkType &chunk_type) {
     if (parser.EatEqICase("UNCOMPRESSED")) {
-      create_option_.chunk_type = ChunkType::UNCOMPRESSED;
+      chunk_type = ChunkType::UNCOMPRESSED;
     } else if (parser.EatEqICase("COMPRESSED")) {
-      create_option_.chunk_type = ChunkType::COMPRESSED;
+      chunk_type = ChunkType::COMPRESSED;
     } else {
       return {Status::RedisParseErr, errBadEncoding};
     }
     return Status::OK();
   }
 
-  Status handleDuplicatePolicy(TSOptionsParser &parser) {
+  static Status handleDuplicatePolicy(TSOptionsParser &parser, DuplicatePolicy &duplicate_policy) {
     if (parser.EatEqICase("BLOCK")) {
-      create_option_.duplicate_policy = DuplicatePolicy::BLOCK;
+      duplicate_policy = DuplicatePolicy::BLOCK;
     } else if (parser.EatEqICase("FIRST")) {
-      create_option_.duplicate_policy = DuplicatePolicy::FIRST;
+      duplicate_policy = DuplicatePolicy::FIRST;
     } else if (parser.EatEqICase("LAST")) {
-      create_option_.duplicate_policy = DuplicatePolicy::LAST;
+      duplicate_policy = DuplicatePolicy::LAST;
     } else if (parser.EatEqICase("MAX")) {
-      create_option_.duplicate_policy = DuplicatePolicy::MAX;
+      duplicate_policy = DuplicatePolicy::MAX;
     } else if (parser.EatEqICase("MIN")) {
-      create_option_.duplicate_policy = DuplicatePolicy::MIN;
+      duplicate_policy = DuplicatePolicy::MIN;
     } else if (parser.EatEqICase("SUM")) {
-      create_option_.duplicate_policy = DuplicatePolicy::SUM;
+      duplicate_policy = DuplicatePolicy::SUM;
     } else {
       return {Status::RedisParseErr, errDuplicatePolicy};
     }
     return Status::OK();
   }
 
-  Status handleLabels(TSOptionsParser &parser) {
+  static Status handleLabels(TSOptionsParser &parser, LabelKVList &labels) {
     while (parser.Good()) {
       auto parse_key = parser.TakeStr();
       auto parse_value = parser.TakeStr();
       if (!parse_key.IsOK() || !parse_value.IsOK()) {
         break;
       }
-      create_option_.labels.push_back({parse_key.GetValue(), parse_value.GetValue()});
+      labels.push_back({parse_key.GetValue(), parse_value.GetValue()});
     }
     return Status::OK();
   }
+
+ private:
+  TSCreateOption create_option_;
 };
 
 class CommandTSCreate : public CommandTSCreateBase {
  public:
-  CommandTSCreate() : CommandTSCreateBase(2, 0) {}
+  CommandTSCreate() : CommandTSCreateBase(2, 0) { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 2) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -200,11 +257,69 @@ class CommandTSCreate : public CommandTSCreateBase {
   }
 };
 
+class CommandTSInfo : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    user_key_ = args[1];
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    TSInfoResult info;
+    auto s = timeseries_db.Info(ctx, user_key_, &info);
+    if (s.IsNotFound()) return {Status::RedisExecErr, errTSKeyNotFound};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = redis::MultiLen(24);
+    *output += redis::SimpleString("totalSamples");
+    *output += redis::Integer(info.total_samples);
+    *output += redis::SimpleString("memoryUsage");
+    *output += redis::Integer(info.memory_usage);
+    *output += redis::SimpleString("firstTimestamp");
+    *output += redis::Integer(info.first_timestamp);
+    *output += redis::SimpleString("lastTimestamp");
+    *output += redis::Integer(info.last_timestamp);
+    *output += redis::SimpleString("retentionTime");
+    *output += redis::Integer(info.metadata.retention_time);
+    *output += redis::SimpleString("chunkCount");
+    *output += redis::Integer(info.metadata.size);
+    *output += redis::SimpleString("chunkSize");
+    *output += redis::Integer(info.metadata.chunk_size);
+    *output += redis::SimpleString("chunkType");
+    *output += redis::SimpleString(FormatChunkTypeAsRedisReply(info.metadata.chunk_type));
+    *output += redis::SimpleString("duplicatePolicy");
+    *output += redis::SimpleString(FormatDuplicatePolicyAsRedisReply(info.metadata.duplicate_policy));
+    *output += redis::SimpleString("labels");
+    std::vector<std::string> labels_str;
+    labels_str.reserve(info.labels.size());
+    for (const auto &label : info.labels) {
+      auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
+      labels_str.push_back(str);
+    }
+    *output += redis::Array(labels_str);
+    *output += redis::SimpleString("sourceKey");
+    *output += info.metadata.source_key.empty() ? redis::NilString(redis::RESP::v3)
+                                                : redis::BulkString(info.metadata.source_key);
+    *output += redis::SimpleString("rules");
+    std::vector<std::string> rules_str;
+    rules_str.reserve(info.downstream_rules.size());
+    for (const auto &[key, rule] : info.downstream_rules) {
+      const auto &aggregator = rule.aggregator;
+      auto str = redis::Array({redis::BulkString(key), redis::Integer(aggregator.bucket_duration),
+                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(aggregator.type)),
+                               redis::Integer(aggregator.alignment)});
+      rules_str.push_back(str);
+    }
+    *output += redis::Array(rules_str);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+};
+
 class CommandTSAdd : public CommandTSCreateBase {
  public:
-  CommandTSAdd() : CommandTSCreateBase(4, 0) {
-    registerHandler("ON_DUPLICATE", [this](TSOptionsParser &parser) { return handleOnDuplicatePolicy(parser); });
-  }
+  CommandTSAdd() : CommandTSCreateBase(4, 0) { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -235,6 +350,12 @@ class CommandTSAdd : public CommandTSCreateBase {
     *output += FormatAddResultAsRedisReply(res);
 
     return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSCreateBase::registerDefaultHandlers();
+    registerHandler("ON_DUPLICATE", [this](TSOptionsParser &parser) { return handleOnDuplicatePolicy(parser); });
   }
 
  private:
@@ -322,8 +443,302 @@ class CommandTSMAdd : public Commander {
   std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
 };
 
+class CommandTSAggregatorBase : public KeywordCommandBase {
+ public:
+  CommandTSAggregatorBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {}
+
+ protected:
+  const TSAggregator &getAggregator() const { return aggregator_; }
+
+  void registerDefaultHandlers() override {
+    registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser, aggregator_); });
+    registerHandler("ALIGN", [this](TSOptionsParser &parser) { return handleAlignCommon(parser, aggregator_); });
+  }
+
+  static Status handleAggregation(TSOptionsParser &parser, TSAggregator &aggregator) {
+    auto &type = aggregator.type;
+    if (parser.EatEqICase("AVG")) {
+      type = TSAggregatorType::AVG;
+    } else if (parser.EatEqICase("SUM")) {
+      type = TSAggregatorType::SUM;
+    } else if (parser.EatEqICase("MIN")) {
+      type = TSAggregatorType::MIN;
+    } else if (parser.EatEqICase("MAX")) {
+      type = TSAggregatorType::MAX;
+    } else if (parser.EatEqICase("RANGE")) {
+      type = TSAggregatorType::RANGE;
+    } else if (parser.EatEqICase("COUNT")) {
+      type = TSAggregatorType::COUNT;
+    } else if (parser.EatEqICase("FIRST")) {
+      type = TSAggregatorType::FIRST;
+    } else if (parser.EatEqICase("LAST")) {
+      type = TSAggregatorType::LAST;
+    } else if (parser.EatEqICase("STD.P")) {
+      type = TSAggregatorType::STD_P;
+    } else if (parser.EatEqICase("STD.S")) {
+      type = TSAggregatorType::STD_S;
+    } else if (parser.EatEqICase("VAR.P")) {
+      type = TSAggregatorType::VAR_P;
+    } else if (parser.EatEqICase("VAR.S")) {
+      type = TSAggregatorType::VAR_S;
+    } else {
+      return {Status::RedisParseErr, "Invalid aggregator type"};
+    }
+
+    auto duration = parser.TakeInt<uint64_t>();
+    if (!duration.IsOK()) {
+      return {Status::RedisParseErr, "Couldn't parse AGGREGATION"};
+    }
+    aggregator.bucket_duration = duration.GetValue();
+    if (aggregator.bucket_duration == 0) {
+      return {Status::RedisParseErr, "bucketDuration must be greater than zero"};
+    }
+    return Status::OK();
+  }
+  static Status handleAlignCommon(TSOptionsParser &parser, TSAggregator &aggregator) {
+    auto align = parser.TakeInt<uint64_t>();
+    if (!align.IsOK()) {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+    aggregator.alignment = align.GetValue();
+    return Status::OK();
+  }
+  static Status handleLatest([[maybe_unused]] TSOptionsParser &parser, bool &is_return_latest) {
+    is_return_latest = true;
+    return Status::OK();
+  }
+
+ private:
+  TSAggregator aggregator_;
+};
+
+class CommandTSRangeBase : public CommandTSAggregatorBase {
+ public:
+  CommandTSRangeBase(size_t skip_num, size_t tail_skip_num)
+      : CommandTSAggregatorBase(skip_num + 2, tail_skip_num), skip_num_(skip_num) {}
+
+  Status Parse(const std::vector<std::string> &args) override {
+    TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)), args.end());
+    // Parse start timestamp
+    auto start_ts = parser.TakeInt<uint64_t>();
+    if (!start_ts.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      is_start_explicit_set_ = true;
+      option_.start_ts = start_ts.GetValue();
+    }
+
+    // Parse end timestamp
+    auto end_ts = parser.TakeInt<uint64_t>();
+    if (!end_ts.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      is_end_explicit_set_ = true;
+      option_.end_ts = end_ts.GetValue();
+    }
+
+    auto s = KeywordCommandBase::Parse(args);
+    if (!s.IsOK()) return s;
+    if (is_alignment_explicit_set_ && option_.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "ALIGN parameter can only be used with AGGREGATION"};
+    }
+    return s;
+  }
+
+ protected:
+  const TSRangeOption &getRangeOption() const { return option_; }
+
+  void registerDefaultHandlers() override {
+    registerHandler("LATEST",
+                    [this](TSOptionsParser &parser) { return handleLatest(parser, option_.is_return_latest); });
+    registerHandler("FILTER_BY_TS",
+                    [this](TSOptionsParser &parser) { return handleFilterByTS(parser, option_.filter_by_ts); });
+    registerHandler("FILTER_BY_VALUE",
+                    [this](TSOptionsParser &parser) { return handleFilterByValue(parser, option_.filter_by_value); });
+    registerHandler("COUNT", [this](TSOptionsParser &parser) { return handleCount(parser, option_.count_limit); });
+    registerHandler("ALIGN", [this](TSOptionsParser &parser) { return handleAlign(parser); });
+    registerHandler("AGGREGATION",
+                    [this](TSOptionsParser &parser) { return handleAggregation(parser, option_.aggregator); });
+    registerHandler("BUCKETTIMESTAMP",
+                    [this](TSOptionsParser &parser) { return handleBucketTimestamp(parser, option_); });
+    registerHandler("EMPTY", [this](TSOptionsParser &parser) { return handleEmpty(parser, option_); });
+  }
+
+  static Status handleFilterByTS(TSOptionsParser &parser, std::set<uint64_t> &filter_by_ts) {
+    filter_by_ts.clear();
+    while (parser.Good()) {
+      auto ts = parser.TakeInt<uint64_t>();
+      if (!ts.IsOK()) break;
+      filter_by_ts.insert(ts.GetValue());
+    }
+    return Status::OK();
+  }
+
+  static Status handleFilterByValue(TSOptionsParser &parser,
+                                    std::optional<std::pair<double, double>> &filter_by_value) {
+    auto min = parser.TakeFloat<double>();
+    auto max = parser.TakeFloat<double>();
+    if (!min.IsOK() || !max.IsOK()) {
+      return {Status::RedisParseErr, "Invalid min or max value"};
+    }
+    filter_by_value = std::make_optional(std::make_pair(min.GetValue(), max.GetValue()));
+    return Status::OK();
+  }
+
+  static Status handleCount(TSOptionsParser &parser, uint64_t &count_limit) {
+    auto count = parser.TakeInt<uint64_t>();
+    if (!count.IsOK()) {
+      return {Status::RedisParseErr, "Couldn't parse COUNT"};
+    }
+    count_limit = count.GetValue();
+    if (count_limit == 0) {
+      return {Status::RedisParseErr, "Invalid COUNT value"};
+    }
+    return Status::OK();
+  }
+
+  static Status handleBucketTimestamp(TSOptionsParser &parser, TSRangeOption &option) {
+    if (option.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "BUCKETTIMESTAMP flag should be the 3rd or 4th flag after AGGREGATION flag"};
+    }
+    using BucketTimestampType = TSRangeOption::BucketTimestampType;
+    if (parser.EatEqICase("START")) {
+      option.bucket_timestamp_type = BucketTimestampType::Start;
+    } else if (parser.EatEqICase("END")) {
+      option.bucket_timestamp_type = BucketTimestampType::End;
+    } else if (parser.EatEqICase("MID")) {
+      option.bucket_timestamp_type = BucketTimestampType::Mid;
+    } else {
+      return {Status::RedisParseErr, "unknown BUCKETTIMESTAMP parameter"};
+    }
+    return Status::OK();
+  }
+
+  static Status handleEmpty([[maybe_unused]] TSOptionsParser &parser, TSRangeOption &option) {
+    if (option.aggregator.type == TSAggregatorType::NONE) {
+      return {Status::RedisParseErr, "EMPTY flag should be the 3rd or 5th flag after AGGREGATION flag"};
+    }
+    option.is_return_empty = true;
+    return Status::OK();
+  }
+
+ private:
+  TSRangeOption option_;
+  size_t skip_num_;
+  bool is_start_explicit_set_ = false;
+  bool is_end_explicit_set_ = false;
+  bool is_alignment_explicit_set_ = false;
+
+  Status handleAlign(TSOptionsParser &parser) {
+    auto s = handleAlignCommon(parser, option_.aggregator);
+    if (s.IsOK()) {
+      is_alignment_explicit_set_ = true;
+      return Status::OK();
+    }
+
+    auto align_str = parser.TakeStr();
+    if (!align_str.IsOK()) {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+
+    const auto &value = align_str.GetValue();
+    if (value == "-" || value == "+") {
+      bool is_explicit_set = value == "-" ? is_start_explicit_set_ : is_end_explicit_set_;
+      auto err_msg = value == "-" ? "start alignment can only be used with explicit start timestamp"
+                                  : "end alignment can only be used with explicit end timestamp";
+
+      if (!is_explicit_set) {
+        return {Status::RedisParseErr, err_msg};
+      }
+
+      option_.aggregator.alignment = value == "-" ? option_.start_ts : option_.end_ts;
+    } else {
+      return {Status::RedisParseErr, errTSInvalidAlign};
+    }
+    is_alignment_explicit_set_ = true;
+    return Status::OK();
+  }
+};
+
+class CommandTSRange : public CommandTSRangeBase {
+ public:
+  CommandTSRange() : CommandTSRangeBase(2, 0) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
+    }
+
+    user_key_ = args[1];
+
+    return CommandTSRangeBase::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSSample> res;
+    auto s = timeseries_db.Range(ctx, user_key_, getRangeOption(), &res);
+    if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
+    std::vector<std::string> reply;
+    reply.reserve(res.size());
+    for (auto &sample : res) {
+      reply.push_back(FormatTSSampleAsRedisReply(sample));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ private:
+  std::string user_key_;
+};
+
+class CommandTSGet : public CommandTSAggregatorBase {
+ public:
+  CommandTSGet() : CommandTSAggregatorBase(2, 0) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.get' command"};
+    }
+    user_key_ = args[1];
+    return CommandTSAggregatorBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSSample> res;
+    auto s = timeseries_db.Get(ctx, user_key_, is_return_latest_, &res);
+    if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
+
+    std::vector<std::string> reply;
+    reply.reserve(res.size());
+    for (auto &sample : res) {
+      reply.push_back(FormatTSSampleAsRedisReply(sample));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser, is_return_latest_); });
+  }
+
+ private:
+  bool is_return_latest_ = false;
+  std::string user_key_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1), );
+                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+                        MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1));
 
 }  // namespace redis

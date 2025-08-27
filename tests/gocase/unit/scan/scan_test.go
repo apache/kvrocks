@@ -32,6 +32,35 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func TestScanSlotRemainingKeys(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	nodeID := "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383", nodeID, srv.Host(), srv.Port())
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	slot100Keys := []string{"119483", "166988", "210695", "223656", "48063", "59022", "65976", "74937", "88379", "99338"}
+	for _, key := range slot100Keys {
+		require.NoError(t, rdb.Set(ctx, key, "1", 0).Err())
+	}
+	require.Equal(t, slot100Keys, scanAll(t, rdb))
+
+	cursor, keys := scan(t, rdb, "0", "match", "2*", "count", 1)
+	require.Equal(t, []string(nil), keys)
+	cursor, keys = scan(t, rdb, cursor, "match", "2*", "count", 1)
+	require.Equal(t, []string{"210695"}, keys)
+	cursor, keys = scan(t, rdb, cursor, "match", "2*", "count", 1)
+	require.Equal(t, []string{"223656"}, keys)
+	cursor, _ = scan(t, rdb, cursor, "match", "2*", "count", 1)
+	require.Equal(t, "0", cursor)
+}
+
 func TestScanEmptyKey(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()

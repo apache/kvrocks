@@ -42,6 +42,7 @@ struct TSSample {
   double v;
 
   static constexpr uint64_t MAX_TIMESTAMP = std::numeric_limits<uint64_t>::max();
+  static constexpr double NAN_VALUE = std::numeric_limits<double>::quiet_NaN();
 
   // Custom comparison operator for sorting by ts
   bool operator<(const TSSample& other) const { return ts < other.ts; }
@@ -183,6 +184,9 @@ class TSChunk {
   // Returns empty string if no changes
   virtual std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const = 0;
 
+  // Get idx-th latest sample, idx=0 means latest sample
+  virtual TSSample GetLatestSample(uint32_t idx) const = 0;
+
  protected:
   nonstd::span<const char> data_;
   MetaData metadata_;
@@ -201,6 +205,7 @@ class UncompTSChunk : public TSChunk {
                                                 bool is_fix_split_mode) const override;
   std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
+  TSSample GetLatestSample(uint32_t idx) const override;
 
  private:
   nonstd::span<const TSSample> samples_;

@@ -219,7 +219,6 @@ Config::Config() {
                                                 spdlog::level::off)},
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
-      {"auto-resize-block-and-sst", false, new YesNoField(&auto_resize_block_and_sst, true)},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
@@ -244,6 +243,7 @@ Config::Config() {
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
       {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},
+      {"lua-strict-key-accessing", false, new YesNoField(&lua_strict_key_accessing, false)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -299,7 +299,7 @@ Config::Config() {
       {"rocksdb.max_bytes_for_level_multiplier", false,
        new IntField(&rocks_db.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes", false,
-       new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, false)},
+       new YesNoField(&rocks_db.level_compaction_dynamic_level_bytes, true)},
       {"rocksdb.max_background_jobs", false, new IntField(&rocks_db.max_background_jobs, 4, 0, 32)},
       {"rocksdb.rate_limiter_auto_tuned", true, new YesNoField(&rocks_db.rate_limiter_auto_tuned, true)},
       {"rocksdb.avoid_unnecessary_blocking_io", true, new YesNoField(&rocks_db.avoid_unnecessary_blocking_io, true)},

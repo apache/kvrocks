@@ -31,13 +31,13 @@ FROM debian:bookworm-slim
 RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
 
 # Create a dedicated non-root user and group
-RUN groupadd -r kvrocks && useradd -r -g kvrocks kvrocks
+RUN groupadd --gid=999 -r kvrocks && useradd --uid=999 -r -g kvrocks kvrocks
 
 RUN mkdir /var/run/kvrocks /var/lib/kvrocks && \
     chown -R kvrocks:kvrocks /var/run/kvrocks /var/lib/kvrocks
 
 # Switch to the non-root user
-USER kvrocks
+USER 999
 
 VOLUME /var/lib/kvrocks
 

@@ -194,7 +194,7 @@ class CommandTDigestRevRank : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<int> result;
     result.reserve(inputs_.size());
-    if (const auto s = tdigest.RevRank(ctx, key_name_, inputs_, &result); !s.ok()) {
+    if (const auto s = tdigest.RevRank(ctx, key_name_, inputs_, result); !s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }

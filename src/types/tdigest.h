@@ -22,6 +22,7 @@
 
 #include <fmt/format.h>
 
+#include <numeric>
 #include <vector>
 
 #include "common/status.h"
@@ -80,6 +81,9 @@ class TDSample {
 // reference:
 // https://github.com/apache/arrow/blob/27bbd593625122a4a25d9471c8aaf5df54a6dcf9/cpp/src/arrow/util/tdigest.cc#L38
 static inline double Lerp(double a, double b, double t) { return a + t * (b - a); }
+// static inline int CalculateRank(int total_weight, double cumulative_weight, bool reverse) {
+//   return reverse ? total_weight - 1 - static_cast<int>(cumulative_weight) : static_cast<int>(cumulative_weight);
+// }
 
 template <typename TD>
 inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
@@ -152,20 +156,64 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
 }
 
 template <typename TD>
-inline StatusOr<int> TDigestRevRank(TD&& td, double value) {
-  if (value < td.Min()) {
-    return static_cast<int>(td.TotalWeight());
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
+  std::vector<size_t> indices(inputs.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::sort(indices.begin(), indices.end(), [&inputs](size_t a, size_t b) { return inputs[a] < inputs[b]; });
+
+  result.resize(inputs.size());
+
+  size_t i = indices.size();
+  double cumulative_weight = 0;
+
+  // handle inputs larger than maximum
+  while (i > 0 && inputs[indices[i - 1]] > td.Max()) {
+    result[indices[i - 1]] = -1;
+    i--;
   }
-  if (value > td.Max()) {
-    return static_cast<int>(-1);
-  }
-  double rank = 0;
-  for (auto iter = td.Begin(); iter->Valid(); iter->Next()) {
-    if (auto centroid = GET_OR_RET(iter->GetCentroid()); centroid.mean > value) {
-      rank += centroid.weight;
-    } else if (centroid.mean == value) {
-      rank += centroid.weight / 2;
+
+  // reverse iterate through centroids and calculate reverse rank for each input
+  auto iter = td.End();
+  while (i > 0) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    if (centroid.mean > inputs[indices[i - 1]]) {
+      cumulative_weight += centroid.weight;
+    } else if (centroid.mean == inputs[indices[i - 1]]) {
+      auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
+      cumulative_weight += centroid.weight;
+      auto current_mean = centroid.mean;
+      // cumulative all the centroids which has the same mean
+      while (!iter->IsAtBegin() && iter->Prev()) {
+        auto next_centroid = GET_OR_RET(iter->GetCentroid());
+        if (current_mean != next_centroid.mean) {
+          // move back to the last equal centroid, because we will process it in the next loop
+          iter->Next();
+          break;
+        }
+        current_mean_cumulative_weight += centroid.weight / 2;
+        cumulative_weight += centroid.weight;
+      }
+
+      result[indices[i - 1]] = static_cast<int>(current_mean_cumulative_weight);
+      i--;
+      while ((i > 0) && (inputs[indices[i]] == inputs[indices[i - 1]])) {
+        result[indices[i - 1]] = result[indices[i]];
+        i--;
+      }
+    } else {
+      result[indices[i - 1]] = static_cast<int>(cumulative_weight);
+      i--;
     }
+    if (iter->IsAtBegin()) {
+      break;
+    }
+    iter->Prev();
   }
-  return static_cast<int>(rank);
+
+  // handle inputs less than minimum
+  while (i > 0) {
+    result[indices[i - 1]] = static_cast<int>(td.TotalWeight());
+    i--;
+  }
+  return Status::OK();
 }

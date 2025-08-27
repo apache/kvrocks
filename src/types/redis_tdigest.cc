@@ -79,6 +79,8 @@ class DummyCentroids {
       return Valid();
     }
     bool Valid() const { return iter_ != centroids_.cend(); }
+    bool IsAtBegin() const { return iter_ == centroids_.cbegin(); }
+
     StatusOr<Centroid> GetCentroid() const {
       if (iter_ == centroids_.cend()) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
@@ -216,7 +218,7 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
 }
 
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<int>* result) {
+                                 std::vector<int>& result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;
   {
@@ -227,7 +229,7 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
     }
 
     if (metadata.total_observations == 0) {
-      result->resize(inputs.size(), -2);
+      result.resize(inputs.size(), -2);
       return rocksdb::Status::OK();
     }
 
@@ -242,16 +244,9 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   }
 
   auto dump_centroids = DummyCentroids(metadata, centroids);
-
-  result->clear();
-  result->reserve(inputs.size());
-
-  for (auto value : inputs) {
-    auto status_or_rank = TDigestRevRank(dump_centroids, value);
-    if (!status_or_rank) {
-      return rocksdb::Status::InvalidArgument(status_or_rank.Msg());
-    }
-    result->push_back(*status_or_rank);
+  auto status = TDigestRank(dump_centroids, inputs, result);
+  if (!status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
   }
   return rocksdb::Status::OK();
 }

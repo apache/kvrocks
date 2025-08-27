@@ -312,7 +312,7 @@ TEST_F(RedisTDigestTest, RevRank_on_the_set_contains_different_elements) {
   std::vector<int> result;
   result.reserve(input.size());
   const std::vector<double> value = {0, 10, 20, 30, 40, 50, 60, 70};
-  status = tdigest_->RevRank(*ctx_, test_digest_name, value, &result);
+  status = tdigest_->RevRank(*ctx_, test_digest_name, value, result);
   const auto expect_result = std::vector<double>{6, 5, 4, 3, 2, 1, 0, -1};
 
   for (size_t i = 0; i < result.size(); i++) {
@@ -335,7 +335,7 @@ TEST_F(RedisTDigestTest, RevRank_on_the_set_contains_several_identical_elements)
   std::vector<int> result;
   result.reserve(input.size());
   const std::vector<double> value = {10, 20};
-  status = tdigest_->RevRank(*ctx_, test_digest_name, value, &result);
+  status = tdigest_->RevRank(*ctx_, test_digest_name, value, result);
   const auto expect_result = std::vector<double>{3, 1};
   for (size_t i = 0; i < result.size(); i++) {
     auto got = result[i];
@@ -347,7 +347,7 @@ TEST_F(RedisTDigestTest, RevRank_on_the_set_contains_several_identical_elements)
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   result.clear();
-  status = tdigest_->RevRank(*ctx_, test_digest_name, value, &result);
+  status = tdigest_->RevRank(*ctx_, test_digest_name, value, result);
   const auto expect_result_new = std::vector<double>{4, 1};
   for (size_t i = 0; i < result.size(); i++) {
     auto got = result[i];
@@ -366,7 +366,7 @@ TEST_F(RedisTDigestTest, RevRank_on_empty_tdigest) {
   std::vector<int> result;
   result.reserve(2);
   const std::vector<double> value = {10, 20};
-  status = tdigest_->RevRank(*ctx_, test_digest_name, value, &result);
+  status = tdigest_->RevRank(*ctx_, test_digest_name, value, result);
   const auto expect_result = std::vector<double>{-2, -2};
   for (size_t i = 0; i < result.size(); i++) {
     auto got = result[i];

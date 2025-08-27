@@ -365,10 +365,6 @@ Status Storage::Open(DBOpenMode mode) {
   column_families.emplace_back(std::string(kStreamColumnFamilyName), subkey_opts);
   column_families.emplace_back(std::string(kSearchColumnFamilyName), search_opts);
 
-  std::vector<std::string> old_column_families;
-  auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
-  if (!s.ok()) return {Status::NotOK, s.ToString()};
-
   auto start = std::chrono::high_resolution_clock::now();
   switch (mode) {
     case DBOpenMode::kDBOpenModeDefault: {

@@ -172,7 +172,7 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
   auto iter = td.End();
   while (i > 0) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
-    
+
     if (centroid.mean > inputs[indices[i - 1]]) {
       // mean > input, accumulate weight and move to prev centroid
       cumulative_weight += centroid.weight;
@@ -181,7 +181,7 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
       cumulative_weight += centroid.weight;
       auto current_mean = centroid.mean;
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
-      
+
       // handle all the prev centroids which has the same mean
       while (!iter->IsAtBegin() && iter->Prev()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
@@ -208,7 +208,7 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
       result[indices[i - 1]] = static_cast<int>(cumulative_weight);
       i--;
     }
-    
+
     if (iter->IsAtBegin()) {
       break;
     }

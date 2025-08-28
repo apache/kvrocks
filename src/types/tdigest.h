@@ -162,7 +162,6 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
   std::sort(indices.begin(), indices.end(), [&inputs](size_t a, size_t b) { return inputs[a] < inputs[b]; });
 
   result.resize(inputs.size());
-
   size_t i = indices.size();
   double cumulative_weight = 0;
 
@@ -176,13 +175,17 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
   auto iter = td.End();
   while (i > 0) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
+    
     if (centroid.mean > inputs[indices[i - 1]]) {
+      // mean > input, accumulate weight and move to prev centroid
       cumulative_weight += centroid.weight;
     } else if (centroid.mean == inputs[indices[i - 1]]) {
-      auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
+      // mean == input, calculate reverse rank with half weight of current centroid
       cumulative_weight += centroid.weight;
       auto current_mean = centroid.mean;
-      // cumulative all the centroids which has the same mean
+      auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
+      
+      // handle all the prev centroids which has the same mean
       while (!iter->IsAtBegin() && iter->Prev()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
         if (current_mean != next_centroid.mean) {
@@ -194,16 +197,21 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
         cumulative_weight += centroid.weight;
       }
 
+      // assign the reverse rank for the inputs[indices[i - 1]]
       result[indices[i - 1]] = static_cast<int>(current_mean_cumulative_weight);
       i--;
+
+      // handle the prev inputs which has the same value
       while ((i > 0) && (inputs[indices[i]] == inputs[indices[i - 1]])) {
         result[indices[i - 1]] = result[indices[i]];
         i--;
       }
     } else {
+      // mean < input, calculate reverse rank
       result[indices[i - 1]] = static_cast<int>(cumulative_weight);
       i--;
     }
+    
     if (iter->IsAtBegin()) {
       break;
     }

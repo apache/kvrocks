@@ -61,11 +61,11 @@ TEST_F(TimeSeriesTest, Add) {
   EXPECT_TRUE(s.ok());
 
   TSSample sample{1620000000, 123.45};
-  TSChunk::AddResultWithTS result;
+  TSChunk::AddResult result;
   s = ts_db_->Add(*ctx_, key_, sample, option, &result);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(result.first, TSChunk::AddResult::kOk);
-  EXPECT_EQ(result.second, sample.ts);
+  EXPECT_EQ(result.type, TSChunk::AddResultType::kInsert);
+  EXPECT_EQ(result.sample.ts, sample.ts);
 }
 
 TEST_F(TimeSeriesTest, MAdd) {
@@ -75,34 +75,34 @@ TEST_F(TimeSeriesTest, MAdd) {
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples = {{1, 10}, {3, 10}, {2, 20}, {3, 20}, {4, 20}, {13, 20}, {1, 20}, {14, 20}};
-  std::vector<TSChunk::AddResultWithTS> results;
+  std::vector<TSChunk::AddResult> results;
   results.resize(samples.size());
 
   s = ts_db_->MAdd(*ctx_, key_, samples, &results);
   EXPECT_TRUE(s.ok());
 
   // Expected results: kOk/kBlock/kOld verification
-  std::vector<TSChunk::AddResult> expected_results = {TSChunk::AddResult::kOk,     // 1
-                                                      TSChunk::AddResult::kOk,     // 3
-                                                      TSChunk::AddResult::kOk,     // 2
-                                                      TSChunk::AddResult::kBlock,  // duplicate 3
-                                                      TSChunk::AddResult::kOk,     // 4
-                                                      TSChunk::AddResult::kOk,     // 13
-                                                      TSChunk::AddResult::kOld,    // 1 (older than retention)
-                                                      TSChunk::AddResult::kOk};    // 14
+  std::vector<TSChunk::AddResultType> expected_results = {TSChunk::AddResultType::kInsert,   // 1
+                                                          TSChunk::AddResultType::kInsert,   // 3
+                                                          TSChunk::AddResultType::kInsert,   // 2
+                                                          TSChunk::AddResultType::kBlock,    // duplicate 3
+                                                          TSChunk::AddResultType::kInsert,   // 4
+                                                          TSChunk::AddResultType::kInsert,   // 13
+                                                          TSChunk::AddResultType::kOld,      // 1 (older than retention)
+                                                          TSChunk::AddResultType::kInsert};  // 14
 
   std::vector<uint64_t> expected_ts = {1, 3, 2, 0, 4, 13, 0, 14};
 
   for (size_t i = 0; i < results.size(); ++i) {
-    EXPECT_EQ(results[i].first, expected_results[i]) << "Result mismatch at index " << i;
-    if (expected_results[i] == TSChunk::AddResult::kOk) {
-      EXPECT_EQ(results[i].second, expected_ts[i]) << "Timestamp mismatch at index " << i;
+    EXPECT_EQ(results[i].type, expected_results[i]) << "Result mismatch at index " << i;
+    if (expected_results[i] == TSChunk::AddResultType::kInsert) {
+      EXPECT_EQ(results[i].sample.ts, expected_ts[i]) << "Timestamp mismatch at index " << i;
     }
   }
   s = ts_db_->MAdd(*ctx_, key_, {{14, 0}}, &results);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0].first, TSChunk::AddResult::kBlock);
+  EXPECT_EQ(results[0].type, TSChunk::AddResultType::kBlock);
 }
 
 TEST_F(TimeSeriesTest, Range) {
@@ -113,19 +113,19 @@ TEST_F(TimeSeriesTest, Range) {
 
   // Add three batches of samples
   std::vector<TSSample> samples1 = {{1000, 100}, {1010, 110}, {1020, 120}};
-  std::vector<TSChunk::AddResultWithTS> results1;
+  std::vector<TSChunk::AddResult> results1;
   results1.resize(samples1.size());
   s = ts_db_->MAdd(*ctx_, key_, samples1, &results1);
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples2 = {{2000, 200}, {2010, 210}, {2020, 220}};
-  std::vector<TSChunk::AddResultWithTS> results2;
+  std::vector<TSChunk::AddResult> results2;
   results2.resize(samples2.size());
   s = ts_db_->MAdd(*ctx_, key_, samples2, &results2);
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples3 = {{3000, 300}, {3010, 310}, {3020, 320}};
-  std::vector<TSChunk::AddResultWithTS> results3;
+  std::vector<TSChunk::AddResult> results3;
   results3.resize(samples3.size());
   s = ts_db_->MAdd(*ctx_, key_, samples3, &results3);
   EXPECT_TRUE(s.ok());
@@ -346,7 +346,7 @@ TEST_F(TimeSeriesTest, Get) {
 
   // Add multiple samples
   std::vector<TSSample> samples = {{1, 10}, {2, 20}, {3, 30}};
-  std::vector<TSChunk::AddResultWithTS> results;
+  std::vector<TSChunk::AddResult> results;
   results.resize(samples.size());
 
   s = ts_db_->MAdd(*ctx_, key_, samples, &results);

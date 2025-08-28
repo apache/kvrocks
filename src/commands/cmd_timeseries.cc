@@ -57,14 +57,16 @@ const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap 
     {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
 };
 
-std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
-  using AddResult = TSChunk::AddResult;
-  switch (res.first) {
-    case AddResult::kOk:
-      return redis::Integer(res.second);
-    case AddResult::kOld:
+std::string FormatAddResultAsRedisReply(TSChunk::AddResult res) {
+  using AddResultType = TSChunk::AddResultType;
+  switch (res.type) {
+    case AddResultType::kInsert:
+    case AddResultType::kUpdate:
+    case AddResultType::kSkip:
+      return redis::Integer(res.sample.ts);
+    case AddResultType::kOld:
       return redis::Error({Status::NotOK, errOldTimestamp});
-    case AddResult::kBlock:
+    case AddResultType::kBlock:
       return redis::Error({Status::NotOK, errDupBlock});
     default:
       unreachable();
@@ -364,7 +366,7 @@ class CommandTSAdd : public CommandTSCreateBase {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
-    TSChunk::AddResultWithTS res;
+    TSChunk::AddResult res;
     auto s = timeseries_db.Add(ctx, user_key_, {ts_, value_}, option, &res,
                                is_on_dup_policy_set_ ? &on_dup_policy_ : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -437,7 +439,7 @@ class CommandTSMAdd : public Commander {
 
     auto replies = std::vector<std::string>(samples_count_);
     for (auto &[user_key, samples] : userkey_samples_map_) {
-      std::vector<TSChunk::AddResultWithTS> res;
+      std::vector<TSChunk::AddResult> res;
       auto count = samples.size();
       auto s = timeseries_db.MAdd(ctx, user_key, std::move(samples), &res);
       std::string err_reply;

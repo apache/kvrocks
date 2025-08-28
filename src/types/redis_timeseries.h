@@ -166,15 +166,15 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 class TimeSeries : public SubKeyScanner {
  public:
   using SampleBatch = TSChunk::SampleBatch;
-  using AddResultWithTS = TSChunk::AddResultWithTS;
+  using AddResult = TSChunk::AddResult;
   using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 
   TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
   rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
-                      AddResultWithTS *res, const DuplicatePolicy *on_dup_policy = nullptr);
+                      AddResult *res, const DuplicatePolicy *on_dup_policy = nullptr);
   rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
-                       std::vector<AddResultWithTS> *res);
+                       std::vector<AddResult> *res);
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, TSInfoResult *res);
   rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
                         std::vector<TSSample> *res);

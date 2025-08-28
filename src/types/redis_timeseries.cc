@@ -623,8 +623,7 @@ rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, 
 }
 
 rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSSample sample,
-                                const TSCreateOption &option, AddResultWithTS *res,
-                                const DuplicatePolicy *on_dup_policy) {
+                                const TSCreateOption &option, AddResult *res, const DuplicatePolicy *on_dup_policy) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   TimeSeriesMetadata metadata(false);
@@ -641,7 +640,7 @@ rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSS
 }
 
 rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
-                                 std::vector<AddResultWithTS> *res) {
+                                 std::vector<AddResult> *res) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   TimeSeriesMetadata metadata(false);

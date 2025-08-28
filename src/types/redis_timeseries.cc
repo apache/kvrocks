@@ -492,6 +492,113 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                        const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention) {
+  if (option.end_ts < option.start_ts) {
+    return rocksdb::Status::OK();
+  }
+
+  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  // Get the latest chunk
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    return rocksdb::Status::OK();
+  }
+  auto chunk = CreateTSChunkFromData(iter->value());
+  uint64_t last_timestamp = chunk->GetLastTimestamp();
+  uint64_t retention_bound =
+      (apply_retention && metadata.retention_time != 0 && last_timestamp > metadata.retention_time)
+          ? last_timestamp - metadata.retention_time
+          : 0;
+  uint64_t start_timestamp = std::max(retention_bound, option.start_ts);
+  uint64_t end_timestamp = std::min(last_timestamp, option.end_ts);
+
+  // Update iterator options
+  auto start_key = internalKeyFromChunkID(ns_key, metadata, start_timestamp);
+  if (end_timestamp != TSSample::MAX_TIMESTAMP) {
+    end_key = internalKeyFromChunkID(ns_key, metadata, end_timestamp + 1);
+  }
+  upper_bound = Slice(end_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  iter = util::UniqueIterator(ctx, read_options);
+
+  iter->SeekForPrev(start_key);
+  if (!iter->Valid()) {
+    iter->Seek(start_key);
+  } else if (!iter->key().starts_with(prefix)) {
+    iter->Next();
+  }
+  // Prepare to store results
+  std::vector<TSSample> temp_results;
+  const auto &aggregator = option.aggregator;
+  bool has_aggregator = aggregator.type != TSAggregatorType::NONE;
+  if (iter->Valid()) {
+    if (option.count_limit != 0 && !has_aggregator) {
+      temp_results.reserve(option.count_limit);
+    } else {
+      chunk = CreateTSChunkFromData(iter->value());
+      auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
+      auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
+      temp_results.reserve(estimate_chunks * metadata.chunk_size);
+    }
+  }
+  // Get samples from chunks
+  uint64_t bucket_count = 0;
+  uint64_t last_bucket = 0;
+  bool is_not_enough = true;
+  for (; iter->Valid() && is_not_enough; iter->Next()) {
+    chunk = CreateTSChunkFromData(iter->value());
+    auto it = chunk->CreateIterator();
+    while (it->HasNext()) {
+      auto sample = it->Next().value();
+      // Early termination check
+      if (!has_aggregator && option.count_limit && temp_results.size() >= option.count_limit) {
+        is_not_enough = false;
+        break;
+      }
+      const bool in_time_range = sample->ts >= start_timestamp && sample->ts <= end_timestamp;
+      const bool not_time_filtered = option.filter_by_ts.empty() || option.filter_by_ts.count(sample->ts);
+      const bool value_in_range = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
+                                                              sample->v <= option.filter_by_value->second);
+
+      if (!in_time_range || !not_time_filtered || !value_in_range) {
+        continue;
+      }
+
+      // Do checks for early termination when `count_limit` is set.
+      if (has_aggregator && option.count_limit > 0) {
+        const auto bucket = aggregator.CalculateAlignedBucketRight(sample->ts);
+        const bool is_empty_count = (last_bucket > 0 && option.is_return_empty);
+        const size_t increment = is_empty_count ? (bucket - last_bucket) / aggregator.bucket_duration : 1;
+        bucket_count += increment;
+        last_bucket = bucket;
+        if (bucket_count > option.count_limit) {
+          is_not_enough = false;
+          temp_results.push_back(*sample);  // Ensure empty bucket is reported
+          break;
+        }
+      }
+      temp_results.push_back(*sample);
+    }
+  }
+
+  // Process compaction logic
+  *res = AggregateSamplesByRangeOption(std::move(temp_results), option);
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                                     const LabelKVList &labels) {
@@ -730,108 +837,8 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) {
     return s;
   }
-  if (option.end_ts < option.start_ts) {
-    return rocksdb::Status::OK();
-  }
-
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
-  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
-  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
-  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
-
-  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(chunk_upper_bound);
-  read_options.iterate_upper_bound = &upper_bound;
-  rocksdb::Slice lower_bound(prefix);
-  read_options.iterate_lower_bound = &lower_bound;
-
-  // Get the latest chunk
-  auto iter = util::UniqueIterator(ctx, read_options);
-  iter->SeekForPrev(end_key);
-  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    return rocksdb::Status::OK();
-  }
-  auto chunk = CreateTSChunkFromData(iter->value());
-  uint64_t last_timestamp = chunk->GetLastTimestamp();
-  uint64_t retention_bound = (metadata.retention_time == 0 || last_timestamp <= metadata.retention_time)
-                                 ? 0
-                                 : last_timestamp - metadata.retention_time;
-  uint64_t start_timestamp = std::max(retention_bound, option.start_ts);
-  uint64_t end_timestamp = std::min(last_timestamp, option.end_ts);
-
-  // Update iterator options
-  auto start_key = internalKeyFromChunkID(ns_key, metadata, start_timestamp);
-  if (end_timestamp != TSSample::MAX_TIMESTAMP) {
-    end_key = internalKeyFromChunkID(ns_key, metadata, end_timestamp + 1);
-  }
-  upper_bound = Slice(end_key);
-  read_options.iterate_upper_bound = &upper_bound;
-  iter = util::UniqueIterator(ctx, read_options);
-
-  iter->SeekForPrev(start_key);
-  if (!iter->Valid()) {
-    iter->Seek(start_key);
-  } else if (!iter->key().starts_with(prefix)) {
-    iter->Next();
-  }
-  // Prepare to store results
-  std::vector<TSSample> temp_results;
-  const auto &aggregator = option.aggregator;
-  bool has_aggregator = aggregator.type != TSAggregatorType::NONE;
-  if (iter->Valid()) {
-    if (option.count_limit != 0 && !has_aggregator) {
-      temp_results.reserve(option.count_limit);
-    } else {
-      chunk = CreateTSChunkFromData(iter->value());
-      auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
-      auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
-      temp_results.reserve(estimate_chunks * metadata.chunk_size);
-    }
-  }
-  // Get samples from chunks
-  uint64_t bucket_count = 0;
-  uint64_t last_bucket = 0;
-  bool is_not_enough = true;
-  for (; iter->Valid() && is_not_enough; iter->Next()) {
-    chunk = CreateTSChunkFromData(iter->value());
-    auto it = chunk->CreateIterator();
-    while (it->HasNext()) {
-      auto sample = it->Next().value();
-      // Early termination check
-      if (!has_aggregator && option.count_limit && temp_results.size() >= option.count_limit) {
-        is_not_enough = false;
-        break;
-      }
-      const bool in_time_range = sample->ts >= start_timestamp && sample->ts <= end_timestamp;
-      const bool not_time_filtered = option.filter_by_ts.empty() || option.filter_by_ts.count(sample->ts);
-      const bool value_in_range = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
-                                                              sample->v <= option.filter_by_value->second);
-
-      if (!in_time_range || !not_time_filtered || !value_in_range) {
-        continue;
-      }
-
-      // Do checks for early termination when `count_limit` is set.
-      if (has_aggregator && option.count_limit > 0) {
-        const auto bucket = aggregator.CalculateAlignedBucketRight(sample->ts);
-        const bool is_empty_count = (last_bucket > 0 && option.is_return_empty);
-        const size_t increment = is_empty_count ? (bucket - last_bucket) / aggregator.bucket_duration : 1;
-        bucket_count += increment;
-        last_bucket = bucket;
-        if (bucket_count > option.count_limit) {
-          is_not_enough = false;
-          temp_results.push_back(*sample);  // Ensure empty bucket is reported
-          break;
-        }
-      }
-      temp_results.push_back(*sample);
-    }
-  }
-
-  // Process compaction logic
-  *res = AggregateSamplesByRangeOption(std::move(temp_results), option);
-
-  return rocksdb::Status::OK();
+  s = rangeCommon(ctx, ns_key, metadata, option, res);
+  return s;
 }
 
 rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest,

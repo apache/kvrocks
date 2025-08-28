@@ -81,9 +81,6 @@ class TDSample {
 // reference:
 // https://github.com/apache/arrow/blob/27bbd593625122a4a25d9471c8aaf5df54a6dcf9/cpp/src/arrow/util/tdigest.cc#L38
 static inline double Lerp(double a, double b, double t) { return a + t * (b - a); }
-// static inline int CalculateRank(int total_weight, double cumulative_weight, bool reverse) {
-//   return reverse ? total_weight - 1 - static_cast<int>(cumulative_weight) : static_cast<int>(cumulative_weight);
-// }
 
 template <typename TD>
 inline StatusOr<double> TDigestQuantile(TD&& td, double q) {

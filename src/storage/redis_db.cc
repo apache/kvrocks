@@ -339,9 +339,14 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
   }
 
   if (!cursor.empty()) {
-    iter->Seek(ns_cursor);
-    if (iter->Valid()) {
-      iter->Next();
+    if (storage_->IsSlotIdEncoded() && !ns_prefix.empty() &&
+        metadata_cf_handle_->GetComparator()->Compare(rocksdb::Slice(ns_prefix), rocksdb::Slice(ns_cursor)) > 0) {
+      iter->Seek(ns_prefix);
+    } else {
+      iter->Seek(ns_cursor);
+      if (iter->Valid()) {
+        iter->Next();
+      }
     }
   } else if (ns_prefix.empty()) {
     iter->SeekToFirst();

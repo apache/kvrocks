@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <signal.h>
+
 #include <system_error>
 #include <thread>
 
@@ -34,6 +36,14 @@ template <typename F>
 StatusOr<std::thread> CreateThread(const char *name, F f) {
   try {
     return std::thread([name, f = std::move(f)] {
+      // Block SIGTERM and SIGINT signals in this thread,
+      // the signal should be handled by the main thread or a dedicated thread.
+      sigset_t signal_set;
+      sigemptyset(&signal_set);
+      sigaddset(&signal_set, SIGTERM);
+      sigaddset(&signal_set, SIGINT);
+      pthread_sigmask(SIG_BLOCK, &signal_set, nullptr);
+
       ThreadSetName(name);
       f();
     });

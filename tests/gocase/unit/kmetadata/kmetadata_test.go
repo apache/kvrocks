@@ -173,7 +173,7 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("Test KMetadata for Bitmap type", func(t *testing.T) {
-		bitMapKey := "bitmp_" + util.RandString(1, 10, util.Alpha)
+		bitMapKey := "bitmap_" + util.RandString(1, 10, util.Alpha)
 		require.NoError(t, rdb.SetBit(ctx, bitMapKey, 0, 1).Err())
 		r := rdb.Do(ctx, "kmetadata", bitMapKey)
 		result, err := r.Result()

@@ -41,19 +41,24 @@ enum class IndexKeyType : uint8_t {
 
 enum class TSAggregatorType : uint8_t {
   NONE = 0,
-  AVG = 1,
-  SUM = 2,
-  MIN = 3,
-  MAX = 4,
-  RANGE = 5,
-  COUNT = 6,
-  FIRST = 7,
-  LAST = 8,
+  SUM = 1,
+  MIN = 2,
+  MAX = 3,
+  COUNT = 4,
+  FIRST = 5,
+  LAST = 6,
+  AVG = 7,
+  RANGE = 8,
   STD_P = 9,
   STD_S = 10,
   VAR_P = 11,
   VAR_S = 12,
 };
+
+inline bool IsIncrementalAggregatorType(TSAggregatorType type) {
+  uint8_t type_num = static_cast<uint8_t>(type);
+  return type_num >= 1 && type_num <= 6;
+}
 
 struct TSAggregator {
   TSAggregatorType type = TSAggregatorType::NONE;
@@ -194,6 +199,8 @@ class TimeSeries : public SubKeyScanner {
                                SampleBatch &sample_batch);
   rocksdb::Status rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
+  rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                   nonstd::span<const AddResult> add_results);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);

@@ -31,6 +31,47 @@ constexpr uint64_t kDefaultChunkSize = 1024;
 constexpr auto kDefaultChunkType = TimeSeriesMetadata::ChunkType::UNCOMPRESSED;
 constexpr auto kDefaultDuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy::BLOCK;
 
+struct Reducer {
+  static inline double Sum(nonstd::span<const TSSample> samples) {
+    return std::accumulate(samples.begin(), samples.end(), 0.0,
+                           [](double acc, const TSSample &sample) { return acc + sample.v; });
+  }
+  static inline double SquareSum(nonstd::span<const TSSample> samples) {
+    return std::accumulate(samples.begin(), samples.end(), 0.0,
+                           [](double acc, const TSSample &sample) { return acc + sample.v * sample.v; });
+  }
+  static inline double Min(nonstd::span<const TSSample> samples) {
+    return std::min_element(samples.begin(), samples.end(),
+                            [](const TSSample &a, const TSSample &b) { return a.v < b.v; })
+        ->v;
+  }
+  static inline double Max(nonstd::span<const TSSample> samples) {
+    return std::max_element(samples.begin(), samples.end(),
+                            [](const TSSample &a, const TSSample &b) { return a.v < b.v; })
+        ->v;
+  }
+  static inline double Var_p(nonstd::span<const TSSample> samples) {
+    auto sample_size = static_cast<double>(samples.size());
+    double sum = Sum(samples);
+    double square_sum = SquareSum(samples);
+    return (square_sum - sum * sum / sample_size) / sample_size;
+  }
+  static inline double Var_s(nonstd::span<const TSSample> samples) {
+    if (samples.size() <= 1) return 0.0;
+    double sample_size = static_cast<double>(samples.size());
+    return Var_p(samples) * sample_size / (sample_size - 1);
+  }
+  static inline double Std_p(nonstd::span<const TSSample> samples) { return std::sqrt(Var_p(samples)); }
+
+  static inline double Std_s(nonstd::span<const TSSample> samples) { return std::sqrt(Var_s(samples)); }
+  static inline double Range(nonstd::span<const TSSample> samples) {
+    if (samples.empty()) return 0.0;
+    auto [min, max] = std::minmax_element(samples.begin(), samples.end(),
+                                          [](const TSSample &a, const TSSample &b) { return a.v < b.v; });
+    return max->v - min->v;
+  }
+};
+
 std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option) {
   const auto &aggregator = option.aggregator;
   std::vector<TSSample> res;
@@ -251,95 +292,42 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
   }
   auto sample_size = static_cast<double>(samples.size());
   switch (type) {
-    case TSAggregatorType::AVG: {
-      res = std::accumulate(samples.begin(), samples.end(), 0.0,
-                            [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-            sample_size;
+    case TSAggregatorType::AVG:
+      res = Reducer::Sum(samples) / sample_size;
       break;
-    }
-    case TSAggregatorType::SUM: {
-      res = std::accumulate(samples.begin(), samples.end(), 0.0,
-                            [](double sum, const TSSample &sample) { return sum + sample.v; });
+    case TSAggregatorType::SUM:
+      res = Reducer::Sum(samples);
       break;
-    }
-    case TSAggregatorType::MIN: {
-      res = std::min_element(samples.begin(), samples.end(), [](const TSSample &a, const TSSample &b) {
-              return a.v < b.v;
-            })->v;
+    case TSAggregatorType::MIN:
+      res = Reducer::Min(samples);
       break;
-    }
-    case TSAggregatorType::MAX: {
-      res = std::max_element(samples.begin(), samples.end(), [](const TSSample &a, const TSSample &b) {
-              return a.v < b.v;
-            })->v;
+    case TSAggregatorType::MAX:
+      res = Reducer::Max(samples);
       break;
-    }
-    case TSAggregatorType::RANGE: {
-      auto [min_it, max_it] = std::minmax_element(samples.begin(), samples.end(),
-                                                  [](const TSSample &a, const TSSample &b) { return a.v < b.v; });
-      res = max_it->v - min_it->v;
+    case TSAggregatorType::RANGE:
+      res = Reducer::Range(samples);
       break;
-    }
-    case TSAggregatorType::COUNT: {
+    case TSAggregatorType::COUNT:
       res = sample_size;
       break;
-    }
-    case TSAggregatorType::FIRST: {
+    case TSAggregatorType::FIRST:
       res = samples.front().v;
       break;
-    }
-    case TSAggregatorType::LAST: {
+    case TSAggregatorType::LAST:
       res = samples.back().v;
       break;
-    }
-    case TSAggregatorType::STD_P: {
-      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
-                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    sample_size;
-      double variance =
-          std::accumulate(samples.begin(), samples.end(), 0.0,
-                          [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-          sample_size;
-      res = std::sqrt(variance);
+    case TSAggregatorType::STD_P:
+      res = Reducer::Std_p(samples);
       break;
-    }
-    case TSAggregatorType::STD_S: {
-      if (samples.size() <= 1) {
-        res = 0.0;
-        break;
-      }
-      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
-                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    sample_size;
-      double variance =
-          std::accumulate(samples.begin(), samples.end(), 0.0,
-                          [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-          (sample_size - 1.0);
-      res = std::sqrt(variance);
+    case TSAggregatorType::STD_S:
+      res = Reducer::Std_s(samples);
       break;
-    }
-    case TSAggregatorType::VAR_P: {
-      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
-                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    sample_size;
-      res = std::accumulate(samples.begin(), samples.end(), 0.0,
-                            [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-            sample_size;
+    case TSAggregatorType::VAR_P:
+      res = Reducer::Var_p(samples);
       break;
-    }
-    case TSAggregatorType::VAR_S: {
-      if (samples.size() <= 1) {
-        res = 0.0;
-        break;
-      }
-      double mean = std::accumulate(samples.begin(), samples.end(), 0.0,
-                                    [](double sum, const TSSample &sample) { return sum + sample.v; }) /
-                    sample_size;
-      res = std::accumulate(samples.begin(), samples.end(), 0.0,
-                            [mean](double sum, const TSSample &sample) { return sum + std::pow(sample.v - mean, 2); }) /
-            (sample_size - 1.0);
+    case TSAggregatorType::VAR_S:
+      res = Reducer::Var_s(samples);
       break;
-    }
     default:
       unreachable();
   }

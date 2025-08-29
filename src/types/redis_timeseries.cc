@@ -38,24 +38,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     res = std::move(samples);
     return res;
   }
-  uint64_t start_bucket = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
-  uint64_t end_bucket = aggregator.CalculateAlignedBucketLeft(samples.back().ts);
-  uint64_t bucket_count = (end_bucket - start_bucket) / aggregator.bucket_duration + 1;
-
-  std::vector<nonstd::span<const TSSample>> spans;
-  spans.reserve(bucket_count);
-  auto it = samples.begin();
-  const auto end = samples.end();
-  uint64_t bucket_left = start_bucket;
-  while (it != end) {
-    uint64_t bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
-    auto lower = std::lower_bound(it, end, TSSample{bucket_left, 0.0});
-    auto upper = std::lower_bound(lower, end, TSSample{bucket_right, 0.0});
-    spans.emplace_back(lower, upper);
-    it = upper;
-
-    bucket_left = bucket_right;
-  }
+  auto spans = aggregator.SplitSamplesToBuckets(samples);
 
   auto get_bucket_ts = [&](uint64_t left) -> uint64_t {
     using BucketTimestampType = TSRangeOption::BucketTimestampType;
@@ -72,7 +55,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     return 0;
   };
   res.reserve(spans.size());
-  bucket_left = start_bucket;
+  uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
   for (size_t i = 0; i < spans.size(); i++) {
     if (option.count_limit && res.size() >= option.count_limit) {
       break;
@@ -233,6 +216,32 @@ uint64_t TSAggregator::CalculateAlignedBucketRight(uint64_t ts) const {
   }
 
   return x;
+}
+
+std::vector<nonstd::span<const TSSample>> TSAggregator::SplitSamplesToBuckets(
+    nonstd::span<const TSSample> samples) const {
+  std::vector<nonstd::span<const TSSample>> spans;
+  if (type == TSAggregatorType::NONE || samples.empty()) {
+    return spans;
+  }
+  uint64_t start_bucket = CalculateAlignedBucketLeft(samples.front().ts);
+  uint64_t end_bucket = CalculateAlignedBucketLeft(samples.back().ts);
+  uint64_t bucket_count = (end_bucket - start_bucket) / bucket_duration + 1;
+
+  spans.reserve(bucket_count);
+  auto it = samples.begin();
+  const auto end = samples.end();
+  uint64_t bucket_left = start_bucket;
+  while (it != end) {
+    uint64_t bucket_right = CalculateAlignedBucketRight(bucket_left);
+    auto lower = std::lower_bound(it, end, TSSample{bucket_left, 0.0});
+    auto upper = std::lower_bound(lower, end, TSSample{bucket_right, 0.0});
+    spans.emplace_back(lower, upper);
+    it = upper;
+
+    bucket_left = bucket_right;
+  }
+  return spans;
 }
 
 double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples) const {

@@ -26,6 +26,8 @@ concurrency:
 jobs:
   build-and-test:
     name: FreeBSD Build and Test
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

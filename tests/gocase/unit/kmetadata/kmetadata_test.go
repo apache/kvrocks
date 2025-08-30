@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -111,138 +110,99 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Test KMetadata for String type", func(t *testing.T) {
-		key := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(1, 10, util.Alpha)
-		val := "__avoid_collisions__" + "_KMetadataString_" + util.RandString(1, 10, util.Alpha)
-		rdb.Set(ctx, key, val, 0)
+		key := "string_" + util.RandString(1, 10, util.Alpha)
+		val := util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+		// Test KMetadata for string type
 		r := rdb.Do(ctx, "kmetadata", key)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "string", metaResponse.ktype)
-		assert.Equal(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(0), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "string", metaResponse.ktype)
+		require.Equal(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(0), metaResponse.size)
 	})
 
 	t.Run("Test KMetadata for hash type", func(t *testing.T) {
-		key := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
-		f1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
-		v1 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
-		f2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
-		v2 := "__avoid_collisions__" + "_kMetadataHash_" + util.RandString(1, 10, util.Alpha)
-		rdb.HSet(ctx, key, f1, v1, f2, v2)
+		key := "hash_" + util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.HSet(ctx, key, "f0", "v0", "f1", "v1").Err())
 		r := rdb.Do(ctx, "kmetadata", key)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "hash", metaResponse.ktype)
-		assert.NotEqual(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(2), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "hash", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(2), metaResponse.size)
 	})
 
 	t.Run("Test KMetadata for set type", func(t *testing.T) {
-		setName := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
-		item1 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
-		item2 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
-		item3 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
-		item4 := "__avoid_collisions__" + "_kMetadataSet_" + util.RandString(1, 10, util.Alpha)
-		rdb.SAdd(ctx, setName, item1, item2, item3, item4)
+		setName := "set_" + util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.SAdd(ctx, setName, "e0", "e1", "e2", "e3").Err())
 		r := rdb.Do(ctx, "kmetadata", setName)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "set", metaResponse.ktype)
-		assert.NotEqual(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(4), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "set", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(4), metaResponse.size)
 	})
 
 	t.Run("Test KMetadata for zset type", func(t *testing.T) {
-		zsetName := "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha)
+		zsetName := "zset_" + util.RandString(1, 10, util.Alpha)
 		members := []redis.Z{
-			{
-				Score:  1.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
-			},
-			{
-				Score:  2.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
-			},
-			{
-				Score:  3.0,
-				Member: "__avoid_collisions__" + "_kMetadataZSet_" + util.RandString(1, 10, util.Alpha),
-			},
+			{Score: 1.0, Member: "m0"},
+			{Score: 2.0, Member: "m1"},
+			{Score: 3.0, Member: "m2"},
 		}
 		rdb.ZAdd(ctx, zsetName, members...)
 		r := rdb.Do(ctx, "kmetadata", zsetName)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "zset", metaResponse.ktype)
-		assert.NotEqual(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(3), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "zset", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(3), metaResponse.size)
 	})
 
 	t.Run("Test KMetadata for Bitmap type", func(t *testing.T) {
-		bitMapKey := "__avoid_collisions__" + "_kMetadataBitMap_" + util.RandString(1, 10, util.Alpha)
-		rdb.SetBit(ctx, bitMapKey, 0, 1)
+		bitMapKey := "bitmap_" + util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.SetBit(ctx, bitMapKey, 0, 1).Err())
 		r := rdb.Do(ctx, "kmetadata", bitMapKey)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "bitmap", metaResponse.ktype)
-		assert.NotEqual(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(1), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "bitmap", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(1), metaResponse.size)
 	})
 
 	t.Run("Test KMetadata for List type", func(t *testing.T) {
-		listKey := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
-		item1 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
-		item2 := "__avoid_collisions__" + "_kMetadataList_" + util.RandString(1, 10, util.Alpha)
-		rdb.RPush(ctx, listKey, item1, item2)
+		listKey := "list_" + util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.RPush(ctx, listKey, "a", "b").Err())
 		r := rdb.Do(ctx, "kmetadata", listKey)
 		result, err := r.Result()
-		if err != nil {
-			t.Fatalf("Command failed: %v", err)
-		}
+		require.NoError(t, err)
+
 		metaResponse, err := ExtractKMetadataResponse(result)
-		if err != nil {
-			t.Fatalf("Failed to extract response: %v", err)
-		}
-		assert.Equal(t, "list", metaResponse.ktype)
-		assert.NotEqual(t, int64(0), metaResponse.version)
-		assert.Equal(t, int64(2), metaResponse.size)
+		require.NoError(t, err)
+		require.Equal(t, "list", metaResponse.ktype)
+		require.NotEqual(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(2), metaResponse.size)
 	})
 
 	t.Run("Test Key not present", func(t *testing.T) {
-		notFoundKey := "__avoid_collisions__" + "_kMetadataNotFound_" + util.RandString(1, 10, util.Alpha)
+		notFoundKey := "not_found_" + util.RandString(1, 10, util.Alpha)
 		r := rdb.Do(ctx, "kmetadata", notFoundKey)
-		val := r.Val()
-		assert.Equal(t, nil, val)
-		assert.Error(t, r.Err())
+		require.NotNil(t, r.Err())
 	})
-
 }

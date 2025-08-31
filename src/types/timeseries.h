@@ -200,6 +200,9 @@ class TSChunk {
   // Get idx-th latest sample, idx=0 means latest sample
   virtual TSSample GetLatestSample(uint32_t idx) const = 0;
 
+  // Get all samples as a span
+  virtual nonstd::span<const TSSample> GetSamplesSpan() const = 0;
+
  protected:
   nonstd::span<const char> data_;
   MetaData metadata_;
@@ -219,6 +222,8 @@ class UncompTSChunk : public TSChunk {
   std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
   TSSample GetLatestSample(uint32_t idx) const override;
+
+  nonstd::span<const TSSample> GetSamplesSpan() const override { return samples_; }
 
  private:
   nonstd::span<const TSSample> samples_;

@@ -132,6 +132,174 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   return res;
 }
 
+std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
+                                                              bool skip_last_bucket) {
+  std::vector<TSSample> res;
+  auto bucket_spans = aggregator.SplitSamplesToBuckets(samples);
+  for (size_t i = 0; i < bucket_spans.size(); i++) {
+    const auto &span = bucket_spans[i];
+    if (span.empty()) {
+      continue;
+    }
+    auto bucket_idx = aggregator.CalculateAlignedBucketLeft(span.front().ts);
+    if (bucket_idx < latest_bucket_idx) {
+      continue;
+    }
+    if (bucket_idx > latest_bucket_idx) {
+      // Aggregate the previous bucket from aux info and push to result
+      TSSample sample;
+      sample.ts = latest_bucket_idx;
+      double v = 0.0;
+      double temp_n = 0.0;
+      switch (aggregator.type) {
+        case TSAggregatorType::SUM:
+        case TSAggregatorType::MIN:
+        case TSAggregatorType::MAX:
+        case TSAggregatorType::COUNT:
+        case TSAggregatorType::FIRST:
+        case TSAggregatorType::LAST:
+          sample.v = f64_auxs[0];
+          break;
+        case TSAggregatorType::AVG:
+          sample.v = f64_auxs[0] / u64_auxs[0];
+          break;
+        case TSAggregatorType::STD_P:
+        case TSAggregatorType::STD_S:
+        case TSAggregatorType::VAR_P:
+        case TSAggregatorType::VAR_S:
+          temp_n = static_cast<double>(u64_auxs[0]);
+          v = f64_auxs[1] - f64_auxs[0] * f64_auxs[0] / temp_n;
+          if (aggregator.type == TSAggregatorType::STD_S || aggregator.type == TSAggregatorType::VAR_S) {
+            if (u64_auxs[0] > 1) {
+              v = v / (temp_n - 1);
+            } else {
+              v = 0.0;
+            }
+          } else {
+            v = v / temp_n;
+          }
+          if (aggregator.type == TSAggregatorType::STD_P || aggregator.type == TSAggregatorType::STD_S) {
+            sample.v = std::sqrt(v);
+          } else {
+            sample.v = v;
+          }
+          break;
+        case TSAggregatorType::RANGE:
+          sample.v = f64_auxs[1] - f64_auxs[0];
+          break;
+        default:
+          unreachable();
+      }
+      res.push_back(sample);
+      // Reset aux info for the new bucket
+      ResetAuxs();
+      latest_bucket_idx = bucket_idx;
+    }
+    if (skip_last_bucket && i == bucket_spans.size() - 1) {
+      // Skip updating aux info for the last bucket
+      break;
+    }
+    AggregateLatestBucket(span);
+  }
+
+  return res;
+}
+
+void TSDownStreamMeta::AggregateLatestBucket(nonstd::span<const TSSample> samples) {
+  double temp_v = 0.0;
+  switch (aggregator.type) {
+    case TSAggregatorType::SUM:
+      f64_auxs[0] += Reducer::Sum(samples);
+      break;
+    case TSAggregatorType::MIN:
+      temp_v = Reducer::Min(samples);
+      f64_auxs[0] = std::isnan(f64_auxs[0]) ? temp_v : std::min(f64_auxs[0], temp_v);
+      break;
+    case TSAggregatorType::MAX:
+      temp_v = Reducer::Max(samples);
+      f64_auxs[0] = std::isnan(f64_auxs[0]) ? temp_v : std::max(f64_auxs[0], temp_v);
+      break;
+    case TSAggregatorType::COUNT:
+      f64_auxs[0] += static_cast<double>(samples.size());
+      break;
+    case TSAggregatorType::FIRST:
+      if (std::isnan(f64_auxs[0]) || samples.front().ts < u64_auxs[0]) {
+        f64_auxs[0] = samples.front().v;
+        u64_auxs[0] = samples.front().ts;
+      }
+      break;
+    case TSAggregatorType::LAST:
+      if (std::isnan(f64_auxs[0]) || samples.back().ts > u64_auxs[0]) {
+        f64_auxs[0] = samples.back().v;
+        u64_auxs[0] = samples.back().ts;
+      }
+      break;
+    case TSAggregatorType::AVG:
+      u64_auxs[0] += static_cast<uint64_t>(samples.size());
+      f64_auxs[0] += Reducer::Sum(samples);
+      break;
+    case TSAggregatorType::STD_P:
+    case TSAggregatorType::STD_S:
+    case TSAggregatorType::VAR_P:
+    case TSAggregatorType::VAR_S:
+      u64_auxs[0] += static_cast<uint64_t>(samples.size());
+      f64_auxs[0] += Reducer::Sum(samples);
+      f64_auxs[1] += Reducer::SquareSum(samples);
+      break;
+    case TSAggregatorType::RANGE:
+      if (std::isnan(f64_auxs[0])) {
+        f64_auxs[0] = Reducer::Min(samples);
+        f64_auxs[1] = Reducer::Max(samples);
+      } else {
+        f64_auxs[0] = std::min(f64_auxs[0], Reducer::Min(samples));
+        f64_auxs[1] = std::max(f64_auxs[1], Reducer::Max(samples));
+      }
+      break;
+    default:
+      unreachable();
+  }
+}
+
+void TSDownStreamMeta::ResetAuxs() {
+  auto type = aggregator.type;
+  switch (type) {
+    case TSAggregatorType::SUM:
+      f64_auxs = {0.0};
+      break;
+    case TSAggregatorType::MIN:
+    case TSAggregatorType::MAX:
+      f64_auxs = {TSSample::NAN_VALUE};
+      break;
+    case TSAggregatorType::COUNT:
+      f64_auxs = {0};
+      break;
+    case TSAggregatorType::FIRST:
+      u64_auxs = {TSSample::MAX_TIMESTAMP};
+      f64_auxs = {TSSample::NAN_VALUE};
+      break;
+    case TSAggregatorType::LAST:
+      u64_auxs = {0};
+      f64_auxs = {TSSample::NAN_VALUE};
+      break;
+    case TSAggregatorType::AVG:
+      u64_auxs = {0};
+      f64_auxs = {0.0};
+      break;
+    case TSAggregatorType::STD_P:
+    case TSAggregatorType::STD_S:
+    case TSAggregatorType::VAR_P:
+    case TSAggregatorType::VAR_S:
+      u64_auxs = {0};
+      f64_auxs = {0.0, 0.0};
+      break;
+    case TSAggregatorType::RANGE:
+      f64_auxs = {TSSample::NAN_VALUE, TSSample::NAN_VALUE};
+      break;
+    default:
+      unreachable();
+  }
+}
+
 void TSDownStreamMeta::Encode(std::string *dst) const {
   PutFixed8(dst, static_cast<uint8_t>(aggregator.type));
   PutFixed64(dst, aggregator.bucket_duration);
@@ -219,8 +387,7 @@ TSDownStreamMeta CreateDownStreamMetaFromAgg(const TSAggregator &aggregator) {
   TSDownStreamMeta meta;
   meta.aggregator = aggregator;
   meta.latest_bucket_idx = 0;
-  // TODO: Add aux info
-
+  meta.ResetAuxs();
   return meta;
 }
 
@@ -283,6 +450,18 @@ std::vector<nonstd::span<const TSSample>> TSAggregator::SplitSamplesToBuckets(
     bucket_left = bucket_right;
   }
   return spans;
+}
+
+nonstd::span<const TSSample> TSAggregator::GetBucketByTimestamp(nonstd::span<const TSSample> samples,
+                                                                uint64_t ts) const {
+  if (type == TSAggregatorType::NONE || samples.empty()) {
+    return {};
+  }
+  uint64_t start_bucket = CalculateAlignedBucketLeft(ts);
+  uint64_t end_bucket = CalculateAlignedBucketRight(ts);
+  auto lower = std::lower_bound(samples.begin(), samples.end(), TSSample{start_bucket, 0.0});
+  auto upper = std::lower_bound(lower, samples.end(), TSSample{end_bucket, 0.0});
+  return nonstd::span<const TSSample>(lower, upper);
 }
 
 double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples) const {
@@ -370,7 +549,7 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                         SampleBatch &sample_batch) {
+                                         SampleBatch &sample_batch, std::vector<std::string> *new_chunks) {
   auto all_batch_slice = sample_batch.AsSlice();
 
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
@@ -486,6 +665,14 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
     if (!s.ok()) return s;
   }
 
+  if (new_chunks) {
+    if (new_data_list.size()) {
+      *new_chunks = std::move(new_data_list);
+    } else {
+      *new_chunks = {std::move(latest_chunk_value)};
+    }
+  }
+
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
@@ -594,6 +781,166 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
   *res = AggregateSamplesByRangeOption(std::move(temp_results), option);
 
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &ns_key,
+                                             const TimeSeriesMetadata &metadata,
+                                             const std::vector<std::string> &new_chunks, SampleBatch &sample_batch) {
+  // If no valid written
+  if (new_chunks.empty()) return rocksdb::Status::OK();
+  std::vector<std::string> downstream_keys;
+  std::vector<TSDownStreamMeta> downstream_metas;
+  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas);
+  if (!s.ok()) return s;
+  if (downstream_keys.empty()) return rocksdb::Status::OK();
+
+  auto all_batch_slice = sample_batch.AsSlice();
+  uint64_t new_chunk_first_ts = CreateTSChunkFromData(new_chunks[0])->GetFirstTimestamp();
+
+  nonstd::span<const AddResult> add_results = all_batch_slice.GetAddResultSpan();
+  std::vector<std::vector<TSSample>> all_agg_samples(downstream_metas.size());
+  std::vector<uint64_t> last_buckets(downstream_metas.size());
+  std::vector<bool> is_meta_updates(downstream_metas.size(), false);
+
+  using AddResultType = TSChunk::AddResultType;
+  struct ProcessingInfo {
+    uint64_t start_ts;
+    uint64_t end_ts;
+    size_t sample_idx;
+    std::vector<size_t> downstream_indices;
+  };
+  std::vector<ProcessingInfo> processing_infos;
+  processing_infos.reserve(add_results.size());
+
+  for (size_t i = 0; i < add_results.size(); i++) {
+    const auto &add_result = add_results[i];
+    auto sample_ts = add_result.sample.ts;
+    const auto type = add_result.type;
+    if (type != AddResultType::kInsert && type != AddResultType::kUpdate) {
+      continue;
+    }
+
+    // Prepare  info for samples added to sealed chunks
+    ProcessingInfo info;
+    info.sample_idx = i;
+    info.start_ts = TSSample::MAX_TIMESTAMP;
+    info.end_ts = 0;
+
+    for (size_t j = 0; j < downstream_metas.size(); j++) {
+      const auto &agg = downstream_metas[j].aggregator;
+      uint64_t latest_bucket_idx = downstream_metas[j].latest_bucket_idx;
+      uint64_t bkt_left = agg.CalculateAlignedBucketLeft(sample_ts);
+
+      if ((i > 0 && bkt_left == last_buckets[j])) {
+        continue;
+      }
+      // Skip samples with timestamps beyond the retrieval boundary
+      // Boundary is defined as the later of:
+      //   - New chunk start time (new_chunk_first_ts)
+      //   - Latest bucket index (latest_bucket_idx)
+      auto boundary = std::max(new_chunk_first_ts, latest_bucket_idx);
+      if (sample_ts >= boundary) {
+        continue;
+      }
+
+      info.downstream_indices.push_back(j);
+      uint64_t bkt_right = agg.CalculateAlignedBucketRight(sample_ts);
+      info.start_ts = std::min(info.start_ts, bkt_left);
+      info.end_ts = std::max(info.end_ts, bkt_right);
+      info.end_ts = std::min(info.end_ts, boundary - 1);  // Exclusive. Boundary > 0
+    }
+
+    if (info.downstream_indices.size()) {
+      processing_infos.push_back(info);
+    }
+  }
+
+  // Process samples added to sealed chunks
+  for (const auto &info : processing_infos) {
+    const auto &add_result = add_results[info.sample_idx];
+
+    TSRangeOption option;
+    option.start_ts = info.start_ts;
+    option.end_ts = info.end_ts;
+    std::vector<TSSample> retrieve_samples;
+    s = rangeCommon(ctx, ns_key, metadata, option, &retrieve_samples, false);
+    if (!s.ok()) return s;
+
+    for (size_t j : info.downstream_indices) {
+      auto &meta = downstream_metas[j];
+      const auto &agg = meta.aggregator;
+      uint64_t bkt_left = agg.CalculateAlignedBucketLeft(add_result.sample.ts);
+
+      auto span = agg.GetBucketByTimestamp(retrieve_samples, bkt_left);
+      CHECK(!span.empty());
+      last_buckets[j] = bkt_left;
+      if (bkt_left == meta.latest_bucket_idx) {
+        meta.ResetAuxs();
+        meta.AggregateLatestBucket(span);
+        is_meta_updates[j] = true;
+      } else {
+        all_agg_samples[j].push_back({bkt_left, agg.AggregateSamplesValue(span)});
+      }
+    }
+  }
+
+  // Process samples added to the latest chunk
+  for (size_t i = 0; i < downstream_metas.size(); i++) {
+    auto &agg_samples = all_agg_samples[i];
+    auto &meta = downstream_metas[i];
+    const auto &agg = meta.aggregator;
+    if (new_chunks.size() > 1) {
+      is_meta_updates[i] = true;
+    }
+    // For chunk except the last chunk(sealed)
+    for (size_t j = 0; j < new_chunks.size() - 1; j++) {
+      auto chunk = CreateTSChunkFromData(new_chunks[j]);
+      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan());
+      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+    }
+    // For last chunk(unsealed)
+    auto chunk = CreateTSChunkFromData(new_chunks.back());
+    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(chunk->GetLastTimestamp());
+    if (meta.latest_bucket_idx < newest_bucket_idx) {
+      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan(), true);
+      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      is_meta_updates[i] = true;
+    }
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries, {"upsertDownStream"});
+  s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  // Write downstream metadata
+  for (size_t i = 0; i < downstream_metas.size(); i++) {
+    if (!is_meta_updates[i]) {
+      continue;
+    }
+    const auto &meta = downstream_metas[i];
+    const auto &key = downstream_keys[i];
+    std::string bytes;
+    meta.Encode(&bytes);
+    s = batch->Put(key, bytes);
+    if (!s.ok()) return s;
+  }
+  for (size_t i = 0; i < downstream_metas.size(); i++) {
+    const auto &ds_key = downstream_keys[i];
+    auto key = downstreamKeyFromInternalKey(ds_key);
+    auto ns_key = AppendNamespacePrefix(key);
+    const auto &agg_samples = all_agg_samples[i];
+    if (agg_samples.empty()) {
+      continue;
+    }
+    TimeSeriesMetadata metadata;
+    s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+    if (!s.ok()) return s;
+    auto sample_batch = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
+    s = upsertCommon(ctx, ns_key, metadata, sample_batch);
+    if (!s.ok()) return s;
+  }
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
@@ -715,6 +1062,13 @@ std::string TimeSeries::labelKeyFromInternalKey(Slice internal_key) const {
   return label_key.ToString();
 }
 
+std::string TimeSeries::downstreamKeyFromInternalKey(Slice internal_key) const {
+  auto key = InternalKey(internal_key, storage_->IsSlotIdEncoded());
+  auto ds_key = key.GetSubKey();
+  ds_key.remove_prefix(sizeof(TSSubkeyType));
+  return ds_key.ToString();
+}
+
 rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -735,10 +1089,11 @@ rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSS
   if (!s.ok()) return s;
   auto sample_batch = SampleBatch({sample}, on_dup_policy ? *on_dup_policy : metadata.duplicate_policy);
 
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch);
-  if (!s.ok()) {
-    return s;
-  }
+  std::vector<std::string> new_chunks;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  if (!s.ok()) return s;
+  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults()[0];
   return rocksdb::Status::OK();
 }
@@ -753,10 +1108,11 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
     return s;
   }
   auto sample_batch = SampleBatch(std::move(samples), metadata.duplicate_policy);
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch);
-  if (!s.ok()) {
-    return s;
-  }
+  std::vector<std::string> new_chunks;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  if (!s.ok()) return s;
+  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults();
   return rocksdb::Status::OK();
 }
@@ -905,7 +1261,7 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
     return rocksdb::Status::OK();
   }
   std::vector<std::string> dst_ds_keys;
-  s = getDownStreamRules(ctx, ns_src_key, src_metadata, &dst_ds_keys);
+  s = getDownStreamRules(ctx, ns_dst_key, dst_metadata, &dst_ds_keys);
   if (!s.ok()) return s;
   if (dst_ds_keys.size()) {
     *res = TSCreateRuleResult::kDstHasDestRule;

@@ -1150,33 +1150,25 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   } else {
     auto chunk = CreateTSChunkFromData(iter->value());
     res->last_timestamp = chunk->GetLastTimestamp();
-    uint64_t retention_bound = (metadata.retention_time > 0 && res->last_timestamp > metadata.retention_time)
-                                   ? res->last_timestamp - metadata.retention_time
-                                   : 0;
-    auto bound_key = internalKeyFromChunkID(ns_key, metadata, retention_bound);
-    iter->SeekForPrev(bound_key);
-    if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-      if (!iter->Valid()) {
-        iter->Seek(bound_key);
-      } else {
-        iter->Next();
-      }
-      chunk = CreateTSChunkFromData(iter->value());
-      res->first_timestamp = chunk->GetFirstTimestamp();
-    } else {
-      chunk = CreateTSChunkFromData(iter->value());
-      auto chunk_it = chunk->CreateIterator();
-      while (chunk_it->HasNext()) {
-        auto sample = chunk_it->Next().value();
-        if (sample->ts >= retention_bound) {
-          res->first_timestamp = sample->ts;
-          break;
-        }
-      }
-    }
+    // Get the first timestamp
+    TSRangeOption range_option;
+    range_option.count_limit = 1;
+    std::vector<TSSample> samples;
+    s = rangeCommon(ctx, ns_key, metadata, range_option, &samples);
+    if (!s.ok()) return s;
+    CHECK(samples.size() == 1);
+    res->first_timestamp = samples[0].ts;
   }
   getLabelKVList(ctx, ns_key, metadata, &res->labels);
-  // TODO: Retrieve downstream downstream_rules
+
+  // Retrieve downstream downstream_rules
+  std::vector<std::string> downstream_keys;
+  std::vector<TSDownStreamMeta> downstream_rules;
+  getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
+  for (size_t i = 0; i < downstream_keys.size(); i++) {
+    auto key = downstreamKeyFromInternalKey(downstream_keys[i]);
+    res->downstream_rules.emplace_back(std::move(key), std::move(downstream_rules[i]));
+  }
 
   return rocksdb::Status::OK();
 }

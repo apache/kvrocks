@@ -74,6 +74,43 @@ func TestNamespace(t *testing.T) {
 		}
 	})
 
+	t.Run("Update token", func(t *testing.T) {
+		nsTokens := map[string]string{
+			"ns1": "token1",
+			"ns2": "token2",
+		}
+		for ns, token := range nsTokens {
+			r := rdb.Do(ctx, "NAMESPACE", "ADD", ns, token)
+			require.NoError(t, r.Err())
+			require.Equal(t, "OK", r.Val())
+		}
+		for ns, token := range nsTokens {
+			r := rdb.Do(ctx, "NAMESPACE", "GET", ns)
+			require.NoError(t, r.Err())
+			require.Equal(t, token, r.Val())
+		}
+		// Cannot update to an existing token occupied by another namespace
+		r := rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "token2")
+		util.ErrorRegexp(t, r.Err(), ".*ERR the token already exists.*")
+		// It is ok to update to the same token
+		r = rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "token1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+		// Update to a different token
+		r = rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "newtoken1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+		r = rdb.Do(ctx, "NAMESPACE", "GET", "ns1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "newtoken1", r.Val())
+
+		for ns := range nsTokens {
+			r := rdb.Do(ctx, "NAMESPACE", "DEL", ns)
+			require.NoError(t, r.Err())
+			require.Equal(t, "OK", r.Val())
+		}
+	})
+
 	t.Run("Namespace exists after restart", func(t *testing.T) {
 		for _, enableNamespaceReplication := range []string{"no", "yes"} {
 			require.NoError(t, rdb.ConfigSet(ctx,

@@ -728,7 +728,7 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
   explicit CommandTSCreateRule() : CommandTSAggregatorBase(3, 0) { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 6) {
-      return Status(Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command");
+      return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
     }
     src_key_ = args[1];
     dst_key_ = args[2];

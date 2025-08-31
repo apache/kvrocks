@@ -507,7 +507,7 @@ TEST_F(TimeSeriesTest, AggregationMultiple) {
     s = ts_db_->Create(*ctx_, dst_key, option);
     EXPECT_TRUE(s.ok());
 
-    redis::TSCreateRuleResult result;
+    redis::TSCreateRuleResult result = redis::TSCreateRuleResult::kOK;
     aggregator.type = test.type;
     s = ts_db_->CreateRule(*ctx_, key_src, dst_key, aggregator, &result);
     EXPECT_TRUE(s.ok());

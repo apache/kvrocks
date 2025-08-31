@@ -50,20 +50,20 @@ struct Reducer {
                             [](const TSSample &a, const TSSample &b) { return a.v < b.v; })
         ->v;
   }
-  static inline double Var_p(nonstd::span<const TSSample> samples) {
+  static inline double VarP(nonstd::span<const TSSample> samples) {
     auto sample_size = static_cast<double>(samples.size());
     double sum = Sum(samples);
     double square_sum = SquareSum(samples);
     return (square_sum - sum * sum / sample_size) / sample_size;
   }
-  static inline double Var_s(nonstd::span<const TSSample> samples) {
+  static inline double VarS(nonstd::span<const TSSample> samples) {
     if (samples.size() <= 1) return 0.0;
-    double sample_size = static_cast<double>(samples.size());
-    return Var_p(samples) * sample_size / (sample_size - 1);
+    auto sample_size = static_cast<double>(samples.size());
+    return VarP(samples) * sample_size / (sample_size - 1);
   }
-  static inline double Std_p(nonstd::span<const TSSample> samples) { return std::sqrt(Var_p(samples)); }
+  static inline double StdP(nonstd::span<const TSSample> samples) { return std::sqrt(VarP(samples)); }
 
-  static inline double Std_s(nonstd::span<const TSSample> samples) { return std::sqrt(Var_s(samples)); }
+  static inline double StdS(nonstd::span<const TSSample> samples) { return std::sqrt(VarS(samples)); }
   static inline double Range(nonstd::span<const TSSample> samples) {
     if (samples.empty()) return 0.0;
     auto [min, max] = std::minmax_element(samples.begin(), samples.end(),
@@ -161,7 +161,8 @@ std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const
           sample.v = f64_auxs[0];
           break;
         case TSAggregatorType::AVG:
-          sample.v = f64_auxs[0] / u64_auxs[0];
+          temp_n = static_cast<double>(u64_auxs[0]);
+          sample.v = f64_auxs[0] / temp_n;
           break;
         case TSAggregatorType::STD_P:
         case TSAggregatorType::STD_S:
@@ -461,7 +462,7 @@ nonstd::span<const TSSample> TSAggregator::GetBucketByTimestamp(nonstd::span<con
   uint64_t end_bucket = CalculateAlignedBucketRight(ts);
   auto lower = std::lower_bound(samples.begin(), samples.end(), TSSample{start_bucket, 0.0});
   auto upper = std::lower_bound(lower, samples.end(), TSSample{end_bucket, 0.0});
-  return nonstd::span<const TSSample>(lower, upper);
+  return {lower, upper};
 }
 
 double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples) const {
@@ -496,16 +497,16 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       res = samples.back().v;
       break;
     case TSAggregatorType::STD_P:
-      res = Reducer::Std_p(samples);
+      res = Reducer::StdP(samples);
       break;
     case TSAggregatorType::STD_S:
-      res = Reducer::Std_s(samples);
+      res = Reducer::StdS(samples);
       break;
     case TSAggregatorType::VAR_P:
-      res = Reducer::Var_p(samples);
+      res = Reducer::VarP(samples);
       break;
     case TSAggregatorType::VAR_S:
-      res = Reducer::Var_s(samples);
+      res = Reducer::VarS(samples);
       break;
     default:
       unreachable();
@@ -959,8 +960,8 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     const auto &ds_key = downstream_keys[i];
     auto key = downstreamKeyFromInternalKey(ds_key);
     auto ns_key = AppendNamespacePrefix(key);
-    const auto &agg_samples = all_agg_samples[i];
-    const auto &agg_samples_inc = all_agg_samples_inc[i];
+    auto &agg_samples = all_agg_samples[i];
+    auto &agg_samples_inc = all_agg_samples_inc[i];
 
     if (agg_samples.empty() && agg_samples_inc.empty()) {
       continue;
@@ -970,8 +971,8 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     if (!s.ok()) return s;
 
     if (agg_samples.size()) {
-      auto sample_batch_ = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
-      s = upsertCommon(ctx, ns_key, metadata, sample_batch_);
+      auto sample_batch_t = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
+      s = upsertCommon(ctx, ns_key, metadata, sample_batch_t);
       if (!s.ok()) return s;
     }
 
@@ -985,8 +986,8 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
       } else if (agg.type == TSAggregatorType::MAX) {
         policy = DuplicatePolicy::MAX;
       }
-      auto sample_batch_ = SampleBatch(std::move(agg_samples_inc), policy);
-      s = upsertCommon(ctx, ns_key, metadata, sample_batch_);
+      auto sample_batch_t = SampleBatch(std::move(agg_samples_inc), policy);
+      s = upsertCommon(ctx, ns_key, metadata, sample_batch_t);
       if (!s.ok()) return s;
     }
   }

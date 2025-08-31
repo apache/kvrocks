@@ -798,7 +798,9 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
   uint64_t new_chunk_first_ts = CreateTSChunkFromData(new_chunks[0])->GetFirstTimestamp();
 
   nonstd::span<const AddResult> add_results = all_batch_slice.GetAddResultSpan();
+  auto samples_span = all_batch_slice.GetSampleSpan();
   std::vector<std::vector<TSSample>> all_agg_samples(downstream_metas.size());
+  std::vector<std::vector<TSSample>> all_agg_samples_inc(downstream_metas.size());
   std::vector<uint64_t> last_buckets(downstream_metas.size());
   std::vector<bool> is_meta_updates(downstream_metas.size(), false);
 
@@ -831,15 +833,20 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
       uint64_t latest_bucket_idx = downstream_metas[j].latest_bucket_idx;
       uint64_t bkt_left = agg.CalculateAlignedBucketLeft(sample_ts);
 
-      if ((i > 0 && bkt_left == last_buckets[j])) {
-        continue;
-      }
       // Skip samples with timestamps beyond the retrieval boundary
       // Boundary is defined as the later of:
       //   - New chunk start time (new_chunk_first_ts)
       //   - Latest bucket index (latest_bucket_idx)
       auto boundary = std::max(new_chunk_first_ts, latest_bucket_idx);
       if (sample_ts >= boundary) {
+        continue;
+      }
+      // For these type, no need retrieve source samples
+      if (IsIncrementalAggregatorType(agg.type)) {
+        info.downstream_indices.push_back(j);
+        continue;
+      }
+      if ((i > 0 && bkt_left == last_buckets[j])) {
         continue;
       }
 
@@ -858,6 +865,7 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
   // Process samples added to sealed chunks
   for (const auto &info : processing_infos) {
     const auto &add_result = add_results[info.sample_idx];
+    const auto &sample = samples_span[info.sample_idx];
 
     TSRangeOption option;
     option.start_ts = info.start_ts;
@@ -871,15 +879,36 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
       const auto &agg = meta.aggregator;
       uint64_t bkt_left = agg.CalculateAlignedBucketLeft(add_result.sample.ts);
 
-      auto span = agg.GetBucketByTimestamp(retrieve_samples, bkt_left);
-      CHECK(!span.empty());
-      last_buckets[j] = bkt_left;
-      if (bkt_left == meta.latest_bucket_idx) {
-        meta.ResetAuxs();
-        meta.AggregateLatestBucket(span);
-        is_meta_updates[j] = true;
+      if (IsIncrementalAggregatorType(agg.type)) {
+        std::vector<TSSample> sample_temp = {{bkt_left, add_result.sample.v}};
+        switch (agg.type) {
+          case TSAggregatorType::MIN:
+          case TSAggregatorType::MAX:
+            sample_temp[0].v = sample.v;
+            break;
+          case TSAggregatorType::COUNT:
+            sample_temp[0].v = 1.0;
+            break;
+          default:
+            break;
+        }
+        if (bkt_left == meta.latest_bucket_idx) {
+          meta.AggregateLatestBucket(sample_temp);
+          is_meta_updates[j] = true;
+        } else {
+          all_agg_samples_inc[j].push_back({bkt_left, sample_temp[0].v});
+        }
       } else {
-        all_agg_samples[j].push_back({bkt_left, agg.AggregateSamplesValue(span)});
+        auto span = agg.GetBucketByTimestamp(retrieve_samples, bkt_left);
+        CHECK(!span.empty());
+        last_buckets[j] = bkt_left;
+        if (bkt_left == meta.latest_bucket_idx) {
+          meta.ResetAuxs();
+          meta.AggregateLatestBucket(span);
+          is_meta_updates[j] = true;
+        } else {
+          all_agg_samples[j].push_back({bkt_left, agg.AggregateSamplesValue(span)});
+        }
       }
     }
   }
@@ -925,20 +954,41 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     s = batch->Put(key, bytes);
     if (!s.ok()) return s;
   }
+  // Write aggregated samples
   for (size_t i = 0; i < downstream_metas.size(); i++) {
     const auto &ds_key = downstream_keys[i];
     auto key = downstreamKeyFromInternalKey(ds_key);
     auto ns_key = AppendNamespacePrefix(key);
     const auto &agg_samples = all_agg_samples[i];
-    if (agg_samples.empty()) {
+    const auto &agg_samples_inc = all_agg_samples_inc[i];
+
+    if (agg_samples.empty() && agg_samples_inc.empty()) {
       continue;
     }
     TimeSeriesMetadata metadata;
     s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
     if (!s.ok()) return s;
-    auto sample_batch = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
-    s = upsertCommon(ctx, ns_key, metadata, sample_batch);
-    if (!s.ok()) return s;
+
+    if (agg_samples.size()) {
+      auto sample_batch_ = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
+      s = upsertCommon(ctx, ns_key, metadata, sample_batch_);
+      if (!s.ok()) return s;
+    }
+
+    if (agg_samples_inc.size()) {
+      const auto &agg = downstream_metas[i].aggregator;
+      DuplicatePolicy policy = DuplicatePolicy::LAST;
+      if (agg.type == TSAggregatorType::SUM || agg.type == TSAggregatorType::COUNT) {
+        policy = DuplicatePolicy::SUM;
+      } else if (agg.type == TSAggregatorType::MIN) {
+        policy = DuplicatePolicy::MIN;
+      } else if (agg.type == TSAggregatorType::MAX) {
+        policy = DuplicatePolicy::MAX;
+      }
+      auto sample_batch_ = SampleBatch(std::move(agg_samples_inc), policy);
+      s = upsertCommon(ctx, ns_key, metadata, sample_batch_);
+      if (!s.ok()) return s;
+    }
   }
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

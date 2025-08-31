@@ -57,7 +57,7 @@ enum class TSAggregatorType : uint8_t {
 
 inline bool IsIncrementalAggregatorType(TSAggregatorType type) {
   uint8_t type_num = static_cast<uint8_t>(type);
-  return type_num >= 1 && type_num <= 6;
+  return type_num >= 1 && type_num <= 4;
 }
 
 struct TSAggregator {

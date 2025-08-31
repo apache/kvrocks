@@ -467,3 +467,81 @@ TEST_F(TimeSeriesTest, CreateRuleErrorCases) {
     EXPECT_EQ(res2, redis::TSCreateRuleResult::kDstHasDestRule);
   }
 }
+
+TEST_F(TimeSeriesTest, AggregationMultiple) {
+  redis::TSCreateOption option;
+  option.chunk_size = 3;
+  const std::string key_src = "agg_test_multi";
+
+  auto s = ts_db_->Create(*ctx_, key_src, option);
+  EXPECT_TRUE(s.ok());
+
+  // Define all aggregation types and their expected results
+  struct AggregationTest {
+    std::string suffix;
+    redis::TSAggregatorType type;
+    std::vector<std::pair<int64_t, double>> expected_results;
+  };
+
+  std::vector<AggregationTest> tests = {
+      {"avg", redis::TSAggregatorType::AVG, {{0, 6.2}, {10, 27.666666666666668}}},
+      {"sum", redis::TSAggregatorType::SUM, {{0, 31.0}, {10, 83.0}}},
+      {"min", redis::TSAggregatorType::MIN, {{0, 1}, {10, 11}}},
+      {"max", redis::TSAggregatorType::MAX, {{0, 15}, {10, 55}}},
+      {"range", redis::TSAggregatorType::RANGE, {{0, 14}, {10, 44}}},
+      {"count", redis::TSAggregatorType::COUNT, {{0, 5}, {10, 3}}},
+      {"first", redis::TSAggregatorType::FIRST, {{0, 1}, {10, 11}}},
+      {"last", redis::TSAggregatorType::LAST, {{0, 7}, {10, 55}}},
+      {"std_p", redis::TSAggregatorType::STD_P, {{0, 4.955804677345548}, {10, 19.48218559493661}}},
+      {"std_s", redis::TSAggregatorType::STD_S, {{0, 5.540758070878028}, {10, 23.860706890897706}}},
+      {"var_p", redis::TSAggregatorType::VAR_P, {{0, 24.56000000000001}, {10, 379.5555555555555}}},
+      {"var_s", redis::TSAggregatorType::VAR_S, {{0, 30.70000000000001}, {10, 569.3333333333333}}}};
+
+  // Create all destination time series and aggregation rules
+  redis::TSAggregator aggregator;
+  aggregator.bucket_duration = 10;
+  aggregator.alignment = 0;
+
+  for (const auto& test : tests) {
+    std::string dst_key = key_src + "_dst_" + test.suffix;
+    s = ts_db_->Create(*ctx_, dst_key, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult result;
+    aggregator.type = test.type;
+    s = ts_db_->CreateRule(*ctx_, key_src, dst_key, aggregator, &result);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(result, redis::TSCreateRuleResult::kOK);
+  }
+
+  // Add sample data
+  std::vector<TSSample> samples = {{1, 1}, {2, 2}, {3, 6}, {5, 7}, {10, 11}, {11, 17}};
+  std::vector<TSChunk::AddResult> add_results(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  samples = {{4, 15}, {12, 55}, {20, 65}};
+  add_results.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Test each aggregation type
+  redis::TSRangeOption range_opt;
+  range_opt.start_ts = 0;
+  range_opt.end_ts = TSSample::MAX_TIMESTAMP;
+
+  for (const auto& test : tests) {
+    std::string dst_key = key_src + "_dst_" + test.suffix;
+
+    std::vector<TSSample> res;
+    s = ts_db_->Range(*ctx_, dst_key, range_opt, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res.size(), test.expected_results.size());
+
+    for (size_t i = 0; i < res.size(); ++i) {
+      EXPECT_EQ(res[i].ts, test.expected_results[i].first);
+      EXPECT_NEAR(res[i].v, test.expected_results[i].second, 1e-5)
+          << "Test failed for " << test.suffix << " at index " << i;
+    }
+  }
+}

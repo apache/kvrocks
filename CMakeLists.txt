@@ -155,6 +155,24 @@ if(ENABLE_OPENSSL)
     find_package(OpenSSL REQUIRED)
 endif()
 
+# Auto-detect macOS SDK path if not set
+if(APPLE AND NOT CMAKE_OSX_SYSROOT)
+  execute_process(
+    COMMAND xcrun --sdk macosx --show-sdk-path
+    OUTPUT_VARIABLE MACOS_SDK_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE result
+  )
+
+  if(result EQUAL 0 AND EXISTS "${MACOS_SDK_PATH}")
+    set(CMAKE_OSX_SYSROOT "${MACOS_SDK_PATH}" CACHE PATH "macOS SDK path" FORCE)
+  else()
+    message(FATAL_ERROR "Failed to detect macOS SDK path. "
+            "Install Xcode command line tools or set CMAKE_OSX_SYSROOT manually.")
+  endif()
+endif()
+
 include(cmake/gtest.cmake)
 include(cmake/snappy.cmake)
 include(cmake/lz4.cmake)

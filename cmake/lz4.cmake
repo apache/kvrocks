@@ -28,7 +28,8 @@ FetchContent_GetProperties(lz4)
 if(NOT lz4_POPULATED)
   FetchContent_Populate(lz4)
 
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  if((CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") OR
+   (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
   

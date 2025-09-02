@@ -502,4 +502,29 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			assert.Contains(t, err, "the destination key already has a dst rule")
 		})
 	})
+	t.Run("TS.CREATERULE DownStream Write", func(t *testing.T) {
+		test2 := "test2"
+		test3 := "test3"
+
+		// Create test2 with CHUNK_SIZE 3
+		require.NoError(t, rdb.Do(ctx, "ts.create", test2, "CHUNK_SIZE", "3").Err())
+		// Create test3
+		require.NoError(t, rdb.Do(ctx, "ts.create", test3).Err())
+		// Create rule with MIN aggregation
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", test2, test3, "aggregation", "min", "10").Err())
+
+		// First batch of writes
+		res := rdb.Do(ctx, "ts.madd", test2, "1", "1", test2, "2", "2", test2, "3", "6", test2, "5", "7", test2, "10", "11", test2, "11", "17").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(1), int64(2), int64(3), int64(5), int64(10), int64(11)}, res)
+
+		// Second batch of writes
+		res = rdb.Do(ctx, "ts.madd", test2, "4", "-0.2", test2, "12", "55", test2, "20", "65").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(4), int64(12), int64(20)}, res)
+
+		// Verify test3 results
+		vals := rdb.Do(ctx, "ts.range", test3, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(vals))
+		assert.Equal(t, []interface{}{int64(0), -0.2}, vals[0])
+		assert.Equal(t, []interface{}{int64(10), float64(11)}, vals[1])
+	})
 }

@@ -2015,7 +2015,7 @@ void Server::updateAllWatchedKeys() {
 }
 
 void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr) {
-  if ((attr.GenerateFlags(args) & redis::kCmdWrite) && watched_key_size_ > 0) {
+  if ((attr.GenerateFlags(args, *GetConfig()) & redis::kCmdWrite) && watched_key_size_ > 0) {
     attr.ForEachKeyRange([this](const std::vector<std::string> &args,
                                 redis::CommandKeyRange range) { updateWatchedKeysFromRange(args, range); },
                          args, [this](const std::vector<std::string> &) { updateAllWatchedKeys(); });

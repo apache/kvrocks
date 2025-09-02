@@ -34,12 +34,7 @@ jobs:
       matrix:
         freebsd-version: ['14.1']
         compiler: ['clang', 'gcc']
-        build-type: ['Release', 'Debug']
         include:
-          - build-type: Release
-            cmake-flags: ''
-          - build-type: Debug
-            cmake-flags: '-DCMAKE_BUILD_TYPE=Debug'
           - compiler: gcc
             cxx-compiler: g++
           - compiler: clang

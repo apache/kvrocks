@@ -61,11 +61,11 @@ TEST_F(TimeSeriesTest, Add) {
   EXPECT_TRUE(s.ok());
 
   TSSample sample{1620000000, 123.45};
-  TSChunk::AddResultWithTS result;
+  TSChunk::AddResult result;
   s = ts_db_->Add(*ctx_, key_, sample, option, &result);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(result.first, TSChunk::AddResult::kOk);
-  EXPECT_EQ(result.second, sample.ts);
+  EXPECT_EQ(result.type, TSChunk::AddResultType::kInsert);
+  EXPECT_EQ(result.sample.ts, sample.ts);
 }
 
 TEST_F(TimeSeriesTest, MAdd) {
@@ -75,34 +75,34 @@ TEST_F(TimeSeriesTest, MAdd) {
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples = {{1, 10}, {3, 10}, {2, 20}, {3, 20}, {4, 20}, {13, 20}, {1, 20}, {14, 20}};
-  std::vector<TSChunk::AddResultWithTS> results;
+  std::vector<TSChunk::AddResult> results;
   results.resize(samples.size());
 
   s = ts_db_->MAdd(*ctx_, key_, samples, &results);
   EXPECT_TRUE(s.ok());
 
   // Expected results: kOk/kBlock/kOld verification
-  std::vector<TSChunk::AddResult> expected_results = {TSChunk::AddResult::kOk,     // 1
-                                                      TSChunk::AddResult::kOk,     // 3
-                                                      TSChunk::AddResult::kOk,     // 2
-                                                      TSChunk::AddResult::kBlock,  // duplicate 3
-                                                      TSChunk::AddResult::kOk,     // 4
-                                                      TSChunk::AddResult::kOk,     // 13
-                                                      TSChunk::AddResult::kOld,    // 1 (older than retention)
-                                                      TSChunk::AddResult::kOk};    // 14
+  std::vector<TSChunk::AddResultType> expected_results = {TSChunk::AddResultType::kInsert,   // 1
+                                                          TSChunk::AddResultType::kInsert,   // 3
+                                                          TSChunk::AddResultType::kInsert,   // 2
+                                                          TSChunk::AddResultType::kBlock,    // duplicate 3
+                                                          TSChunk::AddResultType::kInsert,   // 4
+                                                          TSChunk::AddResultType::kInsert,   // 13
+                                                          TSChunk::AddResultType::kOld,      // 1 (older than retention)
+                                                          TSChunk::AddResultType::kInsert};  // 14
 
   std::vector<uint64_t> expected_ts = {1, 3, 2, 0, 4, 13, 0, 14};
 
   for (size_t i = 0; i < results.size(); ++i) {
-    EXPECT_EQ(results[i].first, expected_results[i]) << "Result mismatch at index " << i;
-    if (expected_results[i] == TSChunk::AddResult::kOk) {
-      EXPECT_EQ(results[i].second, expected_ts[i]) << "Timestamp mismatch at index " << i;
+    EXPECT_EQ(results[i].type, expected_results[i]) << "Result mismatch at index " << i;
+    if (expected_results[i] == TSChunk::AddResultType::kInsert) {
+      EXPECT_EQ(results[i].sample.ts, expected_ts[i]) << "Timestamp mismatch at index " << i;
     }
   }
   s = ts_db_->MAdd(*ctx_, key_, {{14, 0}}, &results);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0].first, TSChunk::AddResult::kBlock);
+  EXPECT_EQ(results[0].type, TSChunk::AddResultType::kBlock);
 }
 
 TEST_F(TimeSeriesTest, Range) {
@@ -113,19 +113,19 @@ TEST_F(TimeSeriesTest, Range) {
 
   // Add three batches of samples
   std::vector<TSSample> samples1 = {{1000, 100}, {1010, 110}, {1020, 120}};
-  std::vector<TSChunk::AddResultWithTS> results1;
+  std::vector<TSChunk::AddResult> results1;
   results1.resize(samples1.size());
   s = ts_db_->MAdd(*ctx_, key_, samples1, &results1);
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples2 = {{2000, 200}, {2010, 210}, {2020, 220}};
-  std::vector<TSChunk::AddResultWithTS> results2;
+  std::vector<TSChunk::AddResult> results2;
   results2.resize(samples2.size());
   s = ts_db_->MAdd(*ctx_, key_, samples2, &results2);
   EXPECT_TRUE(s.ok());
 
   std::vector<TSSample> samples3 = {{3000, 300}, {3010, 310}, {3020, 320}};
-  std::vector<TSChunk::AddResultWithTS> results3;
+  std::vector<TSChunk::AddResult> results3;
   results3.resize(samples3.size());
   s = ts_db_->MAdd(*ctx_, key_, samples3, &results3);
   EXPECT_TRUE(s.ok());
@@ -346,7 +346,7 @@ TEST_F(TimeSeriesTest, Get) {
 
   // Add multiple samples
   std::vector<TSSample> samples = {{1, 10}, {2, 20}, {3, 30}};
-  std::vector<TSChunk::AddResultWithTS> results;
+  std::vector<TSChunk::AddResult> results;
   results.resize(samples.size());
 
   s = ts_db_->MAdd(*ctx_, key_, samples, &results);
@@ -363,4 +363,185 @@ TEST_F(TimeSeriesTest, Get) {
   std::vector<TSSample> empty_res;
   s = ts_db_->Get(*ctx_, "nonexistent_key", false, &empty_res);
   EXPECT_FALSE(s.ok());
+}
+
+TEST_F(TimeSeriesTest, CreateRuleErrorCases) {
+  std::string src_key = "error_src";
+  std::string dst_key = "error_dst";
+  std::string another_key = "another_dst";
+  std::string another_src = "another_src";
+  std::string src_of_src = "src_of_src";
+  redis::TSAggregator aggregator;
+  aggregator.type = redis::TSAggregatorType::AVG;
+  aggregator.bucket_duration = 1000;
+  aggregator.alignment = 0;
+
+  // 1. Source key equals destination key
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, src_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kSrcEqDst);
+  }
+
+  // 2. Source key does not exist
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, dst_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kSrcNotExist);
+  }
+
+  // Create source key
+  redis::TSCreateOption option;
+  auto s = ts_db_->Create(*ctx_, src_key, option);
+  EXPECT_TRUE(s.ok());
+
+  // 3. Destination key does not exist
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    auto s = ts_db_->CreateRule(*ctx_, src_key, dst_key, aggregator, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kDstNotExist);
+  }
+
+  // Create destination key
+  s = ts_db_->Create(*ctx_, dst_key, option);
+  EXPECT_TRUE(s.ok());
+
+  // 4. Source key already has a source rule
+  {
+    s = ts_db_->Create(*ctx_, src_of_src, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, src_of_src, src_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    ts_db_->Create(*ctx_, another_key, option);
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    auto s2 = ts_db_->CreateRule(*ctx_, src_key, another_key, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kSrcHasSourceRule);
+  }
+
+  // 5. Destination key already has a source rule
+  {
+    std::string src_for_dst = "src_for_dst";
+    s = ts_db_->Create(*ctx_, src_for_dst, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, src_for_dst, dst_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    s = ts_db_->Create(*ctx_, another_src, option);
+    EXPECT_TRUE(s.ok());
+    auto s2 = ts_db_->CreateRule(*ctx_, another_src, dst_key, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kDstHasSourceRule);
+  }
+
+  // 6. Destination key already has downstream rules
+  {
+    redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+    redis::TSAggregator aggregator2;
+    aggregator2.type = redis::TSAggregatorType::AVG;
+    aggregator2.bucket_duration = 1000;
+    s = ts_db_->CreateRule(*ctx_, another_src, another_key, aggregator2, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+    redis::TSCreateRuleResult res2 = redis::TSCreateRuleResult::kOK;
+    auto s2 = ts_db_->CreateRule(*ctx_, another_src, src_of_src, aggregator, &res2);
+    EXPECT_TRUE(s2.ok());
+    EXPECT_EQ(res2, redis::TSCreateRuleResult::kDstHasDestRule);
+  }
+}
+
+TEST_F(TimeSeriesTest, AggregationMultiple) {
+  redis::TSCreateOption option;
+  option.chunk_size = 3;
+  const std::string key_src = "agg_test_multi";
+
+  auto s = ts_db_->Create(*ctx_, key_src, option);
+  EXPECT_TRUE(s.ok());
+
+  // Define all aggregation types and their expected results
+  struct AggregationTest {
+    std::string suffix;
+    redis::TSAggregatorType type;
+    std::vector<std::pair<int64_t, double>> expected_results;
+  };
+
+  std::vector<AggregationTest> tests = {
+      {"avg", redis::TSAggregatorType::AVG, {{0, 6.2}, {10, 27.666666666666668}}},
+      {"sum", redis::TSAggregatorType::SUM, {{0, 31.0}, {10, 83.0}}},
+      {"min", redis::TSAggregatorType::MIN, {{0, 1}, {10, 11}}},
+      {"max", redis::TSAggregatorType::MAX, {{0, 15}, {10, 55}}},
+      {"range", redis::TSAggregatorType::RANGE, {{0, 14}, {10, 44}}},
+      {"count", redis::TSAggregatorType::COUNT, {{0, 5}, {10, 3}}},
+      {"first", redis::TSAggregatorType::FIRST, {{0, 1}, {10, 11}}},
+      {"last", redis::TSAggregatorType::LAST, {{0, 7}, {10, 55}}},
+      {"std_p", redis::TSAggregatorType::STD_P, {{0, 4.955804677345548}, {10, 19.48218559493661}}},
+      {"std_s", redis::TSAggregatorType::STD_S, {{0, 5.540758070878028}, {10, 23.860706890897706}}},
+      {"var_p", redis::TSAggregatorType::VAR_P, {{0, 24.56000000000001}, {10, 379.5555555555555}}},
+      {"var_s", redis::TSAggregatorType::VAR_S, {{0, 30.70000000000001}, {10, 569.3333333333333}}}};
+
+  // Create all destination time series and aggregation rules
+  redis::TSAggregator aggregator;
+  aggregator.bucket_duration = 10;
+  aggregator.alignment = 0;
+
+  for (const auto& test : tests) {
+    std::string dst_key = key_src + "_dst_" + test.suffix;
+    s = ts_db_->Create(*ctx_, dst_key, option);
+    EXPECT_TRUE(s.ok());
+
+    redis::TSCreateRuleResult result = redis::TSCreateRuleResult::kOK;
+    aggregator.type = test.type;
+    s = ts_db_->CreateRule(*ctx_, key_src, dst_key, aggregator, &result);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(result, redis::TSCreateRuleResult::kOK);
+  }
+
+  // Add sample data
+  std::vector<TSSample> samples = {{1, 1}, {2, 2}, {3, 6}, {5, 7}, {10, 11}, {11, 17}};
+  std::vector<TSChunk::AddResult> add_results(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  samples = {{4, 15}, {12, 55}, {20, 65}};
+  add_results.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Test each aggregation type
+  redis::TSRangeOption range_opt;
+  range_opt.start_ts = 0;
+  range_opt.end_ts = TSSample::MAX_TIMESTAMP;
+
+  for (const auto& test : tests) {
+    std::string dst_key = key_src + "_dst_" + test.suffix;
+
+    std::vector<TSSample> res;
+    s = ts_db_->Range(*ctx_, dst_key, range_opt, &res);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(res.size(), test.expected_results.size());
+
+    for (size_t i = 0; i < res.size(); ++i) {
+      EXPECT_EQ(res[i].ts, test.expected_results[i].first);
+      EXPECT_NEAR(res[i].v, test.expected_results[i].second, 1e-5)
+          << "Test failed for " << test.suffix << " at index " << i;
+    }
+  }
 }

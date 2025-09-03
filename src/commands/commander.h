@@ -265,6 +265,8 @@ struct CommandAttributes {
 
   uint64_t InitialFlags() const { return flags_; }
 
+  static std::vector<std::string> FlagsToString(uint64_t flags);
+
   auto GenerateFlags(const std::vector<std::string> &args, const Config &config) const {
     uint64_t res = flags_;
     if (flag_gen_) res = flag_gen_(res, args, config);
@@ -369,6 +371,25 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
   }
 
   return flags;
+}
+
+inline std::vector<std::string> CommandAttributes::FlagsToString(uint64_t flags) {
+  std::vector<std::string> res;
+
+  if (flags & kCmdWrite) res.emplace_back("write");
+  if (flags & kCmdReadOnly) res.emplace_back("readonly");
+  if (flags & kCmdLoading) res.emplace_back("ok-loading");
+  if (flags & kCmdBypassMulti) res.emplace_back("bypass-multi");
+  if (flags & kCmdExclusive) res.emplace_back("exclusive");
+  if (flags & kCmdNoMulti) res.emplace_back("no-multi");
+  if (flags & kCmdNoScript) res.emplace_back("no-script");
+  if (flags & kCmdNoDBSizeCheck) res.emplace_back("no-dbsize-check");
+  if (flags & kCmdSlow) res.emplace_back("slow");
+  if (flags & kCmdBlocking) res.emplace_back("blocking");
+  if (flags & kCmdAuth) res.emplace_back("auth");
+  if (flags & kCmdAdmin) res.emplace_back("admin");
+
+  return res;
 }
 
 template <typename T>

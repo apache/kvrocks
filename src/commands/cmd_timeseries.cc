@@ -126,6 +126,16 @@ std::string FormatCreateRuleResAsRedisReply(TSCreateRuleResult res) {
   return "";
 }
 
+std::string FormatTSLabelListAsRedisReply(const redis::LabelKVList &labels) {
+  std::vector<std::string> labels_str;
+  labels_str.reserve(labels.size());
+  for (const auto &label : labels) {
+    auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
+    labels_str.push_back(str);
+  }
+  return redis::Array(labels_str);
+}
+
 }  // namespace
 
 namespace redis {
@@ -317,13 +327,7 @@ class CommandTSInfo : public Commander {
     *output += redis::SimpleString("duplicatePolicy");
     *output += redis::SimpleString(FormatDuplicatePolicyAsRedisReply(info.metadata.duplicate_policy));
     *output += redis::SimpleString("labels");
-    std::vector<std::string> labels_str;
-    labels_str.reserve(info.labels.size());
-    for (const auto &label : info.labels) {
-      auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
-      labels_str.push_back(str);
-    }
-    *output += redis::Array(labels_str);
+    *output += FormatTSLabelListAsRedisReply(info.labels);
     *output += redis::SimpleString("sourceKey");
     *output += info.metadata.source_key.empty() ? redis::NilString(redis::RESP::v3)
                                                 : redis::BulkString(info.metadata.source_key);
@@ -995,6 +999,27 @@ class CommandTSMGet : public CommandTSMGetBase {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.mget' command"};
     }
     return CommandTSMGetBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSMGetResult> results;
+    auto s = timeseries_db.MGet(ctx, option_, is_return_latest_, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<std::string> reply;
+    reply.reserve(results.size());
+    for (auto &result : results) {
+      std::vector<std::string> entry(3);
+      entry[0] = redis::BulkString(result.name);
+      entry[1] = FormatTSLabelListAsRedisReply(result.labels);
+      std::vector<std::string> temp;
+      for (auto &sample : result.samples) {
+        temp.push_back(FormatTSSampleAsRedisReply(sample));
+      }
+      entry[2] = redis::Array(temp);
+      reply.push_back(redis::Array(entry));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
   }
 
  protected:

@@ -963,16 +963,12 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
   }
   Status handleSelectedLabels(TSOptionsParser &parser, std::set<std::string> &selected_labels) {
     while (parser.Good()) {
-      auto parse_value = parser.TakeStr();
-      if (!parse_value.IsOK()) {
-        break;
-      }
-      auto &value = parse_value.GetValue();
+      auto &value = parser.RawPeek();
       const auto &key_words = getAllKeyWords();
       if (std::find(key_words.begin(), key_words.end(), value) != key_words.end()) {
         break;
       }
-      selected_labels.emplace(std::move(value));
+      selected_labels.emplace(parser.TakeStr().GetValue());
     }
     return Status::OK();
   }

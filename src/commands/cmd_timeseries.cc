@@ -163,6 +163,7 @@ class KeywordCommandBase : public Commander {
   template <typename Handler>
   void registerHandler(const std::string &keyword, Handler &&handler) {
     handlers_.emplace_back(keyword, std::forward<Handler>(handler));
+    keywords_.insert(handlers_.back().first);
   }
 
   virtual void registerDefaultHandlers() = 0;
@@ -171,10 +172,13 @@ class KeywordCommandBase : public Commander {
 
   void setTailSkipNum(size_t num) { tail_skip_num_ = num; }
 
+  const std::set<std::string_view> &getAllKeyWords() const { return keywords_; }
+
  private:
   size_t skip_num_ = 0;
   size_t tail_skip_num_ = 0;
 
+  std::set<std::string_view> keywords_;
   std::vector<std::pair<std::string, std::function<Status(TSOptionsParser &)>>> handlers_;
 };
 
@@ -784,12 +788,238 @@ class CommandTSGet : public CommandTSAggregatorBase {
   std::string user_key_;
 };
 
+class CommandTSMGetBase : public CommandTSAggregatorBase {
+ public:
+  using FilterOption = TSMGetOption::FilterOption;
+
+  class TSMRangeFilterParser {
+   public:
+    explicit TSMRangeFilterParser(FilterOption &option) : option_(option) {}
+
+    Status Parse(std::string_view expr) {
+      if (expr.empty()) return Status::OK();
+      // Locate "!=" or "="
+      const auto [op_pos, op_len] = findOperator(expr);
+      if (op_pos == std::string_view::npos) {
+        return {Status::RedisParseErr, "failed parsing labels"};
+      }
+      // Extract label and value
+      std::string_view label = expr.substr(0, op_pos);
+      label = trim(label);
+
+      std::string_view value_str = expr.substr(op_pos + op_len);
+      std::string_view op = expr.substr(op_pos, op_len);  // "=" or "!="
+      if (op == "=") {
+        handleEquals(label, value_str);
+      } else if (op == "!=") {
+        handleNotEquals(label, value_str);
+      }
+      return Status::OK();
+    }
+
+    Status Check() const {
+      if (option_.labels_equals.empty()) {
+        return {Status::RedisParseErr, "please provide at least one matcher"};
+      }
+      return Status::OK();
+    }
+
+   private:
+    FilterOption &option_;
+
+    static std::pair<size_t, size_t> findOperator(std::string_view expr) {
+      char quote = 0;
+      for (size_t i = 0; i < expr.size(); i++) {
+        char c = expr[i];
+        if (c == '\'' || c == '"') {
+          if (quote == 0)
+            quote = c;
+          else if (quote == c)
+            quote = 0;
+        } else if (quote == 0) {
+          if (c == '!' && i + 1 < expr.size() && expr[i + 1] == '=') {
+            return {i, 2};
+          } else if (c == '=') {
+            return {i, 1};
+          }
+        }
+      }
+      return {std::string_view::npos, 0};
+    }
+
+    static std::string_view trim(std::string_view s) {
+      while (!s.empty() && std::isspace(s.front())) {
+        s.remove_prefix(1);
+      }
+      while (!s.empty() && std::isspace(s.back())) {
+        s.remove_suffix(1);
+      }
+      return s;
+    }
+
+    static std::string_view unquote(std::string_view s) {
+      if (s.size() >= 2) {
+        char first = s.front();
+        char last = s.back();
+        if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+          return s.substr(1, s.size() - 2);
+        }
+      }
+      return s;
+    }
+
+    static std::vector<std::string_view> splitValueList(std::string_view list) {
+      std::vector<std::string_view> values;
+      if (list.empty()) return values;
+
+      char quote = 0;
+      int depth = 0;
+      size_t start = 0;
+
+      for (size_t i = 0; i <= list.size(); i++) {
+        if (i == list.size()) {
+          if (start < i) {
+            auto val = trim(unquote(list.substr(start, i - start)));
+            if (!val.empty()) {
+              values.push_back(val);
+            }
+          }
+          break;
+        }
+        char c = list[i];
+        if (c == '\'' || c == '"') {
+          if (quote == 0)
+            quote = c;
+          else if (quote == c)
+            quote = 0;
+        } else if (quote == 0) {
+          if (c == '(')
+            depth++;
+          else if (c == ')')
+            if (depth > 0) depth--;
+        }
+        if (c == ',' && quote == 0 && depth == 0) {
+          auto val = trim(unquote(list.substr(start, i - start)));
+          if (!val.empty()) {
+            values.push_back(val);
+          }
+          start = i + 1;
+        }
+      }
+      return values;
+    }
+
+    void handleEquals(std::string_view label, std::string_view value_str) {
+      std::string label_str(label);
+      if (value_str.empty()) {
+        // Label not exists: label=
+        option_.labels_not_exists.insert(std::move(label_str));
+      } else {
+        std::set<std::string> values;
+        if (value_str.front() == '(' && value_str.back() == ')') {
+          // List: label=(v1,v2)
+          for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+            values.emplace(val);
+          }
+        } else {
+          // Single value: label=value
+          values.emplace(unquote(value_str));
+        }
+        option_.labels_equals[std::move(label_str)].merge(std::move(values));
+      }
+    }
+
+    void handleNotEquals(std::string_view label, std::string_view value_str) {
+      std::string label_str(label);
+      if (value_str.empty()) {
+        // Label exists: label!=
+        option_.labels_exists.insert(std::move(label_str));
+      } else {
+        std::set<std::string> values;
+        if (value_str.front() == '(' && value_str.back() == ')') {
+          // List: label!=(v1,v2)
+          for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+            values.emplace(val);
+          }
+        } else {
+          // Single value: label!=value
+          values.emplace(unquote(value_str));
+        }
+        option_.labels_not_equals[std::move(label_str)].merge(std::move(values));
+      }
+    }
+  };
+
+  CommandTSMGetBase(size_t skip_num, size_t tail_skip_num) : CommandTSAggregatorBase(skip_num, tail_skip_num) {}
+
+ protected:
+  static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {
+    with_labels = true;
+    return Status::OK();
+  }
+  Status handleSelectedLabels(TSOptionsParser &parser, std::set<std::string> &selected_labels) {
+    while (parser.Good()) {
+      auto parse_value = parser.TakeStr();
+      if (!parse_value.IsOK()) {
+        break;
+      }
+      auto &value = parse_value.GetValue();
+      const auto &key_words = getAllKeyWords();
+      if (std::find(key_words.begin(), key_words.end(), value) != key_words.end()) {
+        break;
+      }
+      selected_labels.emplace(std::move(value));
+    }
+    return Status::OK();
+  }
+  static Status handleFilterExpr(TSOptionsParser &parser, FilterOption &filter_option) {
+    auto filter_parser = TSMRangeFilterParser(filter_option);
+    while (parser.Good()) {
+      auto parse_value = parser.TakeStr();
+      if (!parse_value.IsOK()) {
+        break;
+      }
+      auto &value = parse_value.GetValue();
+      auto s = filter_parser.Parse(value);
+      if (!s.IsOK()) return s;
+    }
+    return filter_parser.Check();
+  }
+};
+
+class CommandTSMGet : public CommandTSMGetBase {
+ public:
+  CommandTSMGet() : CommandTSMGetBase(0, 0) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 3) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.mget' command"};
+    }
+    return CommandTSMGetBase::Parse(args);
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSAggregatorBase::registerDefaultHandlers();
+    registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser, is_return_latest_); });
+    registerHandler("WITHLABELS",
+                    [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
+    registerHandler("SELECTED_LABELS",
+                    [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
+    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
+  }
+
+ private:
+  TSMGetOption option_;
+  bool is_return_latest_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1), );
+                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY), );
 
 }  // namespace redis

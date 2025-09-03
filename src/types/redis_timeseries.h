@@ -173,6 +173,19 @@ struct TSRangeOption {
   BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
 };
 
+struct TSMGetOption {
+  struct FilterOption {
+    std::unordered_map<std::string, std::set<std::string>> labels_equals;
+    std::unordered_map<std::string, std::set<std::string>> labels_not_equals;
+    std::set<std::string> labels_exists;
+    std::set<std::string> labels_not_exists;
+  };
+
+  bool with_labels = false;
+  std::set<std::string> selected_labels;
+  FilterOption filter;
+};
+
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,

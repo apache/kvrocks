@@ -130,7 +130,8 @@ std::string FormatTSLabelListAsRedisReply(const redis::LabelKVList &labels) {
   std::vector<std::string> labels_str;
   labels_str.reserve(labels.size());
   for (const auto &label : labels) {
-    auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
+    auto str = redis::Array(
+        {redis::BulkString(label.k), label.v.size() ? redis::BulkString(label.v) : redis::NilString(redis::RESP::v3)});
     labels_str.push_back(str);
   }
   return redis::Array(labels_str);

@@ -68,7 +68,7 @@ func TestCommand(t *testing.T) {
 		require.Len(t, v, 6)
 		require.Equal(t, "keys", v[0])
 		require.EqualValues(t, 2, v[1])
-		require.Equal(t, []interface{}{"readonly"}, v[2])
+		require.Equal(t, []interface{}{"readonly", "slow"}, v[2])
 		require.EqualValues(t, 0, v[3])
 		require.EqualValues(t, 0, v[4])
 		require.EqualValues(t, 0, v[5])

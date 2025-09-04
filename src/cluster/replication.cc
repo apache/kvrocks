@@ -1036,7 +1036,10 @@ Status ReplicationThread::fetchFile(int sock_fd, evbuffer *evbuf, const std::str
         return {Status::NotOK, "read sst file data error"};
       }
       tmp_file->Append(rocksdb::Slice(data, data_len));
-      tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
+      // Only calculate crc when the expected crc is not 0
+      if (crc != 0) {
+        tmp_crc = rocksdb::crc32c::Extend(tmp_crc, data, data_len);
+      }
       remain -= data_len;
     } else {
       if (auto s = util::EvbufferRead(evbuf, sock_fd, -1, ssl); !s) {

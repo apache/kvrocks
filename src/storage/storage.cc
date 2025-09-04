@@ -1153,7 +1153,11 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
   // Get checkpoint file list
   std::vector<std::string> result;
-  storage->env_->GetChildren(data_files_dir, &result);
+  auto s = storage->env_->GetChildren(data_files_dir, &result);
+  if (!s.ok()) {
+    warn("[storage] Failed to list checkpoint files. Error: {}", s.ToString());
+    return {Status::NotOK, s.ToString()};
+  }
   for (const auto &f : result) {
     if (f == "." || f == "..") continue;
 

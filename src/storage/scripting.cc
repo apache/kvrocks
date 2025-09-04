@@ -797,7 +797,11 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  auto cmd_flags = attributes->GenerateFlags(args);
+  auto *conn = script_run_ctx->conn;
+  auto *srv = conn->GetServer();
+  Config *config = srv->GetConfig();
+
+  auto cmd_flags = attributes->GenerateFlags(args, *config);
 
   if ((script_run_ctx->flags & ScriptFlagType::kScriptNoWrites) && !(cmd_flags & redis::kCmdReadOnly)) {
     PushError(lua, "Write commands are not allowed from read-only scripts");
@@ -810,11 +814,6 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   std::string cmd_name = attributes->name;
-
-  auto *conn = script_run_ctx->conn;
-  auto *srv = conn->GetServer();
-  Config *config = srv->GetConfig();
-
   cmd->SetArgs(args);
   auto s = cmd->Parse();
   if (!s) {

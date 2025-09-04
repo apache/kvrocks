@@ -33,10 +33,12 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "config/config.h"
 #include "error_constants.h"
 #include "logging.h"
 #include "parse_util.h"
@@ -176,7 +178,24 @@ using CommandKeyRangeGen = std::function<CommandKeyRange(const std::vector<std::
 
 using CommandKeyRangeVecGen = std::function<std::vector<CommandKeyRange>(const std::vector<std::string> &)>;
 
-using AdditionalFlagGen = std::function<uint64_t(uint64_t, const std::vector<std::string> &)>;
+struct AdditionalFlagGen : std::function<uint64_t(uint64_t, const std::vector<std::string> &, const Config &)> {
+  using BaseType = std::function<uint64_t(uint64_t, const std::vector<std::string> &, const Config &)>;
+
+  AdditionalFlagGen() = default;
+
+  template <typename F>
+  static auto Make(F &&func) {
+    if constexpr (std::is_invocable_r_v<uint64_t, F, uint64_t, const std::vector<std::string> &>) {
+      return BaseType(
+          [=](uint64_t flag, const std::vector<std::string> &args, const Config &) { return func(flag, args); });
+    } else {
+      return BaseType(std::forward<F>(func));
+    }
+  }
+
+  template <typename F>
+  AdditionalFlagGen(F &&func) : BaseType(Make(std::forward<F>(func))) {}  // NOLINT
+};
 
 struct NoKeyInThisCommand {};
 static constexpr const NoKeyInThisCommand NO_KEY{};
@@ -246,9 +265,9 @@ struct CommandAttributes {
 
   uint64_t InitialFlags() const { return flags_; }
 
-  auto GenerateFlags(const std::vector<std::string> &args) const {
+  auto GenerateFlags(const std::vector<std::string> &args, const Config &config) const {
     uint64_t res = flags_;
-    if (flag_gen_) res = flag_gen_(res, args);
+    if (flag_gen_) res = flag_gen_(res, args, config);
     return res;
   }
 

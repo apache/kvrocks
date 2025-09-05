@@ -966,7 +966,7 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
     while (parser.Good()) {
       auto &value = parser.RawPeek();
       const auto &key_words = getAllKeyWords();
-      if (std::find(key_words.begin(), key_words.end(), value) != key_words.end()) {
+      if (key_words.find(value) != key_words.end()) {
         break;
       }
       selected_labels.emplace(parser.TakeStr().GetValue());

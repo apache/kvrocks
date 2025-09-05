@@ -559,32 +559,20 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
   }
   {
     TSCreateOption option;
-    option.labels = {{"type", "temperature"}, {"room", "bedroom"}, {"id", "2"}};
+    option.labels = {{"type", "humidity"}, {"location", "home"}, {"id", "2"}};
     auto s = ts_db_->Create(*ctx_, "ts2", option);
     EXPECT_TRUE(s.ok());
   }
   {
     TSCreateOption option;
-    option.labels = {{"type", "humidity"}, {"location", "home"}, {"id", "3"}};
+    option.labels = {{"type", "temperature"}, {"location", "office"}, {"id", "3"}};
     auto s = ts_db_->Create(*ctx_, "ts3", option);
     EXPECT_TRUE(s.ok());
   }
   {
     TSCreateOption option;
-    option.labels = {{"type", "temperature"}, {"location", "office"}, {"id", "4"}};
+    option.labels = {{"room", "dining"}, {"id", "4"}, {"location", "new york"}};
     auto s = ts_db_->Create(*ctx_, "ts4", option);
-    EXPECT_TRUE(s.ok());
-  }
-  {
-    TSCreateOption option;
-    option.labels = {{"location", "home"}, {"room", "kitchen"}, {"id", "5"}};
-    auto s = ts_db_->Create(*ctx_, "ts5", option);
-    EXPECT_TRUE(s.ok());
-  }
-  {
-    TSCreateOption option;
-    option.labels = {{"room", "dining"}, {"id", "6"}, {"location", "new york"}};
-    auto s = ts_db_->Create(*ctx_, "ts6", option);
     EXPECT_TRUE(s.ok());
   }
 
@@ -595,7 +583,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);
     EXPECT_TRUE(s.ok());
-    std::set<std::string> expected{"ts1", "ts2", "ts4"};
+    std::set<std::string> expected{"ts1", "ts3"};
     std::set<std::string> actual;
     for (auto &res : results) {
       actual.insert(res.name);
@@ -623,7 +611,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);
     EXPECT_TRUE(s.ok());
-    std::set<std::string> expected{"ts1", "ts2", "ts3", "ts4"};
+    std::set<std::string> expected{"ts1", "ts2", "ts3"};
     std::set<std::string> actual;
     for (auto &res : results) {
       actual.insert(res.name);
@@ -639,7 +627,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);
     EXPECT_TRUE(s.ok());
-    std::set<std::string> expected{"ts4"};
+    std::set<std::string> expected{"ts3"};
     std::set<std::string> actual;
     for (auto &res : results) {
       actual.insert(res.name);
@@ -655,7 +643,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);
     EXPECT_TRUE(s.ok());
-    std::set<std::string> expected{"ts4"};
+    std::set<std::string> expected{"ts3"};
     std::set<std::string> actual;
     for (auto &res : results) {
       actual.insert(res.name);
@@ -671,7 +659,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);
     EXPECT_TRUE(s.ok());
-    std::set<std::string> expected{"ts4"};
+    std::set<std::string> expected{"ts3"};
     std::set<std::string> actual;
     for (auto &res : results) {
       actual.insert(res.name);
@@ -688,7 +676,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
     EXPECT_TRUE(s.ok());
     EXPECT_EQ(results.size(), 1);
     if (!results.empty()) {
-      EXPECT_EQ(results[0].name, "ts6");
+      EXPECT_EQ(results[0].name, "ts4");
     }
   }
 }

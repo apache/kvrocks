@@ -660,8 +660,8 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 				}
 
 				// Extract and verify sample data - sample is a nested array
-				samples, ok := itemArray[2].([]interface{})
-				sample, ok := samples[0].([]interface{})
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
 
 				// Check timestamp and value
 				switch key {
@@ -734,8 +734,8 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 				}
 
 				// Extract and verify sample data
-				samples, ok := itemArray[2].([]interface{})
-				sample, ok := samples[0].([]interface{})
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
 
 				// Check timestamp and value
 				switch key {

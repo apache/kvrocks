@@ -1189,7 +1189,7 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
                         [&label_map](const auto &key) { return label_map.find(key) == label_map.end(); });
     if (!match) continue;
 
-    user_keys->push_back(std::move(user_key));
+    user_keys->push_back(user_key);
     if (labels_vec != nullptr) {
       labels_vec->push_back(std::move(labels));
     }

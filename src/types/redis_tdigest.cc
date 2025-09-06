@@ -414,6 +414,66 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& input,
+                             TDigestCDFResult* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.unmerged_nodes > 0) {
+      auto batch = storage_->GetWriteBatchBase();
+      WriteBatchLogData log_data(kRedisTDigest);
+      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
+        return status;
+      }
+
+      std::string metadata_bytes;
+      metadata.Encode(&metadata_bytes);
+      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+        return status;
+      }
+
+      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
+        return status;
+      }
+      ctx.RefreshLatestSnapshot();
+    }
+  }
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+  auto dump_centroids = DummyCentroids(metadata, centroids);
+  double total_weight = dump_centroids.TotalWeight();
+  std::vector<double> results;
+  for (double val : inputs) {
+    auto iter_begin = dump_centroids.Begin();
+    auto iter_end = dump_centroids.End();
+    double eq_count = 0;
+    double smaller_count = 0;
+    for (; iter_begin->Valid(); iter_begin->Next()) {
+      auto current_centroid = iter_begin->GetCentroid();
+      if (val > current_centroid->mean) {
+        smaller_count++;
+      } else if (val == current_centroid->mean) {
+        eq_count++;
+      }
+    }
+    double cdf_val = (smaller_count / total_weight) + ((eq_count / 2) / total_weight);
+    results.push_back(cdf_val);
+  }
+  result->cdf_values = results;
+  return rocksdb::Status::OK();
+}
 
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {
   auto ns_key = AppendNamespacePrefix(digest_name);

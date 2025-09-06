@@ -48,7 +48,9 @@ struct TDigestMergeOptions {
   uint32_t compression = 0;
   bool override_flag = false;
 };
-
+struct TDigestCDFResult {
+  std::vector<double> cdf_values;
+};
 struct TDigestQuantitleResult {
   std::optional<std::vector<double>> quantiles;
 };
@@ -79,6 +81,8 @@ class TDigest : public SubKeyScanner {
                         const TDigestMergeOptions& options);
 
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
+  rocksdb::Status CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                      TDigestCDFResult* result);
 
  private:
   enum class SegmentType : uint8_t { kBuffer = 0, kCentroids = 1, kGuardFlag = 0xFF };

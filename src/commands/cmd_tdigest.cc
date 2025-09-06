@@ -358,7 +358,51 @@ class CommandTDigestMerge : public Commander {
   std::vector<std::string> source_keys_;
   TDigestMergeOptions options_;
 };
+class CommandTDigestCDF : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    key_name_ = args[1];
+    if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
+    values_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); i++) {
+      auto value = ParseFloat(args[i]);
+      if (!value) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      values_.push_back(*value);
+    }
+    return Status::OK();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    std::vector<std::string> cdf_result;
+    TDigestCDFResult result;
+    TDigestMetadata metadata;
+    auto meta_status = tdigest.GetMetaData(ctx, key_name_, &metadata);
+    if (!meta_status.ok()) {
+      if (meta_status.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, meta_status.ToString()};
+    }
+    if (metadata.total_observations == 0) {
+      *output = redis::MultiBulkString(RESP::v2, cdf_result);
+      return Status::OK();
+    }
+    auto s = tdigest.CDF(ctx, key_name_, values_, &result);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    for (const auto &val : result.cdf_values) {
+      cdf_result.push_back(std::to_string(val));
+    }
+    *output = redis::MultiBulkString(RESP::v2, cdf_result);
+    return Status::OK();
+  }
 
+ private:
+  std::string key_name_;
+  std::vector<double> values_;
+};
 std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
   return {{1, 1, 1}, {3, 2 + numkeys, 1}};

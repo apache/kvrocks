@@ -49,7 +49,7 @@ OwnedTSChunk CreateEmptyOwnedTSChunk(bool is_compressed) {
 TSChunk::SampleBatch::SampleBatch(std::vector<TSSample> samples, DuplicatePolicy policy)
     : samples_(std::move(samples)), policy_(policy) {
   size_t count = samples_.size();
-  add_results_.resize(count, AddResult::kNone);
+  add_results_.resize(count);
   indexes_.resize(count);
   for (size_t i = 0; i < count; ++i) {
     indexes_[i] = i;
@@ -65,7 +65,7 @@ void TSChunk::SampleBatch::Expire(uint64_t last_ts, uint64_t retention) {
   }
   for (auto idx : inverse) {
     if (samples_[idx].ts + retention < last_ts) {
-      add_results_[idx] = AddResult::kOld;
+      add_results_[idx].type = AddResultType::kOld;
     } else if (samples_[idx].ts > last_ts) {
       last_ts = samples_[idx].ts;
     }
@@ -86,11 +86,10 @@ void TSChunk::SampleBatch::sortAndOrganize() {
   samples_ = std::move(samples_sorted);
 
   size_t prev_idx = 0;
-  add_results_[0] = AddResult::kNone;
   for (size_t i = 1; i < count; ++i) {
-    TSSample* cur = &samples_[i];
-    auto result = MergeSamplesValue(samples_[prev_idx], *cur, policy_);
-    if (result == AddResult::kNone) {
+    TSSample& cur = samples_[i];
+    auto result = MergeSamplesValue(samples_[prev_idx], cur, policy_, true);
+    if (result.type == AddResultType::kNone) {
       prev_idx = i;
     }
     add_results_[i] = result;
@@ -118,7 +117,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int cou
 
   size_t end_idx = start_idx;
   while (end_idx < sample_span_.size() && count > 0) {
-    if (add_result_span_[end_idx] == AddResult::kNone) {
+    if (add_result_span_[end_idx].type == AddResultType::kNone) {
       if (last_ts) {
         *last_ts = sample_span_[end_idx].ts;
       }
@@ -161,41 +160,56 @@ SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, 
 
 SampleBatchSlice TSChunk::SampleBatch::AsSlice() { return {samples_, add_results_, policy_}; }
 
-std::vector<TSChunk::AddResultWithTS> TSChunk::SampleBatch::GetFinalResults() const {
-  std::vector<AddResultWithTS> res;
+std::vector<TSChunk::AddResult> TSChunk::SampleBatch::GetFinalResults() const {
+  std::vector<AddResult> res;
   res.resize(add_results_.size());
   for (size_t idx = 0; idx < add_results_.size(); idx++) {
-    res[indexes_[idx]].first = add_results_[idx];
-    res[indexes_[idx]].second = samples_[idx].ts;
+    res[indexes_[idx]] = add_results_[idx];
+    res[indexes_[idx]].sample.ts = samples_[idx].ts;
   }
   return res;
 }
 
-AddResult TSChunk::MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy) {
+AddResult TSChunk::MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy,
+                                     bool is_batch_process) {
+  AddResult res;
   if (to.ts != from.ts) {
-    return AddResult::kNone;
+    return res;
   }
-
+  res.sample.ts = from.ts;
+  double old_value = to.v;
   switch (policy) {
     case DuplicatePolicy::BLOCK:
-      return AddResult::kBlock;
+      res.type = AddResultType::kBlock;
+      break;
     case DuplicatePolicy::FIRST:
-      return AddResult::kOk;
+      res.type = AddResultType::kSkip;
+      break;
     case DuplicatePolicy::LAST:
+      res.type = to.v == from.v ? AddResultType::kSkip : AddResultType::kUpdate;
       to.v = from.v;
-      return AddResult::kOk;
+      break;
     case DuplicatePolicy::MAX:
+      res.type = from.v > to.v ? AddResultType::kUpdate : AddResultType::kSkip;
       to.v = std::max(to.v, from.v);
-      return AddResult::kOk;
+      break;
     case DuplicatePolicy::MIN:
+      res.type = from.v < to.v ? AddResultType::kUpdate : AddResultType::kSkip;
       to.v = std::min(to.v, from.v);
-      return AddResult::kOk;
+      break;
     case DuplicatePolicy::SUM:
+      // Since 'from.v' comes directly from user input,
+      // we can safely use exact comparison (== 0.0) to check for zero.
+      res.type = from.v == 0.0 ? AddResultType::kSkip : AddResultType::kUpdate;
       to.v += from.v;
-      return AddResult::kOk;
+      break;
   }
-
-  return AddResult::kNone;
+  // For batch preprocessing, merged sample should be treated as Skip, except for BLOCK
+  if (is_batch_process && res.type != AddResultType::kBlock) {
+    res.type = AddResultType::kSkip;
+  }
+  res.sample.v = to.v - old_value;
+  return res;
 }
 
 uint32_t TSChunk::GetCount() const { return metadata_.count; }
@@ -203,7 +217,7 @@ uint32_t TSChunk::GetCount() const { return metadata_.count; }
 uint64_t TSChunk::SampleBatchSlice::GetFirstTimestamp() const {
   if (sample_span_.size() == 0) return 0;
   for (size_t i = 0; i < sample_span_.size(); i++) {
-    if (add_result_span_[i] == AddResult::kNone) {
+    if (add_result_span_[i].type == AddResultType::kNone) {
       return sample_span_[i].ts;
     }
   }
@@ -214,7 +228,7 @@ uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() const {
   if (sample_span_.size() == 0) return 0;
   for (size_t i = 0; i < sample_span_.size(); i++) {
     auto index = sample_span_.size() - i - 1;
-    if (add_result_span_[index] == AddResult::kNone) {
+    if (add_result_span_[index].type == AddResultType::kNone) {
       return sample_span_[index].ts;
     }
   }
@@ -224,7 +238,7 @@ uint64_t TSChunk::SampleBatchSlice::GetLastTimestamp() const {
 size_t TSChunk::SampleBatchSlice::GetValidCount() const {
   size_t count = 0;
   for (auto res : add_result_span_) {
-    if (res == AddResult::kNone) {
+    if (res.type == AddResultType::kNone) {
       count++;
     }
   }
@@ -335,7 +349,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
       candidate = &new_samples[new_sample_idx];
       from_new_batch = true;
     }
-    if (from_new_batch && add_results[new_sample_idx] != AddResult::kNone) {
+    if (from_new_batch && add_results[new_sample_idx].type != AddResultType::kNone) {
       new_sample_idx++;
       continue;
     }
@@ -345,7 +359,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
       merged_data[0] = *candidate;
       current_index = 0;
       if (from_new_batch) {
-        add_results[new_sample_idx] = AddResult::kOk;
+        add_results[new_sample_idx] = AddResult::CreateInsert(*candidate);
       }
       continue;
     }
@@ -357,8 +371,8 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
       is_append = true;
     }
     if (from_new_batch) {
-      add_results[new_sample_idx] =
-          is_append ? AddResult::kOk : MergeSamplesValue(merged_data[current_index], *candidate, policy);
+      add_results[new_sample_idx] = is_append ? AddResult::CreateInsert(*candidate)
+                                              : MergeSamplesValue(merged_data[current_index], *candidate, policy);
     }
 
     // Update the index
@@ -378,19 +392,20 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
 
   // Process remaining new samples
   while (new_sample_idx != new_samples.size()) {
-    if (add_results[new_sample_idx] != AddResult::kNone) {
+    if (add_results[new_sample_idx].type != AddResultType::kNone) {
       ++new_sample_idx;
       continue;
     }
+    const auto& new_sample = new_samples[new_sample_idx];
     if (current_index == static_cast<size_t>(-1)) {
       current_index = 0;
-      merged_data[current_index] = new_samples[new_sample_idx];
-      add_results[new_sample_idx] = AddResult::kOk;
-    } else if (new_samples[new_sample_idx].ts > merged_data[current_index].ts) {
-      merged_data[++current_index] = new_samples[new_sample_idx];
-      add_results[new_sample_idx] = AddResult::kOk;
+      merged_data[current_index] = new_sample;
+      add_results[new_sample_idx] = AddResult::CreateInsert(new_sample);
+    } else if (new_sample.ts > merged_data[current_index].ts) {
+      merged_data[++current_index] = new_sample;
+      add_results[new_sample_idx] = AddResult::CreateInsert(new_sample);
     } else {
-      auto add_res = MergeSamplesValue(merged_data[current_index], new_samples[new_sample_idx], policy);
+      auto add_res = MergeSamplesValue(merged_data[current_index], new_sample, policy);
       add_results[new_sample_idx] = add_res;
     }
     ++new_sample_idx;

@@ -31,7 +31,7 @@ namespace test {
 using SampleBatch = TSChunk::SampleBatch;
 using SampleBatchSlice = TSChunk::SampleBatchSlice;
 using DuplicatePolicy = TSChunk::DuplicatePolicy;
-using AddResult = TSChunk::AddResult;
+using AddResultType = TSChunk::AddResultType;
 
 // Helper function to generate TSSample with specific timestamp and value
 TSSample MakeSample(uint64_t timestamp, double value) {
@@ -47,27 +47,41 @@ TEST(RedisTimeSeriesChunkTest, PolicyBehaviors) {
   TSSample duplicate = MakeSample(100, 2.0);
 
   // Test BLOCK policy
-  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::BLOCK), AddResult::kBlock);
+  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::BLOCK).type, AddResultType::kBlock);
   EXPECT_EQ(original.v, 1.0);
 
   // Test LAST policy
-  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::LAST), AddResult::kOk);
+  auto res = TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::LAST);
+  EXPECT_EQ(res.type, AddResultType::kUpdate);
   EXPECT_EQ(original.v, 2.0);
+  EXPECT_EQ(res.sample.v, 1.0);
+
+  // Test FIRST policy
+  original.v = 1.0;
+  res = TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::FIRST);
+  EXPECT_EQ(res.type, AddResultType::kSkip);
+  EXPECT_EQ(original.v, 1.0);
 
   // Reset and test MAX policy
   original.v = 1.0;
-  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::MAX), AddResult::kOk);
+  res = TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::MAX);
+  EXPECT_EQ(res.type, AddResultType::kUpdate);
   EXPECT_EQ(original.v, 2.0);
+  EXPECT_EQ(res.sample.v, 1.0);
 
   // Reset and test MIN policy
   original.v = 3.0;
-  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::MIN), AddResult::kOk);
+  res = TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::MIN);
+  EXPECT_EQ(res.type, AddResultType::kUpdate);
   EXPECT_EQ(original.v, 2.0);
+  EXPECT_EQ(res.sample.v, -1.0);
 
   // Reset and test SUM policy
   original.v = 1.0;
-  EXPECT_EQ(TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::SUM), AddResult::kOk);
+  res = TSChunk::MergeSamplesValue(original, duplicate, DuplicatePolicy::SUM);
+  EXPECT_EQ(res.type, AddResultType::kUpdate);
   EXPECT_EQ(original.v, 3.0);
+  EXPECT_EQ(res.sample.v, 2.0);
 }
 
 // Test timestamp-based slicing operations
@@ -108,12 +122,12 @@ TEST(RedisTimeSeriesChunkTest, ExpirationLogic) {
   batch.Expire(300, 150);
   auto results = batch.GetFinalResults();
 
-  EXPECT_EQ(results[0].first, AddResult::kNone);
-  EXPECT_EQ(results[0].second, 200);
-  EXPECT_EQ(results[1].first, AddResult::kNone);
-  EXPECT_EQ(results[1].second, 400);
-  EXPECT_EQ(results[2].first, AddResult::kOld);
-  EXPECT_EQ(results[3].first, AddResult::kOld);
+  EXPECT_EQ(results[0].type, AddResultType::kNone);
+  EXPECT_EQ(results[0].sample.ts, 200);
+  EXPECT_EQ(results[1].type, AddResultType::kNone);
+  EXPECT_EQ(results[1].sample.ts, 400);
+  EXPECT_EQ(results[2].type, AddResultType::kOld);
+  EXPECT_EQ(results[3].type, AddResultType::kOld);
 }
 
 // Test SampleBatch construction and sorting
@@ -134,14 +148,14 @@ TEST(RedisTimeSeriesChunkTest, BatchSortingAndDeduplication) {
   // Verify deduplication
   EXPECT_EQ(slice.GetValidCount(), 3);
   auto results = batch.GetFinalResults();
-  EXPECT_EQ(results[0].first, AddResult::kNone);
-  EXPECT_EQ(results[0].second, 300);
-  EXPECT_EQ(results[1].first, AddResult::kNone);
-  EXPECT_EQ(results[1].second, 100);
-  EXPECT_EQ(results[2].first, AddResult::kNone);
-  EXPECT_EQ(results[2].second, 200);
-  EXPECT_EQ(results[3].first, AddResult::kBlock);
-  EXPECT_EQ(results[4].first, AddResult::kBlock);
+  EXPECT_EQ(results[0].type, AddResultType::kNone);
+  EXPECT_EQ(results[0].sample.ts, 300);
+  EXPECT_EQ(results[1].type, AddResultType::kNone);
+  EXPECT_EQ(results[1].sample.ts, 100);
+  EXPECT_EQ(results[2].type, AddResultType::kNone);
+  EXPECT_EQ(results[2].sample.ts, 200);
+  EXPECT_EQ(results[3].type, AddResultType::kBlock);
+  EXPECT_EQ(results[4].type, AddResultType::kBlock);
 }
 
 // Test MAddSample merging logic with additional samples and content validation
@@ -169,20 +183,20 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleLogic) {
 
   // Verify add result
   auto results = batch.GetFinalResults();
-  EXPECT_EQ(results[0].first, AddResult::kOk);
-  EXPECT_EQ(results[0].second, 300);
-  EXPECT_EQ(results[1].first, AddResult::kOk);
-  EXPECT_EQ(results[1].second, 100);
-  EXPECT_EQ(results[2].first, AddResult::kOk);
-  EXPECT_EQ(results[2].second, 200);
-  EXPECT_EQ(results[3].first, AddResult::kOk);
-  EXPECT_EQ(results[3].second, 100);
-  EXPECT_EQ(results[4].first, AddResult::kOk);
-  EXPECT_EQ(results[4].second, 200);
-  EXPECT_EQ(results[5].first, AddResult::kOk);
-  EXPECT_EQ(results[5].second, 400);
-  EXPECT_EQ(results[6].first, AddResult::kOk);
-  EXPECT_EQ(results[6].second, 100);
+  EXPECT_EQ(results[0].type, AddResultType::kInsert);
+  EXPECT_EQ(results[0].sample.ts, 300);
+  EXPECT_EQ(results[1].type, AddResultType::kInsert);
+  EXPECT_EQ(results[1].sample.ts, 100);
+  EXPECT_EQ(results[2].type, AddResultType::kInsert);
+  EXPECT_EQ(results[2].sample.ts, 200);
+  EXPECT_EQ(results[3].type, AddResultType::kSkip);
+  EXPECT_EQ(results[3].sample.ts, 100);
+  EXPECT_EQ(results[4].type, AddResultType::kSkip);
+  EXPECT_EQ(results[4].sample.ts, 200);
+  EXPECT_EQ(results[5].type, AddResultType::kInsert);
+  EXPECT_EQ(results[5].sample.ts, 400);
+  EXPECT_EQ(results[6].type, AddResultType::kSkip);
+  EXPECT_EQ(results[6].sample.ts, 100);
 
   // Validate content of merged chunk
   auto iter = new_chunk->CreateIterator();
@@ -232,16 +246,16 @@ TEST(RedisTimeSeriesChunkTest, UcompChunkMAddSampleWithExistingSamples) {
 
   // Verify add result
   auto results = new_batch.GetFinalResults();
-  EXPECT_EQ(results[0].first, AddResult::kOk);
-  EXPECT_EQ(results[0].second, 50);
-  EXPECT_EQ(results[1].first, AddResult::kOk);
-  EXPECT_EQ(results[1].second, 150);
-  EXPECT_EQ(results[2].first, AddResult::kOk);
-  EXPECT_EQ(results[2].second, 200);
-  EXPECT_EQ(results[3].first, AddResult::kOk);
-  EXPECT_EQ(results[3].second, 300);
-  EXPECT_EQ(results[4].first, AddResult::kOk);
-  EXPECT_EQ(results[4].second, 400);
+  EXPECT_EQ(results[0].type, AddResultType::kInsert);
+  EXPECT_EQ(results[0].sample.ts, 50);
+  EXPECT_EQ(results[1].type, AddResultType::kInsert);
+  EXPECT_EQ(results[1].sample.ts, 150);
+  EXPECT_EQ(results[2].type, AddResultType::kUpdate);
+  EXPECT_EQ(results[2].sample.ts, 200);
+  EXPECT_EQ(results[3].type, AddResultType::kUpdate);
+  EXPECT_EQ(results[3].sample.ts, 300);
+  EXPECT_EQ(results[4].type, AddResultType::kInsert);
+  EXPECT_EQ(results[4].sample.ts, 400);
 
   // Verify content through iterator
   auto iter = final_chunk->CreateIterator();

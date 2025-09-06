@@ -40,6 +40,7 @@ constexpr const char *errTSInvalidAlign = "unknown ALIGN parameter";
 using ChunkType = TimeSeriesMetadata::ChunkType;
 using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 using TSAggregatorType = redis::TSAggregatorType;
+using TSCreateRuleResult = redis::TSCreateRuleResult;
 
 const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
     {ChunkType::COMPRESSED, "compressed"},
@@ -56,14 +57,16 @@ const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap 
     {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
 };
 
-std::string FormatAddResultAsRedisReply(TSChunk::AddResultWithTS res) {
-  using AddResult = TSChunk::AddResult;
-  switch (res.first) {
-    case AddResult::kOk:
-      return redis::Integer(res.second);
-    case AddResult::kOld:
+std::string FormatAddResultAsRedisReply(TSChunk::AddResult res) {
+  using AddResultType = TSChunk::AddResultType;
+  switch (res.type) {
+    case AddResultType::kInsert:
+    case AddResultType::kUpdate:
+    case AddResultType::kSkip:
+      return redis::Integer(res.sample.ts);
+    case AddResultType::kOld:
       return redis::Error({Status::NotOK, errOldTimestamp});
-    case AddResult::kBlock:
+    case AddResultType::kBlock:
       return redis::Error({Status::NotOK, errDupBlock});
     default:
       unreachable();
@@ -100,6 +103,27 @@ std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
     unreachable();
   }
   return it->second;
+}
+
+std::string FormatCreateRuleResAsRedisReply(TSCreateRuleResult res) {
+  switch (res) {
+    case TSCreateRuleResult::kOK:
+      return redis::RESP_OK;
+    case TSCreateRuleResult::kSrcNotExist:
+    case TSCreateRuleResult::kDstNotExist:
+      return redis::Error({Status::NotOK, errTSKeyNotFound});
+    case TSCreateRuleResult::kSrcEqDst:
+      return redis::Error({Status::NotOK, "the source key and destination key should be different"});
+    case TSCreateRuleResult::kSrcHasSourceRule:
+      return redis::Error({Status::NotOK, "the source key already has a source rule"});
+    case TSCreateRuleResult::kDstHasSourceRule:
+      return redis::Error({Status::NotOK, "the destination key already has a src rule"});
+    case TSCreateRuleResult::kDstHasDestRule:
+      return redis::Error({Status::NotOK, "the destination key already has a dst rule"});
+    default:
+      unreachable();
+  }
+  return "";
 }
 
 }  // namespace
@@ -342,7 +366,7 @@ class CommandTSAdd : public CommandTSCreateBase {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
-    TSChunk::AddResultWithTS res;
+    TSChunk::AddResult res;
     auto s = timeseries_db.Add(ctx, user_key_, {ts_, value_}, option, &res,
                                is_on_dup_policy_set_ ? &on_dup_policy_ : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
@@ -415,7 +439,7 @@ class CommandTSMAdd : public Commander {
 
     auto replies = std::vector<std::string>(samples_count_);
     for (auto &[user_key, samples] : userkey_samples_map_) {
-      std::vector<TSChunk::AddResultWithTS> res;
+      std::vector<TSChunk::AddResult> res;
       auto count = samples.size();
       auto s = timeseries_db.MAdd(ctx, user_key, std::move(samples), &res);
       std::string err_reply;
@@ -699,6 +723,32 @@ class CommandTSRange : public CommandTSRangeBase {
   std::string user_key_;
 };
 
+class CommandTSCreateRule : public CommandTSAggregatorBase {
+ public:
+  explicit CommandTSCreateRule() : CommandTSAggregatorBase(3, 0) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 6) {
+      return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
+    }
+    src_key_ = args[1];
+    dst_key_ = args[2];
+    return CommandTSAggregatorBase::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    auto res = TSCreateRuleResult::kOK;
+    auto s = timeseries_db.CreateRule(ctx, src_key_, dst_key_, getAggregator(), &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = FormatCreateRuleResAsRedisReply(res);
+    return Status::OK();
+  }
+
+ private:
+  std::string src_key_;
+  std::string dst_key_;
+};
+
 class CommandTSGet : public CommandTSAggregatorBase {
  public:
   CommandTSGet() : CommandTSAggregatorBase(2, 0) { registerDefaultHandlers(); }
@@ -739,6 +789,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1));
+                        MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1), );
 
 }  // namespace redis

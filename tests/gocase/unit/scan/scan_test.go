@@ -32,6 +32,43 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func TestScanTagKey(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	nodeID := "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383", nodeID, srv.Host(), srv.Port())
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	// Slot keys from 0-100
+	initKeys := []string{
+		"{3560}key", "{22179}key", "{48756}key", "{2977}key", "{4569}key", "{460}key", "{4384}key", "{41432}key", "{46920}key", "{9073}key",
+		"{2281}key", "{15129}key", "{5465}key", "{18928}key", "{5288}key", "{4872}key", "{4883}key", "{5279}key", "{40322}key", "{5494}key",
+		"{23669}key", "{2270}key", "{6915}key", "{49046}key", "{50482}key", "{1407}key", "{491}key", "{4598}key", "{2986}key", "{42942}key",
+		"{7819}key", "{3591}key", "{13280}key", "{4128}key", "{41073}key", "{18072}key", "{14289}key", "{3121}key", "{11316}key", "{9929}key",
+		"{40792}key", "{5024}key", "{12561}key", "{104856}key", "{9432}key", "{83909}key", "{15568}key", "{8825}key", "{2631}key", "{15599}key",
+		"{49407}key", "{10406}key", "{5638}key", "{12590}key", "{13987}key", "{40763}key", "{108747}key", "{8322}key", "{15882}key", "{14278}key",
+		"{1046}key", "{41082}key", "{21848}key", "{13271}key", "{11423}key", "{26968}key", "{49835}key", "{3614}key", "{13358}key", "{1782}key",
+		"{714}key", "{68536}key", "{42131}key", "{7687}key", "{9307}key", "{2718}key", "{12254}key", "{78296}key", "{24308}key", "{5711}key",
+		"{19057}key", "{12448}key", "{69226}key", "{21266}key", "{49332}key", "{10333}key", "{2104}key", "{53181}key", "{79586}key", "{13544}key",
+		"{1773}key", "{108}key", "{6197}key", "{43621}key", "{3008}key", "{8417}key", "{18306}key", "{13719}key", "{45862}key", "{355}key"}
+	for _, key := range initKeys {
+		require.NoError(t, rdb.Set(ctx, key, "1", 0).Err())
+	}
+
+	cursor, keys := scan(t, rdb, "0", "count", 100)
+	require.Equal(t, initKeys, keys)
+	require.NotEqual(t, "0", cursor)
+	cursor, keys = scan(t, rdb, "0", "match", "{355}*")
+	require.Equal(t, []string{"{355}key"}, keys)
+	require.Equal(t, cursor, "0")
+}
+
 func TestScanSlotRemainingKeys(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
 	defer srv.Close()

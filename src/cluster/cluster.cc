@@ -896,7 +896,7 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     cross_slot_ok = true;
   }
 
-  uint64_t flags = attributes->GenerateFlags(cmd_tokens);
+  uint64_t flags = attributes->GenerateFlags(cmd_tokens, *srv_->GetConfig());
 
   if (myself_ && myself_ == slots_nodes_[slot]) {
     // We use central controller to manage the topology of the cluster.

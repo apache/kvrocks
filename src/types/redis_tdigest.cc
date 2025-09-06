@@ -414,7 +414,7 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
-rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& input,
+rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                              TDigestCDFResult* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;

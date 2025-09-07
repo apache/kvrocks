@@ -546,6 +546,105 @@ TEST_F(TimeSeriesTest, AggregationMultiple) {
   }
 }
 
+TEST_F(TimeSeriesTest, MGetFilterExprParse) {
+  using TSMGetOption = redis::TSMGetOption;
+  using TSMQueryFilterParser = redis::TSMQueryFilterParser;
+  // Test 1: Valid single equality
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=value").IsOK());
+    EXPECT_EQ(filter.labels_equals.size(), 1);
+    EXPECT_EQ(filter.labels_equals["label"], std::set<std::string>{"value"});
+    EXPECT_TRUE(filter.labels_not_equals.empty());
+    EXPECT_TRUE(parser.Check().IsOK());
+  }
+
+  // Test 2: Valid single not-equals
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=value").IsOK());
+    EXPECT_TRUE(filter.labels_equals.empty());
+    EXPECT_EQ(filter.labels_not_equals.size(), 1);
+    EXPECT_EQ(filter.labels_not_equals["label"], std::set<std::string>{"value"});
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 3: Empty equality (label not exists)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=").IsOK());
+    EXPECT_EQ(filter.labels_equals.size(), 1);
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 4: Empty not-equals (label exists)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=").IsOK());
+    EXPECT_EQ(filter.labels_not_equals.size(), 1);
+    EXPECT_EQ(filter.labels_not_equals["label"], std::set<std::string>{""});
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 5: Multi-value equality
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=('v1','v2',v3)").IsOK());
+    std::set<std::string> expected{"v1", "v2", "v3"};
+    EXPECT_EQ(filter.labels_equals["label"], expected);
+    EXPECT_TRUE(parser.Check().IsOK());
+  }
+
+  // Test 6: Multi-value not-equals
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=(v1,\"v2\",'v3')").IsOK());
+    std::set<std::string> expected{"v1", "v2", "v3"};
+    EXPECT_EQ(filter.labels_not_equals["label"], expected);
+    EXPECT_FALSE(parser.Check().IsOK());
+  }
+
+  // Test 7: Invalid expression (no operator)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    auto s = parser.Parse("label value");
+    EXPECT_FALSE(s.IsOK());
+    EXPECT_EQ(s.Msg(), "failed parsing labels");
+  }
+
+  // Test 8: Check failure conditions
+  {
+    // No conditions
+    TSMGetOption::FilterOption filter1;
+    TSMQueryFilterParser parser1(filter1);
+    EXPECT_FALSE(parser1.Check().IsOK());
+  }
+
+  // Test 9: Label existence precedence
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser1(filter);
+    auto s = parser1.Parse("label=");  // Label not exists
+    EXPECT_TRUE(s.IsOK());
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+
+    // Adding value to same label - should be ignored
+    TSMQueryFilterParser parser2(filter);
+    s = parser2.Parse("label=value");
+    EXPECT_TRUE(s.IsOK());
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+    EXPECT_TRUE(parser2.Check().IsOK());
+  }
+}
+
 TEST_F(TimeSeriesTest, MGetFilterExpression) {
   using TSCreateOption = redis::TSCreateOption;
   using TSMGetOption = redis::TSMGetOption;

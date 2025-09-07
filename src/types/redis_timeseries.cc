@@ -1123,6 +1123,9 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   auto rev_index_upper_bound = TSRevLabelKey::UpperBound(namespace_);
   for (const auto &[label_k, label_v_set] : filter.labels_equals) {
+    if (label_v_set.empty()) {
+      continue;
+    }
     for (const auto &label_v : label_v_set) {
       auto rev_label_key = TSRevLabelKey(namespace_, label_k, label_v);
       auto rev_index_prefix = rev_label_key.Encode();
@@ -1165,28 +1168,21 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
       label_map[label.k] = &label.v;
     }
 
-    // Check labels_equals conditions (exact match required)
+    // Check labels_equals conditions
     bool match = std::all_of(filter.labels_equals.begin(), filter.labels_equals.end(), [&label_map](const auto &kv) {
       auto it = label_map.find(kv.first);
-      return it != label_map.end() && kv.second.count(*(it->second)) > 0;
+      // If labels_equals value set is empty, means the label key must not exist
+      return (kv.second.empty() && it == label_map.end()) ||
+             (it != label_map.end() && kv.second.count(*(it->second)) > 0);
     });
     if (!match) continue;
 
-    // Check labels_not_equals conditions (exact match required)
+    // Check labels_not_equals conditions
     match = std::all_of(filter.labels_not_equals.begin(), filter.labels_not_equals.end(), [&label_map](const auto &kv) {
       auto it = label_map.find(kv.first);
-      return it == label_map.end() || kv.second.count(*(it->second)) == 0;
+      const std::string &str = (it != label_map.end()) ? *(it->second) : "";
+      return kv.second.count(str) == 0;
     });
-    if (!match) continue;
-
-    // Check labels_exists conditions
-    match = std::all_of(filter.labels_exists.begin(), filter.labels_exists.end(),
-                        [&label_map](const auto &key) { return label_map.find(key) != label_map.end(); });
-    if (!match) continue;
-
-    // Check labels_not_exists conditions
-    match = std::all_of(filter.labels_not_exists.begin(), filter.labels_not_exists.end(),
-                        [&label_map](const auto &key) { return label_map.find(key) == label_map.end(); });
     if (!match) continue;
 
     user_keys->push_back(user_key);

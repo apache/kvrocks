@@ -823,7 +823,7 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
     }
 
     Status Check() const {
-      if (option_.labels_equals.empty()) {
+      if (option_.labels_equals.empty() || !has_matcher) {
         return {Status::RedisParseErr, "please provide at least one matcher"};
       }
       return Status::OK();
@@ -831,6 +831,7 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
 
    private:
     FilterOption &option_;
+    bool has_matcher = false;
 
     static std::pair<size_t, size_t> findOperator(std::string_view expr) {
       char quote = 0;
@@ -918,8 +919,13 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
       std::string label_str(label);
       if (value_str.empty()) {
         // Label not exists: label=
-        option_.labels_not_exists.insert(std::move(label_str));
+        option_.labels_equals[std::move(label_str)].clear();
       } else {
+        has_matcher = true;
+        // If label exists, but value is empty, means label not exists, skip it
+        if (option_.labels_equals.count(label_str) && option_.labels_equals[label_str].empty()) {
+          return;
+        }
         std::set<std::string> values;
         if (value_str.front() == '(' && value_str.back() == ')') {
           // List: label=(v1,v2)
@@ -938,7 +944,7 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
       std::string label_str(label);
       if (value_str.empty()) {
         // Label exists: label!=
-        option_.labels_exists.insert(std::move(label_str));
+        option_.labels_not_equals[std::move(label_str)].insert("");  // Use empty string to indicate label exists
       } else {
         std::set<std::string> values;
         if (value_str.front() == '(' && value_str.back() == ')') {

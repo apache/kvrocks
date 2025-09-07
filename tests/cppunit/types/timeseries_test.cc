@@ -638,7 +638,7 @@ TEST_F(TimeSeriesTest, MGetFilterExpression) {
   // Test case: Existence check (label!=)
   {
     TSMGetOption option;
-    option.filter.labels_exists.insert("location");
+    option.filter.labels_not_equals = {{"location", {""}}};     // location!=
     option.filter.labels_equals = {{"type", {"temperature"}}};  // type=temperature
     std::vector<TSMGetResult> results;
     auto s = ts_db_->MGet(*ctx_, option, false, &results);

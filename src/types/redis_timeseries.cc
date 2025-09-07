@@ -384,6 +384,161 @@ TSCreateOption::TSCreateOption()
       chunk_type(kDefaultChunkType),
       duplicate_policy(kDefaultDuplicatePolicy) {}
 
+Status TSMQueryFilterParser::Parse(std::string_view expr) {
+  if (expr.empty()) return Status::OK();
+  // Locate "!=" or "="
+  const auto [op_pos, op_len] = findOperator(expr);
+  if (op_pos == std::string_view::npos) {
+    return {Status::RedisParseErr, "failed parsing labels"};
+  }
+  // Extract label and value
+  std::string_view label = expr.substr(0, op_pos);
+  label = trim(label);
+
+  std::string_view value_str = expr.substr(op_pos + op_len);
+  std::string_view op = expr.substr(op_pos, op_len);  // "=" or "!="
+  if (op == "=") {
+    handleEquals(label, value_str);
+  } else if (op == "!=") {
+    handleNotEquals(label, value_str);
+  }
+  return Status::OK();
+}
+
+Status TSMQueryFilterParser::Check() const {
+  if (option_.labels_equals.empty() || !has_matcher) {
+    return {Status::RedisParseErr, "please provide at least one matcher"};
+  }
+  return Status::OK();
+}
+
+std::pair<size_t, size_t> TSMQueryFilterParser::findOperator(std::string_view expr) {
+  char quote = 0;
+  for (size_t i = 0; i < expr.size(); i++) {
+    char c = expr[i];
+    if (c == '\'' || c == '"') {
+      if (quote == 0)
+        quote = c;
+      else if (quote == c)
+        quote = 0;
+    } else if (quote == 0) {
+      if (c == '!' && i + 1 < expr.size() && expr[i + 1] == '=') {
+        return {i, 2};
+      } else if (c == '=') {
+        return {i, 1};
+      }
+    }
+  }
+  return {std::string_view::npos, 0};
+}
+
+std::string_view TSMQueryFilterParser::trim(std::string_view s) {
+  while (!s.empty() && std::isspace(s.front())) {
+    s.remove_prefix(1);
+  }
+  while (!s.empty() && std::isspace(s.back())) {
+    s.remove_suffix(1);
+  }
+  return s;
+}
+
+std::string_view TSMQueryFilterParser::unquote(std::string_view s) {
+  if (s.size() >= 2) {
+    char first = s.front();
+    char last = s.back();
+    if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+      return s.substr(1, s.size() - 2);
+    }
+  }
+  return s;
+}
+
+std::vector<std::string_view> TSMQueryFilterParser::splitValueList(std::string_view list) {
+  std::vector<std::string_view> values;
+  if (list.empty()) return values;
+
+  char quote = 0;
+  int depth = 0;
+  size_t start = 0;
+
+  for (size_t i = 0; i <= list.size(); i++) {
+    if (i == list.size()) {
+      if (start < i) {
+        auto val = trim(unquote(list.substr(start, i - start)));
+        if (!val.empty()) {
+          values.push_back(val);
+        }
+      }
+      break;
+    }
+    char c = list[i];
+    if (c == '\'' || c == '"') {
+      if (quote == 0)
+        quote = c;
+      else if (quote == c)
+        quote = 0;
+    } else if (quote == 0) {
+      if (c == '(')
+        depth++;
+      else if (c == ')')
+        if (depth > 0) depth--;
+    }
+    if (c == ',' && quote == 0 && depth == 0) {
+      auto val = trim(unquote(list.substr(start, i - start)));
+      if (!val.empty()) {
+        values.push_back(val);
+      }
+      start = i + 1;
+    }
+  }
+  return values;
+}
+
+void TSMQueryFilterParser::handleEquals(std::string_view label, std::string_view value_str) {
+  std::string label_str(label);
+  if (value_str.empty()) {
+    // Label not exists: label=
+    option_.labels_equals[std::move(label_str)].clear();
+  } else {
+    has_matcher = true;
+    // If label exists, but value is empty, means label not exists, skip it
+    if (option_.labels_equals.count(label_str) && option_.labels_equals[label_str].empty()) {
+      return;
+    }
+    std::set<std::string> values;
+    if (value_str.front() == '(' && value_str.back() == ')') {
+      // List: label=(v1,v2)
+      for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+        values.emplace(val);
+      }
+    } else {
+      // Single value: label=value
+      values.emplace(unquote(value_str));
+    }
+    option_.labels_equals[std::move(label_str)].merge(std::move(values));
+  }
+}
+
+void TSMQueryFilterParser::handleNotEquals(std::string_view label, std::string_view value_str) {
+  std::string label_str(label);
+  if (value_str.empty()) {
+    // Label exists: label!=
+    option_.labels_not_equals[std::move(label_str)].insert("");  // Use empty string to indicate label exists
+  } else {
+    std::set<std::string> values;
+    if (value_str.front() == '(' && value_str.back() == ')') {
+      // List: label!=(v1,v2)
+      for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+        values.emplace(val);
+      }
+    } else {
+      // Single value: label!=value
+      values.emplace(unquote(value_str));
+    }
+    option_.labels_not_equals[std::move(label_str)].merge(std::move(values));
+  }
+}
+
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   TimeSeriesMetadata metadata;
   metadata.retention_time = option.retention_time;

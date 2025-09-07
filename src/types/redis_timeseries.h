@@ -191,6 +191,23 @@ struct TSMGetResult {
   std::vector<TSSample> samples;
 };
 
+class TSMQueryFilterParser {
+ public:
+  explicit TSMQueryFilterParser(TSMGetOption::FilterOption &option) : option_(option) {}
+  Status Parse(std::string_view expr);
+  Status Check() const;
+
+ private:
+  TSMGetOption::FilterOption &option_;
+  bool has_matcher = false;
+  static std::pair<size_t, size_t> findOperator(std::string_view expr);
+  static std::string_view trim(std::string_view s);
+  static std::string_view unquote(std::string_view s);
+  static std::vector<std::string_view> splitValueList(std::string_view list);
+  void handleEquals(std::string_view label, std::string_view value_str);
+  void handleNotEquals(std::string_view label, std::string_view value_str);
+};
+
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,

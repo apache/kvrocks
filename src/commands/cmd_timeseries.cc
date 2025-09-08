@@ -143,7 +143,9 @@ namespace redis {
 
 class KeywordCommandBase : public Commander {
  public:
-  KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {}
+  KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {
+    handlers_.reserve(32);  // Avoid Realloc space, or keywords_ may be invalid.
+  }
 
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),

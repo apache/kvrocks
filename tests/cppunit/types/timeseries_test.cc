@@ -938,11 +938,11 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
   {
     std::vector<std::vector<TSSample>> all_samples;
     all_samples.push_back({{1, 10.0}});
-    all_samples.push_back({});  // Empty vector
+    all_samples.emplace_back();  // Empty vector
     all_samples.push_back({{1, 20.0}});
-    all_samples.push_back({});  // Another empty vector
+    all_samples.emplace_back();  // Another empty vector
 
-    std::vector<TSSample> expected = {{1, 30.0}};
+    const std::vector<TSSample> &expected = {{1, 30.0}};
     auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
     EXPECT_EQ(actual, expected);
   }
@@ -954,8 +954,8 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
     all_samples.push_back(single_vector);
 
     // Expected is the same as input
-    std::vector<TSSample> expected = single_vector;
-    auto actual = GroupSamplesAndReduce(std::move(all_samples), TSMRangeOption::GroupReducerType::SUM);
+    std::vector<TSSample> &expected = single_vector;
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
     EXPECT_EQ(actual, expected);
   }
 
@@ -968,7 +968,7 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
 
     // Expected is a simple sorted merge
     std::vector<TSSample> expected = {{1, 1.0}, {2, 2.0}, {3, 3.0}, {4, 4.0}, {5, 5.0}, {6, 6.0}};
-    auto actual = GroupSamplesAndReduce(std::move(all_samples), TSMRangeOption::GroupReducerType::SUM);
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
     EXPECT_EQ(actual, expected);
   }
 
@@ -978,7 +978,7 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
     all_samples.push_back({{1, 2.0}, {2, 3.0}});
     all_samples.push_back({{1, 3.0}, {3, 3.0}});
 
-    auto actual = GroupSamplesAndReduce(std::move(all_samples), TSMRangeOption::GroupReducerType::NONE);
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::NONE);
     EXPECT_TRUE(actual.empty());
   }
 }

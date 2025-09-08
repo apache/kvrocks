@@ -767,6 +767,16 @@ class CommandTSGet : public CommandTSAggregatorBase {
 
 class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
  protected:
+  const TSMGetOption &getMGetOption() const { return option_; }
+
+  void registerDefaultHandlers() override {
+    registerHandler("WITHLABELS",
+                    [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
+    registerHandler("SELECTED_LABELS",
+                    [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
+    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
+  }
+
   static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {
     with_labels = true;
     return Status::OK();
@@ -793,6 +803,9 @@ class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
     }
     return filter_parser.Check();
   }
+
+ private:
+  TSMGetOption option_;
 };
 
 class CommandTSMGet : public CommandTSMGetBase {
@@ -808,7 +821,7 @@ class CommandTSMGet : public CommandTSMGetBase {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMGetResult> results;
-    auto s = timeseries_db.MGet(ctx, option_, is_return_latest_, &results);
+    auto s = timeseries_db.MGet(ctx, getMGetOption(), is_return_latest_, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     std::vector<std::string> reply;
     reply.reserve(results.size());
@@ -829,17 +842,11 @@ class CommandTSMGet : public CommandTSMGetBase {
 
  protected:
   void registerDefaultHandlers() override {
-    CommandTSAggregatorBase::registerDefaultHandlers();
+    CommandTSMGetBase::registerDefaultHandlers();
     registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser, is_return_latest_); });
-    registerHandler("WITHLABELS",
-                    [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
-    registerHandler("SELECTED_LABELS",
-                    [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
-    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
   }
 
  private:
-  TSMGetOption option_;
   bool is_return_latest_ = false;
 };
 

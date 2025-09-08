@@ -132,6 +132,25 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   return res;
 }
 
+LabelKVList ExtractSelectedLabels(LabelKVList &&labels, const std::set<std::string> &selected_labels) {
+  std::unordered_map<std::string_view, LabelKVPair *> labels_map;
+  labels_map.reserve(labels.size());
+  for (auto &label : labels) {
+    labels_map[label.k] = &label;
+  }
+  LabelKVList res;
+  res.reserve(selected_labels.size());
+  for (const auto &selected_key : selected_labels) {
+    auto it = labels_map.find(selected_key);
+    if (it != labels_map.end()) {
+      res.emplace_back(std::move(*(it->second)));
+    } else {
+      res.push_back({selected_key, ""});
+    }
+  }
+  return res;
+}
+
 std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
                                                               bool skip_last_bucket) {
   std::vector<TSSample> res;
@@ -1612,23 +1631,83 @@ rocksdb::Status TimeSeries::MGet(engine::Context &ctx, const TSMGetOption &optio
     if (option.with_labels) {
       res_i.labels = std::move(labels);
     } else if (!option.selected_labels.empty()) {
-      std::unordered_map<std::string_view, LabelKVPair *> labels_map;
-      labels_map.reserve(labels.size());
-      for (auto &label : labels) {
-        labels_map[label.k] = &label;
-      }
-      res_i.labels.reserve(option.selected_labels.size());
-      for (const auto &selected_key : option.selected_labels) {
-        auto it = labels_map.find(selected_key);
-        if (it != labels_map.end()) {
-          res_i.labels.emplace_back(std::move(*(it->second)));
-        } else {
-          res_i.labels.push_back({selected_key, ""});
-        }
-      }
+      res_i.labels = ExtractSelectedLabels(std::move(labels), option.selected_labels);
     }
   }
   return s;
+}
+
+rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &option,
+                                   std::vector<TSMRangeResult> *res) {
+  std::vector<std::string> user_keys;
+  std::vector<LabelKVList> labels_vec;
+  std::vector<TimeSeriesMetadata> metas;
+
+  auto s = getTSKeyByFilter(ctx, option.filter, &user_keys, &labels_vec, &metas);
+  if (!s.ok()) return s;
+
+  res->clear();
+  res->reserve(user_keys.size());
+  // Group
+  using GroupReducerType = TSMRangeOption::GroupReducerType;
+  bool is_group_by = option.group_by_label.size() && option.reducer != GroupReducerType::NONE;
+  std::map<std::string_view, std::vector<size_t>> group_map;
+  if (is_group_by) {
+    for (size_t i = 0; i < user_keys.size(); i++) {
+      auto &labels = labels_vec[i];
+      auto it = std::lower_bound(labels.begin(), labels.end(), option.group_by_label,
+                                 [](const LabelKVPair &label, const std::string &key) { return label.k < key; });
+      if (it != labels.end() && it->k == option.group_by_label) {
+        group_map[it->v].push_back(i);
+      }
+    }
+    if (group_map.empty()) {
+      // No matched group
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (is_group_by) {
+    for (const auto &[group_value, indices] : group_map) {
+      TSMRangeResult group_res;
+      // Labels
+      LabelKVList group_labels = {LabelKVPair{option.group_by_label, std::string(group_value)}};
+      if (option.with_labels) {
+        group_res.labels = std::move(group_labels);
+      } else if (option.selected_labels.size()) {
+        group_res.labels = ExtractSelectedLabels(std::move(group_labels), option.selected_labels);
+      }
+      // Samples
+      // TODO:
+
+      // Sources
+      for (size_t i : indices) {
+        group_res.source_keys.push_back(std::move(user_keys[i]));
+      }
+      // Name
+      group_res.name = group_value;
+
+      res->push_back(std::move(group_res));
+    }
+  } else {
+    for (size_t i = 0; i < user_keys.size(); i++) {
+      TSMRangeResult group_res;
+      // Labels
+      if (option.with_labels) {
+        group_res.labels = std::move(labels_vec[i]);
+      } else if (option.selected_labels.size()) {
+        group_res.labels = ExtractSelectedLabels(std::move(labels_vec[i]), option.selected_labels);
+      }
+      // Samples
+      s = rangeCommon(ctx, AppendNamespacePrefix(user_keys[i]), metas[i], option, &group_res.samples);
+      if (!s.ok()) return s;
+      // Name
+      group_res.name = std::move(user_keys[i]);
+
+      res->push_back(std::move(group_res));
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

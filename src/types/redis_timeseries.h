@@ -208,6 +208,17 @@ class TSMQueryFilterParser {
   void handleNotEquals(std::string_view label, std::string_view value_str);
 };
 
+struct TSMRangeOption : TSMGetOption, TSRangeOption {
+  using GroupReducerType = TSAggregatorType;
+
+  GroupReducerType reducer = GroupReducerType::NONE;
+  std::string group_by_label;
+};
+
+struct TSMRangeResult : TSMGetResult {
+  std::vector<std::string> source_keys;
+};
+
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,
@@ -241,6 +252,7 @@ class TimeSeries : public SubKeyScanner {
                              const TSAggregator &aggregator, TSCreateRuleResult *res);
   rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
                        std::vector<TSMGetResult> *res);
+  rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
 
  private:
   rocksdb::ColumnFamilyHandle *index_cf_handle_;

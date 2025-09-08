@@ -287,14 +287,11 @@ class CommandTSCreate : public CommandTSCreateBase {
 
 class CommandTSInfo : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    user_key_ = args[1];
-    return Commander::Parse(args);
-  }
+  Status Parse(const std::vector<std::string> &args) override { return Commander::Parse(args); }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     TSInfoResult info;
-    auto s = timeseries_db.Info(ctx, user_key_, &info);
+    auto s = timeseries_db.Info(ctx, args_[1], &info);
     if (s.IsNotFound()) return {Status::RedisExecErr, errTSKeyNotFound};
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::MultiLen(24);
@@ -334,9 +331,6 @@ class CommandTSInfo : public Commander {
     *output += redis::Array(rules_str);
     return Status::OK();
   }
-
- private:
-  std::string user_key_;
 };
 
 class CommandTSAdd : public CommandTSCreateBase {
@@ -346,7 +340,6 @@ class CommandTSAdd : public CommandTSCreateBase {
     if (args.size() < 4) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    user_key_ = args[1];
     CommandParser parser(args, 2);
     auto ts_parse = parser.TakeInt<uint64_t>();
     if (!ts_parse.IsOK()) {
@@ -366,7 +359,7 @@ class CommandTSAdd : public CommandTSCreateBase {
     const auto &option = getCreateOption();
 
     TSChunk::AddResult res;
-    auto s = timeseries_db.Add(ctx, user_key_, {ts_, value_}, option, &res,
+    auto s = timeseries_db.Add(ctx, args_[1], {ts_, value_}, option, &res,
                                is_on_dup_policy_set_ ? &on_dup_policy_ : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
@@ -384,7 +377,6 @@ class CommandTSAdd : public CommandTSCreateBase {
  private:
   DuplicatePolicy on_dup_policy_ = DuplicatePolicy::BLOCK;
   bool is_on_dup_policy_set_ = false;
-  std::string user_key_;
   uint64_t ts_ = 0;
   double value_ = 0;
 
@@ -460,7 +452,6 @@ class CommandTSMAdd : public Commander {
   }
 
  private:
-  std::string user_key_;
   size_t samples_count_ = 0;
   std::unordered_map<std::string_view, std::vector<TSSample>> userkey_samples_map_;
   std::unordered_map<std::string_view, std::vector<size_t>> userkey_indexes_map_;
@@ -695,14 +686,13 @@ class CommandTSRange : public CommandTSRangeBase {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
     }
 
-    user_key_ = args[1];
     return CommandTSRangeBase::Parse(args);
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSSample> res;
-    auto s = timeseries_db.Range(ctx, user_key_, getRangeOption(), &res);
+    auto s = timeseries_db.Range(ctx, args_[1], getRangeOption(), &res);
     if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
     std::vector<std::string> reply;
     reply.reserve(res.size());
@@ -712,9 +702,6 @@ class CommandTSRange : public CommandTSRangeBase {
     *output = redis::Array(reply);
     return Status::OK();
   }
-
- private:
-  std::string user_key_;
 };
 
 class CommandTSCreateRule : public CommandTSAggregatorBase {
@@ -751,14 +738,13 @@ class CommandTSGet : public CommandTSAggregatorBase {
     if (args.size() < 2) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.get' command"};
     }
-    user_key_ = args[1];
     CommandTSAggregatorBase::setSkipNum(2);
     return CommandTSAggregatorBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSSample> res;
-    auto s = timeseries_db.Get(ctx, user_key_, is_return_latest_, &res);
+    auto s = timeseries_db.Get(ctx, args_[1], is_return_latest_, &res);
     if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
 
     std::vector<std::string> reply;
@@ -777,7 +763,6 @@ class CommandTSGet : public CommandTSAggregatorBase {
 
  private:
   bool is_return_latest_ = false;
-  std::string user_key_;
 };
 
 class CommandTSMGetBase : virtual public CommandTSAggregatorBase {

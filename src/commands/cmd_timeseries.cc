@@ -36,11 +36,13 @@ constexpr const char *errDupBlock =
     "Error at upsert, update is not supported when DUPLICATE_POLICY is set to BLOCK mode";
 constexpr const char *errTSKeyNotFound = "the key is not a TSDB key";
 constexpr const char *errTSInvalidAlign = "unknown ALIGN parameter";
+constexpr const char *errTSMRangeArgsNum = "wrong number of arguments for 'ts.mrange' command";
 
 using ChunkType = TimeSeriesMetadata::ChunkType;
 using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 using TSAggregatorType = redis::TSAggregatorType;
 using TSCreateRuleResult = redis::TSCreateRuleResult;
+using GroupReducerType = redis::TSMRangeOption::GroupReducerType;
 
 const std::unordered_map<ChunkType, std::string_view> kChunkTypeMap = {
     {ChunkType::COMPRESSED, "compressed"},
@@ -55,6 +57,12 @@ const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap 
     {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
     {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
     {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+};
+const std::unordered_map<GroupReducerType, std::string_view> kGroupReducerTypeMap = {
+    {GroupReducerType::AVG, "avg"},     {GroupReducerType::SUM, "sum"},     {GroupReducerType::MIN, "min"},
+    {GroupReducerType::MAX, "max"},     {GroupReducerType::RANGE, "range"}, {GroupReducerType::COUNT, "count"},
+    {GroupReducerType::STD_P, "std.p"}, {GroupReducerType::STD_S, "std.s"}, {GroupReducerType::VAR_P, "var.p"},
+    {GroupReducerType::VAR_S, "var.s"},
 };
 
 std::string FormatAddResultAsRedisReply(TSChunk::AddResult res) {
@@ -103,6 +111,30 @@ std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
     unreachable();
   }
   return it->second;
+}
+
+std::string_view GroupReducerTypeToString(GroupReducerType reducer) {
+  auto it = kGroupReducerTypeMap.find(reducer);
+  if (it == kGroupReducerTypeMap.end()) {
+    unreachable();
+  }
+  return it->second;
+}
+
+std::string GroupSourceToString(std::vector<std::string> sources) {
+  std::string res;
+  size_t total_size = 0;
+  for (auto &src : sources) {
+    total_size += src.size();
+  }
+  res.reserve(total_size + sources.size());
+  for (size_t i = 0; i < sources.size(); i++) {
+    res += sources[i];
+    if (i != sources.size() - 1) {
+      res += ',';
+    }
+  }
+  return res;
 }
 
 std::string FormatCreateRuleResAsRedisReply(TSCreateRuleResult res) {
@@ -850,6 +882,102 @@ class CommandTSMGet : public CommandTSMGetBase {
   bool is_return_latest_ = false;
 };
 
+class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
+ public:
+  CommandTSMRange() : CommandTSRangeBase(1) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 5) {
+      return {Status::RedisParseErr, errTSMRangeArgsNum};
+    }
+    auto s = CommandTSRangeBase::Parse(args);
+    if (!s.IsOK()) return s;
+    // Combine MGet and Range options
+    static_cast<TSRangeOption &>(option_) = getRangeOption();
+    static_cast<TSMGetOption &>(option_) = getMGetOption();
+
+    return Status::OK();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSMRangeResult> results;
+    auto s = timeseries_db.MRange(ctx, option_, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    std::vector<std::string> reply;
+    reply.reserve(results.size());
+    for (auto &result : results) {
+      std::vector<std::string> entry(3);
+      entry[0] =
+          redis::BulkString(option_.group_by_label.empty() ? result.name : option_.group_by_label + "=" + result.name);
+      if (option_.group_by_label.size() && option_.with_labels) {
+        result.labels.reserve(result.labels.size() + 2);
+        result.labels.push_back(LabelKVPair{"__reducer__", std::string(GroupReducerTypeToString(option_.reducer))});
+        result.labels.push_back(LabelKVPair{"__source__", GroupSourceToString(result.source_keys)});
+      }
+      entry[1] = FormatTSLabelListAsRedisReply(result.labels);
+      std::vector<std::string> temp;
+      for (auto &sample : result.samples) {
+        temp.push_back(FormatTSSampleAsRedisReply(sample));
+      }
+      entry[2] = redis::Array(temp);
+      reply.push_back(redis::Array(entry));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSMGetBase::registerDefaultHandlers();
+    CommandTSRangeBase::registerDefaultHandlers();
+    registerHandler("GROUPBY", [this](TSOptionsParser &parser) { return handleGroupBy(parser, option_); });
+  }
+
+  static Status handleGroupBy(TSOptionsParser &parser, TSMRangeOption &option) {
+    auto group_value_parse = parser.TakeStr();
+    if (group_value_parse.IsOK()) {
+      option.group_by_label = std::move(group_value_parse.GetValue());
+    } else {
+      return {Status::RedisParseErr, errTSMRangeArgsNum};
+    }
+    auto reduce_keyword_parse = parser.TakeStr();
+    if (!reduce_keyword_parse.IsOK() || reduce_keyword_parse.GetValue() != "REDUCE") {
+      return {Status::RedisParseErr, errTSMRangeArgsNum};
+    }
+    auto &type = option.reducer;
+    using GroupReducerType = TSMRangeOption::GroupReducerType;
+    if (parser.EatEqICase("AVG")) {
+      type = GroupReducerType::AVG;
+    } else if (parser.EatEqICase("SUM")) {
+      type = GroupReducerType::SUM;
+    } else if (parser.EatEqICase("MIN")) {
+      type = GroupReducerType::MIN;
+    } else if (parser.EatEqICase("MAX")) {
+      type = GroupReducerType::MAX;
+    } else if (parser.EatEqICase("RANGE")) {
+      type = GroupReducerType::RANGE;
+    } else if (parser.EatEqICase("COUNT")) {
+      type = GroupReducerType::COUNT;
+    } else if (parser.EatEqICase("STD.P")) {
+      type = GroupReducerType::STD_P;
+    } else if (parser.EatEqICase("STD.S")) {
+      type = GroupReducerType::STD_S;
+    } else if (parser.EatEqICase("VAR.P")) {
+      type = GroupReducerType::VAR_P;
+    } else if (parser.EatEqICase("VAR.S")) {
+      type = GroupReducerType::VAR_S;
+    } else if (parser.Good()) {
+      return {Status::RedisParseErr, "Invalid reducer type"};
+    } else {
+      return {Status::RedisParseErr, errTSMRangeArgsNum};
+    }
+    return Status::OK();
+  }
+
+ private:
+  TSMRangeOption option_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -857,6 +985,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY), );
+                        MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY), );
 
 }  // namespace redis

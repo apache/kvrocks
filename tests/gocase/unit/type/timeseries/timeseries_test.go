@@ -560,7 +560,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 				filters:        []string{"type="},
 				expectError:    true,
 				errorSubstring: "please provide at least one matcher",
-			}, 
+			},
 			{
 				name:         "Filter with trailing comma - type=(temp,)",
 				filters:      []string{"type=(temp,)"},

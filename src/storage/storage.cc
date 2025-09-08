@@ -357,9 +357,9 @@ Status Storage::Open(DBOpenMode mode) {
 
   rocksdb::BlockBasedTableOptions index_table_opts = InitTableOptions();
   rocksdb::ColumnFamilyOptions index_opts(options);
-  search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(index_table_opts));
-  search_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
-  search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+  index_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(index_table_opts));
+  index_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
+  index_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&index_opts);
 
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;

@@ -143,7 +143,7 @@ namespace redis {
 
 class KeywordCommandBase : public Commander {
  public:
-  KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {}
+  KeywordCommandBase() {}
 
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),
@@ -185,9 +185,6 @@ class KeywordCommandBase : public Commander {
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
- public:
-  CommandTSCreateBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {}
-
  protected:
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
@@ -270,11 +267,12 @@ class CommandTSCreateBase : public KeywordCommandBase {
 
 class CommandTSCreate : public CommandTSCreateBase {
  public:
-  CommandTSCreate() : CommandTSCreateBase(2, 0) { registerDefaultHandlers(); }
+  CommandTSCreate() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 2) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
+    CommandTSCreateBase::setSkipNum(2);
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -343,7 +341,7 @@ class CommandTSInfo : public Commander {
 
 class CommandTSAdd : public CommandTSCreateBase {
  public:
-  CommandTSAdd() : CommandTSCreateBase(4, 0) { registerDefaultHandlers(); }
+  CommandTSAdd() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -360,6 +358,7 @@ class CommandTSAdd : public CommandTSCreateBase {
     }
     ts_ = ts_parse.GetValue();
     value_ = value_parse.GetValue();
+    CommandTSCreateBase::setSkipNum(4);
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -468,9 +467,6 @@ class CommandTSMAdd : public Commander {
 };
 
 class CommandTSAggregatorBase : public KeywordCommandBase {
- public:
-  CommandTSAggregatorBase(size_t skip_num, size_t tail_skip_num) : KeywordCommandBase(skip_num, tail_skip_num) {}
-
  protected:
   const TSAggregator &getAggregator() const { return aggregator_; }
 
@@ -536,10 +532,9 @@ class CommandTSAggregatorBase : public KeywordCommandBase {
   TSAggregator aggregator_;
 };
 
-class CommandTSRangeBase : public CommandTSAggregatorBase {
+class CommandTSRangeBase : virtual public CommandTSAggregatorBase {
  public:
-  CommandTSRangeBase(size_t skip_num, size_t tail_skip_num)
-      : CommandTSAggregatorBase(skip_num + 2, tail_skip_num), skip_num_(skip_num) {}
+  explicit CommandTSRangeBase(size_t skip_num) : skip_num_(skip_num) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)), args.end());
@@ -568,7 +563,7 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
       is_end_explicit_set_ = true;
       option_.end_ts = end_ts.GetValue();
     }
-
+    KeywordCommandBase::setSkipNum(skip_num_ + 2);
     auto s = KeywordCommandBase::Parse(args);
     if (!s.IsOK()) return s;
     if (is_alignment_explicit_set_ && option_.aggregator.type == TSAggregatorType::NONE) {
@@ -694,14 +689,13 @@ class CommandTSRangeBase : public CommandTSAggregatorBase {
 
 class CommandTSRange : public CommandTSRangeBase {
  public:
-  CommandTSRange() : CommandTSRangeBase(2, 0) { registerDefaultHandlers(); }
+  CommandTSRange() : CommandTSRangeBase(2) { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
     }
 
     user_key_ = args[1];
-
     return CommandTSRangeBase::Parse(args);
   }
 
@@ -725,13 +719,14 @@ class CommandTSRange : public CommandTSRangeBase {
 
 class CommandTSCreateRule : public CommandTSAggregatorBase {
  public:
-  explicit CommandTSCreateRule() : CommandTSAggregatorBase(3, 0) { registerDefaultHandlers(); }
+  explicit CommandTSCreateRule() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 6) {
       return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
     }
     src_key_ = args[1];
     dst_key_ = args[2];
+    CommandTSAggregatorBase::setSkipNum(3);
     return CommandTSAggregatorBase::Parse(args);
   }
 
@@ -751,12 +746,13 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
 
 class CommandTSGet : public CommandTSAggregatorBase {
  public:
-  CommandTSGet() : CommandTSAggregatorBase(2, 0) { registerDefaultHandlers(); }
+  CommandTSGet() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 2) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.get' command"};
     }
     user_key_ = args[1];
+    CommandTSAggregatorBase::setSkipNum(2);
     return CommandTSAggregatorBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -784,10 +780,7 @@ class CommandTSGet : public CommandTSAggregatorBase {
   std::string user_key_;
 };
 
-class CommandTSMGetBase : public CommandTSAggregatorBase {
- public:
-  CommandTSMGetBase(size_t skip_num, size_t tail_skip_num) : CommandTSAggregatorBase(skip_num, tail_skip_num) {}
-
+class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
  protected:
   static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {
     with_labels = true;
@@ -819,11 +812,12 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
 
 class CommandTSMGet : public CommandTSMGetBase {
  public:
-  CommandTSMGet() : CommandTSMGetBase(0, 0) { registerDefaultHandlers(); }
+  CommandTSMGet() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 3) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.mget' command"};
     }
+    CommandTSMGetBase::setSkipNum(1);
     return CommandTSMGetBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {

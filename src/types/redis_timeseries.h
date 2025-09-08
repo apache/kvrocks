@@ -209,7 +209,19 @@ class TSMQueryFilterParser {
 };
 
 struct TSMRangeOption : TSMGetOption, TSRangeOption {
-  using GroupReducerType = TSAggregatorType;
+  enum class GroupReducerType : uint8_t {
+    NONE = 0,
+    AVG = 1,
+    SUM = 2,
+    MIN = 3,
+    MAX = 4,
+    RANGE = 5,
+    COUNT = 6,
+    STD_P = 7,
+    STD_S = 8,
+    VAR_P = 9,
+    VAR_S = 10,
+  };
 
   GroupReducerType reducer = GroupReducerType::NONE;
   std::string group_by_label;
@@ -228,6 +240,9 @@ enum class TSCreateRuleResult : uint8_t {
   kDstHasDestRule = 5,
   kSrcEqDst = 6,
 };
+
+std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
+                                            TSMRangeOption::GroupReducerType reducer_type);
 
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 

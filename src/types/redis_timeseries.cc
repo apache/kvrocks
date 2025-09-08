@@ -20,6 +20,8 @@
 
 #include "redis_timeseries.h"
 
+#include <queue>
+
 #include "commands/error_constants.h"
 #include "db_util.h"
 
@@ -149,6 +151,98 @@ LabelKVList ExtractSelectedLabels(LabelKVList &&labels, const std::set<std::stri
     }
   }
   return res;
+}
+
+std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
+                                            TSMRangeOption::GroupReducerType reducer_type) {
+  if (reducer_type == TSMRangeOption::GroupReducerType::NONE) {
+    return {};
+  }
+  struct SamplePtr {
+    const TSSample *sample;
+    size_t vector_idx;
+    size_t sample_idx;
+
+    bool operator>(const SamplePtr &other) const { return sample->ts > other.sample->ts; }
+  };
+  std::vector<TSSample> result;
+  std::priority_queue<SamplePtr, std::vector<SamplePtr>, std::greater<SamplePtr>> min_heap;
+
+  // Initialize the min-heap with the first element of each vector
+  for (size_t i = 0; i < all_samples.size(); ++i) {
+    if (!all_samples[i].empty()) {
+      min_heap.push({&all_samples[i][0], i, 0});
+    }
+  }
+  if (min_heap.empty()) {
+    return result;
+  }
+
+  auto reduce = [&](nonstd::span<const TSSample> samples) -> double {
+    auto sample_size = static_cast<double>(samples.size());
+    switch (reducer_type) {
+      case TSMRangeOption::GroupReducerType::SUM:
+        return Reducer::Sum(samples);
+      case TSMRangeOption::GroupReducerType::AVG:
+        return samples.empty() ? 0.0 : Reducer::Sum(samples) / sample_size;
+      case TSMRangeOption::GroupReducerType::MIN:
+        return Reducer::Min(samples);
+      case TSMRangeOption::GroupReducerType::MAX:
+        return Reducer::Max(samples);
+      case TSMRangeOption::GroupReducerType::RANGE:
+        return Reducer::Range(samples);
+      case TSMRangeOption::GroupReducerType::COUNT:
+        return sample_size;
+      case TSMRangeOption::GroupReducerType::STD_P:
+        return Reducer::StdP(samples);
+      case TSMRangeOption::GroupReducerType::STD_S:
+        return Reducer::StdS(samples);
+      case TSMRangeOption::GroupReducerType::VAR_P:
+        return Reducer::VarP(samples);
+      case TSMRangeOption::GroupReducerType::VAR_S:
+        return Reducer::VarS(samples);
+      case TSMRangeOption::GroupReducerType::NONE:
+        return 0.0;
+    }
+    return 0.0;
+  };
+  std::vector<TSSample> current_group;
+  current_group.reserve(all_samples.size());
+
+  while (!min_heap.empty()) {
+    // Get the top element from the min-heap
+    SamplePtr top = min_heap.top();
+    min_heap.pop();
+
+    // Check if the timestamp is the same as the current group
+    if (!current_group.empty() && top.sample->ts != current_group.back().ts) {
+      // Different timestamp, reduce the current group and start a new one
+      uint64_t group_ts = current_group.back().ts;
+      nonstd::span<const TSSample> group_span(current_group);
+      double reduced_value = reduce(group_span);
+
+      result.push_back({group_ts, reduced_value});
+      current_group.clear();
+    }
+    current_group.push_back(*top.sample);
+
+    // Push the next element from the same vector into the min-heap
+    size_t next_sample_idx = top.sample_idx + 1;
+    if (next_sample_idx < all_samples[top.vector_idx].size()) {
+      min_heap.push({&all_samples[top.vector_idx][next_sample_idx], top.vector_idx, next_sample_idx});
+    }
+  }
+
+  // Process the last group if it exists
+  if (!current_group.empty()) {
+    uint64_t group_ts = current_group.back().ts;
+    nonstd::span<const TSSample> group_span(current_group);
+    double reduced_value = reduce(group_span);
+
+    result.push_back({group_ts, reduced_value});
+  }
+
+  return result;
 }
 
 std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
@@ -1678,8 +1772,15 @@ rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &o
         group_res.labels = ExtractSelectedLabels(std::move(group_labels), option.selected_labels);
       }
       // Samples
-      // TODO:
-
+      std::vector<std::vector<TSSample>> all_samples;
+      all_samples.reserve(indices.size());
+      for (size_t i : indices) {
+        std::vector<TSSample> samples;
+        s = rangeCommon(ctx, AppendNamespacePrefix(user_keys[i]), metas[i], option, &samples);
+        if (!s.ok()) return s;
+        all_samples.push_back(std::move(samples));
+      }
+      group_res.samples = GroupSamplesAndReduce(all_samples, option.reducer);
       // Sources
       for (size_t i : indices) {
         group_res.source_keys.push_back(std::move(user_keys[i]));

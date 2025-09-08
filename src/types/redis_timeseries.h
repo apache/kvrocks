@@ -199,7 +199,7 @@ class TSMQueryFilterParser {
 
  private:
   TSMGetOption::FilterOption &option_;
-  bool has_matcher = false;
+  bool has_matcher_ = false;
   static std::pair<size_t, size_t> findOperator(std::string_view expr);
   static std::string_view trim(std::string_view s);
   static std::string_view unquote(std::string_view s);

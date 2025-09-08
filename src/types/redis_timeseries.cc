@@ -406,7 +406,7 @@ Status TSMQueryFilterParser::Parse(std::string_view expr) {
 }
 
 Status TSMQueryFilterParser::Check() const {
-  if (option_.labels_equals.empty() || !has_matcher) {
+  if (option_.labels_equals.empty() || !has_matcher_) {
     return {Status::RedisParseErr, "please provide at least one matcher"};
   }
   return Status::OK();
@@ -500,7 +500,7 @@ void TSMQueryFilterParser::handleEquals(std::string_view label, std::string_view
     // Label not exists: label=
     option_.labels_equals[std::move(label_str)].clear();
   } else {
-    has_matcher = true;
+    has_matcher_ = true;
     // If label exists, but value is empty, means label not exists, skip it
     if (option_.labels_equals.count(label_str) && option_.labels_equals[label_str].empty()) {
       return;

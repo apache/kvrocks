@@ -805,9 +805,9 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
   Status handleSelectedLabels(TSOptionsParser &parser, std::set<std::string> &selected_labels) {
+    const auto &key_words = getAllKeyWords();
     while (parser.Good()) {
       auto &value = parser.RawPeek();
-      const auto &key_words = getAllKeyWords();
       if (key_words.find(value) != key_words.end()) {
         break;
       }
@@ -815,15 +815,15 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
     }
     return Status::OK();
   }
-  static Status handleFilterExpr(TSOptionsParser &parser, TSMGetOption::FilterOption &filter_option) {
+  Status handleFilterExpr(TSOptionsParser &parser, TSMGetOption::FilterOption &filter_option) {
     auto filter_parser = TSMQueryFilterParser(filter_option);
+    const auto &key_words = getAllKeyWords();
     while (parser.Good()) {
-      auto parse_value = parser.TakeStr();
-      if (!parse_value.IsOK()) {
+      auto &value = parser.RawPeek();
+      if (key_words.find(value) != key_words.end()) {
         break;
       }
-      auto &value = parse_value.GetValue();
-      auto s = filter_parser.Parse(value);
+      auto s = filter_parser.Parse(parser.TakeStr().GetValue());
       if (!s.IsOK()) return s;
     }
     return filter_parser.Check();

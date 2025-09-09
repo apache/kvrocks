@@ -478,8 +478,9 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
   return res;
 }
 
-std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) const {
+std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted) const {
   if (from > to) {
+    if (deleted) *deleted = 0;
     return "";
   }
 
@@ -493,9 +494,14 @@ std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) cons
   size_t start_idx = std::distance(samples_.begin(), start_it);
   size_t end_idx = std::distance(samples_.begin(), end_it);
 
+  auto deleted_count = end_idx - start_idx;
+  if (deleted) *deleted = deleted_count;
+  if (deleted_count == 0) {
+    return "";
+  }
   // Calculate buffer size: header + remaining samples
   const size_t header_size = TSChunk::MetaData::kEncodedSize;
-  const size_t remaining_count = metadata_.count - (end_idx - start_idx);
+  const size_t remaining_count = metadata_.count - deleted_count;
   const size_t required_size = header_size + remaining_count * sizeof(TSSample);
 
   // Prepare new buffer

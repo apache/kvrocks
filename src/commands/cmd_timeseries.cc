@@ -121,7 +121,7 @@ std::string_view GroupReducerTypeToString(GroupReducerType reducer) {
   return it->second;
 }
 
-std::string GroupSourceToString(std::vector<std::string> sources) {
+std::string GroupSourceToString(const std::vector<std::string> &sources) {
   std::string res;
   size_t total_size = 0;
   for (auto &src : sources) {
@@ -175,7 +175,7 @@ namespace redis {
 
 class KeywordCommandBase : public Commander {
  public:
-  KeywordCommandBase() {}
+  KeywordCommandBase() = default;
 
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),

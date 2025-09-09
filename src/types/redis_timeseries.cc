@@ -134,7 +134,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   return res;
 }
 
-LabelKVList ExtractSelectedLabels(LabelKVList &&labels, const std::set<std::string> &selected_labels) {
+LabelKVList ExtractSelectedLabels(LabelKVList labels, const std::set<std::string> &selected_labels) {
   std::unordered_map<std::string_view, LabelKVPair *> labels_map;
   labels_map.reserve(labels.size());
   for (auto &label : labels) {

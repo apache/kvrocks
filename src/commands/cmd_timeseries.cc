@@ -143,30 +143,19 @@ namespace redis {
 
 class KeywordCommandBase : public Commander {
  public:
-  KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {
-    handlers_.reserve(32);  // Avoid Realloc space, or keywords_ may be invalid.
-  }
+  KeywordCommandBase(size_t skip_num, size_t tail_skip_num) : skip_num_(skip_num), tail_skip_num_(tail_skip_num) {}
 
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),
                            std::prev(args.end(), static_cast<std::ptrdiff_t>(tail_skip_num_)));
-
     while (parser.Good()) {
-      bool handled = false;
-      for (const auto &handler : handlers_) {
-        if (parser.EatEqICase(handler.first)) {
-          Status s = handler.second(parser);
-          if (!s.IsOK()) return s;
-          handled = true;
-          break;
-        }
-      }
-
-      if (!handled) {
-        parser.Skip(1);
+      auto &value = parser.RawTake();
+      auto value_upper = util::ToUpper(value);
+      if (containsKeyword(value_upper, true)) {
+        Status s = handlers_[value_upper](parser);
+        if (!s.IsOK()) return s;
       }
     }
-
     return Commander::Parse(args);
   }
 
@@ -175,24 +164,24 @@ class KeywordCommandBase : public Commander {
 
   template <typename Handler>
   void registerHandler(const std::string &keyword, Handler &&handler) {
-    handlers_.emplace_back(keyword, std::forward<Handler>(handler));
-    keywords_.insert(handlers_.back().first);
+    handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler));
   }
-
   virtual void registerDefaultHandlers() = 0;
 
   void setSkipNum(size_t num) { skip_num_ = num; }
-
   void setTailSkipNum(size_t num) { tail_skip_num_ = num; }
-
-  const std::set<std::string_view> &getAllKeyWords() const { return keywords_; }
+  bool containsKeyword(const std::string &keyword, bool is_upper = false) const {
+    if (is_upper) {
+      return handlers_.count(keyword);
+    } else {
+      return handlers_.count(util::ToUpper(keyword));
+    }
+  }
 
  private:
   size_t skip_num_ = 0;
   size_t tail_skip_num_ = 0;
-
-  std::set<std::string_view> keywords_;
-  std::vector<std::pair<std::string, std::function<Status(TSOptionsParser &)>>> handlers_;
+  std::unordered_map<std::string, std::function<Status(TSOptionsParser &)>> handlers_;
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
@@ -805,10 +794,9 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
     return Status::OK();
   }
   Status handleSelectedLabels(TSOptionsParser &parser, std::set<std::string> &selected_labels) {
-    const auto &key_words = getAllKeyWords();
     while (parser.Good()) {
       auto &value = parser.RawPeek();
-      if (key_words.find(value) != key_words.end()) {
+      if (containsKeyword(value)) {
         break;
       }
       selected_labels.emplace(parser.TakeStr().GetValue());
@@ -817,10 +805,9 @@ class CommandTSMGetBase : public CommandTSAggregatorBase {
   }
   Status handleFilterExpr(TSOptionsParser &parser, TSMGetOption::FilterOption &filter_option) {
     auto filter_parser = TSMQueryFilterParser(filter_option);
-    const auto &key_words = getAllKeyWords();
     while (parser.Good()) {
       auto &value = parser.RawPeek();
-      if (key_words.find(value) != key_words.end()) {
+      if (containsKeyword(value)) {
         break;
       }
       auto s = filter_parser.Parse(parser.TakeStr().GetValue());

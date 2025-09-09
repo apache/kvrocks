@@ -67,13 +67,25 @@ class TSChunk {
  public:
   using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 
-  enum class AddResult : uint8_t {
+  enum class AddResultType : uint8_t {
     kNone,
-    kOk,
+    kInsert,
+    kUpdate,
+    kSkip,
     kBlock,
     kOld,
   };
-  using AddResultWithTS = std::pair<AddResult, uint64_t>;
+  struct AddResult {
+    AddResultType type = AddResultType::kNone;
+    TSSample sample = {0, 0.0};
+
+    static inline AddResult CreateInsert(const TSSample& sample) {
+      AddResult result;
+      result.type = AddResultType::kInsert;
+      result.sample = sample;
+      return result;
+    }
+  };
 
   class SampleBatch;
   class SampleBatchSlice {
@@ -127,7 +139,7 @@ class TSChunk {
     SampleBatchSlice AsSlice();
 
     // Return add results by samples' order
-    std::vector<AddResultWithTS> GetFinalResults() const;
+    std::vector<AddResult> GetFinalResults() const;
 
    private:
     std::vector<TSSample> samples_;
@@ -156,7 +168,8 @@ class TSChunk {
 
   // Merge samples with duplicate policy handling
   // Returns result status, updates 'to' value according to policy
-  static AddResult MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy);
+  static AddResult MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy,
+                                     bool is_batch_process = false);
 
   virtual std::unique_ptr<TSChunkIterator> CreateIterator() const = 0;
 
@@ -187,6 +200,9 @@ class TSChunk {
   // Get idx-th latest sample, idx=0 means latest sample
   virtual TSSample GetLatestSample(uint32_t idx) const = 0;
 
+  // Get all samples as a span
+  virtual nonstd::span<const TSSample> GetSamplesSpan() const = 0;
+
  protected:
   nonstd::span<const char> data_;
   MetaData metadata_;
@@ -206,6 +222,8 @@ class UncompTSChunk : public TSChunk {
   std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
   TSSample GetLatestSample(uint32_t idx) const override;
+
+  nonstd::span<const TSSample> GetSamplesSpan() const override { return samples_; }
 
  private:
   nonstd::span<const TSSample> samples_;

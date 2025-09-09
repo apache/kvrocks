@@ -124,7 +124,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Scan(engine::Context &ctx, const std::string &cursor, uint64_t limit,
                                      const std::string &prefix, const std::string &suffix_glob,
                                      std::vector<std::string> *keys, std::string *end_cursor = nullptr,
-                                     RedisType type = kRedisNone);
+                                     RedisType type = kRedisNone, std::optional<int> scan_slot = std::nullopt);
   [[nodiscard]] rocksdb::Status RandomKey(engine::Context &ctx, const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns,

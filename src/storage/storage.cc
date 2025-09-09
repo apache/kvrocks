@@ -355,6 +355,13 @@ Status Storage::Open(DBOpenMode mode) {
   search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&search_opts);
 
+  rocksdb::BlockBasedTableOptions index_table_opts = InitTableOptions();
+  rocksdb::ColumnFamilyOptions index_opts(options);
+  index_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(index_table_opts));
+  index_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
+  index_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+  SetBlobDB(&index_opts);
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
@@ -364,6 +371,7 @@ Status Storage::Open(DBOpenMode mode) {
   column_families.emplace_back(std::string(kPropagateColumnFamilyName), propagate_opts);
   column_families.emplace_back(std::string(kStreamColumnFamilyName), subkey_opts);
   column_families.emplace_back(std::string(kSearchColumnFamilyName), search_opts);
+  column_families.emplace_back(std::string(kIndexColumnFamilyName), index_opts);
 
   auto start = std::chrono::high_resolution_clock::now();
   switch (mode) {

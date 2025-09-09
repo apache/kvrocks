@@ -21,6 +21,7 @@ package timeseries
 import (
 	"context"
 	"math"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -526,5 +527,232 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, 2, len(vals))
 		assert.Equal(t, []interface{}{int64(0), -0.2}, vals[0])
 		assert.Equal(t, []interface{}{int64(10), float64(11)}, vals[1])
+	})
+
+	t.Run("TS.MGET Filter Expression Parsing", func(t *testing.T) {
+		// Clean up existing keys
+		require.NoError(t, rdb.Del(ctx, "temp:TLV", "temp:JLM").Err())
+
+		// Create the time series with labels as in the example
+		require.NoError(t, rdb.Do(ctx, "ts.create", "temp:TLV", "LABELS", "type", "temp", "location", "TLV").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "temp:JLM", "LABELS", "type", "temp", "location", "JLM").Err())
+
+		// Add a sample to each time series
+		require.NoError(t, rdb.Do(ctx, "ts.add", "temp:TLV", "1000", "30").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", "temp:JLM", "1005", "30").Err())
+
+		// Test cases
+		tests := []struct {
+			name           string
+			filters        []string
+			expectedKeys   []string
+			expectError    bool
+			errorSubstring string
+		}{
+			{
+				name:           "Empty Filter",
+				filters:        []string{},
+				expectError:    true,
+				errorSubstring: "wrong number of arguments",
+			},
+			{
+				name:           "No Matcher",
+				filters:        []string{"type="},
+				expectError:    true,
+				errorSubstring: "please provide at least one matcher",
+			},
+			{
+				name:         "Filter with trailing comma - type=(temp,)",
+				filters:      []string{"type=(temp,)"},
+				expectError:  false,
+				expectedKeys: []string{"temp:TLV", "temp:JLM"},
+			},
+			{
+				name:         "Basic equality - type=temp",
+				filters:      []string{"type=temp"},
+				expectError:  false,
+				expectedKeys: []string{"temp:TLV", "temp:JLM"},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				args := []interface{}{"ts.mget", "FILTER"}
+				for _, f := range tc.filters {
+					args = append(args, f)
+				}
+
+				result, err := rdb.Do(ctx, args...).Result()
+				if tc.expectError {
+					require.Error(t, err)
+					if tc.errorSubstring != "" {
+						require.Contains(t, err.Error(), tc.errorSubstring)
+					}
+					return
+				}
+
+				require.NoError(t, err)
+				resultArray, ok := result.([]interface{})
+				require.True(t, ok, "Expected array result")
+
+				foundKeys := make([]string, 0)
+				for _, item := range resultArray {
+					itemArray, ok := item.([]interface{})
+					require.True(t, ok, "Expected item to be an array")
+					require.True(t, len(itemArray) >= 1, "Expected item array to have at least 1 element")
+
+					key, ok := itemArray[0].(string)
+					require.True(t, ok, "Expected key to be a string")
+					foundKeys = append(foundKeys, key)
+				}
+
+				// Sort both expected and found keys for consistent comparison
+				sort.Strings(tc.expectedKeys)
+				sort.Strings(foundKeys)
+
+				require.Equal(t, tc.expectedKeys, foundKeys,
+					"Expected keys %v but got %v", tc.expectedKeys, foundKeys)
+			})
+		}
+
+		// Test WITHLABELS option
+		t.Run("WITHLABELS Option", func(t *testing.T) {
+			result, err := rdb.Do(ctx, "ts.mget", "WITHLABELS", "FILTER", "type=temp").Result()
+			require.NoError(t, err)
+
+			resultArray, ok := result.([]interface{})
+			require.True(t, ok, "Expected array result")
+
+			foundKeys := make([]string, 0)
+			for _, item := range resultArray {
+				itemArray, ok := item.([]interface{})
+				require.True(t, ok, "Expected item to be an array")
+				require.GreaterOrEqual(t, len(itemArray), 3, "Expected item array to have at least 3 elements")
+
+				// Extract key
+				key, ok := itemArray[0].(string)
+				require.True(t, ok, "Expected key to be a string")
+				foundKeys = append(foundKeys, key)
+
+				// Extract labels - labels are a nested array of [key, value] pairs
+				labels, ok := itemArray[1].([]interface{})
+				require.True(t, ok, "Expected labels to be an array")
+
+				// Create a map to store label key-value pairs
+				labelMap := make(map[string]string)
+
+				// Loop through each label pair in the array
+				for _, labelPair := range labels {
+					pair, ok := labelPair.([]interface{})
+					require.True(t, ok, "Expected label pair to be an array")
+					require.Equal(t, 2, len(pair), "Expected label pair to have 2 elements")
+
+					labelKey, ok := pair[0].(string)
+					require.True(t, ok, "Expected label key to be a string")
+
+					labelValue, ok := pair[1].(string)
+					require.True(t, ok, "Expected label value to be a string")
+
+					labelMap[labelKey] = labelValue
+				}
+
+				// Verify labels
+				require.Equal(t, "temp", labelMap["type"])
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, "TLV", labelMap["location"])
+				case "temp:JLM":
+					require.Equal(t, "JLM", labelMap["location"])
+				}
+
+				// Extract and verify sample data - sample is a nested array
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
+
+				// Check timestamp and value
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, int64(1000), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				case "temp:JLM":
+					require.Equal(t, int64(1005), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				}
+			}
+
+			// Check that we have both keys
+			sort.Strings(foundKeys)
+			require.Equal(t, []string{"temp:JLM", "temp:TLV"}, foundKeys)
+		})
+
+		// Test SELECTED_LABELS option
+		t.Run("SELECTED_LABELS Option", func(t *testing.T) {
+			result, err := rdb.Do(ctx, "ts.mget", "SELECTED_LABELS", "location", "FILTER", "type=temp").Result()
+			require.NoError(t, err)
+
+			resultArray, ok := result.([]interface{})
+			require.True(t, ok, "Expected array result")
+
+			// Debug the structure
+			t.Logf("SELECTED_LABELS Result structure: %#v", resultArray)
+
+			for _, item := range resultArray {
+				itemArray, ok := item.([]interface{})
+				require.True(t, ok, "Expected item to be an array")
+				require.GreaterOrEqual(t, len(itemArray), 3, "Expected item array to have at least 3 elements")
+
+				// Extract key
+				key, ok := itemArray[0].(string)
+				require.True(t, ok, "Expected key to be a string")
+
+				// Extract labels - labels are a nested array of [key, value] pairs
+				labels, ok := itemArray[1].([]interface{})
+				require.True(t, ok, "Expected labels to be an array")
+
+				// Create a map to store label key-value pairs
+				labelMap := make(map[string]string)
+
+				// Loop through each label pair in the array
+				for _, labelPair := range labels {
+					pair, ok := labelPair.([]interface{})
+					require.True(t, ok, "Expected label pair to be an array")
+					require.Equal(t, 2, len(pair), "Expected label pair to have 2 elements")
+
+					labelKey, ok := pair[0].(string)
+					require.True(t, ok, "Expected label key to be a string")
+
+					labelValue, ok := pair[1].(string)
+					require.True(t, ok, "Expected label value to be a string")
+
+					labelMap[labelKey] = labelValue
+				}
+
+				// Verify that only location label is present
+				require.Equal(t, 1, len(labelMap), "Should have exactly one label")
+				require.Contains(t, labelMap, "location")
+				require.NotContains(t, labelMap, "type")
+
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, "TLV", labelMap["location"])
+				case "temp:JLM":
+					require.Equal(t, "JLM", labelMap["location"])
+				}
+
+				// Extract and verify sample data
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
+
+				// Check timestamp and value
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, int64(1000), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				case "temp:JLM":
+					require.Equal(t, int64(1005), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				}
+			}
+		})
 	})
 }

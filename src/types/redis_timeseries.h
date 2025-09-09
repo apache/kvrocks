@@ -125,6 +125,7 @@ struct TSRevLabelKey {
       : ns(ns), label_key(label_key), label_value(label_value), user_key(user_key) {}
 
   [[nodiscard]] std::string Encode() const;
+  static std::string UpperBound(Slice ns);
 };
 
 struct LabelKVPair {
@@ -173,6 +174,40 @@ struct TSRangeOption {
   BucketTimestampType bucket_timestamp_type = BucketTimestampType::Start;
 };
 
+struct TSMGetOption {
+  struct FilterOption {
+    std::unordered_map<std::string, std::set<std::string>> labels_equals;
+    std::unordered_map<std::string, std::set<std::string>> labels_not_equals;
+  };
+
+  bool with_labels = false;
+  std::set<std::string> selected_labels;
+  FilterOption filter;
+};
+
+struct TSMGetResult {
+  std::string name;  // name of the source key or the group
+  LabelKVList labels;
+  std::vector<TSSample> samples;
+};
+
+class TSMQueryFilterParser {
+ public:
+  explicit TSMQueryFilterParser(TSMGetOption::FilterOption &option) : option_(option) {}
+  Status Parse(std::string_view expr);
+  Status Check() const;
+
+ private:
+  TSMGetOption::FilterOption &option_;
+  bool has_matcher_ = false;
+  static std::pair<size_t, size_t> findOperator(std::string_view expr);
+  static std::string_view trim(std::string_view s);
+  static std::string_view unquote(std::string_view s);
+  static std::vector<std::string_view> splitValueList(std::string_view list);
+  void handleEquals(std::string_view label, std::string_view value_str);
+  void handleNotEquals(std::string_view label, std::string_view value_str);
+};
+
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,
@@ -191,7 +226,8 @@ class TimeSeries : public SubKeyScanner {
   using AddResult = TSChunk::AddResult;
   using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 
-  TimeSeries(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  TimeSeries(engine::Storage *storage, const std::string &ns)
+      : SubKeyScanner(storage, ns), index_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Index)) {}
   rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                       AddResult *res, const DuplicatePolicy *on_dup_policy = nullptr);
@@ -203,8 +239,12 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
                              const TSAggregator &aggregator, TSCreateRuleResult *res);
+  rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
+                       std::vector<TSMGetResult> *res);
 
  private:
+  rocksdb::ColumnFamilyHandle *index_cf_handle_;
+
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
   rocksdb::Status createTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
                                    const TSCreateOption *options);
@@ -218,6 +258,8 @@ class TimeSeries : public SubKeyScanner {
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
   rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                    const std::vector<std::string> &new_chunks, SampleBatch &sample_batch);
+  rocksdb::Status getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                            bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);
@@ -229,6 +271,9 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
                                      const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
                                      std::vector<TSDownStreamMeta> *metas = nullptr);
+  rocksdb::Status getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
+                                   std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec = nullptr,
+                                   std::vector<TimeSeriesMetadata> *metas = nullptr);
 
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;

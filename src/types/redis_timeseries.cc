@@ -367,11 +367,177 @@ std::string TSRevLabelKey::Encode() const {
   return encoded;
 }
 
+std::string TSRevLabelKey::UpperBound(Slice ns) {
+  std::string encoded;
+  size_t total = 1 + ns.size() + 1;
+  encoded.resize(total);
+  auto buf = encoded.data();
+  buf = EncodeFixed8(buf, static_cast<uint8_t>(ns.size()));
+  buf = EncodeBuffer(buf, ns);
+  EncodeFixed8(buf, static_cast<uint8_t>(IndexKeyType::TS_LABEL) + 1);
+  return encoded;
+}
+
 TSCreateOption::TSCreateOption()
     : retention_time(kDefaultRetentionTime),
       chunk_size(kDefaultChunkSize),
       chunk_type(kDefaultChunkType),
       duplicate_policy(kDefaultDuplicatePolicy) {}
+
+Status TSMQueryFilterParser::Parse(std::string_view expr) {
+  if (expr.empty()) return Status::OK();
+  // Locate "!=" or "="
+  const auto [op_pos, op_len] = findOperator(expr);
+  if (op_pos == std::string_view::npos) {
+    return {Status::RedisParseErr, "failed parsing labels"};
+  }
+  // Extract label and value
+  std::string_view label = expr.substr(0, op_pos);
+  label = trim(label);
+
+  std::string_view value_str = expr.substr(op_pos + op_len);
+  std::string_view op = expr.substr(op_pos, op_len);  // "=" or "!="
+  if (op == "=") {
+    handleEquals(label, value_str);
+  } else if (op == "!=") {
+    handleNotEquals(label, value_str);
+  }
+  return Status::OK();
+}
+
+Status TSMQueryFilterParser::Check() const {
+  if (option_.labels_equals.empty() || !has_matcher_) {
+    return {Status::RedisParseErr, "please provide at least one matcher"};
+  }
+  return Status::OK();
+}
+
+std::pair<size_t, size_t> TSMQueryFilterParser::findOperator(std::string_view expr) {
+  char quote = 0;
+  for (size_t i = 0; i < expr.size(); i++) {
+    char c = expr[i];
+    if (c == '\'' || c == '"') {
+      if (quote == 0)
+        quote = c;
+      else if (quote == c)
+        quote = 0;
+    } else if (quote == 0) {
+      if (c == '!' && i + 1 < expr.size() && expr[i + 1] == '=') {
+        return {i, 2};
+      } else if (c == '=') {
+        return {i, 1};
+      }
+    }
+  }
+  return {std::string_view::npos, 0};
+}
+
+std::string_view TSMQueryFilterParser::trim(std::string_view s) {
+  while (!s.empty() && std::isspace(s.front())) {
+    s.remove_prefix(1);
+  }
+  while (!s.empty() && std::isspace(s.back())) {
+    s.remove_suffix(1);
+  }
+  return s;
+}
+
+std::string_view TSMQueryFilterParser::unquote(std::string_view s) {
+  if (s.size() >= 2) {
+    char first = s.front();
+    char last = s.back();
+    if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+      return s.substr(1, s.size() - 2);
+    }
+  }
+  return s;
+}
+
+std::vector<std::string_view> TSMQueryFilterParser::splitValueList(std::string_view list) {
+  std::vector<std::string_view> values;
+  if (list.empty()) return values;
+
+  char quote = 0;
+  int depth = 0;
+  size_t start = 0;
+
+  for (size_t i = 0; i <= list.size(); i++) {
+    if (i == list.size()) {
+      if (start < i) {
+        auto val = trim(unquote(list.substr(start, i - start)));
+        if (!val.empty()) {
+          values.push_back(val);
+        }
+      }
+      break;
+    }
+    char c = list[i];
+    if (c == '\'' || c == '"') {
+      if (quote == 0)
+        quote = c;
+      else if (quote == c)
+        quote = 0;
+    } else if (quote == 0) {
+      if (c == '(')
+        depth++;
+      else if (c == ')')
+        if (depth > 0) depth--;
+    }
+    if (c == ',' && quote == 0 && depth == 0) {
+      auto val = trim(unquote(list.substr(start, i - start)));
+      if (!val.empty()) {
+        values.push_back(val);
+      }
+      start = i + 1;
+    }
+  }
+  return values;
+}
+
+void TSMQueryFilterParser::handleEquals(std::string_view label, std::string_view value_str) {
+  std::string label_str(label);
+  if (value_str.empty()) {
+    // Label not exists: label=
+    option_.labels_equals[std::move(label_str)].clear();
+  } else {
+    has_matcher_ = true;
+    // If label exists, but value is empty, means label not exists, skip it
+    if (option_.labels_equals.count(label_str) && option_.labels_equals[label_str].empty()) {
+      return;
+    }
+    std::set<std::string> values;
+    if (value_str.front() == '(' && value_str.back() == ')') {
+      // List: label=(v1,v2)
+      for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+        values.emplace(val);
+      }
+    } else {
+      // Single value: label=value
+      values.emplace(unquote(value_str));
+    }
+    option_.labels_equals[std::move(label_str)].merge(std::move(values));
+  }
+}
+
+void TSMQueryFilterParser::handleNotEquals(std::string_view label, std::string_view value_str) {
+  std::string label_str(label);
+  if (value_str.empty()) {
+    // Label exists: label!=
+    option_.labels_not_equals[std::move(label_str)].insert("");  // Use empty string to indicate label exists
+  } else {
+    std::set<std::string> values;
+    if (value_str.front() == '(' && value_str.back() == ')') {
+      // List: label!=(v1,v2)
+      for (auto val : splitValueList(value_str.substr(1, value_str.size() - 2))) {
+        values.emplace(val);
+      }
+    } else {
+      // Single value: label!=value
+      values.emplace(unquote(value_str));
+    }
+    option_.labels_not_equals[std::move(label_str)].merge(std::move(values));
+  }
+}
 
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   TimeSeriesMetadata metadata;
@@ -994,6 +1160,34 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status TimeSeries::getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
+                                      bool is_return_latest, std::vector<TSSample> *res) {
+  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
+  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
+  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(chunk_upper_bound);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  // Get the latest chunk
+  auto iter = util::UniqueIterator(ctx, read_options);
+  iter->SeekForPrev(end_key);
+  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
+    return rocksdb::Status::OK();
+  }
+  auto chunk = CreateTSChunkFromData(iter->value());
+
+  if (is_return_latest) {
+    // TODO: need process `latest` option
+  }
+  res->push_back(chunk->GetLatestSample(0));
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                     ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                                     const LabelKVList &labels) {
@@ -1002,6 +1196,14 @@ rocksdb::Status TimeSeries::createLabelIndexInBatch(const Slice &ns_key, const T
     auto s = batch->Put(internal_key, label.v);
     if (!s.ok()) return s;
   }
+  auto [ns, user_key] = ExtractNamespaceKey(ns_key, storage_->IsSlotIdEncoded());
+  // Reverse index
+  for (auto &label : labels) {
+    auto rev_index_key = TSRevLabelKey(ns, label.k, label.v, user_key).Encode();
+    auto s = batch->Put(index_cf_handle_, rev_index_key, Slice());
+    if (!s.ok()) return s;
+  }
+
   return rocksdb::Status::OK();
 }
 
@@ -1064,6 +1266,86 @@ rocksdb::Status TimeSeries::getDownStreamRules(engine::Context &ctx, const Slice
       Slice slice = iter->value().ToStringView();
       meta.Decode(&slice);
       metas->push_back(meta);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
+                                             std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec,
+                                             std::vector<TimeSeriesMetadata> *metas) {
+  std::set<std::string> temp_keys;
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  auto rev_index_upper_bound = TSRevLabelKey::UpperBound(namespace_);
+  for (const auto &[label_k, label_v_set] : filter.labels_equals) {
+    if (label_v_set.empty()) {
+      continue;
+    }
+    for (const auto &label_v : label_v_set) {
+      auto rev_label_key = TSRevLabelKey(namespace_, label_k, label_v);
+      auto rev_index_prefix = rev_label_key.Encode();
+
+      Slice lower_bound(rev_index_prefix);
+      read_options.iterate_lower_bound = &lower_bound;
+      Slice upper_bound(rev_index_upper_bound);
+      read_options.iterate_upper_bound = &upper_bound;
+
+      auto iter = util::UniqueIterator(ctx, read_options, index_cf_handle_);
+      for (iter->Seek(lower_bound); iter->Valid() && iter->key().starts_with(rev_index_prefix); iter->Next()) {
+        auto user_key = iter->key();
+        user_key.remove_prefix(rev_index_prefix.size());
+        temp_keys.emplace(user_key.data(), user_key.size());
+      }
+    }
+  }
+
+  // Filter
+  user_keys->clear();
+  user_keys->reserve(temp_keys.size());
+  if (labels_vec != nullptr) {
+    labels_vec->clear();
+    labels_vec->reserve(temp_keys.size());
+  }
+  if (metas != nullptr) {
+    metas->clear();
+    metas->reserve(temp_keys.size());
+  }
+  for (auto &user_key : temp_keys) {
+    std::string ns_key = AppendNamespacePrefix(user_key);
+    TimeSeriesMetadata metadata;
+    auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+    if (!s.ok()) continue;
+
+    LabelKVList labels;
+    getLabelKVList(ctx, ns_key, metadata, &labels);
+    std::unordered_map<std::string_view, std::string *> label_map;
+    for (auto &label : labels) {
+      label_map[label.k] = &label.v;
+    }
+
+    // Check labels_equals conditions
+    bool match = std::all_of(filter.labels_equals.begin(), filter.labels_equals.end(), [&label_map](const auto &kv) {
+      auto it = label_map.find(kv.first);
+      // If labels_equals value set is empty, means the label key must not exist
+      return (kv.second.empty() && it == label_map.end()) ||
+             (it != label_map.end() && kv.second.count(*(it->second)) > 0);
+    });
+    if (!match) continue;
+
+    // Check labels_not_equals conditions
+    match = std::all_of(filter.labels_not_equals.begin(), filter.labels_not_equals.end(), [&label_map](const auto &kv) {
+      auto it = label_map.find(kv.first);
+      const std::string &str = (it != label_map.end()) ? *(it->second) : "";
+      return kv.second.count(str) == 0;
+    });
+    if (!match) continue;
+
+    user_keys->push_back(user_key);
+    if (labels_vec != nullptr) {
+      labels_vec->push_back(std::move(labels));
+    }
+    if (metas != nullptr) {
+      metas->push_back(std::move(metadata));
     }
   }
   return rocksdb::Status::OK();
@@ -1247,31 +1529,8 @@ rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, boo
   if (!s.ok()) {
     return s;
   }
-
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
-  std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
-  std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
-  std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
-
-  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(chunk_upper_bound);
-  read_options.iterate_upper_bound = &upper_bound;
-  rocksdb::Slice lower_bound(prefix);
-  read_options.iterate_lower_bound = &lower_bound;
-
-  // Get the latest chunk
-  auto iter = util::UniqueIterator(ctx, read_options);
-  iter->SeekForPrev(end_key);
-  if (!iter->Valid() || !iter->key().starts_with(prefix)) {
-    return rocksdb::Status::OK();
-  }
-  auto chunk = CreateTSChunkFromData(iter->value());
-
-  if (is_return_latest) {
-    // TODO: need process `latest` option
-  }
-  res->push_back(chunk->GetLatestSample(0));
-  return rocksdb::Status::OK();
+  s = getCommon(ctx, ns_key, metadata, is_return_latest, res);
+  return s;
 }
 
 rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
@@ -1329,6 +1588,47 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
 
   *res = TSCreateRuleResult::kOK;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status TimeSeries::MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
+                                 std::vector<TSMGetResult> *res) {
+  std::vector<std::string> user_keys;
+  std::vector<LabelKVList> labels_vec;
+  std::vector<TimeSeriesMetadata> metas;
+
+  auto s = getTSKeyByFilter(ctx, option.filter, &user_keys, &labels_vec, &metas);
+  if (!s.ok()) return s;
+
+  res->resize(user_keys.size());
+  for (size_t i = 0; i < user_keys.size(); i++) {
+    std::string ns_key = AppendNamespacePrefix(user_keys[i]);
+    auto &res_i = (*res)[i];
+    auto &metadata = metas[i];
+    auto &labels = labels_vec[i];
+
+    s = getCommon(ctx, ns_key, metadata, is_return_latest, &res_i.samples);
+    if (!s.ok()) return s;
+    res_i.name = std::move(user_keys[i]);
+    if (option.with_labels) {
+      res_i.labels = std::move(labels);
+    } else if (!option.selected_labels.empty()) {
+      std::unordered_map<std::string_view, LabelKVPair *> labels_map;
+      labels_map.reserve(labels.size());
+      for (auto &label : labels) {
+        labels_map[label.k] = &label;
+      }
+      res_i.labels.reserve(option.selected_labels.size());
+      for (const auto &selected_key : option.selected_labels) {
+        auto it = labels_map.find(selected_key);
+        if (it != labels_map.end()) {
+          res_i.labels.emplace_back(std::move(*(it->second)));
+        } else {
+          res_i.labels.push_back({selected_key, ""});
+        }
+      }
+    }
+  }
+  return s;
 }
 
 }  // namespace redis

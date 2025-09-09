@@ -216,4 +216,10 @@ bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_
   return false;
 }
 
+bool IndexFilter::Filter([[maybe_unused]] int level, [[maybe_unused]] const Slice &key,
+                         [[maybe_unused]] const Slice &value, [[maybe_unused]] std::string *new_value,
+                         [[maybe_unused]] bool *modified) const {
+  return false;
+}
+
 }  // namespace engine

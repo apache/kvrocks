@@ -320,7 +320,7 @@ TEST_F(TimeSeriesTest, Range) {
   s = ts_db_->Range(*ctx_, key_, range_opt, &res);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(res.size(), 2);
-  for (const auto& sample : res) {
+  for (const auto &sample : res) {
     EXPECT_GE(sample.v, 200.0);
     EXPECT_LE(sample.v, 300.0);
   }
@@ -502,7 +502,7 @@ TEST_F(TimeSeriesTest, AggregationMultiple) {
   aggregator.bucket_duration = 10;
   aggregator.alignment = 0;
 
-  for (const auto& test : tests) {
+  for (const auto &test : tests) {
     std::string dst_key = key_src + "_dst_" + test.suffix;
     s = ts_db_->Create(*ctx_, dst_key, option);
     EXPECT_TRUE(s.ok());
@@ -530,7 +530,7 @@ TEST_F(TimeSeriesTest, AggregationMultiple) {
   range_opt.start_ts = 0;
   range_opt.end_ts = TSSample::MAX_TIMESTAMP;
 
-  for (const auto& test : tests) {
+  for (const auto &test : tests) {
     std::string dst_key = key_src + "_dst_" + test.suffix;
 
     std::vector<TSSample> res;
@@ -543,5 +543,334 @@ TEST_F(TimeSeriesTest, AggregationMultiple) {
       EXPECT_NEAR(res[i].v, test.expected_results[i].second, 1e-5)
           << "Test failed for " << test.suffix << " at index " << i;
     }
+  }
+}
+
+TEST_F(TimeSeriesTest, MGetFilterExprParse) {
+  using TSMGetOption = redis::TSMGetOption;
+  using TSMQueryFilterParser = redis::TSMQueryFilterParser;
+  // Test 1: Valid single equality
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=value").IsOK());
+    EXPECT_EQ(filter.labels_equals.size(), 1);
+    EXPECT_EQ(filter.labels_equals["label"], std::set<std::string>{"value"});
+    EXPECT_TRUE(filter.labels_not_equals.empty());
+    EXPECT_TRUE(parser.Check().IsOK());
+  }
+
+  // Test 2: Valid single not-equals
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=value").IsOK());
+    EXPECT_TRUE(filter.labels_equals.empty());
+    EXPECT_EQ(filter.labels_not_equals.size(), 1);
+    EXPECT_EQ(filter.labels_not_equals["label"], std::set<std::string>{"value"});
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 3: Empty equality (label not exists)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=").IsOK());
+    EXPECT_EQ(filter.labels_equals.size(), 1);
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 4: Empty not-equals (label exists)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=").IsOK());
+    EXPECT_EQ(filter.labels_not_equals.size(), 1);
+    EXPECT_EQ(filter.labels_not_equals["label"], std::set<std::string>{""});
+    EXPECT_FALSE(parser.Check().IsOK());  // Fails because no matcher
+  }
+
+  // Test 5: Multi-value equality
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label=('v1','v2',v3)").IsOK());
+    std::set<std::string> expected{"v1", "v2", "v3"};
+    EXPECT_EQ(filter.labels_equals["label"], expected);
+    EXPECT_TRUE(parser.Check().IsOK());
+  }
+
+  // Test 6: Multi-value not-equals
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    EXPECT_TRUE(parser.Parse("label!=(v1,\"v2\",'v3')").IsOK());
+    std::set<std::string> expected{"v1", "v2", "v3"};
+    EXPECT_EQ(filter.labels_not_equals["label"], expected);
+    EXPECT_FALSE(parser.Check().IsOK());
+  }
+
+  // Test 7: Invalid expression (no operator)
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser(filter);
+    auto s = parser.Parse("label value");
+    EXPECT_FALSE(s.IsOK());
+    EXPECT_EQ(s.Msg(), "failed parsing labels");
+  }
+
+  // Test 8: Check failure conditions
+  {
+    // No conditions
+    TSMGetOption::FilterOption filter1;
+    TSMQueryFilterParser parser1(filter1);
+    EXPECT_FALSE(parser1.Check().IsOK());
+  }
+
+  // Test 9: Label existence precedence
+  {
+    TSMGetOption::FilterOption filter;
+    TSMQueryFilterParser parser1(filter);
+    auto s = parser1.Parse("label=");  // Label not exists
+    EXPECT_TRUE(s.IsOK());
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+
+    // Adding value to same label - should be ignored
+    TSMQueryFilterParser parser2(filter);
+    s = parser2.Parse("label=value");
+    EXPECT_TRUE(s.IsOK());
+    EXPECT_TRUE(filter.labels_equals["label"].empty());
+    EXPECT_TRUE(parser2.Check().IsOK());
+  }
+}
+
+TEST_F(TimeSeriesTest, MGetFilterExpression) {
+  using TSCreateOption = redis::TSCreateOption;
+  using TSMGetOption = redis::TSMGetOption;
+  using TSMGetResult = redis::TSMGetResult;
+  // Create time series with various labels
+  {
+    TSCreateOption option;
+    option.labels = {{"type", "temperature"}, {"room", "study"}, {"id", "1"}};
+    auto s = ts_db_->Create(*ctx_, "ts1", option);
+    EXPECT_TRUE(s.ok());
+  }
+  {
+    TSCreateOption option;
+    option.labels = {{"type", "humidity"}, {"location", "home"}, {"id", "2"}};
+    auto s = ts_db_->Create(*ctx_, "ts2", option);
+    EXPECT_TRUE(s.ok());
+  }
+  {
+    TSCreateOption option;
+    option.labels = {{"type", "temperature"}, {"location", "office"}, {"id", "3"}};
+    auto s = ts_db_->Create(*ctx_, "ts3", option);
+    EXPECT_TRUE(s.ok());
+  }
+  {
+    TSCreateOption option;
+    option.labels = {{"room", "dining"}, {"id", "4"}, {"location", "new york"}};
+    auto s = ts_db_->Create(*ctx_, "ts4", option);
+    EXPECT_TRUE(s.ok());
+  }
+
+  // Test case: Exact value match (label=value)
+  {
+    TSMGetOption option;
+    option.filter.labels_equals = {{"type", {"temperature"}}};
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    std::set<std::string> expected{"ts1", "ts3"};
+    std::set<std::string> actual;
+    for (auto &res : results) {
+      actual.insert(res.name);
+    }
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test case: Multiple conditions (label=value1 label=value2)
+  {
+    TSMGetOption option;
+    option.filter.labels_equals = {{"type", {"temperature"}}, {"room", {"study"}}};
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    if (!results.empty()) {
+      EXPECT_EQ(results[0].name, "ts1");
+    }
+  }
+
+  // Test case: List match (label=(v1,v2))
+  {
+    TSMGetOption option;
+    option.filter.labels_equals = {{"type", {"temperature", "humidity"}}};
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    std::set<std::string> expected{"ts1", "ts2", "ts3"};
+    std::set<std::string> actual;
+    for (auto &res : results) {
+      actual.insert(res.name);
+    }
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test case: Negation match (label!=value)
+  {
+    TSMGetOption option;
+    option.filter.labels_equals = {{"type", {"temperature"}}};           // type=temperature
+    option.filter.labels_not_equals = {{"room", {"study", "bedroom"}}};  // room not in study or bedroom
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    std::set<std::string> expected{"ts3"};
+    std::set<std::string> actual;
+    for (auto &res : results) {
+      actual.insert(res.name);
+    }
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test case: Existence check (label!=)
+  {
+    TSMGetOption option;
+    option.filter.labels_not_equals = {{"location", {""}}};     // location!=
+    option.filter.labels_equals = {{"type", {"temperature"}}};  // type=temperature
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    std::set<std::string> expected{"ts3"};
+    std::set<std::string> actual;
+    for (auto &res : results) {
+      actual.insert(res.name);
+    }
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test case: List negation (label!=(v1,v2))
+  {
+    TSMGetOption option;
+    option.filter.labels_equals = {{"type", {"temperature"}}};           // type=temperature
+    option.filter.labels_not_equals = {{"room", {"study", "bedroom"}}};  // room!= (study,bedroom)
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, option, false, &results);
+    EXPECT_TRUE(s.ok());
+    std::set<std::string> expected{"ts3"};
+    std::set<std::string> actual;
+    for (auto &res : results) {
+      actual.insert(res.name);
+    }
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test case: Quoted value with space
+  {
+    TSMGetOption mget_opt;
+    mget_opt.filter.labels_equals = {{"location", {"new york"}}};
+    std::vector<TSMGetResult> results;
+    auto s = ts_db_->MGet(*ctx_, mget_opt, false, &results);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    if (!results.empty()) {
+      EXPECT_EQ(results[0].name, "ts4");
+    }
+  }
+}
+
+TEST_F(TimeSeriesTest, MGet) {
+  using TSCreateOption = redis::TSCreateOption;
+  using TSMGetOption = redis::TSMGetOption;
+  using TSMGetResult = redis::TSMGetResult;
+
+  // Create two time series with temperature data for different locations
+  TSCreateOption tlv_opt;
+  tlv_opt.labels = {{"type", "temp"}, {"location", "TLV"}};
+  auto s = ts_db_->Create(*ctx_, "temp:TLV", tlv_opt);
+  EXPECT_TRUE(s.ok());
+
+  TSCreateOption jlm_opt;
+  jlm_opt.labels = {{"type", "temp"}, {"location", "JLM"}};
+  s = ts_db_->Create(*ctx_, "temp:JLM", jlm_opt);
+  EXPECT_TRUE(s.ok());
+
+  // Add data points to TLV time series
+  std::vector<TSSample> tlv_samples = {{1000, 30}, {1010, 35}, {1020, 9999}, {1030, 40}};
+  std::vector<TSChunk::AddResult> tlv_results(tlv_samples.size());
+  s = ts_db_->MAdd(*ctx_, "temp:TLV", tlv_samples, &tlv_results);
+  EXPECT_TRUE(s.ok());
+
+  // Add data points to JLM time series
+  std::vector<TSSample> jlm_samples = {{1005, 30}, {1015, 35}, {1025, 9999}, {1035, 40}};
+  std::vector<TSChunk::AddResult> jlm_results(jlm_samples.size());
+  s = ts_db_->MAdd(*ctx_, "temp:JLM", jlm_samples, &jlm_results);
+  EXPECT_TRUE(s.ok());
+
+  // Test MGET with WITHLABELS
+  {
+    TSMGetOption mget_opt;
+    mget_opt.filter.labels_equals = {{"type", {"temp"}}};
+    mget_opt.with_labels = true;
+    std::vector<TSMGetResult> results;
+    s = ts_db_->MGet(*ctx_, mget_opt, false, &results);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 2);
+
+    // Sort results to ensure consistent order for testing
+    std::sort(results.begin(), results.end(),
+              [](const TSMGetResult &a, const TSMGetResult &b) { return a.name < b.name; });
+
+    // Check JLM result
+    EXPECT_EQ(results[0].name, "temp:JLM");
+    EXPECT_EQ(results[0].labels.size(), 2);
+    EXPECT_EQ(results[0].labels[0].k, "location");
+    EXPECT_EQ(results[0].labels[0].v, "JLM");
+    EXPECT_EQ(results[0].labels[1].k, "type");
+    EXPECT_EQ(results[0].labels[1].v, "temp");
+    EXPECT_EQ(results[0].samples[0].ts, 1035);
+    EXPECT_EQ(results[0].samples[0].v, 40);
+
+    // Check TLV result
+    EXPECT_EQ(results[1].name, "temp:TLV");
+    EXPECT_EQ(results[1].labels.size(), 2);
+    EXPECT_EQ(results[1].labels[0].k, "location");
+    EXPECT_EQ(results[1].labels[0].v, "TLV");
+    EXPECT_EQ(results[1].labels[1].k, "type");
+    EXPECT_EQ(results[1].labels[1].v, "temp");
+    EXPECT_EQ(results[1].samples[0].ts, 1030);
+    EXPECT_EQ(results[1].samples[0].v, 40);
+  }
+
+  // Test MGET with SELECTED_LABELS
+  {
+    TSMGetOption mget_opt;
+    mget_opt.filter.labels_equals = {{"type", {"temp"}}};
+    mget_opt.selected_labels = {"location"};
+    std::vector<TSMGetResult> results;
+    s = ts_db_->MGet(*ctx_, mget_opt, true, &results);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 2);
+
+    // Sort results to ensure consistent order for testing
+    std::sort(results.begin(), results.end(),
+              [](const TSMGetResult &a, const TSMGetResult &b) { return a.name < b.name; });
+
+    // Check JLM result
+    EXPECT_EQ(results[0].name, "temp:JLM");
+    EXPECT_EQ(results[0].labels.size(), 1);  // Only location should be present
+    EXPECT_EQ(results[0].labels[0].k, "location");
+    EXPECT_EQ(results[0].labels[0].v, "JLM");
+    EXPECT_EQ(results[0].samples[0].ts, 1035);
+    EXPECT_EQ(results[0].samples[0].v, 40);
+
+    // Check TLV result
+    EXPECT_EQ(results[1].name, "temp:TLV");
+    EXPECT_EQ(results[1].labels.size(), 1);  // Only location should be present
+    EXPECT_EQ(results[1].labels[0].k, "location");
+    EXPECT_EQ(results[1].labels[0].v, "TLV");
+    EXPECT_EQ(results[1].samples[0].ts, 1030);
+    EXPECT_EQ(results[1].samples[0].v, 40);
   }
 }

@@ -126,6 +126,17 @@ std::string FormatCreateRuleResAsRedisReply(TSCreateRuleResult res) {
   return "";
 }
 
+std::string FormatTSLabelListAsRedisReply(const redis::LabelKVList &labels) {
+  std::vector<std::string> labels_str;
+  labels_str.reserve(labels.size());
+  for (const auto &label : labels) {
+    auto str = redis::Array(
+        {redis::BulkString(label.k), label.v.size() ? redis::BulkString(label.v) : redis::NilString(redis::RESP::v3)});
+    labels_str.push_back(str);
+  }
+  return redis::Array(labels_str);
+}
+
 }  // namespace
 
 namespace redis {
@@ -137,23 +148,14 @@ class KeywordCommandBase : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)),
                            std::prev(args.end(), static_cast<std::ptrdiff_t>(tail_skip_num_)));
-
     while (parser.Good()) {
-      bool handled = false;
-      for (const auto &handler : handlers_) {
-        if (parser.EatEqICase(handler.first)) {
-          Status s = handler.second(parser);
-          if (!s.IsOK()) return s;
-          handled = true;
-          break;
-        }
-      }
-
-      if (!handled) {
-        parser.Skip(1);
+      auto &value = parser.RawTake();
+      auto value_upper = util::ToUpper(value);
+      if (containsKeyword(value_upper, true)) {
+        Status s = handlers_[value_upper](parser);
+        if (!s.IsOK()) return s;
       }
     }
-
     return Commander::Parse(args);
   }
 
@@ -162,20 +164,24 @@ class KeywordCommandBase : public Commander {
 
   template <typename Handler>
   void registerHandler(const std::string &keyword, Handler &&handler) {
-    handlers_.emplace_back(keyword, std::forward<Handler>(handler));
+    handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler));
   }
-
   virtual void registerDefaultHandlers() = 0;
 
   void setSkipNum(size_t num) { skip_num_ = num; }
-
   void setTailSkipNum(size_t num) { tail_skip_num_ = num; }
+  bool containsKeyword(const std::string &keyword, bool is_upper = false) const {
+    if (is_upper) {
+      return handlers_.count(keyword);
+    } else {
+      return handlers_.count(util::ToUpper(keyword));
+    }
+  }
 
  private:
   size_t skip_num_ = 0;
   size_t tail_skip_num_ = 0;
-
-  std::vector<std::pair<std::string, std::function<Status(TSOptionsParser &)>>> handlers_;
+  std::unordered_map<std::string, std::function<Status(TSOptionsParser &)>> handlers_;
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
@@ -313,13 +319,7 @@ class CommandTSInfo : public Commander {
     *output += redis::SimpleString("duplicatePolicy");
     *output += redis::SimpleString(FormatDuplicatePolicyAsRedisReply(info.metadata.duplicate_policy));
     *output += redis::SimpleString("labels");
-    std::vector<std::string> labels_str;
-    labels_str.reserve(info.labels.size());
-    for (const auto &label : info.labels) {
-      auto str = redis::Array({redis::BulkString(label.k), redis::BulkString(label.v)});
-      labels_str.push_back(str);
-    }
-    *output += redis::Array(labels_str);
+    *output += FormatTSLabelListAsRedisReply(info.labels);
     *output += redis::SimpleString("sourceKey");
     *output += info.metadata.source_key.empty() ? redis::NilString(redis::RESP::v3)
                                                 : redis::BulkString(info.metadata.source_key);
@@ -784,12 +784,93 @@ class CommandTSGet : public CommandTSAggregatorBase {
   std::string user_key_;
 };
 
+class CommandTSMGetBase : public CommandTSAggregatorBase {
+ public:
+  CommandTSMGetBase(size_t skip_num, size_t tail_skip_num) : CommandTSAggregatorBase(skip_num, tail_skip_num) {}
+
+ protected:
+  static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {
+    with_labels = true;
+    return Status::OK();
+  }
+  Status handleSelectedLabels(TSOptionsParser &parser, std::set<std::string> &selected_labels) {
+    while (parser.Good()) {
+      auto &value = parser.RawPeek();
+      if (containsKeyword(value)) {
+        break;
+      }
+      selected_labels.emplace(parser.TakeStr().GetValue());
+    }
+    return Status::OK();
+  }
+  Status handleFilterExpr(TSOptionsParser &parser, TSMGetOption::FilterOption &filter_option) {
+    auto filter_parser = TSMQueryFilterParser(filter_option);
+    while (parser.Good()) {
+      auto &value = parser.RawPeek();
+      if (containsKeyword(value)) {
+        break;
+      }
+      auto s = filter_parser.Parse(parser.TakeStr().GetValue());
+      if (!s.IsOK()) return s;
+    }
+    return filter_parser.Check();
+  }
+};
+
+class CommandTSMGet : public CommandTSMGetBase {
+ public:
+  CommandTSMGet() : CommandTSMGetBase(0, 0) { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 3) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.mget' command"};
+    }
+    return CommandTSMGetBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSMGetResult> results;
+    auto s = timeseries_db.MGet(ctx, option_, is_return_latest_, &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<std::string> reply;
+    reply.reserve(results.size());
+    for (auto &result : results) {
+      std::vector<std::string> entry(3);
+      entry[0] = redis::BulkString(result.name);
+      entry[1] = FormatTSLabelListAsRedisReply(result.labels);
+      std::vector<std::string> temp;
+      for (auto &sample : result.samples) {
+        temp.push_back(FormatTSSampleAsRedisReply(sample));
+      }
+      entry[2] = redis::Array(temp);
+      reply.push_back(redis::Array(entry));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSAggregatorBase::registerDefaultHandlers();
+    registerHandler("LATEST", [this](TSOptionsParser &parser) { return handleLatest(parser, is_return_latest_); });
+    registerHandler("WITHLABELS",
+                    [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
+    registerHandler("SELECTED_LABELS",
+                    [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
+    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
+  }
+
+ private:
+  TSMGetOption option_;
+  bool is_return_latest_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1), );
+                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
+                        MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY), );
 
 }  // namespace redis

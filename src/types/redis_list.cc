@@ -206,6 +206,9 @@ rocksdb::Status List::Rem(engine::Context &ctx, const Slice &user_key, int count
       if (static_cast<int>(to_delete_indexes.size()) == abs(count)) break;
     }
   }
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
   if (to_delete_indexes.empty()) {
     return rocksdb::Status::NotFound();
   }
@@ -239,6 +242,9 @@ rocksdb::Status List::Rem(engine::Context &ctx, const Slice &user_key, int count
       } else {
         processed++;
       }
+    }
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
     }
 
     for (uint64_t idx = 0; idx < to_delete_indexes.size(); ++idx) {
@@ -293,6 +299,9 @@ rocksdb::Status List::Insert(engine::Context &ctx, const Slice &user_key, const 
       break;
     }
   }
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
   if (pivot_index == (metadata.head - 1)) {
     *new_size = -1;
     return rocksdb::Status::NotFound();
@@ -320,6 +329,9 @@ rocksdb::Status List::Insert(engine::Context &ctx, const Slice &user_key, const 
     std::string to_update_key = InternalKey(ns_key, buf, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = batch->Put(to_update_key, iter->value());
     if (!s.ok()) return s;
+  }
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
   }
   buf.clear();
   PutFixed64(&buf, new_elem_index);
@@ -398,6 +410,10 @@ rocksdb::Status List::Range(engine::Context &ctx, const Slice &user_key, int sta
     if (index > metadata.head + stop) break;
     elems->push_back(iter->value().ToString());
   }
+  if (auto s = iter->status(); !s.ok()) {
+    elems->clear();
+    return s;
+  }
   return rocksdb::Status::OK();
 }
 
@@ -452,6 +468,10 @@ rocksdb::Status List::Pos(engine::Context &ctx, const Slice &user_key, const Sli
     }
     offset++;
     !reversed ? iter->Next() : iter->Prev();
+  }
+  if (auto s = iter->status(); !s.ok()) {
+    indexes->clear();
+    return s;
   }
   return rocksdb::Status::OK();
 }

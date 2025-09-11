@@ -243,6 +243,9 @@ struct Config {
     bool partition_filters;
     int64_t max_compaction_bytes;
     int64_t sst_file_delete_rate_bytes_per_sec = 0;
+    uint64_t periodic_compaction_seconds = UINT64_MAX - 1;
+    uint64_t ttl = UINT64_MAX - 1;
+    std::string daily_offpeak_time_utc;
 
     struct WriteOptions {
       bool sync;

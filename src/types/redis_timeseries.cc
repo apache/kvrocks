@@ -320,6 +320,7 @@ std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const
 }
 
 void TSDownStreamMeta::AggregateLatestBucket(nonstd::span<const TSSample> samples) {
+  if (samples.empty()) return;
   double temp_v = 0.0;
   switch (aggregator.type) {
     case TSAggregatorType::SUM:
@@ -845,11 +846,10 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
                                                 std::vector<std::string> *new_chunks) {
   auto all_batch_slice = sample_batch.AsSlice();
 
-  if (all_batch_slice.GetSampleSpan().empty()) {
+  if (all_batch_slice.GetSampleSpan().empty() && new_chunks != nullptr) {
     new_chunks->clear();
     return rocksdb::Status::OK();
   }
-
 
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
@@ -1471,7 +1471,7 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
 
     // Update global sample retrieval range
     retrive_start_ts = std::min(retrive_start_ts, info.start_bucket);
-    retrive_end_ts = std::max(retrive_end_ts, info.end_bucket);
+    retrive_end_ts = std::max(retrive_end_ts, aggregator.CalculateAlignedBucketRight(end_ts) - 1);
 
     // Calculate actual deletion range for buckets
     info.del_start = aggregator.CalculateAlignedBucketRight(start_ts);
@@ -1496,7 +1496,7 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     auto &agg = ds_meta.aggregator;
 
     TimeSeriesMetadata meta;
-    auto ds_ns_key = AppendNamespacePrefix(downstream_keys[i]);
+    auto ds_ns_key = AppendNamespacePrefix(downstreamKeyFromInternalKey(downstream_keys[i]));
     s = getTimeSeriesMetadata(ctx, ds_ns_key, &meta);
     if (!s.ok()) return s;
 
@@ -1528,16 +1528,14 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     // Update latest bucket if deletion affects the end
     if (info.end_bucket < ds_meta.latest_bucket_idx) continue;
 
-    if (has_chunk) {
-      if (end_ts > last_chunk_end) {
-        ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
-      }
-    } else {
+    if (!has_chunk) {
       ds_meta.latest_bucket_idx = 0;
+    } else if (end_ts > last_chunk_end) {
+      ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
     }
 
     // Reaggregate latest bucket if needed
-    if (has_chunk || last_chunk_start > 0) {
+    if (has_chunk && last_chunk_start > 0) {
       auto span = agg.GetBucketByTimestamp(retrive_samples, ds_meta.latest_bucket_idx, last_chunk_start - 1);
       ds_meta.ResetAuxs();
       ds_meta.AggregateLatestBucket(span);

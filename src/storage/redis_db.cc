@@ -623,14 +623,29 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
 
 rocksdb::Status Database::existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret) {
   *ret = 0;
-  rocksdb::Status s;
-  std::string value;
+  
+  if (keys.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  std::vector<Slice> slice_keys;
+  slice_keys.reserve(keys.size());
   for (const auto &key : keys) {
-    s = storage_->Get(ctx, ctx.GetReadOptions(), metadata_cf_handle_, key, &value);
-    if (!s.ok() && !s.IsNotFound()) return s;
-    if (s.ok()) {
+    slice_keys.emplace_back(key);
+  }
+
+  std::vector<rocksdb::Status> statuses(slice_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
+  storage_->MultiGet(ctx, ctx.GetReadOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
+                     pin_values.data(), statuses.data());
+
+  for (size_t i = 0; i < slice_keys.size(); i++) {
+    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+    if (statuses[i].ok()) {
       Metadata metadata(kRedisNone, false);
-      s = metadata.Decode(value);
+      // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
+      // PinnableSlice to Slice.
+      auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
       if (!s.ok()) return s;
       if (!metadata.Expired()) *ret += 1;
     }

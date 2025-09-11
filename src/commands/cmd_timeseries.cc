@@ -978,9 +978,9 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
   TSMRangeOption option_;
 };
 
-class CommandTSIncrBy : public CommandTSCreateBase {
+class CommandTSIncrByDecrBy : public CommandTSCreateBase {
  public:
-  CommandTSIncrBy() { registerDefaultHandlers(); }
+  CommandTSIncrByDecrBy() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 2);
     auto value_parse = parser.TakeFloat<double>();
@@ -988,6 +988,9 @@ class CommandTSIncrBy : public CommandTSCreateBase {
       return {Status::RedisParseErr, errInvalidValue};
     }
     value_ = value_parse.GetValue();
+    if (util::ToUpper(args[0]) == "TS.DECRBY") {
+      value_ = -value_;
+    }
     CommandTSCreateBase::setSkipNum(3);
     return CommandTSCreateBase::Parse(args);
   }
@@ -1045,6 +1048,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTSIncrBy>("ts.incrby", -3, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1), );
 
 }  // namespace redis

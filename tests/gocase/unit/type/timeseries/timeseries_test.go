@@ -847,7 +847,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		})
 	})
 
-	t.Run("TS.INCRBY Test", func(t *testing.T) {
+	t.Run("TS.INCRBY/DECRBY Test", func(t *testing.T) {
 		key := "key_Incrby"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		// Test initial INCRBY creates key
@@ -872,5 +872,11 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		// Test error with earlier timestamp
 		_, err := rdb.Do(ctx, "ts.incrby", key, "100", "TIMESTAMP", "50").Result()
 		require.ErrorContains(t, err, "timestamp must be equal to or higher than the maximum existing timestamp")
+
+		// Test  decrementing
+		require.Equal(t, int64(1657811829000), rdb.Do(ctx, "ts.decrby", key, "432", "TIMESTAMP", "1657811829000").Val())
+		res = rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
 	})
 }

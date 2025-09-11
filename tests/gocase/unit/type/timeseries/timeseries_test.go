@@ -755,4 +755,95 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			}
 		})
 	})
+	t.Run("TS.MRange Test", func(t *testing.T) {
+		t.Run("Basic", func(t *testing.T) {
+			keyA, keyB := "stock:A_MRange", "stock:B_MRange"
+			type_label := "stock_MRange"
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyA, "LABELS", "type", type_label, "name", "A").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyB, "LABELS", "type", type_label, "name", "B").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "1000", "100", keyA, "1010", "110", keyA, "1020", "120").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "1000", "120", keyB, "1010", "110", keyB, "1020", "100").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "WITHLABELS", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			group := res[0].([]interface{})
+			require.Equal(t, "type=stock_MRange", group[0])
+
+			metadata := group[1].([]interface{})
+			labels := metadata[0].([]interface{})
+			require.Equal(t, []interface{}{"type", type_label}, labels)
+			require.Equal(t, "max", metadata[1].([]interface{})[1])
+
+			samples := group[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			expectSamples := [][]interface{}{
+				{int64(1000), 120.0}, {int64(1010), 110.0}, {int64(1020), 120.0},
+			}
+			for i, s := range samples {
+				require.Equal(t, expectSamples[i], s.([]interface{}))
+			}
+		})
+
+		t.Run("With Aggregation", func(t *testing.T) {
+			keyA, keyB := "stock:A_WithAggregation", "stock:B_WithAggregation"
+			type_label := "stock_WithAggregation"
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyA, "LABELS", "type", type_label, "name", "A").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyB, "LABELS", "type", type_label, "name", "B").Err())
+
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "1000", "100", keyA, "1010", "110", keyA, "1020", "120").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "1000", "120", keyB, "1010", "110", keyB, "1020", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "2000", "200", keyA, "2010", "210", keyA, "2020", "220").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "2000", "220", keyB, "2010", "210", keyB, "2020", "200").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "3000", "300", keyA, "3010", "310", keyA, "3020", "320").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "3000", "320", keyB, "3010", "310", keyB, "3020", "300").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "WITHLABELS", "AGGREGATION", "avg", "1000", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			name := res[0].([]interface{})[0].(string)
+			require.Equal(t, "type="+type_label, name)
+
+			labels := res[0].([]interface{})[1].([]interface{})
+			require.Equal(t, 3, len(labels))
+			require.Equal(t, []interface{}{"type", type_label}, labels[0].([]interface{}))
+			require.Equal(t, []interface{}{"__reducer__", "max"}, labels[1].([]interface{}))
+			require.Equal(t, []interface{}{"__source__", keyA + "," + keyB}, labels[2].([]interface{}))
+
+			samples := res[0].([]interface{})[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			expectSamples := [][]interface{}{
+				{int64(1000), 110.0}, {int64(2000), 210.0}, {int64(3000), 310.0},
+			}
+			for i, s := range samples {
+				require.Equal(t, expectSamples[i], s.([]interface{}))
+			}
+		})
+
+		t.Run("Filter By Value", func(t *testing.T) {
+			keyA, keyB := "ts1_MRange_FilterByValue", "ts2_MRange_FilterByValue"
+			label_spec := "metric_MRange_FilterByValue"
+			require.NoError(t, rdb.Do(ctx, "ts.add", keyA, "1548149180000", "90", "labels", "metric", label_spec, "metric_name", "system").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.add", keyB, "1548149180000", "99", "labels", "metric", label_spec, "metric_name", "user").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "FILTER_BY_VALUE", "90", "100", "WITHLABELS", "FILTER", "metric="+label_spec).Val().([]interface{})
+			require.Equal(t, 2, len(res))
+
+			results := map[string][]interface{}{}
+			for _, item := range res {
+				arr := item.([]interface{})
+				results[arr[0].(string)] = arr[2].([]interface{})
+			}
+
+			ts1 := results[keyA]
+			require.Equal(t, 1, len(ts1))
+			require.Equal(t, int64(1548149180000), ts1[0].([]interface{})[0])
+			require.Equal(t, 90.0, ts1[0].([]interface{})[1])
+
+			ts2 := results[keyB]
+			require.Equal(t, 1, len(ts2))
+			require.Equal(t, int64(1548149180000), ts2[0].([]interface{})[0])
+			require.Equal(t, 99.0, ts2[0].([]interface{})[1])
+		})
+	})
 }

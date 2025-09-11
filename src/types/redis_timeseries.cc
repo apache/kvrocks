@@ -20,6 +20,8 @@
 
 #include "redis_timeseries.h"
 
+#include <queue>
+
 #include "commands/error_constants.h"
 #include "db_util.h"
 
@@ -130,6 +132,117 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     res.emplace_back(sample);
   }
   return res;
+}
+
+LabelKVList ExtractSelectedLabels(LabelKVList labels, const std::set<std::string> &selected_labels) {
+  std::unordered_map<std::string_view, LabelKVPair *> labels_map;
+  labels_map.reserve(labels.size());
+  for (auto &label : labels) {
+    labels_map[label.k] = &label;
+  }
+  LabelKVList res;
+  res.reserve(selected_labels.size());
+  for (const auto &selected_key : selected_labels) {
+    auto it = labels_map.find(selected_key);
+    if (it != labels_map.end()) {
+      res.emplace_back(std::move(*(it->second)));
+    } else {
+      res.push_back({selected_key, ""});
+    }
+  }
+  return res;
+}
+
+std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
+                                            TSMRangeOption::GroupReducerType reducer_type) {
+  if (reducer_type == TSMRangeOption::GroupReducerType::NONE) {
+    return {};
+  }
+  struct SamplePtr {
+    const TSSample *sample;
+    size_t vector_idx;
+    size_t sample_idx;
+
+    bool operator>(const SamplePtr &other) const { return sample->ts > other.sample->ts; }
+  };
+  std::vector<TSSample> result;
+  std::priority_queue<SamplePtr, std::vector<SamplePtr>, std::greater<SamplePtr>> min_heap;
+
+  // Initialize the min-heap with the first element of each vector
+  for (size_t i = 0; i < all_samples.size(); ++i) {
+    if (!all_samples[i].empty()) {
+      min_heap.push({&all_samples[i][0], i, 0});
+    }
+  }
+  if (min_heap.empty()) {
+    return result;
+  }
+
+  auto reduce = [&](nonstd::span<const TSSample> samples) -> double {
+    auto sample_size = static_cast<double>(samples.size());
+    switch (reducer_type) {
+      case TSMRangeOption::GroupReducerType::SUM:
+        return Reducer::Sum(samples);
+      case TSMRangeOption::GroupReducerType::AVG:
+        return samples.empty() ? 0.0 : Reducer::Sum(samples) / sample_size;
+      case TSMRangeOption::GroupReducerType::MIN:
+        return Reducer::Min(samples);
+      case TSMRangeOption::GroupReducerType::MAX:
+        return Reducer::Max(samples);
+      case TSMRangeOption::GroupReducerType::RANGE:
+        return Reducer::Range(samples);
+      case TSMRangeOption::GroupReducerType::COUNT:
+        return sample_size;
+      case TSMRangeOption::GroupReducerType::STD_P:
+        return Reducer::StdP(samples);
+      case TSMRangeOption::GroupReducerType::STD_S:
+        return Reducer::StdS(samples);
+      case TSMRangeOption::GroupReducerType::VAR_P:
+        return Reducer::VarP(samples);
+      case TSMRangeOption::GroupReducerType::VAR_S:
+        return Reducer::VarS(samples);
+      case TSMRangeOption::GroupReducerType::NONE:
+        return 0.0;
+    }
+    return 0.0;
+  };
+  std::vector<TSSample> current_group;
+  current_group.reserve(all_samples.size());
+
+  while (!min_heap.empty()) {
+    // Get the top element from the min-heap
+    SamplePtr top = min_heap.top();
+    min_heap.pop();
+
+    // Check if the timestamp is the same as the current group
+    if (!current_group.empty() && top.sample->ts != current_group.back().ts) {
+      // Different timestamp, reduce the current group and start a new one
+      uint64_t group_ts = current_group.back().ts;
+      nonstd::span<const TSSample> group_span(current_group);
+      double reduced_value = reduce(group_span);
+
+      result.push_back({group_ts, reduced_value});
+      current_group.clear();
+    }
+    current_group.push_back(*top.sample);
+
+    // Push the next element from the same vector into the min-heap
+    size_t next_sample_idx = top.sample_idx + 1;
+    if (next_sample_idx < all_samples[top.vector_idx].size()) {
+      min_heap.push({&all_samples[top.vector_idx][next_sample_idx], top.vector_idx, next_sample_idx});
+    }
+  }
+
+  // Process the last group if it exists
+  if (!current_group.empty()) {
+    uint64_t group_ts = current_group.back().ts;
+    nonstd::span<const TSSample> group_span(current_group);
+    double reduced_value = reduce(group_span);
+
+    result.push_back({group_ts, reduced_value});
+  }
+
+  return result;
 }
 
 std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
@@ -1612,23 +1725,90 @@ rocksdb::Status TimeSeries::MGet(engine::Context &ctx, const TSMGetOption &optio
     if (option.with_labels) {
       res_i.labels = std::move(labels);
     } else if (!option.selected_labels.empty()) {
-      std::unordered_map<std::string_view, LabelKVPair *> labels_map;
-      labels_map.reserve(labels.size());
-      for (auto &label : labels) {
-        labels_map[label.k] = &label;
-      }
-      res_i.labels.reserve(option.selected_labels.size());
-      for (const auto &selected_key : option.selected_labels) {
-        auto it = labels_map.find(selected_key);
-        if (it != labels_map.end()) {
-          res_i.labels.emplace_back(std::move(*(it->second)));
-        } else {
-          res_i.labels.push_back({selected_key, ""});
-        }
-      }
+      res_i.labels = ExtractSelectedLabels(std::move(labels), option.selected_labels);
     }
   }
   return s;
+}
+
+rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &option,
+                                   std::vector<TSMRangeResult> *res) {
+  std::vector<std::string> user_keys;
+  std::vector<LabelKVList> labels_vec;
+  std::vector<TimeSeriesMetadata> metas;
+
+  auto s = getTSKeyByFilter(ctx, option.filter, &user_keys, &labels_vec, &metas);
+  if (!s.ok()) return s;
+
+  res->clear();
+  res->reserve(user_keys.size());
+  // Group
+  using GroupReducerType = TSMRangeOption::GroupReducerType;
+  bool is_group_by = option.group_by_label.size() && option.reducer != GroupReducerType::NONE;
+  std::map<std::string_view, std::vector<size_t>> group_map;
+  if (is_group_by) {
+    for (size_t i = 0; i < user_keys.size(); i++) {
+      auto &labels = labels_vec[i];
+      auto it = std::lower_bound(labels.begin(), labels.end(), option.group_by_label,
+                                 [](const LabelKVPair &label, const std::string &key) { return label.k < key; });
+      if (it != labels.end() && it->k == option.group_by_label) {
+        group_map[it->v].push_back(i);
+      }
+    }
+    if (group_map.empty()) {
+      // No matched group
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (is_group_by) {
+    for (const auto &[group_value, indices] : group_map) {
+      TSMRangeResult group_res;
+      // Labels
+      LabelKVList group_labels = {LabelKVPair{option.group_by_label, std::string(group_value)}};
+      if (option.with_labels) {
+        group_res.labels = std::move(group_labels);
+      } else if (option.selected_labels.size()) {
+        group_res.labels = ExtractSelectedLabels(std::move(group_labels), option.selected_labels);
+      }
+      // Samples
+      std::vector<std::vector<TSSample>> all_samples;
+      all_samples.reserve(indices.size());
+      for (size_t i : indices) {
+        std::vector<TSSample> samples;
+        s = rangeCommon(ctx, AppendNamespacePrefix(user_keys[i]), metas[i], option, &samples);
+        if (!s.ok()) return s;
+        all_samples.push_back(std::move(samples));
+      }
+      group_res.samples = GroupSamplesAndReduce(all_samples, option.reducer);
+      // Sources
+      for (size_t i : indices) {
+        group_res.source_keys.push_back(std::move(user_keys[i]));
+      }
+      // Name
+      group_res.name = group_value;
+
+      res->push_back(std::move(group_res));
+    }
+  } else {
+    for (size_t i = 0; i < user_keys.size(); i++) {
+      TSMRangeResult group_res;
+      // Labels
+      if (option.with_labels) {
+        group_res.labels = std::move(labels_vec[i]);
+      } else if (option.selected_labels.size()) {
+        group_res.labels = ExtractSelectedLabels(std::move(labels_vec[i]), option.selected_labels);
+      }
+      // Samples
+      s = rangeCommon(ctx, AppendNamespacePrefix(user_keys[i]), metas[i], option, &group_res.samples);
+      if (!s.ok()) return s;
+      // Name
+      group_res.name = std::move(user_keys[i]);
+
+      res->push_back(std::move(group_res));
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

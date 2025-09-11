@@ -208,6 +208,29 @@ class TSMQueryFilterParser {
   void handleNotEquals(std::string_view label, std::string_view value_str);
 };
 
+struct TSMRangeOption : TSMGetOption, TSRangeOption {
+  enum class GroupReducerType : uint8_t {
+    NONE = 0,
+    AVG = 1,
+    SUM = 2,
+    MIN = 3,
+    MAX = 4,
+    RANGE = 5,
+    COUNT = 6,
+    STD_P = 7,
+    STD_S = 8,
+    VAR_P = 9,
+    VAR_S = 10,
+  };
+
+  GroupReducerType reducer = GroupReducerType::NONE;
+  std::string group_by_label;
+};
+
+struct TSMRangeResult : TSMGetResult {
+  std::vector<std::string> source_keys;
+};
+
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,
@@ -217,6 +240,9 @@ enum class TSCreateRuleResult : uint8_t {
   kDstHasDestRule = 5,
   kSrcEqDst = 6,
 };
+
+std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
+                                            TSMRangeOption::GroupReducerType reducer_type);
 
 TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option);
 
@@ -241,6 +267,7 @@ class TimeSeries : public SubKeyScanner {
                              const TSAggregator &aggregator, TSCreateRuleResult *res);
   rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
                        std::vector<TSMGetResult> *res);
+  rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
 
  private:
   rocksdb::ColumnFamilyHandle *index_cf_handle_;

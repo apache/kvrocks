@@ -360,8 +360,8 @@ class CommandTDigestMerge : public Commander {
 };
 class CommandTDigestCDF : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
-    key_name_ = args[1];
     if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
+    key_name_ = args[1];
     values_.reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {
       auto value = ParseFloat(args[i]);
@@ -378,18 +378,21 @@ class CommandTDigestCDF : public Commander {
     TDigestCDFResult result;
     TDigestMetadata metadata;
     auto meta_status = tdigest.GetMetaData(ctx, key_name_, &metadata);
+    std::vector<std::string> nan_results(values_.size(), "nan");
     if (!meta_status.ok()) {
       if (meta_status.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }
-      return {Status::RedisExecErr, meta_status.ToString()};
+      *output = redis::MultiBulkString(RESP::v2, nan_results);
+      return Status::OK();
     }
     if (metadata.total_observations == 0) {
-      *output = redis::MultiBulkString(RESP::v2, cdf_result);
+      *output = redis::MultiBulkString(RESP::v2, nan_results);
       return Status::OK();
     }
     auto s = tdigest.CDF(ctx, key_name_, values_, &result);
     if (!s.ok()) {
+      *output = redis::MultiBulkString(RESP::v2, nan_results);
       return {Status::RedisExecErr, s.ToString()};
     }
     for (const auto &val : result.cdf_values) {
@@ -416,5 +419,5 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange),
-                        MakeCmdAttr<CommandTDigestCDF>("tdigest.cdf", -4, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTDigestCDF>("tdigest.cdf", -3, "read-only", 1, 1, 1));
 }  // namespace redis

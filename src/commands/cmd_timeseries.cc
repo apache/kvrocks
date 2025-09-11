@@ -982,9 +982,6 @@ class CommandTSIncrBy : public CommandTSCreateBase {
  public:
   CommandTSIncrBy() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 3) {
-      return {Status::RedisParseErr, "wrong number of arguments for 'ts.incrby' command"};
-    }
     CommandParser parser(args, 2);
     auto value_parse = parser.TakeFloat<double>();
     if (!value_parse.IsOK()) {

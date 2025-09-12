@@ -478,7 +478,8 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
   return res;
 }
 
-std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted) const {
+std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted,
+                                                bool inclusive_to) const {
   if (from > to) {
     if (deleted) *deleted = 0;
     return "";
@@ -487,9 +488,12 @@ std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to, uint
   // Find the range of samples to delete using binary search
   auto start_it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{from, 0.0});
   if (start_it == samples_.end()) {
+    if (deleted) *deleted = 0;
     return "";
   }
-  auto end_it = std::upper_bound(samples_.begin(), samples_.end(), TSSample{to, 0.0});
+
+  auto end_it = inclusive_to ? std::upper_bound(start_it, samples_.end(), TSSample{to, 0.0})
+                             : std::lower_bound(start_it, samples_.end(), TSSample{to, 0.0});
 
   size_t start_idx = std::distance(samples_.begin(), start_it);
   size_t end_idx = std::distance(samples_.begin(), end_it);

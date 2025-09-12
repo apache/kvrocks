@@ -190,7 +190,8 @@ class TSChunk {
 
   // Delete samples in [from, to] timestamp range
   // Returns new chunk data without deleted samples. Returns empty string if no changes
-  virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted = nullptr) const = 0;
+  virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted = nullptr,
+                                           bool inclusive_to = true) const = 0;
 
   // Update sample value at specified timestamp
   // is_add_on controls whether to add to existing value or replace it
@@ -219,7 +220,8 @@ class UncompTSChunk : public TSChunk {
   std::string UpsertSamples(SampleBatchSlice samples) const override;
   std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
                                                 bool is_fix_split_mode) const override;
-  std::string RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted = nullptr) const override;
+  std::string RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted = nullptr,
+                                   bool inclusive_to = true) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
   TSSample GetLatestSample(uint32_t idx) const override;
 

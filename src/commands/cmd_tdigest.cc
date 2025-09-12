@@ -396,7 +396,7 @@ class CommandTDigestCDF : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
     for (const auto &val : result.cdf_values) {
-      cdf_result.push_back(std::to_string(val));
+      cdf_result.push_back(util::Float2String(val));
     }
     *output = redis::MultiBulkString(RESP::v2, cdf_result);
     return Status::OK();

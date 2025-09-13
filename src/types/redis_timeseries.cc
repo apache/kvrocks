@@ -1320,30 +1320,33 @@ rocksdb::Status TimeSeries::getCommon(engine::Context &ctx, const Slice &ns_key,
 }
 
 rocksdb::Status TimeSeries::delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                           uint64_t start_ts, uint64_t end_ts, uint64_t *deleted) {
+                                           uint64_t from, uint64_t to, uint64_t *deleted, bool inclusive_to) {
   auto batch = storage_->GetWriteBatchBase();
-  auto s = delRangeCommonInBatch(ctx, ns_key, metadata, start_ts, end_ts, deleted, batch);
+  auto s = delRangeCommonInBatch(ctx, ns_key, metadata, from, to, batch, deleted, inclusive_to);
   if (!s.ok()) return s;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Slice &ns_key,
-                                                  TimeSeriesMetadata &metadata, uint64_t start_ts, uint64_t end_ts,
-                                                  uint64_t *deleted,
-                                                  ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch) {
+                                                  TimeSeriesMetadata &metadata, uint64_t from, uint64_t to,
+                                                  ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                                  uint64_t *deleted, bool inclusive_to) {
   *deleted = 0;
-  if (start_ts > end_ts) {
+  if (from > to || (from == to && !inclusive_to)) {
     return rocksdb::Status::OK();
   }
   // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
-  std::string start_key = internalKeyFromChunkID(ns_key, metadata, start_ts);
+  std::string start_key = internalKeyFromChunkID(ns_key, metadata, from);
   std::string prefix = start_key.substr(0, start_key.size() - sizeof(uint64_t));
   std::string end_key;
-  if (end_ts == TSSample::MAX_TIMESTAMP) {
+  if (to == TSSample::MAX_TIMESTAMP && inclusive_to) {
     end_key = internalKeyFromLabelKey(ns_key, metadata, "");
+  } else if (inclusive_to) {
+    end_key = internalKeyFromChunkID(ns_key, metadata, to + 1);
   } else {
-    end_key = internalKeyFromChunkID(ns_key, metadata, end_ts + 1);
+    end_key = internalKeyFromChunkID(ns_key, metadata, to);
   }
+
   uint64_t chunk_count = metadata.size;
 
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
@@ -1366,7 +1369,7 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
   for (; iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
     auto chunk = CreateTSChunkFromData(iter->value());
     uint64_t deleted_temp = 0;
-    auto new_chunk_data = chunk->RemoveSamplesBetween(start_ts, end_ts, &deleted_temp);
+    auto new_chunk_data = chunk->RemoveSamplesBetween(from, to, &deleted_temp, inclusive_to);
     if (new_chunk_data.empty() || deleted_temp == 0) {
       // No samples deleted
       continue;

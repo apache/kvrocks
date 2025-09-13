@@ -295,11 +295,11 @@ class TimeSeries : public SubKeyScanner {
                                    const std::vector<std::string> &new_chunks, SampleBatch &sample_batch);
   rocksdb::Status getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                             bool is_return_latest, std::vector<TSSample> *res);
-  rocksdb::Status delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                 uint64_t start_ts, uint64_t end_ts, uint64_t *deleted);
+  rocksdb::Status delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata, uint64_t from,
+                                 uint64_t to, uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                        uint64_t start_ts, uint64_t end_ts, uint64_t *deleted,
-                                        ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch);
+                                        uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                        uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                      uint64_t start_ts, uint64_t end_ts);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,

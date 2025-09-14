@@ -978,6 +978,67 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
   TSMRangeOption option_;
 };
 
+class CommandTSIncrByDecrBy : public CommandTSCreateBase {
+ public:
+  CommandTSIncrByDecrBy() { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    auto value_parse = parser.TakeFloat<double>();
+    if (!value_parse.IsOK()) {
+      return {Status::RedisParseErr, errInvalidValue};
+    }
+    value_ = value_parse.GetValue();
+    if (util::ToUpper(args[0]) == "TS.DECRBY") {
+      value_ = -value_;
+    }
+    CommandTSCreateBase::setSkipNum(3);
+    return CommandTSCreateBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    const auto &option = getCreateOption();
+
+    if (!is_ts_set_) {
+      // TODO: Should modify function `Add` and `IncrBy` to add a sample with current time
+    }
+    TSChunk::AddResult res;
+    auto s = timeseries_db.IncrBy(ctx, args_[1], {ts_, value_}, option, &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (res.type == TSChunk::AddResultType::kOld) {
+      *output +=
+          redis::Error({Status::NotOK, "timestamp must be equal to or higher than the maximum existing timestamp"});
+    } else {
+      *output += FormatAddResultAsRedisReply(res);
+    }
+    return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSCreateBase::registerDefaultHandlers();
+    registerHandler("TIMESTAMP", [this](TSOptionsParser &parser) {
+      auto s = handleTimeStamp(parser, ts_);
+      if (!s.IsOK()) return s;
+      is_ts_set_ = true;
+      return Status::OK();
+    });
+  }
+  static Status handleTimeStamp(TSOptionsParser &parser, uint64_t &ts) {
+    auto parse_timestamp = parser.TakeInt<uint64_t>();
+    if (!parse_timestamp.IsOK()) {
+      return {Status::RedisParseErr, errInvalidTimestamp};
+    }
+    ts = parse_timestamp.GetValue();
+    return Status::OK();
+  }
+
+ private:
+  bool is_ts_set_ = false;
+  uint64_t ts_ = 0;
+  double value_ = 0;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -986,6 +1047,8 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY), );
+                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1), );
 
 }  // namespace redis

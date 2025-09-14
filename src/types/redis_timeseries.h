@@ -80,7 +80,7 @@ struct TSAggregator {
   // Splits the given samples into buckets.
   std::vector<nonstd::span<const TSSample>> SplitSamplesToBuckets(nonstd::span<const TSSample> samples) const;
 
-  // Returns the samples eariler than `less_than` in the bucket that contains `ts`.
+  // Returns the samples earlier than `less_than` in the bucket that contains `ts`.
   nonstd::span<const TSSample> GetBucketByTimestamp(nonstd::span<const TSSample> samples, uint64_t ts,
                                                     uint64_t less_than = TSSample::MAX_TIMESTAMP) const;
 

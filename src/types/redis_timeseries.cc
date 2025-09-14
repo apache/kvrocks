@@ -1811,4 +1811,34 @@ rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &o
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample,
+                                   const TSCreateOption &option, AddResult *res) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  TimeSeriesMetadata metadata(false);
+  rocksdb::Status s = getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
+  if (!s.ok()) return s;
+
+  std::vector<TSSample> get_samples;
+  s = getCommon(ctx, ns_key, metadata, true, &get_samples);
+  if (!s.ok()) return s;
+  if (get_samples.size() && sample < get_samples.back()) {
+    res->type = TSChunk::AddResultType::kOld;
+    return rocksdb::Status::OK();
+  }
+
+  if (get_samples.size()) {
+    sample.v += get_samples.back().v;
+  }
+  auto sample_batch = SampleBatch({sample}, DuplicatePolicy::LAST);
+
+  std::vector<std::string> new_chunks;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  if (!s.ok()) return s;
+  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  if (!s.ok()) return s;
+  *res = sample_batch.GetFinalResults()[0];
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

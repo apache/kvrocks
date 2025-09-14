@@ -1407,20 +1407,13 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                               uint64_t start_ts, uint64_t end_ts) {
-  // If the time range is invalid, there's nothing to do.
-  if (start_ts > end_ts) return rocksdb::Status::OK();
-
-  // Retrieve downstream rules and metadata
-  std::vector<std::string> downstream_keys;
-  std::vector<TSDownStreamMeta> downstream_metas;
-  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas);
-  if (!s.ok()) return s;
-  if (downstream_keys.empty()) return rocksdb::Status::OK();  // No downstreams to process
+                                               std::vector<std::string> &ds_keys,
+                                               std::vector<TSDownStreamMeta> &ds_metas, uint64_t from, uint64_t to) {
+  if (from > to || ds_keys.empty()) return rocksdb::Status::OK();
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTimeSeries);
-  s = batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   // Calculate key boundaries for latest chunk retrieval
@@ -1453,9 +1446,9 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
   uint64_t retrieve_start_ts = TSSample::MAX_TIMESTAMP;
   uint64_t retrieve_end_ts = 0;
   if (has_chunk) {
-    for (const auto &ds_meta : downstream_metas) {
-      retrieve_start_ts = std::min(retrieve_start_ts, ds_meta.aggregator.CalculateAlignedBucketLeft(start_ts));
-      retrieve_end_ts = std::max(retrieve_end_ts, ds_meta.aggregator.CalculateAlignedBucketRight(end_ts) - 1);
+    for (const auto &ds_meta : ds_metas) {
+      retrieve_start_ts = std::min(retrieve_start_ts, ds_meta.aggregator.CalculateAlignedBucketLeft(from));
+      retrieve_end_ts = std::max(retrieve_end_ts, ds_meta.aggregator.CalculateAlignedBucketRight(to) - 1);
     }
   }
 
@@ -1470,18 +1463,18 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
   }
 
   // Process each downstream rule
-  for (size_t i = 0; i < downstream_keys.size(); i++) {
-    auto &ds_meta = downstream_metas[i];
+  for (size_t i = 0; i < ds_keys.size(); i++) {
+    auto &ds_meta = ds_metas[i];
     auto &agg = ds_meta.aggregator;
 
     TimeSeriesMetadata meta;
-    auto ds_ns_key = AppendNamespacePrefix(downstreamKeyFromInternalKey(downstream_keys[i]));
+    auto ds_ns_key = AppendNamespacePrefix(downstreamKeyFromInternalKey(ds_keys[i]));
     s = getTimeSeriesMetadata(ctx, ds_ns_key, &meta);
     if (!s.ok()) return s;
 
     // Calculate the range of buckets affected by this deletion.
-    uint64_t start_bucket = agg.CalculateAlignedBucketLeft(start_ts);
-    uint64_t end_bucket = agg.CalculateAlignedBucketLeft(end_ts);
+    uint64_t start_bucket = agg.CalculateAlignedBucketLeft(from);
+    uint64_t end_bucket = agg.CalculateAlignedBucketLeft(to);
     CHECK(start_bucket <= ds_meta.latest_bucket_idx);
 
     std::vector<TSSample> new_samples;  // To store re-aggregated boundary buckets.
@@ -1519,7 +1512,7 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
 
     if (!has_chunk) {
       ds_meta.latest_bucket_idx = 0;
-    } else if (end_ts > last_chunk_end) {
+    } else if (to > last_chunk_end) {
       ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
     }
 
@@ -1533,7 +1526,7 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     // Persist downstream metadata updates if needed
     std::string bytes;
     ds_meta.Encode(&bytes);
-    batch->Put(downstream_keys[i], bytes);
+    batch->Put(ds_keys[i], bytes);
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -2079,17 +2072,40 @@ rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, 
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uint64_t start_ts, uint64_t end_ts,
+rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to,
                                 uint64_t *deleted) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   TimeSeriesMetadata metadata(false);
   rocksdb::Status s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
-  s = delRangeCommon(ctx, ns_key, metadata, start_ts, end_ts, deleted);
+  // Get downstream rules
+  std::vector<std::string> ds_keys;
+  std::vector<TSDownStreamMeta> ds_metas;
+  s = getDownStreamRules(ctx, ns_key, metadata, &ds_keys, &ds_metas);
+  if (!s.ok()) return s;
+
+  // Check retention and compaction rules
+  std::vector<TSSample> get_samples;
+  s = getCommon(ctx, ns_key, metadata, true, &get_samples);
+  if (!s.ok()) return s;
+  if (get_samples.empty()) return rocksdb::Status::OK();
+  uint64_t last_ts = get_samples.back().ts;
+  uint64_t retention_bound =
+      (metadata.retention_time > 0 && metadata.retention_time < last_ts) ? last_ts - metadata.retention_time : 0;
+  for (const auto &ds_meta : ds_metas) {
+    const auto &agg = ds_meta.aggregator;
+    if (agg.CalculateAlignedBucketLeft(from) < retention_bound) {
+      return rocksdb::Status::InvalidArgument(
+          "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is "
+          "not possible");
+    }
+  }
+
+  s = delRangeCommon(ctx, ns_key, metadata, from, to, deleted);
   if (!s.ok()) return s;
   if (*deleted == 0) return rocksdb::Status::OK();
-  s = delRangeDownStream(ctx, ns_key, metadata, start_ts, end_ts);
+  s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, from, to);
   return s;
 }
 

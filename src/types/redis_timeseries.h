@@ -271,8 +271,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
-  rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t start_ts, uint64_t end_ts,
-                      uint64_t *deleted);
+  rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
 
  private:
   rocksdb::ColumnFamilyHandle *index_cf_handle_;
@@ -301,7 +300,8 @@ class TimeSeries : public SubKeyScanner {
                                         uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                         uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                     uint64_t start_ts, uint64_t end_ts);
+                                     std::vector<std::string> &ds_keys, std::vector<TSDownStreamMeta> &ds_metas,
+                                     uint64_t from, uint64_t to);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);

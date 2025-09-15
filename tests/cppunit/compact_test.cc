@@ -28,6 +28,7 @@
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
+#include "types/redis_timeseries.h"
 #include "types/redis_zset.h"
 
 TEST(Compact, Filter) {
@@ -198,6 +199,51 @@ TEST(Compact, SearchFilter) {
   sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), num_search_key,
                     &search_value);
   ASSERT_TRUE(sg.IsNotFound());
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST(Compact, IndexFilter) {
+  Config config;
+  config.db_dir = "compactdb";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  std::string ns = "test_compact_index";
+  auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
+  engine::Context ctx(storage.get());
+
+  std::string ts_del_key = "ts_del_key";
+  std::string ts_expire_key = "ts_expire_key";
+  auto create_option = redis::TSCreateOption();
+  create_option.labels.push_back({"flag", "temp"});
+  ASSERT_TRUE(timeseries->Create(ctx, ts_del_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, ts_expire_key, create_option).ok());
+
+  redis::TSMGetOption mget_option;
+  mget_option.filter.labels_equals["flag"].insert("temp");
+  std::vector<redis::TSMGetResult> mget_result;
+  ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
+  ASSERT_EQ(mget_result.size(), 2);
+  ASSERT_EQ(mget_result[0].name, ts_del_key);
+  ASSERT_EQ(mget_result[1].name, ts_expire_key);
+
+  ASSERT_TRUE(
+      storage->Delete(ctx, storage->DefaultWriteOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ts_del_key)
+          .ok());
+  ASSERT_TRUE(timeseries->Expire(ctx, ts_expire_key, 1).ok());
+
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+
+  ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
+  ASSERT_EQ(mget_result.size(), 0);
 
   std::error_code ec;
   std::filesystem::remove_all(config.db_dir, ec);

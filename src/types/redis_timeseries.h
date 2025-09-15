@@ -123,6 +123,7 @@ struct TSRevLabelKey {
 
   TSRevLabelKey(Slice ns, Slice label_key, Slice label_value, Slice user_key = Slice())
       : ns(ns), label_key(label_key), label_value(label_value), user_key(user_key) {}
+  explicit TSRevLabelKey(Slice input);
 
   [[nodiscard]] std::string Encode() const;
   static std::string UpperBound(Slice ns);

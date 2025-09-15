@@ -307,8 +307,8 @@ Config::Config() {
       {"rocksdb.sst_file_delete_rate_bytes_per_sec", false,
        new Int64Field(&rocks_db.sst_file_delete_rate_bytes_per_sec, 0, 0, INT64_MAX)},
       {"rocksdb.periodic_compaction_seconds", false,
-       new UInt64Field(&rocks_db.periodic_compaction_seconds, UINT64_MAX - 1, 0, UINT64_MAX)},
-      {"rocksdb.ttl", false, new UInt64Field(&rocks_db.ttl, UINT64_MAX - 1, 0, UINT64_MAX)},
+       new UInt64Field(&rocks_db.periodic_compaction_seconds, kDefaultRocksdbPeriodicCompactionSeconds, 0, UINT64_MAX)},
+      {"rocksdb.ttl", false, new UInt64Field(&rocks_db.ttl, kDefaultRocksdbTTL, 0, UINT64_MAX)},
       {"rocksdb.daily_offpeak_time_utc", false, new StringField(&rocks_db.daily_offpeak_time_utc, "")},
 
       /* rocksdb write options */

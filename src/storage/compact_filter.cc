@@ -221,8 +221,11 @@ bool IndexFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_u
                          [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
   auto db = stor_->GetDB();
 
-  // There only `TS_LABEL` index type for now, so we just handle the `TS_LABEL` index here.
-  // If add more index types in the future, need to distinguish them.
+  auto index_key = redis::IndexInternalKey(key);
+  if (index_key.type != redis::IndexKeyType::TS_LABEL) {
+    // Only handle time series index for now
+    return false;
+  }
   auto rev_key = redis::TSRevLabelKey(key);
   auto ns = rev_key.ns;
   auto user_key = rev_key.user_key;

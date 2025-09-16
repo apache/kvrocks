@@ -462,20 +462,24 @@ rocksdb::Status TSDownStreamMeta::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
-TSRevLabelKey::TSRevLabelKey(Slice input) {
+IndexInternalKey::IndexInternalKey(Slice input) {
   // Get namespace
   uint8_t ns_size = 0;
   GetFixed8(&input, &ns_size);
-  input.remove_prefix(sizeof(uint8_t));
   ns = Slice(input.data(), ns_size);
   input.remove_prefix(ns_size);
-  // Skip index key type
-  input.remove_prefix(sizeof(uint8_t));
+  // Get index key type
+  GetFixed8(&input, reinterpret_cast<uint8_t *>(&type));
+}
+
+TSRevLabelKey::TSRevLabelKey(Slice input) : IndexInternalKey(input) {
+  // Remove the part of namespace and index key type
+  input.remove_prefix(ns.size() + sizeof(uint8_t) * 2);
   // Get label key and value
   GetSizedString(&input, &label_key);
   GetSizedString(&input, &label_value);
   // Get user key
-  user_key = input;
+  user_key = Slice(input.data(), input.size());
 }
 
 std::string TSRevLabelKey::Encode() const {

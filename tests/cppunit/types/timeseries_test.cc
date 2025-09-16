@@ -982,3 +982,92 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
     EXPECT_TRUE(actual.empty());
   }
 }
+
+TEST_F(TimeSeriesTest, DelComprehensive) {
+  using TSCreateOption = redis::TSCreateOption;
+  using TSRangeOption = redis::TSRangeOption;
+  // Create time series
+  auto s = ts_db_->Create(*ctx_, "test1", TSCreateOption());
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, "test2", TSCreateOption());
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, "test3", TSCreateOption());
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, "test4", TSCreateOption());
+  EXPECT_TRUE(s.ok());
+
+  // Create rules
+  redis::TSAggregator aggregator;
+  redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+
+  aggregator.type = redis::TSAggregatorType::SUM;
+  aggregator.bucket_duration = 10;
+  s = ts_db_->CreateRule(*ctx_, "test1", "test2", aggregator, &res);
+  EXPECT_TRUE(s.ok());
+  aggregator.bucket_duration = 200;
+  s = ts_db_->CreateRule(*ctx_, "test1", "test4", aggregator, &res);
+  EXPECT_TRUE(s.ok());
+  aggregator.bucket_duration = 20;
+  aggregator.alignment = 10;
+  s = ts_db_->CreateRule(*ctx_, "test1", "test3", aggregator, &res);
+  EXPECT_TRUE(s.ok());
+
+  // Add samples
+  std::vector<TSSample> samples = {{1, 1},   {2, 2},   {11, 11}, {15, 15}, {16, 16}, {21, 21},
+                                   {24, 24}, {31, 31}, {35, 35}, {39, 39}, {42, 42}, {49, 49}};
+  std::vector<TSChunk::AddResult> results;
+  results.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, "test1", samples, &results);
+  EXPECT_TRUE(s.ok());
+
+  // Delete samples between timestamps 10 and 40
+  uint64_t deleted = 0;
+  s = ts_db_->Del(*ctx_, "test1", 12, 40, &deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(deleted, 7);
+
+  // Validate downstream ranges
+  std::vector<std::string> keys = {"test2", "test3", "test4"};
+  auto check = [&](const std::vector<std::vector<TSSample>> &expected_samples) {
+    for (size_t i = 0; i < keys.size(); ++i) {
+      std::vector<TSSample> res;
+      TSRangeOption option;
+      option.start_ts = 0;
+      option.end_ts = TSSample::MAX_TIMESTAMP;
+      s = ts_db_->Range(*ctx_, keys[i], option, &res);
+      EXPECT_TRUE(s.ok());
+      EXPECT_EQ(res, expected_samples[i]);
+    }
+  };
+  std::vector<std::vector<TSSample>> expected_samples = {
+      {{0, 3}, {10, 11}},  // test2
+      {{0, 3}, {10, 11}},  // test3
+      {}                   // test4
+  };
+  check(expected_samples);
+
+  // Add new samples
+  TSSample new_sample{50, 50};
+  TSChunk::AddResult add_result;
+  s = ts_db_->Add(*ctx_, "test1", new_sample, TSCreateOption(), &add_result);
+  EXPECT_TRUE(s.ok());
+  // Validate updated ranges
+  expected_samples = {
+      {{0, 3}, {10, 11}, {40, 91}},  // test2
+      {{0, 3}, {10, 11}, {30, 91}},  // test3
+      {}                             // test4
+  };
+  check(expected_samples);
+
+  // Add final sample
+  TSSample final_sample{200, 200};
+  s = ts_db_->Add(*ctx_, "test1", final_sample, TSCreateOption(), &add_result);
+  EXPECT_TRUE(s.ok());
+  // Validate final ranges
+  expected_samples = {
+      {{0, 3}, {10, 11}, {40, 91}, {50, 50}},  // test2
+      {{0, 3}, {10, 11}, {30, 91}, {50, 50}},  // test3
+      {{0, 155}}                               // test4
+  };
+  check(expected_samples);
+}

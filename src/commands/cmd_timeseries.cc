@@ -1039,6 +1039,53 @@ class CommandTSIncrByDecrBy : public CommandTSCreateBase {
   double value_ = 0;
 };
 
+class CommandTSDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.del' command"};
+    }
+    CommandParser parser(args, 2);
+    // Parse start timestamp
+    auto start_parse = parser.TakeInt<uint64_t>();
+    if (!start_parse.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      start_ts_ = start_parse.GetValue();
+    }
+    // Parse end timestamp
+    auto end_parse = parser.TakeInt<uint64_t>();
+    if (!end_parse.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      end_ts_ = end_parse.GetValue();
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    uint64_t deleted_count = 0;
+    auto s = timeseries_db.Del(ctx, args_[1], start_ts_, end_ts_, &deleted_count);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(deleted_count);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t start_ts_ = 0;
+  uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -1049,6 +1096,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

@@ -2154,4 +2154,19 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   return s;
 }
 
+bool TimeSeries::IsChunkExpired(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
+                                const rocksdb::Slice &chunk_value) {
+  auto ns_key = AppendNamespacePrefix(user_key);
+  auto chunk = CreateTSChunkFromData(chunk_value);
+  auto last_ts = chunk->GetLastTimestamp();
+  std::vector<TSSample> get_samples;
+  auto s = getCommon(ctx, ns_key, metadata, true, &get_samples);
+  CHECK(s.ok());
+  if (get_samples.empty()) return true;
+  uint64_t latest_ts = get_samples.back().ts;
+  uint64_t retention_bound =
+      (metadata.retention_time > 0 && metadata.retention_time < latest_ts) ? latest_ts - metadata.retention_time : 0;
+  return last_ts < retention_bound;
+}
+
 }  // namespace redis

@@ -110,8 +110,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
           ikey.GetKey(), s.Msg());
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
-  // bitmap will be checked in Filter
-  if (metadata.Type() == kRedisBitmap) {
+  // bitmap and timeseries will be checked in Filter
+  if (metadata.Type() == kRedisBitmap || metadata.Type() == kRedisTimeSeries) {
     return rocksdb::CompactionFilter::Decision::kUndetermined;
   }
 
@@ -131,6 +131,20 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
           ikey.GetKey(), s.Msg());
     return false;
+  }
+
+  if (metadata.Type() == kRedisTimeSeries) {
+    TimeSeriesMetadata ts_metadata(false);
+    Slice input(cached_metadata_);
+    auto s = ts_metadata.Decode(&input);
+    if (!s.ok()) {
+      error("[compact_filter/subkey] Failed to decode timeseries metadata, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return false;
+    }
+    auto timeseries = std::make_unique<redis::TimeSeries>(stor_, ikey.GetNamespace().ToString());
+    engine::Context ctx(stor_);
+    return timeseries->IsChunkExpired(ctx, ikey.GetKey(), ts_metadata, value);
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

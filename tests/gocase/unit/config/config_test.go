@@ -434,9 +434,9 @@ func TestConfigDailyOffpeakTimeUTC(t *testing.T) {
 	cli := srv.NewClient()
 	defer func() { require.NoError(t, cli.Close()) }()
 
-	t.Run("Get and Set rocksdb.rocksdb.daily_offpeak_time_utc", func(t *testing.T) {
+	t.Run("Get and Set rocksdb.daily_offpeak_time_utc", func(t *testing.T) {
 		ctx := context.Background()
-		parameter := "rocksdb.rocksdb.daily_offpeak_time_utc"
+		parameter := "rocksdb.daily_offpeak_time_utc"
 		result, err := cli.ConfigGet(ctx, parameter).Result()
 		require.NoError(t, err)
 		require.EqualValues(t, "", result[parameter])

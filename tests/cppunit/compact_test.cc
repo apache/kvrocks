@@ -222,28 +222,33 @@ TEST(Compact, IndexFilter) {
 
   std::string ts_del_key = "ts_del_key";
   std::string ts_expire_key = "ts_expire_key";
+  std::string ts_keep_key = "ts_keep_key";
   auto create_option = redis::TSCreateOption();
   create_option.labels.push_back({"flag", "temp"});
   ASSERT_TRUE(timeseries->Create(ctx, ts_del_key, create_option).ok());
   ASSERT_TRUE(timeseries->Create(ctx, ts_expire_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, ts_keep_key, create_option).ok());
 
   redis::TSMGetOption mget_option;
   mget_option.filter.labels_equals["flag"].insert("temp");
   std::vector<redis::TSMGetResult> mget_result;
   ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
-  ASSERT_EQ(mget_result.size(), 2);
+  ASSERT_EQ(mget_result.size(), 3);
   ASSERT_EQ(mget_result[0].name, ts_del_key);
   ASSERT_EQ(mget_result[1].name, ts_expire_key);
+  ASSERT_EQ(mget_result[2].name, ts_keep_key);
 
+  std::string ns_del_key = ComposeNamespaceKey(ns, ts_del_key, false);
   ASSERT_TRUE(
-      storage->Delete(ctx, storage->DefaultWriteOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ts_del_key)
+      storage->Delete(ctx, storage->DefaultWriteOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ns_del_key)
           .ok());
   ASSERT_TRUE(timeseries->Expire(ctx, ts_expire_key, 1).ok());
 
   ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
 
   ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
-  ASSERT_EQ(mget_result.size(), 0);
+  ASSERT_EQ(mget_result.size(), 1);
+  ASSERT_EQ(mget_result[0].name, ts_keep_key);
 
   std::error_code ec;
   std::filesystem::remove_all(config.db_dir, ec);

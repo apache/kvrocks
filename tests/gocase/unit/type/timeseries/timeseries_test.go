@@ -879,4 +879,32 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, 1, len(res))
 		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
 	})
+
+	t.Run("TS.Del Test", func(t *testing.T) {
+		srcKey := "del_test_src"
+		dstKey := "del_test_dst"
+		// Create source key with retention=10
+		require.NoError(t, rdb.Do(ctx, "ts.create", srcKey, "retention", "10").Err())
+		// Create destination key
+		require.NoError(t, rdb.Do(ctx, "ts.create", dstKey).Err())
+
+		// Test: Create rule successfully
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "sum", "10").Err())
+
+		// Test: Add samples
+		res := rdb.Do(ctx, "ts.madd", srcKey, "5", "5", srcKey, "8", "8", srcKey, "12", "12", srcKey, "13", "13", srcKey, "15", "15").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(5), int64(8), int64(12), int64(13), int64(15)}, res)
+
+		// Test: Delete samples within retention period
+		deletedCount := rdb.Do(ctx, "ts.del", srcKey, "11", "14").Val().(int64)
+		assert.Equal(t, int64(2), deletedCount) // Deletes 12 and 13
+
+		// Test: Try delete samples beyond retention period
+		_, err := rdb.Do(ctx, "ts.del", srcKey, "5", "8").Result()
+		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
+
+		// Test: Try delete all samples with range
+		_, err = rdb.Do(ctx, "ts.del", srcKey, "-", "+").Result()
+		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
+	})
 }

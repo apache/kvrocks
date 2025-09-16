@@ -80,8 +80,9 @@ struct TSAggregator {
   // Splits the given samples into buckets.
   std::vector<nonstd::span<const TSSample>> SplitSamplesToBuckets(nonstd::span<const TSSample> samples) const;
 
-  // Returns the samples in the bucket that contains the given timestamp.
-  nonstd::span<const TSSample> GetBucketByTimestamp(nonstd::span<const TSSample> samples, uint64_t ts) const;
+  // Returns the samples earlier than `less_than` in the bucket that contains `ts`.
+  nonstd::span<const TSSample> GetBucketByTimestamp(nonstd::span<const TSSample> samples, uint64_t ts,
+                                                    uint64_t less_than = TSSample::MAX_TIMESTAMP) const;
 
   // Calculates the aggregated value of the given samples according to the aggregator type
   double AggregateSamplesValue(nonstd::span<const TSSample> samples) const;
@@ -270,6 +271,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
+  rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
 
  private:
   rocksdb::ColumnFamilyHandle *index_cf_handle_;
@@ -283,12 +285,23 @@ class TimeSeries : public SubKeyScanner {
                                  LabelKVList *labels);
   rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                SampleBatch &sample_batch, std::vector<std::string> *new_chunks = nullptr);
+  rocksdb::Status upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
+                                      SampleBatch &sample_batch, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                      std::vector<std::string> *new_chunks = nullptr);
   rocksdb::Status rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
   rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                    const std::vector<std::string> &new_chunks, SampleBatch &sample_batch);
   rocksdb::Status getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                             bool is_return_latest, std::vector<TSSample> *res);
+  rocksdb::Status delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata, uint64_t from,
+                                 uint64_t to, uint64_t *deleted, bool inclusive_to = true);
+  rocksdb::Status delRangeCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
+                                        uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
+                                        uint64_t *deleted, bool inclusive_to = true);
+  rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
+                                     std::vector<std::string> &ds_keys, std::vector<TSDownStreamMeta> &ds_metas,
+                                     uint64_t from, uint64_t to);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);

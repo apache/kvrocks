@@ -247,7 +247,7 @@ bool IndexFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_u
   }
 
   if (metadata.Expired()) {
-    return true;
+    return true;  // NOLINT
   }
   return false;
 }

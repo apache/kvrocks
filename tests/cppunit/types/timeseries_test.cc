@@ -874,3 +874,111 @@ TEST_F(TimeSeriesTest, MGet) {
     EXPECT_EQ(results[1].samples[0].v, 40);
   }
 }
+
+TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
+  using TSMRangeOption = redis::TSMRangeOption;
+  // Test Case: SUM and AVG Reducer
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 2.0}, {2, 3.0}});
+    all_samples.push_back({{1, 3.0}, {3, 3.0}});
+    all_samples.push_back({{1, 1.0}, {4, 2.0}});
+
+    std::vector<TSSample> expected = {{1, 6.0}, {2, 3.0}, {3, 3.0}, {4, 2.0}};
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
+    EXPECT_EQ(actual, expected);
+
+    expected = {{1, 3.0}, {2, 3.0}, {3, 3.0}, {4, 2.0}};
+    actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::AVG);
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test Case: MIN and MAX Reducers
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 10.0}, {5, 100.0}});
+    all_samples.push_back({{1, -5.0}, {5, 200.0}});
+    all_samples.push_back({{1, 20.0}, {5, -50.0}});
+
+    std::vector<TSSample> expected_min = {{1, -5.0}, {5, -50.0}};
+    std::vector<TSSample> expected_max = {{1, 20.0}, {5, 200.0}};
+
+    auto actual_min =
+        GroupSamplesAndReduce(std::vector<std::vector<TSSample>>(all_samples), TSMRangeOption::GroupReducerType::MIN);
+    EXPECT_EQ(actual_min, expected_min);
+
+    auto actual_max =
+        GroupSamplesAndReduce(std::vector<std::vector<TSSample>>(all_samples), TSMRangeOption::GroupReducerType::MAX);
+    EXPECT_EQ(actual_max, expected_max);
+  }
+
+  // Test Case: COUNT Reducer
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 2.0}, {2, 3.0}});
+    all_samples.push_back({{1, 3.0}, {3, 3.0}});
+    all_samples.push_back({{1, 1.0}, {4, 2.0}});
+    all_samples.push_back({{2, 9.0}});  // Add another sample at ts=2
+
+    // ts=1 has 3 samples, ts=2 has 2 samples, ts=3 has 1, ts=4 has 1
+    std::vector<TSSample> expected = {{1, 3.0}, {2, 2.0}, {3, 1.0}, {4, 1.0}};
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::COUNT);
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test Case : Edge Case - Empty Input Vector
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
+    EXPECT_TRUE(actual.empty());
+  }
+
+  // Test Case : Edge Case - Input with Empty Sub-Vectors
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 10.0}});
+    all_samples.emplace_back();  // Empty vector
+    all_samples.push_back({{1, 20.0}});
+    all_samples.emplace_back();  // Another empty vector
+
+    const std::vector<TSSample> &expected = {{1, 30.0}};
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test Case : Edge Case - Single Input Vector
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    std::vector<TSSample> single_vector = {{10, 1.0}, {20, 2.0}};
+    all_samples.push_back(single_vector);
+
+    // Expected is the same as input
+    std::vector<TSSample> &expected = single_vector;
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test Case : Edge Case - No Overlapping Timestamps
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 1.0}, {4, 4.0}});
+    all_samples.push_back({{2, 2.0}, {5, 5.0}});
+    all_samples.push_back({{3, 3.0}, {6, 6.0}});
+
+    // Expected is a simple sorted merge
+    std::vector<TSSample> expected = {{1, 1.0}, {2, 2.0}, {3, 3.0}, {4, 4.0}, {5, 5.0}, {6, 6.0}};
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::SUM);
+    EXPECT_EQ(actual, expected);
+  }
+
+  // Test Case: Edge Case - ReducerType is NONE
+  {
+    std::vector<std::vector<TSSample>> all_samples;
+    all_samples.push_back({{1, 2.0}, {2, 3.0}});
+    all_samples.push_back({{1, 3.0}, {3, 3.0}});
+
+    auto actual = GroupSamplesAndReduce(all_samples, TSMRangeOption::GroupReducerType::NONE);
+    EXPECT_TRUE(actual.empty());
+  }
+}

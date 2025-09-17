@@ -104,7 +104,8 @@ struct TSDownStreamMeta {
   // Aggregate samples and update the auxiliary info and latest_bucket_idx if needed.
   // Returns the aggregated samples if there are new buckets.
   // Note: Samples must be sorted by timestamp.
-  std::vector<TSSample> AggregateMultiBuckets(nonstd::span<const TSSample> samples, bool skip_last_bucket = false);
+  std::vector<TSSample> AggregateMultiBuckets(const std::vector<nonstd::span<const TSSample>> &bucket_spans,
+                                              bool skip_last_bucket = false);
 
   // Aggregate the samples to the latest bucket, update the auxiliary info.
   void AggregateLatestBucket(nonstd::span<const TSSample> samples);

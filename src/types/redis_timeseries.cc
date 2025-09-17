@@ -245,10 +245,9 @@ std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSamp
   return result;
 }
 
-std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
-                                                              bool skip_last_bucket) {
+std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(
+    const std::vector<nonstd::span<const TSSample>> &bucket_spans, bool skip_last_bucket) {
   std::vector<TSSample> res;
-  auto bucket_spans = aggregator.SplitSamplesToBuckets(samples);
   for (size_t i = 0; i < bucket_spans.size(); i++) {
     const auto &span = bucket_spans[i];
     if (span.empty()) {
@@ -1223,18 +1222,37 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     if (new_chunks.size() > 1) {
       is_meta_updates[i] = true;
     }
+
+    // Avoid incorrect aggregation of the `bucket_idx=0` bucket,
+    // when inserting a sample with `bucket_idx>0` while the source series is empty.
+    if (meta.latest_bucket_idx == 0 && ds_args.was_source_empty) {
+      auto chunk = CreateTSChunkFromData(new_chunks.front());
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.size()) {
+        auto bkt_idx = agg.CalculateAlignedBucketLeft(buckets[0][0].ts);
+        if (bkt_idx > meta.latest_bucket_idx) {
+          meta.latest_bucket_idx = bkt_idx;
+          is_meta_updates[i] = true;
+        }
+      }
+    }
+
+    auto aggregate_chunk = [&](const auto &chunk, bool is_unsealed) {
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.empty()) return;
+      auto samples = meta.AggregateMultiBuckets(buckets, is_unsealed);
+      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+    };
     // For chunk except the last chunk(sealed)
     for (size_t j = 0; j < new_chunks.size() - 1; j++) {
       auto chunk = CreateTSChunkFromData(new_chunks[j]);
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan());
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(chunk, false /* is_unsealed = false */);
     }
     // For last chunk(unsealed)
-    auto chunk = CreateTSChunkFromData(new_chunks.back());
-    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(chunk->GetLastTimestamp());
+    auto last_chunk = CreateTSChunkFromData(new_chunks.back());
+    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk->GetLastTimestamp());
     if (meta.latest_bucket_idx < newest_bucket_idx) {
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan(), true);
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(last_chunk, true /* is_unsealed = true */);
       is_meta_updates[i] = true;
     }
   }

@@ -22,6 +22,7 @@ package config
 import (
 	"context"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -393,5 +394,63 @@ func TestConfigSstFileDeleteRateBytesPerSec(t *testing.T) {
 		result, err = cli.ConfigGet(ctx, parameter).Result()
 		require.NoError(t, err)
 		require.EqualValues(t, "1073741824", result[parameter])
+	})
+}
+
+func TestConfigPeriodicCompactionSecondsAndTTL(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	cli := srv.NewClient()
+	defer func() { require.NoError(t, cli.Close()) }()
+
+	testTemplate := func(t *testing.T, field string) func(*testing.T) {
+		return func(*testing.T) {
+			ctx := context.Background()
+			parameter := field
+			result, err := cli.ConfigGet(ctx, parameter).Result()
+			require.NoError(t, err)
+			require.EqualValues(t, strconv.FormatUint(math.MaxUint64-1, 10), result[parameter])
+
+			util.ErrorRegexp(t, cli.ConfigSet(ctx, parameter, "-1").Err(), ".*not started as an integer")
+
+			require.NoError(t, cli.ConfigSet(ctx, parameter, strconv.FormatUint(math.MaxUint64, 10)).Err())
+			result, err = cli.ConfigGet(ctx, parameter).Result()
+			require.NoError(t, err)
+			require.EqualValues(t, strconv.FormatUint(math.MaxUint64, 10), result[parameter])
+		}
+	}
+
+	t.Run("Get and Set rocksdb.periodic_compaction_seconds", testTemplate(t, "rocksdb.periodic_compaction_seconds"))
+	t.Run("Get and Set rocksdb.ttl", testTemplate(t, "rocksdb.ttl"))
+}
+
+func TestConfigDailyOffpeakTimeUTC(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	cli := srv.NewClient()
+	defer func() { require.NoError(t, cli.Close()) }()
+
+	t.Run("Get and Set rocksdb.daily_offpeak_time_utc", func(t *testing.T) {
+		ctx := context.Background()
+		parameter := "rocksdb.daily_offpeak_time_utc"
+		result, err := cli.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "", result[parameter])
+
+		util.ErrorRegexp(t, cli.ConfigSet(ctx, parameter, "VALUE").Err(), ".*Invalid argument.*")
+
+		require.NoError(t, cli.ConfigSet(ctx, parameter, "00:00-00:30").Err())
+		result, err = cli.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "00:00-00:30", result[parameter])
+
+		require.NoError(t, cli.ConfigSet(ctx, parameter, "").Err())
+		result, err = cli.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "", result[parameter])
 	})
 }

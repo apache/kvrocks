@@ -307,6 +307,10 @@ Config::Config() {
       {"rocksdb.max_compaction_bytes", false, new Int64Field(&rocks_db.max_compaction_bytes, 0, 0, INT64_MAX)},
       {"rocksdb.sst_file_delete_rate_bytes_per_sec", false,
        new Int64Field(&rocks_db.sst_file_delete_rate_bytes_per_sec, 0, 0, INT64_MAX)},
+      {"rocksdb.periodic_compaction_seconds", false,
+       new UInt64Field(&rocks_db.periodic_compaction_seconds, kDefaultRocksdbPeriodicCompactionSeconds, 0, UINT64_MAX)},
+      {"rocksdb.ttl", false, new UInt64Field(&rocks_db.ttl, kDefaultRocksdbTTL, 0, UINT64_MAX)},
+      {"rocksdb.daily_offpeak_time_utc", false, new StringField(&rocks_db.daily_offpeak_time_utc, "")},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&rocks_db.write_options.sync, false)},
@@ -732,6 +736,9 @@ void Config::initFieldCallback() {
              srv->storage->SetSstFileDeleteRateBytesPerSecond(rocks_db.sst_file_delete_rate_bytes_per_sec);
              return Status::OK();
            }},
+          {"rocksdb.periodic_compaction_seconds", set_cf_option_cb},
+          {"rocksdb.ttl", set_cf_option_cb},
+          {"rocksdb.daily_offpeak_time_utc", set_db_option_cb},
           {"rocksdb.level0_slowdown_writes_trigger",
            [this, &set_cf_option_cb](Server *srv, const std::string &k,
                                      [[maybe_unused]] const std::string &v) -> Status {

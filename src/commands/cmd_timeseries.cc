@@ -851,6 +851,9 @@ class CommandTSMGet : public CommandTSMGetBase {
     return CommandTSMGetBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MGet is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMGetResult> results;
     auto s = timeseries_db.MGet(ctx, getMGetOption(), is_return_latest_, &results);
@@ -898,6 +901,9 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MRANGE is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
     auto s = timeseries_db.MRange(ctx, option_, &results);

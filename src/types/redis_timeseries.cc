@@ -211,7 +211,7 @@ std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSamp
 
   while (!min_heap.empty()) {
     // Get the top element from the min-heap
-    SamplePtr top = min_heap.top();
+    SamplePtr top = std::move(min_heap.top());
     min_heap.pop();
 
     // Check if the timestamp is the same as the current group
@@ -843,7 +843,7 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
 rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                                 SampleBatch &sample_batch,
                                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                                std::vector<std::string> *new_chunks) {
+                                                std::vector<std::string> *new_chunks) const {
   auto all_batch_slice = sample_batch.AsSlice();
 
   if (all_batch_slice.GetSampleSpan().empty() && new_chunks != nullptr) {
@@ -851,7 +851,7 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
     return rocksdb::Status::OK();
   }
 
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  // In the enum `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
   std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
   std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
@@ -980,7 +980,7 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
     return rocksdb::Status::OK();
   }
 
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  // In the enum `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
   std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
   std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
@@ -1293,7 +1293,7 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
 
 rocksdb::Status TimeSeries::getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                       bool is_return_latest, std::vector<TSSample> *res) {
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  // In the enum `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string chunk_upper_bound = internalKeyFromLabelKey(ns_key, metadata, "");
   std::string end_key = internalKeyFromChunkID(ns_key, metadata, TSSample::MAX_TIMESTAMP);
   std::string prefix = end_key.substr(0, end_key.size() - sizeof(uint64_t));
@@ -1335,7 +1335,7 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
   if (from > to || (from == to && !inclusive_to)) {
     return rocksdb::Status::OK();
   }
-  // In the emun `TSSubkeyType`, `LABEL` is the next of `CHUNK`
+  // In the enum `TSSubkeyType`, `LABEL` is the next of `CHUNK`
   std::string start_key = internalKeyFromChunkID(ns_key, metadata, from);
   std::string prefix = start_key.substr(0, start_key.size() - sizeof(uint64_t));
   std::string end_key;

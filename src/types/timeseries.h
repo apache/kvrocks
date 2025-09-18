@@ -96,11 +96,11 @@ class TSChunk {
 
     // Slice samples by count. Returns count valid samples starting from first timestamp
     // e.g., samples: {100,200,300}, first=200, count=2 -> {200,300}
-    SampleBatchSlice SliceByCount(uint64_t first, int count, uint64_t* last_ts = nullptr);
+    SampleBatchSlice SliceByCount(uint64_t first, int count, uint64_t* last_ts = nullptr) const;
 
     // Slice samples by timestamp range [first, last)
     // e.g., samples: {10,20,30,40}, first=20, last=40 -> {20,30}
-    SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false);
+    SampleBatchSlice SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last = false) const;
 
     uint64_t GetFirstTimestamp() const;
     uint64_t GetLastTimestamp() const;
@@ -136,7 +136,7 @@ class TSChunk {
     // e.g., retention=3600, last_ts=5000 -> samples before 5000-3600 are expired
     void Expire(uint64_t last_ts, uint64_t retention);
 
-    SampleBatchSlice AsSlice();
+    SampleBatchSlice AsSlice() const;
 
     // Return add results by samples' order
     std::vector<AddResult> GetFinalResults() const;

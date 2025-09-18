@@ -283,7 +283,7 @@ struct JsonValue {
             if (val.is_array()) {
               auto len = static_cast<int64_t>(val.size());
               // When index >= 0, we need index <= len (allow insertion at end)
-              // when index < 0, we ne d index >= -len.
+              // when index < 0, we need index >= -len.
               if (index > len || index < -len) {
                 results.emplace_back(std::nullopt);
                 return;

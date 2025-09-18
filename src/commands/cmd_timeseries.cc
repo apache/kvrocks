@@ -186,7 +186,13 @@ class KeywordCommandBase : public Commander {
       if (containsKeyword(value_upper, true)) {
         Status s = handlers_[value_upper](parser);
         if (!s.IsOK()) return s;
+        if (required_keywords_.count(value_upper)) {
+          required_keywords_.erase(value_upper);
+        }
       }
+    }
+    if (!required_keywords_.empty()) {
+      return {Status::InvalidArgument, required_keywords_.begin()->second};
     }
     return Commander::Parse(args);
   }
@@ -198,6 +204,12 @@ class KeywordCommandBase : public Commander {
   void registerHandler(const std::string &keyword, Handler &&handler) {
     handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler));
   }
+  template <typename Handler>
+  void registerHandlerRequired(const std::string &keyword, Handler &&handler, std::string_view err_msg) {
+    auto it = handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler)).first;
+    required_keywords_.emplace(it->first, err_msg);
+  }
+
   virtual void registerDefaultHandlers() = 0;
 
   void setSkipNum(size_t num) { skip_num_ = num; }
@@ -213,6 +225,7 @@ class KeywordCommandBase : public Commander {
  private:
   size_t skip_num_ = 0;
   size_t tail_skip_num_ = 0;
+  std::unordered_map<std::string_view, std::string> required_keywords_;
   std::unordered_map<std::string, std::function<Status(TSOptionsParser &)>> handlers_;
 };
 
@@ -821,7 +834,9 @@ class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
                     [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
     registerHandler("SELECTED_LABELS",
                     [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
-    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
+    registerHandlerRequired(
+        "FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); },
+        "missing FILTER argument");
   }
 
   static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {

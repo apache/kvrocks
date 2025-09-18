@@ -308,7 +308,7 @@ class CommandTSCreateBase : public KeywordCommandBase {
 
 class CommandTSCreate : public CommandTSCreateBase {
  public:
-  CommandTSCreate() { registerDefaultHandlers(); }
+  CommandTSCreate() { CommandTSCreateBase::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 2) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -379,7 +379,7 @@ class CommandTSInfo : public Commander {
 
 class CommandTSAdd : public CommandTSCreateBase {
  public:
-  CommandTSAdd() { registerDefaultHandlers(); }
+  CommandTSAdd() { CommandTSAdd::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
@@ -577,30 +577,24 @@ class CommandTSRangeBase : virtual public CommandTSAggregatorBase {
   Status Parse(const std::vector<std::string> &args) override {
     TSOptionsParser parser(std::next(args.begin(), static_cast<std::ptrdiff_t>(skip_num_)), args.end());
     // Parse start timestamp
-    auto start_ts = parser.TakeInt<uint64_t>();
-    if (!start_ts.IsOK()) {
-      auto start_ts_str = parser.TakeStr();
-      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
-        return {Status::RedisParseErr, "wrong fromTimestamp"};
-      }
-      // "-" means use default start timestamp: 0
-    } else {
-      is_start_explicit_set_ = true;
-      option_.start_ts = start_ts.GetValue();
-    }
 
-    // Parse end timestamp
-    auto end_ts = parser.TakeInt<uint64_t>();
-    if (!end_ts.IsOK()) {
-      auto end_ts_str = parser.TakeStr();
-      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
-        return {Status::RedisParseErr, "wrong toTimestamp"};
+    auto parse_ts = [](TSOptionsParser &parser, bool *is_set_flag, uint64_t *start_ts,
+                       std::string_view error_msg) -> Status {
+      auto ts = parser.TakeInt<uint64_t>();
+      if (!ts.IsOK()) {
+        auto ts_str = parser.TakeStr();
+        if (!ts_str.IsOK() || ts_str.GetValue() != "-") {
+          return {Status::RedisParseErr, std::string(error_msg)};
+        }
+        // "-" means use default start timestamp: 0
+      } else {
+        *is_set_flag = true;
+        *start_ts = ts.GetValue();
       }
-      // "+" means use default end timestamp: MAX_TIMESTAMP
-    } else {
-      is_end_explicit_set_ = true;
-      option_.end_ts = end_ts.GetValue();
-    }
+      return Status::OK();
+    };
+    GET_OR_RET(parse_ts(parser, &is_start_explicit_set_, &option_.start_ts, "wrong fromTimestamp"));
+    GET_OR_RET(parse_ts(parser, &is_end_explicit_set_, &option_.end_ts, "wrong toTimestamp"));
     KeywordCommandBase::setSkipNum(skip_num_ + 2);
     auto s = KeywordCommandBase::Parse(args);
     if (!s.IsOK()) return s;
@@ -727,7 +721,7 @@ class CommandTSRangeBase : virtual public CommandTSAggregatorBase {
 
 class CommandTSRange : public CommandTSRangeBase {
  public:
-  CommandTSRange() : CommandTSRangeBase(2) { registerDefaultHandlers(); }
+  CommandTSRange() : CommandTSRangeBase(2) { CommandTSRangeBase::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 4) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.range' command"};
@@ -753,7 +747,7 @@ class CommandTSRange : public CommandTSRangeBase {
 
 class CommandTSCreateRule : public CommandTSAggregatorBase {
  public:
-  explicit CommandTSCreateRule() { registerDefaultHandlers(); }
+  explicit CommandTSCreateRule() { CommandTSAggregatorBase::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 6) {
       return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
@@ -780,7 +774,7 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
 
 class CommandTSGet : public CommandTSAggregatorBase {
  public:
-  CommandTSGet() { registerDefaultHandlers(); }
+  CommandTSGet() { CommandTSGet::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 2) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.get' command"};
@@ -838,6 +832,7 @@ class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
     }
     return Status::OK();
   }
+
   Status handleFilterExpr(TSOptionsParser &parser, TSMGetOption::FilterOption &filter_option) {
     auto filter_parser = TSMQueryFilterParser(filter_option);
     while (parser.Good()) {
@@ -857,7 +852,7 @@ class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
 
 class CommandTSMGet : public CommandTSMGetBase {
  public:
-  CommandTSMGet() { registerDefaultHandlers(); }
+  CommandTSMGet() { CommandTSMGet::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 3) {
       return {Status::RedisParseErr, "wrong number of arguments for 'ts.mget' command"};
@@ -902,7 +897,7 @@ class CommandTSMGet : public CommandTSMGetBase {
 
 class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
  public:
-  CommandTSMRange() : CommandTSRangeBase(1) { registerDefaultHandlers(); }
+  CommandTSMRange() : CommandTSRangeBase(1) { CommandTSMRange::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() < 5) {
       return {Status::RedisParseErr, errTSMRangeArgsNum};
@@ -1001,7 +996,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
 
 class CommandTSIncrByDecrBy : public CommandTSCreateBase {
  public:
-  CommandTSIncrByDecrBy() { registerDefaultHandlers(); }
+  CommandTSIncrByDecrBy() { CommandTSIncrByDecrBy::registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 2);
     auto value_parse = parser.TakeFloat<double>();

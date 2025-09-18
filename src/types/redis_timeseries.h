@@ -178,7 +178,7 @@ struct TSRangeOption {
   std::set<uint64_t> filter_by_ts;
   std::optional<std::pair<double, double>> filter_by_value;
 
-  // Used for comapction
+  // Used for compaction
   TSAggregator aggregator;
   bool is_return_latest = false;
   bool is_return_empty = false;
@@ -297,7 +297,7 @@ class TimeSeries : public SubKeyScanner {
                                SampleBatch &sample_batch, std::vector<std::string> *new_chunks = nullptr);
   rocksdb::Status upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                       SampleBatch &sample_batch, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                      std::vector<std::string> *new_chunks = nullptr);
+                                      std::vector<std::string> *new_chunks = nullptr) const;
   rocksdb::Status rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
   rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,

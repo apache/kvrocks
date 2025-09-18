@@ -96,7 +96,7 @@ void TSChunk::SampleBatch::sortAndOrganize() {
   }
 }
 
-SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int count, uint64_t* last_ts) {
+SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int count, uint64_t* last_ts) const {
   if (sample_span_.empty()) {
     return {};
   }
@@ -129,7 +129,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::SliceByCount(uint64_t first, int cou
   return createSampleSlice(start_idx, end_idx);
 }
 
-SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last) {
+SampleBatchSlice TSChunk::SampleBatchSlice::SliceByTimestamps(uint64_t first, uint64_t last, bool contain_last) const {
   if (sample_span_.empty()) {
     return {};
   }
@@ -158,7 +158,7 @@ SampleBatchSlice TSChunk::SampleBatchSlice::createSampleSlice(size_t start_idx, 
           nonstd::span<AddResult>(&add_result_span_[start_idx], end_idx - start_idx), policy_};
 }
 
-SampleBatchSlice TSChunk::SampleBatch::AsSlice() { return {samples_, add_results_, policy_}; }
+SampleBatchSlice TSChunk::SampleBatch::AsSlice() const { return {samples_, add_results_, policy_}; }
 
 std::vector<TSChunk::AddResult> TSChunk::SampleBatch::GetFinalResults() const {
   std::vector<AddResult> res;

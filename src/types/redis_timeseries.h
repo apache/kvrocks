@@ -104,7 +104,8 @@ struct TSDownStreamMeta {
   // Aggregate samples and update the auxiliary info and latest_bucket_idx if needed.
   // Returns the aggregated samples if there are new buckets.
   // Note: Samples must be sorted by timestamp.
-  std::vector<TSSample> AggregateMultiBuckets(nonstd::span<const TSSample> samples, bool skip_last_bucket = false);
+  std::vector<TSSample> AggregateMultiBuckets(const std::vector<nonstd::span<const TSSample>> &bucket_spans,
+                                              bool skip_last_bucket = false);
 
   // Aggregate the samples to the latest bucket, update the auxiliary info.
   void AggregateLatestBucket(nonstd::span<const TSSample> samples);
@@ -284,6 +285,13 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
 
  private:
+  // Bundles the arguments for a downstream upsert operation
+  struct DownstreamUpsertArgs {
+    std::vector<std::string> new_chunks;  // Newly created chunks
+    bool was_source_empty = false;        // Whether the source time series was empty before upsert
+    SampleBatch *sample_batch = nullptr;  // The sample batch that has been upserted to source
+  };
+
   rocksdb::ColumnFamilyHandle *index_cf_handle_;
 
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
@@ -294,14 +302,14 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status getLabelKVList(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                  LabelKVList *labels);
   rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                               SampleBatch &sample_batch, std::vector<std::string> *new_chunks = nullptr);
+                               SampleBatch &sample_batch, DownstreamUpsertArgs *ds_args = nullptr);
   rocksdb::Status upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                       SampleBatch &sample_batch, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                      std::vector<std::string> *new_chunks = nullptr);
+                                      DownstreamUpsertArgs *ds_args = nullptr);
   rocksdb::Status rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
   rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
-                                   const std::vector<std::string> &new_chunks, SampleBatch &sample_batch);
+                                   DownstreamUpsertArgs &ds_args);
   rocksdb::Status getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                             bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata, uint64_t from,

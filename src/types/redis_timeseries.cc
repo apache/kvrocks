@@ -245,10 +245,9 @@ std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSamp
   return result;
 }
 
-std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
-                                                              bool skip_last_bucket) {
+std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(
+    const std::vector<nonstd::span<const TSSample>> &bucket_spans, bool skip_last_bucket) {
   std::vector<TSSample> res;
-  auto bucket_spans = aggregator.SplitSamplesToBuckets(samples);
   for (size_t i = 0; i < bucket_spans.size(); i++) {
     const auto &span = bucket_spans[i];
     if (span.empty()) {
@@ -853,9 +852,9 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                         SampleBatch &sample_batch, std::vector<std::string> *new_chunks) {
+                                         SampleBatch &sample_batch, DownstreamUpsertArgs *ds_args) {
   auto batch = storage_->GetWriteBatchBase();
-  auto s = upsertCommonInBatch(ctx, ns_key, metadata, sample_batch, batch, new_chunks);
+  auto s = upsertCommonInBatch(ctx, ns_key, metadata, sample_batch, batch, ds_args);
   if (!s.ok()) return s;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -863,11 +862,11 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
 rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                                 SampleBatch &sample_batch,
                                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                                std::vector<std::string> *new_chunks) {
-  auto all_batch_slice = sample_batch.AsSlice();
+                                                DownstreamUpsertArgs *ds_args) {
+  if (ds_args != nullptr) ds_args->new_chunks.clear();
 
-  if (all_batch_slice.GetSampleSpan().empty() && new_chunks != nullptr) {
-    new_chunks->clear();
+  auto all_batch_slice = sample_batch.AsSlice();
+  if (all_batch_slice.GetSampleSpan().empty()) {
     return rocksdb::Status::OK();
   }
 
@@ -983,12 +982,15 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
     if (!s.ok()) return s;
   }
 
-  if (new_chunks) {
+  // For downstream processing
+  if (ds_args != nullptr) {
     if (new_data_list.size()) {
-      *new_chunks = std::move(new_data_list);
+      ds_args->new_chunks = std::move(new_data_list);
     } else {
-      *new_chunks = {std::move(latest_chunk_value)};
+      ds_args->new_chunks = {std::move(latest_chunk_value)};
     }
+    ds_args->sample_batch = &sample_batch;
+    if (latest_chunk_key.empty()) ds_args->was_source_empty = true;
   }
 
   return rocksdb::Status::OK();
@@ -1102,9 +1104,10 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
 }
 
 rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &ns_key,
-                                             const TimeSeriesMetadata &metadata,
-                                             const std::vector<std::string> &new_chunks, SampleBatch &sample_batch) {
+                                             const TimeSeriesMetadata &metadata, DownstreamUpsertArgs &ds_args) {
   // If no valid written
+  auto &new_chunks = ds_args.new_chunks;
+  auto *sample_batch = ds_args.sample_batch;
   if (new_chunks.empty()) return rocksdb::Status::OK();
   std::vector<std::string> downstream_keys;
   std::vector<TSDownStreamMeta> downstream_metas;
@@ -1112,7 +1115,7 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
   if (!s.ok()) return s;
   if (downstream_keys.empty()) return rocksdb::Status::OK();
 
-  auto all_batch_slice = sample_batch.AsSlice();
+  auto all_batch_slice = sample_batch->AsSlice();
   uint64_t new_chunk_first_ts = CreateTSChunkFromData(new_chunks[0])->GetFirstTimestamp();
 
   nonstd::span<const AddResult> add_results = all_batch_slice.GetAddResultSpan();
@@ -1239,18 +1242,37 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     if (new_chunks.size() > 1) {
       is_meta_updates[i] = true;
     }
+
+    // Avoid incorrect aggregation of the `bucket_idx=0` bucket,
+    // when inserting a sample with `bucket_idx>0` while the source series is empty.
+    if (meta.latest_bucket_idx == 0 && ds_args.was_source_empty) {
+      auto chunk = CreateTSChunkFromData(new_chunks.front());
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.size()) {
+        auto bkt_idx = agg.CalculateAlignedBucketLeft(buckets[0][0].ts);
+        if (bkt_idx > meta.latest_bucket_idx) {
+          meta.latest_bucket_idx = bkt_idx;
+          is_meta_updates[i] = true;
+        }
+      }
+    }
+
+    auto aggregate_chunk = [&](const auto &chunk, bool is_unsealed) {
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.empty()) return;
+      auto samples = meta.AggregateMultiBuckets(buckets, is_unsealed);
+      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+    };
     // For chunk except the last chunk(sealed)
     for (size_t j = 0; j < new_chunks.size() - 1; j++) {
       auto chunk = CreateTSChunkFromData(new_chunks[j]);
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan());
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(chunk, false /* is_unsealed = false */);
     }
     // For last chunk(unsealed)
-    auto chunk = CreateTSChunkFromData(new_chunks.back());
-    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(chunk->GetLastTimestamp());
+    auto last_chunk = CreateTSChunkFromData(new_chunks.back());
+    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk->GetLastTimestamp());
     if (meta.latest_bucket_idx < newest_bucket_idx) {
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan(), true);
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(last_chunk, true /* is_unsealed = true */);
       is_meta_updates[i] = true;
     }
   }
@@ -1786,10 +1808,10 @@ rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSS
   if (!s.ok()) return s;
   auto sample_batch = SampleBatch({sample}, on_dup_policy ? *on_dup_policy : metadata.duplicate_policy);
 
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults()[0];
   return rocksdb::Status::OK();
@@ -1805,10 +1827,10 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
     return s;
   }
   auto sample_batch = SampleBatch(std::move(samples), metadata.duplicate_policy);
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults();
   return rocksdb::Status::OK();
@@ -2083,10 +2105,10 @@ rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, 
   }
   auto sample_batch = SampleBatch({sample}, DuplicatePolicy::LAST);
 
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults()[0];
   return rocksdb::Status::OK();

@@ -468,6 +468,54 @@ TEST_F(TimeSeriesTest, CreateRuleErrorCases) {
   }
 }
 
+TEST_F(TimeSeriesTest, AggregationOnEmptySeries) {
+  redis::TSCreateOption option;
+  option.chunk_size = 3;
+  const std::string key_src = "agg_test_empty";
+  const std::string key_dst = "agg_test_empty_dst";
+
+  auto s = ts_db_->Create(*ctx_, key_src, option);
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, key_dst, option);
+  EXPECT_TRUE(s.ok());
+
+  redis::TSAggregator aggregator;
+  aggregator.type = redis::TSAggregatorType::AVG;
+  aggregator.bucket_duration = 10;
+  aggregator.alignment = 0;
+
+  redis::TSCreateRuleResult result = redis::TSCreateRuleResult::kOK;
+  s = ts_db_->CreateRule(*ctx_, key_src, key_dst, aggregator, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(result, redis::TSCreateRuleResult::kOK);
+
+  // Add sample data
+  std::vector<TSSample> samples = {{11, 10}};
+  std::vector<TSChunk::AddResult> add_results(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Query the destination time series
+  std::vector<TSSample> res;
+  redis::TSRangeOption range_opt;
+
+  s = ts_db_->Range(*ctx_, key_dst, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 0);
+
+  // Add sample data
+  samples = {{101, 10}};
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Query the destination time series
+  s = ts_db_->Range(*ctx_, key_dst, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 1);
+  EXPECT_EQ(res[0].ts, 10);
+  EXPECT_EQ(res[0].v, 10);
+}
+
 TEST_F(TimeSeriesTest, AggregationMultiple) {
   redis::TSCreateOption option;
   option.chunk_size = 3;

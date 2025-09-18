@@ -217,6 +217,15 @@ class KeywordCommandBase : public Commander {
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 [[maybe_unused]] std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled && getCreateOption().labels.size()) {
+      return {Status::RedisExecErr, "Specifying LABELS is not supported in cluster mode"};
+    }
+    return Status::OK();
+  }
+
  protected:
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
@@ -308,6 +317,9 @@ class CommandTSCreate : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     auto s = timeseries_db.Create(ctx, args_[1], getCreateOption());
     if (!s.ok() && s.IsInvalidArgument()) return {Status::RedisExecErr, errKeyAlreadyExists};
@@ -387,6 +399,9 @@ class CommandTSAdd : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
@@ -851,6 +866,9 @@ class CommandTSMGet : public CommandTSMGetBase {
     return CommandTSMGetBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MGet is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMGetResult> results;
     auto s = timeseries_db.MGet(ctx, getMGetOption(), is_return_latest_, &results);
@@ -898,6 +916,9 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MRANGE is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
     auto s = timeseries_db.MRange(ctx, option_, &results);
@@ -995,6 +1016,9 @@ class CommandTSIncrByDecrBy : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 

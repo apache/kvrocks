@@ -1024,6 +1024,26 @@ Server::InfoEntries Server::GetRocksDBInfo() {
                          cf_stats_map["memtable-limit-delays"]);
     entries.emplace_back("memtable_count_limit_stop[" + cf_handle->GetName() + "]",
                          cf_stats_map["memtable-limit-stops"]);
+
+    // Get the SST file count in all levels
+    std::string sst_file_at_level = "[";
+    for (int level = 0; level < KVROCKS_MAX_LSM_LEVEL; level++) {
+      std::string sst_file_count;
+      db->GetProperty(cf_handle, rocksdb::DB::Properties::kNumFilesAtLevelPrefix + std::to_string(level),
+                      &sst_file_count);
+      if (level != 0) {
+        sst_file_at_level += ",";
+      }
+      sst_file_at_level += sst_file_count;
+    }
+    entries.emplace_back("num_files_at_level[" + cf_handle->GetName() + "]", sst_file_at_level + "]");
+
+    // Get the estimate pending compaction bytes for the current column family
+    std::string estimate_pending_compaction_bytes;
+    db->GetProperty(cf_handle, rocksdb::DB::Properties::kEstimatePendingCompactionBytes,
+                    &estimate_pending_compaction_bytes);
+    entries.emplace_back("estimate_pending_compaction_bytes[" + cf_handle->GetName() + "]",
+                         estimate_pending_compaction_bytes);
   }
 
   auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;

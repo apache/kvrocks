@@ -116,14 +116,24 @@ struct TSDownStreamMeta {
   rocksdb::Status Decode(Slice *input);
 };
 
-struct TSRevLabelKey {
+struct IndexInternalKey {
   Slice ns;
+  IndexKeyType type;
+  IndexInternalKey(Slice ns, IndexKeyType type) : ns(ns), type(type) {}
+  explicit IndexInternalKey(Slice input);
+};
+
+struct TSRevLabelKey : public IndexInternalKey {
   Slice label_key;
   Slice label_value;
   Slice user_key;
 
   TSRevLabelKey(Slice ns, Slice label_key, Slice label_value, Slice user_key = Slice())
-      : ns(ns), label_key(label_key), label_value(label_value), user_key(user_key) {}
+      : IndexInternalKey(ns, IndexKeyType::TS_LABEL),
+        label_key(label_key),
+        label_value(label_value),
+        user_key(user_key) {}
+  explicit TSRevLabelKey(Slice input);
 
   [[nodiscard]] std::string Encode() const;
   static std::string UpperBound(Slice ns);

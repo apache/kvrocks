@@ -21,6 +21,7 @@ package timeseries
 import (
 	"context"
 	"math"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -430,5 +431,480 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		// Test GET on non-existent key
 		_, err := rdb.Do(ctx, "ts.get", "nonexistent_key").Result()
 		require.ErrorContains(t, err, "key does not exist")
+	})
+
+	t.Run("TS.CREATERULE Error Cases", func(t *testing.T) {
+		srcKey := "error_src"
+		dstKey := "error_dst"
+		anotherKey := "another_dst"
+		anotherSrc := "another_src"
+		srcOfSrc := "src_of_src"
+
+		// 1. Source key equals destination key
+		t.Run("SourceEqualsDestination", func(t *testing.T) {
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, srcKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the source key and destination key should be different")
+		})
+
+		// 2. Source key does not exist
+		t.Run("SourceNotExists", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, srcKey).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the key is not a TSDB key")
+		})
+
+		// Create source key
+		require.NoError(t, rdb.Do(ctx, "ts.create", srcKey).Err())
+
+		// 3. Destination key does not exist
+		t.Run("DestinationNotExists", func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, dstKey).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the key is not a TSDB key")
+		})
+
+		// Create destination key
+		require.NoError(t, rdb.Do(ctx, "ts.create", dstKey).Err())
+
+		// 4. Source key already has a source rule
+		t.Run("SourceHasSourceRule", func(t *testing.T) {
+
+			require.NoError(t, rdb.Do(ctx, "ts.create", srcOfSrc).Err())
+
+			// Create a rule from srcOfSrc to srcKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", srcOfSrc, srcKey, "aggregation", "avg", "1000").Err())
+
+			require.NoError(t, rdb.Do(ctx, "ts.create", anotherKey).Err())
+			// Try to create rule from srcKey to anotherKey
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, anotherKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the source key already has a source rule")
+		})
+
+		// 5. Destination key already has a source rule
+		t.Run("DestinationHasSourceRule", func(t *testing.T) {
+			require.NoError(t, rdb.Do(ctx, "ts.create", "src_for_dst").Err())
+
+			// Create a rule from src_for_dst to dstKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", "src_for_dst", dstKey, "aggregation", "avg", "1000").Err())
+
+			// Try to create rule from another_src to dstKey
+			require.NoError(t, rdb.Do(ctx, "ts.create", anotherSrc).Err())
+			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, dstKey, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the destination key already has a src rule")
+		})
+
+		// 6. Destination key already has downstream rules
+		t.Run("DestinationHasDownstreamRules", func(t *testing.T) {
+			// Create a rule from another_src to anotherKey
+			require.NoError(t, rdb.Do(ctx, "ts.createrule", anotherSrc, anotherKey, "aggregation", "avg", "1000").Err())
+
+			// Try to create rule from another_src to srcOfSrc
+			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, srcOfSrc, "aggregation", "avg", "1000").Result()
+			assert.Contains(t, err, "the destination key already has a dst rule")
+		})
+	})
+	t.Run("TS.CREATERULE DownStream Write", func(t *testing.T) {
+		test2 := "test2"
+		test3 := "test3"
+
+		// Create test2 with CHUNK_SIZE 3
+		require.NoError(t, rdb.Do(ctx, "ts.create", test2, "CHUNK_SIZE", "3").Err())
+		// Create test3
+		require.NoError(t, rdb.Do(ctx, "ts.create", test3).Err())
+		// Create rule with MIN aggregation
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", test2, test3, "aggregation", "min", "10").Err())
+
+		// First batch of writes
+		res := rdb.Do(ctx, "ts.madd", test2, "1", "1", test2, "2", "2", test2, "3", "6", test2, "5", "7", test2, "10", "11", test2, "11", "17").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(1), int64(2), int64(3), int64(5), int64(10), int64(11)}, res)
+
+		// Second batch of writes
+		res = rdb.Do(ctx, "ts.madd", test2, "4", "-0.2", test2, "12", "55", test2, "20", "65").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(4), int64(12), int64(20)}, res)
+
+		// Verify test3 results
+		vals := rdb.Do(ctx, "ts.range", test3, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(vals))
+		assert.Equal(t, []interface{}{int64(0), -0.2}, vals[0])
+		assert.Equal(t, []interface{}{int64(10), float64(11)}, vals[1])
+	})
+
+	t.Run("TS.MGET Filter Expression Parsing", func(t *testing.T) {
+		// Clean up existing keys
+		require.NoError(t, rdb.Del(ctx, "temp:TLV", "temp:JLM").Err())
+
+		// Create the time series with labels as in the example
+		require.NoError(t, rdb.Do(ctx, "ts.create", "temp:TLV", "LABELS", "type", "temp", "location", "TLV").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "temp:JLM", "LABELS", "type", "temp", "location", "JLM").Err())
+
+		// Add a sample to each time series
+		require.NoError(t, rdb.Do(ctx, "ts.add", "temp:TLV", "1000", "30").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", "temp:JLM", "1005", "30").Err())
+
+		// Test cases
+		tests := []struct {
+			name           string
+			filters        []string
+			expectedKeys   []string
+			expectError    bool
+			errorSubstring string
+		}{
+			{
+				name:           "Empty Filter",
+				filters:        []string{},
+				expectError:    true,
+				errorSubstring: "wrong number of arguments",
+			},
+			{
+				name:           "No Matcher",
+				filters:        []string{"type="},
+				expectError:    true,
+				errorSubstring: "please provide at least one matcher",
+			},
+			{
+				name:         "Filter with trailing comma - type=(temp,)",
+				filters:      []string{"type=(temp,)"},
+				expectError:  false,
+				expectedKeys: []string{"temp:TLV", "temp:JLM"},
+			},
+			{
+				name:         "Basic equality - type=temp",
+				filters:      []string{"type=temp"},
+				expectError:  false,
+				expectedKeys: []string{"temp:TLV", "temp:JLM"},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				args := []interface{}{"ts.mget", "FILTER"}
+				for _, f := range tc.filters {
+					args = append(args, f)
+				}
+
+				result, err := rdb.Do(ctx, args...).Result()
+				if tc.expectError {
+					require.Error(t, err)
+					if tc.errorSubstring != "" {
+						require.Contains(t, err.Error(), tc.errorSubstring)
+					}
+					return
+				}
+
+				require.NoError(t, err)
+				resultArray, ok := result.([]interface{})
+				require.True(t, ok, "Expected array result")
+
+				foundKeys := make([]string, 0)
+				for _, item := range resultArray {
+					itemArray, ok := item.([]interface{})
+					require.True(t, ok, "Expected item to be an array")
+					require.True(t, len(itemArray) >= 1, "Expected item array to have at least 1 element")
+
+					key, ok := itemArray[0].(string)
+					require.True(t, ok, "Expected key to be a string")
+					foundKeys = append(foundKeys, key)
+				}
+
+				// Sort both expected and found keys for consistent comparison
+				sort.Strings(tc.expectedKeys)
+				sort.Strings(foundKeys)
+
+				require.Equal(t, tc.expectedKeys, foundKeys,
+					"Expected keys %v but got %v", tc.expectedKeys, foundKeys)
+			})
+		}
+
+		// Test WITHLABELS option
+		t.Run("WITHLABELS Option", func(t *testing.T) {
+			result, err := rdb.Do(ctx, "ts.mget", "WITHLABELS", "FILTER", "type=temp").Result()
+			require.NoError(t, err)
+
+			resultArray, ok := result.([]interface{})
+			require.True(t, ok, "Expected array result")
+
+			foundKeys := make([]string, 0)
+			for _, item := range resultArray {
+				itemArray, ok := item.([]interface{})
+				require.True(t, ok, "Expected item to be an array")
+				require.GreaterOrEqual(t, len(itemArray), 3, "Expected item array to have at least 3 elements")
+
+				// Extract key
+				key, ok := itemArray[0].(string)
+				require.True(t, ok, "Expected key to be a string")
+				foundKeys = append(foundKeys, key)
+
+				// Extract labels - labels are a nested array of [key, value] pairs
+				labels, ok := itemArray[1].([]interface{})
+				require.True(t, ok, "Expected labels to be an array")
+
+				// Create a map to store label key-value pairs
+				labelMap := make(map[string]string)
+
+				// Loop through each label pair in the array
+				for _, labelPair := range labels {
+					pair, ok := labelPair.([]interface{})
+					require.True(t, ok, "Expected label pair to be an array")
+					require.Equal(t, 2, len(pair), "Expected label pair to have 2 elements")
+
+					labelKey, ok := pair[0].(string)
+					require.True(t, ok, "Expected label key to be a string")
+
+					labelValue, ok := pair[1].(string)
+					require.True(t, ok, "Expected label value to be a string")
+
+					labelMap[labelKey] = labelValue
+				}
+
+				// Verify labels
+				require.Equal(t, "temp", labelMap["type"])
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, "TLV", labelMap["location"])
+				case "temp:JLM":
+					require.Equal(t, "JLM", labelMap["location"])
+				}
+
+				// Extract and verify sample data - sample is a nested array
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
+
+				// Check timestamp and value
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, int64(1000), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				case "temp:JLM":
+					require.Equal(t, int64(1005), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				}
+			}
+
+			// Check that we have both keys
+			sort.Strings(foundKeys)
+			require.Equal(t, []string{"temp:JLM", "temp:TLV"}, foundKeys)
+		})
+
+		// Test SELECTED_LABELS option
+		t.Run("SELECTED_LABELS Option", func(t *testing.T) {
+			result, err := rdb.Do(ctx, "ts.mget", "SELECTED_LABELS", "location", "FILTER", "type=temp").Result()
+			require.NoError(t, err)
+
+			resultArray, ok := result.([]interface{})
+			require.True(t, ok, "Expected array result")
+
+			// Debug the structure
+			t.Logf("SELECTED_LABELS Result structure: %#v", resultArray)
+
+			for _, item := range resultArray {
+				itemArray, ok := item.([]interface{})
+				require.True(t, ok, "Expected item to be an array")
+				require.GreaterOrEqual(t, len(itemArray), 3, "Expected item array to have at least 3 elements")
+
+				// Extract key
+				key, ok := itemArray[0].(string)
+				require.True(t, ok, "Expected key to be a string")
+
+				// Extract labels - labels are a nested array of [key, value] pairs
+				labels, ok := itemArray[1].([]interface{})
+				require.True(t, ok, "Expected labels to be an array")
+
+				// Create a map to store label key-value pairs
+				labelMap := make(map[string]string)
+
+				// Loop through each label pair in the array
+				for _, labelPair := range labels {
+					pair, ok := labelPair.([]interface{})
+					require.True(t, ok, "Expected label pair to be an array")
+					require.Equal(t, 2, len(pair), "Expected label pair to have 2 elements")
+
+					labelKey, ok := pair[0].(string)
+					require.True(t, ok, "Expected label key to be a string")
+
+					labelValue, ok := pair[1].(string)
+					require.True(t, ok, "Expected label value to be a string")
+
+					labelMap[labelKey] = labelValue
+				}
+
+				// Verify that only location label is present
+				require.Equal(t, 1, len(labelMap), "Should have exactly one label")
+				require.Contains(t, labelMap, "location")
+				require.NotContains(t, labelMap, "type")
+
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, "TLV", labelMap["location"])
+				case "temp:JLM":
+					require.Equal(t, "JLM", labelMap["location"])
+				}
+
+				// Extract and verify sample data
+				samples, _ := itemArray[2].([]interface{})
+				sample, _ := samples[0].([]interface{})
+
+				// Check timestamp and value
+				switch key {
+				case "temp:TLV":
+					require.Equal(t, int64(1000), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				case "temp:JLM":
+					require.Equal(t, int64(1005), sample[0])
+					require.Equal(t, float64(30), sample[1])
+				}
+			}
+		})
+	})
+	t.Run("TS.MRange Test", func(t *testing.T) {
+		t.Run("Basic", func(t *testing.T) {
+			keyA, keyB := "stock:A_MRange", "stock:B_MRange"
+			type_label := "stock_MRange"
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyA, "LABELS", "type", type_label, "name", "A").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyB, "LABELS", "type", type_label, "name", "B").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "1000", "100", keyA, "1010", "110", keyA, "1020", "120").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "1000", "120", keyB, "1010", "110", keyB, "1020", "100").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "WITHLABELS", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			group := res[0].([]interface{})
+			require.Equal(t, "type=stock_MRange", group[0])
+
+			metadata := group[1].([]interface{})
+			labels := metadata[0].([]interface{})
+			require.Equal(t, []interface{}{"type", type_label}, labels)
+			require.Equal(t, "max", metadata[1].([]interface{})[1])
+
+			samples := group[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			expectSamples := [][]interface{}{
+				{int64(1000), 120.0}, {int64(1010), 110.0}, {int64(1020), 120.0},
+			}
+			for i, s := range samples {
+				require.Equal(t, expectSamples[i], s.([]interface{}))
+			}
+		})
+
+		t.Run("With Aggregation", func(t *testing.T) {
+			keyA, keyB := "stock:A_WithAggregation", "stock:B_WithAggregation"
+			type_label := "stock_WithAggregation"
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyA, "LABELS", "type", type_label, "name", "A").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.create", keyB, "LABELS", "type", type_label, "name", "B").Err())
+
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "1000", "100", keyA, "1010", "110", keyA, "1020", "120").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "1000", "120", keyB, "1010", "110", keyB, "1020", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "2000", "200", keyA, "2010", "210", keyA, "2020", "220").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "2000", "220", keyB, "2010", "210", keyB, "2020", "200").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyA, "3000", "300", keyA, "3010", "310", keyA, "3020", "320").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.madd", keyB, "3000", "320", keyB, "3010", "310", keyB, "3020", "300").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "WITHLABELS", "AGGREGATION", "avg", "1000", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			name := res[0].([]interface{})[0].(string)
+			require.Equal(t, "type="+type_label, name)
+
+			labels := res[0].([]interface{})[1].([]interface{})
+			require.Equal(t, 3, len(labels))
+			require.Equal(t, []interface{}{"type", type_label}, labels[0].([]interface{}))
+			require.Equal(t, []interface{}{"__reducer__", "max"}, labels[1].([]interface{}))
+			require.Equal(t, []interface{}{"__source__", keyA + "," + keyB}, labels[2].([]interface{}))
+
+			samples := res[0].([]interface{})[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			expectSamples := [][]interface{}{
+				{int64(1000), 110.0}, {int64(2000), 210.0}, {int64(3000), 310.0},
+			}
+			for i, s := range samples {
+				require.Equal(t, expectSamples[i], s.([]interface{}))
+			}
+		})
+
+		t.Run("Filter By Value", func(t *testing.T) {
+			keyA, keyB := "ts1_MRange_FilterByValue", "ts2_MRange_FilterByValue"
+			label_spec := "metric_MRange_FilterByValue"
+			require.NoError(t, rdb.Do(ctx, "ts.add", keyA, "1548149180000", "90", "labels", "metric", label_spec, "metric_name", "system").Err())
+			require.NoError(t, rdb.Do(ctx, "ts.add", keyB, "1548149180000", "99", "labels", "metric", label_spec, "metric_name", "user").Err())
+
+			res := rdb.Do(ctx, "ts.mrange", "-", "+", "FILTER_BY_VALUE", "90", "100", "WITHLABELS", "FILTER", "metric="+label_spec).Val().([]interface{})
+			require.Equal(t, 2, len(res))
+
+			results := map[string][]interface{}{}
+			for _, item := range res {
+				arr := item.([]interface{})
+				results[arr[0].(string)] = arr[2].([]interface{})
+			}
+
+			ts1 := results[keyA]
+			require.Equal(t, 1, len(ts1))
+			require.Equal(t, int64(1548149180000), ts1[0].([]interface{})[0])
+			require.Equal(t, 90.0, ts1[0].([]interface{})[1])
+
+			ts2 := results[keyB]
+			require.Equal(t, 1, len(ts2))
+			require.Equal(t, int64(1548149180000), ts2[0].([]interface{})[0])
+			require.Equal(t, 99.0, ts2[0].([]interface{})[1])
+		})
+	})
+
+	t.Run("TS.INCRBY/DECRBY Test", func(t *testing.T) {
+		key := "key_Incrby"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		// Test initial INCRBY creates key
+		require.Equal(t, int64(1657811829000), rdb.Do(ctx, "ts.incrby", key, "232", "TIMESTAMP", "1657811829000").Val())
+		// Verify range after first increment
+		res := rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, []interface{}{int64(1657811829000), 232.0}, res[0])
+
+		// Test incrementing same timestamp
+		require.Equal(t, int64(1657811829000), rdb.Do(ctx, "ts.incrby", key, "157", "TIMESTAMP", "1657811829000").Val())
+		res = rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
+
+		// Test additional increment
+		require.Equal(t, int64(1657811829000), rdb.Do(ctx, "ts.incrby", key, "432", "TIMESTAMP", "1657811829000").Val())
+		res = rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, []interface{}{int64(1657811829000), 821.0}, res[0])
+
+		// Test error with earlier timestamp
+		_, err := rdb.Do(ctx, "ts.incrby", key, "100", "TIMESTAMP", "50").Result()
+		require.ErrorContains(t, err, "timestamp must be equal to or higher than the maximum existing timestamp")
+
+		// Test  decrementing
+		require.Equal(t, int64(1657811829000), rdb.Do(ctx, "ts.decrby", key, "432", "TIMESTAMP", "1657811829000").Val())
+		res = rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
+	})
+
+	t.Run("TS.Del Test", func(t *testing.T) {
+		srcKey := "del_test_src"
+		dstKey := "del_test_dst"
+		// Create source key with retention=10
+		require.NoError(t, rdb.Do(ctx, "ts.create", srcKey, "retention", "10").Err())
+		// Create destination key
+		require.NoError(t, rdb.Do(ctx, "ts.create", dstKey).Err())
+
+		// Test: Create rule successfully
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation", "sum", "10").Err())
+
+		// Test: Add samples
+		res := rdb.Do(ctx, "ts.madd", srcKey, "5", "5", srcKey, "8", "8", srcKey, "12", "12", srcKey, "13", "13", srcKey, "15", "15").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(5), int64(8), int64(12), int64(13), int64(15)}, res)
+
+		// Test: Delete samples within retention period
+		deletedCount := rdb.Do(ctx, "ts.del", srcKey, "11", "14").Val().(int64)
+		assert.Equal(t, int64(2), deletedCount) // Deletes 12 and 13
+
+		// Test: Try delete samples beyond retention period
+		_, err := rdb.Do(ctx, "ts.del", srcKey, "5", "8").Result()
+		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
+
+		// Test: Try delete all samples with range
+		_, err = rdb.Do(ctx, "ts.del", srcKey, "-", "+").Result()
+		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
 	})
 }

@@ -219,6 +219,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
   options.max_compaction_bytes = static_cast<uint64_t>(config_->rocks_db.max_compaction_bytes);
+  options.periodic_compaction_seconds = config_->rocks_db.periodic_compaction_seconds;
+  options.ttl = config_->rocks_db.ttl;
+  options.daily_offpeak_time_utc = config_->rocks_db.daily_offpeak_time_utc;
 
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
@@ -355,6 +358,13 @@ Status Storage::Open(DBOpenMode mode) {
   search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   SetBlobDB(&search_opts);
 
+  rocksdb::BlockBasedTableOptions index_table_opts = InitTableOptions();
+  rocksdb::ColumnFamilyOptions index_opts(options);
+  index_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(index_table_opts));
+  index_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
+  index_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+  SetBlobDB(&index_opts);
+
   std::vector<rocksdb::ColumnFamilyDescriptor> column_families;
   // Caution: don't change the order of column family, or the handle will be mismatched
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, subkey_opts);
@@ -364,6 +374,7 @@ Status Storage::Open(DBOpenMode mode) {
   column_families.emplace_back(std::string(kPropagateColumnFamilyName), propagate_opts);
   column_families.emplace_back(std::string(kStreamColumnFamilyName), subkey_opts);
   column_families.emplace_back(std::string(kSearchColumnFamilyName), search_opts);
+  column_families.emplace_back(std::string(kIndexColumnFamilyName), index_opts);
 
   auto start = std::chrono::high_resolution_clock::now();
   switch (mode) {
@@ -1153,7 +1164,11 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
   // Get checkpoint file list
   std::vector<std::string> result;
-  storage->env_->GetChildren(data_files_dir, &result);
+  auto s = storage->env_->GetChildren(data_files_dir, &result);
+  if (!s.ok()) {
+    warn("[storage] Failed to list checkpoint files. Error: {}", s.ToString());
+    return {Status::NotOK, s.ToString()};
+  }
   for (const auto &f : result) {
     if (f == "." || f == "..") continue;
 

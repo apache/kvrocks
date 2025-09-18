@@ -71,9 +71,10 @@ enum class ColumnFamilyID : uint32_t {
   Propagate,
   Stream,
   Search,
+  Index,
 };
 
-constexpr uint32_t kMaxColumnFamilyID = static_cast<uint32_t>(ColumnFamilyID::Search);
+constexpr uint32_t kMaxColumnFamilyID = static_cast<uint32_t>(ColumnFamilyID::Index);
 
 namespace engine {
 
@@ -148,6 +149,7 @@ constexpr const std::string_view kPubSubColumnFamilyName = "pubsub";
 constexpr const std::string_view kPropagateColumnFamilyName = "propagate";
 constexpr const std::string_view kStreamColumnFamilyName = "stream";
 constexpr const std::string_view kSearchColumnFamilyName = "search";
+constexpr const std::string_view kIndexColumnFamilyName = "index";
 
 class ColumnFamilyConfigs {
  public:
@@ -186,6 +188,10 @@ class ColumnFamilyConfigs {
     return {ColumnFamilyID::Search, kSearchColumnFamilyName, /*is_minor=*/true};
   }
 
+  static ColumnFamilyConfig IndexColumnFamily() {
+    return {ColumnFamilyID::Index, kIndexColumnFamilyName, /*is_minor=*/true};
+  }
+
   /// ListAllColumnFamilies returns all column families in kvrocks.
   static const std::vector<ColumnFamilyConfig> &ListAllColumnFamilies() { return AllCfs; }
 
@@ -197,11 +203,11 @@ class ColumnFamilyConfigs {
   // Caution: don't change the order of column family, or the handle will be mismatched
   inline const static std::vector<ColumnFamilyConfig> AllCfs = {
       PrimarySubkeyColumnFamily(), MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
-      PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),
+      PropagateColumnFamily(),     StreamColumnFamily(),   SearchColumnFamily(),          IndexColumnFamily(),
   };
   inline const static std::vector<ColumnFamilyConfig> AllCfsWithoutDefault = {
-      MetadataColumnFamily(),  SecondarySubkeyColumnFamily(), PubSubColumnFamily(),
-      PropagateColumnFamily(), StreamColumnFamily(),          SearchColumnFamily(),
+      MetadataColumnFamily(), SecondarySubkeyColumnFamily(), PubSubColumnFamily(), PropagateColumnFamily(),
+      StreamColumnFamily(),   SearchColumnFamily(),          IndexColumnFamily(),
   };
 };
 

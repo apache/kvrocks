@@ -155,8 +155,7 @@ class IndexFilter : public rocksdb::CompactionFilter {
   explicit IndexFilter(Storage *storage) : stor_(storage) {}
 
   const char *Name() const override { return "IndexFilter"; }
-  bool Filter([[maybe_unused]] int level, [[maybe_unused]] const Slice &key, [[maybe_unused]] const Slice &value,
-              [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const override;
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
 
  private:
   engine::Storage *stor_ = nullptr;

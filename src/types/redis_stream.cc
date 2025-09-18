@@ -1505,7 +1505,7 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
       }
       if (!noack) {
         std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
-        StreamPelEntry pel_entry = {0, 0, consumer_name};
+        StreamPelEntry pel_entry = {now_ms, 1, consumer_name};
         std::string pel_value = encodeStreamPelEntryValue(pel_entry);
         s = batch->Put(stream_cf_handle_, pel_key, pel_value);
         if (!s.ok()) return s;

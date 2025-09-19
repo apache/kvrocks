@@ -78,7 +78,7 @@ func TestMonitorRedactPassword(t *testing.T) {
 
 	c := srv.NewTCPClient()
 	defer func() { require.NoError(t, c.Close()) }()
-	c.WriteArgs("AUTH", "testpass")
+	require.NoError(t, c.WriteArgs("AUTH", "testpass"))
 	c.MustRead(t, "+OK")
 
 	require.NoError(t, c.WriteArgs("MONITOR"))

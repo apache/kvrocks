@@ -2178,4 +2178,11 @@ bool TimeSeries::IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice 
   return chunk->GetLastTimestamp() < retention_bound;
 }
 
+bool TimeSeries::IsTSChunkKey(const InternalKey &ikey) {
+  auto sub_key = ikey.GetSubKey();
+  TSSubkeyType type;
+  GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(&type));
+  return type == TSSubkeyType::CHUNK;
+}
+
 }  // namespace redis

@@ -133,7 +133,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     return false;
   }
 
-  if (metadata.Type() == kRedisTimeSeries) {
+  if (metadata.Type() == kRedisTimeSeries && redis::TimeSeries::IsTSChunkKey(ikey)) {
     TimeSeriesMetadata ts_metadata(false);
     Slice input(cached_metadata_);
     auto s = ts_metadata.Decode(&input);

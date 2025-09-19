@@ -1031,6 +1031,59 @@ TEST_F(TimeSeriesTest, MRangeGroupSamplesAndReduce) {
   }
 }
 
+TEST_F(TimeSeriesTest, DelAllSamplesInLatestBucket) {
+  redis::TSCreateOption option;
+  option.chunk_size = 3;
+  const std::string key_src = "del_test_empty";
+  const std::string key_dst = "del_test_empty_dst";
+
+  auto s = ts_db_->Create(*ctx_, key_src, option);
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, key_dst, option);
+  EXPECT_TRUE(s.ok());
+
+  redis::TSAggregator aggregator;
+  aggregator.type = redis::TSAggregatorType::AVG;
+  aggregator.bucket_duration = 10;
+  aggregator.alignment = 0;
+
+  redis::TSCreateRuleResult result = redis::TSCreateRuleResult::kOK;
+  s = ts_db_->CreateRule(*ctx_, key_src, key_dst, aggregator, &result);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(result, redis::TSCreateRuleResult::kOK);
+
+  // Add sample data
+  std::vector<TSSample> samples = {{0, 10}, {11, 10}};
+  std::vector<TSChunk::AddResult> add_results(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Del all samples in the latest bucket (10,20]
+  uint64_t deleted = 0;
+  s = ts_db_->Del(*ctx_, key_src, 11, 20, &deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(deleted, 1);
+
+  // Query the destination time series
+  redis::TSRangeOption range_opt;
+  std::vector<TSSample> res;
+  s = ts_db_->Range(*ctx_, key_dst, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 0);
+
+  // Add sample data
+  samples = {{5, 5}, {101, 101}};
+  s = ts_db_->MAdd(*ctx_, key_src, samples, &add_results);
+  EXPECT_TRUE(s.ok());
+
+  // Query the destination time series
+  s = ts_db_->Range(*ctx_, key_dst, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 1);
+  EXPECT_EQ(res[0].ts, 0);
+  EXPECT_EQ(res[0].v, 7.5);
+}
+
 TEST_F(TimeSeriesTest, DelComprehensive) {
   using TSCreateOption = redis::TSCreateOption;
   using TSRangeOption = redis::TSRangeOption;

@@ -1544,6 +1544,15 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     s = upsertCommonInBatch(ctx, ds_ns_key, meta, sample_batch, batch);
     if (!s.ok()) return s;
 
+    // Update latest bucket index
+    if (!has_chunk) {
+      ds_meta.latest_bucket_idx = 0;
+      del_start = 0;  // All buckets can be deleted in downstream
+    } else if (to > last_chunk_end) {
+      ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
+      del_start = ds_meta.latest_bucket_idx;  // Latest bucket is changed, all subsequent buckets can be deleted
+    }
+
     // Delete affected buckets in downstream
     uint64_t deleted = 0;
     s = delRangeCommonInBatch(ctx, ds_ns_key, meta, del_start, end_bucket, batch, &deleted, inclusive_end);
@@ -1551,12 +1560,6 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
 
     // Update latest bucket if deletion affects the end
     if (end_bucket < ds_meta.latest_bucket_idx) continue;
-
-    if (!has_chunk) {
-      ds_meta.latest_bucket_idx = 0;
-    } else if (to > last_chunk_end) {
-      ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
-    }
 
     // Reaggregate latest bucket if needed
     ds_meta.ResetAuxs();

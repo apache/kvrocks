@@ -155,7 +155,6 @@ class Database {
 
  private:
   // Already internal keys
-  [[nodiscard]] rocksdb::Status existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret);
   [[nodiscard]] rocksdb::Status typeInternal(engine::Context &ctx, const Slice &key, RedisType *type);
 
   /// lookupKeyByPattern is a helper function of `Sort` to support `GET` and `BY` fields.

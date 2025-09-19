@@ -208,12 +208,39 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
 }
 
 rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret) {
+  *ret = 0;
+
+  if (keys.empty()) {
+    return rocksdb::Status::OK();
+  }
+
   std::vector<std::string> ns_keys;
+  std::vector<Slice> slice_keys;
   ns_keys.reserve(keys.size());
+  slice_keys.reserve(keys.size());
+
   for (const auto &key : keys) {
     ns_keys.emplace_back(AppendNamespacePrefix(key));
+    slice_keys.emplace_back(ns_keys.back());
   }
-  return existsInternal(ctx, ns_keys, ret);
+
+  std::vector<rocksdb::Status> statuses(slice_keys.size());
+  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
+  storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
+                     pin_values.data(), statuses.data());
+
+  for (size_t i = 0; i < slice_keys.size(); i++) {
+    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+    if (statuses[i].ok()) {
+      Metadata metadata(kRedisNone, false);
+      // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
+      // PinnableSlice to Slice.
+      auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
+      if (!s.ok()) return s;
+      if (!metadata.Expired()) *ret += 1;
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Database::TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl) {
@@ -621,38 +648,6 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
-rocksdb::Status Database::existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret) {
-  *ret = 0;
-  
-  if (keys.empty()) {
-    return rocksdb::Status::OK();
-  }
-
-  std::vector<Slice> slice_keys;
-  slice_keys.reserve(keys.size());
-  for (const auto &key : keys) {
-    slice_keys.emplace_back(key);
-  }
-
-  std::vector<rocksdb::Status> statuses(slice_keys.size());
-  std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
-  storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
-                     pin_values.data(), statuses.data());
-
-  for (size_t i = 0; i < slice_keys.size(); i++) {
-    if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
-    if (statuses[i].ok()) {
-      Metadata metadata(kRedisNone, false);
-      // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
-      // PinnableSlice to Slice.
-      auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
-      if (!s.ok()) return s;
-      if (!metadata.Expired()) *ret += 1;
-    }
-  }
-  return rocksdb::Status::OK();
-}
-
 rocksdb::Status Database::typeInternal(engine::Context &ctx, const Slice &key, RedisType *type) {
   *type = kRedisNone;
   std::string value;
@@ -682,7 +677,15 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
 
   if (nx) {
     int exist = 0;
-    if (s = existsInternal(ctx, {new_key}, &exist), !s.ok()) return s;
+    std::string value;
+    s = storage_->Get(ctx, ctx.GetReadOptions(), metadata_cf_handle_, new_key, &value);
+    if (!s.ok() && !s.IsNotFound()) return s;
+    if (s.ok()) {
+      Metadata metadata(kRedisNone, false);
+      s = metadata.Decode(value);
+      if (!s.ok()) return s;
+      if (!metadata.Expired()) exist = 1;
+    }
     if (exist > 0) {
       *res = CopyResult::KEY_ALREADY_EXIST;
       return rocksdb::Status::OK();

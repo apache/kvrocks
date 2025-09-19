@@ -217,6 +217,15 @@ class KeywordCommandBase : public Commander {
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 [[maybe_unused]] std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled && getCreateOption().labels.size()) {
+      return {Status::RedisExecErr, "Specifying LABELS is not supported in cluster mode"};
+    }
+    return Status::OK();
+  }
+
  protected:
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
@@ -308,6 +317,9 @@ class CommandTSCreate : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     auto s = timeseries_db.Create(ctx, args_[1], getCreateOption());
     if (!s.ok() && s.IsInvalidArgument()) return {Status::RedisExecErr, errKeyAlreadyExists};
@@ -387,6 +399,9 @@ class CommandTSAdd : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
@@ -851,6 +866,9 @@ class CommandTSMGet : public CommandTSMGetBase {
     return CommandTSMGetBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MGet is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMGetResult> results;
     auto s = timeseries_db.MGet(ctx, getMGetOption(), is_return_latest_, &results);
@@ -898,6 +916,9 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MRANGE is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
     auto s = timeseries_db.MRange(ctx, option_, &results);
@@ -978,6 +999,117 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
   TSMRangeOption option_;
 };
 
+class CommandTSIncrByDecrBy : public CommandTSCreateBase {
+ public:
+  CommandTSIncrByDecrBy() { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    auto value_parse = parser.TakeFloat<double>();
+    if (!value_parse.IsOK()) {
+      return {Status::RedisParseErr, errInvalidValue};
+    }
+    value_ = value_parse.GetValue();
+    if (util::ToUpper(args[0]) == "TS.DECRBY") {
+      value_ = -value_;
+    }
+    CommandTSCreateBase::setSkipNum(3);
+    return CommandTSCreateBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    const auto &option = getCreateOption();
+
+    if (!is_ts_set_) {
+      // TODO: Should modify function `Add` and `IncrBy` to add a sample with current time
+    }
+    TSChunk::AddResult res;
+    auto s = timeseries_db.IncrBy(ctx, args_[1], {ts_, value_}, option, &res);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    if (res.type == TSChunk::AddResultType::kOld) {
+      *output +=
+          redis::Error({Status::NotOK, "timestamp must be equal to or higher than the maximum existing timestamp"});
+    } else {
+      *output += FormatAddResultAsRedisReply(res);
+    }
+    return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    CommandTSCreateBase::registerDefaultHandlers();
+    registerHandler("TIMESTAMP", [this](TSOptionsParser &parser) {
+      auto s = handleTimeStamp(parser, ts_);
+      if (!s.IsOK()) return s;
+      is_ts_set_ = true;
+      return Status::OK();
+    });
+  }
+  static Status handleTimeStamp(TSOptionsParser &parser, uint64_t &ts) {
+    auto parse_timestamp = parser.TakeInt<uint64_t>();
+    if (!parse_timestamp.IsOK()) {
+      return {Status::RedisParseErr, errInvalidTimestamp};
+    }
+    ts = parse_timestamp.GetValue();
+    return Status::OK();
+  }
+
+ private:
+  bool is_ts_set_ = false;
+  uint64_t ts_ = 0;
+  double value_ = 0;
+};
+
+class CommandTSDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.del' command"};
+    }
+    CommandParser parser(args, 2);
+    // Parse start timestamp
+    auto start_parse = parser.TakeInt<uint64_t>();
+    if (!start_parse.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      start_ts_ = start_parse.GetValue();
+    }
+    // Parse end timestamp
+    auto end_parse = parser.TakeInt<uint64_t>();
+    if (!end_parse.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      end_ts_ = end_parse.GetValue();
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    uint64_t deleted_count = 0;
+    auto s = timeseries_db.Del(ctx, args_[1], start_ts_, end_ts_, &deleted_count);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(deleted_count);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t start_ts_ = 0;
+  uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -986,6 +1118,9 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY), );
+                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

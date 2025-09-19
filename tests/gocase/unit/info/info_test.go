@@ -134,6 +134,19 @@ func TestInfo(t *testing.T) {
 		require.Contains(t, info.Val(), "# Server")
 		require.Contains(t, info.Val(), "# CPU")
 	})
+
+	t.Run("get rocksdb level file counts and estimate pending compaction bytes by INFO", func(t *testing.T) {
+		_, err := rdb.Do(ctx, "SET", "A", "KVROCKS").Result()
+		require.NoError(t, err)
+		_, err = rdb.Do(ctx, "FLUSHMEMTABLE").Result()
+		require.NoError(t, err)
+
+		r := util.FindInfoEntry(rdb, "num_files_at_level\\[metadata\\]", "rocksdb")
+		require.Equal(t, "[1,0,0,0,0,0,0]", r)
+
+		r = util.FindInfoEntry(rdb, "estimate_pending_compaction_bytes\\[metadata\\]", "rocksdb")
+		require.NotEqual(t, "", r)
+	})
 }
 
 func TestKeyspaceHitMiss(t *testing.T) {

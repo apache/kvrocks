@@ -519,7 +519,7 @@ class CommandTSMAdd : public Commander {
 
 class CommandTSAggregatorBase : public KeywordCommandBase {
  protected:
-  const TSAggregator &getAggregator() const { return aggregator_; }
+  TSAggregator &getAggregator() { return aggregator_; }
 
   void registerDefaultHandlers() override {
     registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser, aggregator_); });
@@ -768,7 +768,7 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
  public:
   explicit CommandTSCreateRule() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 6) {
+    if (args.size() > 7) {
       return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
     }
     src_key_ = args[1];
@@ -784,6 +784,26 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = FormatCreateRuleResAsRedisReply(res);
     return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    registerHandlerRequired(
+        "AGGREGATION",
+        [this](TSOptionsParser &parser) -> Status {
+          auto s = handleAggregation(parser, getAggregator());
+          if (!s.IsOK()) return s;
+          if (parser.Good()) {
+            auto align_parse = parser.TakeInt<uint64_t>();
+            if (align_parse.IsOK()) {
+              getAggregator().alignment = align_parse.GetValue();
+            } else {
+              return {Status::RedisParseErr, errTSInvalidAlign};
+            }
+          }
+          return Status::OK();
+        },
+        "AGGREGATION is required");
   }
 
  private:

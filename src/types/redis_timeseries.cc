@@ -2180,9 +2180,9 @@ bool TimeSeries::IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice 
 
 bool TimeSeries::IsTSChunkKey(const InternalKey &ikey) {
   auto sub_key = ikey.GetSubKey();
-  TSSubkeyType type;
-  GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(&type));
-  return type == TSSubkeyType::CHUNK;
+  auto type = TSSubkeyType::LABEL;
+  bool is_success = GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(&type));
+  return is_success && type == TSSubkeyType::CHUNK;
 }
 
 }  // namespace redis

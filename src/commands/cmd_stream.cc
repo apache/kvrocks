@@ -932,12 +932,13 @@ class CommandXPending : public Commander {
 
   static Status SendExtResults([[maybe_unused]] Connection *conn, std::string *output,
                                std::vector<StreamNACK> &ext_results) {
+    auto now = util::GetTimeStampMS();
     output->append(redis::MultiLen(ext_results.size()));
     for (const auto &entry : ext_results) {
       output->append(redis::MultiLen(4));
       output->append(redis::BulkString(entry.id.ToString()));
       output->append(redis::BulkString(entry.pel_entry.consumer_name));
-      output->append(redis::Integer(entry.pel_entry.last_delivery_time_ms));
+      output->append(redis::Integer(now - entry.pel_entry.last_delivery_time_ms));
       output->append(redis::Integer(entry.pel_entry.last_delivery_count));
     }
 

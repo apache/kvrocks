@@ -67,13 +67,25 @@ class TSChunk {
  public:
   using DuplicatePolicy = TimeSeriesMetadata::DuplicatePolicy;
 
-  enum class AddResult : uint8_t {
+  enum class AddResultType : uint8_t {
     kNone,
-    kOk,
+    kInsert,
+    kUpdate,
+    kSkip,
     kBlock,
     kOld,
   };
-  using AddResultWithTS = std::pair<AddResult, uint64_t>;
+  struct AddResult {
+    AddResultType type = AddResultType::kNone;
+    TSSample sample = {0, 0.0};
+
+    static inline AddResult CreateInsert(const TSSample& sample) {
+      AddResult result;
+      result.type = AddResultType::kInsert;
+      result.sample = sample;
+      return result;
+    }
+  };
 
   class SampleBatch;
   class SampleBatchSlice {
@@ -127,7 +139,7 @@ class TSChunk {
     SampleBatchSlice AsSlice();
 
     // Return add results by samples' order
-    std::vector<AddResultWithTS> GetFinalResults() const;
+    std::vector<AddResult> GetFinalResults() const;
 
    private:
     std::vector<TSSample> samples_;
@@ -156,7 +168,8 @@ class TSChunk {
 
   // Merge samples with duplicate policy handling
   // Returns result status, updates 'to' value according to policy
-  static AddResult MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy);
+  static AddResult MergeSamplesValue(TSSample& to, const TSSample& from, DuplicatePolicy policy,
+                                     bool is_batch_process = false);
 
   virtual std::unique_ptr<TSChunkIterator> CreateIterator() const = 0;
 
@@ -177,7 +190,8 @@ class TSChunk {
 
   // Delete samples in [from, to] timestamp range
   // Returns new chunk data without deleted samples. Returns empty string if no changes
-  virtual std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const = 0;
+  std::string RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted = nullptr,
+                                   bool inclusive_to = true) const;
 
   // Update sample value at specified timestamp
   // is_add_on controls whether to add to existing value or replace it
@@ -187,9 +201,15 @@ class TSChunk {
   // Get idx-th latest sample, idx=0 means latest sample
   virtual TSSample GetLatestSample(uint32_t idx) const = 0;
 
+  // Get all samples as a span
+  virtual nonstd::span<const TSSample> GetSamplesSpan() const = 0;
+
  protected:
   nonstd::span<const char> data_;
   MetaData metadata_;
+
+  virtual std::string doRemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted,
+                                             bool inclusive_to) const = 0;
 };
 
 class UncompTSChunk : public TSChunk {
@@ -203,9 +223,13 @@ class UncompTSChunk : public TSChunk {
   std::string UpsertSamples(SampleBatchSlice samples) const override;
   std::vector<std::string> UpsertSampleAndSplit(SampleBatchSlice batch, uint64_t preferred_chunk_size,
                                                 bool is_fix_split_mode) const override;
-  std::string RemoveSamplesBetween(uint64_t from, uint64_t to) const override;
   std::string UpdateSampleValue(uint64_t ts, double value, bool is_add_on) const override;
   TSSample GetLatestSample(uint32_t idx) const override;
+
+  nonstd::span<const TSSample> GetSamplesSpan() const override { return samples_; }
+
+ protected:
+  std::string doRemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted, bool inclusive_to) const override;
 
  private:
   nonstd::span<const TSSample> samples_;

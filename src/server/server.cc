@@ -370,7 +370,7 @@ void Server::CleanupExitedSlaves() {
   }
 }
 
-const std::vector<std::string> Server::RedactSensitiveTokens(const std::vector<std::string> &tokens) {
+std::vector<std::string> Server::RedactSensitiveTokens(const std::vector<std::string> &tokens) {
   if (tokens.empty()) return tokens;
   std::string cmd = util::ToLower(tokens[0]);
   if (cmd != "auth" && cmd != "hello") return tokens;

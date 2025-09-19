@@ -503,6 +503,28 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			assert.Contains(t, err, "the destination key already has a dst rule")
 		})
 	})
+	t.Run("TS.CREATERULE Basic", func(t *testing.T) {
+		key_src := "test_createrule_basic_key_src"
+		key_dst := "test_createrule_basic_key_dst"
+		require.NoError(t, rdb.Del(ctx, key_src).Err())
+		require.NoError(t, rdb.Del(ctx, key_dst).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key_src).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key_dst).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", key_src, key_dst, "aggregation", "avg", "1000", "100").Err())
+		// Verify rule creation
+		vals, err := rdb.Do(ctx, "ts.info", key_src).Slice()
+		require.NoError(t, err)
+		require.Equal(t, 24, len(vals))
+		require.Equal(t, "rules", vals[22])
+		rules := vals[23].([]interface{})
+		require.Equal(t, 1, len(rules))
+		rule := rules[0].([]interface{})
+		require.Equal(t, 4, len(rule))
+		require.Equal(t, key_dst, rule[0])
+		require.Equal(t, int64(1000), rule[1])
+		require.Equal(t, "avg", rule[2])
+		require.Equal(t, int64(100), rule[3])
+	})
 	t.Run("TS.CREATERULE DownStream Write", func(t *testing.T) {
 		test2 := "test2"
 		test3 := "test3"

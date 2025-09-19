@@ -118,7 +118,6 @@ func TestIntrospection(t *testing.T) {
 		require.Regexp(t, "id=.* addr=.*:.* fd=.* name=.* age=.* idle=.* flags=N namespace=.* qbuf=.* .*obuf=.* cmd=client.*", v)
 	})
 
-
 	t.Run("CLIENT GETNAME should return NIL if name is not assigned", func(t *testing.T) {
 		require.EqualError(t, rdb.ClientGetName(ctx).Err(), redis.Nil.Error())
 	})

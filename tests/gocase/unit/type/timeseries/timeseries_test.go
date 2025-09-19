@@ -502,6 +502,12 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, srcOfSrc, "aggregation", "avg", "1000").Result()
 			assert.Contains(t, err, "the destination key already has a dst rule")
 		})
+
+		// 7. Miss aggregation keyword
+		t.Run("MissAggregationKeyword", func(t *testing.T) {
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation_miss", "sum", "10").Result()
+			assert.Contains(t, err, "AGGREGATION is required")
+		})
 	})
 	t.Run("TS.CREATERULE Basic", func(t *testing.T) {
 		key_src := "test_createrule_basic_key_src"
@@ -778,6 +784,10 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		})
 	})
 	t.Run("TS.MRange Test", func(t *testing.T) {
+		t.Run("Error Case", func(t *testing.T) {
+			// Missing FILTER argument
+			require.ErrorContains(t, rdb.Do(ctx, "ts.mrange", "1000", "1005", "FILTER_miss", "type=temp").Err(), "missing FILTER argument")
+		})
 		t.Run("Basic", func(t *testing.T) {
 			keyA, keyB := "stock:A_MRange", "stock:B_MRange"
 			type_label := "stock_MRange"

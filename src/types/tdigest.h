@@ -22,6 +22,7 @@
 
 #include <fmt/format.h>
 
+#include <map>
 #include <numeric>
 #include <vector>
 
@@ -154,71 +155,69 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
 
 template <typename TD>
 inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
-  std::vector<size_t> indices(inputs.size());
-  std::iota(indices.begin(), indices.end(), 0);
-  std::sort(indices.begin(), indices.end(), [&inputs](size_t a, size_t b) { return inputs[a] < inputs[b]; });
-
-  result.resize(inputs.size());
-  size_t i = indices.size();
-  double cumulative_weight = 0;
-
-  // handle inputs larger than maximum
-  while (i > 0 && inputs[indices[i - 1]] > td.Max()) {
-    result[indices[i - 1]] = -1;
-    i--;
+  std::map<double, std::vector<size_t>> value_to_indices;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    value_to_indices[inputs[i]].push_back(i);
   }
 
-  // reverse iterate through centroids and calculate reverse rank for each input
-  auto iter = td.End();
-  while (i > 0) {
-    auto centroid = GET_OR_RET(iter->GetCentroid());
+  double cumulative_weight = 0;
+  result.resize(inputs.size());
+  auto it = value_to_indices.begin();
 
-    if (centroid.mean > inputs[indices[i - 1]]) {
-      // mean > input, accumulate weight and move to prev centroid
-      cumulative_weight += centroid.weight;
-    } else if (centroid.mean == inputs[indices[i - 1]]) {
-      // mean == input, calculate reverse rank with half weight of current centroid
-      cumulative_weight += centroid.weight;
+  // handle inputs larger than maximum
+  while (it != value_to_indices.end() && it->first < td.Min()) {
+    for (auto index : it->second) {
+      result[index] = -1;
+    }
+    ++it;
+  }
+
+  auto iter = td.Begin();
+
+  while (iter->Valid() && it != value_to_indices.end()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    auto input_value = it->first;
+    if (centroid.mean == input_value) {
       auto current_mean = centroid.mean;
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
+      cumulative_weight += centroid.weight;
 
       // handle all the prev centroids which has the same mean
-      while (!iter->IsAtBegin() && iter->Prev()) {
+      while (iter->Next()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
         if (current_mean != next_centroid.mean) {
           // move back to the last equal centroid, because we will process it in the next loop
-          iter->Next();
+          iter->Prev();
           break;
         }
         current_mean_cumulative_weight += centroid.weight / 2;
         cumulative_weight += centroid.weight;
       }
 
-      // assign the reverse rank for the inputs[indices[i - 1]]
-      result[indices[i - 1]] = static_cast<int>(current_mean_cumulative_weight);
-      i--;
-
       // handle the prev inputs which has the same value
-      while ((i > 0) && (inputs[indices[i]] == inputs[indices[i - 1]])) {
-        result[indices[i - 1]] = result[indices[i]];
-        i--;
+      for (auto index : it->second) {
+        result[index] = static_cast<int>(current_mean_cumulative_weight);
       }
+      ++it;
+      iter->Next();
+    } else if (centroid.mean < input_value) {
+      cumulative_weight += centroid.weight;
+      iter->Next();
     } else {
-      // mean < input, calculate reverse rank
-      result[indices[i - 1]] = static_cast<int>(cumulative_weight);
-      i--;
+      for (auto index : it->second) {
+        result[index] = static_cast<int>(cumulative_weight);
+      }
+      ++it;
     }
-
-    if (iter->IsAtBegin()) {
-      break;
-    }
-    iter->Prev();
   }
 
   // handle inputs less than minimum
-  while (i > 0) {
-    result[indices[i - 1]] = static_cast<int>(td.TotalWeight());
-    i--;
+  while (it != value_to_indices.end()) {
+    for (auto index : it->second) {
+      result[index] = -1;
+    }
+    ++it;
   }
+
   return Status::OK();
 }

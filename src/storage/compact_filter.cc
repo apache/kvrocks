@@ -142,9 +142,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
             ikey.GetNamespace(), ikey.GetKey(), s.ToString());
       return false;
     }
-    auto timeseries = std::make_unique<redis::TimeSeries>(stor_, ikey.GetNamespace().ToString());
-    engine::Context ctx(stor_);
-    return timeseries->IsChunkExpired(ctx, ikey.GetKey(), ts_metadata, value);
+    return redis::TimeSeries::IsChunkExpired(ts_metadata, value);
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

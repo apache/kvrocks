@@ -283,8 +283,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
-  bool IsChunkExpired(engine::Context &ctx, const Slice &user_key, const TimeSeriesMetadata &metadata,
-                      const Slice &chunk_value);
+  static bool IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value);
 
  private:
   // Bundles the arguments for a downstream upsert operation

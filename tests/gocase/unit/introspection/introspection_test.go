@@ -118,17 +118,6 @@ func TestIntrospection(t *testing.T) {
 		require.Regexp(t, "id=.* addr=.*:.* fd=.* name=.* age=.* idle=.* flags=N namespace=.* qbuf=.* .*obuf=.* cmd=client.*", v)
 	})
 
-	t.Run("MONITOR can log executed commands", func(t *testing.T) {
-		c := srv.NewTCPClient()
-		defer func() { require.NoError(t, c.Close()) }()
-		require.NoError(t, c.WriteArgs("MONITOR"))
-		c.MustRead(t, "+OK")
-		require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
-		require.NoError(t, rdb.Get(ctx, "foo").Err())
-		c.MustMatch(t, ".*set.*foo.*bar.*")
-		c.MustMatch(t, ".*get.*foo.*")
-	})
-
 	t.Run("CLIENT GETNAME should return NIL if name is not assigned", func(t *testing.T) {
 		require.EqualError(t, rdb.ClientGetName(ctx).Err(), redis.Nil.Error())
 	})

@@ -203,6 +203,7 @@ class Server {
   void CleanupExitedSlaves();
   bool IsSlave() const { return !master_host_.empty(); }
   void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
+  static std::vector<std::string> RedactSensitiveTokens(const std::vector<std::string> &tokens);
   void IncrFetchFileThread() { fetch_file_threads_num_++; }
   void DecrFetchFileThread() { fetch_file_threads_num_--; }
   int GetFetchFileThreadNum() const { return fetch_file_threads_num_; }

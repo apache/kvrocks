@@ -191,8 +191,6 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     if (statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
-    // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
-    // PinnableSlice to Slice.
     auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
     if (!s.ok()) continue;
     if (metadata.Expired()) continue;
@@ -233,8 +231,6 @@ rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> 
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
     if (statuses[i].ok()) {
       Metadata metadata(kRedisNone, false);
-      // Explicit construct a rocksdb::Slice to avoid the implicit conversion from
-      // PinnableSlice to Slice.
       auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
       if (!s.ok()) return s;
       if (!metadata.Expired()) *ret += 1;

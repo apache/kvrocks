@@ -199,7 +199,10 @@ class Metadata {
   bool IsEmptyableType() const;
 
   virtual void Encode(std::string *dst) const;
+
+  // Calls remove_prefix() internally and would modify the original `input` state.
   [[nodiscard]] virtual rocksdb::Status Decode(Slice *input);
+
   [[nodiscard]] rocksdb::Status Decode(Slice input);
 
   bool operator==(const Metadata &that) const;

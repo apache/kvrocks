@@ -370,13 +370,47 @@ void Server::CleanupExitedSlaves() {
   }
 }
 
+std::vector<std::string> Server::RedactSensitiveTokens(const std::vector<std::string> &tokens) {
+  if (tokens.empty()) return tokens;
+  std::string cmd = util::ToLower(tokens[0]);
+  if (cmd != "auth" && cmd != "hello") return tokens;
+
+  std::vector<std::string> redacted_tokens = tokens;
+  if (cmd == "auth" && tokens.size() >= 2) {
+    // AUTH password -> redact password (arg 1)
+    redacted_tokens[1] = "(redacted)";
+  } else if (cmd == "hello" && tokens.size() >= 3) {
+    // HELLO [version] [AUTH [username] password] [SETNAME name]
+    for (size_t i = 1; i < tokens.size(); ++i) {
+      std::string arg = util::ToLower(tokens[i]);
+      if (arg == "auth" && i + 1 < tokens.size()) {
+        size_t remaining_args = tokens.size() - i - 1;
+        if (remaining_args >= 2) {
+          // Check if this follows the pattern AUTH username password
+          // In this case, redact the password (arg i+2)
+          redacted_tokens[i + 2] = "(redacted)";
+        } else if (remaining_args == 1) {
+          // This follows the pattern AUTH password
+          // Redact the password (arg i+1)
+          redacted_tokens[i + 1] = "(redacted)";
+        }
+        break;
+      }
+    }
+  }
+  return redacted_tokens;
+}
+
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
   auto now_us = util::GetTimeStampUS();
   std::string output =
       fmt::format("{}.{} [{} {}]", now_us / 1000000, now_us % 1000000, conn->GetNamespace(), conn->GetAddr());
-  for (const auto &token : tokens) {
+
+  auto redacted_tokens = RedactSensitiveTokens(tokens);
+
+  for (const auto &token : redacted_tokens) {
     output += " \"";
     output += util::EscapeString(token);
     output += "\"";

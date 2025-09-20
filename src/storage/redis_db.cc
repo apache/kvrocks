@@ -191,7 +191,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     if (statuses[i].IsNotFound()) continue;
 
     Metadata metadata(kRedisNone, false);
-    auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
+    auto s = metadata.Decode(pin_values[i]);
     if (!s.ok()) continue;
     if (metadata.Expired()) continue;
 
@@ -231,7 +231,7 @@ rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> 
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
     if (statuses[i].ok()) {
       Metadata metadata(kRedisNone, false);
-      auto s = metadata.Decode(&rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
+      auto s = metadata.Decode(pin_values[i]);
       if (!s.ok()) return s;
       if (!metadata.Expired()) *ret += 1;
     }

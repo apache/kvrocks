@@ -884,7 +884,9 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  srv->FeedMonitorConns(conn, args);
+  if (!(cmd_flags & redis::kCmdSkipMonitor)) {
+    srv->FeedMonitorConns(conn, args);
+  }
 
   RedisProtocolToLuaType(lua, output.data());
   return 1;

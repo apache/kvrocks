@@ -330,9 +330,14 @@ class TimeSeries : public SubKeyScanner {
                                                   const TSAggregator &aggregator,
                                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                                   TSDownStreamMeta *ds_metadata);
+  // Get downstream rules of the source time series.
+  // - `ds_user_keys`: the user keys of the downstream time series.
+  // - `ds_metas`: (optional) the downstream rule meta.
+  // - `ds_series_metadatas`: (optional) the metadata of the downstream time series.
   rocksdb::Status getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
-                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
-                                     std::vector<TSDownStreamMeta> *metas = nullptr);
+                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *ds_user_keys,
+                                     std::vector<TSDownStreamMeta> *ds_metas = nullptr,
+                                     std::vector<TimeSeriesMetadata> *ds_series_metadatas = nullptr);
   rocksdb::Status getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
                                    std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec = nullptr,
                                    std::vector<TimeSeriesMetadata> *metas = nullptr);

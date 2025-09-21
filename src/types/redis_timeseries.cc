@@ -1652,25 +1652,42 @@ rocksdb::Status TimeSeries::createDownStreamMetadataInBatch(engine::Context &ctx
 }
 
 rocksdb::Status TimeSeries::getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
-                                               const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
-                                               std::vector<TSDownStreamMeta> *metas) {
+                                               const TimeSeriesMetadata &src_metadata,
+                                               std::vector<std::string> *ds_user_keys,
+                                               std::vector<TSDownStreamMeta> *ds_metas,
+                                               std::vector<TimeSeriesMetadata> *ds_series_metadatas) {
   std::string prefix = internalKeyFromDownstreamKey(ns_src_key, src_metadata, "");
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
   auto iter = util::UniqueIterator(ctx, read_options);
-  keys->clear();
-  if (metas != nullptr) {
-    metas->clear();
+  ds_user_keys->clear();
+  if (ds_metas != nullptr) {
+    ds_metas->clear();
+  }
+  if (ds_series_metadatas != nullptr) {
+    ds_series_metadatas->clear();
   }
   for (iter->Seek(lower_bound); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    keys->push_back(iter->key().ToString());
-    if (metas != nullptr) {
+    auto key = downstreamKeyFromInternalKey(iter->key());
+    auto ns_key = AppendNamespacePrefix(key);
+    TimeSeriesMetadata metadata;
+    // Check if the downstream series exists
+    auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+    if (!s.ok()) {
+      if (s.IsNotFound()) continue;
+      return s;
+    }
+    ds_user_keys->push_back(key);
+    if (ds_metas != nullptr) {
       TSDownStreamMeta meta;
       Slice slice = iter->value().ToStringView();
       meta.Decode(&slice);
-      metas->push_back(meta);
+      ds_metas->push_back(meta);
+    }
+    if (ds_series_metadatas != nullptr) {
+      ds_series_metadatas->push_back(metadata);
     }
   }
   return rocksdb::Status::OK();

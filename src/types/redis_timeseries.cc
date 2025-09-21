@@ -1117,7 +1117,8 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
   if (new_chunks.empty()) return rocksdb::Status::OK();
   std::vector<std::string> downstream_keys;
   std::vector<TSDownStreamMeta> downstream_metas;
-  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas);
+  std::vector<TimeSeriesMetadata> downstream_series_meta;
+  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas, &downstream_series_meta);
   if (!s.ok()) return s;
   if (downstream_keys.empty()) return rocksdb::Status::OK();
 
@@ -1294,27 +1295,24 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
       continue;
     }
     const auto &meta = downstream_metas[i];
-    const auto &key = downstream_keys[i];
+    auto ds_key = internalKeyFromDownstreamKey(ns_key, metadata, downstream_keys[i]);
     std::string bytes;
     meta.Encode(&bytes);
-    s = batch->Put(key, bytes);
+    s = batch->Put(ds_key, bytes);
     if (!s.ok()) return s;
   }
   // Write aggregated samples
   for (size_t i = 0; i < downstream_metas.size(); i++) {
-    const auto &ds_key = downstream_keys[i];
-    auto key = downstreamKeyFromInternalKey(ds_key);
+    const auto &key = downstream_keys[i];
     auto ns_key = AppendNamespacePrefix(key);
+    auto &metadata = downstream_series_meta[i];
+
     auto &agg_samples = all_agg_samples[i];
     auto &agg_samples_inc = all_agg_samples_inc[i];
 
     if (agg_samples.empty() && agg_samples_inc.empty()) {
       continue;
     }
-    TimeSeriesMetadata metadata;
-    s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
-    if (!s.ok()) return s;
-
     if (agg_samples.size()) {
       auto sample_batch_t = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
       s = upsertCommon(ctx, ns_key, metadata, sample_batch_t);
@@ -1465,9 +1463,11 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                               std::vector<std::string> &ds_keys,
-                                               std::vector<TSDownStreamMeta> &ds_metas, uint64_t from, uint64_t to) {
-  if (from > to || ds_keys.empty()) return rocksdb::Status::OK();
+                                               std::vector<std::string> &ds_user_keys,
+                                               std::vector<TSDownStreamMeta> &ds_metas,
+                                               std::vector<TimeSeriesMetadata> &ds_series_metas, uint64_t from,
+                                               uint64_t to) {
+  if (from > to || ds_user_keys.empty()) return rocksdb::Status::OK();
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTimeSeries);
@@ -1521,14 +1521,11 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
   }
 
   // Process each downstream rule
-  for (size_t i = 0; i < ds_keys.size(); i++) {
+  for (size_t i = 0; i < ds_user_keys.size(); i++) {
+    auto ds_ns_key = AppendNamespacePrefix(ds_user_keys[i]);
     auto &ds_meta = ds_metas[i];
     auto &agg = ds_meta.aggregator;
-
-    TimeSeriesMetadata meta;
-    auto ds_ns_key = AppendNamespacePrefix(downstreamKeyFromInternalKey(ds_keys[i]));
-    s = getTimeSeriesMetadata(ctx, ds_ns_key, &meta);
-    if (!s.ok()) return s;
+    auto &meta = ds_series_metas[i];
 
     // Calculate the range of buckets affected by this deletion.
     uint64_t start_bucket = agg.CalculateAlignedBucketLeft(from);
@@ -1587,7 +1584,9 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     // Persist downstream metadata updates if needed
     std::string bytes;
     ds_meta.Encode(&bytes);
-    batch->Put(ds_keys[i], bytes);
+    auto ds_key = internalKeyFromDownstreamKey(ns_key, metadata, ds_user_keys[i]);
+    s = batch->Put(ds_key, bytes);
+    if (!s.ok()) return s;
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -2160,7 +2159,8 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   // Get downstream rules
   std::vector<std::string> ds_keys;
   std::vector<TSDownStreamMeta> ds_metas;
-  s = getDownStreamRules(ctx, ns_key, metadata, &ds_keys, &ds_metas);
+  std::vector<TimeSeriesMetadata> ds_series_metas;
+  s = getDownStreamRules(ctx, ns_key, metadata, &ds_keys, &ds_metas, &ds_series_metas);
   if (!s.ok()) return s;
 
   // Check retention and compaction rules
@@ -2183,7 +2183,7 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   s = delRangeCommon(ctx, ns_key, metadata, from, to, deleted);
   if (!s.ok()) return s;
   if (*deleted == 0) return rocksdb::Status::OK();
-  s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, from, to);
+  s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, ds_series_metas, from, to);
   return s;
 }
 

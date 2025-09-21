@@ -320,8 +320,8 @@ class TimeSeries : public SubKeyScanner {
                                         uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                         uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                     std::vector<std::string> &ds_keys, std::vector<TSDownStreamMeta> &ds_metas,
-                                     uint64_t from, uint64_t to);
+                                     std::vector<std::string> &ds_user_keys, std::vector<TSDownStreamMeta> &ds_metas,
+                                     std::vector<TimeSeriesMetadata> &ds_series_metas, uint64_t from, uint64_t to);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);

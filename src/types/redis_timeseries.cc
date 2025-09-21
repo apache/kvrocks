@@ -2000,14 +2000,23 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
     return rocksdb::Status::OK();
   }
 
-  if (src_metadata.source_key.size()) {
+  // Check source has no source rule
+  bool exists = false;
+  s = checkTSMetadataSourceExists(ctx, src_metadata, exists);
+  if (!s.ok()) return s;
+  if (exists) {
     *res = TSCreateRuleResult::kSrcHasSourceRule;
     return rocksdb::Status::OK();
   }
-  if (dst_metadata.source_key.size()) {
+  // Check destination key has no source rule
+  exists = false;
+  s = checkTSMetadataSourceExists(ctx, dst_metadata, exists);
+  if (!s.ok()) return s;
+  if (exists && dst_metadata.source_key != src_key) {
     *res = TSCreateRuleResult::kDstHasSourceRule;
     return rocksdb::Status::OK();
   }
+  // Check destination key has no destination rule
   std::vector<std::string> dst_ds_keys;
   s = getDownStreamRules(ctx, ns_dst_key, dst_metadata, &dst_ds_keys);
   if (!s.ok()) return s;
@@ -2025,12 +2034,13 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
   TSDownStreamMeta downstream_metadata;
   s = createDownStreamMetadataInBatch(ctx, ns_src_key, dst_key, src_metadata, aggregator, batch, &downstream_metadata);
   if (!s.ok()) return s;
-  dst_metadata.SetSourceKey(src_key);
-
-  std::string bytes;
-  dst_metadata.Encode(&bytes);
-  s = batch->Put(metadata_cf_handle_, ns_dst_key, bytes);
-  if (!s.ok()) return s;
+  if (dst_metadata.source_key.empty() || dst_metadata.source_key != src_key) {
+    dst_metadata.SetSourceKey(src_key);
+    std::string bytes;
+    dst_metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_dst_key, bytes);
+    if (!s.ok()) return s;
+  }
 
   *res = TSCreateRuleResult::kOK;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());

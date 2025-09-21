@@ -541,8 +541,8 @@ class CommandFTTagVals : public Commander {
     const auto &index_name = args_[1];
     const auto &tag_field_name = args_[2];
     auto field_values = srv->index_mgr.TagValues(ctx, index_name, tag_field_name, conn->GetNamespace());
-    if (!field_values.IsOK()) {
-      return field_values.ToStatus();
+    if (!field_values) {
+      return field_values;
     }
 
     std::vector<std::string> result_vec(field_values->begin(), field_values->end());

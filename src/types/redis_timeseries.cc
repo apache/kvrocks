@@ -1772,6 +1772,24 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata,
+                                                        bool &exists) {
+  exists = false;
+  if (metadata.source_key.empty()) {
+    return rocksdb::Status::OK();
+  }
+  auto ns_key = AppendNamespacePrefix(metadata.source_key);
+  TimeSeriesMetadata source_metadata;
+  auto s = getTimeSeriesMetadata(ctx, ns_key, &source_metadata);
+  if (s.ok()) {
+    exists = true;
+  } else if (s.IsNotFound()) {
+    exists = false;
+    return rocksdb::Status::OK();
+  }
+  return s;
+}
+
 std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
@@ -1880,6 +1898,11 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   }
   auto chunk_count = res->metadata.size;
   auto &metadata = res->metadata;
+  // Check source key is exist
+  bool source_exists = false;
+  s = checkTSMetadataSourceExists(ctx, res->metadata, source_exists);
+  if (!s.ok()) return s;
+  if (!source_exists) res->metadata.source_key.clear();
   // Approximate total samples
   res->total_samples = chunk_count * res->metadata.chunk_size;
   // TODO: Estimate disk usage for the field `memoryUsage`
@@ -1920,6 +1943,8 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   std::vector<TSDownStreamMeta> downstream_rules;
   s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
   if (!s.ok()) return s;
+  res->downstream_rules.clear();
+  res->downstream_rules.reserve(downstream_keys.size());
   for (size_t i = 0; i < downstream_keys.size(); i++) {
     res->downstream_rules.emplace_back(std::move(downstream_keys[i]), downstream_rules[i].aggregator);
   }

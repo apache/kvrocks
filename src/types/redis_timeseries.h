@@ -341,6 +341,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
                                    std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec = nullptr,
                                    std::vector<TimeSeriesMetadata> *metas = nullptr);
+  rocksdb::Status checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata, bool &exists);
 
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;

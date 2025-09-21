@@ -1678,6 +1678,11 @@ rocksdb::Status TimeSeries::getDownStreamRules(engine::Context &ctx, const Slice
       if (s.IsNotFound()) continue;
       return s;
     }
+    auto [ns, src_key] = ExtractNamespaceKey(ns_src_key, storage_->IsSlotIdEncoded());
+    if (metadata.source_key != src_key) {
+      // Inconsistent source key, skip this rule
+      continue;
+    }
     ds_user_keys->push_back(key);
     if (ds_metas != nullptr) {
       TSDownStreamMeta meta;

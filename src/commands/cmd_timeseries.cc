@@ -400,13 +400,18 @@ class CommandTSAdd : public CommandTSCreateBase {
     CommandParser parser(args, 2);
     auto ts_parse = parser.TakeInt<uint64_t>();
     if (!ts_parse.IsOK()) {
-      return {Status::RedisParseErr, errInvalidTimestamp};
+      auto ts_str = parser.TakeStr();
+      if (!ts_str.IsOK() || ts_str.GetValue() != "*") {
+        return {Status::RedisParseErr, errInvalidTimestamp};
+      }
+      ts_ = util::GetTimeStampMS();
+    } else {
+      ts_ = ts_parse.GetValue();
     }
     auto value_parse = parser.TakeFloat<double>();
     if (!value_parse.IsOK()) {
       return {Status::RedisParseErr, errInvalidValue};
     }
-    ts_ = ts_parse.GetValue();
     value_ = value_parse.GetValue();
     CommandTSCreateBase::setSkipNum(4);
     return CommandTSCreateBase::Parse(args);
@@ -1058,7 +1063,7 @@ class CommandTSIncrByDecrBy : public CommandTSCreateBase {
     const auto &option = getCreateOption();
 
     if (!is_ts_set_) {
-      // TODO: Should modify function `Add` and `IncrBy` to add a sample with current time
+      ts_ = util::GetTimeStampMS();
     }
     TSChunk::AddResult res;
     auto s = timeseries_db.IncrBy(ctx, args_[1], {ts_, value_}, option, &res);

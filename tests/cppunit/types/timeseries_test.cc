@@ -516,6 +516,13 @@ TEST_F(TimeSeriesTest, CreateRuleDynamicCases) {
   EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
   EXPECT_EQ(info.downstream_rules.size(), 1);
   EXPECT_EQ(info.downstream_rules[0].first, dst_key2);
+
+  // Delete and recreate the destination key
+  EXPECT_TRUE(static_cast<redis::Database *>(ts_db_.get())->Del(*ctx_, dst_key2).ok());
+  EXPECT_TRUE(ts_db_->Create(*ctx_, dst_key2, option).ok());
+  // Check the source key no longer has downstream rules
+  EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
+  EXPECT_EQ(info.downstream_rules.size(), 0);
 }
 
 TEST_F(TimeSeriesTest, AggregationOnEmptySeries) {

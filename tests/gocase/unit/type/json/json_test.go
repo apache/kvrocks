@@ -320,6 +320,30 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	})
 
+	t.Run("JSON.ARRINSERT issue #3179 - insertion at array end", func(t *testing.T) {
+		// Test case for issue #3179: JSON.ARRINSERT not working when inserting at the end of array
+		// This reproduces the exact scenario described in the issue
+		require.NoError(t, rdb.JSONSet(ctx, "riders", "$", `[]`).Err())
+
+		val, err := rdb.JSONArrAppend(ctx, "riders", "$", `"Norem"`).Result()
+		require.NoError(t, err)
+		require.Equal(t, []int64{1}, val)
+		EqualJSON(t, `["Norem"]`, rdb.JSONGet(ctx, "riders").Val())
+
+		// Insert elements at index 1 (at the end of single-element array)
+		// This was failing before the fix with index >= len condition
+		val, err = rdb.JSONArrInsert(ctx, "riders", "$", 1, `"Prickett"`, `"Royce"`, `"Castilla"`).Result()
+		require.NoError(t, err)
+		require.Equal(t, []int64{4}, val)
+		EqualJSON(t, `["Norem","Prickett","Royce","Castilla"]`, rdb.JSONGet(ctx, "riders").Val())
+
+		// Additional test: insert at end of larger array
+		val, err = rdb.JSONArrInsert(ctx, "riders", "$", 4, `"Johnson"`, `"Smith"`).Result()
+		require.NoError(t, err)
+		require.Equal(t, []int64{6}, val)
+		EqualJSON(t, `["Norem","Prickett","Royce","Castilla","Johnson","Smith"]`, rdb.JSONGet(ctx, "riders").Val())
+	})
+
 	t.Run("JSON.OBJKEYS basics", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "a").Err())
 		// key no exists

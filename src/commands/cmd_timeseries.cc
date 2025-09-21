@@ -186,7 +186,13 @@ class KeywordCommandBase : public Commander {
       if (containsKeyword(value_upper, true)) {
         Status s = handlers_[value_upper](parser);
         if (!s.IsOK()) return s;
+        if (required_keywords_.count(value_upper)) {
+          required_keywords_.erase(value_upper);
+        }
       }
+    }
+    if (!required_keywords_.empty()) {
+      return {Status::InvalidArgument, required_keywords_.begin()->second};
     }
     return Commander::Parse(args);
   }
@@ -198,6 +204,12 @@ class KeywordCommandBase : public Commander {
   void registerHandler(const std::string &keyword, Handler &&handler) {
     handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler));
   }
+  template <typename Handler>
+  void registerHandlerRequired(const std::string &keyword, Handler &&handler, std::string_view err_msg) {
+    auto it = handlers_.emplace(util::ToUpper(keyword), std::forward<Handler>(handler)).first;
+    required_keywords_.emplace(it->first, err_msg);
+  }
+
   virtual void registerDefaultHandlers() = 0;
 
   void setSkipNum(size_t num) { skip_num_ = num; }
@@ -213,10 +225,20 @@ class KeywordCommandBase : public Commander {
  private:
   size_t skip_num_ = 0;
   size_t tail_skip_num_ = 0;
+  std::unordered_map<std::string_view, std::string> required_keywords_;
   std::unordered_map<std::string, std::function<Status(TSOptionsParser &)>> handlers_;
 };
 
 class CommandTSCreateBase : public KeywordCommandBase {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 [[maybe_unused]] std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled && getCreateOption().labels.size()) {
+      return {Status::RedisExecErr, "Specifying LABELS is not supported in cluster mode"};
+    }
+    return Status::OK();
+  }
+
  protected:
   const TSCreateOption &getCreateOption() const { return create_option_; }
 
@@ -308,6 +330,9 @@ class CommandTSCreate : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     auto s = timeseries_db.Create(ctx, args_[1], getCreateOption());
     if (!s.ok() && s.IsInvalidArgument()) return {Status::RedisExecErr, errKeyAlreadyExists};
@@ -387,6 +412,9 @@ class CommandTSAdd : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
@@ -491,7 +519,7 @@ class CommandTSMAdd : public Commander {
 
 class CommandTSAggregatorBase : public KeywordCommandBase {
  protected:
-  const TSAggregator &getAggregator() const { return aggregator_; }
+  TSAggregator &getAggregator() { return aggregator_; }
 
   void registerDefaultHandlers() override {
     registerHandler("AGGREGATION", [this](TSOptionsParser &parser) { return handleAggregation(parser, aggregator_); });
@@ -740,7 +768,7 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
  public:
   explicit CommandTSCreateRule() { registerDefaultHandlers(); }
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() < 6) {
+    if (args.size() > 7) {
       return {Status::NotOK, "wrong number of arguments for 'TS.CREATERULE' command"};
     }
     src_key_ = args[1];
@@ -756,6 +784,26 @@ class CommandTSCreateRule : public CommandTSAggregatorBase {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = FormatCreateRuleResAsRedisReply(res);
     return Status::OK();
+  }
+
+ protected:
+  void registerDefaultHandlers() override {
+    registerHandlerRequired(
+        "AGGREGATION",
+        [this](TSOptionsParser &parser) -> Status {
+          auto s = handleAggregation(parser, getAggregator());
+          if (!s.IsOK()) return s;
+          if (parser.Good()) {
+            auto align_parse = parser.TakeInt<uint64_t>();
+            if (align_parse.IsOK()) {
+              getAggregator().alignment = align_parse.GetValue();
+            } else {
+              return {Status::RedisParseErr, errTSInvalidAlign};
+            }
+          }
+          return Status::OK();
+        },
+        "AGGREGATION is required");
   }
 
  private:
@@ -806,7 +854,9 @@ class CommandTSMGetBase : virtual public CommandTSAggregatorBase {
                     [this](TSOptionsParser &parser) { return handleWithLabels(parser, option_.with_labels); });
     registerHandler("SELECTED_LABELS",
                     [this](TSOptionsParser &parser) { return handleSelectedLabels(parser, option_.selected_labels); });
-    registerHandler("FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); });
+    registerHandlerRequired(
+        "FILTER", [this](TSOptionsParser &parser) { return handleFilterExpr(parser, option_.filter); },
+        "missing FILTER argument");
   }
 
   static Status handleWithLabels([[maybe_unused]] TSOptionsParser &parser, bool &with_labels) {
@@ -851,6 +901,9 @@ class CommandTSMGet : public CommandTSMGetBase {
     return CommandTSMGetBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MGet is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMGetResult> results;
     auto s = timeseries_db.MGet(ctx, getMGetOption(), is_return_latest_, &results);
@@ -898,6 +951,9 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.MRANGE is not supported in cluster mode"};
+    }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
     auto s = timeseries_db.MRange(ctx, option_, &results);
@@ -995,6 +1051,9 @@ class CommandTSIncrByDecrBy : public CommandTSCreateBase {
     return CommandTSCreateBase::Parse(args);
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     const auto &option = getCreateOption();
 
@@ -1039,6 +1098,53 @@ class CommandTSIncrByDecrBy : public CommandTSCreateBase {
   double value_ = 0;
 };
 
+class CommandTSDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.del' command"};
+    }
+    CommandParser parser(args, 2);
+    // Parse start timestamp
+    auto start_parse = parser.TakeInt<uint64_t>();
+    if (!start_parse.IsOK()) {
+      auto start_ts_str = parser.TakeStr();
+      if (!start_ts_str.IsOK() || start_ts_str.GetValue() != "-") {
+        return {Status::RedisParseErr, "wrong fromTimestamp"};
+      }
+      // "-" means use default start timestamp: 0
+    } else {
+      start_ts_ = start_parse.GetValue();
+    }
+    // Parse end timestamp
+    auto end_parse = parser.TakeInt<uint64_t>();
+    if (!end_parse.IsOK()) {
+      auto end_ts_str = parser.TakeStr();
+      if (!end_ts_str.IsOK() || end_ts_str.GetValue() != "+") {
+        return {Status::RedisParseErr, "wrong toTimestamp"};
+      }
+      // "+" means use default end timestamp: MAX_TIMESTAMP
+    } else {
+      end_ts_ = end_parse.GetValue();
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    uint64_t deleted_count = 0;
+    auto s = timeseries_db.Del(ctx, args_[1], start_ts_, end_ts_, &deleted_count);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::Integer(deleted_count);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t start_ts_ = 0;
+  uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -1049,6 +1155,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

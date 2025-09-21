@@ -478,24 +478,39 @@ std::vector<std::string> UncompTSChunk::UpsertSampleAndSplit(SampleBatchSlice ba
   return res;
 }
 
-std::string UncompTSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to) const {
+std::string TSChunk::RemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted, bool inclusive_to) const {
+  uint64_t temp = 0;
+  if (deleted == nullptr) deleted = &temp;
+  return doRemoveSamplesBetween(from, to, deleted, inclusive_to);
+}
+
+std::string UncompTSChunk::doRemoveSamplesBetween(uint64_t from, uint64_t to, uint64_t* deleted,
+                                                  bool inclusive_to) const {
   if (from > to) {
+    *deleted = 0;
     return "";
   }
 
   // Find the range of samples to delete using binary search
   auto start_it = std::lower_bound(samples_.begin(), samples_.end(), TSSample{from, 0.0});
   if (start_it == samples_.end()) {
+    *deleted = 0;
     return "";
   }
-  auto end_it = std::upper_bound(samples_.begin(), samples_.end(), TSSample{to, 0.0});
+
+  auto end_it = inclusive_to ? std::upper_bound(start_it, samples_.end(), TSSample{to, 0.0})
+                             : std::lower_bound(start_it, samples_.end(), TSSample{to, 0.0});
 
   size_t start_idx = std::distance(samples_.begin(), start_it);
   size_t end_idx = std::distance(samples_.begin(), end_it);
 
+  *deleted = end_idx - start_idx;
+  if (*deleted == 0) {
+    return "";
+  }
   // Calculate buffer size: header + remaining samples
   const size_t header_size = TSChunk::MetaData::kEncodedSize;
-  const size_t remaining_count = metadata_.count - (end_idx - start_idx);
+  const size_t remaining_count = metadata_.count - *deleted;
   const size_t required_size = header_size + remaining_count * sizeof(TSSample);
 
   // Prepare new buffer

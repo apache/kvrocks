@@ -2289,6 +2289,78 @@ func TestStreamOffset(t *testing.T) {
 			}}, r)
 		}
 	})
+
+	t.Run("XPENDING idle time and delivered count, issue #3178", func(t *testing.T) {
+		streamName := "mystream-3178"
+		groupName := "mygroup-3178"
+		consumerName := "myconsumer-3178"
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		msgID := "1-0"
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     msgID,
+			Values: []string{"data", "value"},
+		}).Err())
+
+		result, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Len(t, result[0].Messages, 1)
+		require.Equal(t, msgID, result[0].Messages[0].ID)
+
+		// Wait to allow idle time to accumulate
+		time.Sleep(100 * time.Millisecond)
+		pendingEntries, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Start:    "-",
+			End:      "+",
+			Count:    10,
+			Consumer: consumerName,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pendingEntries, 1)
+
+		pendingEntry := pendingEntries[0]
+		require.Equal(t, msgID, pendingEntry.ID)
+		require.Equal(t, consumerName, pendingEntry.Consumer)
+		require.Greater(t, pendingEntry.Idle, time.Millisecond)
+		require.Less(t, pendingEntry.Idle, 10*time.Second)
+		require.EqualValues(t, 1, pendingEntry.RetryCount)
+
+		// Read the same message again to increase delivery count
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "0"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		time.Sleep(100 * time.Millisecond)
+		pendingEntries, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Start:    "-",
+			End:      "+",
+			Count:    10,
+			Consumer: consumerName,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pendingEntries, 1)
+		pendingEntry = pendingEntries[0]
+		require.EqualValues(t, 2, pendingEntry.RetryCount)
+		require.Greater(t, pendingEntry.Idle, time.Millisecond)
+		require.Less(t, pendingEntry.Idle, 10*time.Second)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

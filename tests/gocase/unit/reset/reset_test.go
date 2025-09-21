@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,5 +64,32 @@ func TestReset(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "subscribe", "chan1").Err())
 		require.NoError(t, rdb.Do(ctx, "reset").Err())
 		require.Equal(t, rdb.Do(ctx, "subscribe", "chan2").Val(), []interface{}{"subscribe", "chan2", (int64)(1)})
+	})
+}
+
+func TestResetAdminOnly(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	t.Run("RESET command with namespace token should be forbidden", func(t *testing.T) {
+		adminClient := srv.NewClientWithOption(&redis.Options{
+			Password: "admin",
+		})
+		defer func() { require.NoError(t, adminClient.Close()) }()
+
+		require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+		require.NoError(t, adminClient.Do(ctx, "RESET").Err())
+
+		tokenClient := srv.NewClientWithOption(&redis.Options{
+			Password: "test_token",
+		})
+		defer func() { require.NoError(t, tokenClient.Close()) }()
+
+		r := tokenClient.Do(ctx, "RESET")
+		require.ErrorContains(t, r.Err(), "admin permission required to perform the command")
 	})
 }

@@ -219,6 +219,9 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.level_compaction_dynamic_level_bytes = config_->rocks_db.level_compaction_dynamic_level_bytes;
   options.max_background_jobs = config_->rocks_db.max_background_jobs;
   options.max_compaction_bytes = static_cast<uint64_t>(config_->rocks_db.max_compaction_bytes);
+  options.periodic_compaction_seconds = config_->rocks_db.periodic_compaction_seconds;
+  options.ttl = config_->rocks_db.ttl;
+  options.daily_offpeak_time_utc = config_->rocks_db.daily_offpeak_time_utc;
 
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io

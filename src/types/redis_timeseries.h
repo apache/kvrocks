@@ -163,7 +163,7 @@ struct TSInfoResult {
   uint64_t memory_usage;
   uint64_t first_timestamp;
   uint64_t last_timestamp;
-  std::vector<std::pair<std::string, TSDownStreamMeta>> downstream_rules;
+  std::vector<std::pair<std::string, TSAggregator>> downstream_rules;
   LabelKVList labels;
 };
 

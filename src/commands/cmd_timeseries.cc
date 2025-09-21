@@ -379,10 +379,9 @@ class CommandTSInfo : public Commander {
     std::vector<std::string> rules_str;
     rules_str.reserve(info.downstream_rules.size());
     for (const auto &[key, rule] : info.downstream_rules) {
-      const auto &aggregator = rule.aggregator;
-      auto str = redis::Array({redis::BulkString(key), redis::Integer(aggregator.bucket_duration),
-                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(aggregator.type)),
-                               redis::Integer(aggregator.alignment)});
+      auto str = redis::Array({redis::BulkString(key), redis::Integer(rule.bucket_duration),
+                               redis::SimpleString(FormatAggregatorTypeAsRedisReply(rule.type)),
+                               redis::Integer(rule.alignment)});
       rules_str.push_back(str);
     }
     *output += redis::Array(rules_str);

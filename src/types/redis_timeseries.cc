@@ -1915,13 +1915,13 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   }
   getLabelKVList(ctx, ns_key, metadata, &res->labels);
 
-  // Retrieve downstream downstream_rules
+  // Retrieve downstream rules
   std::vector<std::string> downstream_keys;
   std::vector<TSDownStreamMeta> downstream_rules;
-  getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
+  s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
+  if (!s.ok()) return s;
   for (size_t i = 0; i < downstream_keys.size(); i++) {
-    auto key = downstreamKeyFromInternalKey(downstream_keys[i]);
-    res->downstream_rules.emplace_back(std::move(key), std::move(downstream_rules[i]));
+    res->downstream_rules.emplace_back(std::move(downstream_keys[i]), downstream_rules[i].aggregator);
   }
 
   return rocksdb::Status::OK();

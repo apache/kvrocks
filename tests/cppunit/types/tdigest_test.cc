@@ -298,3 +298,28 @@ TEST_F(RedisTDigestTest, Quantile_returns_nan_on_empty_tdigest) {
   ASSERT_TRUE(status.ok()) << status.ToString();
   ASSERT_FALSE(result.quantiles) << "should not have quantiles with empty tdigest";
 }
+TEST_F(RedisTDigestTest, CDF_Test) {
+  std::string cdf_tdigest_name = "test_cdf_digest" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, cdf_tdigest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples = {1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5};
+  status = tdigest_->Add(*ctx_, cdf_tdigest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {0, 1, 2, 3, 4, 5, 6};
+  redis::TDigestCDFResult result;
+
+  status = tdigest_->CDF(*ctx_, cdf_tdigest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0.00, 0.03, 0.13, 0.29, 0.53, 0.83, 1.00};
+  EXPECT_EQ(result.cdf_values.size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    auto got = result.cdf_values[i];
+    EXPECT_NEAR(got, expected[i], 0.015) << fmt::format("Mismatch at index {}", i);
+  }
+}

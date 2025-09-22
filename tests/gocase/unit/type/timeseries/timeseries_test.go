@@ -912,6 +912,24 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
 	})
 
+	t.Run("Add Current Timestamp Test", func(t *testing.T) {
+		key := "key_AddCurrentTimestamp"
+		now_ms := time.Now().UnixMilli()
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, "*", 10).Err())
+		res := rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		timestamp1 := res[0].([]interface{})[0].(int64)
+		require.GreaterOrEqual(t, timestamp1, now_ms)
+		require.Equal(t, float64(10), res[0].([]interface{})[1].(float64))
+
+		require.NoError(t, rdb.Do(ctx, "ts.incrby", key, 30).Err())
+		res = rdb.Do(ctx, "ts.get", key).Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		timestamp2 := res[0].([]interface{})[0].(int64)
+		require.GreaterOrEqual(t, timestamp2, timestamp1)
+		require.Equal(t, float64(40), res[0].([]interface{})[1].(float64))
+	})
+
 	t.Run("TS.Del Test", func(t *testing.T) {
 		srcKey := "del_test_src"
 		dstKey := "del_test_dst"

@@ -370,13 +370,47 @@ void Server::CleanupExitedSlaves() {
   }
 }
 
+std::vector<std::string> Server::RedactSensitiveTokens(const std::vector<std::string> &tokens) {
+  if (tokens.empty()) return tokens;
+  std::string cmd = util::ToLower(tokens[0]);
+  if (cmd != "auth" && cmd != "hello") return tokens;
+
+  std::vector<std::string> redacted_tokens = tokens;
+  if (cmd == "auth" && tokens.size() >= 2) {
+    // AUTH password -> redact password (arg 1)
+    redacted_tokens[1] = "(redacted)";
+  } else if (cmd == "hello" && tokens.size() >= 3) {
+    // HELLO [version] [AUTH [username] password] [SETNAME name]
+    for (size_t i = 1; i < tokens.size(); ++i) {
+      std::string arg = util::ToLower(tokens[i]);
+      if (arg == "auth" && i + 1 < tokens.size()) {
+        size_t remaining_args = tokens.size() - i - 1;
+        if (remaining_args >= 2) {
+          // Check if this follows the pattern AUTH username password
+          // In this case, redact the password (arg i+2)
+          redacted_tokens[i + 2] = "(redacted)";
+        } else if (remaining_args == 1) {
+          // This follows the pattern AUTH password
+          // Redact the password (arg i+1)
+          redacted_tokens[i + 1] = "(redacted)";
+        }
+        break;
+      }
+    }
+  }
+  return redacted_tokens;
+}
+
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
   auto now_us = util::GetTimeStampUS();
   std::string output =
       fmt::format("{}.{} [{} {}]", now_us / 1000000, now_us % 1000000, conn->GetNamespace(), conn->GetAddr());
-  for (const auto &token : tokens) {
+
+  auto redacted_tokens = RedactSensitiveTokens(tokens);
+
+  for (const auto &token : redacted_tokens) {
     output += " \"";
     output += util::EscapeString(token);
     output += "\"";
@@ -1024,6 +1058,26 @@ Server::InfoEntries Server::GetRocksDBInfo() {
                          cf_stats_map["memtable-limit-delays"]);
     entries.emplace_back("memtable_count_limit_stop[" + cf_handle->GetName() + "]",
                          cf_stats_map["memtable-limit-stops"]);
+
+    // Get the SST file count in all levels
+    std::string sst_file_at_level = "[";
+    for (int level = 0; level < KVROCKS_MAX_LSM_LEVEL; level++) {
+      std::string sst_file_count;
+      db->GetProperty(cf_handle, rocksdb::DB::Properties::kNumFilesAtLevelPrefix + std::to_string(level),
+                      &sst_file_count);
+      if (level != 0) {
+        sst_file_at_level += ",";
+      }
+      sst_file_at_level += sst_file_count;
+    }
+    entries.emplace_back("num_files_at_level[" + cf_handle->GetName() + "]", sst_file_at_level + "]");
+
+    // Get the estimate pending compaction bytes for the current column family
+    std::string estimate_pending_compaction_bytes;
+    db->GetProperty(cf_handle, rocksdb::DB::Properties::kEstimatePendingCompactionBytes,
+                    &estimate_pending_compaction_bytes);
+    entries.emplace_back("estimate_pending_compaction_bytes[" + cf_handle->GetName() + "]",
+                         estimate_pending_compaction_bytes);
   }
 
   auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;

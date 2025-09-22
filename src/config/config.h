@@ -57,6 +57,9 @@ constexpr const uint32_t kDefaultPort = 6666;
 constexpr const char *kDefaultNamespace = "__namespace";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
 
+constexpr const uint64_t kDefaultRocksdbTTL = UINT64_MAX - 1;
+constexpr const uint64_t kDefaultRocksdbPeriodicCompactionSeconds = UINT64_MAX - 1;
+
 const std::vector<ConfigEnum<spdlog::level::level_enum>> log_levels{
     {"debug", spdlog::level::debug}, {"info", spdlog::level::info},      {"warning", spdlog::level::warn},
     {"error", spdlog::level::err},   {"fatal", spdlog::level::critical},
@@ -243,6 +246,9 @@ struct Config {
     bool partition_filters;
     int64_t max_compaction_bytes;
     int64_t sst_file_delete_rate_bytes_per_sec = 0;
+    uint64_t periodic_compaction_seconds = kDefaultRocksdbPeriodicCompactionSeconds;
+    uint64_t ttl = kDefaultRocksdbTTL;
+    std::string daily_offpeak_time_utc;
 
     struct WriteOptions {
       bool sync;

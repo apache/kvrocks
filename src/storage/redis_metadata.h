@@ -388,6 +388,7 @@ class TimeSeriesMetadata : public Metadata {
   ChunkType chunk_type;
   DuplicatePolicy duplicate_policy;
   std::string source_key;
+  uint64_t last_timestamp = 0;  // Approximate last timestamp, used for compaction filter
 
   explicit TimeSeriesMetadata(bool generate_version = true)
       : Metadata(kRedisTimeSeries, generate_version),

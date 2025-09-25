@@ -87,6 +87,8 @@ enum CommandFlags : uint64_t {
   kCmdAuth = 1ULL << 10,
   // "admin" flag, for commands that require admin permission
   kCmdAdmin = 1ULL << 11,
+  // "skip-monitor" flag, for commands that should skip monitor feed
+  kCmdSkipMonitor = 1ULL << 12,
 };
 
 enum class CommandCategory : uint8_t {
@@ -352,6 +354,8 @@ inline uint64_t ParseCommandFlags(const std::string &description, const std::str
       flags |= kCmdNoMulti;
     else if (flag == "no-script")
       flags |= kCmdNoScript;
+    else if (flag == "skip-monitor")
+      flags |= kCmdSkipMonitor;
     else if (flag == "no-dbsize-check")
       flags |= kCmdNoDBSizeCheck;
     else if (flag == "slow")
@@ -388,6 +392,7 @@ inline std::vector<std::string> CommandAttributes::FlagsToString(uint64_t flags)
   if (flags & kCmdBlocking) res.emplace_back("blocking");
   if (flags & kCmdAuth) res.emplace_back("auth");
   if (flags & kCmdAdmin) res.emplace_back("admin");
+  if (flags & kCmdSkipMonitor) res.emplace_back("skip-monitor");
 
   return res;
 }

@@ -882,6 +882,7 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
   read_options.iterate_lower_bound = &lower_bound;
 
   uint64_t chunk_count = metadata.size;
+  uint64_t recorded_last_timestamp = metadata.last_timestamp;
 
   // Get the latest chunk
   auto iter = util::UniqueIterator(ctx, read_options);
@@ -974,8 +975,13 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
   if (!new_data_list.empty()) {
     chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
   }
-  if (chunk_count != metadata.size) {
+  if (new_data_list.size() > 1) {
+    auto chunk = CreateTSChunkFromData(new_data_list.back());
+    recorded_last_timestamp = chunk->GetLastTimestamp();
+  }
+  if (chunk_count != metadata.size || recorded_last_timestamp != metadata.last_timestamp) {
     metadata.size = chunk_count;
+    metadata.last_timestamp = recorded_last_timestamp;
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -1438,6 +1444,16 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
     }
   }
   if (chunk_count != metadata.size) {
+    // Recode the last timestamp
+    std::vector<TSSample> get_samples;
+    s = getCommon(ctx, ns_key, metadata, true, &get_samples);
+    if (!s.ok()) return s;
+    if (get_samples.empty()) {
+      metadata.last_timestamp = 0;
+    } else {
+      metadata.last_timestamp = get_samples.back().ts;
+    }
+
     metadata.size = chunk_count;
     std::string bytes;
     metadata.Encode(&bytes);
@@ -2152,6 +2168,21 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   if (*deleted == 0) return rocksdb::Status::OK();
   s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, from, to);
   return s;
+}
+
+bool TimeSeries::IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value) {
+  auto chunk = CreateTSChunkFromData(chunk_value);
+  uint64_t latest_ts = metadata.last_timestamp;
+  uint64_t retention_bound =
+      (metadata.retention_time > 0 && metadata.retention_time < latest_ts) ? latest_ts - metadata.retention_time : 0;
+  return chunk->GetLastTimestamp() < retention_bound;
+}
+
+bool TimeSeries::IsTSChunkKey(const InternalKey &ikey) {
+  auto sub_key = ikey.GetSubKey();
+  auto type = TSSubkeyType::LABEL;
+  bool is_success = GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(&type));
+  return is_success && type == TSSubkeyType::CHUNK;
 }
 
 }  // namespace redis

@@ -277,7 +277,7 @@ func TestWaitBlockExecutingCommand(t *testing.T) {
 
 	// the remaining command should be executed after replication
 	require.Eventually(t, func() bool {
-		return "v3" == slaveRdb.Get(context.Background(), "k1").Val()
+		return slaveRdb.Get(context.Background(), "k1").Val() == "v3"
 	}, 5*time.Second, 100*time.Millisecond)
 }
 

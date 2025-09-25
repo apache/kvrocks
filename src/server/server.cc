@@ -1646,7 +1646,8 @@ void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   }
 }
 
-int64_t Server::GetLastScanTime(const std::string &ns) const {
+int64_t Server::GetLastScanTime(const std::string &ns) {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
     return iter->second.last_scan_time_secs;

@@ -1,66 +1,79 @@
-// go:build !ignore_when_tsan
+//go:build !ignore_when_tsan
 
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+* Licensed to the Apache Software Foundation (ASF) under one
+* or more contributor license agreements.  See the NOTICE file
+* distributed with this work for additional information
+* regarding copyright ownership.  The ASF licenses this file
+* to you under the Apache License, Version 2.0 (the
+* "License"); you may not use this file except in compliance
+* with the License.  You may obtain a copy of the License at
+*
+*   http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
  */
 
 package tdigest
 
-import(
-    "context"
-    "strconv"
-    "testing"
+import (
+	"context"
+	"strconv"
+	"testing"
 
-    "github.com/apache/kvrocks/tests/gocase/util"
-    "github.com/stretchr/testify/require")
+	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/stretchr/testify/require"
+)
 
-    const(errMsgWrongNumberArg = "wrong number of arguments" errMsgParseCompression =
-              "error parsing compression parameter" errMsgNeedToBePositive =
-                  "compression parameter needs to be a positive integer" errMsgMustInRange =
-                      "compression must be between 1 and 1000" errMsgKeyAlreadyExists =
-                          "key already exists" errMsgKeyNotExist = "key does not exist" errNumkeysMustBePositive =
-                              "numkeys need to be a positive integer" errCompressionParameterMustBePositive =
-                                  "compression parameter needs to be a positive integer" errValueIsNotFloat =
-                                      "value is not a valid float")
+const (
+	errMsgWrongNumberArg                  = "wrong number of arguments"
+	errMsgParseCompression                = "error parsing compression parameter"
+	errMsgNeedToBePositive                = "compression parameter needs to be a positive integer"
+	errMsgMustInRange                     = "compression must be between 1 and 1000"
+	errMsgKeyAlreadyExists                = "key already exists"
+	errMsgKeyNotExist                     = "key does not exist"
+	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
+	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
+	errValueIsNotFloat					  = "value is not a valid float"
+)
 
-        type tdigestInfo struct {
-  Compression int64 Capacity int64 MergedNodes int64 UnmergedNodes int64 MergedWeight int64 UnmergedWeight int64
-      Observations int64 TotalCompressions int64
-  // memory usgae is not useful, we do not support it now
+type tdigestInfo struct {
+	Compression       int64
+	Capacity          int64
+	MergedNodes       int64
+	UnmergedNodes     int64
+	MergedWeight      int64
+	UnmergedWeight    int64
+	Observations      int64
+	TotalCompressions int64
+	// memory usgae is not useful, we do not support it now
 }
 
 func toTdigestInfo(t *testing.T, value interface{}) tdigestInfo {
-  require.IsType(t, map[interface{}] interface{} {}, value) v
-      : = value.(map[interface{}] interface{}) return tdigestInfo {
-  Compression:
-    v["Compression"].(int64), Capacity : v["Capacity"].(int64), MergedNodes : v["Merged nodes"].(int64),
-        UnmergedNodes : v["Unmerged nodes"].(int64), MergedWeight : v["Merged weight"].(int64),
-        UnmergedWeight : v["Unmerged weight"].(int64), Observations : v["Observations"].(int64),
-        TotalCompressions : v["Total compressions"].(int64),
-  }
+	require.IsType(t, map[interface{}]interface{}{}, value)
+	v := value.(map[interface{}]interface{})
+	return tdigestInfo{
+		Compression:       v["Compression"].(int64),
+		Capacity:          v["Capacity"].(int64),
+		MergedNodes:       v["Merged nodes"].(int64),
+		UnmergedNodes:     v["Unmerged nodes"].(int64),
+		MergedWeight:      v["Merged weight"].(int64),
+		UnmergedWeight:    v["Unmerged weight"].(int64),
+		Observations:      v["Observations"].(int64),
+		TotalCompressions: v["Total compressions"].(int64),
+	}
 }
 
 func TestTDigest(t *testing.T) {
-configOptions:= []util.ConfigOptions{
+	configOptions := []util.ConfigOptions{
 		{
 			Name:       "txn-context-enabled",
-			Options:    []string{
-    "yes", "no"},
+			Options:    []string{"yes", "no"},
 			ConfigType: util.YesNo,
 		},
 	}
@@ -69,12 +82,12 @@ configOptions:= []util.ConfigOptions{
 	require.NoError(t, err)
 
 	for _, configs := range configsMatrix {
-    tdigestTests(t, configs)
-  }
+		tdigestTests(t, configs)
+	}
 }
 
 func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
-srv:= util.StartServer(t, configs)
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -134,68 +147,65 @@ srv:= util.StartServer(t, configs)
 	})
 
 	t.Run("tdigest.add with different arguments", func(t *testing.T) {
-  keyPrefix:
-    = "tdigest_add_"
+		keyPrefix := "tdigest_add_"
 
-      // Satisfy the number of parameters
-      require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD").Err(), errMsgWrongNumberArg)
-          require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix + "key").Err(), errMsgWrongNumberArg) require
-              .ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix + "key", "abc").Err(), "not a valid float")
-                  require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix + "nonexistent", "1.0").Err(),
-                                        errMsgKeyNotExist)
+		// Satisfy the number of parameters
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix+"key").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix+"key", "abc").Err(), "not a valid float")
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.ADD", keyPrefix+"nonexistent", "1.0").Err(), errMsgKeyNotExist)
 
-      // Test adding values to a key
-      key : = keyPrefix +
-              "test1" require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-                  require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42.0").Err())
+		// Test adding values to a key
+		key := keyPrefix + "test1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42.0").Err())
 
-                      rsp : = rdb.Do(ctx, "TDIGEST.INFO", key) require.NoError(t, rsp.Err()) info
-        : = toTdigestInfo(t, rsp.Val()) require.EqualValues(t, 1, info.UnmergedNodes) require
-                .EqualValues(t, 1, info.Observations)
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", key)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 1, info.UnmergedNodes)
+		require.EqualValues(t, 1, info.Observations)
 
-                    require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1.0", "2.0", "3.0", "4.0", "5.0").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1.0", "2.0", "3.0", "4.0", "5.0").Err())
 
-                        rsp = rdb.Do(ctx, "TDIGEST.INFO", key) require.NoError(t, rsp.Err()) info =
-              toTdigestInfo(t, rsp.Val()) require.EqualValues(t, 6, info.Observations)
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", key)
+		require.NoError(t, rsp.Err())
+		info = toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 6, info.Observations)
 
-              // Test adding values to a key with compression
-              key2
-        : = keyPrefix + "test2" require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
+		// Test adding values to a key with compression
+		key2 := keyPrefix + "test2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
 
-                            args : = [] interface {} {
-      key2
-    }
-                for
-                i:
-                  = 1;
-                i <= 1000;
-                i++ {args = append(args, float64(i))} require.NoError(
-                    t, rdb.Do(ctx, append([] interface {} {"TDIGEST.ADD"}, args...)...).Err())
+		args := []interface{}{key2}
+		for i := 1; i <= 1000; i++ {
+			args = append(args, float64(i))
+		}
+		require.NoError(t, rdb.Do(ctx, append([]interface{}{"TDIGEST.ADD"}, args...)...).Err())
 
-                    rsp = rdb.Do(ctx, "TDIGEST.INFO", key2) require.NoError(t, rsp.Err()) info =
-                    toTdigestInfo(t, rsp.Val()) require.EqualValues(t, 1000, info.Observations)
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", key2)
+		require.NoError(t, rsp.Err())
+		info = toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 1000, info.Observations)
 
-                    // Test adding values to a key with compression and merge node
-                    key3 : = keyPrefix +
-                             "test3" require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key3, "compression", "10").Err())
+		// Test adding values to a key with compression and merge node
+		key3 := keyPrefix + "test3"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key3, "compression", "10").Err())
 
-                                 args = [] interface {} {
-                  key3
-                }
-                for
-                i:
-                  = 1;
-                i <= 100;
-                i++ {args = append(args, float64(i % 10))} require.NoError(
-                    t, rdb.Do(ctx, append([] interface {} {"TDIGEST.ADD"}, args...)...).Err())
+		args = []interface{}{key3}
+		for i := 1; i <= 100; i++ {
+			args = append(args, float64(i%10))
+		}
+		require.NoError(t, rdb.Do(ctx, append([]interface{}{"TDIGEST.ADD"}, args...)...).Err())
 
-                    rsp = rdb.Do(ctx, "TDIGEST.INFO", key3) require.NoError(t, rsp.Err()) info =
-                    toTdigestInfo(t, rsp.Val())
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", key3)
+		require.NoError(t, rsp.Err())
+		info = toTdigestInfo(t, rsp.Val())
 
-                        require.Greater(t, info.MergedNodes, int64(0))
-                            require.Greater(t, info.MergedWeight, int64(0))
-                                require.EqualValues(t, 100, info.Observations)
-                                    require.Greater(t, info.TotalCompressions, int64(0))
+		require.Greater(t, info.MergedNodes, int64(0))
+		require.Greater(t, info.MergedWeight, int64(0))
+		require.EqualValues(t, 100, info.Observations)
+		require.Greater(t, info.TotalCompressions, int64(0))
 	})
 
 	t.Run("tdigest.max with different arguments", func(t *testing.T) {
@@ -338,8 +348,7 @@ srv:= util.StartServer(t, configs)
 			vals, err := rsp.Slice()
 			require.NoError(t, err)
 			require.Len(t, vals, 11)
-			expected := []float64{
-    1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0}
+			expected := []float64{1.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0}
 			for i, v := range vals {
 				str, ok := v.(string)
 				require.True(t, ok, "expected string but got %T at index %d", v, i)
@@ -362,8 +371,7 @@ srv:= util.StartServer(t, configs)
 			require.NoError(t, err)
 			require.Len(t, vals, 5)
 
-			expected := []float64{
-    -10.0, -8.0, -5.5, -3.0, -1.0}
+			expected := []float64{-10.0, -8.0, -5.5, -3.0, -1.0}
 			for i, v := range vals {
 				str, ok := v.(string)
 				require.True(t, ok, "expected string but got %T at index %d", v, i)
@@ -390,7 +398,16 @@ srv:= util.StartServer(t, configs)
 			require.Equal(t, 10, len(vals))
 
 			expected := []float64{
-    18.0, -19.0, 14.0, -3.0, 12.5, -20.0, 12.0, 13.0, -1.0, 18.0,
+				18.0,
+				-19.0,
+				14.0,
+				-3.0,
+				12.5,
+				-20.0,
+				12.0,
+				13.0,
+				-1.0,
+				18.0,
 			}
 			for i, v := range vals {
 				strVal, ok := v.(string)
@@ -487,8 +504,7 @@ srv:= util.StartServer(t, configs)
 			vals, err := rsp.Slice()
 			require.NoError(t, err)
 			require.Len(t, vals, 6)
-			expected := []float64{
-    -200.0, 4.0, 6.0, 100.0, 100.0, 100.0}
+			expected := []float64{-200.0, 4.0, 6.0, 100.0, 100.0, 100.0}
 			for i, v := range vals {
 				str, ok := v.(string)
 				require.True(t, ok, "expected string but got %T at index %d", v, i)

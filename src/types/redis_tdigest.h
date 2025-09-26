@@ -49,7 +49,7 @@ struct TDigestMergeOptions {
   bool override_flag = false;
 };
 struct TDigestCDFResult {
-  std::vector<double> cdf_values;
+  std::optional<std::vector<double>> cdf_values;
 };
 struct TDigestQuantitleResult {
   std::optional<std::vector<double>> quantiles;

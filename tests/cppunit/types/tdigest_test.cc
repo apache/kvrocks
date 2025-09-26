@@ -316,10 +316,115 @@ TEST_F(RedisTDigestTest, CDF_Test) {
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   std::vector<double> expected = {0.00, 0.03, 0.13, 0.29, 0.53, 0.83, 1.00};
-  EXPECT_EQ(result.cdf_values.size(), cdf_vals.size());
+  ASSERT_TRUE(result.cdf_values) << "CDF should have values";
+  ASSERT_EQ(result.cdf_values->size(), cdf_vals.size());
 
   for (size_t i = 0; i < cdf_vals.size(); i++) {
-    auto got = result.cdf_values[i];
-    EXPECT_NEAR(got, expected[i], 0.015) << fmt::format("Mismatch at index {}", i);
+    EXPECT_NEAR((*result.cdf_values)[i], expected[i], 0.015) << fmt::format("Mismatch at index {}", i);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_returns_nan_on_empty_tdigest) {
+  std::string test_digest_name = "test_digest_cdf_nan" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> values = {0.0, 1.0, 2.0, 3.0};
+  redis::TDigestCDFResult result;
+
+  status = tdigest_->CDF(*ctx_, test_digest_name, values, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.cdf_values);
+}
+
+TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
+  std::string test_digest_name = "test_cdf_uniform" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {200}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples = ranges::views::iota(1, 101) |
+                                ranges::views::transform([](int i) { return (double)i; }) |
+                                ranges::to<std::vector<double>>();
+  status = tdigest_->Add(*ctx_, test_digest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {1, 25, 50, 75, 100};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0.01, 0.25, 0.50, 0.75, 1.00};
+  ASSERT_TRUE(result.cdf_values) << "CDF should have values";
+  ASSERT_EQ(result.cdf_values->size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR((*result.cdf_values)[i], expected[i], 0.02)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_multiple_adds) {
+  std::string test_digest_name = "test_cdf_multiadd" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples1 = {1, 2, 3, 4, 5};
+  std::vector<double> samples2 = {6, 7, 8, 9, 10};
+  status = tdigest_->Add(*ctx_, test_digest_name, samples1);
+  ASSERT_TRUE(status.ok());
+  status = tdigest_->Add(*ctx_, test_digest_name, samples2);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {1, 5, 7, 10};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> expected = {0.10, 0.50, 0.70, 1.00};
+  ASSERT_TRUE(result.cdf_values) << "CDF should have values";
+  ASSERT_EQ(result.cdf_values->size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR((*result.cdf_values)[i], expected[i], 0.05)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_skewed_distribution) {
+  std::string test_digest_name = "test_cdf_skewed" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {200}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples;
+  for (int i = 0; i < 100; i++) samples.push_back(0.0);
+  for (int i = 1; i <= 10; i++) samples.push_back((double)i);
+
+  status = tdigest_->Add(*ctx_, test_digest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {0, 1, 5, 10};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> expected = {0.4545, 0.91, 0.95, 1.00};
+  ASSERT_TRUE(result.cdf_values) << "CDF should have values";
+  ASSERT_EQ(result.cdf_values->size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR((*result.cdf_values)[i], expected[i], 0.03)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
   }
 }

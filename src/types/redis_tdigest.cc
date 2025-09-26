@@ -435,6 +435,9 @@ rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, con
       if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
         return status;
       }
+      if (metadata.total_observations == 0) {
+        return rocksdb::Status::OK();
+      }
 
       std::string metadata_bytes;
       metadata.Encode(&metadata_bytes);

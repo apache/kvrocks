@@ -163,7 +163,7 @@ struct TSInfoResult {
   uint64_t memory_usage;
   uint64_t first_timestamp;
   uint64_t last_timestamp;
-  std::vector<std::pair<std::string, TSDownStreamMeta>> downstream_rules;
+  std::vector<std::pair<std::string, TSAggregator>> downstream_rules;
   LabelKVList labels;
 };
 
@@ -320,8 +320,8 @@ class TimeSeries : public SubKeyScanner {
                                         uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                         uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                     std::vector<std::string> &ds_keys, std::vector<TSDownStreamMeta> &ds_metas,
-                                     uint64_t from, uint64_t to);
+                                     std::vector<std::string> &ds_user_keys, std::vector<TSDownStreamMeta> &ds_metas,
+                                     std::vector<TimeSeriesMetadata> &ds_series_metas, uint64_t from, uint64_t to);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);
@@ -330,12 +330,19 @@ class TimeSeries : public SubKeyScanner {
                                                   const TSAggregator &aggregator,
                                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                                   TSDownStreamMeta *ds_metadata);
+  // Get downstream rules of the source time series.
+  // - `ds_user_keys`: the user keys of the downstream time series.
+  // - `ds_metas`: (optional) the downstream rule meta.
+  // - `ds_series_metadatas`: (optional) the metadata of the downstream time series.
   rocksdb::Status getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
-                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
-                                     std::vector<TSDownStreamMeta> *metas = nullptr);
+                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *ds_user_keys,
+                                     std::vector<TSDownStreamMeta> *ds_metas = nullptr,
+                                     std::vector<TimeSeriesMetadata> *ds_series_metadatas = nullptr);
   rocksdb::Status getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
                                    std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec = nullptr,
                                    std::vector<TimeSeriesMetadata> *metas = nullptr);
+  rocksdb::Status checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata, bool &exists,
+                                              TimeSeriesMetadata *src_metadata = nullptr);
 
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;

@@ -2183,12 +2183,16 @@ bool TimeSeries::ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type) {
   return GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(type));
 }
 
-bool TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value) {
+rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
+                                              bool &expired) {
   auto ikey = InternalKey(key, storage_->IsSlotIdEncoded());
   auto type = redis::TSSubkeyType::CHUNK;
-  CHECK(ExtractTSSubType(ikey, &type));
+  expired = false;
+  if (!ExtractTSSubType(ikey, &type)) {
+    return rocksdb::Status::InvalidArgument("Invalid TS subkey type");
+  }
   if (type == redis::TSSubkeyType::CHUNK) {
-    return isChunkExpired(metadata, value);
+    expired = isChunkExpired(metadata, value);
   } else if (type == redis::TSSubkeyType::DOWNSTREAM) {
     // If downstream key is expired, the subkey is expired
     auto ds_key = ikey.GetSubKey();
@@ -2197,10 +2201,11 @@ bool TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Sli
     TimeSeriesMetadata ds_metadata;
     engine::Context ctx(storage_);
     auto s = getTimeSeriesMetadata(ctx, ds_ns_key, &ds_metadata);
-    if (!s.ok()) return true;
-    if (ds_metadata.source_key != ikey.GetKey()) return true;
+    if (!s.ok() || ds_metadata.source_key != ikey.GetKey()) {
+      expired = true;
+    }
   }
-  return false;
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

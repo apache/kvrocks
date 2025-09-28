@@ -507,6 +507,8 @@ TEST_F(TimeSeriesTest, CreateRuleDynamicCases) {
   EXPECT_TRUE(ts_db_->Create(*ctx_, src_key, option).ok());
   EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
   EXPECT_EQ(info.downstream_rules.size(), 0);
+  EXPECT_TRUE(ts_db_->Info(*ctx_, dst_key2, &info).ok());
+  EXPECT_TRUE(info.metadata.source_key.empty());
   // Add rule to dst_key2
   EXPECT_TRUE(ts_db_->CreateRule(*ctx_, src_key, dst_key2, aggregator, &res).ok());
   EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);

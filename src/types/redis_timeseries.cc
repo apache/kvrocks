@@ -1778,7 +1778,7 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
 }
 
 rocksdb::Status TimeSeries::checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata,
-                                                        bool &exists) {
+                                                        bool &exists, TimeSeriesMetadata *src_metadata) {
   exists = false;
   if (metadata.source_key.empty()) {
     return rocksdb::Status::OK();
@@ -1788,6 +1788,9 @@ rocksdb::Status TimeSeries::checkTSMetadataSourceExists(engine::Context &ctx, co
   auto s = getTimeSeriesMetadata(ctx, ns_key, &source_metadata);
   if (s.ok()) {
     exists = true;
+    if (src_metadata != nullptr) {
+      *src_metadata = source_metadata;
+    }
   } else if (s.IsNotFound()) {
     exists = false;
     return rocksdb::Status::OK();
@@ -1905,9 +1908,20 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   auto &metadata = res->metadata;
   // Check source key is exist
   bool source_exists = false;
-  s = checkTSMetadataSourceExists(ctx, res->metadata, source_exists);
+  TimeSeriesMetadata source_metadata;
+  s = checkTSMetadataSourceExists(ctx, res->metadata, source_exists, &source_metadata);
   if (!s.ok()) return s;
-  if (!source_exists) res->metadata.source_key.clear();
+  if (!source_exists) {
+    res->metadata.source_key.clear();
+  } else {
+    // Check source key has the rule
+    std::vector<std::string> ds_user_keys;
+    s = getDownStreamRules(ctx, AppendNamespacePrefix(res->metadata.source_key), source_metadata, &ds_user_keys);
+    if (!s.ok()) return s;
+    if (std::find(ds_user_keys.begin(), ds_user_keys.end(), user_key.ToStringView()) == ds_user_keys.end()) {
+      res->metadata.source_key.clear();
+    }
+  }
   // Approximate total samples
   res->total_samples = chunk_count * res->metadata.chunk_size;
   // TODO: Estimate disk usage for the field `memoryUsage`

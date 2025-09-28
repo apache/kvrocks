@@ -30,13 +30,14 @@
 #include <range/v3/algorithm/shuffle.hpp>
 #include <range/v3/range.hpp>
 #include <range/v3/view/chunk.hpp>
+#include <range/v3/view/concat.hpp>
 #include <range/v3/view/iota.hpp>
 #include <range/v3/view/join.hpp>
+#include <range/v3/view/repeat.hpp>
 #include <range/v3/view/transform.hpp>
 #include <string>
 #include <vector>
 
-#include "logging.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "time_util.h"
@@ -407,9 +408,11 @@ TEST_F(RedisTDigestTest, CDF_skewed_distribution) {
   ASSERT_FALSE(exists);
   ASSERT_TRUE(status.ok());
 
-  std::vector<double> samples;
-  for (int i = 0; i < 100; i++) samples.push_back(0.0);
-  for (int i = 1; i <= 10; i++) samples.push_back((double)i);
+  std::vector<double> samples =
+      ranges::views::concat(
+          ranges::views::repeat(0.0) | ranges::views::take(100),
+          ranges::views::iota(1, 11) | ranges::views::transform([](int i) { return static_cast<double>(i); })) |
+      ranges::to<std::vector<double>>();
 
   status = tdigest_->Add(*ctx_, test_digest_name, samples);
   ASSERT_TRUE(status.ok());

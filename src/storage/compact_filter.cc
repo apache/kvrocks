@@ -133,7 +133,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     return false;
   }
 
-  if (metadata.Type() == kRedisTimeSeries && redis::TimeSeries::IsTSChunkKey(ikey)) {
+  if (metadata.Type() == kRedisTimeSeries) {
     TimeSeriesMetadata ts_metadata(false);
     Slice input(cached_metadata_);
     auto s = ts_metadata.Decode(&input);
@@ -142,7 +142,16 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
             ikey.GetNamespace(), ikey.GetKey(), s.ToString());
       return false;
     }
-    return redis::TimeSeries::IsChunkExpired(ts_metadata, value);
+    auto [ns, _] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
+    auto ts_db = redis::TimeSeries(stor_, ns.ToString());
+    bool expired = false;
+    s = ts_db.IsTSSubKeyExpired(ts_metadata, key, value, expired);
+    if (!s.ok()) {
+      error("[compact_filter/subkey] Failed to check if timeseries subkey is expired, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return false;
+    }
+    return expired;
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

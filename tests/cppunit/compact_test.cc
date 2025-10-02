@@ -329,3 +329,67 @@ TEST(Compact, TSRetention) {
     std::cout << "Encounter filesystem error: " << ec << std::endl;
   }
 }
+
+TEST(Compact, TSDownstreamSubKey) {
+  Config config;
+  config.db_dir = "compactdb_tsdownstream";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  std::string ns = "test_compact_tsdownstream";
+  auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
+  engine::Context ctx(storage.get());
+
+  rocksdb::DB* db = storage->GetDB();
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  auto get_all_ds_key = [&]() {
+    auto iter = std::unique_ptr<rocksdb::Iterator>(
+        db->NewIterator(read_options, storage->GetCFHandle(ColumnFamilyID::PrimarySubkey)));
+    std::vector<std::string> ds_keys;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      Slice slice(iter->key());
+      slice.remove_prefix(slice.size() - sizeof(uint64_t));
+      ds_keys.push_back(slice.ToString());
+    }
+    return ds_keys;
+  };
+
+  std::string ts_key = "ts_key";
+  std::string dst_key1 = "dst_key1";
+  std::string dst_key2 = "dst_key2";
+  redis::TSCreateOption create_option;
+  ASSERT_TRUE(timeseries->Create(ctx, ts_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key1, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key2, create_option).ok());
+
+  // Create two downstream rule
+  redis::TSAggregator agg;
+  agg.type = redis::TSAggregatorType::AVG;
+  agg.bucket_duration = 100;
+  auto rule_res = redis::TSCreateRuleResult::kOK;
+  ASSERT_TRUE(timeseries->CreateRule(ctx, ts_key, dst_key1, agg, &rule_res).ok());
+  ASSERT_TRUE(timeseries->CreateRule(ctx, ts_key, dst_key2, agg, &rule_res).ok());
+
+  auto ds_keys = get_all_ds_key();
+  ASSERT_EQ(ds_keys.size(), 2);
+  ASSERT_EQ(ds_keys[0], dst_key1);
+  ASSERT_EQ(ds_keys[1], dst_key2);
+
+  // Recreate the downstream key
+  ASSERT_TRUE(static_cast<redis::Database*>(timeseries.get())->Del(ctx, dst_key1).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key1, create_option).ok());
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+  ds_keys = get_all_ds_key();
+  ASSERT_EQ(ds_keys.size(), 1);
+  ASSERT_EQ(ds_keys[0], dst_key2);
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}

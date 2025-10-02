@@ -183,7 +183,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
 
   std::vector<rocksdb::Status> statuses(slice_keys.size());
   std::vector<rocksdb::PinnableSlice> pin_values(slice_keys.size());
-  storage_->MultiGet(ctx, ctx.GetReadOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
+  storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
                      pin_values.data(), statuses.data());
 
   for (size_t i = 0; i < slice_keys.size(); i++) {

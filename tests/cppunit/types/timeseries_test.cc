@@ -468,6 +468,65 @@ TEST_F(TimeSeriesTest, CreateRuleErrorCases) {
   }
 }
 
+TEST_F(TimeSeriesTest, CreateRuleDynamicCases) {
+  redis::TSCreateOption option;
+  std::string src_key = "createrule_dynamic_case_src";
+  std::string dst_key1 = "createrule_dynamic_case_dst1";
+  std::string dst_key2 = "createrule_dynamic_case_dst2";
+
+  // Create source and destination keys
+  EXPECT_TRUE(ts_db_->Create(*ctx_, src_key, option).ok());
+  EXPECT_TRUE(ts_db_->Create(*ctx_, dst_key1, option).ok());
+  EXPECT_TRUE(ts_db_->Create(*ctx_, dst_key2, option).ok());
+
+  // Create a rule
+  redis::TSCreateRuleResult res = redis::TSCreateRuleResult::kOK;
+  redis::TSAggregator aggregator;
+  aggregator.type = redis::TSAggregatorType::AVG;
+  aggregator.bucket_duration = 1000;
+  EXPECT_TRUE(ts_db_->CreateRule(*ctx_, src_key, dst_key1, aggregator, &res).ok());
+  EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+  EXPECT_TRUE(ts_db_->CreateRule(*ctx_, src_key, dst_key2, aggregator, &res).ok());
+  EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+
+  // Delete a destination key
+  EXPECT_TRUE(static_cast<redis::Database *>(ts_db_.get())->Del(*ctx_, dst_key1).ok());
+  redis::TSInfoResult info;
+  // Check downstream rule is updated
+  EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
+  EXPECT_EQ(info.downstream_rules.size(), 1);
+  EXPECT_EQ(info.downstream_rules[0].first, dst_key2);
+
+  // Delete the source key
+  EXPECT_TRUE(static_cast<redis::Database *>(ts_db_.get())->Del(*ctx_, src_key).ok());
+  // Check the destination key no longer has source rules
+  EXPECT_TRUE(ts_db_->Info(*ctx_, dst_key2, &info).ok());
+  EXPECT_TRUE(info.metadata.source_key.empty());
+
+  // Recreate the source key and add a new rule to the existing destination key
+  EXPECT_TRUE(ts_db_->Create(*ctx_, src_key, option).ok());
+  EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
+  EXPECT_EQ(info.downstream_rules.size(), 0);
+  EXPECT_TRUE(ts_db_->Info(*ctx_, dst_key2, &info).ok());
+  EXPECT_TRUE(info.metadata.source_key.empty());
+  // Add rule to dst_key2
+  EXPECT_TRUE(ts_db_->CreateRule(*ctx_, src_key, dst_key2, aggregator, &res).ok());
+  EXPECT_EQ(res, redis::TSCreateRuleResult::kOK);
+  // Check if updated correctly
+  EXPECT_TRUE(ts_db_->Info(*ctx_, dst_key2, &info).ok());
+  EXPECT_EQ(info.metadata.source_key, src_key);
+  EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
+  EXPECT_EQ(info.downstream_rules.size(), 1);
+  EXPECT_EQ(info.downstream_rules[0].first, dst_key2);
+
+  // Delete and recreate the destination key
+  EXPECT_TRUE(static_cast<redis::Database *>(ts_db_.get())->Del(*ctx_, dst_key2).ok());
+  EXPECT_TRUE(ts_db_->Create(*ctx_, dst_key2, option).ok());
+  // Check the source key no longer has downstream rules
+  EXPECT_TRUE(ts_db_->Info(*ctx_, src_key, &info).ok());
+  EXPECT_EQ(info.downstream_rules.size(), 0);
+}
+
 TEST_F(TimeSeriesTest, AggregationOnEmptySeries) {
   redis::TSCreateOption option;
   option.chunk_size = 3;

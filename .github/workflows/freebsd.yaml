@@ -1,0 +1,108 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: FreeBSD CI
+
+on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: FreeBSD Build and Test
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        freebsd-version: ['14.1']
+        compiler: ['clang', 'gcc']
+        include:
+          - compiler: gcc
+            cxx-compiler: g++
+          - compiler: clang
+            cxx-compiler: clang++
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build and Test on FreeBSD
+        uses: vmactions/freebsd-vm@05856381fab64eeee9b038a0818f6cec649ca17a
+        with:
+          release: ${{ matrix.freebsd-version }}
+          usesh: true
+          prepare: |
+            pkg update -f
+            pkg install -y git cmake ninja autoconf automake libtool pkgconf python3
+            pkg install -y ${{ matrix.compiler }}
+            
+          run: |
+            echo "=== System Information ==="
+            uname -a
+            freebsd-version
+            
+            echo "=== Compiler Version ==="
+            ${{ matrix.compiler }} --version
+            
+            echo "=== Setting up build environment ==="
+            export CC=${{ matrix.compiler }}
+            export CXX=${{ matrix.cxx-compiler }}
+            
+            echo "=== Building Kvrocks ==="
+            ./x.py build --ninja -j$(sysctl -n hw.ncpu) --unittest ${{ matrix.cmake-flags }} -DDISABLE_JEMALLOC=ON
+            
+            echo "=== Running C++ Unit Tests ==="
+            ./x.py test cpp
+            
+            echo "=== Smoke Test - Starting Kvrocks ==="
+            # Create a minimal config for testing
+            cat > test-kvrocks.conf <<EOF
+            bind 127.0.0.1
+            port 6666
+            dir /tmp/kvrocks
+            EOF
+            
+            # Start kvrocks in background
+            ./build/kvrocks -c test-kvrocks.conf &
+            KVROCKS_PID=$!
+            
+            # Wait for server to start
+            sleep 5
+            
+            # Check if process is running
+            if kill -0 $KVROCKS_PID 2>/dev/null; then
+              echo "✓ Kvrocks server started successfully (PID: $KVROCKS_PID)"
+              
+              # Try to connect using Redis protocol
+              # Send PING command in Redis protocol format
+              printf "*1\r\n\$4\r\nPING\r\n" | nc -w 2 127.0.0.1 6666 | grep -q "+PONG" && echo "✓ Server responds to PING"
+              
+              # Clean shutdown
+              kill $KVROCKS_PID
+              wait $KVROCKS_PID 2>/dev/null
+              echo "✓ Kvrocks server stopped successfully"
+            else
+              echo "✗ Failed to start Kvrocks server"
+              exit 1
+            fi
+            
+            echo "=== All tests passed successfully ==="

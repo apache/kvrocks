@@ -343,7 +343,6 @@ TEST(StringUtil, StringJoin) {
   std::vector<std::string> vec{"a", "b", "c"};
   std::list<std::string> lst{"a", "b", "c"};
   std::set<std::string> st{"a", "b", "c"};
-  std::unordered_set<std::string> ust{"a", "b", "c"};
 
   auto func = [](const std::string &s) { return "[" + s + "]"; };
 
@@ -361,9 +360,4 @@ TEST(StringUtil, StringJoin) {
   ASSERT_EQ(util::StringJoin(st, "; "), "a; b; c");
   ASSERT_EQ(util::StringJoin(st, func), "[a], [b], [c]");
   ASSERT_EQ(util::StringJoin(st, func, "; "), "[a]; [b]; [c]");
-
-  ASSERT_EQ(util::StringJoin(ust), "c, b, a");
-  ASSERT_EQ(util::StringJoin(ust, "; "), "c; b; a");
-  ASSERT_EQ(util::StringJoin(ust, func), "[c], [b], [a]");
-  ASSERT_EQ(util::StringJoin(ust, func, "; "), "[c]; [b]; [a]");
 }

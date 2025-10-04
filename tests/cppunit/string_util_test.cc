@@ -23,9 +23,11 @@
 #include <gtest/gtest.h>
 
 #include <initializer_list>
+#include <list>
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 TEST(StringUtil, ToLower) {
   std::map<std::string, std::string> cases{
@@ -335,4 +337,27 @@ TEST(StringUtil, SplitArguments) {
     ASSERT_FALSE(result.IsOK());
     ASSERT_EQ(result.Msg(), expected_error);
   }
+}
+
+TEST(StringUtil, StringJoin) {
+  std::vector<std::string> vec{"a", "b", "c"};
+  std::list<std::string> lst{"a", "b", "c"};
+  std::set<std::string> st{"a", "b", "c"};
+
+  auto func = [](const std::string &s) { return "[" + s + "]"; };
+
+  ASSERT_EQ(util::StringJoin(vec), "a, b, c");
+  ASSERT_EQ(util::StringJoin(vec, "; "), "a; b; c");
+  ASSERT_EQ(util::StringJoin(vec, func), "[a], [b], [c]");
+  ASSERT_EQ(util::StringJoin(vec, func, "; "), "[a]; [b]; [c]");
+
+  ASSERT_EQ(util::StringJoin(lst), "a, b, c");
+  ASSERT_EQ(util::StringJoin(lst, "; "), "a; b; c");
+  ASSERT_EQ(util::StringJoin(lst, func), "[a], [b], [c]");
+  ASSERT_EQ(util::StringJoin(lst, func, "; "), "[a]; [b]; [c]");
+
+  ASSERT_EQ(util::StringJoin(st), "a, b, c");
+  ASSERT_EQ(util::StringJoin(st, "; "), "a; b; c");
+  ASSERT_EQ(util::StringJoin(st, func), "[a], [b], [c]");
+  ASSERT_EQ(util::StringJoin(st, func, "; "), "[a]; [b]; [c]");
 }

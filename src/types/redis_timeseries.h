@@ -283,8 +283,10 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
-  static bool IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value);
-  static bool IsTSChunkKey(const InternalKey &ikey);
+  rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
+                                    bool &expired);
+
+  static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 
  private:
   // Bundles the arguments for a downstream upsert operation
@@ -351,6 +353,7 @@ class TimeSeries : public SubKeyScanner {
   std::string labelKeyFromInternalKey(Slice internal_key) const;
   std::string downstreamKeyFromInternalKey(Slice internal_key) const;
   static uint64_t chunkIDFromInternalKey(Slice internal_key);
+  static bool isChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value);
 };
 
 }  // namespace redis

@@ -44,3 +44,6 @@ ignore-hidden = false
 
 #Used as a short naming into tests
 "typ" = "typ"
+
+#Fix name (Yann Collet)
+"Collet" = "Collet"

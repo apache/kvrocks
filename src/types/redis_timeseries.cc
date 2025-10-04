@@ -2241,7 +2241,7 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   return s;
 }
 
-bool TimeSeries::IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value) {
+bool TimeSeries::isChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value) {
   auto chunk = CreateTSChunkFromData(chunk_value);
   uint64_t latest_ts = metadata.last_timestamp;
   uint64_t retention_bound =
@@ -2249,11 +2249,34 @@ bool TimeSeries::IsChunkExpired(const TimeSeriesMetadata &metadata, const Slice 
   return chunk->GetLastTimestamp() < retention_bound;
 }
 
-bool TimeSeries::IsTSChunkKey(const InternalKey &ikey) {
+bool TimeSeries::ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type) {
   auto sub_key = ikey.GetSubKey();
-  auto type = TSSubkeyType::LABEL;
-  bool is_success = GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(&type));
-  return is_success && type == TSSubkeyType::CHUNK;
+  return GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(type));
+}
+
+rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
+                                              bool &expired) {
+  auto ikey = InternalKey(key, storage_->IsSlotIdEncoded());
+  auto type = redis::TSSubkeyType::CHUNK;
+  expired = false;
+  if (!ExtractTSSubType(ikey, &type)) {
+    return rocksdb::Status::InvalidArgument("Invalid TS subkey type");
+  }
+  if (type == redis::TSSubkeyType::CHUNK) {
+    expired = isChunkExpired(metadata, value);
+  } else if (type == redis::TSSubkeyType::DOWNSTREAM) {
+    // If downstream key is expired, the subkey is expired
+    auto ds_key = ikey.GetSubKey();
+    ds_key.remove_prefix(sizeof(TSSubkeyType));
+    auto ds_ns_key = AppendNamespacePrefix(ds_key);
+    TimeSeriesMetadata ds_metadata;
+    engine::Context ctx(storage_);
+    auto s = getTimeSeriesMetadata(ctx, ds_ns_key, &ds_metadata);
+    if (!s.ok() || ds_metadata.source_key != ikey.GetKey()) {
+      expired = true;
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

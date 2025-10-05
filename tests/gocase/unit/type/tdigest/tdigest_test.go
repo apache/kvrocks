@@ -39,7 +39,7 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
-	errValueIsNotFloat					  = "value is not a valid float"
+	errValueIsNotFloat                    = "value is not a valid float"
 )
 
 type tdigestInfo struct {
@@ -520,54 +520,54 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		validation(newDestKey2)
 	})
 	t.Run("tdigest.cdf with different arguments", func(t *testing.T) {
-	keyPrefix := "tdigest_cdf_"
+		keyPrefix := "tdigest_cdf_"
 
-	require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF").Err(), errMsgWrongNumberArg)
-	require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key1").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key1").Err(), errMsgWrongNumberArg)
 
-	// non-existent key
-	require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"nonexistent", "1.0").Err(), errMsgKeyNotExist)
+		// non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"nonexistent", "1.0").Err(), errMsgKeyNotExist)
 
-	// invalid float value
-	require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key2", "invalid").Err(), errValueIsNotFloat)
+		// invalid float value
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key2", "invalid").Err(), errValueIsNotFloat)
 
-	// create a tdigest and add some data
-	tdigestKey := keyPrefix + "source"
-	require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", tdigestKey).Err())
-	require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", tdigestKey, "1.0", "2.0", "3.0", "4.0", "5.0").Err())
+		// create a tdigest and add some data
+		tdigestKey := keyPrefix + "source"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", tdigestKey).Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", tdigestKey, "1.0", "2.0", "3.0", "4.0", "5.0").Err())
 
-	// single-value CDF query
-	rsp := rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "3.0")
-	require.NoError(t, rsp.Err())
-	vals, err := rsp.Slice()
-	require.NoError(t, err)
-	require.Len(t, vals, 1)
-	require.NotEqual(t, "nan", vals[0])
+		// single-value CDF query
+		rsp := rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "3.0")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 1)
+		require.NotEqual(t, "nan", vals[0])
 
-	// multi-value CDF query
-	rsp = rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "0.0", "2.5", "5.0", "10.0")
-	require.NoError(t, rsp.Err())
-	vals, err = rsp.Slice()
-	require.NoError(t, err)
-	require.Len(t, vals, 4)
+		// multi-value CDF query
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "0.0", "2.5", "5.0", "10.0")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 4)
 
-	// empty tdigest should return "nan"
-	emptyKey := keyPrefix + "empty"
-	require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey).Err())
-	rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "1.0")
-	require.NoError(t, rsp.Err())
-	vals, err = rsp.Slice()
-	require.NoError(t, err)
-	require.Len(t, vals, 1)
-	require.Equal(t, "nan", vals[0])
+		// empty tdigest should return "nan"
+		emptyKey := keyPrefix + "empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey).Err())
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "1.0")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 1)
+		require.Equal(t, "nan", vals[0])
 
-	// testing with a empry digest with multi-valued CDF 
-	rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "0.5", "1.0", "1.5", "2.2")
-	require.NoError(t, rsp.Err())
-	vals, err = rsp.Slice()
-	require.NoError(t, err)
-	require.Len(t, vals, 4)
-	require.Equal(t, []interface{}{"nan", "nan", "nan", "nan"}, vals)
+		// testing with a empry digest with multi-valued CDF
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "0.5", "1.0", "1.5", "2.2")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 4)
+		require.Equal(t, []interface{}{"nan", "nan", "nan", "nan"}, vals)
 
 	})
 }

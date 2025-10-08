@@ -703,9 +703,10 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
-          if (data_written) {
-            sendReplConfAck(bev, force_ack);
-          }
+          // We should not check data_written here because sendReplConfAck only send ack if it has been 1s from last ack
+          // when force_ack is false. As a result, if the last write did not trigger ack, the replication would not send
+          // ack forever and the info command on master would report incorrect lag.
+          sendReplConfAck(bev, force_ack);
           return CBState::AGAIN;
         }
 

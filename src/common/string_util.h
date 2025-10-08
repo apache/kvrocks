@@ -80,8 +80,7 @@ std::string StringJoin(const T &con, F &&f, std::string_view sep = ", ") {
 
 template <typename T>
 std::string StringJoin(const T &con, std::string_view sep = ", ") {
-  return StringJoin(
-      con, [](const auto &v) -> decltype(auto) { return v; }, sep);
+  return StringJoin(con, [](const auto &v) -> decltype(auto) { return v; }, sep);
 }
 
 }  // namespace util

@@ -664,6 +664,13 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
     write_opts.sync = false;
   }
 
+  // Control no_slowdown for replication separately from global setting
+  // If rocksdb.write_options.no_slowdown is enabled, use replication_no_slowdown config
+  // to determine if it should be applied to replication writes
+  if (srv_->GetConfig()->rocks_db.write_options.no_slowdown) {
+    write_opts.no_slowdown = srv_->GetConfig()->replication_no_slowdown;
+  }
+
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {

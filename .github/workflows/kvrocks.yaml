@@ -66,7 +66,7 @@ jobs:
     name: Lint and check code
     needs: [precondition]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: apache/skywalking-eyes/header@v0.7.0
@@ -79,10 +79,10 @@ jobs:
       - name: Prepare Dependencies
         run: |
           sudo apt update
-          sudo apt install -y clang-format-14 clang-tidy-14
+          sudo apt install -y clang-format-18 clang-tidy-14
       - name: Check with clang-format
         id: check-format
-        run: ./x.py check format --clang-format-path clang-format-14
+        run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
         run: |
           ./x.py build --skip-build
@@ -92,7 +92,7 @@ jobs:
       - name: Prepare format patch
         if: always() && steps.check-format.outcome != 'success'
         run: |
-          ./x.py format --clang-format-path clang-format-14
+          ./x.py format --clang-format-path clang-format-18
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch

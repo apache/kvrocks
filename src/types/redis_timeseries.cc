@@ -245,10 +245,9 @@ std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSamp
   return result;
 }
 
-std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(nonstd::span<const TSSample> samples,
-                                                              bool skip_last_bucket) {
+std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(
+    const std::vector<nonstd::span<const TSSample>> &bucket_spans, bool skip_last_bucket) {
   std::vector<TSSample> res;
-  auto bucket_spans = aggregator.SplitSamplesToBuckets(samples);
   for (size_t i = 0; i < bucket_spans.size(); i++) {
     const auto &span = bucket_spans[i];
     if (span.empty()) {
@@ -853,9 +852,9 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                         SampleBatch &sample_batch, std::vector<std::string> *new_chunks) {
+                                         SampleBatch &sample_batch, DownstreamUpsertArgs *ds_args) {
   auto batch = storage_->GetWriteBatchBase();
-  auto s = upsertCommonInBatch(ctx, ns_key, metadata, sample_batch, batch, new_chunks);
+  auto s = upsertCommonInBatch(ctx, ns_key, metadata, sample_batch, batch, ds_args);
   if (!s.ok()) return s;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -863,11 +862,11 @@ rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_k
 rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                                 SampleBatch &sample_batch,
                                                 ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                                std::vector<std::string> *new_chunks) {
-  auto all_batch_slice = sample_batch.AsSlice();
+                                                DownstreamUpsertArgs *ds_args) {
+  if (ds_args != nullptr) ds_args->new_chunks.clear();
 
-  if (all_batch_slice.GetSampleSpan().empty() && new_chunks != nullptr) {
-    new_chunks->clear();
+  auto all_batch_slice = sample_batch.AsSlice();
+  if (all_batch_slice.GetSampleSpan().empty()) {
     return rocksdb::Status::OK();
   }
 
@@ -883,6 +882,7 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
   read_options.iterate_lower_bound = &lower_bound;
 
   uint64_t chunk_count = metadata.size;
+  uint64_t recorded_last_timestamp = metadata.last_timestamp;
 
   // Get the latest chunk
   auto iter = util::UniqueIterator(ctx, read_options);
@@ -975,20 +975,28 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
   if (!new_data_list.empty()) {
     chunk_count += new_data_list.size() - (metadata.size == 0 ? 0 : 1);
   }
-  if (chunk_count != metadata.size) {
+  if (new_data_list.size() > 1) {
+    auto chunk = CreateTSChunkFromData(new_data_list.back());
+    recorded_last_timestamp = chunk->GetLastTimestamp();
+  }
+  if (chunk_count != metadata.size || recorded_last_timestamp != metadata.last_timestamp) {
     metadata.size = chunk_count;
+    metadata.last_timestamp = recorded_last_timestamp;
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
 
-  if (new_chunks) {
+  // For downstream processing
+  if (ds_args != nullptr) {
     if (new_data_list.size()) {
-      *new_chunks = std::move(new_data_list);
+      ds_args->new_chunks = std::move(new_data_list);
     } else {
-      *new_chunks = {std::move(latest_chunk_value)};
+      ds_args->new_chunks = {std::move(latest_chunk_value)};
     }
+    ds_args->sample_batch = &sample_batch;
+    if (latest_chunk_key.empty()) ds_args->was_source_empty = true;
   }
 
   return rocksdb::Status::OK();
@@ -1102,17 +1110,19 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
 }
 
 rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &ns_key,
-                                             const TimeSeriesMetadata &metadata,
-                                             const std::vector<std::string> &new_chunks, SampleBatch &sample_batch) {
+                                             const TimeSeriesMetadata &metadata, DownstreamUpsertArgs &ds_args) {
   // If no valid written
+  auto &new_chunks = ds_args.new_chunks;
+  auto *sample_batch = ds_args.sample_batch;
   if (new_chunks.empty()) return rocksdb::Status::OK();
   std::vector<std::string> downstream_keys;
   std::vector<TSDownStreamMeta> downstream_metas;
-  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas);
+  std::vector<TimeSeriesMetadata> downstream_series_meta;
+  auto s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_metas, &downstream_series_meta);
   if (!s.ok()) return s;
   if (downstream_keys.empty()) return rocksdb::Status::OK();
 
-  auto all_batch_slice = sample_batch.AsSlice();
+  auto all_batch_slice = sample_batch->AsSlice();
   uint64_t new_chunk_first_ts = CreateTSChunkFromData(new_chunks[0])->GetFirstTimestamp();
 
   nonstd::span<const AddResult> add_results = all_batch_slice.GetAddResultSpan();
@@ -1239,18 +1249,37 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
     if (new_chunks.size() > 1) {
       is_meta_updates[i] = true;
     }
+
+    // Avoid incorrect aggregation of the `bucket_idx=0` bucket,
+    // when inserting a sample with `bucket_idx>0` while the source series is empty.
+    if (meta.latest_bucket_idx == 0 && ds_args.was_source_empty) {
+      auto chunk = CreateTSChunkFromData(new_chunks.front());
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.size()) {
+        auto bkt_idx = agg.CalculateAlignedBucketLeft(buckets[0][0].ts);
+        if (bkt_idx > meta.latest_bucket_idx) {
+          meta.latest_bucket_idx = bkt_idx;
+          is_meta_updates[i] = true;
+        }
+      }
+    }
+
+    auto aggregate_chunk = [&](const auto &chunk, bool is_unsealed) {
+      auto buckets = agg.SplitSamplesToBuckets(chunk->GetSamplesSpan());
+      if (buckets.empty()) return;
+      auto samples = meta.AggregateMultiBuckets(buckets, is_unsealed);
+      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+    };
     // For chunk except the last chunk(sealed)
     for (size_t j = 0; j < new_chunks.size() - 1; j++) {
       auto chunk = CreateTSChunkFromData(new_chunks[j]);
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan());
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(chunk, false /* is_unsealed = false */);
     }
     // For last chunk(unsealed)
-    auto chunk = CreateTSChunkFromData(new_chunks.back());
-    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(chunk->GetLastTimestamp());
+    auto last_chunk = CreateTSChunkFromData(new_chunks.back());
+    auto newest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk->GetLastTimestamp());
     if (meta.latest_bucket_idx < newest_bucket_idx) {
-      auto samples = meta.AggregateMultiBuckets(chunk->GetSamplesSpan(), true);
-      agg_samples.insert(agg_samples.end(), samples.begin(), samples.end());
+      aggregate_chunk(last_chunk, true /* is_unsealed = true */);
       is_meta_updates[i] = true;
     }
   }
@@ -1266,27 +1295,24 @@ rocksdb::Status TimeSeries::upsertDownStream(engine::Context &ctx, const Slice &
       continue;
     }
     const auto &meta = downstream_metas[i];
-    const auto &key = downstream_keys[i];
+    auto ds_key = internalKeyFromDownstreamKey(ns_key, metadata, downstream_keys[i]);
     std::string bytes;
     meta.Encode(&bytes);
-    s = batch->Put(key, bytes);
+    s = batch->Put(ds_key, bytes);
     if (!s.ok()) return s;
   }
   // Write aggregated samples
   for (size_t i = 0; i < downstream_metas.size(); i++) {
-    const auto &ds_key = downstream_keys[i];
-    auto key = downstreamKeyFromInternalKey(ds_key);
+    const auto &key = downstream_keys[i];
     auto ns_key = AppendNamespacePrefix(key);
+    auto &metadata = downstream_series_meta[i];
+
     auto &agg_samples = all_agg_samples[i];
     auto &agg_samples_inc = all_agg_samples_inc[i];
 
     if (agg_samples.empty() && agg_samples_inc.empty()) {
       continue;
     }
-    TimeSeriesMetadata metadata;
-    s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
-    if (!s.ok()) return s;
-
     if (agg_samples.size()) {
       auto sample_batch_t = SampleBatch(std::move(agg_samples), DuplicatePolicy::LAST);
       s = upsertCommon(ctx, ns_key, metadata, sample_batch_t);
@@ -1416,6 +1442,16 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
     }
   }
   if (chunk_count != metadata.size) {
+    // Recode the last timestamp
+    std::vector<TSSample> get_samples;
+    s = getCommon(ctx, ns_key, metadata, true, &get_samples);
+    if (!s.ok()) return s;
+    if (get_samples.empty()) {
+      metadata.last_timestamp = 0;
+    } else {
+      metadata.last_timestamp = get_samples.back().ts;
+    }
+
     metadata.size = chunk_count;
     std::string bytes;
     metadata.Encode(&bytes);
@@ -1427,9 +1463,11 @@ rocksdb::Status TimeSeries::delRangeCommonInBatch(engine::Context &ctx, const Sl
 }
 
 rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                               std::vector<std::string> &ds_keys,
-                                               std::vector<TSDownStreamMeta> &ds_metas, uint64_t from, uint64_t to) {
-  if (from > to || ds_keys.empty()) return rocksdb::Status::OK();
+                                               std::vector<std::string> &ds_user_keys,
+                                               std::vector<TSDownStreamMeta> &ds_metas,
+                                               std::vector<TimeSeriesMetadata> &ds_series_metas, uint64_t from,
+                                               uint64_t to) {
+  if (from > to || ds_user_keys.empty()) return rocksdb::Status::OK();
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisTimeSeries);
@@ -1483,14 +1521,11 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
   }
 
   // Process each downstream rule
-  for (size_t i = 0; i < ds_keys.size(); i++) {
+  for (size_t i = 0; i < ds_user_keys.size(); i++) {
+    auto ds_ns_key = AppendNamespacePrefix(ds_user_keys[i]);
     auto &ds_meta = ds_metas[i];
     auto &agg = ds_meta.aggregator;
-
-    TimeSeriesMetadata meta;
-    auto ds_ns_key = AppendNamespacePrefix(downstreamKeyFromInternalKey(ds_keys[i]));
-    s = getTimeSeriesMetadata(ctx, ds_ns_key, &meta);
-    if (!s.ok()) return s;
+    auto &meta = ds_series_metas[i];
 
     // Calculate the range of buckets affected by this deletion.
     uint64_t start_bucket = agg.CalculateAlignedBucketLeft(from);
@@ -1522,6 +1557,15 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     s = upsertCommonInBatch(ctx, ds_ns_key, meta, sample_batch, batch);
     if (!s.ok()) return s;
 
+    // Update latest bucket index
+    if (!has_chunk) {
+      ds_meta.latest_bucket_idx = 0;
+      del_start = 0;  // All buckets can be deleted in downstream
+    } else if (to > last_chunk_end) {
+      ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
+      del_start = ds_meta.latest_bucket_idx;  // Latest bucket is changed, all subsequent buckets can be deleted
+    }
+
     // Delete affected buckets in downstream
     uint64_t deleted = 0;
     s = delRangeCommonInBatch(ctx, ds_ns_key, meta, del_start, end_bucket, batch, &deleted, inclusive_end);
@@ -1529,12 +1573,6 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
 
     // Update latest bucket if deletion affects the end
     if (end_bucket < ds_meta.latest_bucket_idx) continue;
-
-    if (!has_chunk) {
-      ds_meta.latest_bucket_idx = 0;
-    } else if (to > last_chunk_end) {
-      ds_meta.latest_bucket_idx = agg.CalculateAlignedBucketLeft(last_chunk_end);
-    }
 
     // Reaggregate latest bucket if needed
     ds_meta.ResetAuxs();
@@ -1546,7 +1584,9 @@ rocksdb::Status TimeSeries::delRangeDownStream(engine::Context &ctx, const Slice
     // Persist downstream metadata updates if needed
     std::string bytes;
     ds_meta.Encode(&bytes);
-    batch->Put(ds_keys[i], bytes);
+    auto ds_key = internalKeyFromDownstreamKey(ns_key, metadata, ds_user_keys[i]);
+    s = batch->Put(ds_key, bytes);
+    if (!s.ok()) return s;
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -1611,25 +1651,47 @@ rocksdb::Status TimeSeries::createDownStreamMetadataInBatch(engine::Context &ctx
 }
 
 rocksdb::Status TimeSeries::getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
-                                               const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
-                                               std::vector<TSDownStreamMeta> *metas) {
+                                               const TimeSeriesMetadata &src_metadata,
+                                               std::vector<std::string> *ds_user_keys,
+                                               std::vector<TSDownStreamMeta> *ds_metas,
+                                               std::vector<TimeSeriesMetadata> *ds_series_metadatas) {
   std::string prefix = internalKeyFromDownstreamKey(ns_src_key, src_metadata, "");
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   rocksdb::Slice lower_bound(prefix);
   read_options.iterate_lower_bound = &lower_bound;
 
   auto iter = util::UniqueIterator(ctx, read_options);
-  keys->clear();
-  if (metas != nullptr) {
-    metas->clear();
+  ds_user_keys->clear();
+  if (ds_metas != nullptr) {
+    ds_metas->clear();
+  }
+  if (ds_series_metadatas != nullptr) {
+    ds_series_metadatas->clear();
   }
   for (iter->Seek(lower_bound); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
-    keys->push_back(iter->key().ToString());
-    if (metas != nullptr) {
+    auto key = downstreamKeyFromInternalKey(iter->key());
+    auto ns_key = AppendNamespacePrefix(key);
+    TimeSeriesMetadata metadata;
+    // Check if the downstream series exists
+    auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata);
+    if (!s.ok()) {
+      if (s.IsNotFound()) continue;
+      return s;
+    }
+    auto [ns, src_key] = ExtractNamespaceKey(ns_src_key, storage_->IsSlotIdEncoded());
+    if (metadata.source_key != src_key) {
+      // Inconsistent source key, skip this rule
+      continue;
+    }
+    ds_user_keys->push_back(key);
+    if (ds_metas != nullptr) {
       TSDownStreamMeta meta;
       Slice slice = iter->value().ToStringView();
       meta.Decode(&slice);
-      metas->push_back(meta);
+      ds_metas->push_back(meta);
+    }
+    if (ds_series_metadatas != nullptr) {
+      ds_series_metadatas->push_back(metadata);
     }
   }
   return rocksdb::Status::OK();
@@ -1715,6 +1777,27 @@ rocksdb::Status TimeSeries::getTSKeyByFilter(engine::Context &ctx, const TSMGetO
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata,
+                                                        bool &exists, TimeSeriesMetadata *src_metadata) {
+  exists = false;
+  if (metadata.source_key.empty()) {
+    return rocksdb::Status::OK();
+  }
+  auto ns_key = AppendNamespacePrefix(metadata.source_key);
+  TimeSeriesMetadata source_metadata;
+  auto s = getTimeSeriesMetadata(ctx, ns_key, &source_metadata);
+  if (s.ok()) {
+    exists = true;
+    if (src_metadata != nullptr) {
+      *src_metadata = source_metadata;
+    }
+  } else if (s.IsNotFound()) {
+    exists = false;
+    return rocksdb::Status::OK();
+  }
+  return s;
+}
+
 std::string TimeSeries::internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                                uint64_t id) const {
   std::string sub_key;
@@ -1786,10 +1869,10 @@ rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSS
   if (!s.ok()) return s;
   auto sample_batch = SampleBatch({sample}, on_dup_policy ? *on_dup_policy : metadata.duplicate_policy);
 
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults()[0];
   return rocksdb::Status::OK();
@@ -1805,10 +1888,10 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
     return s;
   }
   auto sample_batch = SampleBatch(std::move(samples), metadata.duplicate_policy);
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults();
   return rocksdb::Status::OK();
@@ -1823,6 +1906,22 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   }
   auto chunk_count = res->metadata.size;
   auto &metadata = res->metadata;
+  // Check source key is exist
+  bool source_exists = false;
+  TimeSeriesMetadata source_metadata;
+  s = checkTSMetadataSourceExists(ctx, res->metadata, source_exists, &source_metadata);
+  if (!s.ok()) return s;
+  if (!source_exists) {
+    res->metadata.source_key.clear();
+  } else {
+    // Check source key has the rule
+    std::vector<std::string> ds_user_keys;
+    s = getDownStreamRules(ctx, AppendNamespacePrefix(res->metadata.source_key), source_metadata, &ds_user_keys);
+    if (!s.ok()) return s;
+    if (std::find(ds_user_keys.begin(), ds_user_keys.end(), user_key.ToStringView()) == ds_user_keys.end()) {
+      res->metadata.source_key.clear();
+    }
+  }
   // Approximate total samples
   res->total_samples = chunk_count * res->metadata.chunk_size;
   // TODO: Estimate disk usage for the field `memoryUsage`
@@ -1858,13 +1957,15 @@ rocksdb::Status TimeSeries::Info(engine::Context &ctx, const Slice &user_key, TS
   }
   getLabelKVList(ctx, ns_key, metadata, &res->labels);
 
-  // Retrieve downstream downstream_rules
+  // Retrieve downstream rules
   std::vector<std::string> downstream_keys;
   std::vector<TSDownStreamMeta> downstream_rules;
-  getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
+  s = getDownStreamRules(ctx, ns_key, metadata, &downstream_keys, &downstream_rules);
+  if (!s.ok()) return s;
+  res->downstream_rules.clear();
+  res->downstream_rules.reserve(downstream_keys.size());
   for (size_t i = 0; i < downstream_keys.size(); i++) {
-    auto key = downstreamKeyFromInternalKey(downstream_keys[i]);
-    res->downstream_rules.emplace_back(std::move(key), std::move(downstream_rules[i]));
+    res->downstream_rules.emplace_back(std::move(downstream_keys[i]), downstream_rules[i].aggregator);
   }
 
   return rocksdb::Status::OK();
@@ -1918,14 +2019,23 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
     return rocksdb::Status::OK();
   }
 
-  if (src_metadata.source_key.size()) {
+  // Check source has no source rule
+  bool exists = false;
+  s = checkTSMetadataSourceExists(ctx, src_metadata, exists);
+  if (!s.ok()) return s;
+  if (exists) {
     *res = TSCreateRuleResult::kSrcHasSourceRule;
     return rocksdb::Status::OK();
   }
-  if (dst_metadata.source_key.size()) {
+  // Check destination key has no source rule
+  exists = false;
+  s = checkTSMetadataSourceExists(ctx, dst_metadata, exists);
+  if (!s.ok()) return s;
+  if (exists && dst_metadata.source_key != src_key) {
     *res = TSCreateRuleResult::kDstHasSourceRule;
     return rocksdb::Status::OK();
   }
+  // Check destination key has no destination rule
   std::vector<std::string> dst_ds_keys;
   s = getDownStreamRules(ctx, ns_dst_key, dst_metadata, &dst_ds_keys);
   if (!s.ok()) return s;
@@ -1943,12 +2053,13 @@ rocksdb::Status TimeSeries::CreateRule(engine::Context &ctx, const Slice &src_ke
   TSDownStreamMeta downstream_metadata;
   s = createDownStreamMetadataInBatch(ctx, ns_src_key, dst_key, src_metadata, aggregator, batch, &downstream_metadata);
   if (!s.ok()) return s;
-  dst_metadata.SetSourceKey(src_key);
-
-  std::string bytes;
-  dst_metadata.Encode(&bytes);
-  s = batch->Put(metadata_cf_handle_, ns_dst_key, bytes);
-  if (!s.ok()) return s;
+  if (dst_metadata.source_key.empty() || dst_metadata.source_key != src_key) {
+    dst_metadata.SetSourceKey(src_key);
+    std::string bytes;
+    dst_metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_dst_key, bytes);
+    if (!s.ok()) return s;
+  }
 
   *res = TSCreateRuleResult::kOK;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -2083,10 +2194,10 @@ rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, 
   }
   auto sample_batch = SampleBatch({sample}, DuplicatePolicy::LAST);
 
-  std::vector<std::string> new_chunks;
-  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &new_chunks);
+  DownstreamUpsertArgs ds_args;
+  s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;
-  s = upsertDownStream(ctx, ns_key, metadata, new_chunks, sample_batch);
+  s = upsertDownStream(ctx, ns_key, metadata, ds_args);
   if (!s.ok()) return s;
   *res = sample_batch.GetFinalResults()[0];
   return rocksdb::Status::OK();
@@ -2102,7 +2213,8 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   // Get downstream rules
   std::vector<std::string> ds_keys;
   std::vector<TSDownStreamMeta> ds_metas;
-  s = getDownStreamRules(ctx, ns_key, metadata, &ds_keys, &ds_metas);
+  std::vector<TimeSeriesMetadata> ds_series_metas;
+  s = getDownStreamRules(ctx, ns_key, metadata, &ds_keys, &ds_metas, &ds_series_metas);
   if (!s.ok()) return s;
 
   // Check retention and compaction rules
@@ -2125,8 +2237,46 @@ rocksdb::Status TimeSeries::Del(engine::Context &ctx, const Slice &user_key, uin
   s = delRangeCommon(ctx, ns_key, metadata, from, to, deleted);
   if (!s.ok()) return s;
   if (*deleted == 0) return rocksdb::Status::OK();
-  s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, from, to);
+  s = delRangeDownStream(ctx, ns_key, metadata, ds_keys, ds_metas, ds_series_metas, from, to);
   return s;
+}
+
+bool TimeSeries::isChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value) {
+  auto chunk = CreateTSChunkFromData(chunk_value);
+  uint64_t latest_ts = metadata.last_timestamp;
+  uint64_t retention_bound =
+      (metadata.retention_time > 0 && metadata.retention_time < latest_ts) ? latest_ts - metadata.retention_time : 0;
+  return chunk->GetLastTimestamp() < retention_bound;
+}
+
+bool TimeSeries::ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type) {
+  auto sub_key = ikey.GetSubKey();
+  return GetFixed8(&sub_key, reinterpret_cast<uint8_t *>(type));
+}
+
+rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
+                                              bool &expired) {
+  auto ikey = InternalKey(key, storage_->IsSlotIdEncoded());
+  auto type = redis::TSSubkeyType::CHUNK;
+  expired = false;
+  if (!ExtractTSSubType(ikey, &type)) {
+    return rocksdb::Status::InvalidArgument("Invalid TS subkey type");
+  }
+  if (type == redis::TSSubkeyType::CHUNK) {
+    expired = isChunkExpired(metadata, value);
+  } else if (type == redis::TSSubkeyType::DOWNSTREAM) {
+    // If downstream key is expired, the subkey is expired
+    auto ds_key = ikey.GetSubKey();
+    ds_key.remove_prefix(sizeof(TSSubkeyType));
+    auto ds_ns_key = AppendNamespacePrefix(ds_key);
+    TimeSeriesMetadata ds_metadata;
+    engine::Context ctx(storage_);
+    auto s = getTimeSeriesMetadata(ctx, ds_ns_key, &ds_metadata);
+    if (!s.ok() || ds_metadata.source_key != ikey.GetKey()) {
+      expired = true;
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

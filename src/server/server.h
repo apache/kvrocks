@@ -203,6 +203,7 @@ class Server {
   void CleanupExitedSlaves();
   bool IsSlave() const { return !master_host_.empty(); }
   void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
+  static std::vector<std::string> RedactSensitiveTokens(const std::vector<std::string> &tokens);
   void IncrFetchFileThread() { fetch_file_threads_num_++; }
   void DecrFetchFileThread() { fetch_file_threads_num_--; }
   int GetFetchFileThreadNum() const { return fetch_file_threads_num_; }
@@ -289,7 +290,7 @@ class Server {
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
-  int64_t GetLastScanTime(const std::string &ns) const;
+  int64_t GetLastScanTime(const std::string &ns);
   StatusOr<std::vector<rocksdb::BatchResult>> PollUpdates(uint64_t next_sequence, int64_t count, bool is_strict) const;
 
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");

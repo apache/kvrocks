@@ -110,8 +110,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
           ikey.GetKey(), s.Msg());
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
-  // bitmap will be checked in Filter
-  if (metadata.Type() == kRedisBitmap) {
+  // bitmap and timeseries will be checked in Filter
+  if (metadata.Type() == kRedisBitmap || metadata.Type() == kRedisTimeSeries) {
     return rocksdb::CompactionFilter::Decision::kUndetermined;
   }
 
@@ -131,6 +131,27 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
           ikey.GetKey(), s.Msg());
     return false;
+  }
+
+  if (metadata.Type() == kRedisTimeSeries) {
+    TimeSeriesMetadata ts_metadata(false);
+    Slice input(cached_metadata_);
+    auto s = ts_metadata.Decode(&input);
+    if (!s.ok()) {
+      error("[compact_filter/subkey] Failed to decode timeseries metadata, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return false;
+    }
+    auto [ns, _] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
+    auto ts_db = redis::TimeSeries(stor_, ns.ToString());
+    bool expired = false;
+    s = ts_db.IsTSSubKeyExpired(ts_metadata, key, value, expired);
+    if (!s.ok()) {
+      error("[compact_filter/subkey] Failed to check if timeseries subkey is expired, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return false;
+    }
+    return expired;
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

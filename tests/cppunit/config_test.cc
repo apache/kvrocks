@@ -147,12 +147,9 @@ TEST(Config, GetRenameCommand) {
   unlink(path);
 
   std::ofstream output_file(path, std::ios::out);
-  output_file << "rename-command KEYS KEYS_NEW"
-              << "\n";
-  output_file << "rename-command GET GET_NEW"
-              << "\n";
-  output_file << "rename-command SET SET_NEW"
-              << "\n";
+  output_file << "rename-command KEYS KEYS_NEW" << "\n";
+  output_file << "rename-command GET GET_NEW" << "\n";
+  output_file << "rename-command SET SET_NEW" << "\n";
   output_file.close();
   redis::CommandTable::Reset();
   Config config;
@@ -172,12 +169,9 @@ TEST(Config, Rewrite) {
   unlink(path);
 
   std::ofstream output_file(path, std::ios::out);
-  output_file << "rename-command KEYS KEYS_NEW"
-              << "\n";
-  output_file << "rename-command GET GET_NEW"
-              << "\n";
-  output_file << "rename-command SET SET_NEW"
-              << "\n";
+  output_file << "rename-command KEYS KEYS_NEW" << "\n";
+  output_file << "rename-command GET GET_NEW" << "\n";
+  output_file << "rename-command SET SET_NEW" << "\n";
   output_file.close();
 
   redis::CommandTable::Reset();

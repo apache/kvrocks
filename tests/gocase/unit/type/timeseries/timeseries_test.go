@@ -502,6 +502,34 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			_, err := rdb.Do(ctx, "ts.createrule", anotherSrc, srcOfSrc, "aggregation", "avg", "1000").Result()
 			assert.Contains(t, err, "the destination key already has a dst rule")
 		})
+
+		// 7. Miss aggregation keyword
+		t.Run("MissAggregationKeyword", func(t *testing.T) {
+			_, err := rdb.Do(ctx, "ts.createrule", srcKey, dstKey, "aggregation_miss", "sum", "10").Result()
+			assert.Contains(t, err, "AGGREGATION is required")
+		})
+	})
+	t.Run("TS.CREATERULE Basic", func(t *testing.T) {
+		key_src := "test_createrule_basic_key_src"
+		key_dst := "test_createrule_basic_key_dst"
+		require.NoError(t, rdb.Del(ctx, key_src).Err())
+		require.NoError(t, rdb.Del(ctx, key_dst).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key_src).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", key_dst).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", key_src, key_dst, "aggregation", "avg", "1000", "100").Err())
+		// Verify rule creation
+		vals, err := rdb.Do(ctx, "ts.info", key_src).Slice()
+		require.NoError(t, err)
+		require.Equal(t, 24, len(vals))
+		require.Equal(t, "rules", vals[22])
+		rules := vals[23].([]interface{})
+		require.Equal(t, 1, len(rules))
+		rule := rules[0].([]interface{})
+		require.Equal(t, 4, len(rule))
+		require.Equal(t, key_dst, rule[0])
+		require.Equal(t, int64(1000), rule[1])
+		require.Equal(t, "avg", rule[2])
+		require.Equal(t, int64(100), rule[3])
 	})
 	t.Run("TS.CREATERULE DownStream Write", func(t *testing.T) {
 		test2 := "test2"
@@ -756,6 +784,10 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		})
 	})
 	t.Run("TS.MRange Test", func(t *testing.T) {
+		t.Run("Error Case", func(t *testing.T) {
+			// Missing FILTER argument
+			require.ErrorContains(t, rdb.Do(ctx, "ts.mrange", "1000", "1005", "FILTER_miss", "type=temp").Err(), "missing FILTER argument")
+		})
 		t.Run("Basic", func(t *testing.T) {
 			keyA, keyB := "stock:A_MRange", "stock:B_MRange"
 			type_label := "stock_MRange"
@@ -878,6 +910,24 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		res = rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
 		require.Equal(t, 1, len(res))
 		require.Equal(t, []interface{}{int64(1657811829000), 389.0}, res[0])
+	})
+
+	t.Run("Add Current Timestamp Test", func(t *testing.T) {
+		key := "key_AddCurrentTimestamp"
+		now_ms := time.Now().UnixMilli()
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, "*", 10).Err())
+		res := rdb.Do(ctx, "ts.range", key, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		timestamp1 := res[0].([]interface{})[0].(int64)
+		require.GreaterOrEqual(t, timestamp1, now_ms)
+		require.Equal(t, float64(10), res[0].([]interface{})[1].(float64))
+
+		require.NoError(t, rdb.Do(ctx, "ts.incrby", key, 30).Err())
+		res = rdb.Do(ctx, "ts.get", key).Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		timestamp2 := res[0].([]interface{})[0].(int64)
+		require.GreaterOrEqual(t, timestamp2, timestamp1)
+		require.Equal(t, float64(40), res[0].([]interface{})[1].(float64))
 	})
 
 	t.Run("TS.Del Test", func(t *testing.T) {

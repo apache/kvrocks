@@ -125,8 +125,7 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
   for (size_t i = compression_start_level; i < KVROCKS_MAX_LSM_LEVEL; i++) {
     compression_per_level_builder.emplace_back(compression_option);
   }
-  const std::string compression_per_level = util::StringJoin(
-      compression_per_level_builder, [](const auto &s) -> decltype(auto) { return s; }, ":");
+  const std::string compression_per_level = util::StringJoin(compression_per_level_builder, ":");
   return srv->storage->SetOptionForAllColumnFamilies("compression_per_level", compression_per_level);
 };
 
@@ -204,6 +203,7 @@ Config::Config() {
       {"replication-connect-timeout-ms", false, new IntField(&replication_connect_timeout_ms, 3100, 0, INT_MAX)},
       {"replication-recv-timeout-ms", false, new IntField(&replication_recv_timeout_ms, 3200, 0, INT_MAX)},
       {"replication-group-sync", false, new YesNoField(&replication_group_sync, false)},
+      {"replication-no-slowdown", false, new YesNoField(&replication_no_slowdown, true)},
       {"replication-delay-bytes", false, new IntField(&max_replication_delay_bytes, 16 * 1024, 1, INT_MAX)},
       {"replication-delay-updates", false, new IntField(&max_replication_delay_updates, 16, 1, INT_MAX)},
       {"use-rsid-psync", true, new YesNoField(&use_rsid_psync, false)},

@@ -664,6 +664,13 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
     write_opts.sync = false;
   }
 
+  // Control no_slowdown for replication separately from global setting
+  // If rocksdb.write_options.no_slowdown is enabled, use replication_no_slowdown config
+  // to determine if it should be applied to replication writes
+  if (srv_->GetConfig()->rocks_db.write_options.no_slowdown) {
+    write_opts.no_slowdown = srv_->GetConfig()->replication_no_slowdown;
+  }
+
   while (true) {
     switch (incr_state_) {
       case Incr_batch_size: {
@@ -703,9 +710,10 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         if (bulk_string == "ping") {
           // master would send the ping heartbeat packet to check whether the slave was alive or not,
           // don't write ping to db here.
-          if (data_written) {
-            sendReplConfAck(bev, force_ack);
-          }
+          // We should not check data_written here because sendReplConfAck only send ack if it has been 1s from last ack
+          // when force_ack is false. As a result, if the last write did not trigger ack, the replication would not send
+          // ack forever and the info command on master would report incorrect lag.
+          sendReplConfAck(bev, force_ack);
           return CBState::AGAIN;
         }
 

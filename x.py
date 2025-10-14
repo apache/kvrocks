@@ -29,9 +29,9 @@ from typing import List, Any, Optional, IO, Tuple
 from shutil import which
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
-CLANG_FORMAT_REQUIRED_VERSION = (12, 0, 0)
+CLANG_FORMAT_REQUIRED_VERSION = (18, 0, 0)
 CLANG_TIDY_REQUIRED_VERSION = (12, 0, 0)
-GOLANGCI_LINT_REQUIRED_VERSION = (2, 4, 0)
+GOLANGCI_LINT_REQUIRED_VERSION = (2, 5, 0)
 
 SEMVER_REGEX = re.compile(
     r"""

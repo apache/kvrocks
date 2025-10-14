@@ -104,7 +104,8 @@ struct TSDownStreamMeta {
   // Aggregate samples and update the auxiliary info and latest_bucket_idx if needed.
   // Returns the aggregated samples if there are new buckets.
   // Note: Samples must be sorted by timestamp.
-  std::vector<TSSample> AggregateMultiBuckets(nonstd::span<const TSSample> samples, bool skip_last_bucket = false);
+  std::vector<TSSample> AggregateMultiBuckets(const std::vector<nonstd::span<const TSSample>> &bucket_spans,
+                                              bool skip_last_bucket = false);
 
   // Aggregate the samples to the latest bucket, update the auxiliary info.
   void AggregateLatestBucket(nonstd::span<const TSSample> samples);
@@ -162,7 +163,7 @@ struct TSInfoResult {
   uint64_t memory_usage;
   uint64_t first_timestamp;
   uint64_t last_timestamp;
-  std::vector<std::pair<std::string, TSDownStreamMeta>> downstream_rules;
+  std::vector<std::pair<std::string, TSAggregator>> downstream_rules;
   LabelKVList labels;
 };
 
@@ -282,8 +283,19 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
+  rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
+                                    bool &expired);
+
+  static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 
  private:
+  // Bundles the arguments for a downstream upsert operation
+  struct DownstreamUpsertArgs {
+    std::vector<std::string> new_chunks;  // Newly created chunks
+    bool was_source_empty = false;        // Whether the source time series was empty before upsert
+    SampleBatch *sample_batch = nullptr;  // The sample batch that has been upserted to source
+  };
+
   rocksdb::ColumnFamilyHandle *index_cf_handle_;
 
   rocksdb::Status getTimeSeriesMetadata(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata);
@@ -294,14 +306,14 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status getLabelKVList(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                  LabelKVList *labels);
   rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                               SampleBatch &sample_batch, std::vector<std::string> *new_chunks = nullptr);
+                               SampleBatch &sample_batch, DownstreamUpsertArgs *ds_args = nullptr);
   rocksdb::Status upsertCommonInBatch(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
                                       SampleBatch &sample_batch, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
-                                      std::vector<std::string> *new_chunks = nullptr);
+                                      DownstreamUpsertArgs *ds_args = nullptr);
   rocksdb::Status rangeCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                               const TSRangeOption &option, std::vector<TSSample> *res, bool apply_retention = true);
   rocksdb::Status upsertDownStream(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
-                                   const std::vector<std::string> &new_chunks, SampleBatch &sample_batch);
+                                   DownstreamUpsertArgs &ds_args);
   rocksdb::Status getCommon(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                             bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status delRangeCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata, uint64_t from,
@@ -310,8 +322,8 @@ class TimeSeries : public SubKeyScanner {
                                         uint64_t from, uint64_t to, ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                         uint64_t *deleted, bool inclusive_to = true);
   rocksdb::Status delRangeDownStream(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
-                                     std::vector<std::string> &ds_keys, std::vector<TSDownStreamMeta> &ds_metas,
-                                     uint64_t from, uint64_t to);
+                                     std::vector<std::string> &ds_user_keys, std::vector<TSDownStreamMeta> &ds_metas,
+                                     std::vector<TimeSeriesMetadata> &ds_series_metas, uint64_t from, uint64_t to);
   rocksdb::Status createLabelIndexInBatch(const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                           ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                           const LabelKVList &labels);
@@ -320,12 +332,19 @@ class TimeSeries : public SubKeyScanner {
                                                   const TSAggregator &aggregator,
                                                   ObserverOrUniquePtr<rocksdb::WriteBatchBase> &batch,
                                                   TSDownStreamMeta *ds_metadata);
+  // Get downstream rules of the source time series.
+  // - `ds_user_keys`: the user keys of the downstream time series.
+  // - `ds_metas`: (optional) the downstream rule meta.
+  // - `ds_series_metadatas`: (optional) the metadata of the downstream time series.
   rocksdb::Status getDownStreamRules(engine::Context &ctx, const Slice &ns_src_key,
-                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *keys,
-                                     std::vector<TSDownStreamMeta> *metas = nullptr);
+                                     const TimeSeriesMetadata &src_metadata, std::vector<std::string> *ds_user_keys,
+                                     std::vector<TSDownStreamMeta> *ds_metas = nullptr,
+                                     std::vector<TimeSeriesMetadata> *ds_series_metadatas = nullptr);
   rocksdb::Status getTSKeyByFilter(engine::Context &ctx, const TSMGetOption::FilterOption &filter,
                                    std::vector<std::string> *user_keys, std::vector<LabelKVList> *labels_vec = nullptr,
                                    std::vector<TimeSeriesMetadata> *metas = nullptr);
+  rocksdb::Status checkTSMetadataSourceExists(engine::Context &ctx, const TimeSeriesMetadata &metadata, bool &exists,
+                                              TimeSeriesMetadata *src_metadata = nullptr);
 
   std::string internalKeyFromChunkID(const Slice &ns_key, const TimeSeriesMetadata &metadata, uint64_t id) const;
   std::string internalKeyFromLabelKey(const Slice &ns_key, const TimeSeriesMetadata &metadata, Slice label_key) const;
@@ -334,6 +353,7 @@ class TimeSeries : public SubKeyScanner {
   std::string labelKeyFromInternalKey(Slice internal_key) const;
   std::string downstreamKeyFromInternalKey(Slice internal_key) const;
   static uint64_t chunkIDFromInternalKey(Slice internal_key);
+  static bool isChunkExpired(const TimeSeriesMetadata &metadata, const Slice &chunk_value);
 };
 
 }  // namespace redis

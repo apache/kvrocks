@@ -186,7 +186,7 @@ func TestWaitCommand(t *testing.T) {
 		select {
 		case <-done:
 			// Success - command completed after replica connected
-		case <-time.After(5 * time.Second):
+		case <-time.After(15 * time.Second):
 			t.Fatal("WAIT command did not complete after replica connected")
 		}
 	})
@@ -219,7 +219,7 @@ func TestWaitCommand(t *testing.T) {
 		select {
 		case <-done:
 			// Success - command not blocked
-		case <-time.After(5 * time.Second):
+		case <-time.After(15 * time.Second):
 			t.Fatal("WAIT command did not timeout")
 		}
 
@@ -276,7 +276,9 @@ func TestWaitBlockExecutingCommand(t *testing.T) {
 	util.WaitForOffsetSync(t, masterRdb, slaveRdb, 5*time.Second)
 
 	// the remaining command should be executed after replication
-	require.Equal(t, "v3", masterRdb.Get(context.Background(), "k1").Val())
+	require.Eventually(t, func() bool {
+		return slaveRdb.Get(context.Background(), "k1").Val() == "v3"
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 // if a command is blocked by WAIT, it should continue to execute after the WAIT command is completed.

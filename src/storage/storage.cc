@@ -103,6 +103,9 @@ void Storage::CloseDB() {
 
   db_closing_ = true;
   db_->SyncWAL();
+  // Make sure all background work is stopped to avoid the data race
+  // between background threads and the column family handle destruction.
+  rocksdb::CancelAllBackgroundWork(db_.get(), true);
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   db_->Close();
   db_ = nullptr;

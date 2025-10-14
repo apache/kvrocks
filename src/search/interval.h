@@ -113,8 +113,7 @@ struct IntervalSet {
 
   std::string ToString() const {
     if (IsEmpty()) return "empty set";
-    return util::StringJoin(
-        intervals, [](const auto &i) { return Interval(i.first, i.second).ToString(); }, " or ");
+    return util::StringJoin(intervals, [](const auto &i) { return Interval(i.first, i.second).ToString(); }, " or ");
   }
 
   friend std::ostream &operator<<(std::ostream &os, const IntervalSet &is) { return os << is.ToString(); }

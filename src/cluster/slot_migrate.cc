@@ -1296,7 +1296,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
     if (batch_sender.IsFull()) {
       GET_OR_RET(sendMigrationBatch(&batch_sender));
     }
-    
+
     auto subkey_iter = iter.GetSubKeyIterator();
     if (!subkey_iter) {
       continue;
@@ -1307,7 +1307,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
       if (batch_sender.IsFull()) {
         GET_OR_RET(sendMigrationBatch(&batch_sender));
       }
-      
+
       if (redis_type == RedisType::kRedisZSet) {
         InternalKey internal_key(subkey_iter->Key(), storage_->IsSlotIdEncoded());
         auto score_key = subkey_iter->Value().ToString();

@@ -1294,7 +1294,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
     GET_OR_RET(batch_sender.Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), iter.Key(), iter.Value()));
     if (batch_sender.IsFull()) {
-      GET_OR_RET(sendMigrationBatch(&batch_sender));
+        GET_OR_RET(sendMigrationBatch(&batch_sender));
     }
     
     auto subkey_iter = iter.GetSubKeyIterator();
@@ -1305,7 +1305,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       GET_OR_RET(batch_sender.Put(subkey_iter->ColumnFamilyHandle(), subkey_iter->Key(), subkey_iter->Value()));
       if (batch_sender.IsFull()) {
-        GET_OR_RET(sendMigrationBatch(&batch_sender));
+          GET_OR_RET(sendMigrationBatch(&batch_sender));
       }
       
       if (redis_type == RedisType::kRedisZSet) {

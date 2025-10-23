@@ -35,6 +35,9 @@ set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrac
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
 
+#dump test use rtti
+set(USE_RTTI 1)
+
 # to save build time in debug mode
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ENABLE_LTO OFF)

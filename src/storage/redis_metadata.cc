@@ -334,7 +334,7 @@ bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() 
 
 bool Metadata::IsEmptyableType() const {
   return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisTDigest || Type() == kRedisTimeSeries;
+         Type() == kRedisTDigest || Type() == kRedisTimeSeries || Type() == kRedisTopK;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -566,6 +566,30 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   GetSizedString(input, &source_key_slice);
   source_key = source_key_slice.ToString();
   GetFixed64(input, &last_timestamp);
+
+  return rocksdb::Status::OK();
+}
+
+void TopKMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  PutFixed32(dst, top_k);
+  PutFixed16(dst, width);
+  PutFixed32(dst, depth);
+  PutDouble(dst, decay);
+}
+
+rocksdb::Status TopKMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+  if (input->size() < sizeof(double) + sizeof(uint32_t) * 2 + sizeof(uint16_t)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed32(input, &top_k);
+  GetFixed16(input, &width);
+  GetFixed32(input, &depth);
+  GetDouble(input, &decay);
 
   return rocksdb::Status::OK();
 }

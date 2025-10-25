@@ -1984,6 +1984,13 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   return s;
 }
 
+rocksdb::Status TimeSeries::RevRange(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                                     std::vector<TSSample> *res) {
+  auto s = Range(ctx, user_key, option, res);
+  if (!res->empty()) std::reverse(res->begin(), res->end());
+  return s;
+}
+
 rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest,
                                 std::vector<TSSample> *res) {
   res->clear();

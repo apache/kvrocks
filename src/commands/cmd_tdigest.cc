@@ -201,7 +201,7 @@ class CommandTDigestRevRank : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (result.data()) {
+    if (!result.empty()) {
       std::vector<std::string> rev_ranks;
       rev_ranks.reserve(result.size());
       for (const auto v : result) {

@@ -67,20 +67,18 @@ class DummyCentroids {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != centroids_.cend();
+      return Valid();
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if (Valid() && iter_ != centroids_.cbegin()) {
+      if (Valid()) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const { return iter_ != centroids_.cend(); }
-    bool IsAtBegin() const { return iter_ == centroids_.cbegin(); }
-
+    bool Valid() const { return iter_ < centroids_.cend() && iter_ >= centroids_.cbegin(); }
     StatusOr<Centroid> GetCentroid() const {
       if (iter_ == centroids_.cend()) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
@@ -244,7 +242,7 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   }
 
   auto dump_centroids = DummyCentroids(metadata, centroids);
-  auto status = TDigestRank(dump_centroids, inputs, result);
+  auto status = TDigestRevRank(dump_centroids, inputs, result);
   if (!status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }

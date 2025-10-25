@@ -153,7 +153,8 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
   return Lerp(lc.mean, rc.mean, diff);
 }
 
-inline void assignRankForEqualInputs(const std::vector<size_t>& indices, double cumulative_weight, std::vector<int>& result) {
+inline void assignRankForEqualInputs(const std::vector<size_t>& indices, double cumulative_weight,
+                                     std::vector<int>& result) {
   for (auto index : indices) {
     result[index] = static_cast<int>(cumulative_weight);
   }

@@ -153,7 +153,7 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
   return Lerp(lc.mean, rc.mean, diff);
 }
 
-inline void assignRankForEqualInputs(const std::vector<size_t>& indices, double cumulative_weight,
+inline void AssignRankForEqualInputs(const std::vector<size_t>& indices, double cumulative_weight,
                                      std::vector<int>& result) {
   for (auto index : indices) {
     result[index] = static_cast<int>(cumulative_weight);
@@ -173,7 +173,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
 
   // handle inputs larger than maximum
   while (it != value_to_indices.rend() && it->first > td.Max()) {
-    assignRankForEqualInputs(it->second, -1, result);
+    AssignRankForEqualInputs(it->second, -1, result);
     ++it;
   }
 
@@ -199,21 +199,21 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       }
 
       // handle the prev inputs which has the same value
-      assignRankForEqualInputs(it->second, current_mean_cumulative_weight, result);
+      AssignRankForEqualInputs(it->second, current_mean_cumulative_weight, result);
       ++it;
       iter->Prev();
     } else if (centroid.mean > input_value) {
       cumulative_weight += centroid.weight;
       iter->Prev();
     } else {
-      assignRankForEqualInputs(it->second, cumulative_weight, result);
+      AssignRankForEqualInputs(it->second, cumulative_weight, result);
       ++it;
     }
   }
 
   // handle inputs less than minimum
   while (it != value_to_indices.rend()) {
-    assignRankForEqualInputs(it->second, td.TotalWeight(), result);
+    AssignRankForEqualInputs(it->second, td.TotalWeight(), result);
     ++it;
   }
 

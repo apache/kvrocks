@@ -47,7 +47,7 @@ class RdbStream {
 
 class RdbStringStream : public RdbStream {
  public:
-  explicit RdbStringStream(std::string_view input) : input_(input){};
+  explicit RdbStringStream(std::string_view input) : input_(input) {};
   RdbStringStream(const RdbStringStream &) = delete;
   RdbStringStream &operator=(const RdbStringStream &) = delete;
   ~RdbStringStream() override = default;
@@ -65,7 +65,7 @@ class RdbStringStream : public RdbStream {
 class RdbFileStream : public RdbStream {
  public:
   explicit RdbFileStream(std::string file_name, size_t chunk_size = 1024 * 1024)
-      : file_name_(std::move(file_name)), check_sum_(0), total_read_bytes_(0), max_read_chunk_size_(chunk_size){};
+      : file_name_(std::move(file_name)), check_sum_(0), total_read_bytes_(0), max_read_chunk_size_(chunk_size) {};
   RdbFileStream(const RdbFileStream &) = delete;
   RdbFileStream &operator=(const RdbFileStream &) = delete;
   ~RdbFileStream() override = default;

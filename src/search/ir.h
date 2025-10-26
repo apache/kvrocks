@@ -232,7 +232,7 @@ struct NumericCompareExpr : BoolAtomExpr {
 struct VectorLiteral : Literal {
   std::vector<double> values;
 
-  explicit VectorLiteral(std::vector<double> &&values) : values(std::move(values)){};
+  explicit VectorLiteral(std::vector<double> &&values) : values(std::move(values)) {};
 
   std::string_view Name() const override { return "VectorLiteral"; }
   std::string Dump() const override {

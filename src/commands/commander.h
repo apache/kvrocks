@@ -276,7 +276,7 @@ struct CommandAttributes {
   }
 
   bool CheckArity(int cmd_size) const {
-    return !((arity > 0 && cmd_size != arity) || (arity < 0 && cmd_size < -arity));
+    return (arity <= 0 || cmd_size == arity) && (arity >= 0 || cmd_size >= -arity);
   }
 
   StatusOr<CommandKeyRange> InitialKeyRange() const {

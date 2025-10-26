@@ -32,7 +32,7 @@ constexpr const uint8_t zlEnd = 0xFF;
 
 class ZipList {
  public:
-  explicit ZipList(std::string_view input) : input_(input){};
+  explicit ZipList(std::string_view input) : input_(input) {};
   ~ZipList() = default;
 
   StatusOr<std::string> Next();

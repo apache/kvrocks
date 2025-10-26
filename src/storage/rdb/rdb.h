@@ -73,7 +73,7 @@ using RedisObjValue =
 class RDB {
  public:
   explicit RDB(engine::Storage *storage, std::string ns, std::unique_ptr<RdbStream> stream)
-      : storage_(storage), ns_(std::move(ns)), stream_(std::move(stream)){};
+      : storage_(storage), ns_(std::move(ns)), stream_(std::move(stream)) {};
   ~RDB() = default;
 
   Status VerifyPayloadChecksum(const std::string_view &payload);

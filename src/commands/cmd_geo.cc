@@ -328,7 +328,7 @@ class CommandGeoRadius : public CommandGeoBase {
     int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
     std::vector<std::string> list;
     for (int i = 0; i < returned_items_count; i++) {
-      auto geo_point = geo_points[i];
+      const auto &geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
         list.emplace_back(redis::BulkString(geo_point.member));
       } else {
@@ -525,7 +525,7 @@ class CommandGeoSearch : public CommandGeoBase {
     std::vector<std::string> output;
     output.reserve(returned_items_count);
     for (int i = 0; i < returned_items_count; i++) {
-      auto geo_point = geo_points[i];
+      const auto &geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
         output.emplace_back(redis::BulkString(geo_point.member));
       } else {

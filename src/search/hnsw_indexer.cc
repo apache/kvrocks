@@ -297,8 +297,8 @@ StatusOr<std::vector<VectorItemWithDistance>> HnswIndex::SearchLayerInternal(
         VectorItem::Create(entry_point_key, std::move(entry_node_metadata.vector), metadata, &entry_point_vector));
     auto dist = GET_OR_RET(ComputeSimilarity(target_vector, entry_point_vector));
 
-    explore_heap.push(std::make_pair(dist, entry_point_vector));
-    result_heap.push(std::make_pair(dist, std::move(entry_point_vector)));
+    explore_heap.emplace(dist, entry_point_vector);
+    result_heap.emplace(dist, std::move(entry_point_vector));
     visited.insert(entry_point_key);
   }
 
@@ -326,8 +326,8 @@ StatusOr<std::vector<VectorItemWithDistance>> HnswIndex::SearchLayerInternal(
                                     &neighbour_node_vector));
 
       auto dist = GET_OR_RET(ComputeSimilarity(target_vector, neighbour_node_vector));
-      explore_heap.push(std::make_pair(dist, neighbour_node_vector));
-      result_heap.push(std::make_pair(dist, neighbour_node_vector));
+      explore_heap.emplace(dist, neighbour_node_vector);
+      result_heap.emplace(dist, neighbour_node_vector);
       while (result_heap.size() > ef_runtime) {
         result_heap.pop();
       }

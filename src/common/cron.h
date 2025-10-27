@@ -71,11 +71,11 @@ struct CronPattern {
           if (l >= r) {
             return {Status::NotOK, "for pattern `l-r` in cron expression, r should be larger than l"};
           }
-          results.push_back(Range(l, r));
+          results.emplace_back(Range(l, r));
         } else {
           auto n = GET_OR_RET(ParseInt<int>(std::string(num_str.begin(), num_str.end()), minmax)
                                   .Prefixed("an integer is expected in a cron expression"));
-          results.push_back(n);
+          results.emplace_back(n);
         }
       }
 

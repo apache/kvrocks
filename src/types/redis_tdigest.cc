@@ -67,12 +67,10 @@ class DummyCentroids {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != centroids_.cend();;
+      return iter_ != centroids_.cend();
     }
 
-    bool IsBegin() {
-      return iter_ == centroids_.cbegin();
-    }
+    bool IsBegin() { return iter_ == centroids_.cbegin(); }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.

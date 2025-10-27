@@ -56,8 +56,8 @@ class BatchSender {
  private:
   static Status sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_batch);
 
-  rocksdb::WriteBatch write_batch_{};
-  std::string prefix_logdata_{};
+  rocksdb::WriteBatch write_batch_;
+  std::string prefix_logdata_;
   uint64_t sent_bytes_ = 0;
   uint32_t sent_batches_num_ = 0;
   uint32_t entries_num_ = 0;

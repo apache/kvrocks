@@ -941,6 +941,7 @@ class CommandTSMGet : public CommandTSMGetBase {
       entry[0] = redis::BulkString(result.name);
       entry[1] = FormatTSLabelListAsRedisReply(result.labels);
       std::vector<std::string> temp;
+      temp.reserve(result.samples.size());
       for (auto &sample : result.samples) {
         temp.push_back(FormatTSSampleAsRedisReply(sample));
       }
@@ -998,6 +999,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
       }
       entry[1] = FormatTSLabelListAsRedisReply(result.labels);
       std::vector<std::string> temp;
+      temp.reserve(result.samples.size());
       for (auto &sample : result.samples) {
         temp.push_back(FormatTSSampleAsRedisReply(sample));
       }

@@ -67,18 +67,22 @@ class DummyCentroids {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return Valid();
+      return iter_ != centroids_.cend();;
+    }
+
+    bool IsBegin() {
+      return iter_ == centroids_.cbegin();
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if (Valid()) {
+      if (Valid() && iter_ != centroids_.cbegin()) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const { return iter_ < centroids_.cend() && iter_ >= centroids_.cbegin(); }
+    bool Valid() const { return iter_ != centroids_.cend(); }
     StatusOr<Centroid> GetCentroid() const {
       if (iter_ == centroids_.cend()) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};

@@ -187,23 +187,29 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       cumulative_weight += centroid.weight;
 
       // handle all the prev centroids which has the same mean
-      while (iter->Prev()) {
+      while (!iter->IsBegin() && iter->Prev()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
         if (current_mean != next_centroid.mean) {
           // move back to the last equal centroid, because we will process it in the next loop
           iter->Next();
           break;
         }
-        current_mean_cumulative_weight += centroid.weight / 2;
-        cumulative_weight += centroid.weight;
+        current_mean_cumulative_weight += next_centroid.weight / 2;
+        cumulative_weight += next_centroid.weight;
       }
 
       // handle the prev inputs which has the same value
       AssignRankForEqualInputs(it->second, current_mean_cumulative_weight, result);
       ++it;
+      if (iter->IsBegin()) {
+        break;
+      }
       iter->Prev();
     } else if (centroid.mean > input_value) {
       cumulative_weight += centroid.weight;
+      if (iter->IsBegin()) {
+        break;
+      }
       iter->Prev();
     } else {
       AssignRankForEqualInputs(it->second, cumulative_weight, result);

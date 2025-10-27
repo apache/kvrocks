@@ -50,3 +50,5 @@ CheckOptions:
     value:         lower_case
   - key:           readability-identifier-naming.FunctionCase
     value:         CamelCase
+  - key:           readability-simplify-boolean-expr.IgnoreMacros
+    value:         True

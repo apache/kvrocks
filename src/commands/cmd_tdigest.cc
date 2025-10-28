@@ -201,16 +201,12 @@ class CommandTDigestRevRank : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (!result.empty()) {
-      std::vector<std::string> rev_ranks;
-      rev_ranks.reserve(result.size());
-      for (const auto v : result) {
-        rev_ranks.push_back(redis::Integer(v));
-      }
-      *output = redis::Array(rev_ranks);
-    } else {
-      *output = redis::BulkString("nan");
+    std::vector<std::string> rev_ranks;
+    rev_ranks.reserve(result.size());
+    for (const auto v : result) {
+      rev_ranks.push_back(redis::Integer(v));
     }
+    *output = redis::Array(rev_ranks);
     return Status::OK();
   }
 

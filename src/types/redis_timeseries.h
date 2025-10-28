@@ -274,6 +274,8 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, TSInfoResult *res);
   rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
                         std::vector<TSSample> *res);
+  rocksdb::Status RevRange(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                           std::vector<TSSample> *res);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
                              const TSAggregator &aggregator, TSCreateRuleResult *res);

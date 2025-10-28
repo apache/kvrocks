@@ -768,6 +768,28 @@ class CommandTSRange : public CommandTSRangeBase {
   }
 };
 
+class CommandTSRevRange : public CommandTSRangeBase {
+ public:
+  CommandTSRevRange() : CommandTSRangeBase(2) { registerDefaultHandlers(); }
+
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 4) return {Status::RedisParseErr, "wrong number of arguments for 'TS.REVRANGE' command"};
+    return CommandTSRangeBase::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<TSSample> res;
+    auto s = timeseries_db.RevRange(ctx, args_[1], getRangeOption(), &res);
+    if (!s.ok()) return {Status::RedisExecErr, errKeyNotFound};
+    std::vector<std::string> reply;
+    reply.reserve(res.size());
+    for (auto &sample : res) reply.push_back(FormatTSSampleAsRedisReply(sample));
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+};
+
 class CommandTSCreateRule : public CommandTSAggregatorBase {
  public:
   explicit CommandTSCreateRule() { registerDefaultHandlers(); }
@@ -1155,6 +1177,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTSRevRange>("ts.revrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),

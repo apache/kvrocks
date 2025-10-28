@@ -148,6 +148,18 @@ TEST_F(TimeSeriesTest, Range) {
     EXPECT_EQ(res[i + samples1.size() + samples2.size()], samples3[i]);
   }
 
+  // Test RevRange query without aggregation
+  res.clear();
+  s = ts_db_->RevRange(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 9);
+  size_t curr = 0;
+  for (auto current = samples3.rbegin(); current != samples3.rend(); ++current) EXPECT_EQ(res[curr++], *current);
+
+  for (auto current = samples2.rbegin(); current != samples2.rend(); ++current) EXPECT_EQ(res[curr++], *current);
+
+  for (auto current = samples1.rbegin(); current != samples1.rend(); ++current) EXPECT_EQ(res[curr++], *current);
+
   // Test aggregation with min
   res.clear();
   range_opt.aggregator.type = redis::TSAggregatorType::MIN;

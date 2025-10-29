@@ -160,9 +160,26 @@ inline void AssignRankForEqualInputs(const std::vector<size_t>& indices, double 
   }
 }
 
+inline int DoubleCompare(double a, double b, double rel_eps = 1e-12, double abs_eps = 1e-9) {
+  double diff = a - b;
+  double adiff = std::abs(diff);
+  if (adiff <= abs_eps) return 0;
+  double maxab = std::max(std::abs(a), std::abs(b));
+  if (adiff <= maxab * rel_eps) return 0;
+  return (diff < 0) ? -1 : 1;
+}
+
+inline bool DoubleEqual(double a, double b, double rel_eps = 1e-12, double abs_eps = 1e-9) {
+  return DoubleCompare(a, b, rel_eps, abs_eps) == 0;
+}
+
+struct DoubleComparator {
+  bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
+};
+
 template <typename TD>
 inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
-  std::map<double, std::vector<size_t>> value_to_indices;
+  std::map<double, std::vector<size_t>, DoubleComparator> value_to_indices;
   for (size_t i = 0; i < inputs.size(); ++i) {
     value_to_indices[inputs[i]].push_back(i);
   }
@@ -181,7 +198,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
   while (iter->Valid() && it != value_to_indices.rend()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
     auto input_value = it->first;
-    if (centroid.mean == input_value) {
+    if (DoubleEqual(centroid.mean, input_value)) {
       auto current_mean = centroid.mean;
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
       cumulative_weight += centroid.weight;
@@ -205,7 +222,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
         break;
       }
       iter->Prev();
-    } else if (centroid.mean > input_value) {
+    } else if (DoubleCompare(centroid.mean, input_value) > 0) {
       cumulative_weight += centroid.weight;
       if (iter->IsBegin()) {
         break;

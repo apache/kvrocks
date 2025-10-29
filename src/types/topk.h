@@ -35,16 +35,6 @@ struct HeapBucket {
     uint32_t itemlen;
     char* item;
     counter_t count;
-
-    HeapBucket& operator=(const HeapBucket& other) {
-        if (this != &other) {
-            fp = other.fp;
-            itemlen = other.itemlen;
-            item = other.item;
-            count = other.count;
-        }
-        return *this;
-    }
 };
 
 struct Bucket {
@@ -54,27 +44,35 @@ struct Bucket {
 
 class BlockSplitTopK {
 public:
+    BlockSplitTopK() = delete;
     explicit BlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay) :
         k(k), width(width), depth(depth), decay(decay), heap_size(0) {
-        buckets.resize(depth, std::vector<Bucket>(width, Bucket{0, 0}));
-        heap.resize(k, HeapBucket{0, 0, nullptr, 0});
+        buckets = new Bucket[width * depth];
+        heap = new HeapBucket[k];
+        std::fill_n(buckets, width * depth, Bucket{0, 0});
+        std::fill_n(heap, k, HeapBucket{0, 0, nullptr, 0});
         for (int i = 0; i < TOPK_DECAY_LOOKUP_TABLE; ++i) {
             lookupTable[i] = pow(decay, i);
         }
     }
 
-    void TopkAdd(const std::string &item, uint32_t increment);
-    bool TopkQuery(const std::string &item);
-    std::vector<HeapBucket> TopkList();
+    ~BlockSplitTopK() {
+        for (size_t i = 0; i < k; ++i) {
+            delete[] heap[i].item;
+        }
+        delete[] buckets;
+        delete[] heap;
+    }
 
-    std::string_view GetData() const;
-private:
+    void Add(const std::string &item, uint32_t increment);
+    bool Query(const std::string &item);
+    std::vector<HeapBucket> List();
+
     void heapifyDown(int start);
     void heapifyUp(int start);
     int checkExistInHeap(const std::string &item);
-    int cmpHeapBucketCount(const HeapBucket& a, const HeapBucket& b);
-    bool cmpHeapBucketItem(const HeapBucket& a, const HeapBucket& b);
-    void swapHeapBucket(HeapBucket& a, HeapBucket& b);
+    int cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
+    void swapHeapBucket(HeapBucket *a, HeapBucket *b);
 
     uint32_t k;
     uint32_t width;
@@ -83,9 +81,7 @@ private:
 
     size_t heap_size;
 
-    std::vector<std::vector<Bucket>> buckets;
-    std::vector<HeapBucket> heap;
+    Bucket *buckets;
+    HeapBucket *heap;
     double lookupTable[TOPK_DECAY_LOOKUP_TABLE];
 };
-
-BlockSplitTopK CreateBlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay);

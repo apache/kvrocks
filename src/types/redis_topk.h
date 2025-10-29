@@ -21,6 +21,7 @@
 #pragma once
 
 #include "storage/redis_db.h"
+#include "topk.h"
 
 namespace redis {
 
@@ -46,7 +47,8 @@ class TopK : public SubKeyScanner {
   explicit TopK(engine::Storage* storage, const std::string& ns)
     : SubKeyScanner(storage, ns) {}
 
-  rocksdb::Status Reserve(engine::Context &ctx, const Slice& user_key, uint32_t k, uint32_t width, uint32_t depth, double decay);
+  rocksdb::Status Reserve(engine::Context &ctx, const Slice& user_key, uint32_t k, 
+                          uint32_t width, uint32_t depth, double decay);
   rocksdb::Status Query(engine::Context &ctx, const Slice& user_key, 
                                               const Slice &items,
                                               bool *exists);
@@ -54,12 +56,21 @@ class TopK : public SubKeyScanner {
                                             const Slice &items);
   rocksdb::Status List(engine::Context &ctx, const Slice& user_key, std::vector<std::string> &items);
   rocksdb::Status Info(engine::Context &ctx, const Slice& user_key, TopKInfo *info);
+
  private:
   rocksdb::Status getTopKMetadata(engine::Context &ctx, const Slice &ns_key, TopKMetadata *metadata);
   rocksdb::Status createTopK(engine::Context &ctx, const Slice &ns_key, 
                              uint32_t k, uint32_t width, uint32_t depth, double decay,
                              TopKMetadata *metadata);
-  std::string getTKKey(const Slice &ns_key, const TopKMetadata &metadata);
+
+  rocksdb::Status getTopKData(engine::Context &ctx, const Slice& ns_key, const TopKMetadata &metadata, 
+                              BlockSplitTopK *topk);
+  rocksdb::Status setTopkData(engine::Context &ctx, const Slice& ns_key, const TopKMetadata &metadata, 
+                              const BlockSplitTopK &topk);
+
+  std::string getTKKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t index);
+
+  std::string getHBKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t hp_index);
 };
 
 }  // namespace redis

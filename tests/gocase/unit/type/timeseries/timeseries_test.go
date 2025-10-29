@@ -317,6 +317,15 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			assert.Equal(t, s.val, arr[1])
 		}
 
+		// Test revrange without aggregation
+		res = rdb.Do(ctx, "ts.revrange", key, "-", "+").Val().([]interface{})
+		assert.Equal(t, len(samples), len(res))
+		for i, s := range samples {
+			arr := res[len(samples)-i-1].([]interface{})
+			assert.Equal(t, s.ts, arr[0])
+			assert.Equal(t, s.val, arr[1])
+		}
+
 		// Test MIN aggregation with 20ms bucket
 		res = rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "MIN", 20).Val().([]interface{})
 		assert.Equal(t, 6, len(res))

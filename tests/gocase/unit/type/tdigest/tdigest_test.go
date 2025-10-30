@@ -571,7 +571,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, rank, expected[i])
 		}
 
-		// Test with set_contains different elements
+		// Test with set containing different elements
 		key2 := keyPrefix + "test2"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key2, "10", "20", "30", "40", "50", "60").Err())

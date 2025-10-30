@@ -72,7 +72,6 @@ public:
     void heapifyUp(int start);
     int checkExistInHeap(const std::string &item);
     int cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
-    void swapHeapBucket(HeapBucket *a, HeapBucket *b);
 
     uint32_t k;
     uint32_t width;

@@ -76,7 +76,7 @@ static uint32_t MurmurHash2(const void *key, int len, uint32_t seed) {
         len -= 4;
     }
 
-    // Handle the last few bytes of the input array
+    // Handle the last few bytes of the input heap
 
     switch (len) {
     case 3:
@@ -219,65 +219,65 @@ static uint32_t MurmurHash2(const void *key, int len, uint32_t seed) {
 }
 
 /* ---------------------------------------------------------------------- */
-void BlockSplitTopK::swapHeapBucket(HeapBucket *a, HeapBucket* b) {
-    HeapBucket tmp = *a;
-    a->count = b->count;
-    a->fp = b->fp;
-    a->itemlen = b->itemlen;
-    a->item = b->item;
-    
-    b->count = tmp.count;
-    b->fp = tmp.fp;
-    b->itemlen = tmp.itemlen;
-    b->item = tmp.item;
-}
-
 void BlockSplitTopK::heapifyDown(int start) {
-    size_t parent = start;
+    size_t child = start;
 
     // check whether larger than children
-    if (heap_size < 2 || (heap_size - 2) / 2 < parent) {
+    if (heap_size < 2 || (heap_size - 2) / 2 < child) {
         return;
     }
 
-    while (parent < heap_size) {
-        size_t left_child = 2 * parent + 1;
-        size_t right_child = left_child + 1;
+    child = 2 * child + 1;
+    if ((child + 1) < heap_size && (heap[child].count > heap[child + 1].count)) {
+        ++child;
+    }
+    if (heap[child].count > heap[start].count) {
+        return;
+    }
 
-        // check whether left child is larger than parent
-        if (left_child < heap_size && heap[left_child].count < heap[parent].count) {
-            parent = left_child;
-        }
-        // check whether right child is larger than parent
-        if (right_child < heap_size && heap[right_child].count < heap[parent].count) {
-            parent = right_child;
-        }
-        if (parent == left_child || parent == right_child) {
-            swapHeapBucket(&heap[(parent-1)/2], &heap[parent]);
-        } else {
+    HeapBucket top;
+    memcpy(&top, &heap[start], sizeof(HeapBucket));
+    do {
+        memcpy(&heap[start], &heap[child], sizeof(HeapBucket));
+        start = child;
+
+        if ((heap_size - 2) / 2 < child) {
             break;
         }
-    }
+        child = 2 * child + 1;
+
+        if ((child + 1) < heap_size && (heap[child].count > heap[child + 1].count)) {
+            ++child;
+        }
+    } while (heap[child].count < top.count);
+    memcpy(&heap[start], &top, sizeof(HeapBucket));
 }
 
 void BlockSplitTopK::heapifyUp(int start) {
-    size_t child = start;
+    size_t parent = start;
 
     // check whether smaller than parent
-    if (heap_size < 2 || child == 0) {
+    if (heap_size < 2 || parent == 0) {
         return;
     }
 
-    while (child > 0) {
-        size_t parent = (child - 1) / 2;
+    parent = (parent - 1) / 2;
+    if (heap[parent].count > heap[start].count) {
+        return;
+    }
 
-        if (parent >= 0 && heap[child].count < heap[parent].count) {
-            swapHeapBucket(&heap[parent], &heap[child]);
-            child = parent;
-        } else {
+    HeapBucket bottom;
+    memcpy(&bottom, &heap[start], sizeof(HeapBucket));
+    do {
+        memcpy(&heap[start], &heap[parent], sizeof(HeapBucket));
+        start = parent;
+
+        if (start == 0) {
             break;
         }
-    }
+        parent = (parent - 1) / 2;
+    } while (heap[parent].count > bottom.count);
+    memcpy(&heap[start], &bottom, sizeof(HeapBucket));
 }
 
 int BlockSplitTopK::checkExistInHeap(const std::string &item) {
@@ -310,8 +310,10 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
         if (buckets[loc].count == 0) {
             buckets[loc].fp = fp;
             buckets[loc].count = increment;
+            maxCount = std::max(maxCount, buckets[loc].count);
         } else if (buckets[loc].fp == fp && location != -1) {
             buckets[loc].count += increment;
+            maxCount = std::max(maxCount, buckets[loc].count);
         } else {
             // decay
             uint32_t local_incr = increment;
@@ -330,12 +332,12 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
                     if (buckets[loc].count == 0) {
                         buckets[loc].fp = fp;
                         buckets[loc].count = 1;
+                        maxCount = std::max(maxCount, buckets[loc].count);
                         break;
                     }
                 }
             }
         }
-        maxCount = std::max(maxCount, buckets[loc].count);
     }
 
     if (k == heap_size) {

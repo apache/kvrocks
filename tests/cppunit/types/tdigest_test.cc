@@ -299,7 +299,7 @@ TEST_F(RedisTDigestTest, Quantile_returns_nan_on_empty_tdigest) {
   ASSERT_FALSE(result.quantiles) << "should not have quantiles with empty tdigest";
 }
 
-TEST_F(RedisTDigestTest, RevRank_on_the_set_contains_different_elements) {
+TEST_F(RedisTDigestTest, RevRank_on_the_set_containing_different_elements) {
   std::string test_digest_name = "test_digest_revrank" + std::to_string(util::GetTimeStampMS());
   bool exists = false;
   auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);

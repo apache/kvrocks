@@ -184,8 +184,8 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
     value_to_indices[inputs[i]].push_back(i);
   }
 
-  double cumulative_weight = 0;
-  result.resize(inputs.size());
+  result.clear();
+  result.resize(inputs.size(), -2);
   auto it = value_to_indices.rbegin();
 
   // handle inputs larger than maximum
@@ -195,6 +195,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
   }
 
   auto iter = td.End();
+  double cumulative_weight = 0;
   while (iter->Valid() && it != value_to_indices.rend()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
     auto input_value = it->first;
@@ -240,5 +241,10 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
     ++it;
   }
 
+  for (auto r : result) {
+    if (r < -2) {
+      return Status{Status::InvalidArgument, "invalid result when computing revrank"};
+    }
+  }
   return Status::OK();
 }

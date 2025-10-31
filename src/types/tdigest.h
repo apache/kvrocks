@@ -207,7 +207,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       // handle all the prev centroids which has the same mean
       while (!iter->IsBegin() && iter->Prev()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
-        if (current_mean != next_centroid.mean) {
+        if (!DoubleEqual(current_mean, next_centroid.mean)) {
           // move back to the last equal centroid, because we will process it in the next loop
           iter->Next();
           break;

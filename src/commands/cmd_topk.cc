@@ -18,8 +18,8 @@
  *
  */
 
-#include "commander.h"
 #include "command_parser.h"
+#include "commander.h"
 #include "error_constants.h"
 #include "server/server.h"
 #include "types/redis_topk.h"
@@ -30,7 +30,7 @@ constexpr const char *errBadWidth = "Bad width";
 constexpr const char *errBadDepth = "Bad depth";
 constexpr const char *errBadDecay = "Bad decay";
 constexpr const char *errInvalidDecay = "Decay must be between 0 and 1";
-}
+}  // namespace
 
 namespace redis {
 
@@ -84,6 +84,7 @@ class CommandTopKReserve final : public Commander {
     *output = redis::RESP_OK;
     return Status::OK();
   }
+
  private:
   uint32_t k_;
   uint32_t width_ = 7;
@@ -150,7 +151,7 @@ class CommandTopKInfo final : public Commander {
     return Commander::Parse(args);
   }
 
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, [[maybe_unused]]std::string *output) override {
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::TopK topk_db(srv->storage, conn->GetNamespace());
     TopKInfo info;
 
@@ -185,6 +186,7 @@ class CommandTopKInfo final : public Commander {
     }
     return Status::OK();
   }
+
  private:
   TopKInfoType type_ = TopKInfoType::kAll;
 };
@@ -199,7 +201,7 @@ class CommandTopKQuery final : public Commander {
     auto s = topk.Query(ctx, args_[1], args_[2], &is_exists_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
-    } 
+    }
     *output = redis::Bool(redis::RESP::v2, is_exists_);
     return Status::OK();
   }
@@ -211,4 +213,4 @@ REDIS_REGISTER_COMMANDS(TopK, MakeCmdAttr<CommandTopKAdd>("topk.add", 3, "write"
                         MakeCmdAttr<CommandTopKQuery>("topk.query", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTopKReserve>("topk.reserve", -3, "write", 1, 1, 1));
 
-} // namespace redis
+}  // namespace redis

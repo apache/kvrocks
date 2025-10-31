@@ -32,9 +32,7 @@ static constexpr double decay = 0.9;
 
 class RedisTopKTest : public TestBase {
  protected:
-  explicit RedisTopKTest() : TestBase() {
-    top_k_ = std::make_unique<redis::TopK>(storage_.get(), "topk_ns");
-  }
+  explicit RedisTopKTest() : TestBase() { top_k_ = std::make_unique<redis::TopK>(storage_.get(), "topk_ns"); }
   ~RedisTopKTest() override = default;
 
   void SetUp() override {
@@ -112,7 +110,7 @@ TEST_F(RedisTopKTest, TestTopKAddAndQuery) {
   // heap is full, need remove values1.
   for (size_t i = 0; i < values2.size(); ++i) {
     bool found = false;
-    // due to decay, topk is possiable to remove values1.
+    // due to decay, topk is possible to remove values1.
     while (!found) {
       top_k_->Add(*ctx_, key_, values2[i]);
       top_k_->Query(*ctx_, key_, values2[i], &found);

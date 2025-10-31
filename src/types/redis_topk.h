@@ -25,7 +25,13 @@
 
 namespace redis {
 
-enum class TopKInfoType { kAll, kTopK, kWidth, kDepth, kDecay };
+enum class TopKInfoType {
+  kAll,
+  kTopK,
+  kWidth,
+  kDepth,
+  kDecay
+};
 
 struct TopKInfo {
   uint32_t k;
@@ -37,24 +43,29 @@ struct TopKInfo {
 class TopK : public SubKeyScanner {
  public:
   using Slice = rocksdb::Slice;
+  
+  explicit TopK(engine::Storage* storage, const std::string& ns)
+    : SubKeyScanner(storage, ns) {}
 
-  explicit TopK(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
-
-  rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint32_t k, uint32_t width, uint32_t depth,
-                          double decay);
-  rocksdb::Status Query(engine::Context &ctx, const Slice &user_key, const Slice &items, bool *exists);
-  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &items);
-  rocksdb::Status List(engine::Context &ctx, const Slice &user_key, std::vector<std::string> &items);
-  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, TopKInfo *info);
+  rocksdb::Status Reserve(engine::Context &ctx, const Slice& user_key, uint32_t k, 
+                          uint32_t width, uint32_t depth, double decay);
+  rocksdb::Status Query(engine::Context &ctx, const Slice& user_key, 
+                                              const Slice &items,
+                                              bool *exists);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, 
+                                            const Slice &items);
+  rocksdb::Status List(engine::Context &ctx, const Slice& user_key, std::vector<std::string> &items);
+  rocksdb::Status Info(engine::Context &ctx, const Slice& user_key, TopKInfo *info);
 
  private:
   rocksdb::Status getTopKMetadata(engine::Context &ctx, const Slice &ns_key, TopKMetadata *metadata);
-  rocksdb::Status createTopK(engine::Context &ctx, const Slice &ns_key, uint32_t k, uint32_t width, uint32_t depth,
-                             double decay, TopKMetadata *metadata);
+  rocksdb::Status createTopK(engine::Context &ctx, const Slice &ns_key, 
+                             uint32_t k, uint32_t width, uint32_t depth, double decay,
+                             TopKMetadata *metadata);
 
-  rocksdb::Status getTopKData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
+  rocksdb::Status getTopKData(engine::Context &ctx, const Slice& ns_key, const TopKMetadata &metadata, 
                               BlockSplitTopK *topk);
-  rocksdb::Status setTopkData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
+  rocksdb::Status setTopkData(engine::Context &ctx, const Slice& ns_key, const TopKMetadata &metadata, 
                               const BlockSplitTopK &topk);
 
   std::string getTKKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t index);

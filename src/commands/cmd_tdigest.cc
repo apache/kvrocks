@@ -192,7 +192,7 @@ class CommandTDigestRevRank : public Commander {
         return {Status::RedisParseErr, errValueIsNotFloat};
       }
       unique_inputs_.push_back(*value);
-      unqiue_inputs_order_[input] = i++;
+      unique_inputs_order_[input] = i++;
     }
     return Status::OK();
   }
@@ -210,7 +210,7 @@ class CommandTDigestRevRank : public Commander {
     std::vector<std::string> rev_ranks;
     rev_ranks.reserve(origin_inputs_.size());
     for (const auto &v : origin_inputs_) {
-      rev_ranks.push_back(redis::Integer(result[unqiue_inputs_order_[v]]));
+      rev_ranks.push_back(redis::Integer(result[unique_inputs_order_[v]]));
     }
     *output = redis::Array(rev_ranks);
     return Status::OK();
@@ -219,7 +219,7 @@ class CommandTDigestRevRank : public Commander {
  private:
   std::string key_name_;
   std::vector<double> unique_inputs_;
-  std::map<std::string, size_t> unqiue_inputs_order_;
+  std::map<std::string, size_t> unique_inputs_order_;
   std::vector<std::string> origin_inputs_;
 };
 

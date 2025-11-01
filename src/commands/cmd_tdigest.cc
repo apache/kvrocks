@@ -180,21 +180,27 @@ class CommandTDigestRevRank : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
-    inputs_.reserve(args.size() - 2);
-    for (size_t i = 2; i < args.size(); i++) {
-      auto value = ParseFloat(args[i]);
+
+    std::unordered_set<std::string> unique_inputs_set(args.begin() + 2, args.end());
+    origin_inputs_.assign(args.begin() + 2, args.end());
+
+    unique_inputs_.reserve(unique_inputs_set.size());
+    size_t i = 0;
+    for (const auto &input : unique_inputs_set) {
+      auto value = ParseFloat(input);
       if (!value) {
         return {Status::RedisParseErr, errValueIsNotFloat};
       }
-      inputs_.push_back(*value);
+      unique_inputs_.push_back(*value);
+      unqiue_inputs_order_[input] = i++;
     }
     return Status::OK();
   }
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<int> result;
-    result.reserve(inputs_.size());
-    if (const auto s = tdigest.RevRank(ctx, key_name_, inputs_, result); !s.ok()) {
+    result.reserve(origin_inputs_.size());
+    if (const auto s = tdigest.RevRank(ctx, key_name_, unique_inputs_, result); !s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }
@@ -202,9 +208,9 @@ class CommandTDigestRevRank : public Commander {
     }
 
     std::vector<std::string> rev_ranks;
-    rev_ranks.reserve(result.size());
-    for (const auto v : result) {
-      rev_ranks.push_back(redis::Integer(v));
+    rev_ranks.reserve(origin_inputs_.size());
+    for (const auto &v : origin_inputs_) {
+      rev_ranks.push_back(redis::Integer(result[unqiue_inputs_order_[v]]));
     }
     *output = redis::Array(rev_ranks);
     return Status::OK();
@@ -212,7 +218,9 @@ class CommandTDigestRevRank : public Commander {
 
  private:
   std::string key_name_;
-  std::vector<double> inputs_;
+  std::vector<double> unique_inputs_;
+  std::map<std::string, size_t> unqiue_inputs_order_;
+  std::vector<std::string> origin_inputs_;
 };
 
 class CommandTDigestMinMax : public Commander {

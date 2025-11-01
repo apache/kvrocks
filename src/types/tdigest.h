@@ -153,13 +153,6 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
   return Lerp(lc.mean, rc.mean, diff);
 }
 
-inline void AssignRankForEqualInputs(const std::vector<size_t>& indices, double cumulative_weight,
-                                     std::vector<int>& result) {
-  for (auto index : indices) {
-    result[index] = static_cast<int>(cumulative_weight);
-  }
-}
-
 inline int DoubleCompare(double a, double b, double rel_eps = 1e-12, double abs_eps = 1e-9) {
   double diff = a - b;
   double adiff = std::abs(diff);
@@ -179,9 +172,9 @@ struct DoubleComparator {
 
 template <typename TD>
 inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
-  std::map<double, std::vector<size_t>, DoubleComparator> value_to_indices;
+  std::map<double, size_t, DoubleComparator> value_to_indices;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    value_to_indices[inputs[i]].push_back(i);
+    value_to_indices[inputs[i]] = i;
   }
 
   result.clear();
@@ -190,7 +183,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
 
   // handle inputs larger than maximum
   while (it != value_to_indices.rend() && it->first > td.Max()) {
-    AssignRankForEqualInputs(it->second, -1, result);
+    result[it->second] = -1;
     ++it;
   }
 
@@ -217,7 +210,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       }
 
       // handle the prev inputs which has the same value
-      AssignRankForEqualInputs(it->second, current_mean_cumulative_weight, result);
+      result[it->second] = static_cast<int>(current_mean_cumulative_weight);
       ++it;
       if (iter->IsBegin()) {
         break;
@@ -230,14 +223,14 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       }
       iter->Prev();
     } else {
-      AssignRankForEqualInputs(it->second, cumulative_weight, result);
+      result[it->second] = static_cast<int>(cumulative_weight);
       ++it;
     }
   }
 
   // handle inputs less than minimum
   while (it != value_to_indices.rend()) {
-    AssignRankForEqualInputs(it->second, td.TotalWeight(), result);
+    result[it->second] = static_cast<int>(td.TotalWeight());
     ++it;
   }
 

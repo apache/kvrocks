@@ -983,7 +983,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
-    auto s = execute_command(ctx, timeseries_db, &results);
+    auto s = executeCommand(ctx, timeseries_db, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     std::vector<std::string> reply;
@@ -1061,7 +1061,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
   TSMRangeOption option_;
 
  private:
-  virtual rocksdb::Status execute_command(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) {
+  virtual rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) {
     return ts.MRange(ctx, option_, results);
   }
 };
@@ -1071,7 +1071,7 @@ class CommandTSMRevRange : public CommandTSMRange {
   CommandTSMRevRange() = default;
 
  private:
-  rocksdb::Status execute_command(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) override {
+  rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) override {
     return ts.MRevRange(ctx, option_, results);
   }
 };

@@ -282,6 +282,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
                        std::vector<TSMGetResult> *res);
   rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
+  rocksdb::Status MRevRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);

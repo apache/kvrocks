@@ -2180,6 +2180,15 @@ rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &o
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::MRevRange(engine::Context &ctx, const TSMRangeOption &option,
+                                      std::vector<TSMRangeResult> *res) {
+  auto s = MRange(ctx, option, res);
+  if (res) {
+    for (auto &row : *res) std::reverse(row.samples.begin(), row.samples.end());
+  }
+  return s;
+}
+
 rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample,
                                    const TSCreateOption &option, AddResult *res) {
   std::string ns_key = AppendNamespacePrefix(user_key);

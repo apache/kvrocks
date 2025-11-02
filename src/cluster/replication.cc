@@ -680,6 +680,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           if (data_written) {
             sendReplConfAck(bev, force_ack);
           }
+          // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
+          bufferevent_setwatermark(bev, EV_READ, 0, 0);
           return CBState::AGAIN;
         }
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
@@ -714,6 +716,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           // when force_ack is false. As a result, if the last write did not trigger ack, the replication would not send
           // ack forever and the info command on master would report incorrect lag.
           sendReplConfAck(bev, force_ack);
+          // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
+          bufferevent_setwatermark(bev, EV_READ, 0, 0);
           return CBState::AGAIN;
         }
 

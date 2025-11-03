@@ -824,6 +824,24 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			for i, s := range samples {
 				require.Equal(t, expectSamples[i], s.([]interface{}))
 			}
+
+			// Test MREVRANGE
+			res2 := rdb.Do(ctx, "ts.mrevrange", "-", "+", "WITHLABELS", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			group2 := res2[0].([]interface{})
+			require.Equal(t, "type=stock_MRange", group2[0])
+
+			metadata2 := group2[1].([]interface{})
+			labels2 := metadata2[0].([]interface{})
+			require.Equal(t, []interface{}{"type", type_label}, labels2)
+			require.Equal(t, "max", metadata2[1].([]interface{})[1])
+
+			samples2 := group2[2].([]interface{})
+			require.Equal(t, 3, len(samples2))
+			for i, s := range samples2 {
+				require.Equal(t, expectSamples[len(expectSamples)-1-i], s.([]interface{}))
+			}
 		})
 
 		t.Run("With Aggregation", func(t *testing.T) {
@@ -859,6 +877,25 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			for i, s := range samples {
 				require.Equal(t, expectSamples[i], s.([]interface{}))
 			}
+
+			// Test MREVRANGE
+			res2 := rdb.Do(ctx, "ts.mrevrange", "-", "+", "WITHLABELS", "AGGREGATION", "avg", "1000", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res2))
+
+			name2 := res2[0].([]interface{})[0].(string)
+			require.Equal(t, name, name2)
+			labels2 := res2[0].([]interface{})[1].([]interface{})
+			require.Equal(t, 3, len(labels))
+			require.Equal(t, labels[0].([]interface{}), labels2[0].([]interface{}))
+			require.Equal(t, labels[1].([]interface{}), labels2[1].([]interface{}))
+			require.Equal(t, labels[2].([]interface{}), labels2[2].([]interface{}))
+
+			samples2 := res2[0].([]interface{})[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			for i, s := range samples2 {
+				require.Equal(t, expectSamples[len(expectSamples)-1-i], s.([]interface{}))
+			}
+
 		})
 
 		t.Run("Filter By Value", func(t *testing.T) {

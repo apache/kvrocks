@@ -983,7 +983,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
-    auto s = timeseries_db.MRange(ctx, option_, &results);
+    auto s = executeCommand(ctx, timeseries_db, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     std::vector<std::string> reply;
@@ -1058,8 +1058,22 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
 
- private:
   TSMRangeOption option_;
+
+ private:
+  virtual rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) {
+    return ts.MRange(ctx, option_, results);
+  }
+};
+
+class CommandTSMRevRange : public CommandTSMRange {
+ public:
+  CommandTSMRevRange() = default;
+
+ private:
+  rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) override {
+    return ts.MRevRange(ctx, option_, results);
+  }
 };
 
 class CommandTSIncrByDecrBy : public CommandTSCreateBase {
@@ -1183,6 +1197,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandTSMRevRange>("ts.mrevrange", -5, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );

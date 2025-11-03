@@ -235,7 +235,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
   }
 
   for (auto r : result) {
-    if (r < -2) {
+    if (r <= -2) {
       return Status{Status::InvalidArgument, "invalid result when computing revrank"};
     }
   }

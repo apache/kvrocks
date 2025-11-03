@@ -181,7 +181,7 @@ class CommandTDigestRevRank : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
 
-    std::unordered_set<std::string> unique_inputs_set(args.begin() + 2, args.end());
+    std::set<std::string> unique_inputs_set(args.begin() + 2, args.end());
     origin_inputs_.assign(args.begin() + 2, args.end());
 
     unique_inputs_.reserve(unique_inputs_set.size());

@@ -29,7 +29,7 @@
 namespace redis {
 
 rocksdb::Status Json::write(engine::Context &ctx, Slice ns_key, JsonMetadata *metadata, const JsonValue &json_val) {
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisJson);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -94,7 +94,7 @@ rocksdb::Status Json::create(engine::Context &ctx, const std::string &ns_key, Js
 }
 
 rocksdb::Status Json::del(engine::Context &ctx, const Slice &ns_key) {
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisJson);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -554,7 +554,7 @@ rocksdb::Status Json::MSet(engine::Context &ctx, const std::vector<std::string> 
     ns_keys.emplace_back(std::move(ns_key));
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisJson);
 
   // A single JSON key may be modified multiple times in the MSET command,

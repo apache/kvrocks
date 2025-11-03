@@ -142,7 +142,7 @@ Status IndexManager::Create(engine::Context &ctx, std::unique_ptr<kqir::IndexInf
   SearchKey index_key(info->ns, info->name);
   auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
 
-  auto batch = storage->GetWriteBatchBase();
+  auto batch = storage->GetWriteBatchBase(ctx);
 
   std::string meta_val;
   info->metadata.Encode(&meta_val);
@@ -244,7 +244,7 @@ Status IndexManager::Drop(engine::Context &ctx, std::string_view index_name, con
   SearchKey index_key(info->ns, info->name);
   auto cf = storage->GetCFHandle(ColumnFamilyID::Search);
 
-  auto batch = storage->GetWriteBatchBase();
+  auto batch = storage->GetWriteBatchBase(ctx);
 
   auto s = batch->Delete(cf, index_key.ConstructIndexMeta());
   if (!s.ok()) {

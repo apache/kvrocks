@@ -730,13 +730,7 @@ rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOpt
   }
 
   if (ctx.txn_context_enabled) {
-    // Extract writes from the updates and append to the ctx.batch
-    if (ctx.batch == nullptr) {
-      ctx.batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
-    }
-    WriteBatchIndexer handle(ctx);
-    auto s = updates->Iterate(&handle);
-    if (!s.ok()) return s;
+    CHECK(ctx.batch->GetWriteBatch() == updates);
   } else {
     CHECK(ctx.batch == nullptr);
   }
@@ -746,7 +740,7 @@ rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOpt
 
 rocksdb::Status Storage::Delete(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                 rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::Slice &key) {
-  auto batch = GetWriteBatchBase();
+  auto batch = GetWriteBatchBase(ctx);
   auto s = batch->Delete(cf_handle, key);
   if (!s.ok()) {
     return s;
@@ -756,7 +750,7 @@ rocksdb::Status Storage::Delete(engine::Context &ctx, const rocksdb::WriteOption
 
 rocksdb::Status Storage::DeleteRange(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                      rocksdb::ColumnFamilyHandle *cf_handle, Slice begin, Slice end) {
-  auto batch = GetWriteBatchBase();
+  auto batch = GetWriteBatchBase(ctx);
   auto s = batch->DeleteRange(cf_handle, begin, end);
   if (!s.ok()) {
     return s;
@@ -773,7 +767,7 @@ rocksdb::Status Storage::FlushScripts(engine::Context &ctx, const rocksdb::Write
                                       rocksdb::ColumnFamilyHandle *cf_handle) {
   std::string begin_key = kLuaFuncSHAPrefix, end_key = util::StringNext(kLuaFuncSHAPrefix);
 
-  auto batch = GetWriteBatchBase();
+  auto batch = GetWriteBatchBase(ctx);
   auto s = batch->DeleteRange(cf_handle, begin_key, end_key);
   if (!s.ok()) {
     return s;
@@ -1008,9 +1002,15 @@ Status Storage::CommitTxn() {
   return {Status::NotOK, s.ToString()};
 }
 
-ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {
+ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase(Context &ctx) {
   if (is_txn_mode_) {
     return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(txn_write_batch_.get(), ObserverOrUnique::Observer);
+  }
+  if (ctx.txn_context_enabled) {
+    if (!ctx.batch) {
+      ctx.batch = std::make_unique<rocksdb::WriteBatchWithIndex>();
+    }
+    return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(ctx.batch.get(), ObserverOrUnique::Observer);
   }
   return ObserverOrUniquePtr<rocksdb::WriteBatchBase>(
       new rocksdb::WriteBatch(0 /*reserved_bytes*/, GetWriteBatchMaxBytes()), ObserverOrUnique::Unique);
@@ -1020,7 +1020,7 @@ Status Storage::WriteToPropagateCF(engine::Context &ctx, const std::string &key,
   if (config_->IsSlave()) {
     return {Status::NotOK, "cannot write to propagate column family in slave mode"};
   }
-  auto batch = GetWriteBatchBase();
+  auto batch = GetWriteBatchBase(ctx);
   auto cf = GetCFHandle(ColumnFamilyID::Propagate);
   auto s = batch->Put(cf, key, value);
   s = Write(ctx, default_write_opts_, batch->GetWriteBatch());

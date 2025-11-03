@@ -118,7 +118,7 @@ rocksdb::Status HyperLogLog::Add(engine::Context &ctx, const Slice &user_key,
     return s;
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHyperLogLog);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -252,7 +252,7 @@ rocksdb::Status HyperLogLog::Merge(engine::Context &ctx, const Slice &dest_user_
     s = mergeUserKeys(ctx, all_user_keys, &registers);
   }
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisHyperLogLog);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

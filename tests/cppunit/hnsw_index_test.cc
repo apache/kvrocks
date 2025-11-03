@@ -42,7 +42,7 @@ auto GetVectorKeys(const std::vector<redis::KeyWithDistance>& keys_by_dist) -> s
 
 void InsertEntryIntoHnswIndex(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
                               uint16_t target_level, redis::HnswIndex* hnsw_index, engine::Storage* storage) {
-  auto batch = storage->GetWriteBatchBase();
+  auto batch = storage->GetWriteBatchBase(ctx);
   auto s = hnsw_index->InsertVectorEntryInternal(ctx, key, vector, batch, target_level);
   ASSERT_TRUE(s.IsOK());
   auto status = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -185,7 +185,7 @@ TEST_F(HnswIndexTest, DecodeNodesToVectorItems) {
   redis::HnswNodeFieldMetadata metadata2(0, {4, 5, 6});
   redis::HnswNodeFieldMetadata metadata3(0, {7, 8, 9});
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   auto s = node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(s.IsOK());
   s = node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch.Get());
@@ -293,7 +293,7 @@ TEST_F(HnswIndexTest, SearchLayer) {
   redis::HnswNodeFieldMetadata metadata5(0, {6.0, 6.0, 7.0});
 
   // Add Nodes
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   auto put_meta_data_status = node1.PutMetadata(&metadata1, hnsw_index->search_key, hnsw_index->storage, batch.Get());
   ASSERT_TRUE(put_meta_data_status.IsOK());
   put_meta_data_status = node2.PutMetadata(&metadata2, hnsw_index->search_key, hnsw_index->storage, batch.Get());
@@ -309,7 +309,7 @@ TEST_F(HnswIndexTest, SearchLayer) {
   ASSERT_TRUE(s.ok());
 
   // Add Neighbours
-  batch = storage_->GetWriteBatchBase();
+  batch = storage_->GetWriteBatchBase(ctx);
   auto s1 = node1.AddNeighbour(ctx, "node2", hnsw_index->search_key, batch.Get());
   ASSERT_TRUE(s1.IsOK());
   auto s2 = node1.AddNeighbour(ctx, "node4", hnsw_index->search_key, batch.Get());
@@ -472,7 +472,7 @@ TEST_F(HnswIndexTest, InsertAndDeleteVectorEntry) {
   VerifyNodeMetadataAndNeighbours(ctx, &node5_layer0, hnsw_index.get(), {"n1", "n2", "n3", "n4"});
 
   // Delete n2
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   auto s2 = hnsw_index->DeleteVectorEntry(ctx, key2, batch);
   ASSERT_TRUE(s2.IsOK());
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());

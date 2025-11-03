@@ -76,7 +76,7 @@ rocksdb::Status BloomChain::createBloomChain(engine::Context &ctx, const Slice &
 
   auto [block_split_bloom_filter, _] = CreateBlockSplitBloomFilter(metadata->bloom_bytes);
 
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisBloomFilter, {"createBloomChain"});
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -176,7 +176,7 @@ rocksdb::Status BloomChain::InsertCommon(engine::Context &ctx, const Slice &user
   getItemHashList(items, &item_hash_list);
 
   uint64_t origin_size = metadata.size;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisBloomFilter, {"insert"});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

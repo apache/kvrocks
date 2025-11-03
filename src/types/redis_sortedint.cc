@@ -43,7 +43,7 @@ rocksdb::Status Sortedint::Add(engine::Context &ctx, const Slice &user_key, cons
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string value;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisSortedint);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
@@ -79,7 +79,7 @@ rocksdb::Status Sortedint::Remove(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisSortedint);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;

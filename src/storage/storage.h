@@ -311,7 +311,7 @@ class Storage {
 
   Status BeginTxn();
   Status CommitTxn();
-  ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
+  ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase(Context &ctx);
 
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;

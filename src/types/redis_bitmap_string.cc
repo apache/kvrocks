@@ -56,7 +56,7 @@ rocksdb::Status BitmapString::SetBit(engine::Context &ctx, const Slice &ns_key, 
 
   *raw_value = raw_value->substr(0, header_offset);
   raw_value->append(string_value);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisString);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
@@ -260,7 +260,7 @@ rocksdb::Status BitmapString::Bitfield(engine::Context &ctx, const Slice &ns_key
 
   raw_value->resize(header_offset);
   raw_value->append(string_value);
-  auto batch = storage_->GetWriteBatchBase();
+  auto batch = storage_->GetWriteBatchBase(ctx);
   WriteBatchLogData log_data(kRedisString);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {

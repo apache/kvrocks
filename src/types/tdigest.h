@@ -209,7 +209,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
         cumulative_weight += next_centroid.weight;
       }
 
-      // handle the prev inputs which has the same value
+      // handle the prev inputs which have the same value
       result[it->second] = static_cast<int>(current_mean_cumulative_weight);
       ++it;
       if (iter->IsBegin()) {

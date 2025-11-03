@@ -192,7 +192,8 @@ class CommandTDigestRevRank : public Commander {
         return {Status::RedisParseErr, errValueIsNotFloat};
       }
       unique_inputs_.push_back(*value);
-      unique_inputs_order_[input] = i++;
+      unique_inputs_order_[input] = i;
+      ++i;
     }
     return Status::OK();
   }

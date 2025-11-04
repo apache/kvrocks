@@ -1207,13 +1207,13 @@ class CommandTSQueryIndex : public Commander {
       return {Status::RedisExecErr, "TS.QueryIndex is not supported in cluster mode"};
     }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
-    std::vector<TSQueryIndexResult> results;
+    std::vector<std::string> results;
     auto s = timeseries_db.QueryIndex(ctx, getQueryIndexOption(), &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     std::vector<std::string> reply;
     reply.reserve(results.size());
     for (auto &result : results) {
-      reply.push_back(redis::BulkString(result.name));
+      reply.push_back(redis::BulkString(result));
     }
     *output = redis::Array(reply);
     return Status::OK();

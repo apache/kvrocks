@@ -243,10 +243,6 @@ struct TSMRangeResult : TSMGetResult {
   std::vector<std::string> source_keys;
 };
 
-struct TSQueryIndexResult {
-  std::string name;  // name of the source key or the group
-};
-
 enum class TSCreateRuleResult : uint8_t {
   kOK = 0,
   kSrcNotExist = 1,
@@ -293,7 +289,7 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
                                     bool &expired);
   rocksdb::Status QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
-                             std::vector<TSQueryIndexResult> *res);
+                             std::vector<std::string> *res);
 
   static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 

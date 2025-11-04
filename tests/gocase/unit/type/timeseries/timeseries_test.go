@@ -1015,7 +1015,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, err)
 		assert.Equal(t, []interface{}{"telemetry:kitchen:humidity", "telemetry:kitchen:temperature"}, res)
 
-		res, err = rdb.Do(ctx, "ts.queryindex", "type=tempereature").Result()
+		res, err = rdb.Do(ctx, "ts.queryindex", "type=temperature").Result()
 		require.NoError(t, err)
 		assert.Equal(t, []interface{}{"telemetry:kitchen:temperature", "telemetry:study:temperature"}, res)
 	})

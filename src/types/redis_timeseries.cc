@@ -2296,18 +2296,16 @@ rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata
 }
 
 rocksdb::Status TimeSeries::QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
-                                       std::vector<TSQueryIndexResult> *res) {
+                                       std::vector<std::string> *res) {
   std::vector<std::string> user_keys;
-  std::vector<LabelKVList> labels_vec;
-  std::vector<TimeSeriesMetadata> metas;
 
-  auto s = getTSKeyByFilter(ctx, filter_option, &user_keys, &labels_vec, &metas);
+  auto s = getTSKeyByFilter(ctx, filter_option, &user_keys);
   if (!s.ok()) return s;
 
   res->resize(user_keys.size());
   for (size_t i = 0; i < user_keys.size(); i++) {
     auto &res_i = (*res)[i];
-    res_i.name = std::move(user_keys[i]);
+    res_i = std::move(user_keys[i]);
   }
   return s;
 }

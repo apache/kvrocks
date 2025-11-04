@@ -187,7 +187,7 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
     ++it;
   }
 
-  auto iter = td.End();
+  auto iter = td.Begin(true);
   double cumulative_weight = 0;
   while (iter->Valid() && it != value_to_indices.rend()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
@@ -197,31 +197,24 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
       cumulative_weight += centroid.weight;
 
-      // handle all the previous centroids which has the same mean
-      while (!iter->IsBegin() && iter->Prev()) {
+      // handle all next centroids which has the same mean
+      while (iter->Next()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
         if (!DoubleEqual(current_mean, next_centroid.mean)) {
           // move back to the last equal centroid, because we will process it in the next loop
-          iter->Next();
+          iter->Prev();
           break;
         }
         current_mean_cumulative_weight += next_centroid.weight / 2;
         cumulative_weight += next_centroid.weight;
       }
 
-      // handle the prev inputs which have the same value
       result[it->second] = static_cast<int>(current_mean_cumulative_weight);
       ++it;
-      if (iter->IsBegin()) {
-        break;
-      }
-      iter->Prev();
+      iter->Next();
     } else if (DoubleCompare(centroid.mean, input_value) > 0) {
       cumulative_weight += centroid.weight;
-      if (iter->IsBegin()) {
-        break;
-      }
-      iter->Prev();
+      iter->Next();
     } else {
       result[it->second] = static_cast<int>(cumulative_weight);
       ++it;

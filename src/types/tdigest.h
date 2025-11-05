@@ -24,6 +24,7 @@
 
 #include <map>
 #include <numeric>
+#include <variant>
 #include <vector>
 
 #include "common/status.h"
@@ -179,19 +180,45 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
 
   result.clear();
   result.resize(inputs.size(), -2);
-  auto it = value_to_indices.rbegin();
+
+  using ForwardIter = typename decltype(value_to_indices)::iterator;
+  using ReverseIter = typename decltype(value_to_indices)::reverse_iterator;
+  std::variant<ForwardIter, ReverseIter> it;
+  if (reverse) {
+    it = value_to_indices.rbegin();
+  } else {
+    it = value_to_indices.begin();
+  }
+
+  auto is_end = [&it, &value_to_indices, &reverse]() -> bool {
+    return reverse ? std::get<ReverseIter>(it) == value_to_indices.rend()
+                   : std::get<ForwardIter>(it) == value_to_indices.end();
+  };
+  auto advance = [&it, &reverse]() {
+    if (reverse) {
+      ++std::get<ReverseIter>(it);
+    } else {
+      ++std::get<ForwardIter>(it);
+    }
+  };
+  auto get_value = [&it, &reverse]() -> double {
+    return reverse ? std::get<ReverseIter>(it)->first : std::get<ForwardIter>(it)->first;
+  };
+  auto get_index = [&it, &reverse]() -> size_t {
+    return reverse ? std::get<ReverseIter>(it)->second : std::get<ForwardIter>(it)->second;
+  };
 
   // handle inputs larger than maximum
-  while (it != value_to_indices.rend() && it->first > td.Max()) {
-    result[it->second] = -1;
-    ++it;
+  while (!is_end() && ((reverse && get_value() > td.Max())|| (!reverse && get_value() < td.Min()))) {
+    result[get_index()] = -1;
+    advance();
   }
 
   auto iter = td.Begin(reverse);
   double cumulative_weight = 0;
-  while (iter->Valid() && it != value_to_indices.rend()) {
+  while (iter->Valid() && !is_end()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
-    auto input_value = it->first;
+    auto input_value = get_value();
     if (DoubleEqual(centroid.mean, input_value)) {
       auto current_mean = centroid.mean;
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
@@ -209,22 +236,25 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
         cumulative_weight += next_centroid.weight;
       }
 
-      result[it->second] = static_cast<int>(current_mean_cumulative_weight);
-      ++it;
+      result[get_index()] = static_cast<int>(current_mean_cumulative_weight);
+      advance();
       iter->Next();
-    } else if (DoubleCompare(centroid.mean, input_value) > 0) {
+    } else if (reverse && DoubleCompare(centroid.mean, input_value) > 0) {
+      cumulative_weight += centroid.weight;
+      iter->Next();
+    } else if (!reverse && DoubleCompare(centroid.mean, input_value) < 0) {
       cumulative_weight += centroid.weight;
       iter->Next();
     } else {
-      result[it->second] = static_cast<int>(cumulative_weight);
-      ++it;
+      result[get_index()] = static_cast<int>(cumulative_weight);
+      advance();
     }
   }
 
   // handle inputs less than minimum
-  while (it != value_to_indices.rend()) {
-    result[it->second] = static_cast<int>(td.TotalWeight());
-    ++it;
+  while (!is_end()) {
+    result[get_index()] = static_cast<int>(td.TotalWeight());
+    advance();
   }
 
   for (auto r : result) {

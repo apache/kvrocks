@@ -184,12 +184,6 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
   using ForwardIter = typename decltype(value_to_indices)::iterator;
   using ReverseIter = typename decltype(value_to_indices)::reverse_iterator;
   std::variant<ForwardIter, ReverseIter> it;
-  if (reverse) {
-    it = value_to_indices.rbegin();
-  } else {
-    it = value_to_indices.begin();
-  }
-
   auto is_end = [&it, &value_to_indices, &reverse]() -> bool {
     return reverse ? std::get<ReverseIter>(it) == value_to_indices.rend()
                    : std::get<ForwardIter>(it) == value_to_indices.end();
@@ -208,8 +202,14 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     return reverse ? std::get<ReverseIter>(it)->second : std::get<ForwardIter>(it)->second;
   };
 
+  if (reverse) {
+    it = value_to_indices.rbegin();
+  } else {
+    it = value_to_indices.begin();
+  }
+
   // handle inputs larger than maximum
-  while (!is_end() && ((reverse && get_value() > td.Max())|| (!reverse && get_value() < td.Min()))) {
+  while (!is_end() && ((reverse && get_value() > td.Max()) || (!reverse && get_value() < td.Min()))) {
     result[get_index()] = -1;
     advance();
   }

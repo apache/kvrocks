@@ -119,8 +119,6 @@ class DummyCentroids {
       return iter_ != centroids_.crend();
     }
 
-    // The Prev function can only be called for item is not crend,
-    // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() override {
       if (Valid() && iter_ != centroids_.crbegin()) {
         std::advance(iter_, -1);

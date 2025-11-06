@@ -173,20 +173,20 @@ struct DoubleComparator {
 
 template <typename TD>
 inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool reverse, std::vector<int>& result) {
-  std::map<double, size_t, DoubleComparator> value_to_indices;
+  std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    value_to_indices[inputs[i]] = i;
+    value_to_index[inputs[i]] = i;
   }
 
   result.clear();
   result.resize(inputs.size(), -2);
 
-  using ForwardIter = typename decltype(value_to_indices)::iterator;
-  using ReverseIter = typename decltype(value_to_indices)::reverse_iterator;
+  using ForwardIter = typename decltype(value_to_index)::iterator;
+  using ReverseIter = typename decltype(value_to_index)::reverse_iterator;
   std::variant<ForwardIter, ReverseIter> it;
-  auto is_end = [&it, &value_to_indices, &reverse]() -> bool {
-    return reverse ? std::get<ReverseIter>(it) == value_to_indices.rend()
-                   : std::get<ForwardIter>(it) == value_to_indices.end();
+  auto is_end = [&it, &value_to_index, &reverse]() -> bool {
+    return reverse ? std::get<ReverseIter>(it) == value_to_index.rend()
+                   : std::get<ForwardIter>(it) == value_to_index.end();
   };
   auto advance = [&it, &reverse]() {
     if (reverse) {
@@ -202,10 +202,10 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     return reverse ? std::get<ReverseIter>(it)->second : std::get<ForwardIter>(it)->second;
   };
 
-  it = reverse ? std::variant<ForwardIter, ReverseIter>(value_to_indices.rbegin())
-               : std::variant<ForwardIter, ReverseIter>(value_to_indices.begin());
+  it = reverse ? std::variant<ForwardIter, ReverseIter>(value_to_index.rbegin())
+               : std::variant<ForwardIter, ReverseIter>(value_to_index.begin());
 
-  // handle inputs larger than maximum
+  // handle inputs larger than maximum in reverse order or smaller than minimum in forward order
   while (!is_end() && (reverse ? get_value() > td.Max() : get_value() < td.Min())) {
     result[get_index()] = -1;
     advance();

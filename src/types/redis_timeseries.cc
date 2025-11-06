@@ -2295,4 +2295,9 @@ rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
+                                       std::vector<std::string> *res) {
+  return getTSKeyByFilter(ctx, filter_option, res);
+}
+
 }  // namespace redis

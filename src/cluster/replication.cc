@@ -214,7 +214,9 @@ void FeedSlaveThread::loop() {
     //    kMaxDelayUpdates than latest sequence.
     if (is_first_repl_batch || batches_bulk.size() >= max_delay_bytes_ || updates_in_batches >= max_delay_updates_ ||
         srv_->storage->LatestSeqNumber() - batch.sequence <= max_delay_updates_) {
-      if (shouldSendGetAck(batch.sequence)) {
+      // get the last sequence number of the batch, because WAIT uses
+      // the last sequence number to wake up the connection.
+      if (shouldSendGetAck(batch.sequence + batch.writeBatchPtr->Count() - 1)) {
         batches_bulk += redis::BulkString("_getack");
       }
 

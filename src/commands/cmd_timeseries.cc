@@ -1187,6 +1187,45 @@ class CommandTSDel : public Commander {
   uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
 };
 
+class CommandTSQueryIndex : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.queryindex' command"};
+    }
+    CommandParser parser(args, 1);
+    // Parse filterExpr
+    auto filter_parser = TSMQueryFilterParser(filter_option_);
+    while (parser.Good()) {
+      auto s = filter_parser.Parse(parser.TakeStr().GetValue());
+      if (!s.IsOK()) return s;
+    }
+    return filter_parser.Check();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.QueryIndex is not supported in cluster mode"};
+    }
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<std::string> results;
+    auto s = timeseries_db.QueryIndex(ctx, getQueryIndexOption(), &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<std::string> reply;
+    reply.reserve(results.size());
+    for (auto &result : results) {
+      reply.push_back(redis::BulkString(result));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ protected:
+  const TSMGetOption::FilterOption &getQueryIndexOption() const { return filter_option_; }
+
+ private:
+  TSMGetOption::FilterOption filter_option_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
@@ -1200,6 +1239,7 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSMRevRange>("ts.mrevrange", -5, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSQueryIndex>("ts.queryindex", -2, "read-only", NO_KEY), );
 
 }  // namespace redis

@@ -288,6 +288,8 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
   rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
                                     bool &expired);
+  rocksdb::Status QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
+                             std::vector<std::string> *res);
 
   static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 

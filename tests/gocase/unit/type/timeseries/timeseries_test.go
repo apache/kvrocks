@@ -1003,4 +1003,20 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		_, err = rdb.Do(ctx, "ts.del", srcKey, "-", "+").Result()
 		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
 	})
+
+	t.Run("TS.QUERYINDEX", func(t *testing.T) {
+		// Create test based on example in Redis documentation
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:study:temperature", "LABELS", "room", "study", "type", "temperature").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:study:humidity", "LABELS", "room", "study", "type", "humidity").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:kitchen:temperature", "LABELS", "room", "kitchen", "type", "temperature").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:kitchen:humidity", "LABELS", "room", "kitchen", "type", "humidity").Err())
+
+		res, err := rdb.Do(ctx, "ts.queryindex", "room=kitchen").Result()
+		require.NoError(t, err)
+		assert.Equal(t, []interface{}{"telemetry:kitchen:humidity", "telemetry:kitchen:temperature"}, res)
+
+		res, err = rdb.Do(ctx, "ts.queryindex", "type=temperature").Result()
+		require.NoError(t, err)
+		assert.Equal(t, []interface{}{"telemetry:kitchen:temperature", "telemetry:study:temperature"}, res)
+	})
 }

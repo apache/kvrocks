@@ -202,14 +202,11 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     return reverse ? std::get<ReverseIter>(it)->second : std::get<ForwardIter>(it)->second;
   };
 
-  if (reverse) {
-    it = value_to_indices.rbegin();
-  } else {
-    it = value_to_indices.begin();
-  }
+  it = reverse ? std::variant<ForwardIter, ReverseIter>(value_to_indices.rbegin())
+               : std::variant<ForwardIter, ReverseIter>(value_to_indices.begin());
 
   // handle inputs larger than maximum
-  while (!is_end() && ((reverse && get_value() > td.Max()) || (!reverse && get_value() < td.Min()))) {
+  while (!is_end() && (reverse ? get_value() > td.Max() : get_value() < td.Min())) {
     result[get_index()] = -1;
     advance();
   }
@@ -251,7 +248,6 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     }
   }
 
-  // handle inputs less than minimum
   while (!is_end()) {
     result[get_index()] = static_cast<int>(td.TotalWeight());
     advance();

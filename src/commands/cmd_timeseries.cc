@@ -1173,18 +1173,18 @@ class CommandTSDel : public Commander {
   uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
 };
 
-REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
-                        MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSRevRange>("ts.revrange", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
-                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
+// REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
+//                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSRevRange>("ts.revrange", -4, "read-only", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSInfo>("ts.info", -2, "read-only", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSGet>("ts.get", -2, "read-only", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
+//                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
+//                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
+//                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
+//                         MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
 
 }  // namespace redis

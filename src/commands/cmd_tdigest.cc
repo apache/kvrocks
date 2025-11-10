@@ -176,9 +176,9 @@ class CommandTDigestAdd : public Commander {
   std::vector<double> values_;
 };
 
+template <bool reverse>
 class TDigestRankCommand : public Commander {
  public:
-  explicit TDigestRankCommand(bool reverse) : reverse_(reverse) {}
   Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
 
@@ -202,7 +202,7 @@ class TDigestRankCommand : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<int> result;
     result.reserve(origin_inputs_.size());
-    if (const auto s = tdigest.Rank(ctx, key_name_, unique_inputs_, reverse_, result); !s.ok()) {
+    if (const auto s = tdigest.Rank(ctx, key_name_, unique_inputs_, reverse, result); !s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }
@@ -226,15 +226,9 @@ class TDigestRankCommand : public Commander {
   bool reverse_;
 };
 
-class CommandTDigestRevRank : public TDigestRankCommand {
- public:
-  CommandTDigestRevRank() : TDigestRankCommand(true) {}
-};
+class CommandTDigestRevRank : public TDigestRankCommand<true> {};
 
-class CommandTDigestRank : public TDigestRankCommand {
- public:
-  CommandTDigestRank() : TDigestRankCommand(false) {}
-};
+class CommandTDigestRank : public TDigestRankCommand<false> {};
 
 class CommandTDigestMinMax : public Commander {
  public:

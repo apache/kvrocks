@@ -20,6 +20,12 @@
 if(lz4_SOURCE_DIR)
   message(STATUS "Found lz4 in ${lz4_SOURCE_DIR}")
 
-  add_library(lz4::lz4 ALIAS lz4) # rocksdb use it
-  install(TARGETS lz4 EXPORT RocksDBTargets) # export for install(...)
+  # lz4_static is created by lz4's CMakeLists.txt
+  if(TARGET lz4_static AND NOT TARGET lz4::lz4)
+    add_library(lz4::lz4 ALIAS lz4_static) # rocksdb use it
+    install(TARGETS lz4_static EXPORT RocksDBTargets) # export for install(...)
+  elseif(TARGET lz4 AND NOT TARGET lz4::lz4)
+    add_library(lz4::lz4 ALIAS lz4) # rocksdb use it
+    install(TARGETS lz4 EXPORT RocksDBTargets) # export for install(...)
+  endif()
 endif()

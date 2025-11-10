@@ -35,16 +35,23 @@ if(NOT lua_POPULATED)
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
 
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${lua_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/lua-build
+  )
+  execute_process(
+    COMMAND chmod -R u+w ${CMAKE_BINARY_DIR}/_deps/lua-build
+  )
   add_custom_target(make_lua COMMAND ${MAKE_COMMAND} "CC=${LUA_CXX}" "CFLAGS=${LUA_CFLAGS}" ${NINJA_MAKE_JOBS_FLAG} liblua.a
-    WORKING_DIRECTORY ${lua_SOURCE_DIR}/src
-    BYPRODUCTS ${lua_SOURCE_DIR}/src/liblua.a
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/_deps/lua-build/src
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/_deps/lua-build/src/liblua.a
   )
 
   file(GLOB LUA_PUBLIC_HEADERS "${lua_SOURCE_DIR}/src/*.h" "${lua_SOURCE_DIR}/src/*.hpp")
-  file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${lua_BINARY_DIR}/include)
+  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/_deps/lua-include)
+  file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${CMAKE_BINARY_DIR}/_deps/lua-include)
 endif()
 
 add_library(lua INTERFACE)
-target_include_directories(lua INTERFACE ${lua_BINARY_DIR}/include)
-target_link_libraries(lua INTERFACE ${lua_SOURCE_DIR}/src/liblua.a)
+target_include_directories(lua INTERFACE ${CMAKE_BINARY_DIR}/_deps/lua-include)
+target_link_libraries(lua INTERFACE ${CMAKE_BINARY_DIR}/_deps/lua-build/src/liblua.a)
 add_dependencies(lua make_lua)

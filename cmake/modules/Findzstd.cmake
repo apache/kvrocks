@@ -20,6 +20,12 @@
 if(zstd_SOURCE_DIR)
   message(STATUS "Found zstd in ${zstd_SOURCE_DIR}")
 
-  add_library(zstd::zstd ALIAS zstd) # rocksdb use it
-  install(TARGETS zstd EXPORT RocksDBTargets) # export for install(...)
+  # libzstd_static is created by zstd's CMakeLists.txt
+  if(TARGET libzstd_static AND NOT TARGET zstd::zstd)
+    add_library(zstd::zstd ALIAS libzstd_static) # rocksdb use it
+    install(TARGETS libzstd_static EXPORT RocksDBTargets) # export for install(...)
+  elseif(TARGET zstd AND NOT TARGET zstd::zstd)
+    add_library(zstd::zstd ALIAS zstd) # rocksdb use it
+    install(TARGETS zstd EXPORT RocksDBTargets) # export for install(...)
+  endif()
 endif()

@@ -57,17 +57,24 @@ if (NOT lua_POPULATED)
     set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif ()
 
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${luajit_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/luajit-build
+  )
+  execute_process(
+    COMMAND chmod -R u+w ${CMAKE_BINARY_DIR}/_deps/luajit-build
+  )
   add_custom_target(make_luajit COMMAND ${MAKE_COMMAND} libluajit.a ${NINJA_MAKE_JOBS_FLAG}
-    "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
-    WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
-    BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
+    "CC=${CMAKE_C_COMPILER}" "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/_deps/luajit-build/src
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/_deps/luajit-build/src/libluajit.a
   )
 
   file(GLOB LUA_PUBLIC_HEADERS "${luajit_SOURCE_DIR}/src/*.hpp" "${luajit_SOURCE_DIR}/src/*.h")
-  file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${luajit_BINARY_DIR}/include)
+  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/_deps/luajit-include)
+  file(COPY ${LUA_PUBLIC_HEADERS} DESTINATION ${CMAKE_BINARY_DIR}/_deps/luajit-include)
 endif()
 
 add_library(luajit INTERFACE)
-target_include_directories(luajit INTERFACE ${luajit_BINARY_DIR}/include)
-target_link_libraries(luajit INTERFACE ${luajit_SOURCE_DIR}/src/libluajit.a dl)
+target_include_directories(luajit INTERFACE ${CMAKE_BINARY_DIR}/_deps/luajit-include)
+target_link_libraries(luajit INTERFACE ${CMAKE_BINARY_DIR}/_deps/luajit-build/src/libluajit.a dl)
 add_dependencies(luajit make_luajit)

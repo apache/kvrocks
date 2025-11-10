@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@3-/mdt": "^0.1.5"
+  }
+}

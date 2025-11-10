@@ -28,18 +28,16 @@ FetchContent_GetProperties(zstd)
 if(NOT zstd_POPULATED)
   FetchContent_Populate(zstd)
 
-  if((CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") OR
-   (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
-    set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
-  endif()
-
-  add_custom_target(make_zstd COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG} CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
-    WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
-    BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
-  )
+  set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+  set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
+  
+  add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
-add_library(zstd INTERFACE)
-target_include_directories(zstd INTERFACE $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib>)
-target_link_libraries(zstd INTERFACE $<BUILD_INTERFACE:${zstd_SOURCE_DIR}/lib/libzstd.a>)
-add_dependencies(zstd make_zstd)
+# libzstd_static is the target created by zstd's CMakeLists.txt
+# Create an alias for compatibility
+add_library(zstd ALIAS libzstd_static)

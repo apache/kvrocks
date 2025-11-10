@@ -40,15 +40,28 @@ FetchContent_GetProperties(jemalloc)
 if(NOT jemalloc_POPULATED)
   FetchContent_Populate(jemalloc)
 
+  # Create a writable directory for building
+  file(MAKE_DIRECTORY ${jemalloc_BINARY_DIR})
+  # Copy the source to the writable build directory since autoconf needs to write to it,
+  # and the original source in /nix/store is read-only.
+  file(COPY ${jemalloc_SOURCE_DIR}/ DESTINATION ${jemalloc_BINARY_DIR})
+
+  # Explicitly make the copied directory writable.
+  execute_process(COMMAND chmod -R +w ${jemalloc_BINARY_DIR})
+
+  # Run autoconf in the writable directory
   execute_process(COMMAND autoconf
-    WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
+    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C ${JEMALLOC_CROSS_FLAGS} --enable-autogen
+
+  # Run configure in the writable directory
+  execute_process(COMMAND ./configure CC=${CMAKE_C_COMPILER} -C ${JEMALLOC_CROSS_FLAGS} --enable-autogen
                     --disable-shared --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} ${ENABLE_JEMALLOC_PROFILING}
                     --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  add_custom_target(make_jemalloc 
+
+  add_custom_target(make_jemalloc
     COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG}
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
     BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a

@@ -32,10 +32,8 @@ if(NOT zstd_POPULATED)
     set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
 
-  add_custom_target(make_zstd COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG} CC=${CMAKE_C_COMPILER} ${APPLE_FLAG} libzstd.a
-    WORKING_DIRECTORY ${zstd_SOURCE_DIR}/lib
-    BYPRODUCTS ${zstd_SOURCE_DIR}/lib/libzstd.a
-  )
+  # Using pre-built zstd from Nix
+  add_custom_target(make_zstd)
 endif()
 
 add_library(zstd INTERFACE)

@@ -32,10 +32,8 @@ if(NOT lz4_POPULATED)
     set(APPLE_FLAG "CFLAGS=-isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
   
-  add_custom_target(make_lz4 COMMAND ${MAKE_COMMAND} CC=${CMAKE_C_COMPILER} ${NINJA_MAKE_JOBS_FLAG} ${APPLE_FLAG} liblz4.a
-    WORKING_DIRECTORY ${lz4_SOURCE_DIR}/lib
-    BYPRODUCTS ${lz4_SOURCE_DIR}/lib/liblz4.a
-  )
+  # Using pre-built lz4 from Nix
+  add_custom_target(make_lz4)
 endif()
 
 add_library(lz4 INTERFACE)

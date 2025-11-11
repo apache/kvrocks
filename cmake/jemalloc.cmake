@@ -48,11 +48,8 @@ if(NOT jemalloc_POPULATED)
                     --with-jemalloc-prefix=""
     WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
   )
-  add_custom_target(make_jemalloc 
-    COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG}
-    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
-    BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
-  )
+  # Using pre-built jemalloc from Nix
+  add_custom_target(make_jemalloc)
 endif()
 
 find_package(Threads REQUIRED)

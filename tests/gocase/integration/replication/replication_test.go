@@ -668,3 +668,46 @@ func TestReplicationGroupSyncConfig(t *testing.T) {
 		require.Equal(t, "value2", slaveClient2.Get(ctx, "key2").Val())
 	})
 }
+
+func TestReplicationWatermark(t *testing.T) {
+	t.Parallel()
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	slave := util.StartServer(t, map[string]string{})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	ctx := context.Background()
+	util.SlaveOf(t, slaveClient, master)
+	util.WaitForSync(t, slaveClient)
+
+	// Send a large SET command to trigger a high watermark in the slave
+	largeValue := strings.Repeat("a", 16*1024) // 16KB value
+	require.NoError(t, masterClient.Set(ctx, "large_key", largeValue, 0).Err())
+
+	// Wait a bit for the large command to be processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Immediately send a small SET command
+	// Without the fix, this would be delayed due to the high watermark
+	start := time.Now()
+	require.NoError(t, masterClient.Set(ctx, "small_key", "small_value", 0).Err())
+
+	// Check if the small SET is processed quickly on the slave
+	// The small command should appear within 1 second (much faster than the buggy 1 minute delay)
+	require.Eventually(t, func() bool {
+		val, err := slaveClient.Get(ctx, "small_key").Result()
+		if err != nil {
+			return false
+		}
+		return val == "small_value"
+	}, 1*time.Second, 50*time.Millisecond, "slave should process small command quickly after large command")
+
+	duration := time.Since(start)
+	// The small command should be processed much faster than 1 second
+	require.Less(t, duration, 1*time.Second, "small command should be processed promptly")
+}

@@ -1984,6 +1984,13 @@ rocksdb::Status TimeSeries::Range(engine::Context &ctx, const Slice &user_key, c
   return s;
 }
 
+rocksdb::Status TimeSeries::RevRange(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                                     std::vector<TSSample> *res) {
+  auto s = Range(ctx, user_key, option, res);
+  if (!res->empty()) std::reverse(res->begin(), res->end());
+  return s;
+}
+
 rocksdb::Status TimeSeries::Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest,
                                 std::vector<TSSample> *res) {
   res->clear();
@@ -2173,6 +2180,15 @@ rocksdb::Status TimeSeries::MRange(engine::Context &ctx, const TSMRangeOption &o
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TimeSeries::MRevRange(engine::Context &ctx, const TSMRangeOption &option,
+                                      std::vector<TSMRangeResult> *res) {
+  auto s = MRange(ctx, option, res);
+  if (res) {
+    for (auto &row : *res) std::reverse(row.samples.begin(), row.samples.end());
+  }
+  return s;
+}
+
 rocksdb::Status TimeSeries::IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample,
                                    const TSCreateOption &option, AddResult *res) {
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -2277,6 +2293,11 @@ rocksdb::Status TimeSeries::IsTSSubKeyExpired(const TimeSeriesMetadata &metadata
     }
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status TimeSeries::QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
+                                       std::vector<std::string> *res) {
+  return getTSKeyByFilter(ctx, filter_option, res);
 }
 
 }  // namespace redis

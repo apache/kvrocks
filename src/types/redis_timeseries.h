@@ -274,17 +274,22 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, TSInfoResult *res);
   rocksdb::Status Range(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
                         std::vector<TSSample> *res);
+  rocksdb::Status RevRange(engine::Context &ctx, const Slice &user_key, const TSRangeOption &option,
+                           std::vector<TSSample> *res);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, bool is_return_latest, std::vector<TSSample> *res);
   rocksdb::Status CreateRule(engine::Context &ctx, const Slice &src_key, const Slice &dst_key,
                              const TSAggregator &aggregator, TSCreateRuleResult *res);
   rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
                        std::vector<TSMGetResult> *res);
   rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
+  rocksdb::Status MRevRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
   rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
                                     bool &expired);
+  rocksdb::Status QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
+                             std::vector<std::string> *res);
 
   static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 

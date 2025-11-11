@@ -317,6 +317,15 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			assert.Equal(t, s.val, arr[1])
 		}
 
+		// Test revrange without aggregation
+		res = rdb.Do(ctx, "ts.revrange", key, "-", "+").Val().([]interface{})
+		assert.Equal(t, len(samples), len(res))
+		for i, s := range samples {
+			arr := res[len(samples)-i-1].([]interface{})
+			assert.Equal(t, s.ts, arr[0])
+			assert.Equal(t, s.val, arr[1])
+		}
+
 		// Test MIN aggregation with 20ms bucket
 		res = rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "MIN", 20).Val().([]interface{})
 		assert.Equal(t, 6, len(res))
@@ -815,6 +824,24 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			for i, s := range samples {
 				require.Equal(t, expectSamples[i], s.([]interface{}))
 			}
+
+			// Test MREVRANGE
+			res2 := rdb.Do(ctx, "ts.mrevrange", "-", "+", "WITHLABELS", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res))
+
+			group2 := res2[0].([]interface{})
+			require.Equal(t, "type=stock_MRange", group2[0])
+
+			metadata2 := group2[1].([]interface{})
+			labels2 := metadata2[0].([]interface{})
+			require.Equal(t, []interface{}{"type", type_label}, labels2)
+			require.Equal(t, "max", metadata2[1].([]interface{})[1])
+
+			samples2 := group2[2].([]interface{})
+			require.Equal(t, 3, len(samples2))
+			for i, s := range samples2 {
+				require.Equal(t, expectSamples[len(expectSamples)-1-i], s.([]interface{}))
+			}
 		})
 
 		t.Run("With Aggregation", func(t *testing.T) {
@@ -850,6 +877,25 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			for i, s := range samples {
 				require.Equal(t, expectSamples[i], s.([]interface{}))
 			}
+
+			// Test MREVRANGE
+			res2 := rdb.Do(ctx, "ts.mrevrange", "-", "+", "WITHLABELS", "AGGREGATION", "avg", "1000", "FILTER", "type="+type_label, "GROUPBY", "type", "REDUCE", "max").Val().([]interface{})
+			require.Equal(t, 1, len(res2))
+
+			name2 := res2[0].([]interface{})[0].(string)
+			require.Equal(t, name, name2)
+			labels2 := res2[0].([]interface{})[1].([]interface{})
+			require.Equal(t, 3, len(labels))
+			require.Equal(t, labels[0].([]interface{}), labels2[0].([]interface{}))
+			require.Equal(t, labels[1].([]interface{}), labels2[1].([]interface{}))
+			require.Equal(t, labels[2].([]interface{}), labels2[2].([]interface{}))
+
+			samples2 := res2[0].([]interface{})[2].([]interface{})
+			require.Equal(t, 3, len(samples))
+			for i, s := range samples2 {
+				require.Equal(t, expectSamples[len(expectSamples)-1-i], s.([]interface{}))
+			}
+
 		})
 
 		t.Run("Filter By Value", func(t *testing.T) {
@@ -956,5 +1002,21 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		// Test: Try delete all samples with range
 		_, err = rdb.Do(ctx, "ts.del", srcKey, "-", "+").Result()
 		require.ErrorContains(t, err, "When a series has compactions, deleting samples or compaction buckets beyond the series retention period is not possible")
+	})
+
+	t.Run("TS.QUERYINDEX", func(t *testing.T) {
+		// Create test based on example in Redis documentation
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:study:temperature", "LABELS", "room", "study", "type", "temperature").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:study:humidity", "LABELS", "room", "study", "type", "humidity").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:kitchen:temperature", "LABELS", "room", "kitchen", "type", "temperature").Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", "telemetry:kitchen:humidity", "LABELS", "room", "kitchen", "type", "humidity").Err())
+
+		res, err := rdb.Do(ctx, "ts.queryindex", "room=kitchen").Result()
+		require.NoError(t, err)
+		assert.Equal(t, []interface{}{"telemetry:kitchen:humidity", "telemetry:kitchen:temperature"}, res)
+
+		res, err = rdb.Do(ctx, "ts.queryindex", "type=temperature").Result()
+		require.NoError(t, err)
+		assert.Equal(t, []interface{}{"telemetry:kitchen:temperature", "telemetry:study:temperature"}, res)
 	})
 }

@@ -40,19 +40,24 @@ FetchContent_GetProperties(jemalloc)
 if(NOT jemalloc_POPULATED)
   FetchContent_Populate(jemalloc)
 
-  execute_process(COMMAND autoconf
-    WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
-  )
-  execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C ${JEMALLOC_CROSS_FLAGS} --enable-autogen
-                    --disable-shared --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} ${ENABLE_JEMALLOC_PROFILING}
-                    --with-jemalloc-prefix=""
-    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
-  )
-  add_custom_target(make_jemalloc 
-    COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG}
-    WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
-    BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
-  )
+  # Support pre-built libraries (e.g., from Nix)
+  if(EXISTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a)
+    add_custom_target(make_jemalloc)
+  else()
+    execute_process(COMMAND autoconf
+      WORKING_DIRECTORY ${jemalloc_SOURCE_DIR}
+    )
+    execute_process(COMMAND ${jemalloc_SOURCE_DIR}/configure CC=${CMAKE_C_COMPILER} -C ${JEMALLOC_CROSS_FLAGS} --enable-autogen
+                      --disable-shared --disable-libdl ${DISABLE_CACHE_OBLIVIOUS} ${ENABLE_JEMALLOC_PROFILING}
+                      --with-jemalloc-prefix=""
+      WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
+    )
+    add_custom_target(make_jemalloc
+      COMMAND ${MAKE_COMMAND} ${NINJA_MAKE_JOBS_FLAG}
+      WORKING_DIRECTORY ${jemalloc_BINARY_DIR}
+      BYPRODUCTS ${jemalloc_BINARY_DIR}/lib/libjemalloc.a
+    )
+  endif()
 endif()
 
 find_package(Threads REQUIRED)

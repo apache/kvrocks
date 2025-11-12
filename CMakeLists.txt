@@ -73,8 +73,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(DEPS_FETCH_PROXY "" CACHE STRING
-    "a template URL to proxy the traffic for fetching dependencies, e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
+    "a template URL to proxy the traffic for fetching dependencies,
+     e.g. with DEPS_FETCH_PROXY = https://some-proxy/,
      https://example/some-dep.zip -> https://some-proxy/https://example/some-dep.zip")
+set(DEPS_FETCH_DIR "" CACHE PATH
+    "if specified, dependencies will be downloaded into this directory first,
+     and reused in subsequent builds")
 
 if(ENABLE_ASAN AND ENABLE_TSAN)
     message(FATAL_ERROR "ASan and TSan cannot be used at the same time")

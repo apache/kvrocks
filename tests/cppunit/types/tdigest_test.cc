@@ -343,8 +343,8 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_the_set_containing_several_identica
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   std::vector<int> result;
-  result.reserve(input.size());
   const std::vector<double> value = {10, 20};
+  result.reserve(value.size());
   status = tdigest_->Rank(*ctx_, test_digest_name, value, true, result);
   const auto expect_result_revrank = std::vector<double>{3, 1};
   for (size_t i = 0; i < result.size(); i++) {
@@ -354,7 +354,7 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_the_set_containing_several_identica
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   result.clear();
-  result.reserve(input.size());
+  result.reserve(value.size());
   status = tdigest_->Rank(*ctx_, test_digest_name, value, false, result);
   const auto expect_result_rank = std::vector<double>{1, 4};
   for (size_t i = 0; i < result.size(); i++) {
@@ -367,7 +367,7 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_the_set_containing_several_identica
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   result.clear();
-  result.reserve(input.size());
+  result.reserve(value.size());
   status = tdigest_->Rank(*ctx_, test_digest_name, value, true, result);
   const auto expect_result_new_revrank = std::vector<double>{4, 1};
   for (size_t i = 0; i < result.size(); i++) {
@@ -377,7 +377,7 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_the_set_containing_several_identica
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   result.clear();
-  result.reserve(input.size());
+  result.reserve(value.size());
   status = tdigest_->Rank(*ctx_, test_digest_name, value, false, result);
   const auto expect_result_new_rank = std::vector<double>{2, 5};
   for (size_t i = 0; i < result.size(); i++) {
@@ -412,6 +412,40 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_empty_tdigest) {
   for (size_t i = 0; i < result.size(); i++) {
     auto got = result[i];
     EXPECT_EQ(got, expect_result_rank[i]);
+  }
+  ASSERT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST_F(RedisTDigestTest, RevRank_and_Rank_on_different_or_same_and_unordered_inputs_tdigest) {
+  std::string test_digest_name = "test_digest_revrank_and_rank" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> input{12, 100, 50, 36, 75, 81, 35.5, 46, 36, 8.8, 15, 4, 32.5, 12, 8.8, 7, 99, 0};
+  status = tdigest_->Add(*ctx_, test_digest_name, input);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<int> result;
+  const std::vector<double> value = {50, 36, 4, 99, 8.8};
+  result.reserve(value.size());
+  status = tdigest_->Rank(*ctx_, test_digest_name, value, false, result);
+  const auto expect_result_rank = std::vector<double>{13, 11, 1, 16, 4};
+  for (size_t i = 0; i < result.size(); i++) {
+    auto got = result[i];
+    EXPECT_EQ(got, expect_result_rank[i]);
+  }
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  const std::vector<double> value_new = {50, 36, 4, 99, 8.8, 8.8, 12, 99};
+  result.clear();
+  result.reserve(value_new.size());
+  status = tdigest_->Rank(*ctx_, test_digest_name, value_new, false, result);
+  const auto expect_result_revrank = std::vector<double>{4, 7, 16, 1, 14, 14, 12, 1};
+  for (size_t i = 0; i < result.size(); i++) {
+    auto got = result[i];
+    EXPECT_EQ(got, expect_result_revrank[i]);
   }
   ASSERT_TRUE(status.ok()) << status.ToString();
 }

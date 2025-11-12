@@ -223,7 +223,6 @@ class TDigestRankCommand : public Commander {
   std::vector<double> unique_inputs_;
   std::map<std::string, size_t> unique_inputs_order_;
   std::vector<std::string> origin_inputs_;
-  bool reverse_;
 };
 
 class CommandTDigestRevRank : public TDigestRankCommand<true> {};

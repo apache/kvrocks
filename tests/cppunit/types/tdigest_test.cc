@@ -438,11 +438,11 @@ TEST_F(RedisTDigestTest, RevRank_and_Rank_on_different_or_same_and_unordered_inp
   }
   ASSERT_TRUE(status.ok()) << status.ToString();
 
-  const std::vector<double> value_new = {50, 36, 4, 99, 8.8, 8.8, 12, 99};
+  const std::vector<double> value_new = {50, 36, 4, 99, 8.8, 12};
   result.clear();
   result.reserve(value_new.size());
-  status = tdigest_->Rank(*ctx_, test_digest_name, value_new, false, result);
-  const auto expect_result_revrank = std::vector<double>{4, 7, 16, 1, 14, 14, 12, 1};
+  status = tdigest_->Rank(*ctx_, test_digest_name, value_new, true, result);
+  const auto expect_result_revrank = std::vector<double>{4, 7, 16, 1, 14, 12};
   for (size_t i = 0; i < result.size(); i++) {
     auto got = result[i];
     EXPECT_EQ(got, expect_result_revrank[i]);

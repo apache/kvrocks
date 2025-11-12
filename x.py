@@ -27,6 +27,7 @@ from subprocess import Popen, PIPE
 import sys
 from typing import List, Any, Optional, IO, Tuple
 from shutil import which
+from tempfile import TemporaryDirectory
 
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (18, 0, 0)
@@ -113,8 +114,9 @@ def prepare() -> None:
             dst.symlink_to(hook)
             print(f"{hook.name} installed at {dst}.")
 
-def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: str, cmake_path: str, D: List[str],
-          skip_build: bool, toolchain: Optional[str] = None) -> None:
+def build(dir: str, jobs: Optional[int] = None, ninja: bool = False, unittest: bool = False,
+          compiler: str = 'auto', cmake_path: str = 'cmake', D: List[str] = [], skip_build: bool = False,
+          dep_dir: Optional[str] = None, toolchain: Optional[str] = None) -> None:
     basedir = Path(__file__).parent.absolute()
 
     find_command("autoconf", msg="autoconf is required to build jemalloc")
@@ -139,6 +141,9 @@ def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: 
         cmake_options += ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
     if D:
         cmake_options += [f"-D{o}" for o in D]
+    if dep_dir:
+        dep_dir = os.path.abspath(dep_dir)
+        cmake_options += [f"-DDEPS_FETCH_DIR={dep_dir}"]
 
     run(cmake, str(basedir), *cmake_options, verbose=True, cwd=dir)
 
@@ -150,11 +155,17 @@ def build(dir: str, jobs: Optional[int], ninja: bool, unittest: bool, compiler: 
         target.append("unittest")
 
     options = ["--build", "."]
-    if jobs is not None:
+    if jobs:
         options.append(f"-j{jobs}")
     options += ["-t", *target]
 
     run(cmake, *options, verbose=True, cwd=dir)
+
+
+def fetch_deps(dir: str) -> None:
+    dir = os.path.abspath(dir)
+    with TemporaryDirectory(prefix="kvrocks-fetch-deps-") as build_dir:
+        build(build_dir, dep_dir=dir, skip_build=True)
 
 
 def get_source_files(dir: Path) -> List[str]:
@@ -386,7 +397,7 @@ if __name__ == '__main__':
     )
     parser_build.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                               help="directory to store cmake-generated and build files")
-    parser_build.add_argument('-j', '--jobs', metavar='N', help='execute N build jobs concurrently')
+    parser_build.add_argument('-j', '--jobs', metavar='N', type=int, help='execute N build jobs concurrently')
     parser_build.add_argument('--ninja', default=False, action='store_true', help='use Ninja to build kvrocks')
     parser_build.add_argument('--unittest', default=False, action='store_true', help='build unittest target')
     parser_build.add_argument('--compiler', default='auto', choices=('auto', 'gcc', 'clang'),
@@ -396,7 +407,18 @@ if __name__ == '__main__':
     parser_build.add_argument('-D', action='append', metavar='key=value', help='extra CMake definitions')
     parser_build.add_argument('--skip-build', default=False, action='store_true',
                               help='runs only the configure stage, skip the build stage')
+    parser_build.add_argument('--dep-dir', help='directory to store fetched archives of dependencies')
     parser_build.set_defaults(func=build)
+
+    parser_fetch_deps = subparsers.add_parser(
+        'fetch-deps',
+        description="Fetch dependency archives to DEP_DIR [default: build-deps]",
+        help="Fetch dependency archives to DEP_DIR [default: build-deps]",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+    )
+    parser_fetch_deps.add_argument('dir', metavar='DEP_DIR', nargs='?', default='build-deps',
+                              help="directory to store fetched archives of dependencies")
+    parser_fetch_deps.set_defaults(func=fetch_deps)
 
     parser_package = subparsers.add_parser(
         'package',

@@ -40,6 +40,10 @@ rocksdb::Status TopK::Reserve(engine::Context &ctx, const Slice& user_key,
 
 rocksdb::Status TopK::Add(engine::Context &ctx, const Slice &user_key, 
                           const Slice &items) {
+    return IncrBy(ctx, user_key, items, 1);
+}
+
+rocksdb::Status TopK::IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &items, uint32_t incr) {
     std::string ns_key = AppendNamespacePrefix(user_key);
 
     TopKMetadata topk_metadata;
@@ -47,7 +51,7 @@ rocksdb::Status TopK::Add(engine::Context &ctx, const Slice &user_key,
     if (!s.ok()) return s;
     
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisTopK, {"Add"});
+    WriteBatchLogData log_data(kRedisTopK, {"IncrBy"});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
 
@@ -55,7 +59,7 @@ rocksdb::Status TopK::Add(engine::Context &ctx, const Slice &user_key,
     s = getTopKData(ctx, ns_key, topk_metadata, &topk);
     if (!s.ok()) return s;
 
-    topk.Add(items.data_, 1);
+    topk.Add(items.data_, incr);
 
     s = setTopkData(ctx, ns_key, topk_metadata, topk);
     if (!s.ok()) return s;

@@ -106,6 +106,35 @@ class CommandTopKAdd final : public Commander {
   }
 };
 
+class CommandTopKIncrBy final : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args_.size() != 4) {
+      return {Status::InvalidArgument, "invalid argument"};
+    }
+    auto parse_incr = ParseInt<uint32_t>(args[3], 10);
+    if (!parse_incr) {
+      return {Status::InvalidArgument, "invalid argument"};
+    }
+    incr_ = *parse_incr;
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::TopK topk(srv->storage, conn->GetNamespace());
+    CHECK(args_.size() == 4);
+
+    auto s = topk.IncrBy(ctx, args_[1], args_[2], incr_);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    *output = redis::RESP_OK;
+    return Status::OK();
+  }
+ private:
+  uint32_t incr_;
+};
+
 class CommandTopKList final : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -209,6 +238,7 @@ REDIS_REGISTER_COMMANDS(TopK, MakeCmdAttr<CommandTopKAdd>("topk.add", 3, "write"
                         MakeCmdAttr<CommandTopKList>("topk.list", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTopKInfo>("topk.info", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTopKQuery>("topk.query", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandTopKReserve>("topk.reserve", -3, "write", 1, 1, 1));
+                        MakeCmdAttr<CommandTopKReserve>("topk.reserve", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTopKIncrBy>("topk.incrby", 4, "write", 1, 1, 1));
 
 } // namespace redis

@@ -56,7 +56,8 @@ class TopK : public SubKeyScanner {
                                             const Slice &items);
   rocksdb::Status List(engine::Context &ctx, const Slice& user_key, std::vector<std::string> &items);
   rocksdb::Status Info(engine::Context &ctx, const Slice& user_key, TopKInfo *info);
-
+  rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key,
+                                            const Slice &items, uint32_t incr);
  private:
   rocksdb::Status getTopKMetadata(engine::Context &ctx, const Slice &ns_key, TopKMetadata *metadata);
   rocksdb::Status createTopK(engine::Context &ctx, const Slice &ns_key, 

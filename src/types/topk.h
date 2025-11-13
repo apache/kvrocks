@@ -21,66 +21,67 @@
 #pragma once
 
 #include <stdint.h>
-#include <vector>
-#include <queue>
+
 #include <cmath>
+#include <queue>
 #include <string>
+#include <vector>
 
 static constexpr int TOPK_DECAY_LOOKUP_TABLE = 256;
 
 using counter_t = uint32_t;
 
 struct HeapBucket {
-    uint32_t fp;
-    uint32_t itemlen;
-    char* item;
-    counter_t count;
+  uint32_t fp;
+  uint32_t itemlen;
+  char *item;
+  counter_t count;
 };
 
 struct Bucket {
-    uint32_t fp;
-    counter_t count;
+  uint32_t fp;
+  counter_t count;
 };
 
 class BlockSplitTopK {
-public:
-    BlockSplitTopK() = delete;
-    explicit BlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay) :
-        k(k), width(width), depth(depth), decay(decay), heap_size(0) {
-        buckets = new Bucket[width * depth];
-        heap = new HeapBucket[k];
-        std::fill_n(buckets, width * depth, Bucket{0, 0});
-        std::fill_n(heap, k, HeapBucket{0, 0, nullptr, 0});
-        for (int i = 0; i < TOPK_DECAY_LOOKUP_TABLE; ++i) {
-            lookupTable[i] = pow(decay, i);
-        }
+ public:
+  BlockSplitTopK() = delete;
+  explicit BlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay)
+      : k(k), width(width), depth(depth), decay(decay), heap_size(0) {
+    buckets = new Bucket[width * depth];
+    heap = new HeapBucket[k];
+    std::fill_n(buckets, width * depth, Bucket{0, 0});
+    std::fill_n(heap, k, HeapBucket{0, 0, nullptr, 0});
+    for (int i = 0; i < TOPK_DECAY_LOOKUP_TABLE; ++i) {
+      lookupTable[i] = pow(decay, i);
     }
+  }
 
-    ~BlockSplitTopK() {
-        for (size_t i = 0; i < k; ++i) {
-            delete[] heap[i].item;
-        }
-        delete[] buckets;
-        delete[] heap;
+  ~BlockSplitTopK() {
+    for (size_t i = 0; i < k; ++i) {
+      delete[] heap[i].item;
     }
+    delete[] buckets;
+    delete[] heap;
+  }
 
-    void Add(const std::string &item, uint32_t increment);
-    bool Query(const std::string &item);
-    std::vector<HeapBucket> List();
+  void Add(const std::string &item, uint32_t increment);
+  bool Query(const std::string &item);
+  std::vector<HeapBucket> List();
 
-    void heapifyDown(int start);
-    void heapifyUp(int start);
-    int checkExistInHeap(const std::string &item);
-    int cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
+  void heapifyDown(int start);
+  void heapifyUp(int start);
+  int checkExistInHeap(const std::string &item);
+  int cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
 
-    uint32_t k;
-    uint32_t width;
-    uint32_t depth;
-    double decay;
+  uint32_t k;
+  uint32_t width;
+  uint32_t depth;
+  double decay;
 
-    size_t heap_size;
+  size_t heap_size;
 
-    Bucket *buckets;
-    HeapBucket *heap;
-    double lookupTable[TOPK_DECAY_LOOKUP_TABLE];
+  Bucket *buckets;
+  HeapBucket *heap;
+  double lookupTable[TOPK_DECAY_LOOKUP_TABLE];
 };

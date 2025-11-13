@@ -32,9 +32,7 @@ static constexpr double decay = 0.9;
 
 class RedisTopKTest : public TestBase {
  protected:
-  explicit RedisTopKTest() : TestBase() {
-    top_k_ = std::make_unique<redis::TopK>(storage_.get(), "topk_ns");
-  }
+  explicit RedisTopKTest() : TestBase() { top_k_ = std::make_unique<redis::TopK>(storage_.get(), "topk_ns"); }
   ~RedisTopKTest() override = default;
 
   void SetUp() override {

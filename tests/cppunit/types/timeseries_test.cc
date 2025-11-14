@@ -345,6 +345,123 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_EQ(res.size(), 1);
 }
 
+TEST_F(TimeSeriesTest, Twa) {
+  redis::TSCreateOption option;
+  option.labels = {{"type", "readings"}, {"name", "instrument"}};
+  auto s = ts_db_->Create(*ctx_, key_, option);
+  EXPECT_TRUE(s.ok());
+
+  std::vector<TSSample> samples = {{12, 10}, {40, 12}, {380, 13}, {401, 18}, {595, 12}, {924, 13}};
+  std::vector<TSChunk::AddResult> results2;
+  results2.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, key_, samples, &results2);
+  EXPECT_TRUE(s.ok());
+
+  std::vector<TSSample> res;
+  redis::TSRangeOption range_opt;
+  range_opt.start_ts = 0;
+  range_opt.end_ts = TSSample::MAX_TIMESTAMP;
+  range_opt.aggregator.type = redis::TSAggregatorType::TWA;
+  range_opt.aggregator.bucket_duration = 1000;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].ts, 0);
+  EXPECT_NEAR(res[0].v, 13.05482456, 1e-5);
+
+  res.clear();
+  range_opt.aggregator.bucket_duration = 100;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 5);
+  EXPECT_NEAR(res[0].v, 11.7419786, 1e-5);
+  EXPECT_NEAR(res[1].v, 13.382072, 1e-5);
+  EXPECT_NEAR(res[2].v, 16.483190, 1e-5);
+  EXPECT_NEAR(res[3].v, 13.3959984, 1e-5);
+  EXPECT_NEAR(res[4].v, 12.963525, 1e-5);
+
+  res.clear();
+  range_opt.aggregator.bucket_duration = 10;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 6);
+  EXPECT_NEAR(res[0].v, 10.28571, 1e-5);
+  EXPECT_NEAR(res[1].v, 12.01470, 1e-5);
+  EXPECT_NEAR(res[2].v, 14.19047, 1e-5);
+  EXPECT_NEAR(res[3].v, 17.86283, 1e-5);
+  EXPECT_NEAR(res[4].v, 12.04245, 1e-5);
+  EXPECT_NEAR(res[5].v, 12.99392, 1e-5);
+
+  res.clear();
+  range_opt.start_ts = 100;
+  range_opt.end_ts = 1000;
+  range_opt.aggregator.bucket_duration = 5;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 4);
+  EXPECT_NEAR(res[0].v, 13.59523, 1e-5);
+  EXPECT_NEAR(res[1].v, 17.92670, 1e-5);
+  EXPECT_NEAR(res[2].v, 12.00759, 1e-5);
+  EXPECT_NEAR(res[3].v, 12.99392, 1e-5);
+
+  res.clear();
+  range_opt.start_ts = 500;
+  range_opt.end_ts = 713;
+  range_opt.aggregator.bucket_duration = 10;
+  s = ts_db_->Range(*ctx_, key_, range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 1);
+  EXPECT_NEAR(res[0].v, 12.04245, 1e-5);
+
+  // Two more datasets.
+  option.labels = {{"type", "numbers"}, {"distribution", "random"}};
+  s = ts_db_->Create(*ctx_, "s:a", option);
+  EXPECT_TRUE(s.ok());
+  s = ts_db_->Create(*ctx_, "s:b", option);
+  EXPECT_TRUE(s.ok());
+
+  samples = {{100, 20}, {200, 21}, {402, 18}, {600, 22}};
+  results2.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, "s:a", samples, &results2);
+  EXPECT_TRUE(s.ok());
+
+  samples = {{100, 15}, {300, 16}, {400, 17}, {402, 18}};
+  results2.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, "s:b", samples, &results2);
+  EXPECT_TRUE(s.ok());
+
+  res.clear();
+  range_opt.start_ts = 200;
+  range_opt.end_ts = 512;
+  range_opt.aggregator.bucket_duration = 100;
+  s = ts_db_->Range(*ctx_, "s:a", range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 2);
+  EXPECT_NEAR(res[0].v, 20.25742, 1e-5);
+  EXPECT_NEAR(res[1].v, 18.97039, 1e-5);
+
+  res.clear();
+  s = ts_db_->Range(*ctx_, "s:b", range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res[0].ts, 300);
+  EXPECT_NEAR(res[0].v, 16.5, 1e-5);
+  EXPECT_EQ(res[1].ts, 400);
+  EXPECT_NEAR(res[1].v, 17.5, 1e-5);
+
+  res.clear();
+  range_opt.start_ts = 200;
+  range_opt.end_ts = 512;
+  range_opt.aggregator.bucket_duration = 1000;
+  s = ts_db_->Range(*ctx_, "s:a", range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 1);
+  EXPECT_NEAR(res[0].v, 19.36289, 1e-5);
+
+  res.clear();
+  s = ts_db_->Range(*ctx_, "s:b", range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_NEAR(res[0].v, 16.13861, 1e-5);
+}
+
 TEST_F(TimeSeriesTest, Get) {
   redis::TSCreateOption option;
   auto s = ts_db_->Create(*ctx_, key_, option);

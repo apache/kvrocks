@@ -419,6 +419,20 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.Equal(t, 1, len(res))
 	})
 
+	t.Run("TS.RANGE With TWA Aggregation", func(t *testing.T) {
+		first_key := "first_twa_key"
+		second_key := "second_twa_key"
+		require.NoError(t, rdb.Do(ctx, "ts.create", first_key).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", second_key).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.madd", first_key, 100, 20, first_key, 200, 21, first_key, 402, 18, first_key, 600, 22).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.madd", second_key, 100, 15, second_key, 300, 16, second_key, 400, 17, second_key, 402, 18).Err())
+
+		res := rdb.Do(ctx, "ts.range", first_key, 200, 512, "AGGREGATION", "twa", 100).Val().([]interface{})
+		require.Equal(t, 2, len(res))
+		val := math.Abs((res[0].([]interface{})[1].(float64)) - 20.25742)
+		assert.True(t, val < 1e-5)
+	})
+
 	t.Run("TS.GET Basic", func(t *testing.T) {
 		key := "test_get_key"
 		require.NoError(t, rdb.Del(ctx, key).Err())

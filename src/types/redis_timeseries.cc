@@ -72,10 +72,31 @@ struct Reducer {
                                           [](const TSSample &a, const TSSample &b) { return a.v < b.v; });
     return max->v - min->v;
   }
+  static inline double Twa(nonstd::span<const TSSample> samples) {
+    // Intra bucket area is 0 for single element.
+    double result = 0;
+    for (size_t i = 1; i < samples.size(); i++) {
+      auto t_diff = static_cast<double>(samples[i].ts - samples[i - 1].ts);
+      // Area of bottom rectangle + Area of above triangle
+      result += (t_diff * samples[i - 1].v) + (t_diff * (samples[i].v - samples[i - 1].v) * 0.5);
+    }
+    return result;
+  }
 };
 
 std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option) {
   const auto &aggregator = option.aggregator;
+  // Retrieve prev_sample and next_sample from samples
+  TSSample prev_sample, next_sample;
+  bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available, next_available;
+  if (is_twa_aggregator) {
+    next_sample = samples.back();
+    samples.pop_back();
+    prev_sample = samples.back();
+    samples.pop_back();
+    prev_available = (samples.front().ts != prev_sample.ts);
+    next_available = (samples.back().ts != next_sample.ts);
+  }
   std::vector<TSSample> res;
   if (aggregator.type == TSAggregatorType::NONE || samples.empty()) {
     res = std::move(samples);
@@ -111,6 +132,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     if (option.is_return_empty && spans[i].empty()) {
       switch (aggregator.type) {
         case TSAggregatorType::SUM:
+        case TSAggregatorType::TWA:
         case TSAggregatorType::COUNT:
           sample.v = 0;
           break;
@@ -126,6 +148,71 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
       }
     } else if (!spans[i].empty()) {
       sample.v = aggregator.AggregateSamplesValue(spans[i]);
+
+      if (is_twa_aggregator) {
+        auto bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
+
+        /// Computes area of polygon from start of the current bucket to the first sample of the current span.
+        /// Total Area = Area of bottom rectangle + Area of above triangle.
+        auto front_area = [](uint64_t bucket_left, const TSSample &prev, const TSSample &curr) {
+          auto x = static_cast<double>(bucket_left - prev.ts);  // Distance from
+          auto y = static_cast<double>(curr.ts - prev.ts);
+          auto z = curr.v - prev.v;
+          auto triangle_area = (z * (y - (x * x) / y)) / 2;
+          auto rect_area = static_cast<double>(y - x) * prev.v;
+          return triangle_area + rect_area;
+        };
+        /// Computes area of polygon from the last sample of the current span to the end of current bucket.
+        /// Total Area = Area of bottom rectangle + Area of above triangle.
+        auto end_area = [](uint64_t bucket_right, const TSSample &curr, const TSSample &next) {
+          auto x = static_cast<double>(bucket_right - curr.ts);
+          auto y = static_cast<double>(next.ts - curr.ts);
+          auto z = next.v - curr.v;
+          auto rect_area = x * curr.v;
+          auto triangle_area = (x * x * z) / (2 * y);
+          return triangle_area + rect_area;
+        };
+        auto non_empty_left_bucket = [&spans](size_t curr) {
+          while (--curr && spans[curr].empty());
+          return curr;
+        };
+        auto non_empty_right_bucket = [&spans](size_t curr) {
+          while (++curr < spans.size() && spans[curr].empty());
+          return curr;
+        };
+
+        // Cut left and right empty regions.
+        bucket_left = std::max(bucket_left, option.start_ts);
+        bucket_right = std::min(bucket_right, option.end_ts);
+        uint64_t l = bucket_left, r = bucket_right;
+        double area = 0.0;
+        if (spans.size() == 1) {
+          area += prev_available ? front_area(bucket_left, prev_sample, spans[i].front()) : 0;
+          area += next_available ? end_area(bucket_right, spans[i].back(), next_sample) : 0;
+          l = prev_available ? bucket_left : spans[i].front().ts;
+          r = next_available ? bucket_right : spans[i].back().ts;
+          // Edge case: single bucket with only one element.
+          area += (!prev_available && !next_available && spans[i].size() == 1) ? spans[i][0].v : 0;
+        } else if (i == 0) {
+          size_t p = non_empty_right_bucket(i);
+          area += spans[i].back().ts != bucket_right ? end_area(bucket_right, spans[i].back(), spans[p].front()) : 0;
+          area += prev_available ? front_area(bucket_left, prev_sample, spans[i].front()) : 0;
+          l = prev_available ? bucket_left : spans[i].front().ts;
+        } else if (i == (spans.size() - 1)) {
+          size_t p = non_empty_left_bucket(i);
+          area += spans[i].front().ts != bucket_left ? front_area(bucket_left, spans[p].back(), spans[i].front()) : 0;
+          area += next_available ? end_area(bucket_right, spans[i].back(), next_sample) : 0;
+          // Edge case: when last bucket contains one sample and its timestamp equals bucket boundary.
+          area += (spans[i].size() == 1 && spans[i].front().ts == bucket_left && !next_available) ? spans[i][0].v : 0;
+          r = next_available ? bucket_right : spans[i].back().ts;
+        } else {
+          size_t x = non_empty_left_bucket(i), y = non_empty_right_bucket(i);
+          area += spans[i].front().ts != bucket_left ? front_area(bucket_left, spans[x].back(), spans[i].front()) : 0;
+          area += spans[i].back().ts != bucket_right ? end_area(bucket_right, spans[i].back(), spans[y].front()) : 0;
+        }
+        sample.v += area;
+        sample.v /= std::max(static_cast<double>(r - l), 1.0);
+      }
     } else {
       continue;
     }
@@ -810,6 +897,9 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
     case TSAggregatorType::VAR_S:
       res = Reducer::VarS(samples);
       break;
+    case TSAggregatorType::TWA:
+      res = Reducer::Twa(samples);
+      break;
     default:
       unreachable();
   }
@@ -1055,18 +1145,24 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
   bool has_aggregator = aggregator.type != TSAggregatorType::NONE;
   if (iter->Valid()) {
     if (option.count_limit != 0 && !has_aggregator) {
-      temp_results.reserve(option.count_limit);
+      temp_results.reserve(option.count_limit + 2);
     } else {
       chunk = CreateTSChunkFromData(iter->value());
       auto range = chunk->GetLastTimestamp() - chunk->GetFirstTimestamp() + 1;
       auto estimate_chunks = std::min((end_timestamp - start_timestamp) / range, uint64_t(32));
-      temp_results.reserve(estimate_chunks * metadata.chunk_size);
+      temp_results.reserve(estimate_chunks * metadata.chunk_size + 2);
     }
   }
   // Get samples from chunks
   uint64_t bucket_count = 0;
   uint64_t last_bucket = 0;
   bool is_not_enough = true;
+  // Add these two samples at end when aggregator is TWA.
+  TSSample prev_sample, next_sample;
+  prev_sample.ts = TSSample::MAX_TIMESTAMP;
+  next_sample.ts = TSSample::MAX_TIMESTAMP;
+  const bool is_twa_aggregator = option.aggregator.type == TSAggregatorType::TWA;
+
   for (; iter->Valid() && is_not_enough; iter->Next()) {
     chunk = CreateTSChunkFromData(iter->value());
     auto it = chunk->CreateIterator();
@@ -1081,7 +1177,12 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
       const bool not_time_filtered = option.filter_by_ts.empty() || option.filter_by_ts.count(sample->ts);
       const bool value_in_range = !option.filter_by_value || (sample->v >= option.filter_by_value->first &&
                                                               sample->v <= option.filter_by_value->second);
-
+      // Record prev and next samples around the filtered range when aggregator is TWA
+      if (is_twa_aggregator) {
+        prev_sample = (sample->ts <= start_timestamp) ? *sample : prev_sample;
+        next_sample =
+            (sample->ts >= end_timestamp && next_sample.ts == TSSample::MAX_TIMESTAMP) ? *sample : next_sample;
+      }
       if (!in_time_range || !not_time_filtered || !value_in_range) {
         continue;
       }
@@ -1101,6 +1202,13 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
       }
       temp_results.push_back(*sample);
     }
+  }
+
+  if (is_twa_aggregator) {
+    // prev_sample might not get initialized, if first element is in first bucket.
+    prev_sample = prev_sample.ts == TSSample::MAX_TIMESTAMP ? temp_results.front() : prev_sample;
+    temp_results.push_back(prev_sample);
+    temp_results.push_back(next_sample);
   }
 
   // Process compaction logic

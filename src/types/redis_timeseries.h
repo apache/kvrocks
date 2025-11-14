@@ -53,6 +53,7 @@ enum class TSAggregatorType : uint8_t {
   STD_S = 10,
   VAR_P = 11,
   VAR_S = 12,
+  TWA = 13,
 };
 
 inline bool IsIncrementalAggregatorType(TSAggregatorType type) {

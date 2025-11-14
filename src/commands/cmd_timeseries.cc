@@ -57,6 +57,7 @@ const std::unordered_map<TSAggregatorType, std::string_view> kAggregatorTypeMap 
     {TSAggregatorType::MAX, "max"},     {TSAggregatorType::RANGE, "range"}, {TSAggregatorType::COUNT, "count"},
     {TSAggregatorType::FIRST, "first"}, {TSAggregatorType::LAST, "last"},   {TSAggregatorType::STD_P, "std.p"},
     {TSAggregatorType::STD_S, "std.s"}, {TSAggregatorType::VAR_P, "var.p"}, {TSAggregatorType::VAR_S, "var.s"},
+    {TSAggregatorType::TWA, "twa"},
 };
 const std::unordered_map<GroupReducerType, std::string_view> kGroupReducerTypeMap = {
     {GroupReducerType::AVG, "avg"},     {GroupReducerType::SUM, "sum"},     {GroupReducerType::MIN, "min"},
@@ -556,6 +557,8 @@ class CommandTSAggregatorBase : public KeywordCommandBase {
       type = TSAggregatorType::VAR_P;
     } else if (parser.EatEqICase("VAR.S")) {
       type = TSAggregatorType::VAR_S;
+    } else if (parser.EatEqICase("TWA")) {
+      type = TSAggregatorType::TWA;
     } else {
       return {Status::RedisParseErr, "Invalid aggregator type"};
     }

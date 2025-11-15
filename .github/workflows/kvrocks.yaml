@@ -239,6 +239,17 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
       RISCV_PATH: "/opt/riscv"
     steps:
+      - name: Maximize build space
+        if: ${{ matrix.riscv_toolchain }}
+        run: |
+          # refer to https://github.com/easimon/maximize-build-space,
+          # we take some ideas from this action but don't use it directly.
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo df -h
+
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |

@@ -587,4 +587,133 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, rank, expected[i])
 		}
 	})
+
+	t.Run("tdigest.rank with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_rank_"
+
+		// Test invalid arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RANK").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RANK", keyPrefix+"nonexistent").Err(), errMsgWrongNumberArg)
+
+		// Test Non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.RANK", keyPrefix+"nonexistent", "10").Err(), errMsgKeyNotExist)
+
+		// Test with empty tdigest
+		key := keyPrefix + "test1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		rsp := rdb.Do(ctx, "TDIGEST.RANK", key, "10", "20")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 2)
+		expected := []int64{-2, -2}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+
+		// Test with set containing several identical elements
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "10", "10", "10", "20", "20").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RANK", key, "10", "20")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 2)
+		expected = []int64{1, 4}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "10").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RANK", key, "10", "20")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 2)
+		expected = []int64{2, 5}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+
+		// Test with set containing different elements
+		key2 := keyPrefix + "test2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key2, "10", "20", "30", "40", "50", "60").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RANK", key2, "0", "10", "20", "30", "40", "50", "60", "70")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 8)
+		expected = []int64{-1, 0, 1, 2, 3, 4, 5, 6}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+
+		// Test with set containing unordered elements which are different or same
+		key3 := keyPrefix + "test3"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key3, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key3, "12", "100", "50", "36", "75", "81", "35.5", "46", "36", "8.8", "15", "4", "32.5", "12", "8.8", "7", "99", "1").Err())
+		rsp = rdb.Do(ctx, "TDIGEST.RANK", key3, "50", "36", "4", "99", "8.8", "0.1", "200")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		expected = []int64{13, 11, 1, 16, 4, -1, 18}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+
+		rsp = rdb.Do(ctx, "TDIGEST.REVRANK", key3, "50", "36", "4", "99", "8.8", "8.8", "12", "99", "200")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 9)
+		expected = []int64{4, 7, 16, 1, 14, 14, 12, 1, -1}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, rank, expected[i])
+		}
+	})
+
+	t.Run("tdigest.rank and revrank with unordered elements containing duplicate values", func(t *testing.T) {
+		key := "tdigest_rank_unordered_dup_"
+
+		// Create digest and add unordered elements with duplicates
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "12", "100", "50", "36", "75", "81", "35.5", "46", "36", "8.8", "15", "4", "32.5", "12", "8.8", "7", "99", "1").Err())
+
+		rsp := rdb.Do(ctx, "TDIGEST.RANK", key, "50", "36", "4", "99", "8.8", "0.1", "200")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		expected := []int64{13, 11, 1, 16, 4, -1, 18}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, expected[i], rank, "RANK mismatch at index %d", i)
+		}
+
+		rsp = rdb.Do(ctx, "TDIGEST.REVRANK", key, "50", "36", "4", "99", "8.8", "8.8", "12", "99", "200")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 9)
+		expected = []int64{4, 7, 16, 1, 14, 14, 12, 1, -1}
+		for i, v := range vals {
+			rank, ok := v.(int64)
+			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
+			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
+		}
+	})
 }

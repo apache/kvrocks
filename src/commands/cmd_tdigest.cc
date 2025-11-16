@@ -176,7 +176,8 @@ class CommandTDigestAdd : public Commander {
   std::vector<double> values_;
 };
 
-class CommandTDigestRevRank : public Commander {
+template <bool reverse>
+class TDigestRankCommand : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     key_name_ = args[1];
@@ -201,7 +202,7 @@ class CommandTDigestRevRank : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<int> result;
     result.reserve(origin_inputs_.size());
-    if (const auto s = tdigest.RevRank(ctx, key_name_, unique_inputs_, result); !s.ok()) {
+    if (const auto s = tdigest.Rank(ctx, key_name_, unique_inputs_, reverse, result); !s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }
@@ -223,6 +224,10 @@ class CommandTDigestRevRank : public Commander {
   std::map<std::string, size_t> unique_inputs_order_;
   std::vector<std::string> origin_inputs_;
 };
+
+class CommandTDigestRevRank : public TDigestRankCommand<true> {};
+
+class CommandTDigestRank : public TDigestRankCommand<false> {};
 
 class CommandTDigestMinMax : public Commander {
  public:
@@ -418,6 +423,7 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMax>("tdigest.max", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestRevRank>("tdigest.revrank", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestRank>("tdigest.rank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));

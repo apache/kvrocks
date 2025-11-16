@@ -24,6 +24,7 @@
 
 #include <map>
 #include <numeric>
+#include <variant>
 #include <vector>
 
 #include "common/status.h"
@@ -170,26 +171,49 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
-template <typename TD>
-inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
-  std::map<double, size_t, DoubleComparator> value_to_indices;
+template <typename TD, bool Reverse>
+inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
+  std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    value_to_indices[inputs[i]] = i;
+    value_to_index[inputs[i]] = i;
   }
 
   result.clear();
   result.resize(inputs.size(), -2);
-  auto it = value_to_indices.rbegin();
 
-  // handle inputs larger than maximum
-  while (it != value_to_indices.rend() && it->first > td.Max()) {
-    result[it->second] = -1;
-    ++it;
+  using MapType = decltype(value_to_index);
+  using IterType = std::conditional_t<Reverse, typename MapType::reverse_iterator, typename MapType::iterator>;
+  IterType it;
+  if constexpr (Reverse) {
+    it = value_to_index.rbegin();
+  } else {
+    it = value_to_index.begin();
   }
 
-  auto iter = td.End();
+  auto is_end = [&it, &value_to_index]() -> bool {
+    if constexpr (Reverse) {
+      return it == value_to_index.rend();
+    } else {
+      return it == value_to_index.end();
+    }
+  };
+
+  // handle inputs larger than maximum in reverse order or smaller than minimum in forward order
+  if constexpr (Reverse) {
+    while (!is_end() && it->first > td.Max()) {
+      result[it->second] = -1;
+      ++it;
+    }
+  } else {
+    while (!is_end() && it->first < td.Min()) {
+      result[it->second] = -1;
+      ++it;
+    }
+  }
+
+  auto iter = td.Begin(Reverse);
   double cumulative_weight = 0;
-  while (iter->Valid() && it != value_to_indices.rend()) {
+  while (iter->Valid() && !is_end()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
     auto input_value = it->first;
     if (DoubleEqual(centroid.mean, input_value)) {
@@ -197,47 +221,58 @@ inline Status TDigestRevRank(TD&& td, const std::vector<double>& inputs, std::ve
       auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
       cumulative_weight += centroid.weight;
 
-      // handle all the previous centroids which has the same mean
-      while (!iter->IsBegin() && iter->Prev()) {
+      // handle all next centroids which has the same mean
+      while (iter->Next()) {
         auto next_centroid = GET_OR_RET(iter->GetCentroid());
         if (!DoubleEqual(current_mean, next_centroid.mean)) {
           // move back to the last equal centroid, because we will process it in the next loop
-          iter->Next();
+          iter->Prev();
           break;
         }
         current_mean_cumulative_weight += next_centroid.weight / 2;
         cumulative_weight += next_centroid.weight;
       }
 
-      // handle the prev inputs which have the same value
       result[it->second] = static_cast<int>(current_mean_cumulative_weight);
       ++it;
-      if (iter->IsBegin()) {
-        break;
+      iter->Next();
+    } else if constexpr (Reverse) {
+      if (DoubleCompare(centroid.mean, input_value) > 0) {
+        cumulative_weight += centroid.weight;
+        iter->Next();
+      } else {
+        result[it->second] = static_cast<int>(cumulative_weight);
+        ++it;
       }
-      iter->Prev();
-    } else if (DoubleCompare(centroid.mean, input_value) > 0) {
-      cumulative_weight += centroid.weight;
-      if (iter->IsBegin()) {
-        break;
-      }
-      iter->Prev();
     } else {
-      result[it->second] = static_cast<int>(cumulative_weight);
-      ++it;
+      if (DoubleCompare(centroid.mean, input_value) < 0) {
+        cumulative_weight += centroid.weight;
+        iter->Next();
+      } else {
+        result[it->second] = static_cast<int>(cumulative_weight);
+        ++it;
+      }
     }
   }
 
-  // handle inputs less than minimum
-  while (it != value_to_indices.rend()) {
+  while (!is_end()) {
     result[it->second] = static_cast<int>(td.TotalWeight());
     ++it;
   }
 
   for (auto r : result) {
     if (r <= -2) {
-      return Status{Status::InvalidArgument, "invalid result when computing revrank"};
+      return Status{Status::InvalidArgument, "invalid result when computing rank or revrank"};
     }
   }
   return Status::OK();
+}
+
+template <typename TD>
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool reverse, std::vector<int>& result) {
+  if (reverse) {
+    return TDigestRankImpl<TD, true>(std::forward<TD>(td), inputs, result);
+  } else {
+    return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
+  }
 }

@@ -117,6 +117,9 @@ enum class CommandCategory : uint8_t {
   ZSet,
   Timeseries,
   TopK,
+  // this is a special category for disabling commands,
+  // basically can be used for version releasing or debugging
+  Disabled,
 };
 
 class Commander {

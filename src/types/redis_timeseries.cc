@@ -90,12 +90,14 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   TSSample prev_sample, next_sample;
   bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available, next_available;
   if (is_twa_aggregator) {
+    const bool discard_boundaries = !option.filter_by_ts.empty() || option.filter_by_value.has_value();
     next_sample = samples.back();
     samples.pop_back();
     prev_sample = samples.back();
     samples.pop_back();
-    prev_available = (samples.front().ts != prev_sample.ts);
-    next_available = (samples.back().ts != next_sample.ts);
+    // When FILTER_BY_TS/FILTER_BY_VALUE is enabled, discard out-of-boundary samples.
+    prev_available = discard_boundaries ? false : (samples.front().ts != prev_sample.ts);
+    next_available = discard_boundaries ? false : (samples.back().ts != next_sample.ts);
   }
   std::vector<TSSample> res;
   if (aggregator.type == TSAggregatorType::NONE || samples.empty()) {

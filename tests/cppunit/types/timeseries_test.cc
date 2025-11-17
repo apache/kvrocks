@@ -460,6 +460,41 @@ TEST_F(TimeSeriesTest, Twa) {
   s = ts_db_->Range(*ctx_, "s:b", range_opt, &res);
   EXPECT_TRUE(s.ok());
   EXPECT_NEAR(res[0].v, 16.13861, 1e-5);
+
+  // Test with FILTER_BY_TS
+  samples = {{15, 19}, {24, 13}, {25, 15}, {30, 14}, {35, 12}, {32, 19}};
+  s = ts_db_->Create(*ctx_, "s:c", option);
+  EXPECT_TRUE(s.ok());
+  results2.clear();
+  results2.resize(samples.size());
+  s = ts_db_->MAdd(*ctx_, "s:c", samples, &results2);
+  res.clear();
+  std::set<uint64_t> filtered_ts = {24, 30, 35};
+  range_opt.filter_by_ts.insert(filtered_ts.begin(), filtered_ts.end());
+  range_opt.start_ts = 0;
+  range_opt.end_ts = TSSample::MAX_TIMESTAMP;
+  range_opt.aggregator.bucket_duration = 10;
+  s = ts_db_->Range(*ctx_, "s:c", range_opt, &res);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(res.size(), 2);
+  EXPECT_EQ(res[0].ts, 20);
+  EXPECT_EQ(res[1].ts, 30);
+  EXPECT_NEAR(res[0].v, 13.5, 1e-5);
+  EXPECT_NEAR(res[1].v, 13, 1e-5);
+
+  res.clear();
+  range_opt.aggregator.bucket_duration = 100;
+  s = ts_db_->Range(*ctx_, "s:c", range_opt, &res);
+  EXPECT_EQ(res[0].ts, 0);
+  EXPECT_NEAR(res[0].v, 13.27272, 1e-5);
+
+  // Test with FILTER_BY_VALUE
+  res.clear();
+  range_opt.filter_by_ts.clear();
+  range_opt.filter_by_value = std::make_pair(15, 19);
+  s = ts_db_->Range(*ctx_, "s:c", range_opt, &res);
+  EXPECT_EQ(res[0].ts, 0);
+  EXPECT_NEAR(res[0].v, 17, 1e-5);
 }
 
 TEST_F(TimeSeriesTest, Get) {
